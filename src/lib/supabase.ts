@@ -238,6 +238,7 @@ export async function refreshCampaignJoinCode(
 }
 
 
+export async function deleteCampaign(campaignId: string): Promise<{ error: null | Error }> {
   const { error } = await supabase
     .from('campaigns')
     .delete()
