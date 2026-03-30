@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
+import { APP_VERSION } from './version';
 import './styles/globals.css';
 
 const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
@@ -164,6 +165,28 @@ function AppRoutes() {
           </Routes>
         </Suspense>
       </main>
+
+      {/* Version badge — fixed bottom right */}
+      <div style={{
+        position: 'fixed',
+        bottom: 'var(--space-3)',
+        right: 'var(--space-3)',
+        zIndex: 9999,
+        fontFamily: 'var(--font-heading)',
+        fontSize: '10px',
+        fontWeight: 600,
+        letterSpacing: '0.06em',
+        color: 'var(--text-muted)',
+        background: 'rgba(13,11,9,0.7)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '2px 7px',
+        backdropFilter: 'blur(4px)',
+        userSelect: 'none',
+        pointerEvents: 'none',
+      }}>
+        v{APP_VERSION}
+      </div>
     </div>
   );
 }
