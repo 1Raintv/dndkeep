@@ -207,7 +207,7 @@ export default function CharacterCreator() {
       {/* Step content */}
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
         {step === 0 && <StepSpecies selected={species} onSelect={s => { setSpecies(s); }} />}
-        {step === 1 && <StepClass selected={className} onSelect={c => { setClassName(c); setSubclass(''); }} />}
+        {step === 1 && <StepClass selected={className} level={level} onSelect={c => { setClassName(c); setSubclass(''); }} onLevelChange={handleLevelChange} />}
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
         {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} onScoresChange={setScores} onMethodChange={setMethod} />}
         {step === 4 && (
@@ -224,7 +224,7 @@ export default function CharacterCreator() {
             subclass={subclass} background={background} scores={scores} method={method}
             selectedSkills={selectedSkills} level={level}
             onNameChange={setName} onAlignmentChange={setAlignment}
-            onSkillToggle={handleSkillToggle} onLevelChange={handleLevelChange}
+            onSkillToggle={handleSkillToggle}
           />
         )}
       </div>

@@ -28,13 +28,12 @@ interface StepReviewProps {
   onNameChange: (v: string) => void;
   onAlignmentChange: (v: Alignment) => void;
   onSkillToggle: (skill: string) => void;
-  onLevelChange: (level: number) => void;
 }
 
 export default function StepReview({
   name, alignment, species, className, subclass, background,
   scores, selectedSkills, level,
-  onNameChange, onAlignmentChange, onSkillToggle, onLevelChange,
+  onNameChange, onAlignmentChange, onSkillToggle,
 }: StepReviewProps) {
   const cls = CLASS_MAP[className];
   const bg = BACKGROUND_MAP[background];
@@ -67,40 +66,6 @@ export default function StepReview({
               placeholder="What do they call you?"
               autoFocus
             />
-          </div>
-
-          {/* Starting Level */}
-          <div>
-            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Starting Level</span>
-              <span style={{
-                fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-lg)',
-                color: 'var(--text-gold)',
-              }}>
-                {level}
-              </span>
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 4 }}>
-              <input
-                type="range"
-                min={1} max={20}
-                value={level}
-                onChange={e => onLevelChange(Number(e.target.value))}
-                style={{ flex: 1, accentColor: 'var(--color-gold)', cursor: 'pointer' }}
-              />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
-              <span>1</span>
-              <span style={{ color: 'var(--text-muted)', fontSize: 9 }}>
-                {level >= 3 ? 'Subclass unlocked' : level === 2 ? 'Subclass at level 3' : 'Subclass at level 3'}
-              </span>
-              <span>20</span>
-            </div>
-            {level > 1 && (
-              <p style={{ marginTop: 4, fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                HP uses average per level ({cls ? `d${cls.hit_die}` : ''}). You can adjust on the character sheet.
-              </p>
-            )}
           </div>
 
           <div>
