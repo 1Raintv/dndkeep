@@ -3,14 +3,10 @@ import type { Campaign, Character, CampaignMember } from '../../types';
 import { useCampaign } from '../../context/CampaignContext';
 import { useAuth } from '../../context/AuthContext';
 import {
-  getCharactersByCampaign,
-  getCampaignMembers,
-  lookupProfileByEmail,
-  addCampaignMember,
-  removeCampaignMember,
-  refreshCampaignJoinCode,
-  type MemberWithProfile,
+  getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail,
+  addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
 } from '../../lib/supabase';
+import InitiativeTracker from './InitiativeTracker';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -258,68 +254,18 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           </div>
         )}
 
-        {/* Session tab — real-time combat state */}
+        {/* Session tab — full initiative tracker */}
         {activeTab === 'session' && (
-          <div style={{ maxWidth: 640 }}>
-            {!sessionState ? (
-              <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-                <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', marginBottom: 'var(--space-4)' }}>
-                  No active session. Start combat to begin tracking.
-                </p>
-                {isOwner && (
-                  <button className="btn-primary" onClick={toggleCombat}>Start Combat Session</button>
-                )}
-              </div>
-            ) : (
-              <div>
-                <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
-                  <div className="stat-box">
-                    <div className="stat-box-label">Round</div>
-                    <div className="stat-box-value">{sessionState.round}</div>
-                  </div>
-                  <div className="stat-box">
-                    <div className="stat-box-label">Combatants</div>
-                    <div className="stat-box-value">{sessionState.initiative_order.length}</div>
-                  </div>
-                  <div className="stat-box">
-                    <div className="stat-box-label">Status</div>
-                    <div className="stat-box-value" style={{ fontSize: 'var(--text-sm)', color: sessionState.combat_active ? 'var(--color-crimson-bright)' : 'var(--hp-full)' }}>
-                      {sessionState.combat_active ? 'Active' : 'Ended'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="section-header">Initiative Order</div>
-                {sessionState.initiative_order.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>No combatants added yet.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                    {[...sessionState.initiative_order]
-                      .sort((a, b) => b.initiative - a.initiative)
-                      .map((c, idx) => {
-                        const isActive = idx === sessionState.current_turn % sessionState.initiative_order.length;
-                        const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
-                        return (
-                          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', border: isActive ? '2px solid var(--color-gold)' : '1px solid var(--border-subtle)', background: isActive ? 'rgba(201,146,42,0.07)' : 'var(--bg-surface)' }}>
-                            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--text-gold)', minWidth: 24, textAlign: 'center' }}>{c.initiative}</span>
-                            <span style={{ fontFamily: 'var(--font-heading)', flex: 1, color: isActive ? 'var(--text-gold)' : 'var(--text-primary)' }}>{c.name}</span>
-                            <span style={{ fontSize: 'var(--text-sm)', color: hpPct > 0.5 ? 'var(--hp-full)' : hpPct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)' }}>
-                              {c.current_hp}/{c.max_hp}
-                            </span>
-                            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>AC {c.ac}</span>
-                            {c.conditions.length > 0 && <span className="badge badge-crimson">{c.conditions.length}</span>}
-                          </div>
-                        );
-                      })
-                    }
-                  </div>
-                )}
-                <p style={{ marginTop: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
-                  This view syncs in real-time. All players see the same session state.
-                </p>
-              </div>
-            )}
-          </div>
+          <InitiativeTracker
+            sessionState={sessionState}
+            isOwner={isOwner}
+            playerCharacters={characters.map(c => ({
+              id: c.id, name: c.name, current_hp: c.current_hp,
+              max_hp: c.max_hp, armor_class: c.armor_class, initiative_bonus: 0,
+            }))}
+            onUpdateSession={updateSessionState}
+            onToggleCombat={toggleCombat}
+          />
         )}
       </div>
     </div>

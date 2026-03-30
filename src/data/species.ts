@@ -232,7 +232,86 @@ export const SPECIES: SpeciesData[] = [
       },
     ],
   },
+  {
+    name: 'Aasimar',
+    size: 'Medium',
+    speed: 30,
+    darkvision: 60,
+    languages: ['Common'],
+    traits: [
+      { name: 'Darkvision', description: 'You see in dim light as bright light and in darkness as dim light within 60 feet.' },
+      { name: 'Celestial Resistance', description: 'You have resistance to necrotic damage and radiant damage.' },
+      { name: 'Healing Hands', description: 'As an action, you can touch a creature and roll a number of d4s equal to your proficiency bonus. The creature regains HP equal to the total. Once you use this trait, you can\'t do so again until you finish a long rest.' },
+      { name: 'Light Bearer', description: 'You know the Light cantrip. Charisma is your spellcasting ability for it.' },
+      { name: 'Celestial Revelation', description: 'At 3rd level, you can use a bonus action to unleash the celestial energy within yourself (Heavenly Wings, Inner Radiance, or Necrotic Shroud, depending on your choice at character creation). Each form lasts 1 minute, once per long rest.' },
+    ],
+  },
+  {
+    name: 'Dragonborn',
+    size: 'Medium',
+    speed: 30,
+    darkvision: 0,
+    languages: ['Common', 'Draconic'],
+    traits: [
+      { name: 'Draconic Ancestry', description: 'You have draconic ancestry. Choose a dragon type — your breath weapon and damage resistance are determined by the dragon type chosen (acid, lightning, fire, cold, or poison).' },
+      { name: 'Breath Weapon', description: 'You can use your action to exhale destructive energy. Your draconic ancestry determines the area, type, and saving throw. Damage equals 1d10, increasing with proficiency bonus. Recharges on short or long rest.' },
+      { name: 'Damage Resistance', description: 'You have resistance to the damage type associated with your draconic ancestry.' },
+      { name: 'Darkvision', description: 'You can see in dim light within 60 feet as bright light and darkness as dim light.' },
+      { name: 'Draconic Flight', description: 'Starting at 5th level, you can use a bonus action to manifest spectral wings and gain a flying speed equal to your walking speed. This lasts 10 minutes, once per long rest.' },
+    ],
+  },
+  {
+    name: 'Gnome',
+    size: 'Small',
+    speed: 30,
+    darkvision: 60,
+    languages: ['Common', 'Gnomish'],
+    traits: [
+      { name: 'Darkvision', description: 'Accustomed to the deep tunnels of the earth, you see in dim light as bright light and in darkness as dim light within 60 feet.' },
+      { name: 'Gnomish Cunning', description: 'You have advantage on Intelligence, Wisdom, and Charisma saving throws.' },
+      { name: 'Gnomish Lineage', description: 'Choose Forest Gnome (Minor Illusion cantrip, speak with small animals) or Rock Gnome (Mending and Prestidigitation cantrips, proficiency with artisan\'s tools).' },
+    ],
+  },
+  {
+    name: 'Half-Orc',
+    size: 'Medium',
+    speed: 30,
+    darkvision: 60,
+    languages: ['Common', 'Orc'],
+    traits: [
+      { name: 'Darkvision', description: 'You can see in dim light within 60 feet as bright light and in darkness as dim light.' },
+      { name: 'Adrenaline Rush', description: 'You can take the Dash action as a bonus action. You can do so a number of times equal to your proficiency bonus, regaining all uses when you finish a long rest. Each time you use this ability, you gain temporary HP equal to your proficiency bonus.' },
+      { name: 'Relentless Endurance', description: 'When you are reduced to 0 HP but not killed outright, you can drop to 1 HP instead. Once you use this trait, you can\'t do so again until you finish a long rest.' },
+    ],
+  },
+  {
+    name: 'Orc',
+    size: 'Medium',
+    speed: 30,
+    darkvision: 60,
+    languages: ['Common', 'Orc'],
+    traits: [
+      { name: 'Darkvision', description: 'You can see in dim light within 60 feet as bright light and in darkness as dim light.' },
+      { name: 'Adrenaline Rush', description: 'You can take the Dash action as a bonus action. You can do so a number of times equal to your proficiency bonus, regaining all uses when you finish a long rest. Each time, you gain temporary HP equal to your proficiency bonus.' },
+      { name: 'Powerful Build', description: 'You count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift.' },
+      { name: 'Relentless Endurance', description: 'When you are reduced to 0 HP but not killed outright, you can drop to 1 HP instead. Once per long rest.' },
+    ],
+  },
+  {
+    name: 'Tiefling',
+    size: 'Medium',
+    speed: 30,
+    darkvision: 60,
+    languages: ['Common', 'Infernal'],
+    traits: [
+      { name: 'Darkvision', description: 'You see in dim light as bright light and in darkness as dim light within 60 feet.' },
+      { name: 'Hellish Resistance', description: 'You have resistance to fire damage.' },
+      { name: 'Fiendish Legacy', description: 'Choose Abyssal, Chthonic, or Infernal legacy. Each grants a set of spells (one cantrip at 1st level, one 2nd-level spell at 3rd, one 3rd-level spell at 5th), usable once per long rest. Charisma is your spellcasting ability.' },
+    ],
+  },
 ];
+
+
 
 export const SPECIES_MAP: Record<string, SpeciesData> = Object.fromEntries(
   SPECIES.map(s => [s.name, s])

@@ -16,13 +16,15 @@ import Inventory from './Inventory';
 import Notes from './Notes';
 import DeathSaves from './DeathSaves';
 import CharacterSettings from './CharacterSettings';
+import FeaturesPanel from './FeaturesPanel';
 
-type Tab = 'stats' | 'skills' | 'spells' | 'inventory' | 'notes';
+type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'notes';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'stats',     label: 'Stats' },
   { id: 'skills',    label: 'Skills' },
   { id: 'spells',    label: 'Spells' },
+  { id: 'features',  label: 'Features' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'notes',     label: 'Notes' },
 ];
@@ -526,6 +528,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {activeTab === 'features' && (
+          <div style={{ maxWidth: 680 }}>
+            <FeaturesPanel character={character} />
           </div>
         )}
 
