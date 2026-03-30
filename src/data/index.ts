@@ -6,3 +6,4 @@ export * from './monsters';
 export * from './skills';
 export * from './conditions';
 export * from './spellSlots';
+export * from './feats';

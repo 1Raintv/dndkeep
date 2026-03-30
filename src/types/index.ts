@@ -48,7 +48,7 @@ export type ClassName =
 
 export type SpeciesName =
   | 'Human' | 'Elf' | 'Dwarf' | 'Halfling' | 'Gnome'
-  | 'Half-Elf' | 'Tiefling' | 'Dragonborn' | 'Half-Orc';
+  | 'Half-Elf' | 'Tiefling' | 'Dragonborn' | 'Half-Orc' | 'Aasimar' | 'Orc';
 
 // --- User & Auth ---
 

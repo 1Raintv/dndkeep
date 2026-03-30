@@ -102,6 +102,8 @@ export default function CharacterPage() {
       <CharacterSheet
         initialCharacter={character}
         realtimeEnabled={isPro}
+        isPro={isPro}
+        userId={user?.id ?? ''}
       />
     </div>
   );

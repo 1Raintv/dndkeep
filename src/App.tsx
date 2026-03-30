@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
 import './styles/globals.css';
 
+const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
 const LobbyPage      = lazy(() => import('./components/pages/LobbyPage'));
 const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
 const SpellsPage     = lazy(() => import('./components/pages/SpellsPage'));
@@ -115,6 +116,13 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function HomeRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (user) return <Navigate to="/lobby" replace />;
+  return <LandingPage />;
+}
+
 function NotFound() {
   const navigate = useNavigate();
   return (
@@ -132,18 +140,22 @@ function NotFound() {
 }
 
 function AppRoutes() {
+  const { user } = useAuth();
+  const isLanding = !user && window.location.pathname === '/';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <Nav />
-      <main className="app-content">
+      {!isLanding && <Nav />}
+      <main className={isLanding ? '' : 'app-content'}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/"                element={<Navigate to="/lobby" replace />} />
+            <Route path="/"                element={<HomeRedirect />} />
             <Route path="/auth"            element={<AuthPage />} />
             <Route path="/lobby"           element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
             <Route path="/creator"         element={<ProtectedRoute><CreatorPage /></ProtectedRoute>} />
             <Route path="/character/:id"   element={<ProtectedRoute><CharacterPage /></ProtectedRoute>} />
             <Route path="/campaigns"       element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
+            <Route path="/campaigns/:id"   element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
             <Route path="/spells"          element={<ProtectedRoute><SpellsPage /></ProtectedRoute>} />
             <Route path="/combat"          element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
             <Route path="/dice"            element={<ProtectedRoute><DicePage /></ProtectedRoute>} />

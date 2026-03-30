@@ -1,16 +1,6 @@
 import { useState } from 'react';
-import type { SessionState } from '../../types';
+import type { SessionState, Combatant, ConditionName } from '../../types';
 
-interface Combatant {
-  id: string;
-  name: string;
-  initiative: number;
-  current_hp: number;
-  max_hp: number;
-  ac: number;
-  conditions: string[];
-  is_player: boolean;
-}
 
 interface InitiativeTrackerProps {
   sessionState: SessionState | null;
@@ -41,7 +31,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
     const newCombatant: Combatant = {
       id: `${Date.now()}-${Math.random()}`,
       name, initiative, current_hp: hp, max_hp: hp, ac,
-      conditions: [], is_player: isPlayer,
+      conditions: [], is_monster: !isPlayer,
     };
     onUpdateSession({ initiative_order: [...combatants, newCombatant] });
   }
@@ -86,11 +76,11 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
     setHpDeltas(prev => ({ ...prev, [id]: '' }));
   }
 
-  function toggleCondition(id: string, condition: string) {
+  function toggleCondition(id: string, condition: ConditionName) {
     const updated = combatants.map(c => {
       if (c.id !== id) return c;
       const has = c.conditions.includes(condition);
-      return { ...c, conditions: has ? c.conditions.filter(x => x !== condition) : [...c.conditions, condition] };
+      return { ...c, conditions: has ? c.conditions.filter(x => x !== condition) : [...c.conditions, condition as ConditionName] };
     });
     onUpdateSession({ initiative_order: updated });
   }
@@ -175,7 +165,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                       <span style={{ fontFamily: 'var(--font-heading)', fontWeight: isActive ? 700 : 600, color: isActive ? 'var(--text-gold)' : 'var(--text-primary)', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {c.name}
                       </span>
-                      {c.is_player && <span className="badge badge-muted" style={{ fontSize: 9 }}>PC</span>}
+                      {!c.is_monster && <span className="badge badge-muted" style={{ fontSize: 9 }}>PC</span>}
                     </div>
                     {/* HP bar */}
                     <div style={{ width: '100%', height: 3, background: 'var(--bg-sunken)', borderRadius: 2, marginTop: 3, overflow: 'hidden' }}>
@@ -244,7 +234,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                           return (
                             <button
                               key={cond}
-                              onClick={() => toggleCondition(c.id, cond)}
+                              onClick={() => toggleCondition(c.id, cond as ConditionName)}
                               style={{
                                 fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 9,
                                 padding: '2px 6px', borderRadius: 'var(--radius-sm)',

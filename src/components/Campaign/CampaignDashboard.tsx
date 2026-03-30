@@ -7,6 +7,7 @@ import {
   addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
 } from '../../lib/supabase';
 import InitiativeTracker from './InitiativeTracker';
+import DMlobby from './DMlobby';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -254,18 +255,34 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           </div>
         )}
 
-        {/* Session tab — full initiative tracker */}
+        {/* Session tab — DM Lobby for owners, read-only tracker for players */}
         {activeTab === 'session' && (
-          <InitiativeTracker
-            sessionState={sessionState}
-            isOwner={isOwner}
-            playerCharacters={characters.map(c => ({
-              id: c.id, name: c.name, current_hp: c.current_hp,
-              max_hp: c.max_hp, armor_class: c.armor_class, initiative_bonus: 0,
-            }))}
-            onUpdateSession={updateSessionState}
-            onToggleCombat={toggleCombat}
-          />
+          isOwner ? (
+            <DMlobby
+              campaign={campaign}
+              sessionState={sessionState}
+              playerCharacters={characters.map(c => ({
+                id: c.id, name: c.name, current_hp: c.current_hp, max_hp: c.max_hp,
+                armor_class: c.armor_class, class_name: c.class_name,
+                level: c.level, conditions: [],
+              }))}
+              members={members}
+              isOwner={isOwner}
+              onUpdateSession={updateSessionState}
+              onToggleCombat={toggleCombat}
+            />
+          ) : (
+            <InitiativeTracker
+              sessionState={sessionState}
+              isOwner={false}
+              playerCharacters={characters.map(c => ({
+                id: c.id, name: c.name, current_hp: c.current_hp,
+                max_hp: c.max_hp, armor_class: c.armor_class, initiative_bonus: 0,
+              }))}
+              onUpdateSession={updateSessionState}
+              onToggleCombat={toggleCombat}
+            />
+          )
         )}
       </div>
     </div>

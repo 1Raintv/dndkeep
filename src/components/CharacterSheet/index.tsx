@@ -17,8 +17,9 @@ import Notes from './Notes';
 import DeathSaves from './DeathSaves';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
+import SessionTab from './SessionTab';
 
-type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'notes';
+type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'notes' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'stats',     label: 'Stats' },
@@ -27,6 +28,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'features',  label: 'Features' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'notes',     label: 'Notes' },
+  { id: 'session',   label: '⚔ Session' },
 ];
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -37,9 +39,11 @@ const LEVEL_LABELS: Record<number, string> = {
 interface CharacterSheetProps {
   initialCharacter: Character;
   realtimeEnabled?: boolean;
+  isPro?: boolean;
+  userId?: string;
 }
 
-export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false }: CharacterSheetProps) {
+export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '' }: CharacterSheetProps) {
   const [character, setCharacter] = useState<Character>(initialCharacter);
   const [activeTab, setActiveTab] = useState<Tab>('stats');
   const [saving, setSaving] = useState(false);
@@ -551,6 +555,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           <div style={{ maxWidth: 640 }}>
             <Notes character={character} onUpdate={handleUpdateNote} />
           </div>
+        )}
+
+        {activeTab === 'session' && (
+          <SessionTab character={character} isPro={isPro} userId={userId} />
         )}
       </div>
     </div>
