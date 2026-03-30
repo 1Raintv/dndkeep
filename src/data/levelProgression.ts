@@ -205,7 +205,7 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
   // ── MONK ────────────────────────────────────────────────────────────────────
   Monk: [
     { level: 1,  features: ['Martial Arts (unarmed d4)', 'Unarmored Defense (DEX+WIS)', 'Weapon Mastery'] },
-    { level: 2,  features: ['Monk's Focus (Ki: 2 pts/Short Rest)', 'Patient Defense', 'Step of the Wind', 'Stunning Strike', 'Unarmored Movement (+10 ft)'] },
+    { level: 2,  features: ['Monk\'s Focus (Ki: 2 pts/Short Rest)', 'Patient Defense', 'Step of the Wind', 'Stunning Strike', 'Unarmored Movement (+10 ft)'] },
     { level: 3,  features: ['Deflect Attacks'],
                  choices: [{ type: 'subclass', label: 'Choose Monastic Tradition' }] },
     { level: 4,  features: ['Slow Fall'], choices: [ASI] },
