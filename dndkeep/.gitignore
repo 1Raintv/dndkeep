@@ -1,0 +1,25 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables — never commit these
+.env
+.env.local
+.env.*.local
+
+# Supabase local dev
+supabase/.temp
+supabase/.branches
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# TypeScript
+*.tsbuildinfo
