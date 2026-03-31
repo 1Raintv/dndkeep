@@ -1,36 +1,43 @@
 @echo off
-echo DNDKeep Deploy
-echo ---------------
+title DNDKeep Deploy
+color 0A
+cd /d "C:\Users\Jared\OneDrive\Desktop\DNDKeep"
 
-:: Check zip exists
-if not exist "%~dp0dndkeep.zip" (
-    echo ERROR: dndkeep.zip not found in this folder.
-    echo Download it from Claude and place it here first.
+echo.
+echo  ============================================
+echo   DNDKeep Auto Deploy
+echo  ============================================
+echo.
+
+git rev-parse --git-dir >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [ERROR] Git not initialized. Run setup first.
     pause
     exit /b 1
 )
 
-echo Extracting files...
-powershell -Command "Expand-Archive -Path '%~dp0dndkeep.zip' -DestinationPath '%~dp0' -Force"
-if errorlevel 1 (
-    echo ERROR: Extraction failed.
-    pause
-    exit /b 1
-)
-
-echo Committing to GitHub...
-cd /d "%~dp0"
+echo  [1/3] Staging all changes...
 git add .
-git commit -m "update"
-git push
 
-if errorlevel 1 (
-    echo ERROR: Git push failed.
-    pause
-    exit /b 1
+echo  [2/3] Committing...
+for /f "tokens=*" %%i in ('powershell -command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
+for /f "tokens=3 delims= " %%v in ('findstr "APP_VERSION" src\version.ts') do set VER=%%v
+set VER=%VER:'=%
+set VER=%VER:;=%
+git commit -m "deploy: v%VER% built %TIMESTAMP%"
+
+echo  [3/3] Pushing to GitHub...
+git push origin main 2>nul || git push origin master
+
+if %errorlevel% == 0 (
+    echo.
+    echo  ============================================
+    echo   DEPLOYED! Live in ~60 seconds:
+    echo   https://dndkeep.vercel.app
+    echo  ============================================
+) else (
+    echo  [ERROR] Push failed - check git remote setup
 )
 
 echo.
-echo Done. Vercel is deploying now.
-echo Check: https://dndkeep.vercel.app
-timeout /t 3
+pause
