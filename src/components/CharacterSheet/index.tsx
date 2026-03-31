@@ -30,6 +30,7 @@ import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 import ConditionMechanics from './ConditionMechanics';
+import SpellsTab from './SpellsTab';
 
 type Tab = 'abilities' | 'spells' | 'combat' | 'bio' | 'history' | 'session';
 
@@ -56,7 +57,7 @@ interface CharacterSheetProps {
 
 export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '' }: CharacterSheetProps) {
   const [character, setCharacter] = useState<Character>(initialCharacter);
-  const [activeTab, setActiveTab] = useState<Tab>('stats');
+  const [activeTab, setActiveTab] = useState<Tab>('abilities');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -230,6 +231,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         onOpenAvatarPicker={() => setShowAvatarPicker(true)}
         onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
         onOpenRest={() => setShowRest(true)}
+        onUpdateHP={delta => {
+            const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
+            handleUpdateHP(newHP, character.temp_hp);
+          }}
       />
 
       {/* Avatar picker */}
@@ -532,76 +537,28 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── SPELLS ── */}
         {activeTab === 'spells' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 720 }}>
-            {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
-            {!hasSpellSlots ? (
-              <div style={{ textAlign: 'center', padding: 'var(--space-12)', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: 48, marginBottom: 'var(--space-4)' }}>⚔️</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>
-                  {character.class_name}s don't cast spells
-                </div>
-                <p style={{ fontSize: 'var(--text-sm)', maxWidth: 340, margin: '0 auto' }}>
-                  Your power comes from martial skill, not arcane study. Head to the <strong>Combat</strong> tab to manage weapons and inventory.
-                </p>
-              </div>
-            ) : (
-              <>
-                {['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer'].includes(character.class_name) && (
-                  <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'rgba(201,146,42,0.06)', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <span style={{ color: 'var(--color-gold-bright)' }}>📖</span>
-                    <span><strong style={{ color: 'var(--text-gold)' }}>{character.class_name}s prepare spells daily.</strong>{' '}You can prepare {character.level + Math.floor((character.intelligence - 10) / 2)} spells.</span>
-                  </div>
-                )}
-                {knownSpellData.length > 0 && (
-                  <div>
-                    <div className="section-header">
-                      Spellbook — {knownSpellData.length} spell{knownSpellData.length !== 1 ? 's' : ''}
-                      {character.prepared_spells.length > 0 && <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-gold-bright)', fontWeight: 700 }}>({character.prepared_spells.length} prepared)</span>}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                      {knownSpellData.map(spell => (
-                        <SpellRow
-                          key={spell.id}
-                          spell={spell}
-                          isPrepared={character.prepared_spells.includes(spell.id)}
-                          isConcentrating={concentrationSpellId === spell.id}
-                          castButton={<SpellCastButton spell={spell} character={character} userId={userId} campaignId={character.campaign_id} onUpdateSlots={handleUpdateSlots} />}
-                          onTogglePrepared={() => {
-                            const isPrepared = character.prepared_spells.includes(spell.id);
-                            applyUpdate({ prepared_spells: isPrepared ? character.prepared_spells.filter(id => id !== spell.id) : [...character.prepared_spells, spell.id] }, true);
-                          }}
-                          onConcentrate={() => setConcentrationSpellId(concentrationSpellId === spell.id ? null : spell.id)}
-                          onRemove={() => {
-                            if (concentrationSpellId === spell.id) setConcentrationSpellId(null);
-                            applyUpdate({ known_spells: character.known_spells.filter(id => id !== spell.id), prepared_spells: character.prepared_spells.filter(id => id !== spell.id) }, true);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {availableSpells.length > 0 && (
-                  <div>
-                    <div className="section-header">Add Spells <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 400, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)', textTransform: 'none', letterSpacing: 0 }}>— {character.class_name} spells up to {maxSpellLevel === 0 ? 'cantrips' : `level ${maxSpellLevel}`}</span></div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                      {availableSpells.map(spell => (
-                        <div key={spell.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-sunken)' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{spell.name}</span>
-                              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`} · {spell.school}</span>
-                            </div>
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{spell.casting_time} · {spell.range} · {spell.duration}</div>
-                          </div>
-                          <button className="btn-gold btn-sm" onClick={() => applyUpdate({ known_spells: [...character.known_spells, spell.id] }, true)}>Add</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <SpellsTab
+            character={character}
+            computed={computed}
+            knownSpellData={knownSpellData}
+            availableSpells={availableSpells}
+            maxSpellLevel={maxSpellLevel}
+            concentrationSpellId={concentrationSpellId}
+            hasSpellSlots={hasSpellSlots}
+            onUpdateSlots={handleUpdateSlots}
+            onAddSpell={id => applyUpdate({ known_spells: [...character.known_spells, id] }, true)}
+            onRemoveSpell={id => {
+              if (concentrationSpellId === id) setConcentrationSpellId(null);
+              applyUpdate({ known_spells: character.known_spells.filter(x => x !== id), prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
+            }}
+            onTogglePrepared={id => {
+              const is = character.prepared_spells.includes(id);
+              applyUpdate({ prepared_spells: is ? character.prepared_spells.filter(x => x !== id) : [...character.prepared_spells, id] }, true);
+            }}
+            onConcentrate={id => setConcentrationSpellId(concentrationSpellId === id ? null : id)}
+            userId={userId}
+            campaignId={character.campaign_id}
+          />
         )}
 
         {/* ── COMBAT: Weapons + Inventory + Magic Items ── */}

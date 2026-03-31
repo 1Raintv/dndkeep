@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
+import { DiceRollProvider } from './context/DiceRollContext';
 import { APP_VERSION } from './version';
 import './styles/globals.css';
 
@@ -176,9 +177,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <DiceRollProvider>
         <ToastProvider>
           <AppRoutes />
         </ToastProvider>
+        </DiceRollProvider>
       </AuthProvider>
     </BrowserRouter>
   );

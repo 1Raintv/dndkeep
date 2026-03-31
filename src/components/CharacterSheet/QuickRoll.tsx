@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { rollDie } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
+import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface DiceInQueue { die: number; count: number; }
 interface RollResultDie { die: number; value: number; index: number; dropped?: boolean; }
@@ -47,6 +48,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
   const [label, setLabel] = useState('');
   const [lastRoll, setLastRoll] = useState<RollSet | null>(null);
   const [rolling, setRolling] = useState(false);
+  const { triggerRoll } = useDiceRoll();
   const [adv, setAdv] = useState<'normal'|'advantage'|'disadvantage'>('normal');
 
   function addDie(die: number) {
@@ -102,6 +104,18 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
       const set: RollSet = { id: Date.now(), dice: finalDice, total, label: label || expression };
       setLastRoll(set);
       setRolling(false);
+
+      // Trigger visual dice animation — show the primary die result
+      const primaryDie = queue[0];
+      const primaryResult = finalDice.find(d => !d.dropped && d.die === (primaryDie?.die ?? 20));
+      triggerRoll({
+        result: primaryResult?.value ?? total,
+        dieType: primaryDie?.die ?? 20,
+        total: queue.length > 1 ? total : undefined,
+        label: label || expression,
+        advantage: adv === 'advantage',
+        disadvantage: adv === 'disadvantage',
+      });
 
       if (characterId) {
         await logRoll({

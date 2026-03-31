@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Character, ComputedStats } from '../../types';
 import { SKILLS } from '../../data/skills';
 import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
+import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface SkillsListProps {
   character: Character;
@@ -21,18 +22,13 @@ interface RollResult {
 export default function SkillsList({ character, computed, onUpdate }: SkillsListProps) {
   const sortedSkills = [...SKILLS].sort((a, b) => a.name.localeCompare(b.name));
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
+  const { triggerRoll } = useDiceRoll();
 
   function rollSkill(skillName: string, modifier: number) {
     const d20 = rollDie(20);
     const total = d20 + modifier;
-    setLastRoll({
-      skillName,
-      d20,
-      modifier,
-      total,
-      isCrit: d20 === 20,
-      isFail: d20 === 1,
-    });
+    setLastRoll({ skillName, d20, modifier, total, isCrit: d20 === 20, isFail: d20 === 1 });
+    triggerRoll({ result: d20, dieType: 20, modifier, total, label: skillName + ' Check' });
   }
 
   function cycleSkill(e: React.MouseEvent, skillName: string) {

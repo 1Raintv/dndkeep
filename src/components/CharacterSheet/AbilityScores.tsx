@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
+import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface AbilityScoresProps {
   character: Character;
@@ -23,18 +24,14 @@ interface AbilityRoll {
 
 export default function AbilityScores({ character, computed }: AbilityScoresProps) {
   const [lastRoll, setLastRoll] = useState<AbilityRoll | null>(null);
+  const { triggerRoll } = useDiceRoll();
 
   function rollAbility(ability: AbilityKey) {
     const mod = computed.modifiers[ability];
     const d20 = rollDie(20);
-    setLastRoll({
-      ability,
-      d20,
-      modifier: mod,
-      total: d20 + mod,
-      isCrit: d20 === 20,
-      isFail: d20 === 1,
-    });
+    setLastRoll({ ability, d20, modifier: mod, total: d20 + mod, isCrit: d20 === 20, isFail: d20 === 1 });
+    const label = ability.charAt(0).toUpperCase() + ability.slice(1) + ' Check';
+    triggerRoll({ result: d20, dieType: 20, modifier: mod, total: d20 + mod, label });
   }
 
   return (
