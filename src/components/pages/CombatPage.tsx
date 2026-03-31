@@ -5,8 +5,11 @@ import { abilityModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITIONS } from '../../data/conditions';
 import { v4 as uuidv4 } from 'uuid';
 import MonsterBrowser from '../shared/MonsterBrowser';
+import { logAction } from '../shared/ActionLog';
+import { useAuth } from '../../context/AuthContext';
 
 export default function CombatPage() {
+  const { user, profile } = useAuth();
   const [combatants, setCombatants] = useState<Combatant[]>([]);
   const [currentTurn, setCurrentTurn] = useState(0);
   const [round, setRound] = useState(1);
@@ -58,11 +61,26 @@ export default function CombatPage() {
   }
 
   function applyHPDelta(id: string, delta: number) {
+    const target = combatants.find(c => c.id === id);
     setCombatants(prev => prev.map(c =>
       c.id === id
         ? { ...c, current_hp: Math.max(0, Math.min(c.max_hp, c.current_hp + delta)) }
         : c
     ));
+    // Log damage/healing to action log
+    if (user?.id && target) {
+      const isDamage = delta < 0;
+      logAction({
+        campaignId: null,
+        characterId: user.id,
+        characterName: profile?.display_name ?? 'DM',
+        actionType: isDamage ? 'damage' : 'heal',
+        actionName: isDamage ? 'Damage' : 'Heal',
+        targetName: target.name,
+        total: Math.abs(delta),
+        notes: `${isDamage ? '−' : '+'}${Math.abs(delta)} HP → ${Math.max(0, Math.min(target.max_hp, target.current_hp + delta))}/${target.max_hp}`,
+      });
+    }
   }
 
   function commitHPEdit(id: string) {

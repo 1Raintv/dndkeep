@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter } from '../../lib/supabase';
@@ -11,6 +11,7 @@ import AbilityScores from './AbilityScores';
 import CombatStats from './CombatStats';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
+import SpellCastButton from './SpellCastButton';
 import ConditionsPanel from './ConditionsPanel';
 import Inventory from './Inventory';
 import Notes from './Notes';
@@ -496,6 +497,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                           spell={spell}
                           isPrepared={character.prepared_spells.includes(spell.id)}
                           isConcentrating={concentrationSpellId === spell.id}
+                          castButton={
+                            <SpellCastButton
+                              spell={spell}
+                              character={character}
+                              userId={userId}
+                              campaignId={character.campaign_id}
+                              onUpdateSlots={handleUpdateSlots}
+                            />
+                          }
                           onTogglePrepared={() => {
                             const isPrepared = character.prepared_spells.includes(spell.id);
                             applyUpdate({
@@ -651,11 +661,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 // SpellRow
 // ------------------------------------------------------------------
 function SpellRow({
-  spell, isPrepared, isConcentrating, onTogglePrepared, onConcentrate, onRemove,
+  spell, isPrepared, isConcentrating, castButton, onTogglePrepared, onConcentrate, onRemove,
 }: {
   spell: NonNullable<typeof SPELL_MAP[string]>;
   isPrepared: boolean;
   isConcentrating: boolean;
+  castButton?: ReactNode;
   onTogglePrepared: () => void;
   onConcentrate: () => void;
   onRemove: () => void;
@@ -700,6 +711,9 @@ function SpellRow({
             {isConcentrating ? 'Concentrating' : 'Concentrate'}
           </button>
         )}
+
+        {/* Cast button */}
+        {castButton}
 
         {spell.level > 0 && (
           <button
