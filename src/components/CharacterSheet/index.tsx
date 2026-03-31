@@ -22,8 +22,9 @@ import QuickRoll from './QuickRoll';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
+import ActionLog from '../shared/ActionLog';
 
-type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'weapons' | 'notes' | 'rolls' | 'session';
+type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'weapons' | 'notes' | 'rolls' | 'log' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'stats',     label: 'Stats' },
@@ -34,6 +35,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'inventory', label: 'Inventory' },
   { id: 'notes',     label: 'Notes' },
   { id: 'rolls',     label: '🎲 Rolls' },
+  { id: 'log',       label: '📜 Log' },
   { id: 'session',   label: 'Session' },
 ];
 
@@ -601,6 +603,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             <WeaponsTracker
               weapons={character.weapons ?? []}
               onUpdate={weapons => applyUpdate({ weapons })}
+              characterId={userId}
+              characterName={character.name}
+              campaignId={character.campaign_id}
             />
           </div>
         )}
@@ -617,13 +622,27 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           </div>
         )}
 
+        {activeTab === 'log' && (
+          <div style={{ maxWidth: 720 }}>
+            <ActionLog
+              campaignId={character.campaign_id}
+              characterId={character.id}
+              mode={character.campaign_id ? 'campaign' : 'character'}
+            />
+          </div>
+        )}
+
         {activeTab === 'session' && (
           <SessionTab character={character} isPro={isPro} userId={userId} />
         )}
       </div>
 
       {/* Quick Roll floating dice roller */}
-      <QuickRoll />
+      <QuickRoll
+        characterId={userId}
+        characterName={character.name}
+        campaignId={character.campaign_id}
+      />
     </div>
   );
 }

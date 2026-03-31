@@ -2,10 +2,14 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { WeaponItem } from '../../types';
 import { rollDie } from '../../lib/gameUtils';
+import { logAction } from '../shared/ActionLog';
 
 interface WeaponsTrackerProps {
   weapons: WeaponItem[];
   onUpdate: (weapons: WeaponItem[]) => void;
+  characterId?: string;
+  characterName?: string;
+  campaignId?: string | null;
 }
 
 const DAMAGE_TYPES = ['slashing', 'piercing', 'bludgeoning', 'fire', 'cold', 'lightning', 'poison', 'acid', 'necrotic', 'radiant', 'psychic', 'thunder', 'force'];
@@ -40,7 +44,8 @@ interface RollResult {
   miss: boolean;
 }
 
-export default function WeaponsTracker({ weapons, onUpdate }: WeaponsTrackerProps) {
+export default function WeaponsTracker({ weapons, onUpdate, characterId, characterName, campaignId }: WeaponsTrackerProps) {
+  const [target, setTarget] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
@@ -87,8 +92,9 @@ export default function WeaponsTracker({ weapons, onUpdate }: WeaponsTrackerProp
     onUpdate(weapons.filter(w => w.id !== id));
   }
 
-  function handleRoll(weapon: WeaponItem) {
+  async function handleRoll(weapon: WeaponItem) {
     const { hit, nat, damage } = rollAttack(weapon);
+    const hitResult = nat === 20 ? 'crit' : nat === 1 ? 'fumble' : hit >= 10 ? 'hit' : 'miss';
     setLastRoll({
       weaponName: weapon.name,
       hit, nat, damage,
@@ -96,12 +102,39 @@ export default function WeaponsTracker({ weapons, onUpdate }: WeaponsTrackerProp
       crit: nat === 20,
       miss: nat === 1,
     });
+    // Auto-log the attack
+    if (characterId) {
+      await logAction({
+        campaignId, characterId, characterName: characterName ?? '',
+        actionType: 'attack',
+        actionName: weapon.name,
+        targetName: target || undefined,
+        diceExpression: `1d20+${weapon.attackBonus} / ${weapon.damageDice}${weapon.damageBonus !== 0 ? (weapon.damageBonus > 0 ? '+' : '') + weapon.damageBonus : ''}`,
+        individualResults: [nat],
+        total: damage,
+        hitResult,
+        notes: `To hit: ${hit}`,
+      });
+    }
   }
 
   function modStr(n: number) { return (n >= 0 ? '+' : '') + n; }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+
+      {/* Target input */}
+      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+        <label style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', flexShrink: 0, background: 'none', WebkitTextFillColor: 'var(--text-muted)' }}>
+          Target
+        </label>
+        <input
+          value={target}
+          onChange={e => setTarget(e.target.value)}
+          placeholder='Who are you attacking? (e.g. "Goblin 2")'
+          style={{ fontSize: 'var(--text-sm)', flex: 1 }}
+        />
+      </div>
 
       {/* Last roll result */}
       {lastRoll && (

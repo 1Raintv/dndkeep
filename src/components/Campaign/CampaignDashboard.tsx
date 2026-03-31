@@ -10,6 +10,7 @@ import {
 import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
 import PartyView from './PartyView';
+import ActionLog from '../shared/ActionLog';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -24,7 +25,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'notes' | 'party'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'notes'>('members');
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -167,7 +168,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
       {/* Tabs */}
       <div className="tabs">
-        {(['members', 'characters', 'session', 'party', 'notes'] as const).map(tab => (
+        {(['members', 'characters', 'session', 'party', 'log', 'notes'] as const).map(tab => (
           <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
@@ -358,6 +359,16 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {/* Party tab — real-time HP/conditions for all members */}
         {activeTab === 'party' && (
           <PartyView campaignId={campaign.id} currentUserId={user?.id ?? ''} />
+        )}
+
+        {/* Log tab — live action feed for the whole party */}
+        {activeTab === 'log' && (
+          <div style={{ maxWidth: 720 }}>
+            <p style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)' }}>
+              Live feed of every attack, spell, and roll by all party members — updates in real-time.
+            </p>
+            <ActionLog campaignId={campaign.id} mode="campaign" maxHeight={560} />
+          </div>
         )}
       </div>
     </div>
