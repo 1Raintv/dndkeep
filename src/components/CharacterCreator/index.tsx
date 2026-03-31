@@ -43,6 +43,7 @@ export default function CharacterCreator() {
   const [alignment, setAlignment] = useState<Alignment>('True Neutral');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [level, setLevel] = useState(1);
+  const [originFeat, setOriginFeat] = useState('');
 
   function handleSkillToggle(skill: string) {
     setSelectedSkills(prev =>
@@ -57,7 +58,12 @@ export default function CharacterCreator() {
   }
 
   function canAdvance(): boolean {
-    if (step === 0) return !!species;
+    if (step === 0) {
+      if (!species) return false;
+      // Human requires an origin feat selection
+      if (species === 'Human' && !originFeat) return false;
+      return true;
+    }
     if (step === 1) return !!className;
     if (step === 2) return !!background;
     if (step === 3) return true;
@@ -143,7 +149,7 @@ export default function CharacterCreator() {
       ideals: '',
       bonds: '',
       flaws: '',
-      features_and_traits: buildFeaturesText(className, species, background, subclass || null),
+      features_and_traits: buildFeaturesText(className, species, background, subclass || null) + (originFeat ? `\n\n[Origin Feat]\n${originFeat}` : ''),
       ability_score_improvements: bg ? [
         { ability: bg.asi_primary,   amount: 2, source: 'background' },
         { ability: bg.asi_secondary, amount: 1, source: 'background' },
@@ -206,7 +212,7 @@ export default function CharacterCreator() {
 
       {/* Step content */}
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
-        {step === 0 && <StepSpecies selected={species} onSelect={s => { setSpecies(s); }} />}
+        {step === 0 && <StepSpecies selected={species} originFeat={originFeat} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
         {step === 1 && <StepClass selected={className} level={level} onSelect={c => { setClassName(c); setSubclass(''); }} onLevelChange={handleLevelChange} />}
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
         {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} onScoresChange={setScores} onMethodChange={setMethod} />}

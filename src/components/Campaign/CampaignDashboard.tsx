@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import type { Campaign, Character, CampaignMember } from '../../types';
 import { useCampaign } from '../../context/CampaignContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail,
   addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
+  supabase,
 } from '../../lib/supabase';
 import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
@@ -22,17 +23,55 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'notes'>('members');
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOwner = campaign.owner_id === user?.id;
 
   useEffect(() => {
     loadMembers();
     loadCharacters();
+    loadNotes();
+
+    // Realtime subscription for notes
+    const channel = supabase
+      .channel(`campaign-notes-${campaign.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'campaigns',
+        filter: `id=eq.${campaign.id}`,
+      }, (payload: { new: Record<string, unknown> }) => {
+        if (payload.new && typeof payload.new.notes === 'string') {
+          setNotes(payload.new.notes as string);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [campaign.id]);
+
+  async function loadNotes() {
+    const { data } = await supabase
+      .from('campaigns')
+      .select('notes')
+      .eq('id', campaign.id)
+      .single();
+    if (data?.notes) setNotes(data.notes);
+  }
+
+  function handleNotesChange(value: string) {
+    setNotes(value);
+    if (notesSaveTimer.current) clearTimeout(notesSaveTimer.current);
+    setNotesSaving(true);
+    notesSaveTimer.current = setTimeout(async () => {
+      await supabase.from('campaigns').update({ notes: value }).eq('id', campaign.id);
+      setNotesSaving(false);
+    }, 800);
+  }
 
   async function loadMembers() {
     const { data } = await getCampaignMembers(campaign.id);
@@ -48,7 +87,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
     setCharacters(data);
   }
 
-  async function handleInvite(e: React.FormEvent) {
+  async function handleInvite(e: FormEvent) {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
     setInviting(true);
@@ -127,7 +166,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
       {/* Tabs */}
       <div className="tabs">
-        {(['members', 'characters', 'session'] as const).map(tab => (
+        {(['members', 'characters', 'session', 'notes'] as const).map(tab => (
           <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
@@ -283,6 +322,36 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               onToggleCombat={toggleCombat}
             />
           )
+        )}
+
+        {/* Notes tab — shared, real-time synced */}
+        {activeTab === 'notes' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', maxWidth: 720 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="section-header" style={{ marginBottom: 0 }}>Session Notes</div>
+              <span style={{
+                fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
+                color: notesSaving ? 'var(--color-gold)' : 'var(--text-muted)',
+                transition: 'color 200ms',
+              }}>
+                {notesSaving ? '● Saving…' : '✓ Saved'}
+              </span>
+            </div>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+              Shared with all campaign members. Changes sync in real-time.
+            </p>
+            <textarea
+              value={notes}
+              onChange={e => handleNotesChange(e.target.value)}
+              placeholder="Session recap, quest notes, NPC names, loot found…"
+              rows={20}
+              style={{
+                resize: 'vertical', fontSize: 'var(--text-sm)',
+                lineHeight: 1.7, fontFamily: 'var(--font-body)',
+                minHeight: 320,
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

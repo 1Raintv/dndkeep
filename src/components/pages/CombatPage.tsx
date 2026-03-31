@@ -4,6 +4,7 @@ import { MONSTERS, formatCR } from '../../data/monsters';
 import { abilityModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITIONS } from '../../data/conditions';
 import { v4 as uuidv4 } from 'uuid';
+import MonsterBrowser from '../shared/MonsterBrowser';
 
 export default function CombatPage() {
   const [combatants, setCombatants] = useState<Combatant[]>([]);
@@ -409,42 +410,10 @@ export default function CombatPage() {
         {showMonsterPanel && (
           <div className="card animate-fade-in" style={{ height: 'fit-content', position: 'sticky', top: 72 }}>
             <div className="section-header">Monster Library</div>
-            <input
-              type="text"
-              value={monsterSearch}
-              onChange={e => setMonsterSearch(e.target.value)}
-              placeholder="Search..."
-              style={{ marginBottom: 'var(--space-3)' }}
+            <MonsterBrowser
+              compact
+              onAddToCombat={m => addMonster(m.id)}
             />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: '65vh', overflowY: 'auto' }}>
-              {filteredMonsters.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => addMonster(m.id)}
-                  style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: 'var(--space-2) var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-sunken)',
-                    cursor: 'pointer', textAlign: 'left',
-                    transition: 'all var(--transition-fast)',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-gold)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-subtle)'; }}
-                >
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                      {m.name}
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                      HP {m.hp} | AC {m.ac} | {m.type}
-                    </div>
-                  </div>
-                  <span className="badge badge-gold" style={{ flexShrink: 0 }}>CR {formatCR(m.cr)}</span>
-                </button>
-              ))}
-            </div>
           </div>
         )}
       </div>
