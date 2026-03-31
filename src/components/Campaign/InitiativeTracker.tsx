@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { SessionState, Combatant, ConditionName } from '../../types';
+import ConditionTooltip from '../shared/ConditionTooltip';
 
 
 interface InitiativeTrackerProps {
@@ -232,20 +233,21 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                         {CONDITIONS.map(cond => {
                           const active = c.conditions.includes(cond);
                           return (
-                            <button
-                              key={cond}
-                              onClick={() => toggleCondition(c.id, cond as ConditionName)}
-                              style={{
-                                fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 9,
-                                padding: '2px 6px', borderRadius: 'var(--radius-sm)',
-                                border: active ? '1px solid var(--color-crimson-bright)' : '1px solid var(--border-subtle)',
-                                background: active ? 'rgba(220,38,38,0.15)' : 'var(--bg-raised)',
-                                color: active ? '#fca5a5' : 'var(--text-muted)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {cond}
-                            </button>
+                            <ConditionTooltip key={cond} name={cond}>
+                              <button
+                                onClick={() => toggleCondition(c.id, cond as ConditionName)}
+                                style={{
+                                  fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 9,
+                                  padding: '2px 6px', borderRadius: 'var(--radius-sm)',
+                                  border: active ? '1px solid var(--color-crimson-bright)' : '1px solid var(--border-subtle)',
+                                  background: active ? 'rgba(220,38,38,0.15)' : 'var(--bg-raised)',
+                                  color: active ? '#fca5a5' : 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {cond}
+                              </button>
+                            </ConditionTooltip>
                           );
                         })}
                       </div>

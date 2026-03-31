@@ -84,6 +84,18 @@ export interface InventoryItem {
   magical: boolean;
 }
 
+export interface WeaponItem {
+  id: string;
+  name: string;
+  attackBonus: number;      // total to-hit modifier
+  damageDice: string;       // e.g. "1d8"
+  damageBonus: number;      // flat bonus to damage
+  damageType: string;       // "slashing" | "piercing" | "bludgeoning" | etc.
+  range: string;            // "Melee" | "Ranged (80/320 ft.)" etc.
+  properties: string;       // comma-separated: "Versatile, Finesse" etc.
+  notes: string;
+}
+
 /** Per-slot-level data: how many total, how many already used */
 export interface SpellSlotLevel {
   total: number;
@@ -148,6 +160,9 @@ export interface Character {
 
   // Inventory
   inventory: InventoryItem[];
+  weapons: WeaponItem[];
+  share_token: string | null;
+  share_enabled: boolean;
   currency: Currency;
 
   // Conditions
@@ -262,7 +277,7 @@ export interface MonsterData {
   hp: number;
   hp_formula: string;
   ac: number;
-  ac_note: string;
+  ac_note?: string;
   speed: number;
   str: number; dex: number; con: number;
   int: number; wis: number; cha: number;

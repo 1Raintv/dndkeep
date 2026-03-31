@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character, ConditionName } from '../../types';
 import { CONDITIONS } from '../../data/conditions';
+import ConditionTooltip from '../shared/ConditionTooltip';
 
 interface ConditionsPanelProps {
   character: Character;
@@ -57,18 +58,19 @@ export default function ConditionsPanel({ character, onUpdateConditions }: Condi
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
           {active.map(name => (
-            <button
-              key={name}
-              className="condition-pill"
-              onClick={() => toggleCondition(name)}
-              title="Click to remove"
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-            >
-              <span className="condition-pill">
-                {name}
-                <span style={{ opacity: 0.7, fontSize: 'var(--text-xs)', marginLeft: '2px' }}>x</span>
-              </span>
-            </button>
+            <ConditionTooltip key={name} name={name}>
+              <button
+                className="condition-pill"
+                onClick={() => toggleCondition(name)}
+                title="Hover for rules — click to remove"
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+              >
+                <span className="condition-pill">
+                  {name}
+                  <span style={{ opacity: 0.7, fontSize: 'var(--text-xs)', marginLeft: '2px' }}>x</span>
+                </span>
+              </button>
+            </ConditionTooltip>
           ))}
         </div>
       )}

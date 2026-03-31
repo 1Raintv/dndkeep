@@ -302,7 +302,55 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
           {/* Danger Zone */}
           {tab === 'danger' && (
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+
+              {/* Share character sheet */}
+              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-md)', background: 'rgba(201,146,42,0.06)' }}>
+                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-gold)', marginBottom: 'var(--space-2)' }}>
+                  Share Character Sheet
+                </p>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.6 }}>
+                  Generate a public read-only link to share your character with anyone — no account required.
+                </p>
+                {character.share_enabled && character.share_token ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                      <input
+                        readOnly
+                        value={`${window.location.origin}/share/${character.share_token}`}
+                        style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                        onFocus={e => e.target.select()}
+                      />
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/share/${character.share_token}`); }}
+                        style={{ flexShrink: 0 }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <button
+                      className="btn-ghost btn-sm"
+                      onClick={() => onUpdate({ share_enabled: false, share_token: null })}
+                      style={{ alignSelf: 'flex-start', color: 'var(--color-crimson-bright)', fontSize: 'var(--text-xs)' }}
+                    >
+                      Disable sharing
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-gold btn-sm"
+                    onClick={() => {
+                      const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+                      onUpdate({ share_enabled: true, share_token: token });
+                    }}
+                  >
+                    Generate Share Link
+                  </button>
+                )}
+              </div>
+
+              {/* Delete */}
               <div style={{ padding: 'var(--space-4)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', background: 'rgba(127,29,29,0.1)' }}>
                 <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: '#fca5a5', marginBottom: 'var(--space-2)' }}>
                   Delete Character

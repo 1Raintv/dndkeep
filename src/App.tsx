@@ -8,6 +8,7 @@ import './styles/globals.css';
 
 const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
 const LobbyPage      = lazy(() => import('./components/pages/LobbyPage'));
+const SharePage      = lazy(() => import('./components/pages/SharePage'));
 const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
 const SpellsPage     = lazy(() => import('./components/pages/SpellsPage'));
 const CombatPage     = lazy(() => import('./components/pages/CombatPage'));
@@ -143,13 +144,16 @@ function NotFound() {
 function AppRoutes() {
   const { user } = useAuth();
   const isLanding = !user && window.location.pathname === '/';
+  const isShare = window.location.pathname.startsWith('/share/');
+  const hideNav = isLanding || isShare;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {!isLanding && <Nav />}
-      <main className={isLanding ? '' : 'app-content'}>
+      {!hideNav && <Nav />}
+      <main className={hideNav ? '' : 'app-content'}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
+            <Route path="/share/:token"   element={<SharePage />} />
             <Route path="/"                element={<HomeRedirect />} />
             <Route path="/auth"            element={<AuthPage />} />
             <Route path="/lobby"           element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />

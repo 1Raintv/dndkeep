@@ -3,20 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getCharacters } from '../../lib/supabase';
+import Onboarding from '../shared/Onboarding';
 
 export default function LobbyPage() {
   const { user, isPro } = useAuth();
   const navigate = useNavigate();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     getCharacters(user.id).then(({ data }) => {
       setCharacters(data);
       setLoading(false);
+      // Show onboarding only for brand new users (no characters + never dismissed)
+      if (data.length === 0 && !localStorage.getItem('dndkeep_onboarded')) {
+        setShowOnboarding(true);
+      }
     });
   }, [user]);
+
+  function dismissOnboarding() {
+    localStorage.setItem('dndkeep_onboarded', '1');
+    setShowOnboarding(false);
+  }
 
   const canCreate = isPro || characters.length === 0;
 
@@ -28,6 +39,7 @@ export default function LobbyPage() {
 
   return (
     <div>
+      {showOnboarding && <Onboarding onDismiss={dismissOnboarding} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-8)' }}>
         <div>
           <h1 style={{ marginBottom: 'var(--space-2)' }}>Your Characters</h1>

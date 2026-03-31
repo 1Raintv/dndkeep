@@ -20,17 +20,21 @@ import FeaturesPanel from './FeaturesPanel';
 import SessionTab from './SessionTab';
 import QuickRoll from './QuickRoll';
 import AvatarPicker from '../shared/AvatarPicker';
+import WeaponsTracker from './WeaponsTracker';
+import RollHistory from './RollHistory';
 
-type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'notes' | 'session';
+type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'weapons' | 'notes' | 'rolls' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'stats',     label: 'Stats' },
   { id: 'skills',    label: 'Skills' },
   { id: 'spells',    label: 'Spells' },
+  { id: 'weapons',   label: '⚔ Weapons' },
   { id: 'features',  label: 'Features' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'notes',     label: 'Notes' },
-  { id: 'session',   label: '⚔ Session' },
+  { id: 'rolls',     label: '🎲 Rolls' },
+  { id: 'session',   label: 'Session' },
 ];
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -133,9 +137,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   }
 
   function finishShortRest() {
-    // Warlocks also recover pact slots on short rest
     const newSlots = character.class_name === 'Warlock'
-      ? Object.fromEntries(Object.entries(character.spell_slots).map(([k, s]) => [k, { ...s, used: 0 }]))
+      ? Object.fromEntries(Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }]))
       : character.spell_slots;
     applyUpdate({ spell_slots: newSlots }, true);
     setShortRestHpGained(0);
@@ -144,8 +147,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
   function doLongRest() {
     const recoveredSlots = Object.fromEntries(
-      Object.entries(character.spell_slots).map(([k, s]) => [k, { ...s, used: 0 }])
-    );
+      Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }])
+    ) as typeof character.spell_slots;
     // PHB: on a long rest you recover hit dice equal to half your level (min 1)
     const recoveredHD = Math.max(1, Math.floor(character.level / 2));
     const newSpent = Math.max(0, (character.hit_dice_spent ?? 0) - recoveredHD);
@@ -167,7 +170,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // ------------------------------------------------------------------
   // Derived
   // ------------------------------------------------------------------
-  const hasSpellSlots = Object.values(character.spell_slots).some(s => s.total > 0);
+  const hasSpellSlots = Object.values(character.spell_slots).some((s: any) => s.total > 0);
   const allSpellIds = [...new Set([...character.known_spells, ...character.prepared_spells])];
   const knownSpellData = allSpellIds
     .map(id => SPELL_MAP[id])
@@ -593,9 +596,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           </div>
         )}
 
+        {activeTab === 'weapons' && (
+          <div style={{ maxWidth: 680 }}>
+            <WeaponsTracker
+              weapons={character.weapons ?? []}
+              onUpdate={weapons => applyUpdate({ weapons })}
+            />
+          </div>
+        )}
+
         {activeTab === 'notes' && (
           <div style={{ maxWidth: 640 }}>
             <Notes character={character} onUpdate={handleUpdateNote} />
+          </div>
+        )}
+
+        {activeTab === 'rolls' && (
+          <div style={{ maxWidth: 640 }}>
+            <RollHistory characterId={character.id} userId={userId} />
           </div>
         )}
 
