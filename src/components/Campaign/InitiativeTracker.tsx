@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import type { SessionState, Combatant, ConditionName } from '../../types';
+import type { SessionState, Combatant, ConditionName, OngoingDamage } from '../../types';
 import ConditionTooltip from '../shared/ConditionTooltip';
+import { rollDiceExpression, concentrationDC } from '../../lib/gameUtils';
+import { CONDITION_MAP } from '../../data/conditions';
 
 
 interface InitiativeTrackerProps {
@@ -22,6 +24,10 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
   const [newAC, setNewAC] = useState('');
   const [hpDeltas, setHpDeltas] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [attackModal, setAttackModal] = useState<{ combatantId: string; targetId: string; attackIdx: number } | null>(null);
+  const [attackResult, setAttackResult] = useState<{ hit: boolean; roll: number; total: number; damage?: number; damageRoll?: number } | null>(null);
+  const [ongoingPrompts, setOngoingPrompts] = useState<{ id: string; name: string; od: OngoingDamage }[]>([]);
+  const [concSavePrompt, setConcSavePrompt] = useState<{ combatantId: string; dc: number; damageTaken: number } | null>(null);
 
   const combatants: Combatant[] = sessionState?.initiative_order ?? [];
   const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
@@ -102,6 +108,69 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
     onUpdateSession({ initiative_order: combatants.map(c => c.id === id ? { ...c, initiative: value } : c) });
   }
 
+  function resolveAttack(attackerId: string, targetId: string, attackIdx: number) {
+    const attacker = combatants.find(c => c.id === attackerId);
+    const target = combatants.find(c => c.id === targetId);
+    if (!attacker || !target || !attacker.attacks) return;
+    const atk = attacker.attacks[attackIdx];
+    const roll = Math.floor(Math.random() * 20) + 1;
+    const total = roll + atk.bonus;
+    const hit = roll === 20 || (roll !== 1 && total >= target.ac);
+    let damage = 0;
+    let damageRoll = 0;
+    if (hit) {
+      const result = rollDiceExpression(atk.damage);
+      damage = roll === 20 ? result.total + result.rolls.reduce((a,b) => a+b, 0) : result.total; // crit doubles dice
+      damageRoll = result.total;
+    }
+    setAttackResult({ hit, roll, total, damage, damageRoll });
+    // If target is a PC concentrating and damage was dealt, prompt conc save
+    if (hit && damage > 0 && !target.is_monster && target.concentration_spell) {
+      setConcSavePrompt({ combatantId: targetId, dc: concentrationDC(damage), damageTaken: damage });
+    }
+    // Apply damage to target
+    if (hit && damage > 0) {
+      const updated = combatants.map(c => c.id === targetId ? { ...c, current_hp: Math.max(0, c.current_hp - damage) } : c);
+      onUpdateSession({ initiative_order: updated });
+    }
+  }
+
+  function advanceTurnWithOngoingDamage() {
+    if (!sessionState) return;
+    const sorted2 = [...combatants].sort((a, b) => b.initiative - a.initiative);
+    const next = (sessionState.current_turn + 1) % Math.max(combatants.length, 1);
+    const newRound = next === 0 ? sessionState.round + 1 : sessionState.round;
+    const nextCombatant = sorted2[next];
+    // Collect ongoing damage for next combatant
+    const prompts = (nextCombatant?.ongoing_damage ?? []).map(od => ({
+      id: nextCombatant.id,
+      name: nextCombatant.name,
+      od,
+    }));
+    if (prompts.length > 0) {
+      setOngoingPrompts(prompts);
+    }
+    onUpdateSession({ current_turn: next, round: newRound });
+    if (nextCombatant && !nextCombatant.is_monster && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(`Your Turn! — ${nextCombatant.name}`, {
+          body: `Round ${newRound} · ${nextCombatant.current_hp}/${nextCombatant.max_hp} HP`,
+          icon: '/icon-192.png', tag: 'dndkeep-turn',
+        });
+      }).catch(() => {});
+    }
+  }
+
+  function addOngoingDamage(id: string, od: OngoingDamage) {
+    const updated = combatants.map(c => c.id === id ? { ...c, ongoing_damage: [...(c.ongoing_damage ?? []), od] } : c);
+    onUpdateSession({ initiative_order: updated });
+  }
+
+  function removeOngoingDamage(combatantId: string, odId: string) {
+    const updated = combatants.map(c => c.id === combatantId ? { ...c, ongoing_damage: (c.ongoing_damage ?? []).filter(od => od.id !== odId) } : c);
+    onUpdateSession({ initiative_order: updated });
+  }
+
   const hpColor = (c: Combatant) => {
     const pct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
     return pct > 0.5 ? 'var(--hp-full)' : pct > 0.25 ? 'var(--hp-mid)' : c.current_hp > 0 ? 'var(--hp-low)' : 'var(--hp-dead)';
@@ -126,7 +195,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
         {isOwner && (
           <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: 'auto' }}>
             {combatants.length > 0 && (
-              <button className="btn-gold btn-sm" onClick={nextTurn}>Next Turn</button>
+              <button className="btn-gold btn-sm" onClick={advanceTurnWithOngoingDamage}>Next Turn ▶</button>
             )}
             <button
               className={sessionState?.combat_active ? 'btn-danger btn-sm' : 'btn-primary btn-sm'}
@@ -243,7 +312,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                       <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>CONDITIONS</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
                         {CONDITIONS.map(cond => {
-                          const active = c.conditions.includes(cond);
+                          const active = c.conditions.includes(cond as ConditionName);
                           return (
                             <ConditionTooltip key={cond} name={cond}>
                               <button

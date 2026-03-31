@@ -17,6 +17,7 @@ import SessionScheduler from './SessionScheduler';
 import NPCManager from './NPCManager';
 import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
+import PartyDashboard from './PartyDashboard';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -372,7 +373,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
         {/* Party tab — real-time HP/conditions for all members */}
         {activeTab === 'party' && (
-          <PartyView campaignId={campaign.id} currentUserId={user?.id ?? ''} />
+          <PartyDashboard campaignId={campaign.id} />
         )}
 
         {/* Log tab */}

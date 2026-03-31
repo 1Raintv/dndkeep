@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
-import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField } from '../../types';
+import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, ActiveBuff } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
@@ -24,13 +24,15 @@ import QuickRoll from './QuickRoll';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
+import ActiveBuffsPanel from './ActiveBuffsPanel';
+import LevelUpWizard from './LevelUpWizard';
+import SpellsTab from './SpellsTab';
+import ConditionMechanics from './ConditionMechanics';
 import ActionLog from '../shared/ActionLog';
 import WildshapeTracker from './WildshapeTracker';
 import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
-import ConditionMechanics from './ConditionMechanics';
-import SpellsTab from './SpellsTab';
 
 type Tab = 'abilities' | 'spells' | 'combat' | 'bio' | 'history' | 'session';
 
@@ -63,6 +65,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [showSettings, setShowSettings] = useState(false);
   const [showRest, setShowRest] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [showLevelUp, setShowLevelUp] = useState(false);
   const [concentrationSpellId, setConcentrationSpellId] = useState<string | null>(null);
 
   // Keyboard shortcuts: R = rest, I = inspiration
@@ -625,7 +628,27 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {/* ── SESSION ── */}
         {activeTab === 'session' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-            {/* Class resources — the feature DnD Beyond can't do */}
+            {/* Active Buffs & Debuffs */}
+            <ActiveBuffsPanel
+              buffs={(character as any).active_buffs ?? []}
+              onAddBuff={buff => {
+                const current = (character as any).active_buffs ?? [];
+                applyUpdate({ active_buffs: [...current, buff] } as any, true);
+              }}
+              onRemoveBuff={id => {
+                const current = (character as any).active_buffs ?? [];
+                applyUpdate({ active_buffs: current.filter((b: ActiveBuff) => b.id !== id) } as any, true);
+              }}
+              onTickDown={() => {
+                const current = (character as any).active_buffs ?? [];
+                const updated = current
+                  .map((b: ActiveBuff) => b.duration < 0 ? b : { ...b, duration: b.duration - 1 })
+                  .filter((b: ActiveBuff) => b.duration < 0 || b.duration > 0);
+                applyUpdate({ active_buffs: updated } as any, true);
+              }}
+            />
+
+            {/* Class resources */}
             <div>
               <div className="section-header">Class Resources — {character.class_name}</div>
               <ClassResourcesPanel
@@ -643,10 +666,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 />
               </div>
             )}
+
+            {/* Level up button */}
+            {character.level < 20 && (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 'var(--space-2)' }}>
+                <button
+                  className="btn-gold"
+                  onClick={() => setShowLevelUp(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                >
+                  ✨ Level Up to {character.class_name} {character.level + 1}
+                </button>
+              </div>
+            )}
+
             <SessionTab character={character} isPro={isPro} userId={userId} />
           </div>
         )}
       </div>
+
+      {/* Level Up Wizard */}
+      {showLevelUp && (
+        <LevelUpWizard
+          character={character}
+          onLevelUp={updates => applyUpdate(updates, true)}
+          onClose={() => setShowLevelUp(false)}
+        />
+      )}
 
       {/* Quick Roll floating dice roller */}
       <QuickRoll

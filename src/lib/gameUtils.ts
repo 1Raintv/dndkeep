@@ -165,3 +165,70 @@ export function startingHP(hitDie: number, constitutionScore: number): number {
 export function hpPerLevel(hitDie: number, constitutionScore: number): number {
   return Math.floor(hitDie / 2) + 1 + abilityModifier(constitutionScore);
 }
+
+// ── Multiclass Spell Slot Calculator (2024 PHB, p. 234) ──────────────────────────
+// Half-casters (Paladin, Ranger) contribute half level (round down)
+// Warlock Pact Magic does NOT combine with normal slots
+// Psion is a full caster (new class)
+const MULTICLASS_SLOT_TABLE: Record<number, number[]> = {
+  1:  [2, 0, 0, 0, 0, 0, 0, 0, 0],
+  2:  [3, 0, 0, 0, 0, 0, 0, 0, 0],
+  3:  [4, 2, 0, 0, 0, 0, 0, 0, 0],
+  4:  [4, 3, 0, 0, 0, 0, 0, 0, 0],
+  5:  [4, 3, 2, 0, 0, 0, 0, 0, 0],
+  6:  [4, 3, 3, 0, 0, 0, 0, 0, 0],
+  7:  [4, 3, 3, 1, 0, 0, 0, 0, 0],
+  8:  [4, 3, 3, 2, 0, 0, 0, 0, 0],
+  9:  [4, 3, 3, 3, 1, 0, 0, 0, 0],
+  10: [4, 3, 3, 3, 2, 0, 0, 0, 0],
+  11: [4, 3, 3, 3, 2, 1, 0, 0, 0],
+  12: [4, 3, 3, 3, 2, 1, 0, 0, 0],
+  13: [4, 3, 3, 3, 2, 1, 1, 0, 0],
+  14: [4, 3, 3, 3, 2, 1, 1, 0, 0],
+  15: [4, 3, 3, 3, 2, 1, 1, 1, 0],
+  16: [4, 3, 3, 3, 2, 1, 1, 1, 0],
+  17: [4, 3, 3, 3, 2, 1, 1, 1, 1],
+  18: [4, 3, 3, 3, 3, 1, 1, 1, 1],
+  19: [4, 3, 3, 3, 3, 2, 1, 1, 1],
+  20: [4, 3, 3, 3, 3, 2, 2, 1, 1],
+};
+
+const FULL_CASTERS = new Set(['Bard', 'Cleric', 'Druid', 'Sorcerer', 'Wizard', 'Psion']);
+const HALF_CASTERS = new Set(['Paladin', 'Ranger']);
+
+export function computeMulticlassSlots(
+  primaryClass: string, primaryLevel: number,
+  secondaryClass?: string, secondaryLevel?: number
+): number[] {
+  let spellcastingLevel = 0;
+
+  function contributeLevel(cls: string, lvl: number) {
+    if (FULL_CASTERS.has(cls)) spellcastingLevel += lvl;
+    else if (HALF_CASTERS.has(cls)) spellcastingLevel += Math.floor(lvl / 2);
+    // Warlock excluded from combined slots
+  }
+
+  contributeLevel(primaryClass, primaryLevel);
+  if (secondaryClass && secondaryLevel) contributeLevel(secondaryClass, secondaryLevel);
+
+  const capped = Math.max(1, Math.min(20, spellcastingLevel));
+  return MULTICLASS_SLOT_TABLE[capped] ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
+}
+
+// ── Concentration save DC (2024: max(10, damage/2), capped 30) ──────────────────
+export function concentrationDC(damageTaken: number): number {
+  return Math.min(30, Math.max(10, Math.ceil(damageTaken / 2)));
+}
+
+// ── Roll a set of dice e.g. "2d6+3" ────────────────────────────────────────────
+export function rollDiceExpression(expr: string): { rolls: number[]; total: number; expression: string } {
+  const match = expr.trim().match(/^(\d+)d(\d+)([+-]\d+)?$/i);
+  if (!match) return { rolls: [], total: 0, expression: expr };
+  const count = parseInt(match[1]);
+  const sides = parseInt(match[2]);
+  const bonus = match[3] ? parseInt(match[3]) : 0;
+  const rolls: number[] = [];
+  for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
+  const total = rolls.reduce((a, b) => a + b, 0) + bonus;
+  return { rolls, total, expression: expr };
+}

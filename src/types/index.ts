@@ -44,7 +44,7 @@ export type ConditionName =
 export type ClassName =
   | 'Fighter' | 'Wizard' | 'Rogue' | 'Cleric' | 'Barbarian'
   | 'Paladin' | 'Druid' | 'Ranger' | 'Warlock' | 'Monk'
-  | 'Sorcerer' | 'Bard';
+  | 'Sorcerer' | 'Bard' | 'Psion';
 
 export type SpeciesName =
   | 'Human' | 'Elf' | 'Dwarf' | 'Halfling' | 'Gnome'
@@ -332,6 +332,33 @@ export interface CampaignMember {
 
 // --- Combat ---
 
+export interface OngoingDamage {
+  id: string;
+  label: string;          // "Poison", "Fire", "Burning"
+  dice: string;           // "2d6", "1d4"
+  damageType: string;     // "Poison", "Fire", etc.
+  timing: 'start' | 'end'; // start or end of turn
+}
+
+export interface ActiveBuff {
+  id: string;
+  name: string;           // "Rage", "Bless", "Haste"
+  duration: number;       // rounds remaining (-1 = indefinite)
+  icon?: string;
+  color?: string;
+  effects: string[];      // human-readable effects
+  // Mechanical modifiers
+  acBonus?: number;
+  attackBonus?: number;
+  damageBonus?: number;
+  saveBonus?: number;
+  speedBonus?: number;
+  advantages?: string[];  // attack, strength, dexterity, etc.
+  disadvantages?: string[];
+  resistances?: string[];
+  immunities?: string[];
+}
+
 export interface Combatant {
   id: string;
   name: string;
@@ -344,6 +371,15 @@ export interface Combatant {
   character_id?: string;
   conditions: ConditionName[];
   notes?: string;
+  ongoing_damage?: OngoingDamage[];
+  concentration_spell?: string;
+  buffs?: ActiveBuff[];
+  legendary_actions?: number;        // max legendary actions
+  legendary_actions_used?: number;
+  legendary_resistance?: number;     // uses per day
+  legendary_resistance_used?: number;
+  // NPC attack data (pulled from monsters.ts)
+  attacks?: { name: string; bonus: number; damage: string; damageType: string; range: string }[];
 }
 
 export interface SessionState {

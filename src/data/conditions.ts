@@ -1,148 +1,44 @@
 import type { ConditionData } from '../types';
 
-export const CONDITIONS: ConditionData[] = [
-  {
-    name: 'Blinded',
-    description: 'A blinded creature can\'t see.',
-    effects: [
-      'Automatically fails any ability check requiring sight.',
-      'Attack rolls against the creature have advantage.',
-      'The creature\'s attack rolls have disadvantage.',
-    ],
-  },
-  {
-    name: 'Charmed',
-    description: 'A charmed creature regards the charmer as a trusted friend.',
-    effects: [
-      'Can\'t attack the charmer or target the charmer with harmful abilities or effects.',
-      'The charmer has advantage on ability checks to interact socially with the creature.',
-    ],
-  },
-  {
-    name: 'Deafened',
-    description: 'A deafened creature can\'t hear.',
-    effects: [
-      'Automatically fails any ability check requiring hearing.',
-    ],
-  },
-  {
-    name: 'Exhaustion',
-    description: 'Exhaustion is measured in six levels. Effects are cumulative.',
-    effects: [
-      'Level 1: Disadvantage on ability checks.',
-      'Level 2: Speed halved.',
-      'Level 3: Disadvantage on attack rolls and saving throws.',
-      'Level 4: Hit point maximum halved.',
-      'Level 5: Speed reduced to 0.',
-      'Level 6: Death.',
-    ],
-  },
-  {
-    name: 'Frightened',
-    description: 'A frightened creature is afraid of a specific source.',
-    effects: [
-      'Disadvantage on ability checks and attack rolls while the source of fear is in line of sight.',
-      'Can\'t willingly move closer to the source of its fear.',
-    ],
-  },
-  {
-    name: 'Grappled',
-    description: 'A grappled creature is restrained by a grappler.',
-    effects: [
-      'Speed becomes 0 and can\'t benefit from bonuses to speed.',
-      'The condition ends if the grappler is incapacitated.',
-      'The condition ends if the creature is removed from reach of the grappler.',
-    ],
-  },
-  {
-    name: 'Incapacitated',
-    description: 'An incapacitated creature can\'t take actions or reactions.',
-    effects: [
-      'Can\'t take actions.',
-      'Can\'t take reactions.',
-    ],
-  },
-  {
-    name: 'Invisible',
-    description: 'An invisible creature is impossible to see without special means.',
-    effects: [
-      'Impossible to see without magic or special sense. Considered heavily obscured for hiding.',
-      'Attack rolls against the creature have disadvantage.',
-      'The creature\'s attack rolls have advantage.',
-    ],
-  },
-  {
-    name: 'Paralyzed',
-    description: 'A paralyzed creature is incapacitated and can\'t move or speak.',
-    effects: [
-      'Incapacitated — can\'t take actions or reactions.',
-      'Can\'t move or speak.',
-      'Automatically fails Strength and Dexterity saving throws.',
-      'Attack rolls against the creature have advantage.',
-      'Any attack that hits the creature is a critical hit if the attacker is within 5 feet.',
-    ],
-  },
-  {
-    name: 'Petrified',
-    description: 'A petrified creature is transformed into solid inanimate substance.',
-    effects: [
-      'Incapacitated, can\'t move or speak, and is unaware of its surroundings.',
-      'Attack rolls against the creature have advantage.',
-      'Automatically fails Strength and Dexterity saving throws.',
-      'Resistance to all damage.',
-      'Immune to poison and disease.',
-    ],
-  },
-  {
-    name: 'Poisoned',
-    description: 'A poisoned creature feels ill and weakened.',
-    effects: [
-      'Disadvantage on attack rolls and ability checks.',
-    ],
-  },
-  {
-    name: 'Prone',
-    description: 'A prone creature is lying on the ground.',
-    effects: [
-      'Only movement option is to crawl unless it stands up (uses half speed).',
-      'Disadvantage on attack rolls.',
-      'Attack rolls against the creature have advantage if the attacker is within 5 feet; otherwise disadvantage.',
-    ],
-  },
-  {
-    name: 'Restrained',
-    description: 'A restrained creature is held in place.',
-    effects: [
-      'Speed becomes 0 and can\'t benefit from bonuses to speed.',
-      'Attack rolls against the creature have advantage.',
-      'The creature\'s attack rolls have disadvantage.',
-      'Disadvantage on Dexterity saving throws.',
-    ],
-  },
-  {
-    name: 'Stunned',
-    description: 'A stunned creature is overwhelmed.',
-    effects: [
-      'Incapacitated — can\'t take actions or reactions.',
-      'Can\'t move.',
-      'Can speak only falteringly.',
-      'Automatically fails Strength and Dexterity saving throws.',
-      'Attack rolls against the creature have advantage.',
-    ],
-  },
-  {
-    name: 'Unconscious',
-    description: 'An unconscious creature is inert.',
-    effects: [
-      'Incapacitated, can\'t move or speak, and is unaware of its surroundings.',
-      'Drops whatever it\'s holding and falls prone.',
-      'Automatically fails Strength and Dexterity saving throws.',
-      'Attack rolls against the creature have advantage.',
-      'Any attack that hits the creature is a critical hit if the attacker is within 5 feet.',
-    ],
-  },
+export interface ConditionMechanic {
+  name: string;
+  description: string;
+  effects: string[];
+  attackDisadvantage?: boolean;
+  attackAdvantageReceived?: boolean;
+  savingThrowDisadvantage?: string[];
+  autoFailSaves?: string[];
+  abilityCheckDisadvantage?: boolean;
+  speedZero?: boolean;
+  concentrationBreaks?: boolean;
+  cantAct?: boolean;
+  cantReact?: boolean;
+  cantMove?: boolean;
+  critWithin5ft?: boolean;
+  resistanceAll?: boolean;
+  color: string;
+  icon: string;
+}
+
+export const CONDITIONS: ConditionMechanic[] = [
+  { name: 'Blinded', description: "Can't see.", effects: ["Fails sight-based checks.", "Attacks have disadvantage.", "Enemies attack with advantage."], attackDisadvantage: true, attackAdvantageReceived: true, color: '#64748b', icon: '👁️' },
+  { name: 'Charmed', description: "Regards charmer as friend.", effects: ["Can't attack the charmer.", "Charmer has social advantage."], color: '#ec4899', icon: '💕' },
+  { name: 'Deafened', description: "Can't hear.", effects: ["Fails hearing-based checks."], color: '#94a3b8', icon: '🔇' },
+  { name: 'Exhaustion', description: "2024: -2 to all d20 rolls and -5ft speed per level. Level 6 = death.", effects: ["Level 1: -2 d20, -5ft speed.", "Level 2: -4 d20, -10ft speed.", "Level 3: -6 d20, -15ft speed.", "Level 4: -8 d20, -20ft speed.", "Level 5: -10 d20, -25ft speed.", "Level 6: Death."], color: '#f59e0b', icon: '😩' },
+  { name: 'Frightened', description: "Afraid of a specific source.", effects: ["Disadvantage on attacks and checks while source is visible.", "Can't approach source."], attackDisadvantage: true, abilityCheckDisadvantage: true, color: '#7c3aed', icon: '😱' },
+  { name: 'Grappled', description: "Speed becomes 0.", effects: ["Speed 0.", "Ends if grappler is incapacitated."], speedZero: true, color: '#92400e', icon: '🤼' },
+  { name: 'Incapacitated', description: "Can't act or react.", effects: ["No actions.", "No reactions.", "Concentration breaks."], cantAct: true, cantReact: true, concentrationBreaks: true, color: '#dc2626', icon: '🚫' },
+  { name: 'Invisible', description: "Can't be seen normally.", effects: ["Your attacks have advantage.", "Enemies attack with disadvantage."], color: '#6366f1', icon: '👻' },
+  { name: 'Paralyzed', description: "Incapacitated, can't move or speak.", effects: ["No actions or reactions.", "Can't move.", "Auto-fail Str/Dex saves.", "Attacks have advantage.", "Within 5ft = critical hit."], cantAct: true, cantReact: true, cantMove: true, concentrationBreaks: true, autoFailSaves: ['strength', 'dexterity'], attackAdvantageReceived: true, critWithin5ft: true, color: '#b91c1c', icon: '⚡' },
+  { name: 'Petrified', description: "Turned to stone. Resistant to all damage.", effects: ["Incapacitated.", "Auto-fail Str/Dex saves.", "Attacks have advantage.", "Resistance to all damage."], cantAct: true, cantReact: true, cantMove: true, concentrationBreaks: true, autoFailSaves: ['strength', 'dexterity'], attackAdvantageReceived: true, resistanceAll: true, color: '#78716c', icon: '🗿' },
+  { name: 'Poisoned', description: "Disadvantage on attacks and checks.", effects: ["Attacks have disadvantage.", "Ability checks have disadvantage."], attackDisadvantage: true, abilityCheckDisadvantage: true, color: '#15803d', icon: '🤢' },
+  { name: 'Prone', description: "On the ground. Stand uses half speed.", effects: ["Attacks have disadvantage.", "Attacks within 5ft against you have advantage."], attackDisadvantage: true, attackAdvantageReceived: true, color: '#78350f', icon: '🫢' },
+  { name: 'Restrained', description: "Speed 0, attack disadvantage.", effects: ["Speed 0.", "Attacks have disadvantage.", "Enemies attack with advantage.", "Disadvantage on Dex saves."], speedZero: true, attackDisadvantage: true, attackAdvantageReceived: true, savingThrowDisadvantage: ['dexterity'], color: '#7f1d1d', icon: '⛓️' },
+  { name: 'Stunned', description: "Overwhelmed — incapacitated.", effects: ["No actions or reactions.", "Can't move.", "Auto-fail Str/Dex saves.", "Attacks have advantage."], cantAct: true, cantReact: true, cantMove: true, concentrationBreaks: true, autoFailSaves: ['strength', 'dexterity'], attackAdvantageReceived: true, color: '#7c3aed', icon: '😵' },
+  { name: 'Unconscious', description: "Inert. Auto-crits from within 5ft.", effects: ["Incapacitated, falls prone.", "Auto-fail Str/Dex saves.", "Attacks have advantage.", "Within 5ft = critical hit."], cantAct: true, cantReact: true, cantMove: true, concentrationBreaks: true, autoFailSaves: ['strength', 'dexterity'], attackAdvantageReceived: true, critWithin5ft: true, color: '#1e1b4b', icon: '💤' },
+  { name: 'Bloodied', description: "Below half HP. Some monsters react.", effects: ["No direct mechanical effect.", "Some monsters have Bloodied reactions."], color: '#dc2626', icon: '🩸' },
 ];
 
-export const CONDITION_MAP: Record<string, ConditionData> = Object.fromEntries(
+export const CONDITION_MAP: Record<string, ConditionMechanic> = Object.fromEntries(
   CONDITIONS.map(c => [c.name, c])
 );
