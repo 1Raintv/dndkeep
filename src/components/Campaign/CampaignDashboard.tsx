@@ -9,6 +9,7 @@ import {
 } from '../../lib/supabase';
 import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
+import PartyView from './PartyView';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -23,7 +24,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'notes'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'notes' | 'party'>('members');
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -166,7 +167,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
       {/* Tabs */}
       <div className="tabs">
-        {(['members', 'characters', 'session', 'notes'] as const).map(tab => (
+        {(['members', 'characters', 'session', 'party', 'notes'] as const).map(tab => (
           <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
@@ -352,6 +353,11 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               }}
             />
           </div>
+        )}
+
+        {/* Party tab — real-time HP/conditions for all members */}
+        {activeTab === 'party' && (
+          <PartyView campaignId={campaign.id} currentUserId={user?.id ?? ''} />
         )}
       </div>
     </div>

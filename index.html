@@ -3,9 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>DNDKeep — Your D&D Session Companion</title>
     <meta name="description" content="A full D&D 5e session companion for players and dungeon masters." />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#c9922a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DNDKeep" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="DNDKeep — D&D Session Companion" />
+    <meta property="og:description" content="Build characters, track sessions, roll dice. The D&D 5e companion for every adventurer." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://dndkeep.vercel.app" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,5 +31,13 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register service worker for PWA / push notifications
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

@@ -120,6 +120,8 @@ export default function CharacterCreator() {
       experience_points: 0,
       alignment,
       avatar_url: null,
+      inspiration: false,
+      equipped_armor: 'unarmored',
       strength:     finalScores.strength,
       dexterity:    finalScores.dexterity,
       constitution: finalScores.constitution,

@@ -114,6 +114,8 @@ export interface Character {
   experience_points: number;
   alignment: Alignment | null;
   avatar_url: string | null;
+  inspiration: boolean;
+  equipped_armor: string;
 
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;

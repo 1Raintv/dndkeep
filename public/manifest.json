@@ -1,0 +1,43 @@
+{
+  "name": "DNDKeep — D&D Session Companion",
+  "short_name": "DNDKeep",
+  "description": "Your D&D 5e session companion. Characters, spells, combat, dice — all in one place.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0b09",
+  "theme_color": "#c9922a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "My Characters",
+      "url": "/lobby",
+      "description": "View your characters"
+    },
+    {
+      "name": "Campaigns",
+      "url": "/campaigns",
+      "description": "View your campaigns"
+    },
+    {
+      "name": "Dice Roller",
+      "url": "/dice",
+      "description": "Roll dice"
+    }
+  ]
+}

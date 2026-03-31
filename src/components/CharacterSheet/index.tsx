@@ -18,6 +18,8 @@ import DeathSaves from './DeathSaves';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
 import SessionTab from './SessionTab';
+import QuickRoll from './QuickRoll';
+import AvatarPicker from '../shared/AvatarPicker';
 
 type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'notes' | 'session';
 
@@ -50,6 +52,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showRest, setShowRest] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [concentrationSpellId, setConcentrationSpellId] = useState<string | null>(null);
 
   const computed = useMemo(() => computeStats(character), [character]);
@@ -195,7 +198,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         computed={computed}
         onOpenSettings={() => setShowSettings(true)}
         onUpdateXP={xp => applyUpdate({ experience_points: xp })}
+        onOpenAvatarPicker={() => setShowAvatarPicker(true)}
+        onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
+        onOpenRest={() => setShowRest(true)}
       />
+
+      {/* Avatar picker */}
+      {showAvatarPicker && (
+        <AvatarPicker
+          currentSeed={null}
+          characterName={character.name}
+          onSelect={url => applyUpdate({ avatar_url: url }, true)}
+          onClose={() => setShowAvatarPicker(false)}
+        />
+      )}
 
       {/* Character settings modal — level up, edit stats, delete */}
       {showSettings && (
@@ -436,11 +452,37 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               </div>
             ) : (
               <>
+                {/* Prepared-caster note */}
+                {['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer'].includes(character.class_name) && (
+                  <div style={{
+                    padding: 'var(--space-3) var(--space-4)',
+                    background: 'rgba(201,146,42,0.06)',
+                    border: '1px solid var(--border-gold)',
+                    borderRadius: 'var(--radius-md)',
+                    fontFamily: 'var(--font-heading)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--text-muted)',
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                  }}>
+                    <span style={{ color: 'var(--color-gold-bright)' }}>📖</span>
+                    <span>
+                      <strong style={{ color: 'var(--text-gold)' }}>{character.class_name}s prepare spells daily.</strong>
+                      {' '}You can prepare {character.level + Math.floor((character.intelligence - 10) / 2)} spells.
+                      Toggle the <strong style={{ color: 'var(--color-gold-bright)' }}>Prepared</strong> button on each spell to mark it ready for today.
+                    </span>
+                  </div>
+                )}
+
                 {/* Known / prepared spells */}
                 {knownSpellData.length > 0 && (
                   <div>
                     <div className="section-header">
                       Spellbook — {knownSpellData.length} spell{knownSpellData.length !== 1 ? 's' : ''}
+                      {character.prepared_spells.length > 0 && (
+                        <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-gold-bright)', fontWeight: 700 }}>
+                          ({character.prepared_spells.length} prepared)
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                       {knownSpellData.map(spell => (
@@ -561,6 +603,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           <SessionTab character={character} isPro={isPro} userId={userId} />
         )}
       </div>
+
+      {/* Quick Roll floating overlay */}
+      <QuickRoll character={character} computed={computed} />
     </div>
   );
 }

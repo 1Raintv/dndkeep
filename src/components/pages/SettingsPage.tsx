@@ -4,10 +4,12 @@ import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { signOut, getCharacters, deleteCharacter } from '../../lib/supabase';
 import { redirectToCheckout, redirectToCustomerPortal, STRIPE_PRICES } from '../../lib/stripe';
+import { usePushNotifications } from '../../lib/usePushNotifications';
 
 export default function SettingsPage() {
   const { user, profile, isPro, refreshProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { permission, supported, enablePush } = usePushNotifications(user?.id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
@@ -91,6 +93,40 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Push Notifications */}
+      {supported && (
+        <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
+          <div className="section-header" style={{ marginBottom: 'var(--space-3)' }}>Notifications</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', marginBottom: 4 }}>
+                Session Alerts
+              </div>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', maxWidth: 400 }}>
+                Get notified when your DM starts a session or sends a party alert.
+              </p>
+            </div>
+            {permission === 'granted' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--hp-full)' }}>
+                <span>✓</span> Notifications enabled
+              </div>
+            ) : permission === 'denied' ? (
+              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--color-crimson-bright)' }}>
+                Blocked — enable in browser settings
+              </div>
+            ) : (
+              <button
+                className="btn-secondary btn-sm"
+                onClick={enablePush}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                Enable Notifications
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Characters */}
       <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
