@@ -604,8 +604,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         )}
       </div>
 
-      {/* Quick Roll floating overlay */}
-      <QuickRoll character={character} computed={computed} />
+      {/* Quick Roll floating dice roller */}
+      <QuickRoll />
     </div>
   );
 }
