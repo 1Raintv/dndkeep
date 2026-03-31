@@ -1,0 +1,348 @@
+/**
+ * Class features for all 12 classes, levels 1-20 (2024 PHB)
+ * Each entry: level gained, name, short description
+ */
+
+export interface ClassFeature {
+  level: number;
+  name: string;
+  description: string;
+  isSubclassFeature?: boolean;
+  isASI?: boolean;
+}
+
+export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
+  Barbarian: [
+    { level: 1, name: 'Rage', description: 'Bonus action: enter rage for 1 min. +Str to melee attack/damage, resistance to B/P/S damage. Ends if you don\'t attack or take damage each turn.' },
+    { level: 1, name: 'Unarmored Defense', description: 'While not wearing armor, your AC = 10 + Dex modifier + Con modifier.' },
+    { level: 1, name: 'Weapon Mastery', description: 'Use the mastery property of 2 simple or martial melee weapons. Change choices after long rest.' },
+    { level: 2, name: 'Reckless Attack', description: 'Before attacking, choose to attack with advantage on all melee attacks this turn. Attacks against you also have advantage until your next turn.' },
+    { level: 2, name: 'Danger Sense', description: 'Advantage on Dexterity saving throws against effects you can see, while not blinded, deafened, or incapacitated.' },
+    { level: 3, name: 'Primal Knowledge', description: 'Gain proficiency in one skill from the Barbarian list. Choose another at level 10.' },
+    { level: 3, name: 'Subclass Feature', description: 'Primal Path grants features at levels 3, 6, 10, and 14.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Extra Attack', description: 'Attack twice instead of once when you take the Attack action.' },
+    { level: 5, name: 'Fast Movement', description: 'Your speed increases by 10 feet while you aren\'t wearing heavy armor.' },
+    { level: 6, name: 'Subclass Feature', description: 'Primal Path feature.', isSubclassFeature: true },
+    { level: 7, name: 'Feral Instinct', description: 'Advantage on Initiative rolls. If surprised, you can still act on your first turn after entering rage.' },
+    { level: 7, name: 'Instinctive Pounce', description: 'As part of entering rage, move up to half your speed.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9, name: 'Brutal Strike', description: 'When you use Reckless Attack and hit, forgo advantage on one attack to deal an extra 1d10 damage and apply a brutal effect (hamstring, staggering blow, etc.).' },
+    { level: 10, name: 'Subclass Feature', description: 'Primal Path feature.', isSubclassFeature: true },
+    { level: 11, name: 'Relentless Rage', description: 'While raging, if you drop to 0 HP, make DC 10 Con save (DC increases by 5 each use). On success, drop to 1 HP instead. Resets on short or long rest.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Subclass Feature', description: 'Primal Path feature.', isSubclassFeature: true },
+    { level: 15, name: 'Persistent Rage', description: 'Your rage doesn\'t end early unless you choose to end it or you fall unconscious.' },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Improved Brutal Strike', description: 'Brutal Strike effects improve. Gain two additional options.' },
+    { level: 18, name: 'Indomitable Might', description: 'If your Strength check result is less than your Strength score, use your Strength score instead.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Primal Champion', description: '+4 Strength, +4 Constitution. Your Strength and Constitution maximums increase to 25.' },
+  ],
+
+  Bard: [
+    { level: 1, name: 'Bardic Inspiration', description: 'Bonus action: give a creature a Bardic Inspiration die (d6) to add to one ability check, attack roll, or saving throw in the next 10 min. Uses = Charisma modifier (min 1). Regain on long rest (short rest at level 5).' },
+    { level: 1, name: 'Spellcasting', description: 'Full spellcaster (Charisma). Cantrips known, spells known, all spell slots up to your level.' },
+    { level: 2, name: 'Jack of All Trades', description: 'Add half proficiency bonus (rounded down) to ability checks you aren\'t proficient in.' },
+    { level: 2, name: 'Song of Rest', description: 'Play music during short rest: allied creatures regain extra 1d6 HP when spending hit dice (scales with level).' },
+    { level: 3, name: 'Expertise', description: 'Double proficiency bonus for 2 chosen skill or tool proficiencies. Gain 2 more at level 10.' },
+    { level: 3, name: 'Subclass Feature', description: 'Bard College grants features at levels 3, 6, and 14.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Font of Inspiration', description: 'Regain Bardic Inspiration uses on a short or long rest (previously only long rest).' },
+    { level: 5, name: 'Bardic Inspiration (d8)', description: 'Bardic Inspiration die becomes d8.' },
+    { level: 6, name: 'Countercharm', description: 'Action: start a performance that grants allies within 30 ft advantage on saves against being frightened or charmed.' },
+    { level: 6, name: 'Subclass Feature', description: 'Bard College feature.', isSubclassFeature: true },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 10, name: 'Bardic Inspiration (d10)', description: 'Bardic Inspiration die becomes d10.' },
+    { level: 10, name: 'Expertise (More Skills)', description: 'Double proficiency bonus for 2 more chosen skills.' },
+    { level: 10, name: 'Magical Secrets', description: 'Learn 2 spells from any class\'s spell list. They count as Bard spells for you.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Magical Secrets', description: 'Learn 2 more spells from any class\'s spell list.' },
+    { level: 14, name: 'Subclass Feature', description: 'Bard College feature.', isSubclassFeature: true },
+    { level: 15, name: 'Bardic Inspiration (d12)', description: 'Bardic Inspiration die becomes d12.' },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 18, name: 'Magical Secrets', description: 'Learn 2 more spells from any class\'s spell list.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Superior Inspiration', description: 'At the start of combat, if you have no Bardic Inspiration uses, regain 1 use.' },
+  ],
+
+  Cleric: [
+    { level: 1, name: 'Divine Order', description: 'Choose Protector (martial weapons + heavy armor proficiency) or Thaumaturge (one extra cantrip + religion expertise).' },
+    { level: 1, name: 'Spellcasting', description: 'Full spellcaster (Wisdom). Prepare spells from the full Cleric list each long rest.' },
+    { level: 2, name: 'Channel Divinity', description: 'Use divine energy to fuel subclass effects. 1 use per short/long rest (more uses at higher levels).' },
+    { level: 2, name: 'Subclass Feature', description: 'Divine Domain grants features at levels 3, 6, 8, and 17.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Sear Undead', description: 'When you use Turn Undead, deal radiant damage (your Wisdom modifier, min 1) to undead that succeed their save.' },
+    { level: 6, name: 'Channel Divinity (2/rest)', description: 'Channel Divinity can now be used twice per short/long rest.' },
+    { level: 6, name: 'Subclass Feature', description: 'Divine Domain feature.', isSubclassFeature: true },
+    { level: 7, name: 'Blessed Strikes', description: 'Choose Divine Strike or Potent Spellcasting (your subclass may choose for you). Deal extra 1d8 damage on weapon attack or cantrip.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 10, name: 'Divine Intervention', description: 'Implore your deity to intervene. Make a check using your Cleric level. On success, the DM chooses the effect. Recharges on long rest.' },
+    { level: 11, name: 'Channel Divinity (3/rest)', description: 'Channel Divinity can now be used three times per short/long rest.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Subclass Feature', description: 'Divine Domain feature.', isSubclassFeature: true },
+    { level: 18, name: 'Improved Blessed Strikes', description: 'Blessed Strikes damage increases to 2d8.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Greater Divine Intervention', description: 'Divine Intervention now automatically succeeds. You can use it again after a long rest.' },
+  ],
+
+  Druid: [
+    { level: 1, name: 'Primal Order', description: 'Choose Magician (extra cantrip + Arcana expertise) or Warden (martial weapons + medium armor proficiency).' },
+    { level: 1, name: 'Spellcasting', description: 'Full spellcaster (Wisdom). Prepare spells from the full Druid list each long rest.' },
+    { level: 2, name: 'Wild Shape', description: 'Bonus action: magically transform into a beast you\'ve seen. Uses = 2, regain on short/long rest. CR limits scale with level.' },
+    { level: 2, name: 'Wild Companion', description: 'Use Wild Shape to cast Find Familiar (no components). Familiar is fey and vanishes after short/long rest.' },
+    { level: 2, name: 'Subclass Feature', description: 'Druid Circle grants features at levels 3, 6, 10, and 14.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 4, name: 'Wild Shape Improvement', description: 'Wild Shape: CR 1/2. Can now transform into beasts with swim speed.' },
+    { level: 5, name: 'Wild Resurgence', description: 'Once per long rest: if you have no Wild Shape uses, spend a spell slot (any level) to regain one use.' },
+    { level: 6, name: 'Subclass Feature', description: 'Druid Circle feature.', isSubclassFeature: true },
+    { level: 7, name: 'Elemental Fury', description: 'Choose Potent Spellcasting (+Wis to cantrip damage) or Primal Strike (weapon/Wild Shape attacks count as magical).' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 8, name: 'Wild Shape Improvement', description: 'Wild Shape: CR 1. Can now transform into beasts with fly speed.' },
+    { level: 10, name: 'Subclass Feature', description: 'Druid Circle feature.', isSubclassFeature: true },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Subclass Feature', description: 'Druid Circle feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 18, name: 'Beast Spells', description: 'Cast spells in Wild Shape form (you can perform somatic and verbal components).' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Archdruid', description: 'Unlimited Wild Shape uses. Ignore verbal/somatic components for Druid spells. Old age doesn\'t harm you.' },
+  ],
+
+  Fighter: [
+    { level: 1, name: 'Fighting Style', description: 'Choose a Fighting Style: Archery (+2 ranged attack), Defense (+1 AC), Dueling (+2 melee damage), Great Weapon, Protection, Two-Weapon, or others.' },
+    { level: 1, name: 'Second Wind', description: 'Bonus action: regain 1d10 + Fighter level HP. Regain use on short or long rest.' },
+    { level: 1, name: 'Weapon Mastery', description: 'Use mastery properties of 3 weapons. Swap choices after long rest.' },
+    { level: 2, name: 'Action Surge', description: 'Take one additional action this turn. Regain use on short or long rest. (2 uses at level 17)' },
+    { level: 2, name: 'Tactical Mind', description: 'When you fail an ability check, spend a Superiority Die to add to the roll. Can use after seeing the result.' },
+    { level: 3, name: 'Subclass Feature', description: 'Martial Archetype grants features at levels 3, 7, 10, 15, and 18.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Extra Attack', description: 'Attack twice instead of once when you take the Attack action.' },
+    { level: 6, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 7, name: 'Subclass Feature', description: 'Martial Archetype feature.', isSubclassFeature: true },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9, name: 'Indomitable', description: 'Reroll a failed saving throw (must use new result). Regain use on long rest. (2 uses at 13, 3 uses at 17)' },
+    { level: 9, name: 'Master of Armaments', description: 'Expand Weapon Mastery to 4 weapons. After long rest, swap any number of chosen weapons.' },
+    { level: 10, name: 'Subclass Feature', description: 'Martial Archetype feature.', isSubclassFeature: true },
+    { level: 11, name: 'Two Extra Attacks', description: 'Attack three times instead of once when you take the Attack action.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 13, name: 'Studied Attacks', description: 'When you miss an attack, gain advantage on your next attack against that creature this turn.' },
+    { level: 14, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 15, name: 'Subclass Feature', description: 'Martial Archetype feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Action Surge (2/rest)', description: 'Action Surge can now be used twice before needing a rest.' },
+    { level: 18, name: 'Subclass Feature', description: 'Martial Archetype feature.', isSubclassFeature: true },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Three Extra Attacks', description: 'Attack four times instead of once when you take the Attack action.' },
+  ],
+
+  Monk: [
+    { level: 1, name: 'Martial Arts', description: 'Use Dex instead of Str for unarmed/monk weapon attacks. Damage die: d6 (scales). Bonus action: one unarmed strike after unarmed/monk weapon attack.' },
+    { level: 1, name: 'Unarmored Defense', description: 'While not wearing armor or shield, AC = 10 + Dex modifier + Wis modifier.' },
+    { level: 1, name: 'Weapon Mastery', description: 'Use mastery property of one simple weapon per turn.' },
+    { level: 2, name: 'Monk\'s Focus (Ki Points)', description: 'Pool of ki points = Monk level. Spend to fuel: Flurry of Blows (2 unarmed bonus action strikes), Patient Defense (Dodge as bonus action), Step of the Wind (Disengage/Dash as bonus action).' },
+    { level: 2, name: 'Unarmored Movement', description: 'Speed increases by 10 ft while not wearing armor or shield. (+5 ft every 4 levels)' },
+    { level: 2, name: 'Uncanny Metabolism', description: 'When rolling initiative, regain ki points equal to Proficiency Bonus (once per long rest).' },
+    { level: 3, name: 'Deflect Attacks', description: 'Reaction: reduce B/P/S damage by 1d10 + Dex + Monk level. If reduced to 0, can redirect as a ranged attack (1d10 + Wis, range 20/60).' },
+    { level: 3, name: 'Subclass Feature', description: 'Monastic Tradition grants features at levels 3, 6, 11, and 17.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 4, name: 'Slow Fall', description: 'Reaction: reduce falling damage by 5 × Monk level.' },
+    { level: 5, name: 'Extra Attack', description: 'Attack twice instead of once when you take the Attack action.' },
+    { level: 5, name: 'Stunning Strike', description: 'On a hit, spend 1 ki: target must make CON save or be stunned until end of your next turn.' },
+    { level: 6, name: 'Empowered Strikes', description: 'Unarmed strikes count as magical for overcoming resistance.' },
+    { level: 6, name: 'Subclass Feature', description: 'Monastic Tradition feature.', isSubclassFeature: true },
+    { level: 7, name: 'Evasion', description: 'When you succeed on a Dex save that deals half damage, take no damage. On fail, take half.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9, name: 'Acrobatic Movement', description: 'Move along vertical surfaces and across liquids without falling during movement.' },
+    { level: 10, name: 'Heightened Focus', description: 'Flurry of Blows gains extra effects. Patient Defense and Step of the Wind improve.' },
+    { level: 11, name: 'Subclass Feature', description: 'Monastic Tradition feature.', isSubclassFeature: true },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 13, name: 'Deflect Energy', description: 'Deflect Attacks now works against all damage types, not just B/P/S.' },
+    { level: 15, name: 'Perfect Focus', description: 'When rolling initiative with 0 ki, regain 4 ki points (instead of using Uncanny Metabolism).' },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Subclass Feature', description: 'Monastic Tradition feature.', isSubclassFeature: true },
+    { level: 18, name: 'Superior Defense', description: 'At start of your turn, spend 3 ki: gain resistance to all damage except Force until start of your next turn.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Body and Mind', description: '+4 Dexterity, +4 Wisdom. These scores\' maximums increase to 25.' },
+  ],
+
+  Paladin: [
+    { level: 1, name: 'Lay on Hands', description: 'Pool of HP = 5 × Paladin level. Touch to heal; or spend 5 HP to cure a disease or poison.' },
+    { level: 1, name: 'Spellcasting', description: 'Half spellcaster (Charisma). Prepare spells from Paladin list. Slots up to 5th level.' },
+    { level: 1, name: 'Weapon Mastery', description: 'Use mastery property of 2 weapons. Swap choices after long rest.' },
+    { level: 2, name: 'Fighting Style', description: 'Choose a Fighting Style: Blessed Warrior, Defense, Dueling, Great Weapon, Protection, or others.' },
+    { level: 2, name: 'Paladin\'s Smite', description: 'When you hit with a melee attack, expend a spell slot to deal +2d8 radiant damage per slot level (extra +1d8 vs undead/fiends).' },
+    { level: 3, name: 'Channel Divinity', description: 'Use 1/rest: Sacred Weapon (+Cha to attacks for 1 min) or subclass feature.' },
+    { level: 3, name: 'Divine Health', description: 'Immune to disease.' },
+    { level: 3, name: 'Subclass Feature', description: 'Sacred Oath grants features at levels 3, 7, 15, and 20.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Extra Attack', description: 'Attack twice instead of once when you take the Attack action.' },
+    { level: 5, name: 'Faithful Steed', description: 'Cast Find Steed without expending a spell slot (once per long rest). Steed always available.' },
+    { level: 6, name: 'Aura of Protection', description: 'Allies within 10 ft (including you) add your Charisma modifier (min +1) to all saving throws while you\'re conscious.' },
+    { level: 7, name: 'Subclass Feature', description: 'Sacred Oath feature.', isSubclassFeature: true },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9, name: 'Abjure Foes', description: 'Channel Divinity: frighten creatures (Wis save). Frightened creatures are incapacitated and speed becomes 0.' },
+    { level: 10, name: 'Aura of Courage', description: 'Allies within 10 ft (including you) can\'t be frightened while you\'re conscious.' },
+    { level: 11, name: 'Radiant Strikes', description: 'Unarmed strikes and weapon attacks deal extra 1d8 radiant damage.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Restoring Touch', description: 'When you use Lay on Hands, also remove Blinded, Charmed, Deafened, Frightened, Paralyzed, or Stunned condition.' },
+    { level: 15, name: 'Subclass Feature', description: 'Sacred Oath feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 18, name: 'Aura Expansion', description: 'Aura of Protection and Aura of Courage now extend to 30 ft.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Subclass Feature', description: 'Sacred Oath capstone feature.', isSubclassFeature: true },
+  ],
+
+  Ranger: [
+    { level: 1, name: 'Expertise', description: 'Double proficiency bonus for one skill. Choose another at level 10.' },
+    { level: 1, name: 'Favored Enemy', description: 'Always have Hunter\'s Mark prepared (doesn\'t count against spells). Cast it once per long rest without a spell slot.' },
+    { level: 1, name: 'Spellcasting', description: 'Half spellcaster (Wisdom). Spells known, slots up to 5th level.' },
+    { level: 1, name: 'Weapon Mastery', description: 'Use mastery property of 2 weapons. Swap choices after long rest.' },
+    { level: 2, name: 'Deft Explorer', description: 'Expertise in one tool or language. Ignore difficult terrain outdoors. Learn one language.' },
+    { level: 2, name: 'Fighting Style', description: 'Choose a Fighting Style: Archery, Defense, Druidic Warrior, Dueling, or Two-Weapon Fighting.' },
+    { level: 3, name: 'Subclass Feature', description: 'Ranger Conclave grants features at levels 3, 7, 11, and 15.', isSubclassFeature: true },
+    { level: 3, name: 'Roving', description: 'Speed increases by 10 ft. Gain Climb and Swim speeds equal to your Speed.' },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Extra Attack', description: 'Attack twice instead of once when you take the Attack action.' },
+    { level: 6, name: 'Subclass Feature', description: 'Ranger Conclave feature.', isSubclassFeature: true },
+    { level: 6, name: 'Tireless', description: 'As a Magic action, give yourself temporary HP = 1d8 + Wis modifier. Also, exhaustion is reduced after a short rest.' },
+    { level: 7, name: 'Nature\'s Veil', description: 'Bonus action: turn invisible until start of next turn. Uses = Wis modifier/long rest.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 10, name: 'Expertise (More Skills)', description: 'Gain expertise in one more skill.' },
+    { level: 11, name: 'Subclass Feature', description: 'Ranger Conclave feature.', isSubclassFeature: true },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 15, name: 'Subclass Feature', description: 'Ranger Conclave feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Precise Hunter', description: 'Advantage on attack rolls against creatures marked by Hunter\'s Mark.' },
+    { level: 18, name: 'Foe Slayer', description: 'Once per turn when you hit with Hunter\'s Mark active, add Wis modifier to damage.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Foe Slayer Improvement', description: 'Foe Slayer now also applies to your first attack each turn.' },
+  ],
+
+  Rogue: [
+    { level: 1, name: 'Expertise', description: 'Double proficiency bonus for 2 chosen skills (gain 2 more at level 6).' },
+    { level: 1, name: 'Sneak Attack', description: 'Deal extra 1d6 damage per 2 Rogue levels when you have advantage OR an ally is adjacent to the target (once per turn).' },
+    { level: 1, name: 'Thieves\' Cant', description: 'Secret language and signs shared by rogues and thieves\' guilds worldwide.' },
+    { level: 1, name: 'Weapon Mastery', description: 'Use mastery property of 2 weapons. Swap choices after long rest.' },
+    { level: 2, name: 'Cunning Action', description: 'Bonus action: Dash, Disengage, or Hide.' },
+    { level: 3, name: 'Steady Aim', description: 'Bonus action: give yourself advantage on next attack roll this turn (can\'t move until end of turn).' },
+    { level: 3, name: 'Subclass Feature', description: 'Roguish Archetype grants features at levels 3, 9, 13, and 17.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Cunning Strike', description: 'Sacrifice some Sneak Attack dice to apply effects: Disarm (1d6), Poison (1d6), Trip (1d6), or Withdraw (1d6).' },
+    { level: 5, name: 'Uncanny Dodge', description: 'Reaction: halve the damage from one attack you can see.' },
+    { level: 6, name: 'Expertise (More Skills)', description: 'Double proficiency bonus for 2 more chosen skills.' },
+    { level: 7, name: 'Evasion', description: 'When you succeed on a Dex save that deals half damage, take no damage. On fail, take half.' },
+    { level: 7, name: 'Reliable Talent', description: 'When making a check you\'re proficient in, treat rolls of 9 or lower as 10.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9, name: 'Subclass Feature', description: 'Roguish Archetype feature.', isSubclassFeature: true },
+    { level: 10, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 11, name: 'Improved Cunning Strike', description: 'Apply two Cunning Strike effects when you use Cunning Strike.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 13, name: 'Subclass Feature', description: 'Roguish Archetype feature.', isSubclassFeature: true },
+    { level: 14, name: 'Devious Strikes', description: 'Gain 3 new Cunning Strike options: Daze, Knock Out, and Obscure.' },
+    { level: 15, name: 'Slippery Mind', description: 'Proficiency in Wisdom and Charisma saving throws.' },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Subclass Feature', description: 'Roguish Archetype feature.', isSubclassFeature: true },
+    { level: 18, name: 'Elusive', description: 'No attack roll has advantage against you while you\'re not incapacitated.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Stroke of Luck', description: 'Turn a missed attack into a hit, or a failed ability check into a 20. Regain use on short or long rest.' },
+  ],
+
+  Sorcerer: [
+    { level: 1, name: 'Innate Sorcery', description: 'Bonus action: unleash innate magic for 1 min. +1 spell save DC, spells you cast have advantage on attack rolls. Uses = 2/long rest.' },
+    { level: 1, name: 'Spellcasting', description: 'Full spellcaster (Charisma). Spells known, all spell slots.' },
+    { level: 2, name: 'Font of Magic (Sorcery Points)', description: 'Pool of Sorcery Points = Sorcerer level. Convert to/from spell slots. 2 pts = 1st level slot, 3 = 2nd, etc.' },
+    { level: 2, name: 'Metamagic', description: 'Know 2 Metamagic options (more at levels 10 and 17): Careful, Distant, Empowered, Extended, Heightened, Quickened, Seeking, Subtle, Transmuted, Twinned.' },
+    { level: 3, name: 'Subclass Feature', description: 'Sorcerous Origin grants features at levels 3, 6, 14, and 18.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Sorcerous Restoration', description: 'When you finish a short rest, regain expended Sorcery Points (up to Sorcerer level / 5, round down).' },
+    { level: 6, name: 'Subclass Feature', description: 'Sorcerous Origin feature.', isSubclassFeature: true },
+    { level: 7, name: 'Sorcery Incarnate', description: 'When Innate Sorcery is active, can apply two Metamagic options to a spell (instead of one). Persistent Metamagic: spend 1 Sorcery Point to maintain a beneficial Metamagic through the turn.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 10, name: 'Metamagic (More Options)', description: 'Learn one additional Metamagic option.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Subclass Feature', description: 'Sorcerous Origin feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Metamagic (More Options)', description: 'Learn one additional Metamagic option.' },
+    { level: 18, name: 'Subclass Feature', description: 'Sorcerous Origin feature.', isSubclassFeature: true },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Arcane Apotheosis', description: 'While Innate Sorcery is active, you can use one Metamagic option on each spell you cast without spending Sorcery Points.' },
+  ],
+
+  Warlock: [
+    { level: 1, name: 'Eldritch Invocations', description: 'Know 2 invocations (gain more as you level). Swap one after long rest.' },
+    { level: 1, name: 'Pact Magic', description: 'Spellcaster (Charisma). Fewer spell slots that recharge on short or long rest. Slot level scales up with Warlock level.' },
+    { level: 1, name: 'Subclass Feature', description: 'Otherworldly Patron grants features at levels 1, 6, 10, and 14.', isSubclassFeature: true },
+    { level: 2, name: 'Magical Cunning', description: 'If you have no Pact Magic slots, spend 1 minute in meditation to regain half your expended slots (rounded up). Once per long rest.' },
+    { level: 3, name: 'Pact Boon', description: 'Choose a pact boon: Pact of the Blade (summon weapon), Pact of the Chain (enhanced familiar), or Pact of the Tome (grimoire with extra cantrips and rituals).' },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5, name: 'Eldritch Invocations (3)', description: 'Know 3 invocations total.' },
+    { level: 6, name: 'Subclass Feature', description: 'Otherworldly Patron feature.', isSubclassFeature: true },
+    { level: 7, name: 'Eldritch Invocations (4)', description: 'Know 4 invocations total.' },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9, name: 'Contact Patron', description: 'Cast Commune without a spell slot (once per long rest). Your patron answers.' },
+    { level: 10, name: 'Subclass Feature', description: 'Otherworldly Patron feature.', isSubclassFeature: true },
+    { level: 11, name: 'Mystic Arcanum (6th)', description: 'Choose a 6th-level spell from Warlock list. Cast it once per long rest without using a slot.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 13, name: 'Mystic Arcanum (7th)', description: 'Choose a 7th-level spell from Warlock list. Cast it once per long rest without using a slot.' },
+    { level: 14, name: 'Subclass Feature', description: 'Otherworldly Patron feature.', isSubclassFeature: true },
+    { level: 15, name: 'Mystic Arcanum (8th)', description: 'Choose an 8th-level spell from Warlock list. Cast it once per long rest without using a slot.' },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Mystic Arcanum (9th)', description: 'Choose a 9th-level spell from Warlock list. Cast it once per long rest without using a slot.' },
+    { level: 18, name: 'Eldritch Master', description: 'Spend 1 minute entreating your patron to regain all Pact Magic spell slots. Once per long rest.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Eldritch Master Improvement', description: 'You can use Eldritch Master as a bonus action.' },
+  ],
+
+  Wizard: [
+    { level: 1, name: 'Arcane Recovery', description: 'Once per long rest, after a short rest: recover spell slots with combined levels ≤ half your Wizard level (rounded up). Max recovered slot level: 5th.' },
+    { level: 1, name: 'Spellcasting', description: 'Full spellcaster (Intelligence). Spellbook contains known spells. Prepare spells each long rest. All spell slots.' },
+    { level: 2, name: 'Scholar', description: 'Choose Arcane (Arcana + History expertise), Biologist (Animals + Nature expertise), or Occultist (Investigation + Religion expertise).' },
+    { level: 2, name: 'Subclass Feature', description: 'Arcane Tradition grants features at levels 2, 6, 10, and 14.', isSubclassFeature: true },
+    { level: 4, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 4, name: 'Memorize Spell', description: 'When you finish a short rest, replace one prepared spell with another from spellbook.' },
+    { level: 5, name: 'Cantrip Formulas', description: 'After a short rest, replace one Wizard cantrip with another from spellbook.' },
+    { level: 6, name: 'Subclass Feature', description: 'Arcane Tradition feature.', isSubclassFeature: true },
+    { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 10, name: 'Subclass Feature', description: 'Arcane Tradition feature.', isSubclassFeature: true },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Subclass Feature', description: 'Arcane Tradition feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 18, name: 'Spell Mastery', description: 'Choose one 1st-level and one 2nd-level spell. Cast each at their lowest level without expending a slot. Change after long rest.' },
+    { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
+    { level: 20, name: 'Signature Spells', description: 'Choose two 3rd-level spells. They\'re always prepared and can each be cast once per short rest without a slot.' },
+  ],
+};
+
+/** Returns all class features for a given class up to and including the given level */
+export function getFeaturesForLevel(className: string, level: number): ClassFeature[] {
+  const features = CLASS_FEATURES[className] ?? [];
+  return features.filter(f => f.level <= level);
+}
+
+/** Returns features gained at exactly this level (for level-up display) */
+export function getNewFeaturesAtLevel(className: string, level: number): ClassFeature[] {
+  const features = CLASS_FEATURES[className] ?? [];
+  return features.filter(f => f.level === level);
+}
+
+/** Sneak attack damage string for Rogue */
+export function getSneakAttackDice(level: number): string {
+  return `${Math.ceil(level / 2)}d6`;
+}
+
+/** Martial arts die for Monk */
+export function getMartialArtsDie(level: number): string {
+  if (level >= 17) return 'd12';
+  if (level >= 11) return 'd10';
+  if (level >= 5) return 'd8';
+  return 'd6';
+}
+
+/** Bardic inspiration die */
+export function getBardicInspirationDie(level: number): string {
+  if (level >= 15) return 'd12';
+  if (level >= 10) return 'd10';
+  if (level >= 5) return 'd8';
+  return 'd6';
+}

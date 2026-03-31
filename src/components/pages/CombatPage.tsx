@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import MonsterBrowser from '../shared/MonsterBrowser';
 import { logAction } from '../shared/ActionLog';
 import { useAuth } from '../../context/AuthContext';
+import EncounterBuilder from '../Campaign/EncounterBuilder';
 
 export default function CombatPage() {
   const { user, profile } = useAuth();
@@ -16,6 +17,7 @@ export default function CombatPage() {
   const [active, setActive] = useState(false);
   const [monsterSearch, setMonsterSearch] = useState('');
   const [showMonsterPanel, setShowMonsterPanel] = useState(false);
+  const [showEncounterBuilder, setShowEncounterBuilder] = useState(false);
   const [hpEdits, setHpEdits] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -164,6 +166,9 @@ export default function CombatPage() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <button className="btn-gold btn-sm" onClick={() => setShowEncounterBuilder(true)}>
+            ⚔ Encounter Builder
+          </button>
           <button className="btn-secondary btn-sm" onClick={() => setShowMonsterPanel(v => !v)}>
             {showMonsterPanel ? 'Hide Monsters' : 'Monster Library'}
           </button>
@@ -435,6 +440,16 @@ export default function CombatPage() {
           </div>
         )}
       </div>
+
+      {/* Encounter Builder modal */}
+      {showEncounterBuilder && (
+        <EncounterBuilder
+          partySize={Math.max(1, combatants.filter(c => !c.is_monster).length) || 4}
+          partyLevel={5}
+          onAddToCombat={newCombatants => setCombatants(prev => [...prev, ...newCombatants])}
+          onClose={() => setShowEncounterBuilder(false)}
+        />
+      )}
     </div>
   );
 }

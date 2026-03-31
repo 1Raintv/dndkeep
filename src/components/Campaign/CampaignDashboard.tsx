@@ -11,6 +11,12 @@ import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
 import PartyView from './PartyView';
 import ActionLog from '../shared/ActionLog';
+import PartyChat from './PartyChat';
+import DMScreen from './DMScreen';
+import SessionScheduler from './SessionScheduler';
+import NPCManager from './NPCManager';
+import AISummary from './AISummary';
+import DiscordSettings from './DiscordSettings';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -25,7 +31,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'notes'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'notes' | 'schedule' | 'npcs' | 'recap' | 'dm' | 'discord'>('members');
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -168,11 +174,19 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
       {/* Tabs */}
       <div className="tabs">
-        {(['members', 'characters', 'session', 'party', 'log', 'notes'] as const).map(tab => (
-          <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
+        {(['members', 'characters', 'session', 'party', 'log', 'chat', 'schedule', 'npcs', 'recap', 'notes', ...(isOwner ? ['dm', 'discord'] : [])] as const).map(tab => {
+          const labels: Record<string, string> = {
+            members: 'Members', characters: 'Characters', session: '⚔️ Combat',
+            party: '👥 Party', log: '📜 Log', chat: '💬 Chat', notes: 'Notes',
+            schedule: '📅 Schedule', npcs: '🧙 NPCs', recap: '✨ Recap',
+            dm: '🎲 DM Screen', discord: '🎮 Discord',
+          };
+          return (
+            <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab as typeof activeTab)}>
+              {labels[tab] ?? tab}
+            </button>
+          );
+        })}
       </div>
 
       <div key={activeTab} className="animate-fade-in">
@@ -361,13 +375,74 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           <PartyView campaignId={campaign.id} currentUserId={user?.id ?? ''} />
         )}
 
-        {/* Log tab — live action feed for the whole party */}
+        {/* Log tab */}
         {activeTab === 'log' && (
           <div style={{ maxWidth: 720 }}>
             <p style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)' }}>
               Live feed of every attack, spell, and roll by all party members — updates in real-time.
             </p>
             <ActionLog campaignId={campaign.id} mode="campaign" maxHeight={560} />
+          </div>
+        )}
+
+        {/* Party chat */}
+        {activeTab === 'chat' && (
+          <div style={{ maxWidth: 600, height: 520, display: 'flex', flexDirection: 'column', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
+            <PartyChat
+              campaignId={campaign.id}
+              characterName={characters.find(c => c.user_id === user?.id)?.name ?? (isOwner ? 'DM' : 'Unknown')}
+              avatarUrl={characters.find(c => c.user_id === user?.id)?.avatar_url}
+            />
+          </div>
+        )}
+
+        {/* DM Screen — owner only */}
+        {activeTab === 'dm' && isOwner && (
+          <DMScreen
+            campaign={campaign}
+            sessionState={sessionState ?? null}
+            onUpdateSession={updateSessionState}
+          />
+        )}
+
+        {/* Session Scheduler */}
+        {activeTab === 'schedule' && (
+          <div>
+            <h3 style={{ marginBottom: 'var(--space-2)' }}>Session Scheduler</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
+              Find a time that works for everyone. Results sync with Discord if connected.
+            </p>
+            <SessionScheduler campaignId={campaign.id} isOwner={isOwner} />
+          </div>
+        )}
+
+        {/* NPC Manager */}
+        {activeTab === 'npcs' && (
+          <div>
+            <h3 style={{ marginBottom: 'var(--space-2)' }}>NPCs</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
+              Track allies, enemies, merchants, and notable characters your party encounters.
+            </p>
+            <NPCManager campaignId={campaign.id} isOwner={isOwner} />
+          </div>
+        )}
+
+        {/* AI Session Recap */}
+        {activeTab === 'recap' && (
+          <div>
+            <h3 style={{ marginBottom: 'var(--space-2)' }}>Session Recaps</h3>
+            <AISummary campaignId={campaign.id} campaignName={campaign.name} isOwner={isOwner} />
+          </div>
+        )}
+
+        {/* Discord Integration */}
+        {activeTab === 'discord' && isOwner && (
+          <div>
+            <h3 style={{ marginBottom: 'var(--space-2)' }}>Discord Integration</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
+              Link your Discord server for scheduling commands and session alerts.
+            </p>
+            <DiscordSettings campaignId={campaign.id} />
           </div>
         )}
       </div>

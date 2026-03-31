@@ -12,6 +12,7 @@ const SharePage      = lazy(() => import('./components/pages/SharePage'));
 const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
 const SpellsPage     = lazy(() => import('./components/pages/SpellsPage'));
 const CombatPage     = lazy(() => import('./components/pages/CombatPage'));
+const HomebrewPage   = lazy(() => import('./components/pages/HomebrewPage'));
 const DicePage       = lazy(() => import('./components/pages/DicePage'));
 const SettingsPage   = lazy(() => import('./components/pages/SettingsPage'));
 const AuthPage       = lazy(() => import('./components/pages/AuthPage'));
@@ -22,6 +23,7 @@ const NAV_LINKS = [
   { to: '/lobby',     label: 'Characters' },
   { to: '/campaigns', label: 'Campaigns' },
   { to: '/spells',    label: 'Spells' },
+  { to: '/homebrew',  label: '⚗️ Homebrew' },
   { to: '/combat',    label: 'Combat' },
   { to: '/dice',      label: 'Dice' },
 ];
@@ -43,38 +45,24 @@ function Nav() {
         <span className="app-logo">DNDKeep</span>
       </NavLink>
 
-      <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
         {NAV_LINKS.map(({ to, label }) => (
           <NavLink
             key={to}
             to={to}
-            style={({ isActive }) => ({
-              fontFamily: 'var(--font-heading)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-md)',
-              color: isActive ? 'var(--text-gold)' : 'var(--text-muted)',
-              background: isActive ? 'rgba(201,146,42,0.1)' : 'transparent',
-              textDecoration: 'none',
-              transition: 'color 120ms, background 120ms',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-1)',
-            })}
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
           >
             {label}
             {to === '/campaigns' && !isPro && (
               <span style={{
-                fontSize: '9px',
-                fontFamily: 'var(--font-heading)',
-                background: 'var(--color-gold-dim)',
-                color: 'var(--color-bone)',
-                padding: '1px 4px',
-                borderRadius: 3,
+                fontSize: 9,
+                background: 'rgba(212,160,23,0.2)',
+                color: 'var(--color-gold-bright)',
+                padding: '1px 5px',
+                borderRadius: 999,
+                border: '1px solid rgba(212,160,23,0.3)',
                 letterSpacing: '0.06em',
+                fontWeight: 700,
               }}>
                 PRO
               </span>
@@ -84,19 +72,7 @@ function Nav() {
 
         <NavLink
           to="/settings"
-          style={({ isActive }) => ({
-            fontFamily: 'var(--font-heading)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            padding: 'var(--space-2) var(--space-3)',
-            borderRadius: 'var(--radius-md)',
-            color: isActive ? 'var(--text-gold)' : 'var(--text-muted)',
-            background: isActive ? 'rgba(201,146,42,0.1)' : 'transparent',
-            textDecoration: 'none',
-            transition: 'color 120ms, background 120ms',
-          })}
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
           {profile?.display_name ?? (user ? 'Account' : 'Sign In')}
         </NavLink>
@@ -161,6 +137,7 @@ function AppRoutes() {
             <Route path="/character/:id"   element={<ProtectedRoute><CharacterPage /></ProtectedRoute>} />
             <Route path="/campaigns"       element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
             <Route path="/campaigns/:id"   element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
+            <Route path="/homebrew"        element={<ProtectedRoute><HomebrewPage /></ProtectedRoute>} />
             <Route path="/spells"          element={<ProtectedRoute><SpellsPage /></ProtectedRoute>} />
             <Route path="/combat"          element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
             <Route path="/dice"            element={<ProtectedRoute><DicePage /></ProtectedRoute>} />
@@ -189,7 +166,7 @@ function AppRoutes() {
         userSelect: 'none',
         pointerEvents: 'none',
       }}>
-        v{APP_VERSION}
+        v{APP_VERSION} · <span style={{ opacity: 0.6 }}>T=rest I=inspiration</span>
       </div>
     </div>
   );

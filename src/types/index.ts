@@ -128,6 +128,16 @@ export interface Character {
   avatar_url: string | null;
   inspiration: boolean;
   equipped_armor: string;
+  class_resources: Record<string, number>;
+  secondary_class: string;
+  secondary_level: number;
+  secondary_subclass: string;
+  features_text: string;
+  wildshape_active: boolean;
+  wildshape_beast_name: string;
+  wildshape_current_hp: number;
+  wildshape_max_hp: number;
+  concentration_spell: string;
 
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;
@@ -333,6 +343,7 @@ export interface Combatant {
   monster_id?: string;
   character_id?: string;
   conditions: ConditionName[];
+  notes?: string;
 }
 
 export interface SessionState {

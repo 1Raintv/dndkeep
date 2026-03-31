@@ -61,6 +61,18 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
     const next = (sessionState.current_turn + 1) % Math.max(combatants.length, 1);
     const newRound = next === 0 ? sessionState.round + 1 : sessionState.round;
     onUpdateSession({ current_turn: next, round: newRound });
+
+    // Fire push notification for the next combatant
+    const nextCombatant = combatants[next];
+    if (nextCombatant && !nextCombatant.is_monster && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(`Your Turn! — ${nextCombatant.name}`, {
+          body: `Round ${newRound} · ${nextCombatant.current_hp}/${nextCombatant.max_hp} HP`,
+          icon: '/icon-192.png',
+          tag: 'dndkeep-turn',
+        });
+      }).catch(() => {});
+    }
   }
 
   function applyHP(id: string, mode: 'damage' | 'heal') {

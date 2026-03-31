@@ -5,6 +5,7 @@ import { updateCharacter } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { SPELL_MAP, SPELLS } from '../../data/spells';
 import { CLASS_MAP } from '../../data/classes';
+import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -24,20 +25,21 @@ import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
 import ActionLog from '../shared/ActionLog';
+import WildshapeTracker from './WildshapeTracker';
+import ClassResourcesPanel from './ClassResourcesPanel';
+import MagicItemBrowser from '../shared/MagicItemBrowser';
+import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
+import ConditionMechanics from './ConditionMechanics';
 
-type Tab = 'stats' | 'skills' | 'spells' | 'features' | 'inventory' | 'weapons' | 'notes' | 'rolls' | 'log' | 'session';
+type Tab = 'abilities' | 'spells' | 'combat' | 'bio' | 'history' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'stats',     label: 'Stats' },
-  { id: 'skills',    label: 'Skills' },
-  { id: 'spells',    label: 'Spells' },
-  { id: 'weapons',   label: '⚔ Weapons' },
-  { id: 'features',  label: 'Features' },
-  { id: 'inventory', label: 'Inventory' },
-  { id: 'notes',     label: 'Notes' },
-  { id: 'rolls',     label: '🎲 Rolls' },
-  { id: 'log',       label: '📜 Log' },
-  { id: 'session',   label: 'Session' },
+  { id: 'abilities', label: '⚔ Abilities' },
+  { id: 'spells',    label: '✨ Spells' },
+  { id: 'combat',    label: '🗡 Combat' },
+  { id: 'bio',       label: '📖 Bio' },
+  { id: 'history',   label: '🎲 History' },
+  { id: 'session',   label: '⚡ Session' },
 ];
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -61,6 +63,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [showRest, setShowRest] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [concentrationSpellId, setConcentrationSpellId] = useState<string | null>(null);
+
+  // Keyboard shortcuts: R = rest, I = inspiration
+  useKeyboardShortcuts({
+    onRest: () => setShowRest(v => !v),
+    onInspiration: () => applyUpdate({ inspiration: !character.inspiration }, true),
+  });
 
   const computed = useMemo(() => computeStats(character), [character]);
 
@@ -143,7 +151,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     const newSlots = character.class_name === 'Warlock'
       ? Object.fromEntries(Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }]))
       : character.spell_slots;
-    applyUpdate({ spell_slots: newSlots }, true);
+
+    // Recover short-rest class resources
+    const abilityScores = { strength: character.strength, dexterity: character.dexterity, constitution: character.constitution, intelligence: character.intelligence, wisdom: character.wisdom, charisma: character.charisma };
+    const allResources = getCharacterResources(character.class_name, character.level, abilityScores);
+    const shortRestIds = allResources.filter(r => r.recovery === 'short').map(r => r.id);
+    const newResources = { ...(character.class_resources ?? {}) };
+    for (const id of shortRestIds) {
+      const def = allResources.find(r => r.id === id);
+      if (def) newResources[id] = def.getMax(character.level, abilityScores);
+    }
+
+    applyUpdate({ spell_slots: newSlots, class_resources: newResources }, true);
     setShortRestHpGained(0);
     setShowRest(false);
   }
@@ -152,9 +171,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     const recoveredSlots = Object.fromEntries(
       Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }])
     ) as typeof character.spell_slots;
-    // PHB: on a long rest you recover hit dice equal to half your level (min 1)
     const recoveredHD = Math.max(1, Math.floor(character.level / 2));
     const newSpent = Math.max(0, (character.hit_dice_spent ?? 0) - recoveredHD);
+
+    // Recover ALL class resources on long rest
+    const abilityScores = { strength: character.strength, dexterity: character.dexterity, constitution: character.constitution, intelligence: character.intelligence, wisdom: character.wisdom, charisma: character.charisma };
+    const newResources = buildDefaultResources(character.class_name, character.level, abilityScores);
 
     applyUpdate({
       current_hp: character.max_hp,
@@ -164,6 +186,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       death_saves_successes: 0,
       death_saves_failures: 0,
       hit_dice_spent: newSpent,
+      class_resources: newResources,
     }, true);
     setConcentrationSpellId(null);
     setShortRestHpGained(0);
@@ -227,6 +250,82 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           onClose={() => setShowSettings(false)}
         />
       )}
+
+      {/* Concentration banner */}
+      {concentrationSpellId && (() => {
+        const spell = SPELL_MAP[concentrationSpellId];
+        return spell ? (
+          <div className="animate-fade-in" style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'rgba(167,139,250,0.08)',
+            border: '1px solid rgba(167,139,250,0.4)',
+            borderRadius: 'var(--radius-md)',
+            gap: 'var(--space-3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <span style={{ fontSize: 18 }}>🔮</span>
+              <div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: '#a78bfa' }}>
+                  Concentrating: {spell.name}
+                </div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                  {spell.duration} · Taking damage requires a CON save (DC 10 or half damage taken)
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setConcentrationSpellId(null)}
+              className="btn-secondary btn-sm"
+              style={{ flexShrink: 0, borderColor: 'rgba(167,139,250,0.4)', color: '#a78bfa' }}
+            >
+              Drop
+            </button>
+          </div>
+        ) : null;
+      })()}
+
+      {/* Wildshape banner (Druids only) */}
+      {character.class_name === 'Druid' && character.wildshape_active && (() => {
+        const hpPct = character.wildshape_max_hp > 0 ? (character.wildshape_current_hp ?? 0) / character.wildshape_max_hp : 0;
+        const hpColor = hpPct > 0.5 ? 'var(--hp-full)' : hpPct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
+        return (
+          <div className="animate-fade-in" style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'rgba(22,163,74,0.08)',
+            border: '1px solid rgba(22,163,74,0.4)',
+            borderRadius: 'var(--radius-md)',
+            gap: 'var(--space-3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 18 }}>🐾</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--hp-full)', marginBottom: 4 }}>
+                  Wildshape: {character.wildshape_beast_name}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: hpColor }}>
+                    {character.wildshape_current_hp ?? 0}/{character.wildshape_max_hp} HP
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div className="hp-bar-container" style={{ height: 4 }}>
+                      <div className="hp-bar-fill" style={{ width: `${Math.max(0, hpPct * 100)}%`, background: hpColor }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => applyUpdate({ wildshape_active: false, wildshape_beast_name: '', wildshape_current_hp: 0, wildshape_max_hp: 0 }, true)}
+              className="btn-secondary btn-sm"
+              style={{ flexShrink: 0, borderColor: 'rgba(22,163,74,0.4)', color: 'var(--hp-full)' }}
+            >
+              Drop Form
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Rest modal */}
       {showRest && (
@@ -414,81 +513,50 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       {/* Tab content */}
       <div key={activeTab} className="animate-fade-in">
 
-        {activeTab === 'stats' && (
+        {/* ── ABILITIES: Stats + Skills merged ── */}
+        {activeTab === 'abilities' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--space-6)' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
               <AbilityScores character={character} computed={computed} />
-              <CombatStats
-                character={character}
-                computed={computed}
-                onUpdateHP={handleUpdateHP}
-              />
               <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
+              <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+              <CombatStats character={character} computed={computed} onUpdateHP={handleUpdateHP} />
               <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
-              {hasSpellSlots && (
-                <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />
-              )}
+              <ConditionMechanics conditions={character.active_conditions} />
+              {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
             </div>
           </div>
         )}
 
-        {activeTab === 'skills' && (
-          <div style={{ maxWidth: 480 }}>
-            <SkillsList
-              character={character}
-              computed={computed}
-              onUpdate={u => applyUpdate(u, true)}
-            />
-          </div>
-        )}
-
+        {/* ── SPELLS ── */}
         {activeTab === 'spells' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 720 }}>
-            {hasSpellSlots && (
-              <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />
-            )}
-
+            {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
             {!hasSpellSlots ? (
-              <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-                <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
-                  {character.class_name} does not use spells.
+              <div style={{ textAlign: 'center', padding: 'var(--space-12)', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: 48, marginBottom: 'var(--space-4)' }}>⚔️</div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>
+                  {character.class_name}s don't cast spells
+                </div>
+                <p style={{ fontSize: 'var(--text-sm)', maxWidth: 340, margin: '0 auto' }}>
+                  Your power comes from martial skill, not arcane study. Head to the <strong>Combat</strong> tab to manage weapons and inventory.
                 </p>
               </div>
             ) : (
               <>
-                {/* Prepared-caster note */}
                 {['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer'].includes(character.class_name) && (
-                  <div style={{
-                    padding: 'var(--space-3) var(--space-4)',
-                    background: 'rgba(201,146,42,0.06)',
-                    border: '1px solid var(--border-gold)',
-                    borderRadius: 'var(--radius-md)',
-                    fontFamily: 'var(--font-heading)',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--text-muted)',
-                    display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-                  }}>
+                  <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'rgba(201,146,42,0.06)', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <span style={{ color: 'var(--color-gold-bright)' }}>📖</span>
-                    <span>
-                      <strong style={{ color: 'var(--text-gold)' }}>{character.class_name}s prepare spells daily.</strong>
-                      {' '}You can prepare {character.level + Math.floor((character.intelligence - 10) / 2)} spells.
-                      Toggle the <strong style={{ color: 'var(--color-gold-bright)' }}>Prepared</strong> button on each spell to mark it ready for today.
-                    </span>
+                    <span><strong style={{ color: 'var(--text-gold)' }}>{character.class_name}s prepare spells daily.</strong>{' '}You can prepare {character.level + Math.floor((character.intelligence - 10) / 2)} spells.</span>
                   </div>
                 )}
-
-                {/* Known / prepared spells */}
                 {knownSpellData.length > 0 && (
                   <div>
                     <div className="section-header">
                       Spellbook — {knownSpellData.length} spell{knownSpellData.length !== 1 ? 's' : ''}
-                      {character.prepared_spells.length > 0 && (
-                        <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-gold-bright)', fontWeight: 700 }}>
-                          ({character.prepared_spells.length} prepared)
-                        </span>
-                      )}
+                      {character.prepared_spells.length > 0 && <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-gold-bright)', fontWeight: 700 }}>({character.prepared_spells.length} prepared)</span>}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                       {knownSpellData.map(spell => (
@@ -497,94 +565,38 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                           spell={spell}
                           isPrepared={character.prepared_spells.includes(spell.id)}
                           isConcentrating={concentrationSpellId === spell.id}
-                          castButton={
-                            <SpellCastButton
-                              spell={spell}
-                              character={character}
-                              userId={userId}
-                              campaignId={character.campaign_id}
-                              onUpdateSlots={handleUpdateSlots}
-                            />
-                          }
+                          castButton={<SpellCastButton spell={spell} character={character} userId={userId} campaignId={character.campaign_id} onUpdateSlots={handleUpdateSlots} />}
                           onTogglePrepared={() => {
                             const isPrepared = character.prepared_spells.includes(spell.id);
-                            applyUpdate({
-                              prepared_spells: isPrepared
-                                ? character.prepared_spells.filter(id => id !== spell.id)
-                                : [...character.prepared_spells, spell.id],
-                            }, true);
+                            applyUpdate({ prepared_spells: isPrepared ? character.prepared_spells.filter(id => id !== spell.id) : [...character.prepared_spells, spell.id] }, true);
                           }}
-                          onConcentrate={() => setConcentrationSpellId(
-                            concentrationSpellId === spell.id ? null : spell.id
-                          )}
+                          onConcentrate={() => setConcentrationSpellId(concentrationSpellId === spell.id ? null : spell.id)}
                           onRemove={() => {
                             if (concentrationSpellId === spell.id) setConcentrationSpellId(null);
-                            applyUpdate({
-                              known_spells:    character.known_spells.filter(id => id !== spell.id),
-                              prepared_spells: character.prepared_spells.filter(id => id !== spell.id),
-                            }, true);
+                            applyUpdate({ known_spells: character.known_spells.filter(id => id !== spell.id), prepared_spells: character.prepared_spells.filter(id => id !== spell.id) }, true);
                           }}
                         />
                       ))}
                     </div>
                   </div>
                 )}
-
-                {/* Add spells — filtered to this class + level */}
                 {availableSpells.length > 0 && (
                   <div>
-                    <div className="section-header">
-                      Add Spells
-                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 400, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)', textTransform: 'none', letterSpacing: 0 }}>
-                        — {character.class_name} spells up to {maxSpellLevel === 0 ? 'cantrips' : `level ${maxSpellLevel}`}
-                      </span>
-                    </div>
+                    <div className="section-header">Add Spells <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 400, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)', textTransform: 'none', letterSpacing: 0 }}>— {character.class_name} spells up to {maxSpellLevel === 0 ? 'cantrips' : `level ${maxSpellLevel}`}</span></div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                       {availableSpells.map(spell => (
-                        <div
-                          key={spell.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 'var(--space-3)',
-                            padding: 'var(--space-2) var(--space-3)',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--border-subtle)',
-                            background: 'var(--bg-sunken)',
-                          }}
-                        >
+                        <div key={spell.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-sunken)' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
-                                {spell.name}
-                              </span>
-                              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                                {spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`} · {spell.school}
-                              </span>
+                              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{spell.name}</span>
+                              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`} · {spell.school}</span>
                             </div>
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {spell.casting_time} · {spell.range} · {spell.duration}
-                            </div>
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{spell.casting_time} · {spell.range} · {spell.duration}</div>
                           </div>
-                          <button
-                            className="btn-gold btn-sm"
-                            onClick={() => applyUpdate({
-                              known_spells: [...character.known_spells, spell.id],
-                            }, true)}
-                          >
-                            Add
-                          </button>
+                          <button className="btn-gold btn-sm" onClick={() => applyUpdate({ known_spells: [...character.known_spells, spell.id] }, true)}>Add</button>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {knownSpellData.length === 0 && availableSpells.length === 0 && (
-                  <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-                    <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
-                      No spells available at this level.
-                    </p>
                   </div>
                 )}
               </>
@@ -592,58 +604,90 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           </div>
         )}
 
-        {activeTab === 'features' && (
-          <div style={{ maxWidth: 680 }}>
-            <FeaturesPanel character={character} />
+        {/* ── COMBAT: Weapons + Inventory + Magic Items ── */}
+        {activeTab === 'combat' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)', maxWidth: 720 }}>
+            <div>
+              <div className="section-header">Weapons & Attacks</div>
+              {(!character.weapons || character.weapons.length === 0) && (
+                <div style={{ padding: 'var(--space-4)', background: 'var(--bg-sunken)', border: '1px dashed var(--border-dim)', borderRadius: 'var(--radius-lg)', textAlign: 'center', marginBottom: 'var(--space-3)' }}>
+                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
+                    ⚔️ No weapons added yet. Add your weapons to roll attacks directly from your sheet.
+                  </p>
+                </div>
+              )}
+              <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} />
+            </div>
+            <div>
+              <div className="section-header">Inventory</div>
+              <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} />
+            </div>
+            <div>
+              <div className="section-header">
+                Magic Items
+                <span style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)', textTransform: 'none', letterSpacing: 0 }}>
+                  — Browse SRD items and add to inventory
+                </span>
+              </div>
+              <MagicItemBrowser
+                compact
+                onAddToInventory={item => handleUpdateInventory([...(character.inventory ?? []), item])}
+              />
+            </div>
           </div>
         )}
 
-        {activeTab === 'inventory' && (
-          <div style={{ maxWidth: 640 }}>
-            <Inventory
-              character={character}
-              onUpdateInventory={handleUpdateInventory}
-              onUpdateCurrency={currency => applyUpdate({ currency })}
-            />
+        {/* ── BIO: Features + Notes merged ── */}
+        {activeTab === 'bio' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--space-6)', maxWidth: 900 }}>
+            <div>
+              <div className="section-header">Features & Traits</div>
+              <FeaturesPanel character={character} onUpdateNotes={notes => applyUpdate({ features_text: notes }, true)} />
+            </div>
+            <div>
+              <div className="section-header">Notes & Personality</div>
+              <Notes character={character} onUpdate={handleUpdateNote} />
+            </div>
           </div>
         )}
 
-        {activeTab === 'weapons' && (
-          <div style={{ maxWidth: 680 }}>
-            <WeaponsTracker
-              weapons={character.weapons ?? []}
-              onUpdate={weapons => applyUpdate({ weapons })}
-              characterId={userId}
-              characterName={character.name}
-              campaignId={character.campaign_id}
-            />
+        {/* ── HISTORY: Roll log + Action log merged ── */}
+        {activeTab === 'history' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--space-6)', maxWidth: 1100 }}>
+            <div>
+              <div className="section-header">Roll History</div>
+              <RollHistory characterId={character.id} userId={userId} compact />
+            </div>
+            <div>
+              <div className="section-header">Action Log</div>
+              <ActionLog campaignId={character.campaign_id} characterId={character.id} mode={character.campaign_id ? 'campaign' : 'character'} maxHeight={560} />
+            </div>
           </div>
         )}
 
-        {activeTab === 'notes' && (
-          <div style={{ maxWidth: 640 }}>
-            <Notes character={character} onUpdate={handleUpdateNote} />
-          </div>
-        )}
-
-        {activeTab === 'rolls' && (
-          <div style={{ maxWidth: 640 }}>
-            <RollHistory characterId={character.id} userId={userId} />
-          </div>
-        )}
-
-        {activeTab === 'log' && (
-          <div style={{ maxWidth: 720 }}>
-            <ActionLog
-              campaignId={character.campaign_id}
-              characterId={character.id}
-              mode={character.campaign_id ? 'campaign' : 'character'}
-            />
-          </div>
-        )}
-
+        {/* ── SESSION ── */}
         {activeTab === 'session' && (
-          <SessionTab character={character} isPro={isPro} userId={userId} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+            {/* Class resources — the feature DnD Beyond can't do */}
+            <div>
+              <div className="section-header">Class Resources — {character.class_name}</div>
+              <ClassResourcesPanel
+                character={character}
+                onUpdate={resources => applyUpdate({ class_resources: resources }, true)}
+              />
+            </div>
+
+            {character.class_name === 'Druid' && (
+              <div>
+                <div className="section-header">Wildshape</div>
+                <WildshapeTracker
+                  character={character}
+                  onUpdate={u => applyUpdate(u, true)}
+                />
+              </div>
+            )}
+            <SessionTab character={character} isPro={isPro} userId={userId} />
+          </div>
         )}
       </div>
 

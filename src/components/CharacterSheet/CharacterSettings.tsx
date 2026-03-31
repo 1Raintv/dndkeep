@@ -6,7 +6,7 @@ import { deleteCharacter } from '../../lib/supabase';
 import { ARMOR_LIST, calcArmorAC } from '../../data/armor';
 import { useNavigate } from 'react-router-dom';
 
-type SettingsTab = 'stats' | 'levelup' | 'danger';
+type SettingsTab = 'stats' | 'levelup' | 'export' | 'danger';
 
 interface CharacterSettingsProps {
   character: Character;
@@ -151,6 +151,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'stats',   label: 'Edit Stats' },
     { id: 'levelup', label: 'Level Up' },
+    { id: 'export',  label: '📄 Export' },
     { id: 'danger',  label: 'Danger Zone' },
   ];
 
@@ -267,6 +268,47 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   onCommit={v => onUpdate({ initiative_bonus: v })}
                 />
               </div>
+
+              {/* Multiclassing */}
+              <div>
+                <div className="section-header">Multiclass (Optional)</div>
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.5 }}>
+                  Add a second class. Spell slots will use multiclass rules — manage manually or via the Session tab.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                  <div>
+                    <label>Secondary Class</label>
+                    <select
+                      value={character.secondary_class ?? ''}
+                      onChange={e => onUpdate({ secondary_class: e.target.value, secondary_level: e.target.value ? (character.secondary_level || 1) : 0 })}
+                      style={{ fontSize: 'var(--text-sm)' }}
+                    >
+                      <option value="">— None —</option>
+                      {['Barbarian','Bard','Cleric','Druid','Fighter','Monk','Paladin','Ranger','Rogue','Sorcerer','Warlock','Wizard'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Secondary Level</label>
+                    <select
+                      value={character.secondary_level ?? 0}
+                      onChange={e => onUpdate({ secondary_level: parseInt(e.target.value) })}
+                      disabled={!character.secondary_class}
+                      style={{ fontSize: 'var(--text-sm)' }}
+                    >
+                      {Array.from({ length: 19 }, (_, i) => i + 1)
+                        .filter(l => l + character.level <= 20)
+                        .map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {character.secondary_class && (character.secondary_level ?? 0) > 0 && (
+                  <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'rgba(91,63,168,0.08)', border: '1px solid rgba(91,63,168,0.25)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--color-arcane-bright)' }}>
+                    {character.class_name} {character.level} / {character.secondary_class} {character.secondary_level} — Total level {character.level + (character.secondary_level ?? 0)}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -297,6 +339,72 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Danger Zone */}
+          {/* Export / Print */}
+          {tab === 'export' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-md)', background: 'rgba(201,146,42,0.06)' }}>
+                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-gold)', marginBottom: 'var(--space-2)' }}>
+                  Print / Save as PDF
+                </p>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                  Print your character sheet or save it as a PDF using your browser's print dialog. Use "Save as PDF" in the print destination for a digital copy.
+                </p>
+                <button
+                  className="btn-gold"
+                  onClick={() => {
+                    onClose();
+                    setTimeout(() => window.print(), 300);
+                  }}
+                >
+                  🖨️ Print Character Sheet
+                </button>
+              </div>
+
+              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', background: 'var(--bg-sunken)' }}>
+                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>
+                  Share Link
+                </p>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                  Generate a public read-only link anyone can view without an account.
+                </p>
+                {character.share_enabled && character.share_token ? (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <input
+                      readOnly
+                      value={`${window.location.origin}/share/${character.share_token}`}
+                      style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                      onFocus={e => e.target.select()}
+                    />
+                    <button
+                      className="btn-secondary btn-sm"
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${character.share_token}`)}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      className="btn-ghost btn-sm"
+                      onClick={() => onUpdate({ share_enabled: false, share_token: null })}
+                      style={{ color: 'var(--color-crimson-bright)', fontSize: 'var(--text-xs)' }}
+                    >
+                      Disable
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+                      onUpdate({ share_enabled: true, share_token: token });
+                    }}
+                  >
+                    Generate Share Link
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

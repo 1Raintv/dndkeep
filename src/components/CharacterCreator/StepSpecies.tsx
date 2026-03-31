@@ -72,7 +72,7 @@ export default function StepSpecies({ selected, originFeat, onSelect, onOriginFe
             style={{ marginBottom: 'var(--space-3)', fontSize: 'var(--text-sm)' }}
           />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--space-2)', alignItems: 'start' }}>
             {filteredFeats.map(feat => (
               <button
                 key={feat.name}
@@ -86,18 +86,20 @@ export default function StepSpecies({ selected, originFeat, onSelect, onOriginFe
                   cursor: 'pointer',
                   transition: 'all var(--transition-fast)',
                   display: 'flex', flexDirection: 'column', gap: 4,
+                  overflow: 'hidden',
+                  width: '100%',
                 }}
               >
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: originFeat === feat.name ? 'var(--text-gold)' : 'var(--text-primary)' }}>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: originFeat === feat.name ? 'var(--text-gold)' : 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {originFeat === feat.name && '✓ '}{feat.name}
                 </div>
                 {feat.asi && feat.asi[0] && (
-                  <div style={{ fontSize: 9, fontFamily: 'var(--font-heading)', color: 'var(--color-gold-bright)', background: 'rgba(201,146,42,0.12)', border: '1px solid rgba(201,146,42,0.3)', borderRadius: 4, padding: '1px 6px', display: 'inline-block', width: 'fit-content' }}>
+                  <div style={{ fontSize: 9, fontFamily: 'var(--font-heading)', color: 'var(--color-gold-bright)', background: 'rgba(201,146,42,0.12)', border: '1px solid rgba(201,146,42,0.3)', borderRadius: 4, padding: '1px 6px', display: 'inline-block', width: 'fit-content', flexShrink: 0 }}>
                     +{feat.asi[0].amount} {feat.asi[0].ability}
                   </div>
                 )}
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                  {feat.description.slice(0, 80)}{feat.description.length > 80 ? '…' : ''}
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {feat.description}
                 </div>
               </button>
             ))}
