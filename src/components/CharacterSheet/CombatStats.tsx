@@ -8,178 +8,110 @@ interface CombatStatsProps {
   onUpdateHP: (currentHp: number, tempHp: number) => void;
 }
 
-function HPBar({ current, max }: { current: number; max: number }) {
-  const pct = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
-  const color = pct > 0.5 ? 'var(--hp-full)'
-              : pct > 0.25 ? 'var(--hp-mid)'
-              : current > 0 ? 'var(--hp-low)'
-              : 'var(--hp-dead)';
-  return (
-    <div className="hp-bar-container" style={{ marginTop: 'var(--space-2)' }}>
-      <div className="hp-bar-fill" style={{ width: `${pct * 100}%`, background: color }} />
-    </div>
-  );
-}
+// NOTE: AC, Initiative, Speed, Prof Bonus, Spell DC, Spell Attack, Passive Perception
+// are ALL shown in CharacterHeader. This component only shows what the header doesn't:
+// saving throw proficiencies, hit dice, temp HP controls.
 
-export default function CombatStats({ character, computed, onUpdateHP }: Omit<CombatStatsProps, 'onUpdate'>) {
+export default function CombatStats({ character, computed, onUpdateHP }: CombatStatsProps) {
   const [hpDelta, setHpDelta] = useState('');
+  const [tempInput, setTempInput] = useState('');
+  const [mode, setMode] = useState<'damage' | 'heal'>('damage');
 
-  const hpPct = character.max_hp > 0 ? Math.max(0, character.current_hp / character.max_hp) : 0;
-  const hpColor = hpPct > 0.5 ? 'var(--hp-full)'
-                : hpPct > 0.25 ? 'var(--hp-mid)'
-                : character.current_hp > 0 ? 'var(--hp-low)'
-                : 'var(--hp-dead)';
-
-  function applyDelta(mode: 'damage' | 'heal' | 'temp') {
+  function applyDelta() {
     const value = parseInt(hpDelta, 10);
-    if (isNaN(value) || value <= 0) return;
-    if (mode === 'temp') {
-      onUpdateHP(character.current_hp, Math.max(character.temp_hp, value));
-    } else if (mode === 'damage') {
+    if (!value || value <= 0) return;
+    if (mode === 'heal') {
+      onUpdateHP(Math.min(character.max_hp, character.current_hp + value), character.temp_hp);
+    } else {
       const absorbed = Math.min(character.temp_hp, value);
       const remainder = value - absorbed;
       onUpdateHP(Math.max(0, character.current_hp - remainder), Math.max(0, character.temp_hp - absorbed));
-    } else {
-      onUpdateHP(Math.min(character.max_hp, character.current_hp + value), character.temp_hp);
     }
     setHpDelta('');
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') applyDelta('heal');
+  function applyTemp() {
+    const v = parseInt(tempInput, 10);
+    if (!isNaN(v) && v >= 0) { onUpdateHP(character.current_hp, v); setTempInput(''); }
   }
 
   return (
-    <section>
-      <div className="section-header">Combat</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
-      {/* Read-only stat grid — edit these in Character Settings */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-        <div className="stat-box">
-          <div className="stat-box-label">AC</div>
-          <div className="stat-box-value">{character.armor_class}</div>
-        </div>
-        <div className="stat-box">
-          <div className="stat-box-label">Initiative</div>
-          <div className="stat-box-value">{formatModifier(computed.initiative)}</div>
-        </div>
-        <div className="stat-box">
-          <div className="stat-box-label">Speed</div>
-          <div className="stat-box-value">{character.speed}</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>ft</div>
-        </div>
-        <div className="stat-box">
-          <div className="stat-box-label">Prof. Bonus</div>
-          <div className="stat-box-value">{formatModifier(computed.proficiency_bonus)}</div>
-        </div>
-      </div>
-
-      {/* Spell stats row — only shown for casters */}
-      {(() => {
-        const colCount = 1
-          + (computed.spell_save_dc    != null ? 1 : 0)
-          + (computed.spell_attack_bonus != null ? 1 : 0);
-        if (colCount === 1) return null;
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-            <div className="stat-box">
-              <div className="stat-box-label">Passive Perception</div>
-              <div className="stat-box-value">{computed.passive_perception}</div>
-            </div>
-            {computed.spell_save_dc != null && (
-              <div className="stat-box">
-                <div className="stat-box-label">Spell Save DC</div>
-                <div className="stat-box-value">{computed.spell_save_dc}</div>
-              </div>
-            )}
-            {computed.spell_attack_bonus != null && (
-              <div className="stat-box">
-                <div className="stat-box-label">Spell Attack</div>
-                <div className="stat-box-value">{formatModifier(computed.spell_attack_bonus)}</div>
-              </div>
-            )}
+      {/* Temp HP */}
+      <div>
+        <div className="section-header">Temporary HP</div>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center' }}>
+          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 800, color: '#60a5fa', minWidth: 40 }}>
+            {character.temp_hp > 0 ? `+${character.temp_hp}` : '—'}
           </div>
-        );
-      })()}
-
-
-      <div className="panel" style={{ marginBottom: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            Hit Points
-          </span>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            Max {character.max_hp}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)', margin: 'var(--space-2) 0' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: hpColor, lineHeight: 1 }}>
-            {character.current_hp}
-          </span>
-          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-lg)' }}>/ {character.max_hp}</span>
-          {character.temp_hp > 0 && (
-            <span style={{ marginLeft: 'var(--space-2)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 'var(--radius-sm)', padding: '0 var(--space-2)' }}>
-              +{character.temp_hp} tmp
-            </span>
-          )}
-        </div>
-
-        <HPBar current={character.current_hp} max={character.max_hp} />
-
-        {/* HP Adjustment Controls — enter amount then click action */}
-        <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <input
             type="number"
-            min="1"
-            value={hpDelta}
-            onChange={e => setHpDelta(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Enter amount..."
-            style={{ textAlign: 'center', fontSize: 'var(--text-md)' }}
+            min={0}
+            value={tempInput}
+            onChange={e => setTempInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && applyTemp()}
+            placeholder="Set temp HP"
+            style={{ width: 120, fontSize: 'var(--fs-sm)' }}
           />
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button
-              className="btn-danger btn-sm"
-              onClick={() => applyDelta('damage')}
-              disabled={!hpDelta}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
-              Damage
-            </button>
-            <button
-              className="btn-gold btn-sm"
-              onClick={() => applyDelta('heal')}
-              disabled={!hpDelta}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
-              Heal
-            </button>
-            <button
-              className="btn-sm btn-secondary"
-              onClick={() => applyDelta('temp')}
-              disabled={!hpDelta}
-              style={{ flex: 1, justifyContent: 'center', borderColor: '#60a5fa', color: '#60a5fa' }}
-            >
-              Temp HP
-            </button>
-          </div>
+          <button className="btn-secondary btn-sm" onClick={applyTemp}>Set</button>
         </div>
       </div>
 
-      <p style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', letterSpacing: '0.04em' }}>
-        Edit AC, Speed, Max HP, and Initiative Bonus in Character Settings.
-      </p>
-
-      {/* Passive Perception for non-casters (casters have it in the row above) */}
-      {computed.spell_save_dc == null && (
-        <div style={{ marginTop: 'var(--space-4)' }}>
-          <div className="stat-box" style={{ maxWidth: 160 }}>
-            <div className="stat-box-label">Passive Perception</div>
-            <div className="stat-box-value">{computed.passive_perception}</div>
-          </div>
+      {/* HP damage/heal controls */}
+      <div>
+        <div className="section-header">Apply HP Change</div>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setMode(m => m === 'damage' ? 'heal' : 'damage')}
+            style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+              border: mode === 'damage' ? '1px solid rgba(220,38,38,0.4)' : '1px solid rgba(5,150,105,0.4)',
+              background: mode === 'damage' ? 'var(--c-red-bg)' : 'var(--c-green-bg)',
+              color: mode === 'damage' ? 'var(--c-red-l)' : 'var(--c-green-l)' }}>
+            {mode === 'damage' ? '− Damage' : '+ Heal'}
+          </button>
+          <input
+            type="number" min={0} value={hpDelta} onChange={e => setHpDelta(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && applyDelta()}
+            placeholder="Amount" style={{ width: 90, fontSize: 'var(--fs-sm)' }}
+          />
+          <button className="btn-secondary btn-sm" onClick={applyDelta} disabled={!hpDelta}>Apply</button>
         </div>
-      )}
-    </section>
+      </div>
+
+      {/* Saving throw proficiencies */}
+      <div>
+        <div className="section-header">Saving Throws</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(['strength','dexterity','constitution','intelligence','wisdom','charisma'] as const).map(ab => {
+            const isProficient = character.saving_throw_proficiencies?.includes(ab);
+            const mod = computed.modifiers[ab] + (isProficient ? computed.proficiency_bonus : 0);
+            return (
+              <div key={ab} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: isProficient ? 'var(--c-gold-l)' : 'transparent', border: `1.5px solid ${isProficient ? 'var(--c-gold)' : 'var(--c-border-m)'}`, flexShrink: 0 }} />
+                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', flex: 1, textTransform: 'capitalize' }}>{ab}</span>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: mod >= 0 ? 'var(--c-green-l)' : 'var(--c-red-l)', minWidth: 32, textAlign: 'right' }}>
+                  {formatModifier(mod)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Hit dice */}
+      <div>
+        <div className="section-header">Hit Dice</div>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, color: 'var(--t-1)' }}>
+            {character.level - (character.hit_dice_spent ?? 0)}
+          </span>
+          <span style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
+            / {character.level} d{/* hit die from class */}
+          </span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>remaining</span>
+        </div>
+      </div>
+    </div>
   );
 }

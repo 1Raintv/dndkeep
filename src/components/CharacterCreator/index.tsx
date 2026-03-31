@@ -225,12 +225,27 @@ export default function CharacterCreator() {
         ))}
       </div>
 
+      {/* Navigation — top */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-6)', alignItems: 'center' }}>
+        <button className="btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : navigate('/lobby')} disabled={saving}>
+          {step === 0 ? '✕ Cancel' : '← Back'}
+        </button>
+        <button
+          className={step === STEPS.length - 1 ? 'btn-gold' : 'btn-gold'}
+          style={{ minWidth: 120 }}
+          onClick={() => step < STEPS.length - 1 ? setStep(s => s + 1) : handleCreate()}
+          disabled={!canAdvance() || saving}
+        >
+          {saving ? 'Creating...' : step === STEPS.length - 1 ? '✨ Create Character' : 'Continue →'}
+        </button>
+      </div>
+
       {/* Step content */}
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
         {step === 0 && <StepSpecies selected={species} originFeat={originFeat} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
         {step === 1 && <StepClass selected={className} level={level} onSelect={c => { setClassName(c); setSubclass(''); }} onLevelChange={handleLevelChange} />}
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
-        {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} onScoresChange={setScores} onMethodChange={setMethod} />}
+        {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} className={className} onScoresChange={setScores} onMethodChange={setMethod} />}
         {step === 4 && (
           <StepSubclass
             className={className}
@@ -257,19 +272,7 @@ export default function CharacterCreator() {
         </div>
       )}
 
-      {/* Navigation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--space-8)', paddingTop: 'var(--space-6)', borderTop: '1px solid var(--border-subtle)' }}>
-        <button className="btn-secondary" onClick={() => step > 0 ? setStep(s => s - 1) : navigate('/lobby')} disabled={saving}>
-          {step === 0 ? 'Cancel' : 'Back'}
-        </button>
-        <button
-          className={step === STEPS.length - 1 ? 'btn-primary btn-lg' : 'btn-gold'}
-          onClick={() => step < STEPS.length - 1 ? setStep(s => s + 1) : handleCreate()}
-          disabled={!canAdvance() || saving}
-        >
-          {saving ? 'Creating...' : step === STEPS.length - 1 ? 'Create Character' : 'Continue'}
-        </button>
-      </div>
+
     </div>
   );
 }
