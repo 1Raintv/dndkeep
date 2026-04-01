@@ -42,7 +42,7 @@ const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DE
 export default function StepBuild({ className, level, choices, onChoicesChange }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
-  const [openLevel, setOpenLevel] = useState<number>(1);
+  const [openLevel, setOpenLevel] = useState<number>(1); // auto-opens level 1
 
   // Get all levels up to current
   const levelsToShow = useMemo(() =>
@@ -103,8 +103,11 @@ export default function StepBuild({ className, level, choices, onChoicesChange }
         const hasChoices = choiceItems.length > 0;
         const hasFeatures = (prog.features ?? []).length > 0 || prog.subclassFeature || prog.newSpellLevel;
         const isOpen = openLevel === lvl;
+        // Only mark complete if ALL required choices are made
+        const requiredChoiceTypes = ['subclass', 'asi', 'fighting_style', 'divine_order', 'primal_order'];
+        const hasRequiredChoices = choiceItems.some(ch => requiredChoiceTypes.includes(ch.type));
         const isComplete = hasChoices && !choiceItems.some(ch => isChoiceIncomplete(ch.type, lvl, choices));
-        const isMissing = hasChoices && choiceItems.some(ch => isChoiceIncomplete(ch.type, lvl, choices));
+        const isMissing = hasChoices && hasRequiredChoices && choiceItems.some(ch => requiredChoiceTypes.includes(ch.type) && isChoiceIncomplete(ch.type, lvl, choices));
 
         return (
           <div key={lvl} style={{

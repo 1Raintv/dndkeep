@@ -101,19 +101,23 @@ export default function StepSpecies({ selected, originFeat, name, level, onNameC
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-            {levelFeatures.map(({ level, features }) => (
-              <div key={level} style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start' }}>
-                <span style={{ flexShrink: 0, fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, marginTop: 2,
-                  color: level === 1 ? 'var(--c-gold-l)' : 'var(--c-purple-l)',
-                  background: level === 1 ? 'var(--c-gold-bg)' : 'var(--c-purple-bg)',
-                  border: `1px solid ${level === 1 ? 'var(--c-gold-bdr)' : 'rgba(124,58,237,0.3)'}` }}>
-                  Lv {level}
-                </span>
-                <div style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6 }}>
-                  {features.join(' · ')}
+            {levelFeatures.map(({ level: reqLevel, features }) => {
+              const unlocked = level >= reqLevel;
+              return (
+                <div key={reqLevel} style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start', opacity: unlocked ? 1 : 0.45 }}>
+                  <span style={{ flexShrink: 0, fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, marginTop: 2,
+                    color: reqLevel === 1 ? 'var(--c-gold-l)' : unlocked ? 'var(--c-purple-l)' : 'var(--t-3)',
+                    background: reqLevel === 1 ? 'var(--c-gold-bg)' : unlocked ? 'var(--c-purple-bg)' : 'var(--c-raised)',
+                    border: `1px solid ${reqLevel === 1 ? 'var(--c-gold-bdr)' : unlocked ? 'rgba(124,58,237,0.3)' : 'var(--c-border-m)'}` }}>
+                    Lv {reqLevel}
+                  </span>
+                  <div style={{ flex: 1, fontSize: 'var(--fs-sm)', color: unlocked ? 'var(--t-2)' : 'var(--t-3)', lineHeight: 1.6 }}>
+                    {features.join(' · ')}
+                    {!unlocked && <span style={{ marginLeft: 8, fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>(requires level {reqLevel})</span>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -121,11 +125,11 @@ export default function StepSpecies({ selected, originFeat, name, level, onNameC
       {/* Origin Feat — clean dropdown + detail panel */}
       {needsOriginFeat && (
         <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4) var(--sp-5)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>
-            Origin Feat
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>Origin Feat</span>
             {!originFeat
-              ? <span style={{ color: 'var(--c-red-l)', fontSize: 'var(--fs-xs)', fontWeight: 500, marginLeft: 8 }}>— required to continue</span>
-              : <span style={{ marginLeft: 8, fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', fontWeight: 600 }}>✓ {originFeat}</span>
+              ? <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '2px 8px', borderRadius: 999 }}>Required to continue</span>
+              : <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '2px 8px', borderRadius: 999 }}>✓ Selected</span>
             }
           </div>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>

@@ -21,6 +21,17 @@ const ORIGIN_FEAT_SPECIES = ['Human'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
 import { buildFeaturesText } from '../../lib/buildFeaturesText';
 
+function Crumb({ label, done }: { label: string; done?: boolean }) {
+  return (
+    <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, padding: '2px 9px', borderRadius: 999,
+      color: done ? 'var(--c-gold-l)' : 'var(--t-2)',
+      background: done ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+      border: `1px solid ${done ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}` }}>
+      {label}
+    </span>
+  );
+}
+
 function SummaryRow({ icon, label, value, empty, done }: {
   icon: string; label: string; value: string; empty?: boolean; done?: boolean;
 }) {
@@ -40,7 +51,7 @@ const DEFAULT_SCORES: Record<AbilityKey, number> = {
   intelligence: 10, wisdom: 10, charisma: 10,
 };
 
-const STEPS = ['Species', 'Class', 'Background', 'Ability Scores', 'Subclass'];
+const STEPS = ['Species', 'Class', 'Background', 'Ability Scores', 'Build', 'Review'];
 
 export default function CharacterCreator() {
   const { user } = useAuth();
@@ -89,6 +100,7 @@ export default function CharacterCreator() {
         return !!className && selectedSkills.length === (cls?.skill_count ?? 2);
       }
       case 4: return level < 3 || buildChoices.subclass !== '';
+      case 5: return !!name.trim();
     }
     return true;
   }
@@ -261,17 +273,29 @@ export default function CharacterCreator() {
           onClick={() => step < STEPS.length - 1 ? setStep(s => s + 1) : handleCreate()}
           disabled={!canAdvance() || saving}
         >
-          {saving ? 'Creating...' : step === STEPS.length - 1 ? '✨ Create Character' : 'Continue →'}
+          {saving ? 'Creating...' : step === STEPS.length - 1 ? '✨ Create Character' : step === STEPS.length - 2 ? 'Review →' : 'Continue →'}
         </button>
       </div>
 
       {/* Layout: step content + sticky summary sidebar */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 'var(--sp-6)', alignItems: 'start' }}>
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
+        {/* Breadcrumb — what you've chosen so far */}
+        {(name || species || className || background) && step > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 'var(--sp-4)', alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your build:</span>
+            {name && <Crumb label={name} />}
+            {level > 1 && <Crumb label={`Level ${level}`} />}
+            {species && <Crumb label={species} done />}
+            {className && <Crumb label={className} done />}
+            {background && <Crumb label={background} done />}
+            {(buildChoices.subclass || subclass) && <Crumb label={buildChoices.subclass || subclass} done />}
+          </div>
+        )}
         {step === 0 && <StepSpecies selected={species} originFeat={originFeat} name={name} level={level} onNameChange={setName} onLevelChange={handleLevelChange} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
         {step === 1 && <StepClass selected={className} level={level} selectedSkills={selectedSkills} onSelect={c => { setClassName(c); setSubclass(''); setSelectedSkills([]); }} onLevelChange={handleLevelChange} onSkillToggle={handleSkillToggle} />}
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
-        {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} className={className} onScoresChange={setScores} onMethodChange={setMethod} />}
+        {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} className={className} level={level} onScoresChange={setScores} onMethodChange={setMethod} />}
         {step === 4 && (
           <StepBuild
             className={className}
@@ -281,6 +305,21 @@ export default function CharacterCreator() {
               setBuildChoices(c);
               if (c.subclass) setSubclass(c.subclass);
             }}
+          />
+        )}
+        {step === 5 && (
+          <StepReview
+            name={name}
+            species={species}
+            className={className}
+            subclass={subclass}
+            background={background}
+            level={level}
+            scores={scores}
+            method={method}
+            selectedSkills={selectedSkills}
+            buildChoices={buildChoices}
+            originFeat={originFeat}
           />
         )}
 

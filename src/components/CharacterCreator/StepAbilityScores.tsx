@@ -6,6 +6,7 @@ import {
   generateAbilityScores, roll4d6DropLowest,
 } from '../../lib/gameUtils';
 import { BACKGROUND_MAP } from '../../data/backgrounds';
+import { calcMaxHP } from '../../data/levelProgression';
 import { CLASS_MAP } from '../../data/classes';
 
 const ABILITIES: AbilityKey[] = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
@@ -35,11 +36,12 @@ interface StepAbilityScoresProps {
   method: AbilityScoreMethod;
   backgroundName: string;
   className?: string;
+  level?: number;
   onScoresChange: (scores: Record<AbilityKey, number>) => void;
   onMethodChange: (method: AbilityScoreMethod) => void;
 }
 
-export default function StepAbilityScores({ scores, method, backgroundName, className, onScoresChange, onMethodChange }: StepAbilityScoresProps) {
+export default function StepAbilityScores({ scores, method, backgroundName, className, level = 1, onScoresChange, onMethodChange }: StepAbilityScoresProps) {
   const bg = BACKGROUND_MAP[backgroundName];
   const priority = className ? (CLASS_PRIORITY[className] ?? ABILITIES) : ABILITIES;
 
@@ -117,6 +119,7 @@ export default function StepAbilityScores({ scores, method, backgroundName, clas
 
   const totalPointBuy = ABILITIES.reduce((sum, ab) => sum + pointBuyCost(scores[ab]), 0);
   const remainingPoints = POINT_BUY_BUDGET - totalPointBuy;
+  const cls = className ? CLASS_MAP[className] : null;
 
   const finalScores = { ...scores };
   if (bg) {
@@ -258,6 +261,26 @@ export default function StepAbilityScores({ scores, method, backgroundName, clas
             {bg && (
               <div style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-2)' }}>
                 {bg.name}: +2 {bg.asi_primary}, +1 {bg.asi_secondary}
+              </div>
+            )}
+
+            {/* Live HP / AC / Proficiency preview */}
+            {cls && (
+              <div style={{ marginTop: 'var(--sp-3)', paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 4 }}>
+                  At Level {level}
+                </div>
+                {[
+                  { label: 'Max HP', value: calcMaxHP(cls.hit_die, finalScores.constitution, level), color: 'var(--c-green-l)' },
+                  { label: 'AC (unarmored)', value: 10 + abilityModifier(finalScores.dexterity), color: 'var(--c-gold-l)' },
+                  { label: 'Prof Bonus', value: `+${level < 5 ? 2 : level < 9 ? 3 : level < 13 ? 4 : level < 17 ? 5 : 6}`, color: 'var(--c-purple-l)' },
+                  { label: 'Initiative', value: formatModifier(abilityModifier(finalScores.dexterity)), color: '#60a5fa' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{label}</span>
+                    <span style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color }}>{value}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
