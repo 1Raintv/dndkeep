@@ -146,7 +146,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', marginBottom: 'var(--sp-6)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', marginBottom: 'var(--sp-6)', flexWrap: 'wrap' }}>
         <button className="btn-ghost btn-sm" onClick={onBack}>Back</button>
         <div style={{ flex: 1 }}>
           <h2 style={{ marginBottom: 'var(--sp-1)' }}>{campaign.name}</h2>
@@ -156,6 +156,28 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
             </p>
           )}
         </div>
+
+        {/* Invite code — always visible in header */}
+        {joinCode && (
+          <button
+            onClick={handleCopyCode}
+            title="Click to copy join code"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 'var(--sp-2)',
+              padding: 'var(--sp-2) var(--sp-3)',
+              background: codeCopied ? 'var(--c-green-bg)' : 'var(--c-gold-bg)',
+              border: `1px solid ${codeCopied ? 'rgba(5,150,105,0.4)' : 'var(--c-gold-bdr)'}`,
+              borderRadius: 'var(--r-lg)', cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: codeCopied ? 'var(--c-green-l)' : 'var(--c-gold-l)' }}>
+              {codeCopied ? '✓ Copied!' : '🔗 Invite Code:'}
+            </span>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 'var(--fs-md)', letterSpacing: '0.12em', color: codeCopied ? 'var(--c-green-l)' : 'var(--c-gold-xl)' }}>
+              {joinCode}
+            </span>
+          </button>
+        )}
         <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
           {sessionState?.combat_active && (
             <span className="badge badge-crimson" style={{ animation: 'pulse-gold 2s infinite' }}>

@@ -242,6 +242,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         onOpenAvatarPicker={() => setShowAvatarPicker(true)}
         onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
         onOpenRest={() => setShowRest(true)}
+        onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
         onUpdateHP={delta => {
             const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
             handleUpdateHP(newHP, character.temp_hp);

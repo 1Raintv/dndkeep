@@ -13,6 +13,7 @@ interface CharacterHeaderProps {
   onToggleInspiration?: () => void;
   onOpenRest?: () => void;
   onUpdateHP?: (delta: number) => void;
+  onUpdateAC?: (ac: number) => void;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
@@ -26,11 +27,13 @@ function hpColor(current: number, max: number): string {
 
 export default function CharacterHeader({
   character, computed, onOpenSettings, onUpdateXP, onOpenAvatarPicker,
-  onToggleInspiration, onOpenRest, onUpdateHP,
+  onToggleInspiration, onOpenRest, onUpdateHP, onUpdateAC,
 }: CharacterHeaderProps) {
   const [hpDelta, setHpDelta] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal'>('damage');
   const { triggerRoll } = useDiceRoll();
+  const [editingAC, setEditingAC] = useState(false);
+  const [acInput, setAcInput] = useState('');
 
   function rollInitiative() {
     const d20 = rollDie(20);

@@ -41,6 +41,12 @@ export default function PartyDashboard({ campaignId }: PartyDashboardProps) {
     return () => { supabase.removeChannel(channel); };
   }, [campaignId]);
 
+  async function applyHPChange(charId: string, currentHP: number, maxHP: number, delta: number) {
+    const newHP = Math.max(0, Math.min(maxHP, currentHP + delta));
+    await supabase.from('characters').update({ current_hp: newHP }).eq('id', charId);
+    // Real-time will update the local state
+  }
+
   async function loadCharacters() {
     // Load all characters in this campaign via campaign_members
     const { data: members } = await supabase
@@ -108,7 +114,7 @@ export default function PartyDashboard({ campaignId }: PartyDashboardProps) {
       {/* Character Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 'var(--sp-3)' }}>
         {characters.map(char => (
-          <CharacterCard key={char.id} character={char} />
+          <CharacterCard key={char.id} character={char} onApplyHP={delta => applyHPChange(char.id, char.current_hp, char.max_hp, delta)} />
         ))}
       </div>
     </div>
@@ -124,7 +130,7 @@ function SummaryChip({ label, value, color }: { label: string; value: string | n
   );
 }
 
-function CharacterCard({ character: c }: { character: Character }) {
+function CharacterCard({ character: c, onApplyHP }: { character: Character; onApplyHP: (delta: number) => void }) {
   const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
   const col = hpColor(c.current_hp, c.max_hp);
   const status = hpLabel(c.current_hp, c.max_hp);
@@ -164,6 +170,17 @@ function CharacterCard({ character: c }: { character: Character }) {
         {/* HP bar */}
         <div style={{ height: 8, background: '#080d14', borderRadius: 999, overflow: 'hidden', marginBottom: 'var(--sp-2)' }}>
           <div style={{ height: '100%', width: `${hpPct * 100}%`, background: col, borderRadius: 999, transition: 'width var(--tr-slow), background var(--tr-normal)', boxShadow: `0 0 6px ${col}` }} />
+        </div>
+
+        {/* DM inline HP controls */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 'var(--sp-2)' }}>
+          <button onClick={() => onApplyHP(-1)} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--c-red-l)40', background: 'var(--c-red-bg)', color: 'var(--c-red-l)', fontSize: 14, cursor: 'pointer', minHeight: 0, padding: 0 }}>−</button>
+          <button onClick={() => onApplyHP(-5)} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--c-red-l)40', background: 'var(--c-red-bg)', color: 'var(--c-red-l)', cursor: 'pointer', minHeight: 0 }}>−5</button>
+          <button onClick={() => onApplyHP(-10)} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--c-red-l)40', background: 'var(--c-red-bg)', color: 'var(--c-red-l)', cursor: 'pointer', minHeight: 0 }}>−10</button>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => onApplyHP(5)} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--c-green-l)40', background: 'var(--c-green-bg)', color: 'var(--c-green-l)', cursor: 'pointer', minHeight: 0 }}>+5</button>
+          <button onClick={() => onApplyHP(10)} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--c-green-l)40', background: 'var(--c-green-bg)', color: 'var(--c-green-l)', cursor: 'pointer', minHeight: 0 }}>+10</button>
+          <button onClick={() => onApplyHP(1)} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--c-green-l)40', background: 'var(--c-green-bg)', color: 'var(--c-green-l)', fontSize: 14, cursor: 'pointer', minHeight: 0, padding: 0 }}>+</button>
         </div>
 
         {/* Stats row */}

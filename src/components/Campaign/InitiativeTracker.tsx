@@ -26,6 +26,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [attackModal, setAttackModal] = useState<{ combatantId: string; targetId: string; attackIdx: number } | null>(null);
   const [attackResult, setAttackResult] = useState<{ hit: boolean; roll: number; total: number; damage?: number; damageRoll?: number } | null>(null);
+  const [attackTarget, setAttackTarget] = useState<string>('');
   const [ongoingPrompts, setOngoingPrompts] = useState<{ id: string; name: string; od: OngoingDamage }[]>([]);
   const [concSavePrompt, setConcSavePrompt] = useState<{ combatantId: string; dc: number; damageTaken: number } | null>(null);
 
@@ -295,7 +296,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                 {isExpanded && isOwner && (
                   <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderTop: '1px solid var(--c-border)', background: '#080d14', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
                     {/* HP controls */}
-                    <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' }}>
                       <input
                         type="number"
                         min="1"
@@ -307,6 +308,41 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                       <button className="btn-danger btn-sm" onClick={() => applyHP(c.id, 'damage')} disabled={!hpDeltas[c.id]}>Damage</button>
                       <button className="btn-gold btn-sm" onClick={() => applyHP(c.id, 'heal')} disabled={!hpDeltas[c.id]}>Heal</button>
                     </div>
+
+                    {/* NPC Attack panel */}
+                    {c.is_monster && c.attacks && c.attacks.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                        <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Roll Attack vs Target</div>
+                        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select
+                            value={attackTarget}
+                            onChange={e => setAttackTarget(e.target.value)}
+                            style={{ fontSize: 'var(--fs-xs)', flex: 1, minWidth: 120 }}
+                          >
+                            <option value="">— choose target —</option>
+                            {combatants.filter(t => t.id !== c.id && t.current_hp > 0).map(t => (
+                              <option key={t.id} value={t.id}>{t.name} (AC {t.ac})</option>
+                            ))}
+                          </select>
+                          {c.attacks.map((atk, idx) => (
+                            <button key={idx} className="btn-danger btn-sm"
+                              disabled={!attackTarget}
+                              onClick={() => {
+                                resolveAttack(c.id, attackTarget, idx);
+                                setAttackTarget('');
+                              }}
+                              style={{ fontSize: 'var(--fs-xs)' }}>
+                              {atk.name} (+{atk.bonus})
+                            </button>
+                          ))}
+                        </div>
+                        {attackResult && (
+                          <div style={{ fontSize: 'var(--fs-xs)', color: attackResult.crit ? 'var(--c-gold-l)' : 'var(--t-2)', padding: '4px 8px', background: 'var(--c-raised)', borderRadius: 'var(--r-sm)' }}>
+                            {attackResult.crit ? '⭐ CRIT! ' : ''}d20={attackResult.nat} → To hit: {attackResult.hit} · Damage: {attackResult.damage}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Conditions */}
                     <div>
                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>CONDITIONS</div>

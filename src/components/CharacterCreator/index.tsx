@@ -124,7 +124,10 @@ export default function CharacterCreator() {
       wildshape_current_hp: 0,
       wildshape_max_hp: 0,
       concentration_spell: '',
-      class_resources: {},
+      class_resources: {
+        ...(buildChoices.metamagic.length ? { metamagic: buildChoices.metamagic } : {}),
+        ...(buildChoices.invocations.length ? { invocations: buildChoices.invocations } : {}),
+      },
       secondary_class: '',
       secondary_level: 0,
       secondary_subclass: '',
@@ -158,11 +161,25 @@ export default function CharacterCreator() {
       ideals: '',
       bonds: '',
       flaws: '',
-      features_and_traits: buildFeaturesText(className, species, background, subclass || null) + (originFeat ? `\n\n[Origin Feat]\n${originFeat}` : ''),
-      ability_score_improvements: bg ? [
-        { ability: bg.asi_primary,   amount: 2, source: 'background' },
-        { ability: bg.asi_secondary, amount: 1, source: 'background' },
-      ] : [],
+      features_and_traits: buildFeaturesText(className, species, background, subclass || null)
+        + (originFeat ? `\n\n[Origin Feat]\n${originFeat}` : '')
+        + (buildChoices.fightingStyle ? `\n\n[Fighting Style]\n${buildChoices.fightingStyle}` : '')
+        + (buildChoices.metamagic.length ? `\n\n[Metamagic]\n${buildChoices.metamagic.join(', ')}` : '')
+        + (buildChoices.invocations.length ? `\n\n[Eldritch Invocations]\n${buildChoices.invocations.join(', ')}` : '')
+        + (buildChoices.expertise.length ? `\n\n[Expertise]\n${buildChoices.expertise.join(', ')}` : '')
+        + (buildChoices.divineOrder ? `\n\n[Divine Order]\n${buildChoices.divineOrder}` : '')
+        + (buildChoices.primalOrder ? `\n\n[Primal Order]\n${buildChoices.primalOrder}` : '')
+        + (Object.keys(buildChoices.feats).length ? `\n\n[Feats from ASI]\n${Object.entries(buildChoices.feats).map(([lvl, feat]) => `Level ${lvl}: ${feat}`).join('\n')}` : ''),
+      ability_score_improvements: [
+        ...(bg ? [
+          { ability: bg.asi_primary,   amount: 2, source: 'background' },
+          { ability: bg.asi_secondary, amount: 1, source: 'background' },
+        ] : []),
+        ...Object.entries(buildChoices.asiChoices).map(([lvl, asiChoice]) => {
+          const a = asiChoice as { ability: string; amount: number; ability2?: string; amount2?: number };
+          return { ability: a.ability as import('../../types').AbilityKey, amount: a.amount, source: `level_${lvl}` };
+        }),
+      ],
       ability_score_method: method,
     };
 

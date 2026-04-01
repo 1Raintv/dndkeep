@@ -108,7 +108,7 @@ export type SpellSlots = Record<string, SpellSlotLevel>;
 export interface ASIRecord {
   ability: AbilityKey;
   amount: number;
-  source: 'background' | 'feat' | 'level';
+  source: 'background' | 'feat' | 'level' | string;
 }
 
 export interface Character {
