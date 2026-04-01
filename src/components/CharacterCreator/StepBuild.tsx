@@ -147,7 +147,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange }
                 </div>
                 {/* Show choice labels */}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>
-                  {choiceItems.map((ch, i) => {
+                  {choiceItems.filter(ch => ch.type !== 'cantrips' && ch.type !== 'spells').map((ch, i) => {
                     const done = !isChoiceIncomplete(ch.type, lvl, choices);
                     return (
                       <span key={i} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
@@ -204,6 +204,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange }
 // ── Helpers ────────────────────────────────────────────────────────
 
 function isChoiceIncomplete(type: string, level: number, choices: BuildChoices): boolean {
+  if (type === 'cantrips' || type === 'spells') return false; // Added from sheet later
   if (type === 'subclass') return !choices.subclass;
   if (type === 'asi') return !choices.asiChoices[level] && !choices.feats[level];
   if (type === 'fighting_style') return !choices.fightingStyle;
@@ -265,7 +266,12 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   }
 
   if (type === 'cantrips' || type === 'spells') {
-    return <SpellPicker label={label} type={type} className={className} choices={choices} onUpdate={onUpdate} maxLevel={type === 'cantrips' ? 0 : maxSpellLevel} />;
+    // Spells are added from the character sheet after creation
+    return (
+      <div style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic' }}>
+        ✨ {label} — you'll add spells from your character sheet after creation.
+      </div>
+    );
   }
 
   if (type === 'metamagic') {
