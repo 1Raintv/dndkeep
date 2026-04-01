@@ -9,156 +9,221 @@ interface StepClassProps {
   onLevelChange: (level: number) => void;
 }
 
+// Complexity: 1–5 dots
+const CLASS_COMPLEXITY: Record<string, number> = {
+  Barbarian: 1, Fighter: 1, Ranger: 2, Rogue: 2, Monk: 3,
+  Paladin: 3, Warlock: 3, Cleric: 3, Druid: 4, Bard: 4,
+  Sorcerer: 4, Artificer: 4, Wizard: 5, Psion: 5,
+};
+const COMPLEXITY_LABEL: Record<number, string> = {
+  1: 'Beginner friendly', 2: 'Easy', 3: 'Moderate', 4: 'Complex', 5: 'Advanced',
+};
+
 const CLASS_ICONS: Record<string, string> = {
   Barbarian:'⚔️', Bard:'🎵', Cleric:'✝️', Druid:'🌿', Fighter:'🛡️',
   Monk:'👊', Paladin:'⚡', Ranger:'🏹', Rogue:'🗡️', Sorcerer:'🔥',
   Warlock:'👁️', Wizard:'📖', Artificer:'⚙️', Psion:'🔮',
 };
 
-const COMPLEXITY: Record<string, { label: string; color: string }> = {
-  Barbarian: { label: 'Beginner',    color: 'var(--c-green-l)' },
-  Fighter:   { label: 'Beginner',    color: 'var(--c-green-l)' },
-  Ranger:    { label: 'Easy',        color: 'var(--c-green-l)' },
-  Rogue:     { label: 'Easy',        color: 'var(--c-green-l)' },
-  Monk:      { label: 'Moderate',    color: 'var(--c-amber-l)' },
-  Paladin:   { label: 'Moderate',    color: 'var(--c-amber-l)' },
-  Warlock:   { label: 'Moderate',    color: 'var(--c-amber-l)' },
-  Cleric:    { label: 'Moderate',    color: 'var(--c-amber-l)' },
-  Druid:     { label: 'Complex',     color: 'var(--c-red-l)' },
-  Bard:      { label: 'Complex',     color: 'var(--c-red-l)' },
-  Sorcerer:  { label: 'Complex',     color: 'var(--c-red-l)' },
-  Wizard:    { label: 'Advanced',    color: 'var(--c-red-l)' },
-  Psion:     { label: 'Advanced',    color: 'var(--c-red-l)' },
-};
+function ComplexityPips({ rating }: { rating: number }) {
+  return (
+    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} style={{
+          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+          background: i <= rating ? 'var(--c-gold)' : 'transparent',
+          border: i <= rating ? '1.5px solid var(--c-gold)' : '1.5px solid var(--c-border-m)',
+        }} />
+      ))}
+    </div>
+  );
+}
 
 export default function StepClass({ selected, level, onSelect, onLevelChange }: StepClassProps) {
   const preview = CLASSES.find(c => c.name === selected);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 'var(--sp-6)' }}>
 
-      {/* Level selector — compact, inline */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-6)', padding: 'var(--sp-4) var(--sp-5)', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)' }}>
-        <div>
-          <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Starting Level</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--c-gold-xl)', lineHeight: 1 }}>{level}</div>
-        </div>
-        <div style={{ flex: 1, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20].map(l => (
-            <button key={l} onClick={() => onLevelChange(l)}
-              style={{ width: 30, height: 30, borderRadius: 'var(--r-sm)', fontSize: 'var(--fs-xs)', fontWeight: 600, padding: 0, minHeight: 0, cursor: 'pointer',
-                border: level === l ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-                background: level === l ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                color: level === l ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Class grid — 4 columns, 3+ rows */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
+      {/* ── Left: scrollable class list + level slider ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
         {CLASSES.map(cls => (
-          <ClassCard key={cls.name} cls={cls} selected={selected === cls.name} onSelect={onSelect} level={level} />
+          <ClassRow
+            key={cls.name}
+            cls={cls}
+            selected={selected === cls.name}
+            onSelect={onSelect}
+          />
         ))}
-      </div>
 
-      {/* Info panel — only when selected, at bottom */}
-      {preview && (
-        <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-5)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }} className="animate-fade-in">
-          <div style={{ display: 'flex', gap: 'var(--sp-6)', flexWrap: 'wrap' }}>
-
-            {/* Primary abilities */}
-            <div>
-              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Primary Ability</div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {preview.primary_abilities.map(a => (
-                  <span key={a} style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '3px 10px', borderRadius: 999 }}>
-                    {a.slice(0,3).toUpperCase()}
-                  </span>
-                ))}
-              </div>
+        {/* Level slider — appears after class chosen */}
+        {selected && (
+          <div className="animate-fade-in" style={{
+            marginTop: 'var(--sp-2)', padding: 'var(--sp-4)',
+            background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)',
+            borderRadius: 'var(--r-xl)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-2)', margin: 0 }}>
+                Starting Level
+              </label>
+              <span style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--c-gold-l)', lineHeight: 1 }}>
+                {level}
+              </span>
             </div>
-
-            {/* Armor */}
-            <div>
-              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Armor</div>
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
-                {preview.armor_proficiencies.length ? preview.armor_proficiencies.join(', ') : 'None'}
-              </div>
-            </div>
-
-            {/* Saving throws */}
-            <div>
-              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Saving Throws</div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {preview.saving_throw_proficiencies.map(s => (
-                  <span key={s} style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--c-blue-l)', background: 'var(--c-blue-bg)', border: '1px solid rgba(59,130,246,0.3)', padding: '2px 7px', borderRadius: 999 }}>
-                    {s.slice(0,3).toUpperCase()}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Hit die */}
-            <div>
-              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Hit Die</div>
-              <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--t-1)' }}>d{preview.hit_die}</div>
-            </div>
-
-            {/* Spellcasting */}
-            {preview.is_spellcaster && (
-              <div>
-                <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Spellcasting</div>
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--c-purple-l)' }}>
-                  {preview.spellcasting_ability ? capitalize(preview.spellcasting_ability) : '—'}
-                  {preview.spellcaster_type === 'half' && ' · Half caster'}
-                  {preview.spellcaster_type === 'warlock' && ' · Pact Magic'}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Subclasses */}
-          <div>
-            <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-              Subclasses (unlock at level {preview.subclasses[0]?.unlock_level ?? 3})
-              {level >= (preview.subclasses[0]?.unlock_level ?? 3) && (
-                <span style={{ marginLeft: 8, color: 'var(--c-purple-l)', background: 'var(--c-purple-bg)', border: '1px solid rgba(124,58,237,0.3)', padding: '1px 7px', borderRadius: 999 }}>
-                  ✦ You'll choose on the next screen
+            <input
+              type="range" min={1} max={20} value={level}
+              onChange={e => onLevelChange(Number(e.target.value))}
+              style={{ width: '100%', accentColor: 'var(--c-gold)', cursor: 'pointer' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
+              <span>1</span>
+              {level >= 3 && (
+                <span style={{ color: 'var(--c-purple-l)', fontSize: 10 }}>
+                  subclass at 3
                 </span>
               )}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--sp-2)' }}>
-              {preview.subclasses.map(sub => (
-                <div key={sub.name} style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
-                  <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-1)', marginBottom: 2 }}>{sub.name}</div>
-                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.4 }}>{sub.description}</div>
-                </div>
-              ))}
+              <span>20</span>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* ── Right: class preview ── */}
+      <div>
+        {preview ? (
+          <ClassPreview cls={preview} level={level} />
+        ) : (
+          <div style={{
+            height: 300, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 12,
+            background: 'var(--c-card)', border: '1px dashed var(--c-border-m)',
+            borderRadius: 'var(--r-xl)', color: 'var(--t-3)',
+          }}>
+            <span style={{ fontSize: 40 }}>⚔️</span>
+            <span style={{ fontSize: 'var(--fs-sm)' }}>Select a class to see details</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function ClassCard({ cls, selected, onSelect, level }: { cls: ClassData; selected: boolean; onSelect: (n: string) => void; level: number }) {
+function ClassRow({ cls, selected, onSelect }: {
+  cls: ClassData; selected: boolean; onSelect: (n: string) => void;
+}) {
+  const complexity = CLASS_COMPLEXITY[cls.name] ?? 3;
   const icon = CLASS_ICONS[cls.name] ?? '🧙';
-  const cx = COMPLEXITY[cls.name];
   return (
-    <button onClick={() => onSelect(cls.name)} style={{
-      padding: 'var(--sp-3)', borderRadius: 'var(--r-lg)', cursor: 'pointer', textAlign: 'center',
-      border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-      background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-      transition: 'all var(--tr-fast)', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center',
-      position: 'relative',
-    }}>
-
-      <span style={{ fontSize: 20 }}>{icon}</span>
-      <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: selected ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{cls.name}</span>
-      {cx && <span style={{ fontSize: 9, fontWeight: 600, color: cx.color, opacity: 0.8 }}>{cx.label}</span>}
+    <button
+      onClick={() => onSelect(cls.name)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 12px', borderRadius: 'var(--r-md)',
+        border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+        background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+        cursor: 'pointer', transition: 'all var(--tr-fast)', textAlign: 'left',
+      }}
+    >
+      <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+      <span style={{
+        flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600,
+        color: selected ? 'var(--c-gold-l)' : 'var(--t-1)',
+      }}>{cls.name}</span>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+        {cls.is_spellcaster && (
+          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-purple-l)', background: 'var(--c-purple-bg)', border: '1px solid rgba(124,58,237,0.3)', padding: '1px 5px', borderRadius: 999 }}>
+            CASTER
+          </span>
+        )}
+        <ComplexityPips rating={complexity} />
+      </div>
     </button>
+  );
+}
+
+function ClassPreview({ cls, level }: { cls: ClassData; level: number }) {
+  const complexity = CLASS_COMPLEXITY[cls.name] ?? 3;
+  const subclassLevel = cls.subclasses[0]?.unlock_level ?? 3;
+  return (
+    <div className="animate-fade-in" style={{
+      background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)',
+      borderRadius: 'var(--r-xl)', padding: 'var(--sp-5)',
+      display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)',
+      maxHeight: '80vh', overflowY: 'auto',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 style={{ margin: 0, color: 'var(--t-1)' }}>{cls.name}</h3>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginTop: 2 }}>
+            {COMPLEXITY_LABEL[complexity]}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {cls.is_spellcaster && (
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-purple-l)', background: 'var(--c-purple-bg)', border: '1px solid rgba(124,58,237,0.3)', padding: '2px 8px', borderRadius: 999 }}>
+              {capitalize(cls.spellcaster_type ?? 'full')} Caster
+            </span>
+          )}
+          <ComplexityPips rating={complexity} />
+        </div>
+      </div>
+
+      {/* Stat rows */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)' }}>
+        <InfoRow label="Hit Die" value={`d${cls.hit_die}`} />
+        <InfoRow label="Primary Abilities" value={cls.primary_abilities.map(a => a.slice(0,3).toUpperCase()).join(', ')} />
+        <InfoRow label="Saving Throws" value={cls.saving_throw_proficiencies.map(a => a.slice(0,3).toUpperCase()).join(', ')} />
+        <InfoRow label="Armor" value={cls.armor_proficiencies.join(', ') || 'None'} />
+        <InfoRow label="Weapons" value={cls.weapon_proficiencies.join(', ')} />
+        <InfoRow label="Skills" value={`Choose ${cls.skill_count} from ${cls.skill_choices.length} options`} />
+        {cls.spellcasting_ability && (
+          <InfoRow label="Spellcasting Ability" value={capitalize(cls.spellcasting_ability)} />
+        )}
+      </div>
+
+      {/* Subclasses */}
+      <div>
+        <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 8 }}>
+          Subclasses
+          {level >= subclassLevel ? (
+            <span style={{ marginLeft: 8, color: 'var(--c-purple-l)', fontWeight: 600, background: 'var(--c-purple-bg)', border: '1px solid rgba(124,58,237,0.3)', padding: '1px 7px', borderRadius: 999, textTransform: 'none', letterSpacing: 0 }}>
+              ✦ Choose on a following screen
+            </span>
+          ) : (
+            <span style={{ marginLeft: 8, color: 'var(--t-3)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              — unlock at level {subclassLevel}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {cls.subclasses.map(sc => (
+            <div key={sc.name} style={{
+              padding: '8px 12px', background: 'var(--c-raised)', borderRadius: 'var(--r-md)',
+              borderLeft: '2px solid var(--c-gold)',
+            }}>
+              <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--c-gold-l)', marginBottom: 2 }}>
+                {sc.name}
+              </div>
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                {sc.description}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 3 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{value}</div>
+    </div>
   );
 }
