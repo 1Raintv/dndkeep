@@ -14,6 +14,7 @@ import StepClass from './StepClass';
 import StepBackground from './StepBackground';
 import StepAbilityScores from './StepAbilityScores';
 import StepSubclass from './StepSubclass';
+import StepBuild, { emptyBuildChoices, type BuildChoices } from './StepBuild';
 import StepReview from './StepReview';
 
 const ORIGIN_FEAT_SPECIES = ['Human'];
@@ -45,6 +46,7 @@ export default function CharacterCreator() {
   const [name, setName] = useState('');
   const [alignment, setAlignment] = useState<Alignment>('True Neutral');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [buildChoices, setBuildChoices] = useState<BuildChoices>(emptyBuildChoices());
   const [level, setLevel] = useState(1);
   const [originFeat, setOriginFeat] = useState('');
 
@@ -68,7 +70,7 @@ export default function CharacterCreator() {
       case 1: return className !== '';
       case 2: return background !== '';
       case 3: return ABILITIES.every(ab => scores[ab] >= 1);
-      case 4: return level < 3 || subclass !== '';
+      case 4: return level < 3 || buildChoices.subclass !== '';
     }
     return true;
   }
@@ -145,7 +147,7 @@ export default function CharacterCreator() {
       skill_expertises: [],
       spell_slots: spellSlots,
       prepared_spells: [],
-      known_spells: [],
+      known_spells: [...buildChoices.spells, ...buildChoices.cantrips],
       inventory: [],
       currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
       active_conditions: [],
@@ -235,11 +237,14 @@ export default function CharacterCreator() {
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
         {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} className={className} onScoresChange={setScores} onMethodChange={setMethod} />}
         {step === 4 && (
-          <StepSubclass
+          <StepBuild
             className={className}
-            selected={subclass}
-            onSelect={setSubclass}
             level={level}
+            choices={buildChoices}
+            onChoicesChange={c => {
+              setBuildChoices(c);
+              if (c.subclass) setSubclass(c.subclass);
+            }}
           />
         )}
 

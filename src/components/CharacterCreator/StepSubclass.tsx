@@ -183,7 +183,7 @@ function SubclassCard({ subclass, selected, onSelect }: { subclass: SubclassData
       <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: selected ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
         {selected ? '✓ ' : ''}{subclass.name}
       </div>
-      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.5 }}>{subclass.description}</div>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{subclass.description}</div>
     </button>
   );
 }

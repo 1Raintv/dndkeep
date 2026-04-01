@@ -72,10 +72,7 @@ export default function CharacterHeader({
       overflow: 'hidden',
       boxShadow: 'var(--shadow-md)',
     }}>
-      {/* Top accent bar */}
-      <div style={{ height: 2, background: `linear-gradient(90deg, transparent, ${hpCol}, transparent)` }} />
-
-      <div style={{ padding: 'var(--sp-4) var(--sp-5)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ padding: 'var(--sp-3) var(--sp-4)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
 
         {/* Avatar + Name column */}
         <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', minWidth: 180 }}>

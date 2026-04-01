@@ -147,9 +147,6 @@ export default function StepClass({ selected, level, onSelect, onLevelChange }: 
 function ClassCard({ cls, selected, onSelect, level }: { cls: ClassData; selected: boolean; onSelect: (n: string) => void; level: number }) {
   const icon = CLASS_ICONS[cls.name] ?? '🧙';
   const cx = COMPLEXITY[cls.name];
-  const subclassLevel = cls.subclasses[0]?.unlock_level ?? 3;
-  const hasSubclass = level >= subclassLevel;
-
   return (
     <button onClick={() => onSelect(cls.name)} style={{
       padding: 'var(--sp-3)', borderRadius: 'var(--r-lg)', cursor: 'pointer', textAlign: 'center',
@@ -158,9 +155,7 @@ function ClassCard({ cls, selected, onSelect, level }: { cls: ClassData; selecte
       transition: 'all var(--tr-fast)', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center',
       position: 'relative',
     }}>
-      {hasSubclass && (
-        <div style={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', background: 'var(--c-purple-l)' }} title="Subclass included" />
-      )}
+
       <span style={{ fontSize: 20 }}>{icon}</span>
       <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: selected ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{cls.name}</span>
       {cx && <span style={{ fontSize: 9, fontWeight: 600, color: cx.color, opacity: 0.8 }}>{cx.label}</span>}

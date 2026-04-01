@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { SpeciesData } from '../../types';
 import { SPECIES } from '../../data/species';
 import { FEATS } from '../../data/feats';
@@ -32,18 +31,13 @@ interface StepSpeciesProps {
 export default function StepSpecies({ selected, originFeat, name, onNameChange, onSelect, onOriginFeatSelect }: StepSpeciesProps) {
   const preview = SPECIES.find(s => s.name === selected);
   const needsOriginFeat = ORIGIN_FEAT_SPECIES.includes(selected);
-  const [expandedFeat, setExpandedFeat] = useState<string | null>(null);
-  const [featSearch, setFeatSearch] = useState('');
   const levelFeatures = selected ? (SPECIES_LEVEL_FEATURES[selected] ?? []) : [];
-
-  const filteredFeats = ORIGIN_FEATS.filter(f =>
-    !featSearch || f.name.toLowerCase().includes(featSearch.toLowerCase())
-  );
+  const selectedFeatData = ORIGIN_FEATS.find(f => f.name === originFeat);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
 
-      {/* Name input — first thing */}
+      {/* Character Name */}
       <div>
         <label style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-2)', marginBottom: 6, display: 'block' }}>Character Name</label>
         <input
@@ -65,7 +59,7 @@ export default function StepSpecies({ selected, originFeat, name, onNameChange, 
         In 2024, species grant traits and size — not ability score bonuses. Those come from your background.
       </p>
 
-      {/* Species grid */}
+      {/* Species grid — 4 columns */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
         {SPECIES.map(s => (
           <SpeciesCard key={s.name} species={s} selected={selected === s.name} onSelect={onSelect}
@@ -73,7 +67,7 @@ export default function StepSpecies({ selected, originFeat, name, onNameChange, 
         ))}
       </div>
 
-      {/* Traits by level — shown at bottom when selected */}
+      {/* Traits by level — bottom panel */}
       {preview && levelFeatures.length > 0 && (
         <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4) var(--sp-5)' }} className="animate-fade-in">
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)', flexWrap: 'wrap' }}>
@@ -102,56 +96,48 @@ export default function StepSpecies({ selected, originFeat, name, onNameChange, 
         </div>
       )}
 
-      {/* Origin Feat picker — expandable rows */}
+      {/* Origin Feat — clean dropdown + detail panel */}
       {needsOriginFeat && (
         <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4) var(--sp-5)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>Origin Feat</span>
-              {!originFeat && <span style={{ marginLeft: 8, fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)', fontWeight: 500 }}>— required to continue</span>}
-              {originFeat && <span style={{ marginLeft: 8, fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', fontWeight: 600 }}>✓ {originFeat}</span>}
-            </div>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>
+            Origin Feat
+            {!originFeat
+              ? <span style={{ color: 'var(--c-red-l)', fontSize: 'var(--fs-xs)', fontWeight: 500, marginLeft: 8 }}>— required to continue</span>
+              : <span style={{ marginLeft: 8, fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', fontWeight: 600 }}>✓ {originFeat}</span>
+            }
           </div>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
-            Your Versatile trait grants one Origin feat at level 1. Click any feat to see details and select it.
+            Your Versatile trait grants one Origin feat at level 1. Select one to see what it does.
           </p>
-          <input placeholder="Search feats…" value={featSearch} onChange={e => setFeatSearch(e.target.value)} style={{ fontSize: 'var(--fs-sm)' }} />
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {filteredFeats.map(feat => {
-              const isSelected = originFeat === feat.name;
-              const isExpanded = expandedFeat === feat.name;
-              return (
-                <div key={feat.name} style={{ borderRadius: 'var(--r-md)', border: isSelected ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)', background: isSelected ? 'var(--c-gold-bg)' : 'var(--c-raised)', overflow: 'hidden' }}>
-                  {/* Row header — always visible */}
-                  <button
-                    onClick={() => setExpandedFeat(isExpanded ? null : feat.name)}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-2) var(--sp-3)', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 0 }}>
-                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', transition: 'transform 150ms', transform: isExpanded ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
-                    <span style={{ fontSize: 'var(--fs-sm)', fontWeight: isSelected ? 700 : 500, color: isSelected ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
-                      {isSelected ? '✓ ' : ''}{feat.name}
-                    </span>
-                    {feat.asi?.[0] && (
-                      <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', padding: '1px 6px', borderRadius: 999, flexShrink: 0 }}>
-                        +{feat.asi[0].amount} {feat.asi[0].ability}
-                      </span>
-                    )}
-                  </button>
-                  {/* Expanded detail */}
-                  {isExpanded && (
-                    <div style={{ padding: 'var(--sp-2) var(--sp-3) var(--sp-3) calc(var(--sp-3) + 20px)', borderTop: '1px solid var(--c-border)' }}>
-                      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6, margin: '0 0 var(--sp-2)' }}>{feat.description}</p>
-                      <button
-                        className={isSelected ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
-                        onClick={() => { onOriginFeatSelect(isSelected ? '' : feat.name); setExpandedFeat(null); }}>
-                        {isSelected ? 'Deselect' : 'Select this feat'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {/* Dropdown */}
+          <select
+            value={originFeat}
+            onChange={e => onOriginFeatSelect(e.target.value)}
+            style={{ fontSize: 'var(--fs-sm)', fontWeight: originFeat ? 600 : 400 }}
+          >
+            <option value="">— Choose an Origin Feat —</option>
+            {ORIGIN_FEATS.map(feat => (
+              <option key={feat.name} value={feat.name}>
+                {feat.name}{feat.asi?.[0] ? ` (+${feat.asi[0].amount} ${feat.asi[0].ability})` : ''}
+              </option>
+            ))}
+          </select>
+
+          {/* Detail card for selected feat */}
+          {selectedFeatData && (
+            <div style={{ background: 'var(--c-raised)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)' }} className="animate-fade-in">
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--c-gold-l)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {selectedFeatData.name}
+                {selectedFeatData.asi?.[0] && (
+                  <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '2px 8px', borderRadius: 999 }}>
+                    +{selectedFeatData.asi[0].amount} {selectedFeatData.asi[0].ability}
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6, margin: 0 }}>{selectedFeatData.description}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
