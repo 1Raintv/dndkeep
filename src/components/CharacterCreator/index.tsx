@@ -15,6 +15,9 @@ import StepBackground from './StepBackground';
 import StepAbilityScores from './StepAbilityScores';
 import StepSubclass from './StepSubclass';
 import StepReview from './StepReview';
+
+const ORIGIN_FEAT_SPECIES = ['Human'];
+const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
 import { buildFeaturesText } from '../../lib/buildFeaturesText';
 
 const DEFAULT_SCORES: Record<AbilityKey, number> = {
@@ -22,7 +25,7 @@ const DEFAULT_SCORES: Record<AbilityKey, number> = {
   intelligence: 10, wisdom: 10, charisma: 10,
 };
 
-const STEPS = ['Species', 'Class', 'Background', 'Ability Scores', 'Subclass', 'Review'];
+const STEPS = ['Species', 'Class', 'Background', 'Ability Scores', 'Subclass'];
 
 export default function CharacterCreator() {
   const { user } = useAuth();
@@ -58,30 +61,19 @@ export default function CharacterCreator() {
   }
 
   function canAdvance(): boolean {
-    if (step === 0) {
-      if (!species) return false;
-      // Human requires an origin feat selection
-      if (species === 'Human' && !originFeat) return false;
-      return true;
-    }
-    if (step === 1) return !!className;
-    if (step === 2) return !!background;
-    if (step === 3) return true;
-    if (step === 4) {
-      // Subclass unlocks at level 3 (2024 PHB — all classes)
-      if (level < 3) return true; // skip subclass, not yet unlocked
-      const cls = CLASS_MAP[className];
-      const availableSubs = cls?.subclasses.filter(s => s.unlock_level <= level) ?? [];
-      return availableSubs.length === 0 || !!subclass;
-    }
-    if (step === 5) {
-      const cls = CLASS_MAP[className];
-      return !!name.trim() && selectedSkills.length === (cls?.skill_count ?? 2);
+    switch (step) {
+      case 0: return species !== '' && name.trim() !== '' && (
+        !ORIGIN_FEAT_SPECIES.includes(species) || originFeat !== ''
+      );
+      case 1: return className !== '';
+      case 2: return background !== '';
+      case 3: return ABILITIES.every(ab => scores[ab] >= 1);
+      case 4: return level < 3 || subclass !== '';
     }
     return true;
   }
 
-  async function handleCreate() {
+    async function handleCreate() {
     if (!user) { setError('Not signed in.'); return; }
     setSaving(true);
     setError(null);
@@ -216,11 +208,7 @@ export default function CharacterCreator() {
             </span>
             {label}
             {/* Show level on Subclass tab when level < 3 */}
-            {i === 4 && level < 3 && (
-              <span style={{ fontSize: 9, color: 'var(--text-muted)', background: 'var(--bg-sunken)', padding: '1px 4px', borderRadius: 3 }}>
-                lvl {level}
-              </span>
-            )}
+            
           </button>
         ))}
       </div>
@@ -242,7 +230,7 @@ export default function CharacterCreator() {
 
       {/* Step content */}
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
-        {step === 0 && <StepSpecies selected={species} originFeat={originFeat} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
+        {step === 0 && <StepSpecies selected={species} originFeat={originFeat} name={name} onNameChange={setName} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
         {step === 1 && <StepClass selected={className} level={level} onSelect={c => { setClassName(c); setSubclass(''); }} onLevelChange={handleLevelChange} />}
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
         {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} className={className} onScoresChange={setScores} onMethodChange={setMethod} />}
@@ -254,15 +242,7 @@ export default function CharacterCreator() {
             level={level}
           />
         )}
-        {step === 5 && (
-          <StepReview
-            name={name} alignment={alignment} species={species} className={className}
-            subclass={subclass} background={background} scores={scores} method={method}
-            selectedSkills={selectedSkills} level={level}
-            onNameChange={setName} onAlignmentChange={setAlignment}
-            onSkillToggle={handleSkillToggle}
-          />
-        )}
+
       </div>
 
       {/* Error */}

@@ -36,27 +36,11 @@ export default function StepBackground({ selected, onSelect }: StepBackgroundPro
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--sp-4)' }}>
-            <div>
-              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Skill Proficiencies</div>
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{preview.skill_proficiencies.join(', ')}</div>
-            </div>
-            {preview.tool_proficiency && (
-              <div>
-                <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Tool Proficiency</div>
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{preview.tool_proficiency}</div>
-              </div>
-            )}
-            {preview.languages > 0 && (
-              <div>
-                <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Languages</div>
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--c-blue-l)' }}>+{preview.languages} language{preview.languages > 1 ? 's' : ''}</div>
-              </div>
-            )}
-            <div>
-              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{preview.feature_name}</div>
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.5 }}>{preview.feature_description}</div>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+            <DetailRow label="Skill Proficiencies" value={preview.skill_proficiencies.join(', ')} />
+            {preview.tool_proficiency && <DetailRow label="Tool Proficiency" value={preview.tool_proficiency} />}
+            {preview.languages > 0 && <DetailRow label="Languages" value={`+${preview.languages} language${preview.languages > 1 ? 's' : ''}`} color="var(--c-blue-l)" />}
+            <DetailRow label={preview.feature_name} value={preview.feature_description} />
           </div>
 
           <div>
@@ -87,5 +71,14 @@ function BackgroundCard({ bg, selected, onSelect }: { bg: BackgroundData; select
         <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--t-2)', background: 'var(--c-raised)', border: '1px solid var(--c-border-m)', padding: '1px 5px', borderRadius: 999 }}>+1 {bg.asi_secondary.slice(0,3).toUpperCase()}</span>
       </div>
     </button>
+  );
+}
+
+function DetailRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: 'var(--sp-2) 0', borderBottom: '1px solid var(--c-border)' }}>
+      <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+      <div style={{ fontSize: 'var(--fs-sm)', color: color ?? 'var(--t-2)', lineHeight: 1.5 }}>{value}</div>
+    </div>
   );
 }
