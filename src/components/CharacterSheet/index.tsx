@@ -124,7 +124,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     applyUpdate({ spell_slots }, true);
   }
   function handleUpdateConditions(active_conditions: ConditionName[]) {
-    applyUpdate({ active_conditions }, true);
+    // Auto-drop concentration if an incapacitating condition is applied
+    const breaksConc = active_conditions.some(c => CONDITION_MAP[c]?.concentrationBreaks);
+    if (breaksConc && concentrationSpellId) {
+      setConcentrationSpellId(null);
+      applyUpdate({ active_conditions, concentration_spell: '' }, true);
+    } else {
+      applyUpdate({ active_conditions }, true);
+    }
   }
   function handleUpdateInventory(inventory: InventoryItem[]) {
     applyUpdate({ inventory });
@@ -442,9 +449,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </div>
       )}
 
-      {/* Toolbar row: save status + rest */}
-      <div style={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+      {/* Toolbar row: save status only */}
+      {(saving || saveError) && (
+        <div style={{ height: 20, display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
           {saving && (
             <>
               <span className="spinner" style={{ width: 12, height: 12 }} />
@@ -459,10 +466,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             </span>
           )}
         </div>
-        <button className="btn-secondary btn-sm" onClick={() => setShowRest(true)}>
-          Rest
-        </button>
-      </div>
+      )}
 
       {/* Active conditions banner */}
       {character.active_conditions.length > 0 && (
@@ -605,7 +609,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   </p>
                 </div>
               )}
-              <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} />
+              <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} activeBufss={(character as any).active_buffs ?? []} />
             </div>
             <div>
               <div className="section-header">Inventory</div>

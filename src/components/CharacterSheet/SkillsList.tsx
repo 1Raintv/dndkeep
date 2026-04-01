@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character, ComputedStats } from '../../types';
 import { SKILLS } from '../../data/skills';
+import { computeActiveBonuses } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
 import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
 import { useDiceRoll } from '../../context/DiceRollContext';
@@ -26,7 +27,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
   const { triggerRoll } = useDiceRoll();
 
   function rollSkill(skillName: string, modifier: number) {
-    // Check for disadvantage from active conditions
+    const buffs = computeActiveBonuses((character as any).active_buffs ?? []);
     const hasDisadvantage = (character.active_conditions ?? []).some(c => {
       const mech = CONDITION_MAP[c];
       return mech?.attackDisadvantage || mech?.abilityCheckDisadvantage;
@@ -34,10 +35,11 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
     const roll1 = rollDie(20);
     const roll2 = hasDisadvantage ? rollDie(20) : roll1;
     const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
-    const total = d20 + modifier;
-    setLastRoll({ skillName, d20, modifier, total, isCrit: d20 === 20, isFail: d20 === 1 });
-    const conditionNote = hasDisadvantage ? ' (Disadvantage)' : '';
-    triggerRoll({ result: d20, dieType: 20, modifier, total, label: skillName + ' Check' + conditionNote });
+    const blessRoll = buffs.blessActive ? rollDie(4) : 0;
+    const total = d20 + modifier + blessRoll;
+    const label = skillName + ' Check' + (hasDisadvantage ? ' (Disadv.)' : '') + (blessRoll ? ` +${blessRoll} Bless` : '');
+    setLastRoll({ skillName, d20, modifier: modifier + blessRoll, total, isCrit: d20 === 20, isFail: d20 === 1 });
+    triggerRoll({ result: d20, dieType: 20, modifier: modifier + blessRoll, total, label });
   }
 
   function cycleSkill(e: React.MouseEvent, skillName: string) {

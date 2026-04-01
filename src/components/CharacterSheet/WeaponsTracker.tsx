@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { WeaponItem } from '../../types';
-import { rollDie } from '../../lib/gameUtils';
+import { rollDie, computeActiveBonuses } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logAction } from '../shared/ActionLog';
@@ -13,6 +13,7 @@ interface WeaponsTrackerProps {
   characterName?: string;
   campaignId?: string | null;
   activeConditions?: string[];
+  activeBufss?: any[];
 }
 
 const DAMAGE_TYPES = ['slashing', 'piercing', 'bludgeoning', 'fire', 'cold', 'lightning', 'poison', 'acid', 'necrotic', 'radiant', 'psychic', 'thunder', 'force'];
@@ -45,10 +46,12 @@ interface RollResult {
   damageType: string;
   crit: boolean;
   miss: boolean;
+  hitVsAC?: 'hit' | 'miss' | 'crit' | 'unknown';
 }
 
-export default function WeaponsTracker({ weapons, onUpdate, characterId, characterName, campaignId, activeConditions = [] }: WeaponsTrackerProps) {
+export default function WeaponsTracker({ weapons, onUpdate, characterId, characterName, campaignId, activeConditions = [], activeBufss = [] }: WeaponsTrackerProps) {
   const [target, setTarget] = useState('');
+  const [targetAC, setTargetAC] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const { triggerRoll } = useDiceRoll();
   const [editId, setEditId] = useState<string | null>(null);
@@ -97,6 +100,13 @@ export default function WeaponsTracker({ weapons, onUpdate, characterId, charact
   }
 
   async function handleRoll(weapon: WeaponItem) {
+    const buffBonuses = computeActiveBonuses(activeBufss);
+    const blessRoll = buffBonuses.blessActive ? rollDie(4) : 0;
+    const rageDmg = buffBonuses.rageActive && weapon.range === 'Melee' ? 2 : 0;
+    const huntersDmg = buffBonuses.huntersMarkActive ? rollDie(6) : 0;
+    const hexDmg = buffBonuses.hexActive ? rollDie(6) : 0;
+    const divineDmg = buffBonuses.divineFavorActive ? rollDie(4) : 0;
+    const bonusDmg = rageDmg + huntersDmg + hexDmg + divineDmg + buffBonuses.damageBonus;
     const hasDisadvantage = activeConditions.some(c => {
       const mech = CONDITION_MAP[c];
       return mech?.attackDisadvantage;
@@ -106,7 +116,14 @@ export default function WeaponsTracker({ weapons, onUpdate, characterId, charact
       const alt = rollAttack(weapon);
       if (alt.nat < result.nat) result = alt;
     }
-    const { hit, nat, damage } = result;
+    const { nat, damage: baseDmg } = result;
+    const hit = nat + weapon.attackBonus + blessRoll + buffBonuses.attackBonus;
+    const damage = baseDmg + bonusDmg;
+    const acNum = parseInt(targetAC, 10);
+    const hitVsAC: RollResult['hitVsAC'] = nat === 20 ? 'crit'
+      : nat === 1 ? 'miss'
+      : !isNaN(acNum) ? (hit >= acNum ? 'hit' : 'miss')
+      : 'unknown';
     const hitResult = nat === 20 ? 'crit' : nat === 1 ? 'fumble' : hit >= 10 ? 'hit' : 'miss';
     setLastRoll({
       weaponName: weapon.name,
@@ -114,6 +131,7 @@ export default function WeaponsTracker({ weapons, onUpdate, characterId, charact
       damageType: weapon.damageType,
       crit: nat === 20,
       miss: nat === 1,
+      hitVsAC,
     });
     triggerRoll({ result: nat, dieType: 20, modifier: weapon.attackBonus, total: hit, label: weapon.name + ' Attack' });
     // Auto-log the attack
@@ -137,46 +155,81 @@ export default function WeaponsTracker({ weapons, onUpdate, characterId, charact
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
-      {/* Target input */}
-      <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-        <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', flexShrink: 0, background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>
-          Target
-        </label>
-        <input
-          value={target}
-          onChange={e => setTarget(e.target.value)}
-          placeholder='Who are you attacking? (e.g. "Goblin 2")'
-          style={{ fontSize: 'var(--fs-sm)', flex: 1 }}
-        />
+      {/* Target inputs row */}
+      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flex: 2, minWidth: 180 }}>
+          <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', flexShrink: 0, background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>
+            Target
+          </label>
+          <input
+            value={target}
+            onChange={e => setTarget(e.target.value)}
+            placeholder='Name (e.g. "Goblin 2")'
+            style={{ fontSize: 'var(--fs-sm)', flex: 1 }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+          <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', flexShrink: 0, background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>
+            AC
+          </label>
+          <input
+            type="number"
+            value={targetAC}
+            onChange={e => setTargetAC(e.target.value)}
+            placeholder="—"
+            min={1} max={30}
+            style={{ fontSize: 'var(--fs-sm)', width: 56, textAlign: 'center' }}
+          />
+        </div>
       </div>
 
       {/* Last roll result */}
-      {lastRoll && (
-        <div className="animate-fade-in" style={{
-          padding: 'var(--sp-3) var(--sp-4)',
-          borderRadius: 'var(--r-md)',
-          border: `1px solid ${lastRoll.crit ? 'var(--c-gold)' : lastRoll.miss ? 'rgba(107,20,20,1)' : 'var(--c-border)'}`,
-          background: lastRoll.crit ? 'rgba(201,146,42,0.08)' : lastRoll.miss ? 'rgba(127,29,29,0.12)' : '#080d14',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)',
-        }}>
-          <div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 2 }}>
-              {lastRoll.crit ? '⭐ Critical Hit! ' : lastRoll.miss ? '💀 Fumble! ' : ''}{lastRoll.weaponName}
+      {lastRoll && (() => {
+        const verdict = lastRoll.hitVsAC;
+        const isCrit = lastRoll.crit;
+        const isFumble = lastRoll.miss;
+        const isHit = verdict === 'hit' || verdict === 'crit';
+        const isMiss = verdict === 'miss' && !isCrit;
+        const acKnown = verdict !== 'unknown';
+
+        const borderColor = isCrit ? 'var(--c-gold)' : isFumble ? 'rgba(107,20,20,1)' : isHit ? 'rgba(5,150,105,0.5)' : isMiss ? 'rgba(220,38,38,0.4)' : 'var(--c-border)';
+        const bgColor = isCrit ? 'rgba(201,146,42,0.08)' : isFumble ? 'rgba(127,29,29,0.12)' : isHit ? 'rgba(5,150,105,0.06)' : isMiss ? 'rgba(220,38,38,0.06)' : '#080d14';
+
+        return (
+          <div className="animate-fade-in" style={{
+            padding: 'var(--sp-3) var(--sp-4)',
+            borderRadius: 'var(--r-md)',
+            border: `1px solid ${borderColor}`,
+            background: bgColor,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)',
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
+                  {lastRoll.weaponName}
+                </span>
+                {/* Verdict badge */}
+                {isCrit && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 8px', borderRadius: 999 }}>⭐ CRIT</span>}
+                {isFumble && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '1px 8px', borderRadius: 999 }}>💀 FUMBLE</span>}
+                {!isCrit && !isFumble && acKnown && isHit && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '1px 8px', borderRadius: 999 }}>✓ HIT</span>}
+                {!isCrit && !isFumble && acKnown && !isHit && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '1px 8px', borderRadius: 999 }}>✗ MISS</span>}
+              </div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
+                d20={lastRoll.nat} — To hit: {modStr(lastRoll.hit - lastRoll.nat)} = <strong style={{ color: isCrit ? 'var(--c-gold-l)' : isHit ? 'var(--c-green-l)' : 'var(--t-1)' }}>{lastRoll.hit}</strong>
+                {targetAC && <span style={{ color: 'var(--t-3)', marginLeft: 6 }}>vs AC {targetAC}</span>}
+              </div>
             </div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-              d20={lastRoll.nat} — To hit: {modStr(lastRoll.hit - lastRoll.nat)} = <strong style={{ color: lastRoll.crit ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{lastRoll.hit}</strong>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-2xl)', lineHeight: 1, color: isCrit ? 'var(--c-gold-l)' : isHit ? 'var(--c-green-l)' : isMiss ? 'var(--t-3)' : 'var(--t-1)' }}>
+                {isMiss && !isCrit ? '—' : lastRoll.damage}
+              </div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
+                {isMiss && !isCrit ? 'no damage' : lastRoll.damageType + ' damage'}
+              </div>
             </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'var(--ff-brand)', fontWeight: 900, fontSize: 'var(--fs-2xl)', lineHeight: 1, color: lastRoll.crit ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
-              {lastRoll.damage}
-            </div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-              {lastRoll.damageType} damage
-            </div>
-          </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Weapon list */}
       {weapons.length === 0 ? (

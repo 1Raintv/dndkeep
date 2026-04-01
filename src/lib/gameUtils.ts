@@ -232,3 +232,28 @@ export function rollDiceExpression(expr: string): { rolls: number[]; total: numb
   const total = rolls.reduce((a, b) => a + b, 0) + bonus;
   return { rolls, total, expression: expr };
 }
+
+/** Compute net bonuses from active buffs on a character */
+export function computeActiveBonuses(activeBufss: any[]): {
+  attackBonus: number; damageBonus: number; acBonus: number;
+  saveBonus: number; blessActive: boolean; rageActive: boolean;
+  huntersMarkActive: boolean; hexActive: boolean; divineFavorActive: boolean;
+} {
+  const buffs = activeBufss ?? [];
+  let attackBonus = 0, damageBonus = 0, acBonus = 0, saveBonus = 0;
+  let blessActive = false, rageActive = false;
+  let huntersMarkActive = false, hexActive = false, divineFavorActive = false;
+  for (const b of buffs) {
+    if (!b?.name) continue;
+    attackBonus += b.attackBonus ?? 0;
+    damageBonus += b.damageBonus ?? 0;
+    acBonus     += b.acBonus ?? 0;
+    saveBonus   += b.saveBonus ?? 0;
+    if (b.name === 'Bless') blessActive = true;
+    if (b.name === 'Rage') rageActive = true;
+    if (b.name === "Hunter's Mark") huntersMarkActive = true;
+    if (b.name === 'Hex') hexActive = true;
+    if (b.name === 'Divine Favor') divineFavorActive = true;
+  }
+  return { attackBonus, damageBonus, acBonus, saveBonus, blessActive, rageActive, huntersMarkActive, hexActive, divineFavorActive };
+}
