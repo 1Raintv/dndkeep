@@ -5,8 +5,10 @@ import { capitalize } from '../../lib/gameUtils';
 interface StepClassProps {
   selected: string;
   level: number;
+  selectedSkills: string[];
   onSelect: (name: string) => void;
   onLevelChange: (level: number) => void;
+  onSkillToggle: (skill: string) => void;
 }
 
 // Complexity: 1–5 dots
@@ -39,7 +41,7 @@ function ComplexityPips({ rating }: { rating: number }) {
   );
 }
 
-export default function StepClass({ selected, level, onSelect, onLevelChange }: StepClassProps) {
+export default function StepClass({ selected, level, selectedSkills, onSelect, onLevelChange, onSkillToggle }: StepClassProps) {
   const preview = CLASSES.find(c => c.name === selected);
 
   return (
@@ -56,41 +58,11 @@ export default function StepClass({ selected, level, onSelect, onLevelChange }: 
           />
         ))}
 
-        {/* Level slider — appears after class chosen */}
-        {selected && (
-          <div className="animate-fade-in" style={{
-            marginTop: 'var(--sp-2)', padding: 'var(--sp-4)',
-            background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)',
-            borderRadius: 'var(--r-xl)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-2)', margin: 0 }}>
-                Starting Level
-              </label>
-              <span style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--c-gold-l)', lineHeight: 1 }}>
-                {level}
-              </span>
-            </div>
-            <input
-              type="range" min={1} max={20} value={level}
-              onChange={e => onLevelChange(Number(e.target.value))}
-              style={{ width: '100%', accentColor: 'var(--c-gold)', cursor: 'pointer' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
-              <span>1</span>
-              {level >= 3 && (
-                <span style={{ color: 'var(--c-purple-l)', fontSize: 10 }}>
-                  subclass at 3
-                </span>
-              )}
-              <span>20</span>
-            </div>
-          </div>
-        )}
+
       </div>
 
-      {/* ── Right: class preview ── */}
-      <div>
+      {/* ── Right: class preview + skills ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         {preview ? (
           <ClassPreview cls={preview} level={level} />
         ) : (
@@ -102,6 +74,39 @@ export default function StepClass({ selected, level, onSelect, onLevelChange }: 
           }}>
             <span style={{ fontSize: 40 }}>⚔️</span>
             <span style={{ fontSize: 'var(--fs-sm)' }}>Select a class to see details</span>
+          </div>
+        )}
+
+        {/* Skill selector — shown once class is chosen */}
+        {preview && (
+          <div className="animate-fade-in" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border-m)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)' }}>
+            <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 8 }}>
+              Choose {preview.skill_count} Skills
+              <span style={{ marginLeft: 8, color: selectedSkills.length === preview.skill_count ? 'var(--c-green-l)' : 'var(--c-amber-l)', fontWeight: 600 }}>
+                {selectedSkills.length}/{preview.skill_count} chosen
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {preview.skill_choices.map(skill => {
+                const sel = selectedSkills.includes(skill);
+                const maxed = !sel && selectedSkills.length >= preview.skill_count;
+                return (
+                  <button key={skill}
+                    onClick={() => !maxed && onSkillToggle(skill)}
+                    disabled={maxed}
+                    style={{
+                      fontSize: 'var(--fs-xs)', fontWeight: 600, padding: '4px 10px', borderRadius: 999,
+                      cursor: maxed ? 'not-allowed' : 'pointer', minHeight: 0, opacity: maxed ? 0.4 : 1,
+                      border: sel ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                      background: sel ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                      color: sel ? 'var(--c-gold-l)' : 'var(--t-2)',
+                      transition: 'all var(--tr-fast)',
+                    }}>
+                    {sel ? '✓ ' : ''}{skill}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

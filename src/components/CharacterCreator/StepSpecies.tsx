@@ -23,12 +23,14 @@ interface StepSpeciesProps {
   selected: string;
   originFeat: string;
   name: string;
+  level: number;
   onNameChange: (v: string) => void;
+  onLevelChange: (level: number) => void;
   onSelect: (name: string) => void;
   onOriginFeatSelect: (feat: string) => void;
 }
 
-export default function StepSpecies({ selected, originFeat, name, onNameChange, onSelect, onOriginFeatSelect }: StepSpeciesProps) {
+export default function StepSpecies({ selected, originFeat, name, level, onNameChange, onLevelChange, onSelect, onOriginFeatSelect }: StepSpeciesProps) {
   const preview = SPECIES.find(s => s.name === selected);
   const needsOriginFeat = ORIGIN_FEAT_SPECIES.includes(selected);
   const levelFeatures = selected ? (SPECIES_LEVEL_FEATURES[selected] ?? []) : [];
@@ -37,20 +39,40 @@ export default function StepSpecies({ selected, originFeat, name, onNameChange, 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
 
-      {/* Character Name */}
-      <div>
-        <label style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-2)', marginBottom: 6, display: 'block' }}>Character Name</label>
-        <input
-          type="text"
-          value={name}
-          onChange={e => onNameChange(e.target.value)}
-          placeholder="What do they call you?"
-          autoFocus
-          style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, padding: '10px 14px' }}
-        />
-        {!name.trim() && (
-          <div style={{ marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>Required to create your character</div>
-        )}
+      {/* Character Name + Level — always at top */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 'var(--sp-4)', alignItems: 'start' }}>
+        <div>
+          <label style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-2)', marginBottom: 6, display: 'block' }}>Character Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => onNameChange(e.target.value)}
+            placeholder="What do they call you?"
+            autoFocus
+            style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, padding: '10px 14px' }}
+          />
+          {!name.trim() && (
+            <div style={{ marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>Required to create your character</div>
+          )}
+        </div>
+        <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--t-2)', margin: 0 }}>Starting Level</label>
+            <span style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--c-gold-l)', lineHeight: 1 }}>{level}</span>
+          </div>
+          <input
+            type="range" min={1} max={20} value={level}
+            onChange={e => onLevelChange(Number(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--c-gold)', cursor: 'pointer' }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
+            <span>1</span>
+            <span style={{ color: level >= 3 ? 'var(--c-purple-l)' : 'var(--t-3)', fontSize: 9 }}>
+              {level >= 3 ? `subclass at ${level >= 3 ? '3' : '—'}` : 'subclass unlocks at 3'}
+            </span>
+            <span>20</span>
+          </div>
+        </div>
       </div>
 
       <div style={{ height: 1, background: 'var(--c-border)' }} />

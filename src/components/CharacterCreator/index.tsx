@@ -21,6 +21,20 @@ const ORIGIN_FEAT_SPECIES = ['Human'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
 import { buildFeaturesText } from '../../lib/buildFeaturesText';
 
+function SummaryRow({ icon, label, value, empty, done }: {
+  icon: string; label: string; value: string; empty?: boolean; done?: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--c-border)' }}>
+      <span style={{ fontSize: 12, opacity: empty ? 0.4 : 1 }}>{icon}</span>
+      <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--t-3)', minWidth: 0 }}>{label}</span>
+      <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: done ? 'var(--c-gold-l)' : empty ? 'var(--t-3)' : 'var(--t-2)', textAlign: 'right', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 const DEFAULT_SCORES: Record<AbilityKey, number> = {
   strength: 10, dexterity: 10, constitution: 10,
   intelligence: 10, wisdom: 10, charisma: 10,
@@ -70,6 +84,10 @@ export default function CharacterCreator() {
       case 1: return className !== '';
       case 2: return background !== '';
       case 3: return ABILITIES.every(ab => scores[ab] >= 1);
+      case 1: {
+        const cls = CLASS_MAP[className];
+        return !!className && selectedSkills.length === (cls?.skill_count ?? 2);
+      }
       case 4: return level < 3 || buildChoices.subclass !== '';
     }
     return true;
@@ -247,10 +265,11 @@ export default function CharacterCreator() {
         </button>
       </div>
 
-      {/* Step content */}
+      {/* Layout: step content + sticky summary sidebar */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 'var(--sp-6)', alignItems: 'start' }}>
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
-        {step === 0 && <StepSpecies selected={species} originFeat={originFeat} name={name} onNameChange={setName} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
-        {step === 1 && <StepClass selected={className} level={level} onSelect={c => { setClassName(c); setSubclass(''); }} onLevelChange={handleLevelChange} />}
+        {step === 0 && <StepSpecies selected={species} originFeat={originFeat} name={name} level={level} onNameChange={setName} onLevelChange={handleLevelChange} onSelect={s => { setSpecies(s); setOriginFeat(''); }} onOriginFeatSelect={setOriginFeat} />}
+        {step === 1 && <StepClass selected={className} level={level} selectedSkills={selectedSkills} onSelect={c => { setClassName(c); setSubclass(''); setSelectedSkills([]); }} onLevelChange={handleLevelChange} onSkillToggle={handleSkillToggle} />}
         {step === 2 && <StepBackground selected={background} onSelect={setBackground} />}
         {step === 3 && <StepAbilityScores scores={scores} method={method} backgroundName={background} className={className} onScoresChange={setScores} onMethodChange={setMethod} />}
         {step === 4 && (
@@ -264,6 +283,56 @@ export default function CharacterCreator() {
             }}
           />
         )}
+
+      </div>
+
+      {/* Sticky character summary */}
+      <div style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+        <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)' }}>
+          Character Summary
+        </div>
+        {/* Name */}
+        <SummaryRow icon="✍️" label="Name" value={name || '—'} empty={!name} />
+        <SummaryRow icon="⚡" label="Level" value={String(level)} />
+        {/* Species */}
+        <SummaryRow icon="🧬" label="Species" value={species || '—'} empty={!species} done={!!species} />
+        {/* Class */}
+        <SummaryRow icon="⚔️" label="Class" value={className || '—'} empty={!className} done={!!className} />
+        {/* Background */}
+        <SummaryRow icon="🎒" label="Background" value={background || '—'} empty={!background} done={!!background} />
+        {/* Subclass */}
+        {level >= 3 && (
+          <SummaryRow icon="✦" label="Subclass" value={buildChoices.subclass || subclass || '—'} empty={!buildChoices.subclass && !subclass} done={!!(buildChoices.subclass || subclass)} />
+        )}
+
+        {/* Live HP preview */}
+        {className && (() => {
+          const cls = CLASS_MAP[className];
+          if (!cls) return null;
+          const bg = BACKGROUND_MAP[background];
+          const finalScores = { ...scores };
+          if (bg) { finalScores[bg.asi_primary as keyof typeof finalScores] += 2; finalScores[bg.asi_secondary as keyof typeof finalScores] += 1; }
+          const hp = calcMaxHP(cls.hit_die, finalScores.constitution, level);
+          const profBonus = level < 5 ? 2 : level < 9 ? 3 : level < 13 ? 4 : level < 17 ? 5 : 6;
+          return (
+            <div style={{ marginTop: 'var(--sp-2)', padding: 'var(--sp-3)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>Preview</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Hit Points</span>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--c-green-l)' }}>{hp}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Prof. Bonus</span>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--c-gold-l)' }}>+{profBonus}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Hit Die</span>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>d{cls.hit_die}</span>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
       </div>
 
