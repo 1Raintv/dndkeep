@@ -243,6 +243,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
         onOpenRest={() => setShowRest(true)}
         onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
+        onUpdateSpeed={speed => applyUpdate({ speed }, true)}
+        onShare={character.share_token && character.share_enabled ? () => {
+          navigator.clipboard.writeText(window.location.origin + '/share/' + character.share_token);
+        } : undefined}
         onUpdateHP={delta => {
             const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
             handleUpdateHP(newHP, character.temp_hp);

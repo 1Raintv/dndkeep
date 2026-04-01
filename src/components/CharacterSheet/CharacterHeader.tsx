@@ -14,6 +14,8 @@ interface CharacterHeaderProps {
   onOpenRest?: () => void;
   onUpdateHP?: (delta: number) => void;
   onUpdateAC?: (ac: number) => void;
+  onUpdateSpeed?: (speed: number) => void;
+  onShare?: () => void;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
@@ -27,13 +29,15 @@ function hpColor(current: number, max: number): string {
 
 export default function CharacterHeader({
   character, computed, onOpenSettings, onUpdateXP, onOpenAvatarPicker,
-  onToggleInspiration, onOpenRest, onUpdateHP, onUpdateAC,
+  onToggleInspiration, onOpenRest, onUpdateHP, onUpdateAC, onUpdateSpeed, onShare,
 }: CharacterHeaderProps) {
   const [hpDelta, setHpDelta] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal'>('damage');
   const { triggerRoll } = useDiceRoll();
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
+  const [editingSpeed, setEditingSpeed] = useState(false);
+  const [speedInput, setSpeedInput] = useState('');
 
   function rollInitiative() {
     const d20 = rollDie(20);
@@ -218,8 +222,25 @@ export default function CharacterHeader({
             </>
           )}
 
-          {/* Speed */}
-          <StatChip icon="💨" label="SPEED" value={`${character.speed}ft`} color="var(--t-2)" small />
+          {/* Speed — click to edit */}
+          {editingSpeed ? (
+            <div style={{ padding: '4px var(--sp-2)', background: '#080d14', border: '2px solid var(--c-blue-l)', borderRadius: 'var(--r-md)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 52 }}>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)' }}>💨 SPEED</div>
+              <input
+                type="number" autoFocus value={speedInput}
+                onChange={e => setSpeedInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v) && v >= 0) onUpdateSpeed?.(v); setEditingSpeed(false); }
+                  if (e.key === 'Escape') setEditingSpeed(false);
+                }}
+                onBlur={() => { const v = parseInt(speedInput); if (!isNaN(v) && v >= 0) onUpdateSpeed?.(v); setEditingSpeed(false); }}
+                style={{ width: 36, textAlign: 'center', fontSize: 'var(--fs-sm)', fontWeight: 900, padding: '0 2px', background: 'transparent', border: 'none', color: '#93c5fd' }}
+              />
+            </div>
+          ) : (
+            <StatChip icon="💨" label="SPEED" value={`${character.speed}ft`} color="var(--t-2)" small clickable
+              onClick={() => { setSpeedInput(String(character.speed)); setEditingSpeed(true); }} />
+          )}
         </div>
 
         {/* Actions */}
@@ -239,6 +260,16 @@ export default function CharacterHeader({
           >
             {character.inspiration ? '⭐ Inspired' : '☆ Inspiration'}
           </button>
+          {onShare && (
+            <button
+              className="btn-ghost btn-sm"
+              onClick={onShare}
+              style={{ color: 'var(--c-gold-l)' }}
+              title="Share character sheet"
+            >
+              🔗 Share
+            </button>
+          )}
           <button
             className="btn-ghost btn-sm"
             onClick={onOpenSettings}
