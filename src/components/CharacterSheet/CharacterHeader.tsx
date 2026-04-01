@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useDiceRoll } from '../../context/DiceRollContext';
+import { rollDie } from '../../lib/gameUtils';
 import type { Character, ComputedStats } from '../../types';
 import { abilityModifier } from '../../lib/gameUtils';
 
@@ -28,6 +30,13 @@ export default function CharacterHeader({
 }: CharacterHeaderProps) {
   const [hpDelta, setHpDelta] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal'>('damage');
+  const { triggerRoll } = useDiceRoll();
+
+  function rollInitiative() {
+    const d20 = rollDie(20);
+    const total = d20 + initMod;
+    triggerRoll({ result: d20, dieType: 20, modifier: initMod, total, label: 'Initiative' });
+  }
 
   const isSpellcaster = SPELLCASTERS.includes(character.class_name);
   const spellAbility = {
@@ -180,12 +189,14 @@ export default function CharacterHeader({
           {/* AC */}
           <StatChip icon="🛡️" label="AC" value={character.armor_class} color="var(--c-gold-l)" />
 
-          {/* Initiative */}
+          {/* Initiative — click to roll */}
           <StatChip
             icon="⚡"
             label="INIT"
             value={initMod >= 0 ? `+${initMod}` : String(initMod)}
             color="#60a5fa"
+            onClick={rollInitiative}
+            clickable
           />
 
           {/* Passive Perception */}
@@ -261,8 +272,8 @@ export default function CharacterHeader({
 }
 
 // ── Small reusable stat chip ───────────────────────────────────────
-function StatChip({ icon, label, value, color, small }: {
-  icon: string; label: string; value: string | number; color: string; small?: boolean;
+function StatChip({ icon, label, value, color, small, onClick, clickable }: {
+  icon: string; label: string; value: string | number; color: string; small?: boolean; onClick?: () => void; clickable?: boolean;
 }) {
   return (
     <div style={{

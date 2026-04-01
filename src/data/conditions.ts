@@ -6,8 +6,8 @@ export interface ConditionMechanic {
   effects: string[];
   attackDisadvantage?: boolean;
   attackAdvantageReceived?: boolean;
-  savingThrowDisadvantage?: string[];
-  autoFailSaves?: string[];
+  savingThrowDisadvantage?: ('strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma')[];
+  autoFailSaves?: ('strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma')[];
   abilityCheckDisadvantage?: boolean;
   speedZero?: boolean;
   concentrationBreaks?: boolean;

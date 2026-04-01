@@ -108,10 +108,10 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
         {/* Label */}
         {label && (
           <div style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: 'var(--text-md)',
+            fontFamily: 'var(--ff-body)',
+            fontSize: 'var(--fs-md)',
             fontWeight: 700,
-            color: 'var(--text-muted)',
+            color: 'var(--t-2)',
             letterSpacing: '0.15em',
             textTransform: 'uppercase',
             animation: 'labelSlideUp 300ms 200ms ease both',
@@ -140,7 +140,7 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
           <div style={{
             position: 'absolute',
             top: 10,
-            fontFamily: 'var(--font-heading)',
+            fontFamily: 'var(--ff-body)',
             fontSize: 11,
             fontWeight: 700,
             color: `${accentColor}80`,
@@ -151,7 +151,7 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
 
           {/* Result */}
           <div style={{
-            fontFamily: 'var(--font-heading)',
+            fontFamily: 'var(--ff-body)',
             fontWeight: 900,
             fontSize: result >= 100 ? 36 : result >= 10 ? 56 : 72,
             color: accentColor,
@@ -167,7 +167,7 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
             <div style={{
               position: 'absolute',
               bottom: 10,
-              fontFamily: 'var(--font-heading)',
+              fontFamily: 'var(--ff-body)',
               fontSize: 9,
               fontWeight: 900,
               color: accentColor,
@@ -183,29 +183,29 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
         {/* Total with modifier */}
         {modifier !== undefined && modifier !== 0 && (
           <div style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: 'var(--text-lg)',
+            fontFamily: 'var(--ff-body)',
+            fontSize: 'var(--fs-lg)',
             fontWeight: 700,
-            color: 'var(--text-secondary)',
+            color: 'var(--t-2)',
             animation: 'labelSlideUp 300ms 500ms ease both',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
           }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+            <span style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
               {result} {modifier >= 0 ? '+' : ''}{modifier}
             </span>
-            <span style={{ color: 'var(--text-muted)' }}>=</span>
-            <span style={{ color: accentColor, fontSize: 'var(--text-2xl)', fontWeight: 900 }}>
+            <span style={{ color: 'var(--t-2)' }}>=</span>
+            <span style={{ color: accentColor, fontSize: 'var(--fs-2xl)', fontWeight: 900 }}>
               {finalTotal}
             </span>
           </div>
         )}
 
         <div style={{
-          fontFamily: 'var(--font-body)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--text-muted)',
+          fontFamily: 'var(--ff-body)',
+          fontSize: 'var(--fs-xs)',
+          color: 'var(--t-2)',
           animation: 'labelSlideUp 300ms 700ms ease both',
         }}>
           Click to dismiss
