@@ -155,11 +155,11 @@ export default function DicePage() {
 
   return (
     <div style={{ maxWidth: 820, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-6)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-6)', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
         <h1>Dice Roller</h1>
         {characters.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <label style={{ margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <label style={{ margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', whiteSpace: 'nowrap' }}>
               Rolling as
             </label>
             <select
@@ -177,22 +177,22 @@ export default function DicePage() {
       </div>
 
       {/* Quick roll */}
-      <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
+      <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
         <div className="section-header">Quick Roll</div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
           {DICE.map(die => (
             <button
               key={die}
               onClick={() => quickRoll(die)}
               style={{
-                fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)',
-                padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-gold)', background: 'var(--bg-sunken)',
-                color: 'var(--text-gold)', cursor: 'pointer', minWidth: 56, textAlign: 'center',
-                transition: 'all var(--transition-fast)',
+                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)',
+                padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--r-md)',
+                border: '1px solid var(--c-gold-bdr)', background: '#080d14',
+                color: 'var(--c-gold-l)', cursor: 'pointer', minWidth: 56, textAlign: 'center',
+                transition: 'all var(--tr-fast)',
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,146,42,0.12)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-sunken)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#080d14'; }}
             >
               {die}
             </button>
@@ -205,64 +205,64 @@ export default function DicePage() {
         <div
           className="card card-gold animate-fade-in"
           style={{
-            textAlign: 'center', marginBottom: 'var(--space-6)',
-            background: 'linear-gradient(135deg, var(--color-charcoal), var(--color-shadow))',
+            textAlign: 'center', marginBottom: 'var(--sp-6)',
+            background: 'linear-gradient(135deg, var(--c-surface), var(--c-card))',
             animation: rolling ? 'roll-bounce 400ms ease both' : undefined,
           }}
         >
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 'var(--sp-2)' }}>
             {lastRoll.label}
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '4.5rem', fontWeight: 900, color: 'var(--text-gold)', lineHeight: 1, textShadow: '0 0 32px rgba(201,146,42,0.5)' }}>
+          <div style={{ fontFamily: 'var(--ff-brand)', fontSize: '4.5rem', fontWeight: 900, color: 'var(--c-gold-l)', lineHeight: 1, textShadow: '0 0 32px rgba(201,146,42,0.5)' }}>
             {lastRoll.total}
           </div>
           {lastRoll.individual_results.length > 1 && (
-            <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <div style={{ marginTop: 'var(--sp-3)', display: 'flex', gap: 'var(--sp-2)', justifyContent: 'center', flexWrap: 'wrap' }}>
               {lastRoll.individual_results.map((r, i) => (
-                <span key={i} style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', background: 'var(--bg-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '2px var(--space-2)' }}>
+                <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', background: '#080d14', border: '1px solid var(--c-border)', borderRadius: 'var(--r-sm)', padding: '2px var(--sp-2)' }}>
                   {r}
                 </span>
               ))}
               {lastRoll.modifier !== 0 && (
-                <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-gold)' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
                   {lastRoll.modifier > 0 ? `+${lastRoll.modifier}` : lastRoll.modifier}
                 </span>
               )}
             </div>
           )}
           {persistingId === lastRoll.id && (
-            <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+            <div style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
               Saving to log...
             </div>
           )}
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-6)' }}>
         {/* Dice queue */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
             <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none' }}>Dice Queue</div>
             <button className="btn-ghost btn-sm" onClick={() => setQueue([])}>Clear</button>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
             {DICE.map(die => (
               <button key={die} onClick={() => addDie(die)} className="btn-secondary btn-sm">{die}</button>
             ))}
           </div>
 
           {queue.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontStyle: 'italic', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', fontStyle: 'italic', fontFamily: 'var(--ff-body)' }}>
               Click dice above to build your roll
             </p>
           ) : (
             <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
                 {queue.map(q => (
-                  <div key={q.id} style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', padding: 'var(--space-2)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-sm)' }}>
+                  <div key={q.id} style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', padding: 'var(--sp-2)', background: '#080d14', borderRadius: 'var(--r-sm)' }}>
                     <button className="btn-secondary btn-sm btn-icon" onClick={() => updateQueue(q.id, 'count', Math.max(1, q.count - 1))}>-</button>
-                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--text-gold)', minWidth: 44, textAlign: 'center' }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 44, textAlign: 'center' }}>
                       {q.count}{q.die}
                     </span>
                     <button className="btn-secondary btn-sm btn-icon" onClick={() => updateQueue(q.id, 'count', q.count + 1)}>+</button>
@@ -277,14 +277,14 @@ export default function DicePage() {
                       value={q.label}
                       onChange={e => updateQueue(q.id, 'label', e.target.value)}
                       placeholder="label"
-                      style={{ flex: 1, fontSize: 'var(--text-xs)' }}
+                      style={{ flex: 1, fontSize: 'var(--fs-xs)' }}
                     />
-                    <button className="btn-ghost btn-sm" onClick={() => removeFromQueue(q.id)} style={{ color: 'var(--color-ash)' }}>✕</button>
+                    <button className="btn-ghost btn-sm" onClick={() => removeFromQueue(q.id)} style={{ color: 'var(--t-2)' }}>✕</button>
                   </div>
                 ))}
               </div>
 
-              <div style={{ marginBottom: 'var(--space-3)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              <div style={{ marginBottom: 'var(--sp-3)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                 {queue.map(q => `${q.count}${q.die}${q.modifier !== 0 ? (q.modifier > 0 ? `+${q.modifier}` : q.modifier) : ''}`).join(' + ')}
                 {totalFromQueue !== 0 && ` (mod: ${totalFromQueue > 0 ? '+' : ''}${totalFromQueue})`}
               </div>
@@ -303,29 +303,29 @@ export default function DicePage() {
 
         {/* Roll log */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
             <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none' }}>Roll Log</div>
             <button className="btn-ghost btn-sm" onClick={clearLog}>Clear</button>
           </div>
 
           {log.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontStyle: 'italic', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', fontStyle: 'italic', fontFamily: 'var(--ff-body)' }}>
               No rolls yet this session
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 420, overflowY: 'auto' }}>
               {log.map((r, i) => (
-                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', background: i === 0 ? 'rgba(201,146,42,0.06)' : 'transparent', border: i === 0 ? '1px solid rgba(201,146,42,0.15)' : '1px solid transparent' }}>
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-sm)', background: i === 0 ? 'rgba(201,146,42,0.06)' : 'transparent', border: i === 0 ? '1px solid rgba(201,146,42,0.15)' : '1px solid transparent' }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.label}
                     </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
                       [{r.individual_results.join(', ')}]
                       {r.modifier !== 0 && ` ${r.modifier > 0 ? '+' : ''}${r.modifier}`}
                     </div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--text-gold)', marginLeft: 'var(--space-3)', flexShrink: 0 }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--c-gold-l)', marginLeft: 'var(--sp-3)', flexShrink: 0 }}>
                     {r.total}
                   </span>
                 </div>

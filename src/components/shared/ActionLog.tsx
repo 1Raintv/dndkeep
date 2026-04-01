@@ -27,16 +27,16 @@ interface ActionLogProps {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  attack: 'var(--color-crimson-bright)', spell: '#a78bfa',
+  attack: 'var(--c-red-l)', spell: '#a78bfa',
   heal: 'var(--hp-full)', damage: '#fb923c',
-  roll: 'var(--color-gold-bright)', save: '#60a5fa', check: 'var(--text-secondary)',
+  roll: 'var(--c-gold-l)', save: '#60a5fa', check: 'var(--t-2)',
 };
 const TYPE_ICONS: Record<string, string> = {
   attack: '⚔️', spell: '✨', heal: '💚', damage: '💥', roll: '🎲', save: '🛡️', check: '🎯',
 };
 const QUICK_EMOJIS = ['🎉', '🔥', '💀', '😬', '⭐', '💔', '🐉', '👀'];
 
-function entryColor(e: ActionLogEntry) { return TYPE_COLORS[e.action_type] ?? 'var(--text-secondary)'; }
+function entryColor(e: ActionLogEntry) { return TYPE_COLORS[e.action_type] ?? 'var(--t-2)'; }
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
@@ -148,37 +148,37 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
   const filtered = filter === 'all' ? entries : entries.filter(e => e.action_type === filter);
 
   if (loading) return (
-    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', padding: 'var(--space-4)' }}>
+    <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', padding: 'var(--sp-4)' }}>
       <div className="spinner" style={{ width: 14, height: 14 }} /><span className="loading-text">Loading log…</span>
     </div>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
       {/* Filters */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {(['all', 'attack', 'spell', 'roll', 'heal'] as const).map(f => {
             const active = filter === f;
-            const color = f === 'all' ? 'var(--text-gold)' : TYPE_COLORS[f];
+            const color = f === 'all' ? 'var(--c-gold-l)' : TYPE_COLORS[f];
             return (
               <button key={f} onClick={() => setFilter(f)} style={{
-                fontFamily: 'var(--font-heading)', fontSize: 9, fontWeight: 700,
+                fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
                 letterSpacing: '0.06em', textTransform: 'uppercase',
                 padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
-                border: active ? `1px solid ${color}` : '1px solid var(--border-subtle)',
+                border: active ? `1px solid ${color}` : '1px solid var(--c-border)',
                 background: active ? `${color}20` : 'transparent',
-                color: active ? color : 'var(--text-muted)',
+                color: active ? color : 'var(--t-2)',
               }}>
                 {f === 'all' ? 'All' : `${TYPE_ICONS[f]} ${f.charAt(0).toUpperCase() + f.slice(1)}`}
               </button>
             );
           })}
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)' }}>{filtered.length} entries</span>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>{filtered.length} entries</span>
           {entries.length > 0 && (
-            <button onClick={clearLog} style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--color-crimson-bright)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <button onClick={clearLog} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-red-l)', background: 'none', border: 'none', cursor: 'pointer' }}>
               Clear
             </button>
           )}
@@ -188,11 +188,11 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
       {/* New entry flash */}
       {newEntry && (
         <div className="animate-fade-in" style={{
-          padding: 'var(--space-2) var(--space-3)',
+          padding: 'var(--sp-2) var(--sp-3)',
           background: `${entryColor(newEntry)}15`,
           border: `1px solid ${entryColor(newEntry)}50`,
-          borderRadius: 'var(--radius-md)',
-          fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: entryColor(newEntry),
+          borderRadius: 'var(--r-md)',
+          fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: entryColor(newEntry),
         }}>
           🔔 {newEntry.character_name}: {newEntry.action_name}
           {newEntry.target_name && ` → ${newEntry.target_name}`}
@@ -203,9 +203,9 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
       {/* Log entries */}
       <div style={{ maxHeight, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3, paddingRight: 2 }}>
         {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 'var(--space-8)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+          <div style={{ textAlign: 'center', padding: 'var(--sp-8)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
             No actions logged yet.<br />
-            <span style={{ fontSize: 'var(--text-xs)', opacity: 0.7 }}>Attacks, spells, and rolls appear here in real-time.</span>
+            <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}>Attacks, spells, and rolls appear here in real-time.</span>
           </div>
         ) : filtered.map(entry => (
           <LogEntry
@@ -235,56 +235,56 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
 
   return (
     <div style={{
-      borderRadius: 'var(--radius-sm)',
-      background: 'var(--bg-sunken)',
+      borderRadius: 'var(--r-sm)',
+      background: '#080d14',
       borderLeft: `3px solid ${color}`,
       overflow: 'hidden',
     }}>
       {/* Main row */}
-      <div style={{ padding: 'var(--space-2) var(--space-3)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0, minWidth: 48 }}>
+      <div style={{ padding: 'var(--sp-2) var(--sp-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', flexShrink: 0, minWidth: 48 }}>
             {formatTime(entry.created_at)}
           </span>
-          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)', color }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color }}>
             {icon} {entry.character_name}
           </span>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
             {entry.action_name}
           </span>
           {entry.target_name && (
             <>
-              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>→</span>
-              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--color-gold-bright)', fontWeight: 700 }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>→</span>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', fontWeight: 700 }}>
                 {entry.target_name}
               </span>
             </>
           )}
           {entry.hit_result && (
             <span style={{
-              fontFamily: 'var(--font-heading)', fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+              fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
               padding: '1px 5px', borderRadius: 3,
-              color: isCrit ? 'var(--color-gold-bright)' : isMiss ? 'var(--color-crimson-bright)' : 'var(--hp-full)',
+              color: isCrit ? 'var(--c-gold-l)' : isMiss ? 'var(--c-red-l)' : 'var(--hp-full)',
               background: isCrit ? 'rgba(201,146,42,0.15)' : isMiss ? 'rgba(220,38,38,0.15)' : 'rgba(22,163,74,0.15)',
             }}>
               {entry.hit_result}
             </span>
           )}
           {entry.total > 0 && (
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-md)', color, marginLeft: 'auto', flexShrink: 0 }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-md)', color, marginLeft: 'auto', flexShrink: 0 }}>
               {entry.total}
             </span>
           )}
         </div>
 
         {entry.dice_expression && (
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)', marginTop: 2, marginLeft: 56 }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', marginTop: 2, marginLeft: 56 }}>
             {entry.dice_expression}
             {entry.individual_results?.length > 0 && ` [${entry.individual_results.join(', ')}]`}
           </div>
         )}
         {entry.notes && (
-          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2, marginLeft: 56, fontStyle: 'italic' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2, marginLeft: 56, fontStyle: 'italic' }}>
             {entry.notes}
           </div>
         )}
@@ -292,7 +292,7 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
 
       {/* Reactions row */}
       <div style={{
-        padding: '3px var(--space-3) 5px 56px',
+        padding: '3px var(--sp-3) 5px 56px',
         display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap',
         minHeight: entryReactions.length > 0 || showEmojiPicker ? 'auto' : 0,
       }}>
@@ -304,14 +304,14 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
             style={{
               display: 'flex', alignItems: 'center', gap: 3,
               padding: '1px 6px', borderRadius: 99,
-              border: r.myReaction ? '1px solid var(--color-gold-dim)' : '1px solid var(--border-subtle)',
-              background: r.myReaction ? 'rgba(201,146,42,0.12)' : 'var(--bg-raised)',
+              border: r.myReaction ? '1px solid var(--c-gold)' : '1px solid var(--c-border)',
+              background: r.myReaction ? 'rgba(201,146,42,0.12)' : 'var(--c-raised)',
               cursor: 'pointer', fontSize: 13, lineHeight: 1.4,
-              transition: 'all var(--transition-fast)',
+              transition: 'all var(--tr-fast)',
             }}
           >
             {r.emoji}
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 10, color: r.myReaction ? 'var(--text-gold)' : 'var(--text-muted)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, color: r.myReaction ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
               {r.count}
             </span>
           </button>
@@ -323,9 +323,9 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
             onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(p => !p); }}
             style={{
               padding: '1px 5px', borderRadius: 99, fontSize: 12, lineHeight: 1.4,
-              border: '1px solid var(--border-subtle)', background: 'transparent',
-              cursor: 'pointer', color: 'var(--text-muted)', opacity: 0.6,
-              transition: 'opacity var(--transition-fast)',
+              border: '1px solid var(--c-border)', background: 'transparent',
+              cursor: 'pointer', color: 'var(--t-2)', opacity: 0.6,
+              transition: 'opacity var(--tr-fast)',
             }}
             onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'}
             onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'}
@@ -337,10 +337,10 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
               className="animate-fade-in"
               style={{
                 position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
-                background: 'var(--color-charcoal)',
-                border: '1px solid var(--border-gold)',
-                borderRadius: 'var(--radius-md)',
-                padding: 'var(--space-2)',
+                background: 'var(--c-surface)',
+                border: '1px solid var(--c-gold-bdr)',
+                borderRadius: 'var(--r-md)',
+                padding: 'var(--sp-2)',
                 display: 'flex', gap: 4, flexWrap: 'wrap',
                 width: 180, zIndex: 100,
                 boxShadow: 'var(--shadow-lg), var(--shadow-gold)',
@@ -354,7 +354,7 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
                   style={{
                     fontSize: 20, padding: '4px', borderRadius: 6,
                     border: 'none', background: 'transparent', cursor: 'pointer',
-                    transition: 'transform var(--transition-fast)',
+                    transition: 'transform var(--tr-fast)',
                   }}
                   onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.3)'}
                   onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'}

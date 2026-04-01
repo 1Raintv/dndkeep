@@ -80,25 +80,25 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
     return (
       <div style={{ maxWidth: 520 }}>
         <div style={{
-          padding: 'var(--space-6)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-gold)',
+          padding: 'var(--sp-6)',
+          borderRadius: 'var(--r-lg)',
+          border: '1px solid var(--c-gold-bdr)',
           background: 'rgba(201,146,42,0.06)',
           textAlign: 'center',
         }}>
-          <div style={{ fontSize: 36, marginBottom: 'var(--space-3)' }}>⚔️</div>
-          <h3 style={{ marginBottom: 'var(--space-2)', fontFamily: 'var(--font-heading)', color: 'var(--text-gold)' }}>
+          <div style={{ fontSize: 36, marginBottom: 'var(--sp-3)' }}>⚔️</div>
+          <h3 style={{ marginBottom: 'var(--sp-2)', fontFamily: 'var(--ff-body)', color: 'var(--c-gold-l)' }}>
             DM Sessions — Pro Feature
           </h3>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 'var(--space-5)' }}>
+          <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6, marginBottom: 'var(--sp-5)' }}>
             Create live campaign sessions, share a join code with your players, track initiative in real-time, and manage HP across the whole party. Upgrade to Pro to unlock DM tools.
           </p>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-3)', flexWrap: 'wrap', justifyContent: 'center', marginBottom: 'var(--sp-4)' }}>
             {['Real-time party sync', 'Initiative tracker', 'Condition management', 'Unlimited campaigns'].map(f => (
               <span key={f} style={{
-                fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700,
-                padding: '4px 10px', borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(201,146,42,0.3)', color: 'var(--text-gold)',
+                fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700,
+                padding: '4px 10px', borderRadius: 'var(--r-sm)',
+                border: '1px solid rgba(201,146,42,0.3)', color: 'var(--c-gold-l)',
                 background: 'rgba(201,146,42,0.08)',
               }}>✓ {f}</span>
             ))}
@@ -118,7 +118,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
   // ── Pro: loading ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', padding: 'var(--space-6)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', padding: 'var(--sp-6)' }}>
         <div className="spinner" />
         <span className="loading-text">Loading sessions...</span>
       </div>
@@ -127,32 +127,32 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
 
   // ── Pro: main view ──────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+    <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
 
       {/* Active sessions */}
       {campaigns.length > 0 && (
         <div>
           <div className="section-header">Your DM Sessions</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
             {campaigns.map(camp => (
               <div key={camp.id} style={{
-                display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                border: `1px solid ${camp.is_active ? 'var(--border-gold)' : 'var(--border-subtle)'}`,
-                background: camp.is_active ? 'rgba(201,146,42,0.06)' : 'var(--bg-surface)',
+                display: 'flex', alignItems: 'center', gap: 'var(--sp-4)',
+                padding: 'var(--sp-3) var(--sp-4)',
+                borderRadius: 'var(--r-md)',
+                border: `1px solid ${camp.is_active ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+                background: camp.is_active ? 'rgba(201,146,42,0.06)' : 'var(--c-surface)',
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
                       {camp.name}
                     </span>
                     {camp.is_active && (
                       <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--hp-full)', flexShrink: 0 }} />
                     )}
                   </div>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
-                    Join code: <span style={{ color: 'var(--text-gold)', letterSpacing: '0.1em' }}>{camp.join_code}</span>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
+                    Join code: <span style={{ color: 'var(--c-gold-l)', letterSpacing: '0.1em' }}>{camp.join_code}</span>
                   </div>
                 </div>
                 <button
@@ -171,9 +171,9 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
       {!showCreate ? (
         <div>
           {campaigns.length === 0 && (
-            <div style={{ textAlign: 'center', padding: 'var(--space-6)', marginBottom: 'var(--space-4)' }}>
-              <div style={{ fontSize: 32, marginBottom: 'var(--space-3)' }}>🗺️</div>
-              <p style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <div style={{ textAlign: 'center', padding: 'var(--sp-6)', marginBottom: 'var(--sp-4)' }}>
+              <div style={{ fontSize: 32, marginBottom: 'var(--sp-3)' }}>🗺️</div>
+              <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
                 No sessions yet. Create one and share the join code with your players.
               </p>
             </div>
@@ -187,11 +187,11 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
           </button>
         </div>
       ) : (
-        <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
           <div className="section-header" style={{ marginBottom: 0 }}>New Session</div>
 
           <div>
-            <label style={{ fontSize: 'var(--text-xs)' }}>Session Name *</label>
+            <label style={{ fontSize: 'var(--fs-xs)' }}>Session Name *</label>
             <input
               value={newName}
               onChange={e => setNewName(e.target.value)}
@@ -202,7 +202,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
           </div>
 
           <div>
-            <label style={{ fontSize: 'var(--text-xs)' }}>Description (optional)</label>
+            <label style={{ fontSize: 'var(--fs-xs)' }}>Description (optional)</label>
             <input
               value={newDesc}
               onChange={e => setNewDesc(e.target.value)}
@@ -211,12 +211,12 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
           </div>
 
           {error && (
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-crimson-bright)', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)', fontFamily: 'var(--ff-body)' }}>
               {error}
             </p>
           )}
 
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
             <button className="btn-secondary" onClick={() => { setShowCreate(false); setError(null); }}>
               Cancel
             </button>
@@ -234,20 +234,20 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
 
       {/* Join a session (as player) */}
       <div style={{
-        padding: 'var(--space-3) var(--space-4)',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--border-subtle)',
-        background: 'var(--bg-sunken)',
-        fontFamily: 'var(--font-heading)',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--text-muted)',
+        padding: 'var(--sp-3) var(--sp-4)',
+        borderRadius: 'var(--r-md)',
+        border: '1px solid var(--c-border)',
+        background: '#080d14',
+        fontFamily: 'var(--ff-body)',
+        fontSize: 'var(--fs-xs)',
+        color: 'var(--t-2)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 'var(--space-3)',
+        gap: 'var(--sp-3)',
       }}>
         <span>Looking for a session to join as a player?</span>
-        <button className="btn-ghost btn-sm" onClick={() => navigate('/campaigns')} style={{ fontSize: 'var(--text-xs)' }}>
+        <button className="btn-ghost btn-sm" onClick={() => navigate('/campaigns')} style={{ fontSize: 'var(--fs-xs)' }}>
           View All Campaigns →
         </button>
       </div>

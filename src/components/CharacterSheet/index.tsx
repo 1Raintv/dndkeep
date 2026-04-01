@@ -5,6 +5,7 @@ import { updateCharacter } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { SPELL_MAP, SPELLS } from '../../data/spells';
 import { CLASS_MAP } from '../../data/classes';
+import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 
 import CharacterHeader from './CharacterHeader';
@@ -224,7 +225,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // Render
   // ------------------------------------------------------------------
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
 
       <CharacterHeader
         character={character}
@@ -265,19 +266,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         return spell ? (
           <div className="animate-fade-in" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 'var(--space-3) var(--space-4)',
+            padding: 'var(--sp-3) var(--sp-4)',
             background: 'rgba(167,139,250,0.08)',
             border: '1px solid rgba(167,139,250,0.4)',
-            borderRadius: 'var(--radius-md)',
-            gap: 'var(--space-3)',
+            borderRadius: 'var(--r-md)',
+            gap: 'var(--sp-3)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
               <span style={{ fontSize: 18 }}>🔮</span>
               <div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: '#a78bfa' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: '#a78bfa' }}>
                   Concentrating: {spell.name}
                 </div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   {spell.duration} · Taking damage requires a CON save (DC 10 or half damage taken)
                 </div>
               </div>
@@ -300,20 +301,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         return (
           <div className="animate-fade-in" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 'var(--space-3) var(--space-4)',
+            padding: 'var(--sp-3) var(--sp-4)',
             background: 'rgba(22,163,74,0.08)',
             border: '1px solid rgba(22,163,74,0.4)',
-            borderRadius: 'var(--radius-md)',
-            gap: 'var(--space-3)',
+            borderRadius: 'var(--r-md)',
+            gap: 'var(--sp-3)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flex: 1, minWidth: 0 }}>
               <span style={{ fontSize: 18 }}>🐾</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--hp-full)', marginBottom: 4 }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--hp-full)', marginBottom: 4 }}>
                   Wildshape: {character.wildshape_beast_name}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: hpColor }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: hpColor }}>
                     {character.wildshape_current_hp ?? 0}/{character.wildshape_max_hp} HP
                   </span>
                   <div style={{ flex: 1 }}>
@@ -339,12 +340,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       {showRest && (
         <div className="modal-overlay" onClick={() => { setShortRestHpGained(0); setShowRest(false); }}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 'var(--space-2)' }}>Take a Rest</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <h2 style={{ marginBottom: 'var(--sp-2)' }}>Take a Rest</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
               {/* Short rest panel */}
               <div className="panel">
-                <h4 style={{ marginBottom: 'var(--space-3)' }}>Short Rest</h4>
+                <h4 style={{ marginBottom: 'var(--sp-3)' }}>Short Rest</h4>
 
                 {/* Hit dice status */}
                 {(() => {
@@ -356,33 +357,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   const atMax = character.current_hp >= character.max_hp;
 
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 2 }}>
                             Hit Dice Available
                           </div>
-                          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-lg)', color: available > 0 ? 'var(--text-gold)' : 'var(--text-muted)' }}>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: available > 0 ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
                             {available} / {character.level} d{hitDie}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 2 }}>
                             Current HP
                           </div>
-                          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--text-primary)' }}>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--t-1)' }}>
                             {character.current_hp} / {character.max_hp}
                           </div>
                         </div>
                       </div>
 
                       {shortRestHpGained > 0 && (
-                        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--hp-full)', textAlign: 'center' }}>
+                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--hp-full)', textAlign: 'center' }}>
                           +{shortRestHpGained} HP recovered this rest
                         </div>
                       )}
 
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
                         <button
                           className="btn-gold"
                           onClick={rollHitDie}
@@ -402,13 +403,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                       </div>
 
                       {character.class_name === 'Warlock' && (
-                        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-gold)', fontFamily: 'var(--font-heading)' }}>
+                        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', fontFamily: 'var(--ff-body)' }}>
                           Pact Magic slots will be recovered when you finish this rest.
                         </p>
                       )}
 
                       {available === 0 && (
-                        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+                        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
                           No hit dice remaining. Take a long rest to recover them.
                         </p>
                       )}
@@ -419,8 +420,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
               {/* Long rest panel */}
               <div className="panel">
-                <h4 style={{ marginBottom: 'var(--space-2)' }}>Long Rest</h4>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)', lineHeight: 1.5 }}>
+                <h4 style={{ marginBottom: 'var(--sp-2)' }}>Long Rest</h4>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
                   8+ hours. Regain all HP, all spell slots, and half your spent hit dice (min 1).
                   Removes one level of Exhaustion.
                 </p>
@@ -433,7 +434,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             <button
               className="btn-ghost btn-sm"
               onClick={() => { setShortRestHpGained(0); setShowRest(false); }}
-              style={{ marginTop: 'var(--space-4)' }}
+              style={{ marginTop: 'var(--sp-4)' }}
             >
               Cancel
             </button>
@@ -443,17 +444,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
       {/* Toolbar row: save status + rest */}
       <div style={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
           {saving && (
             <>
               <span className="spinner" style={{ width: 12, height: 12 }} />
-              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', letterSpacing: '0.06em' }}>
                 Saving...
               </span>
             </>
           )}
           {saveError && !saving && (
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--color-crimson-bright)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>
               {saveError}
             </span>
           )}
@@ -466,11 +467,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       {/* Active conditions banner */}
       {character.active_conditions.length > 0 && (
         <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)',
-          padding: 'var(--space-3)', background: 'rgba(155,28,28,0.08)',
-          border: '1px solid rgba(155,28,28,0.3)', borderRadius: 'var(--radius-md)',
+          display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)',
+          padding: 'var(--sp-3)', background: 'rgba(155,28,28,0.08)',
+          border: '1px solid rgba(155,28,28,0.3)', borderRadius: 'var(--r-md)',
         }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fca5a5', alignSelf: 'center' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fca5a5', alignSelf: 'center' }}>
             Conditions:
           </span>
           {character.active_conditions.map(c => (
@@ -482,23 +483,49 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       {/* Concentration banner */}
       {concentrationSpellId && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-          padding: 'var(--space-3) var(--space-4)',
+          display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+          padding: 'var(--sp-3) var(--sp-4)',
           background: 'rgba(201,146,42,0.06)', border: '1px solid rgba(201,146,42,0.3)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: 'var(--r-md)',
         }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-gold)' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
             Concentrating:
           </span>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-primary)', flex: 1 }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-1)', flex: 1 }}>
             {SPELL_MAP[concentrationSpellId]?.name ?? concentrationSpellId}
           </span>
           <button className="btn-ghost btn-sm" onClick={() => setConcentrationSpellId(null)}
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ash)' }}>
+            style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
             End
           </button>
         </div>
       )}
+
+      {/* Active condition warning banner */}
+      {(() => {
+        const mechConditions = (character.active_conditions ?? []).filter(c => {
+          const m = CONDITION_MAP[c];
+          return m?.attackDisadvantage || m?.abilityCheckDisadvantage || m?.concentrationBreaks || m?.cantAct;
+        });
+        if (!mechConditions.length) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-2) var(--sp-4)', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 'var(--r-md)', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-red-l)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>⚠ Active Conditions:</span>
+            {mechConditions.map(c => {
+              const m = CONDITION_MAP[c];
+              const effects = [];
+              if (m?.attackDisadvantage) effects.push('disadv. attacks');
+              if (m?.abilityCheckDisadvantage) effects.push('disadv. checks');
+              if (m?.cantAct) effects.push("can't act");
+              return (
+                <span key={c} style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: m?.color ?? 'var(--t-2)', background: `${m?.color ?? '#64748b'}15`, border: `1px solid ${m?.color ?? '#64748b'}30`, padding: '2px 8px', borderRadius: 999 }}>
+                  {m?.icon} {c}{effects.length ? ` — ${effects.join(', ')}` : ''}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Tabs */}
       <div className="tabs">
@@ -510,7 +537,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           >
             {tab.label}
             {tab.id === 'spells' && allSpellIds.length > 0 && (
-              <span style={{ marginLeft: 4, fontSize: 10, background: 'rgba(201,146,42,0.2)', color: 'var(--text-gold)', padding: '1px 5px', borderRadius: 9, fontFamily: 'var(--font-heading)' }}>
+              <span style={{ marginLeft: 4, fontSize: 10, background: 'rgba(201,146,42,0.2)', color: 'var(--c-gold-l)', padding: '1px 5px', borderRadius: 9, fontFamily: 'var(--ff-body)' }}>
                 {allSpellIds.length}
               </span>
             )}
@@ -523,16 +550,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── ABILITIES: Stats + Skills merged ── */}
         {activeTab === 'abilities' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--space-6)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 'var(--sp-6)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
               <AbilityScores character={character} computed={computed} />
               <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
               <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
               <CombatStats character={character} computed={computed} onUpdateHP={handleUpdateHP} />
+              {(character.active_conditions?.length > 0) && (
+                <ConditionMechanics conditions={character.active_conditions} />
+              )}
               <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
-              <ConditionMechanics conditions={character.active_conditions} />
               {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
             </div>
           </div>
@@ -566,17 +595,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── COMBAT: Weapons + Inventory + Magic Items ── */}
         {activeTab === 'combat' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)', maxWidth: 720 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-8)', maxWidth: 720 }}>
             <div>
               <div className="section-header">Weapons & Attacks</div>
               {(!character.weapons || character.weapons.length === 0) && (
-                <div style={{ padding: 'var(--space-4)', background: 'var(--bg-sunken)', border: '1px dashed var(--border-dim)', borderRadius: 'var(--radius-lg)', textAlign: 'center', marginBottom: 'var(--space-3)' }}>
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
+                <div style={{ padding: 'var(--sp-4)', background: '#080d14', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-lg)', textAlign: 'center', marginBottom: 'var(--sp-3)' }}>
+                  <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
                     ⚔️ No weapons added yet. Add your weapons to roll attacks directly from your sheet.
                   </p>
                 </div>
               )}
-              <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} />
+              <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} />
             </div>
             <div>
               <div className="section-header">Inventory</div>
@@ -585,7 +614,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             <div>
               <div className="section-header">
                 Magic Items
-                <span style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)', textTransform: 'none', letterSpacing: 0 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 400, fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 'var(--sp-2)', textTransform: 'none', letterSpacing: 0 }}>
                   — Browse SRD items and add to inventory
                 </span>
               </div>
@@ -599,7 +628,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── BIO: Features + Notes merged ── */}
         {activeTab === 'bio' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--space-6)', maxWidth: 900 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--sp-6)', maxWidth: 900 }}>
             <div>
               <div className="section-header">Features & Traits</div>
               <FeaturesPanel character={character} onUpdateNotes={notes => applyUpdate({ features_text: notes }, true)} />
@@ -613,7 +642,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── HISTORY: Roll log + Action log merged ── */}
         {activeTab === 'history' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--space-6)', maxWidth: 1100 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--sp-6)', maxWidth: 1100 }}>
             <div>
               <div className="section-header">Roll History</div>
               <RollHistory characterId={character.id} userId={userId} compact />
@@ -627,7 +656,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── SESSION ── */}
         {activeTab === 'session' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
             {/* Active Buffs & Debuffs */}
             <ActiveBuffsPanel
               buffs={(character as any).active_buffs ?? []}
@@ -669,11 +698,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
             {/* Level up button */}
             {character.level < 20 && (
-              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 'var(--sp-2)' }}>
                 <button
                   className="btn-gold"
                   onClick={() => setShowLevelUp(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}
                 >
                   ✨ Level Up to {character.class_name} {character.level + 1}
                 </button>
@@ -722,30 +751,30 @@ function SpellRow({
 
   return (
     <div style={{
-      border: isConcentrating ? '1px solid rgba(201,146,42,0.5)' : '1px solid var(--border-subtle)',
-      borderRadius: 'var(--radius-md)',
-      background: isConcentrating ? 'rgba(201,146,42,0.05)' : 'var(--bg-surface)',
+      border: isConcentrating ? '1px solid rgba(201,146,42,0.5)' : '1px solid var(--c-border)',
+      borderRadius: 'var(--r-md)',
+      background: isConcentrating ? 'rgba(201,146,42,0.05)' : 'var(--c-surface)',
       overflow: 'hidden',
-      transition: 'border-color var(--transition-fast)',
+      transition: 'border-color var(--tr-fast)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
-        <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-gold)', minWidth: 42 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
+        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 42 }}>
           {LEVEL_LABELS[spell.level]}
         </span>
 
         <button
           onClick={() => setExpanded(e => !e)}
-          style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', flex: 1 }}
+          style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', flex: 1 }}
         >
           {spell.name}
         </button>
 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {spell.concentration && (
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 10, color: 'var(--color-gold-dim)', fontWeight: 700 }} title="Concentration">C</span>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--c-gold)', fontWeight: 700 }} title="Concentration">C</span>
           )}
           {spell.ritual && (
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 10, color: '#60a5fa', fontWeight: 700 }} title="Ritual">R</span>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: '#60a5fa', fontWeight: 700 }} title="Ritual">R</span>
           )}
         </div>
 
@@ -753,7 +782,7 @@ function SpellRow({
           <button
             onClick={onConcentrate}
             className={isConcentrating ? 'btn-gold btn-sm' : 'btn-secondary btn-sm'}
-            style={{ fontSize: 'var(--text-xs)' }}
+            style={{ fontSize: 'var(--fs-xs)' }}
           >
             {isConcentrating ? 'Concentrating' : 'Concentrate'}
           </button>
@@ -766,7 +795,7 @@ function SpellRow({
           <button
             onClick={onTogglePrepared}
             className={isPrepared ? 'btn-gold btn-sm' : 'btn-secondary btn-sm'}
-            style={{ fontSize: 'var(--text-xs)' }}
+            style={{ fontSize: 'var(--fs-xs)' }}
           >
             {isPrepared ? 'Prepared' : 'Prepare'}
           </button>
@@ -775,7 +804,7 @@ function SpellRow({
         <button
           onClick={onRemove}
           className="btn-ghost btn-sm"
-          style={{ color: 'var(--color-ash)', fontSize: 'var(--text-xs)', padding: '2px 6px' }}
+          style={{ color: 'var(--t-2)', fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
           title="Remove from spellbook"
         >
           ✕
@@ -783,18 +812,18 @@ function SpellRow({
       </div>
 
       {expanded && (
-        <div style={{ padding: 'var(--space-3) var(--space-4)', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-sunken)', animation: 'fadeIn 120ms ease both' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+        <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderTop: '1px solid var(--c-border)', background: '#080d14', animation: 'fadeIn 120ms ease both' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)', marginBottom: 'var(--sp-3)' }}>
             {([['Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]] as [string, string][]).map(([l, v]) => (
               <div key={l}>
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 1 }}>{l}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{v}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 1 }}>{l}</div>
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{v}</div>
               </div>
             ))}
           </div>
-          <p style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{spell.description}</p>
+          <p style={{ fontSize: 'var(--fs-sm)', lineHeight: 1.6, color: 'var(--t-2)' }}>{spell.description}</p>
           {spell.higher_levels && (
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 'var(--space-2)', fontStyle: 'italic' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 'var(--sp-2)', fontStyle: 'italic' }}>
               At Higher Levels: {spell.higher_levels}
             </p>
           )}

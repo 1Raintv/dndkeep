@@ -39,7 +39,7 @@ export default function SettingsPage() {
   }, [user]);
 
   if (!profile) {
-    return <div style={{ display: 'flex', gap: 'var(--space-3)', padding: 'var(--space-8)', alignItems: 'center' }}><div className="spinner" /><span className="loading-text">Loading...</span></div>;
+    return <div style={{ display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-8)', alignItems: 'center' }}><div className="spinner" /><span className="loading-text">Loading...</span></div>;
   }
 
   async function handleUpgrade() {
@@ -68,27 +68,27 @@ export default function SettingsPage() {
 
   return (
     <div style={{ maxWidth: 600, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: 'var(--space-8)' }}>Settings</h1>
+      <h1 style={{ marginBottom: 'var(--sp-8)' }}>Settings</h1>
 
       {upgradeSuccess && (
-        <div style={{ marginBottom: 'var(--space-6)', background: 'rgba(22,163,74,0.1)', border: '1px solid var(--hp-full)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: '#86efac' }}>
+        <div style={{ marginBottom: 'var(--sp-6)', background: 'rgba(22,163,74,0.1)', border: '1px solid var(--hp-full)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: '#86efac' }}>
           Welcome to Pro. Your subscription is being activated — it may take a moment to reflect below.
         </div>
       )}
 
       {/* Account */}
-      <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
+      <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
         <div className="section-header">Account</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>Display Name</span>
-            <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>{profile.display_name ?? '—'}</span>
+            <span style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>Display Name</span>
+            <span style={{ color: 'var(--t-1)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>{profile.display_name ?? '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>Email</span>
-            <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>{profile.email}</span>
+            <span style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>Email</span>
+            <span style={{ color: 'var(--t-1)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>{profile.email}</span>
           </div>
-          <div style={{ paddingTop: 'var(--space-3)', borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--c-border)' }}>
             <button className="btn-secondary btn-sm" onClick={handleSignOut}>Sign Out</button>
           </div>
         </div>
@@ -96,23 +96,23 @@ export default function SettingsPage() {
 
       {/* Push Notifications */}
       {supported && (
-        <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
-          <div className="section-header" style={{ marginBottom: 'var(--space-3)' }}>Notifications</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+        <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
+          <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>Notifications</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', marginBottom: 4 }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 4 }}>
                 Session Alerts
               </div>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', maxWidth: 400 }}>
+              <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', maxWidth: 400 }}>
                 Get notified when your DM starts a session or sends a party alert.
               </p>
             </div>
             {permission === 'granted' ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--hp-full)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--hp-full)' }}>
                 <span>✓</span> Notifications enabled
               </div>
             ) : permission === 'denied' ? (
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--color-crimson-bright)' }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>
                 Blocked — enable in browser settings
               </div>
             ) : (
@@ -129,28 +129,28 @@ export default function SettingsPage() {
       )}
 
       {/* Characters */}
-      <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
+      <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
         <div className="section-header">My Characters</div>
         {characters.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>
+          <p style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
             No characters yet.
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
             {characters.map(c => (
-              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-3)', background: '#080d14', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
                     {c.name}
                   </div>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
                     Level {c.level} {c.class_name} — {c.species}
                   </div>
                 </div>
                 <div>
                   {confirmDeleteId === c.id ? (
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                      <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: '#fca5a5' }}>
+                    <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#fca5a5' }}>
                         Are you sure?
                       </span>
                       <button
@@ -171,7 +171,7 @@ export default function SettingsPage() {
                     <button
                       className="btn-ghost btn-sm"
                       onClick={() => setConfirmDeleteId(c.id)}
-                      style={{ color: 'var(--color-ash)' }}
+                      style={{ color: 'var(--t-2)' }}
                     >
                       Remove
                     </button>
@@ -184,8 +184,8 @@ export default function SettingsPage() {
       </div>
 
       {/* Subscription */}
-      <div className={`card ${isPro ? 'card-gold' : ''}`} style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+      <div className={`card ${isPro ? 'card-gold' : ''}`} style={{ marginBottom: 'var(--sp-6)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
           <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none' }}>Subscription</div>
           <span className={isPro ? 'badge badge-gold' : 'badge badge-muted'}>
             {isPro ? 'Pro' : 'Free'}
@@ -194,35 +194,35 @@ export default function SettingsPage() {
 
         {!isPro ? (
           <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-6)' }}>
               {[
                 'Unlimited characters',
                 'Campaign management — create and run campaigns as DM',
                 'DM and player roles',
                 'Real-time multiplayer combat sync',
               ].map(feature => (
-                <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <span style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>+</span>
-                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{feature}</span>
+                <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                  <span style={{ color: 'var(--c-gold)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>+</span>
+                  <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{feature}</span>
                 </div>
               ))}
             </div>
             <button className="btn-gold btn-lg" onClick={handleUpgrade} disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
               {loading ? 'Redirecting...' : 'Upgrade to Pro'}
             </button>
-            <p style={{ textAlign: 'center', marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ textAlign: 'center', marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
               Billed monthly via Stripe. Cancel anytime.
             </p>
           </div>
         ) : (
           <div>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
+            <p style={{ color: 'var(--t-2)', marginBottom: 'var(--sp-4)' }}>
               You have full access to all Pro features.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>Status</span>
-                <span style={{ color: 'var(--hp-full)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>{profile.subscription_status}</span>
+                <span style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>Status</span>
+                <span style={{ color: 'var(--hp-full)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>{profile.subscription_status}</span>
               </div>
             </div>
             <button className="btn-secondary btn-sm" onClick={handleManageBilling} disabled={loading}>
@@ -232,7 +232,7 @@ export default function SettingsPage() {
         )}
 
         {error && (
-          <div style={{ marginTop: 'var(--space-4)', background: 'rgba(155,28,28,0.15)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)', color: '#fca5a5', fontFamily: 'var(--font-heading)' }}>
+          <div style={{ marginTop: 'var(--sp-4)', background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>
             {error}
           </div>
         )}
@@ -241,12 +241,12 @@ export default function SettingsPage() {
       {!isPro && (
         <div className="panel">
           <div className="section-header">Free Tier</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
             <LimitRow label="Characters" used={characters.length} max={1} />
             <LimitRow label="Create campaigns (DM)" used={0} max={0} locked />
             <LimitRow label="Real-time sync" used={0} max={0} locked />
           </div>
-          <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+          <p style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
             Free players can join campaigns via invite code without upgrading.
           </p>
         </div>
@@ -258,11 +258,11 @@ export default function SettingsPage() {
 function LimitRow({ label, used, max, locked }: { label: string; used: number; max: number; locked?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{label}</span>
       {locked ? (
         <span className="badge badge-muted">Pro Only</span>
       ) : (
-        <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: used >= max ? 'var(--color-crimson-bright)' : 'var(--text-gold)' }}>
+        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: used >= max ? 'var(--c-red-l)' : 'var(--c-gold-l)' }}>
           {used} / {max}
         </span>
       )}

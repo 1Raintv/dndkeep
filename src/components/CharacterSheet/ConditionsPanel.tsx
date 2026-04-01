@@ -37,26 +37,26 @@ export default function ConditionsPanel({ character, onUpdateConditions }: Condi
         <button
           className="btn-ghost btn-sm"
           onClick={() => setShowPicker(v => !v)}
-          style={{ marginBottom: 'var(--space-2)' }}
+          style={{ marginBottom: 'var(--sp-2)' }}
         >
           {showPicker ? 'Done' : 'Edit'}
         </button>
       </div>
-      <div style={{ borderBottom: '1px solid var(--border-gold)', marginBottom: 'var(--space-4)' }} />
+      <div style={{ borderBottom: '1px solid var(--c-gold-bdr)', marginBottom: 'var(--sp-4)' }} />
 
       {/* Active conditions */}
       {active.length === 0 ? (
         <p style={{
-          fontSize: 'var(--text-sm)',
-          color: 'var(--text-muted)',
+          fontSize: 'var(--fs-sm)',
+          color: 'var(--t-2)',
           fontStyle: 'italic',
-          fontFamily: 'var(--font-heading)',
+          fontFamily: 'var(--ff-body)',
           letterSpacing: '0.04em',
         }}>
           No active conditions
         </p>
       ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: 'var(--sp-3)' }}>
           {active.map(name => (
             <ConditionTooltip key={name} name={name}>
               <button
@@ -67,7 +67,7 @@ export default function ConditionsPanel({ character, onUpdateConditions }: Condi
               >
                 <span className="condition-pill">
                   {name}
-                  <span style={{ opacity: 0.7, fontSize: 'var(--text-xs)', marginLeft: '2px' }}>x</span>
+                  <span style={{ opacity: 0.7, fontSize: 'var(--fs-xs)', marginLeft: '2px' }}>x</span>
                 </span>
               </button>
             </ConditionTooltip>
@@ -78,13 +78,13 @@ export default function ConditionsPanel({ character, onUpdateConditions }: Condi
       {/* Condition picker */}
       {showPicker && (
         <div style={{
-          background: 'var(--bg-sunken)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-3)',
-          marginTop: 'var(--space-2)',
+          background: '#080d14',
+          border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-md)',
+          padding: 'var(--sp-3)',
+          marginTop: 'var(--sp-2)',
         }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: 'var(--sp-3)' }}>
             {ALL_CONDITION_NAMES.map(name => {
               const isActive = active.includes(name);
               return (
@@ -94,17 +94,17 @@ export default function ConditionsPanel({ character, onUpdateConditions }: Condi
                   onMouseEnter={() => setHoveredCondition(name)}
                   onMouseLeave={() => setHoveredCondition(null)}
                   style={{
-                    fontFamily: 'var(--font-heading)',
-                    fontSize: 'var(--text-xs)',
+                    fontFamily: 'var(--ff-body)',
+                    fontSize: 'var(--fs-xs)',
                     fontWeight: 600,
                     letterSpacing: '0.05em',
-                    padding: '3px var(--space-3)',
+                    padding: '3px var(--sp-3)',
                     borderRadius: '999px',
                     cursor: 'pointer',
-                    transition: 'all var(--transition-fast)',
-                    background: isActive ? 'rgba(155,28,28,0.2)' : 'var(--bg-raised)',
-                    border: isActive ? '1px solid var(--color-blood)' : '1px solid var(--border-subtle)',
-                    color: isActive ? '#fca5a5' : 'var(--text-muted)',
+                    transition: 'all var(--tr-fast)',
+                    background: isActive ? 'rgba(155,28,28,0.2)' : 'var(--c-raised)',
+                    border: isActive ? '1px solid rgba(107,20,20,1)' : '1px solid var(--c-border)',
+                    color: isActive ? '#fca5a5' : 'var(--t-2)',
                   }}
                 >
                   {name}
@@ -116,23 +116,23 @@ export default function ConditionsPanel({ character, onUpdateConditions }: Condi
           {/* Tooltip */}
           {hoveredData && (
             <div style={{
-              background: 'var(--bg-raised)',
-              border: '1px solid var(--border-gold)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-3)',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--text-secondary)',
+              background: 'var(--c-raised)',
+              border: '1px solid var(--c-gold-bdr)',
+              borderRadius: 'var(--r-md)',
+              padding: 'var(--sp-3)',
+              fontSize: 'var(--fs-xs)',
+              color: 'var(--t-2)',
               animation: 'fadeIn 120ms ease both',
             }}>
               <div style={{
-                fontFamily: 'var(--font-heading)',
+                fontFamily: 'var(--ff-body)',
                 fontWeight: 700,
-                color: 'var(--text-gold)',
-                marginBottom: 'var(--space-1)',
+                color: 'var(--c-gold-l)',
+                marginBottom: 'var(--sp-1)',
               }}>
                 {hoveredData.name}
               </div>
-              <ul style={{ paddingLeft: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <ul style={{ paddingLeft: 'var(--sp-4)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {hoveredData.effects.map((effect, i) => (
                   <li key={i}>{effect}</li>
                 ))}

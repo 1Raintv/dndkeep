@@ -73,15 +73,15 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
   function rollColor(entry: RollEntry) {
     // Check for nat 20 or nat 1 on d20 rolls
     if (entry.dice_expression.includes('d20')) {
-      if (entry.individual_results.includes(20)) return 'var(--color-gold-bright)';
-      if (entry.individual_results.includes(1)) return 'var(--color-crimson-bright)';
+      if (entry.individual_results.includes(20)) return 'var(--c-gold-l)';
+      if (entry.individual_results.includes(1)) return 'var(--c-red-l)';
     }
-    return 'var(--text-primary)';
+    return 'var(--t-1)';
   }
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', padding: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', padding: 'var(--sp-4)' }}>
         <div className="spinner" style={{ width: 14, height: 14 }} />
         <span className="loading-text">Loading roll history…</span>
       </div>
@@ -92,16 +92,16 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
         {rolls.length === 0 ? (
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', padding: 'var(--space-2)', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', padding: 'var(--sp-2)', textAlign: 'center' }}>
             No rolls yet this session
           </div>
         ) : rolls.map(r => (
-          <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px var(--space-2)' }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', minWidth: 0 }}>
-              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>{formatTime(r.rolled_at)}</span>
-              <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+          <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px var(--sp-2)' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', minWidth: 0 }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', flexShrink: 0 }}>{formatTime(r.rolled_at)}</span>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
             </div>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: rollColor(r), flexShrink: 0, marginLeft: 8 }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: rollColor(r), flexShrink: 0, marginLeft: 8 }}>
               {r.total}
             </span>
           </div>
@@ -119,65 +119,65 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
           {rolls.length} roll{rolls.length !== 1 ? 's' : ''} logged
         </div>
         {rolls.length > 0 && (
-          <button className="btn-ghost btn-sm" onClick={clearHistory} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-crimson-bright)' }}>
+          <button className="btn-ghost btn-sm" onClick={clearHistory} style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>
             Clear History
           </button>
         )}
       </div>
 
       {rolls.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>
+        <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
           No rolls recorded yet. Roll dice from your sheet and they'll appear here.
         </div>
       ) : (
         Object.entries(grouped).map(([date, entries]) => (
           <div key={date}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
               {date}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {entries.map(r => (
                 <div key={r.id} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-sunken)',
+                  padding: 'var(--sp-2) var(--sp-3)',
+                  borderRadius: 'var(--r-sm)',
+                  background: '#080d14',
                   border: `1px solid ${r.individual_results.includes(20) && r.dice_expression.includes('d20') ? 'rgba(201,146,42,0.3)' : r.individual_results.includes(1) && r.dice_expression.includes('d20') ? 'rgba(127,29,29,0.3)' : 'transparent'}`,
                 }}>
-                  <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', minWidth: 0 }}>
-                    <span style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0, minWidth: 36 }}>
+                  <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', minWidth: 0 }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', flexShrink: 0, minWidth: 36 }}>
                       {formatTime(r.rolled_at)}
                     </span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {r.label}
                       </div>
-                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
                         {r.dice_expression}
                         {r.individual_results.length > 1 && ` [${r.individual_results.join(', ')}]`}
                       </div>
                     </div>
                   </div>
-                  <div style={{ flexShrink: 0, marginLeft: 'var(--space-3)', textAlign: 'right' }}>
+                  <div style={{ flexShrink: 0, marginLeft: 'var(--sp-3)', textAlign: 'right' }}>
                     <span style={{
-                      fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-lg)',
+                      fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-lg)',
                       color: rollColor(r),
                       textShadow: r.individual_results.includes(20) && r.dice_expression.includes('d20') ? '0 0 8px rgba(201,146,42,0.5)' : 'none',
                     }}>
                       {r.total}
                     </span>
                     {r.individual_results.includes(20) && r.dice_expression.includes('d20') && (
-                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--color-gold-bright)' }}>NAT 20</div>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-gold-l)' }}>NAT 20</div>
                     )}
                     {r.individual_results.includes(1) && r.dice_expression.includes('d20') && (
-                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--color-crimson-bright)' }}>FUMBLE</div>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-red-l)' }}>FUMBLE</div>
                     )}
                   </div>
                 </div>

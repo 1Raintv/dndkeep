@@ -158,14 +158,14 @@ export default function CombatPage() {
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-6)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-6)', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
           <h1>Combat Tracker</h1>
           {active && (
             <span className="badge badge-crimson">Round {round}</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
           <button className="btn-gold btn-sm" onClick={() => setShowEncounterBuilder(true)}>
             ⚔ Encounter Builder
           </button>
@@ -193,44 +193,44 @@ export default function CombatPage() {
       {xpEarned > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: 'var(--space-3) var(--space-5)',
-          background: 'rgba(201,146,42,0.1)', border: '1px solid var(--border-gold)',
-          borderRadius: 'var(--radius-md)',
+          padding: 'var(--sp-3) var(--sp-5)',
+          background: 'rgba(201,146,42,0.1)', border: '1px solid var(--c-gold-bdr)',
+          borderRadius: 'var(--r-md)',
           animation: 'fadeIn 200ms ease both',
         }}>
           <div>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--text-gold)', fontSize: 'var(--text-md)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, color: 'var(--c-gold-l)', fontSize: 'var(--fs-md)' }}>
               {xpEarned.toLocaleString()} XP
             </span>
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 'var(--sp-2)' }}>
               earned from defeated monsters
             </span>
           </div>
           <button
             className="btn-ghost btn-sm"
             onClick={() => setXpEarned(0)}
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ash)' }}
+            style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}
           >
             Dismiss
           </button>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: showMonsterPanel ? '1fr 280px' : '1fr', gap: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: showMonsterPanel ? '1fr 280px' : '1fr', gap: 'var(--sp-6)' }}>
         {/* Initiative order */}
         <div>
           {combatants.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: 'var(--space-12)' }}>
-              <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', marginBottom: 'var(--space-4)' }}>
+            <div className="card" style={{ textAlign: 'center', padding: 'var(--sp-12)' }}>
+              <p style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', marginBottom: 'var(--sp-4)' }}>
                 Add combatants to begin. Click "Monster Library" to add from the SRD list.
               </p>
-              <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-3)', justifyContent: 'center' }}>
                 <button className="btn-secondary" onClick={() => setShowMonsterPanel(true)}>Monster Library</button>
                 <button className="btn-gold" onClick={addCustomCombatant}>Add Custom</button>
               </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
               {sorted.map((c, idx) => {
                 const isActive = active && idx === activeTurnIdx;
                 const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
@@ -247,21 +247,21 @@ export default function CombatPage() {
                   <div
                     key={c.id}
                     style={{
-                      border: isActive ? '2px solid var(--color-gold)' : '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-md)',
-                      background: isActive ? 'rgba(201,146,42,0.07)' : 'var(--bg-surface)',
+                      border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                      borderRadius: 'var(--r-md)',
+                      background: isActive ? 'rgba(201,146,42,0.07)' : 'var(--c-surface)',
                       boxShadow: isActive ? 'var(--shadow-gold)' : 'none',
-                      transition: 'all var(--transition-fast)',
+                      transition: 'all var(--tr-fast)',
                       overflow: 'hidden',
                     }}
                   >
                     {/* Main row */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
                       {/* Initiative input */}
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%',
-                        background: isActive ? 'rgba(201,146,42,0.2)' : 'var(--bg-sunken)',
-                        border: `1px solid ${isActive ? 'var(--color-gold)' : 'var(--border-subtle)'}`,
+                        background: isActive ? 'rgba(201,146,42,0.2)' : '#080d14',
+                        border: `1px solid ${isActive ? 'var(--c-gold)' : 'var(--c-border)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}>
                         <input
@@ -270,8 +270,8 @@ export default function CombatPage() {
                           onChange={e => updateCombatant(c.id, { initiative: Number(e.target.value) })}
                           style={{
                             width: '100%', background: 'transparent', border: 'none',
-                            textAlign: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700,
-                            fontSize: 'var(--text-sm)', color: isActive ? 'var(--text-gold)' : 'var(--text-primary)',
+                            textAlign: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700,
+                            fontSize: 'var(--fs-sm)', color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)',
                             padding: 0,
                           }}
                           title="Initiative"
@@ -284,17 +284,17 @@ export default function CombatPage() {
                           value={c.name}
                           onChange={e => updateCombatant(c.id, { name: e.target.value })}
                           style={{
-                            fontFamily: 'var(--font-heading)', fontWeight: 700,
-                            fontSize: 'var(--text-md)', background: 'transparent', border: 'none',
-                            color: isActive ? 'var(--text-gold)' : 'var(--text-primary)',
+                            fontFamily: 'var(--ff-body)', fontWeight: 700,
+                            fontSize: 'var(--fs-md)', background: 'transparent', border: 'none',
+                            color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)',
                             width: '100%', padding: 0, marginBottom: 4,
                           }}
                         />
-                        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: hpColor, minWidth: 70 }}>
+                        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: hpColor, minWidth: 70 }}>
                             {c.current_hp}/{c.max_hp} HP
                           </span>
-                          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                             AC {c.ac}
                           </span>
                           {c.conditions.map(cond => (
@@ -326,14 +326,14 @@ export default function CombatPage() {
                             onBlur={() => commitHPEdit(c.id)}
                             onKeyDown={e => { if (e.key === 'Enter') commitHPEdit(c.id); }}
                             autoFocus
-                            style={{ width: 44, textAlign: 'center', fontSize: 'var(--text-xs)', padding: '2px 4px' }}
+                            style={{ width: 44, textAlign: 'center', fontSize: 'var(--fs-xs)', padding: '2px 4px' }}
                           />
                         ) : (
                           <button
                             onClick={() => setHpEdits(prev => ({ ...prev, [c.id]: String(c.current_hp) }))}
                             style={{
-                              fontFamily: 'var(--font-heading)', fontWeight: 700,
-                              fontSize: 'var(--text-sm)', color: hpColor,
+                              fontFamily: 'var(--ff-body)', fontWeight: 700,
+                              fontSize: 'var(--fs-sm)', color: hpColor,
                               background: 'none', border: 'none', cursor: 'pointer',
                               minWidth: 44, textAlign: 'center',
                             }}
@@ -356,7 +356,7 @@ export default function CombatPage() {
                       <button
                         className="btn-ghost btn-sm"
                         onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                        style={{ fontSize: 'var(--text-xs)', padding: '2px 6px' }}
+                        style={{ fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
                         title="Expand"
                       >
                         {isExpanded ? '▲' : '▼'}
@@ -364,7 +364,7 @@ export default function CombatPage() {
                       <button
                         className="btn-ghost btn-sm"
                         onClick={() => removeCombatant(c.id)}
-                        style={{ color: 'var(--color-ash)', fontSize: 'var(--text-xs)', padding: '2px 6px' }}
+                        style={{ color: 'var(--t-2)', fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
                         title="Remove"
                       >
                         ✕
@@ -374,14 +374,14 @@ export default function CombatPage() {
                     {/* Expanded: fine-grained controls */}
                     {isExpanded && (
                       <div style={{
-                        padding: 'var(--space-3) var(--space-4)',
-                        background: 'var(--bg-sunken)',
-                        borderTop: '1px solid var(--border-subtle)',
-                        display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+                        padding: 'var(--sp-3) var(--sp-4)',
+                        background: '#080d14',
+                        borderTop: '1px solid var(--c-border)',
+                        display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)',
                         animation: 'fadeIn 120ms ease both',
                       }}>
                         {/* HP + AC + Max HP editing */}
-                        <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
                           <div>
                             <label>Max HP</label>
                             <input type="number" value={c.max_hp} onChange={e => updateCombatant(c.id, { max_hp: Math.max(1, Number(e.target.value)) })} style={{ width: 70 }} />
@@ -398,7 +398,7 @@ export default function CombatPage() {
                         {/* Conditions */}
                         <div>
                           <label>Conditions</label>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 4 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginTop: 4 }}>
                             {(CONDITIONS.map(cd => cd.name) as ConditionName[]).map(cond => {
                               const has = c.conditions.includes(cond);
                               return (
@@ -406,12 +406,12 @@ export default function CombatPage() {
                                   key={cond}
                                   onClick={() => toggleCondition(c.id, cond)}
                                   style={{
-                                    fontFamily: 'var(--font-heading)', fontSize: '10px', fontWeight: 600,
+                                    fontFamily: 'var(--ff-body)', fontSize: '10px', fontWeight: 600,
                                     padding: '2px 8px', borderRadius: 999, cursor: 'pointer',
-                                    border: has ? '1px solid var(--color-blood)' : '1px solid var(--border-subtle)',
+                                    border: has ? '1px solid rgba(107,20,20,1)' : '1px solid var(--c-border)',
                                     background: has ? 'rgba(155,28,28,0.2)' : 'transparent',
-                                    color: has ? '#fca5a5' : 'var(--text-muted)',
-                                    transition: 'all var(--transition-fast)',
+                                    color: has ? '#fca5a5' : 'var(--t-2)',
+                                    transition: 'all var(--tr-fast)',
                                   }}
                                 >
                                   {cond}
@@ -459,7 +459,7 @@ function QuickHPPanel({ id, onApply }: { id: string; onApply: (id: string, delta
   return (
     <div>
       <label>Quick Adjust</label>
-      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 4 }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', marginTop: 4 }}>
         <input
           type="number"
           value={amount}

@@ -55,7 +55,7 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
         onClick={e => e.stopPropagation()}
       >
         {/* Progress dots */}
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 'var(--sp-6)' }}>
           {STEPS.map((_, i) => (
             <div
               key={i}
@@ -63,8 +63,8 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
                 width: i === step ? 20 : 6,
                 height: 6,
                 borderRadius: 3,
-                background: i === step ? 'var(--color-gold)' : i < step ? 'var(--color-gold-dim)' : 'var(--color-flint)',
-                transition: 'all var(--transition-normal)',
+                background: i === step ? 'var(--c-gold)' : i < step ? 'var(--c-gold)' : 'var(--c-border-m)',
+                transition: 'all var(--tr-normal)',
               }}
             />
           ))}
@@ -72,23 +72,23 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
 
         {/* Content */}
         <div key={step} className="animate-fade-in">
-          <div style={{ fontSize: 56, marginBottom: 'var(--space-4)', lineHeight: 1 }}>
+          <div style={{ fontSize: 56, marginBottom: 'var(--sp-4)', lineHeight: 1 }}>
             {current.emoji}
           </div>
-          <h2 style={{ marginBottom: 'var(--space-3)', fontFamily: 'var(--font-display)' }}>
+          <h2 style={{ marginBottom: 'var(--sp-3)', fontFamily: 'var(--ff-brand)' }}>
             {current.title}
           </h2>
           <p style={{
-            fontSize: 'var(--text-md)', color: 'var(--text-secondary)',
-            lineHeight: 1.7, marginBottom: 'var(--space-8)',
-            maxWidth: 360, margin: '0 auto var(--space-8)',
+            fontSize: 'var(--fs-md)', color: 'var(--t-2)',
+            lineHeight: 1.7, marginBottom: 'var(--sp-8)',
+            maxWidth: 360, margin: '0 auto var(--sp-8)',
           }}>
             {current.body}
           </p>
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', alignItems: 'center' }}>
           <button
             className="btn-gold btn-lg"
             onClick={next}
@@ -99,7 +99,7 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
           <button
             className="btn-ghost btn-sm"
             onClick={onDismiss}
-            style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}
+            style={{ color: 'var(--t-2)', fontSize: 'var(--fs-xs)' }}
           >
             Skip intro
           </button>

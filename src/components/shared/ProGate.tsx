@@ -18,19 +18,19 @@ export default function ProGate({ feature, description, perks, inline = false }:
 
   const content = (
     <div style={inline ? {} : { textAlign: 'center' }}>
-      <h3 style={{ marginBottom: 'var(--space-3)', color: 'var(--text-gold)' }}>
+      <h3 style={{ marginBottom: 'var(--sp-3)', color: 'var(--c-gold-l)' }}>
         {feature} — Pro Feature
       </h3>
       {description && (
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
+        <p style={{ color: 'var(--t-2)', marginBottom: 'var(--sp-4)', fontSize: 'var(--fs-sm)' }}>
           {description}
         </p>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-6)', textAlign: 'left' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-6)', textAlign: 'left' }}>
         {(perks ?? defaultPerks).map(p => (
-          <div key={p} style={{ display: 'flex', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
-            <span style={{ color: 'var(--color-gold)' }}>+</span>
-            <span style={{ color: 'var(--text-secondary)' }}>{p}</span>
+          <div key={p} style={{ display: 'flex', gap: 'var(--sp-2)', fontSize: 'var(--fs-sm)' }}>
+            <span style={{ color: 'var(--c-gold)' }}>+</span>
+            <span style={{ color: 'var(--t-2)' }}>{p}</span>
           </div>
         ))}
       </div>
@@ -43,7 +43,7 @@ export default function ProGate({ feature, description, perks, inline = false }:
   if (inline) return content;
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8)' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-8)' }}>
       <div className="card card-gold" style={{ maxWidth: 440, width: '100%' }}>
         {content}
       </div>

@@ -173,27 +173,27 @@ export default function ConditionMechanics({ conditions }: ConditionMechanicsPro
   if (!activeConditions.length) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
       {activeConditions.map(condition => {
         const mech = CONDITION_MECHANICS[condition];
         return (
           <div key={condition} style={{
-            padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--sp-3) var(--sp-4)',
+            borderRadius: 'var(--r-lg)',
             border: `1px solid ${mech.color}40`,
             background: `${mech.color}08`,
           }}>
             <div style={{
-              fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-xs)',
-              color: mech.color, letterSpacing: '0.06em', marginBottom: 'var(--space-2)',
+              fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)',
+              color: mech.color, letterSpacing: '0.06em', marginBottom: 'var(--sp-2)',
             }}>
               {mech.title}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {mech.reminders.map((r, i) => (
                 <div key={i} style={{
-                  fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)',
-                  color: 'var(--text-secondary)', lineHeight: 1.5,
+                  fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
+                  color: 'var(--t-2)', lineHeight: 1.5,
                 }}>
                   {r}
                 </div>

@@ -43,7 +43,7 @@ export default function SpellSlotsPanel({ character, onUpdateSlots }: SpellSlots
   return (
     <section>
       <div className="section-header">Spell Slots</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
         {slotLevels.map(lvl => {
           const key = String(lvl);
           const slot = slots[key];
@@ -55,20 +55,20 @@ export default function SpellSlotsPanel({ character, onUpdateSlots }: SpellSlots
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-2) var(--space-3)',
-                background: 'var(--bg-sunken)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
+                gap: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
+                background: '#080d14',
+                borderRadius: 'var(--r-md)',
+                border: '1px solid var(--c-border)',
               }}
             >
               <span style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--ff-body)',
+                fontSize: 'var(--fs-xs)',
                 fontWeight: 700,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: remaining > 0 ? 'var(--text-gold)' : 'var(--text-muted)',
+                color: remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-2)',
                 minWidth: '2.5rem',
               }}>
                 {LEVEL_LABELS[key]}
@@ -95,9 +95,9 @@ export default function SpellSlotsPanel({ character, onUpdateSlots }: SpellSlots
               </div>
 
               <span style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: 'var(--text-xs)',
-                color: remaining > 0 ? 'var(--text-secondary)' : 'var(--text-muted)',
+                fontFamily: 'var(--ff-body)',
+                fontSize: 'var(--fs-xs)',
+                color: remaining > 0 ? 'var(--t-2)' : 'var(--t-2)',
                 minWidth: '3rem',
                 textAlign: 'right',
               }}>
@@ -109,7 +109,7 @@ export default function SpellSlotsPanel({ character, onUpdateSlots }: SpellSlots
                   className="btn-ghost btn-sm"
                   onClick={() => resetLevel(key)}
                   title="Recover all slots (long rest)"
-                  style={{ padding: '2px var(--space-2)', fontSize: 'var(--text-xs)' }}
+                  style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)' }}
                 >
                   Rest
                 </button>

@@ -82,39 +82,39 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-4)',
     }}>
       <div style={{
-        background: 'var(--bg-card)', border: '1px solid var(--border-gold)',
-        borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-gold)',
+        background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)',
+        borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-gold)',
         width: '100%', maxWidth: 560, maxHeight: '90vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         {/* Header */}
         <div style={{
-          padding: 'var(--space-5) var(--space-6)',
-          borderBottom: '1px solid var(--border-subtle)',
-          background: 'linear-gradient(135deg, var(--color-charcoal), var(--color-shadow))',
+          padding: 'var(--sp-5) var(--sp-6)',
+          borderBottom: '1px solid var(--c-border)',
+          background: 'linear-gradient(135deg, var(--c-surface), var(--c-card))',
         }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-xl)', color: 'var(--color-gold-bright)' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-xl)', color: 'var(--c-gold-l)' }}>
             ✨ Level Up!
           </div>
-          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: 2 }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginTop: 2 }}>
             {character.name} is now {character.class_name} level {newLevel}
           </div>
           {/* Step dots */}
-          <div style={{ display: 'flex', gap: 6, marginTop: 'var(--space-3)' }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 'var(--sp-3)' }}>
             {steps.map((s, i) => (
               <div key={s} style={{
                 width: 8, height: 8, borderRadius: '50%',
-                background: i <= currentIdx ? 'var(--color-gold)' : 'var(--border-dim)',
+                background: i <= currentIdx ? 'var(--c-gold)' : 'var(--c-border-m)',
               }} />
             ))}
           </div>
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-5) var(--space-6)' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-5) var(--sp-6)' }}>
           {step === 'overview' && (
             <OverviewStep
               newLevel={newLevel}
@@ -168,9 +168,9 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
         {/* Footer */}
         <div style={{
-          padding: 'var(--space-4) var(--space-6)',
-          borderTop: '1px solid var(--border-subtle)',
-          display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)',
+          padding: 'var(--sp-4) var(--sp-6)',
+          borderTop: '1px solid var(--c-border)',
+          display: 'flex', justifyContent: 'space-between', gap: 'var(--sp-3)',
         }}>
           <button className="btn-ghost btn-sm" onClick={() => {
             if (currentIdx === 0) { onClose(); }
@@ -202,16 +202,16 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
 function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, profBonusIncreased, newProfBonus, needsSubclass, needsASI }: any) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
         <Gain icon="❤️" label="Max HP" before={character.max_hp} after={newMaxHP} color="var(--hp-full)" />
-        <Gain icon="📖" label="Level" before={character.level} after={newLevel} color="var(--color-gold-bright)" />
+        <Gain icon="📖" label="Level" before={character.level} after={newLevel} color="var(--c-gold-l)" />
         {profBonusIncreased && <Gain icon="✦" label="Proficiency Bonus" before={newProfBonus - 1} after={newProfBonus} color="#a78bfa" />}
       </div>
 
       {/* What you get at this level */}
       <div>
-        <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
           Features gained at level {newLevel}:
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -225,7 +225,7 @@ function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, pro
         </div>
       </div>
 
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic' }}>
         HP gain uses average formula. You can edit your max HP manually in Character Settings.
       </div>
     </div>
@@ -234,27 +234,27 @@ function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, pro
 
 function SubclassStep({ classData, selected, onSelect }: any) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--text-primary)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)' }}>
         Choose your {classData.name} subclass
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
         {classData.subclasses.map((sub: any) => (
           <button
             key={sub.name}
             onClick={() => onSelect(sub.name)}
             style={{
-              textAlign: 'left', padding: 'var(--space-3) var(--space-4)',
-              border: selected === sub.name ? '2px solid var(--color-gold)' : '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
-              background: selected === sub.name ? 'rgba(212,160,23,0.08)' : 'var(--bg-sunken)',
-              cursor: 'pointer', transition: 'all var(--transition-fast)',
+              textAlign: 'left', padding: 'var(--sp-3) var(--sp-4)',
+              border: selected === sub.name ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+              borderRadius: 'var(--r-lg)',
+              background: selected === sub.name ? 'rgba(212,160,23,0.08)' : '#080d14',
+              cursor: 'pointer', transition: 'all var(--tr-fast)',
             }}
           >
-            <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)', color: selected === sub.name ? 'var(--color-gold-bright)' : 'var(--text-primary)', marginBottom: 3 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: selected === sub.name ? 'var(--c-gold-l)' : 'var(--t-1)', marginBottom: 3 }}>
               {selected === sub.name ? '✓ ' : ''}{sub.name}
             </div>
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
               {sub.description}
             </div>
           </button>
@@ -266,26 +266,26 @@ function SubclassStep({ classData, selected, onSelect }: any) {
 
 function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat, featSearch, onSetFeatSearch, availableFeats }: any) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--text-primary)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)' }}>
         Ability Score Improvement or Feat
       </div>
-      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
         {(['asi', 'feat'] as const).map(choice => (
           <button
             key={choice}
             onClick={() => onSetChoice(choice)}
             style={{
-              flex: 1, padding: 'var(--space-3)', cursor: 'pointer',
-              border: asiChoice === choice ? '2px solid var(--color-gold)' : '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
-              background: asiChoice === choice ? 'rgba(212,160,23,0.08)' : 'var(--bg-sunken)',
+              flex: 1, padding: 'var(--sp-3)', cursor: 'pointer',
+              border: asiChoice === choice ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+              borderRadius: 'var(--r-lg)',
+              background: asiChoice === choice ? 'rgba(212,160,23,0.08)' : '#080d14',
             }}
           >
-            <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)', color: asiChoice === choice ? 'var(--color-gold-bright)' : 'var(--text-primary)' }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: asiChoice === choice ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
               {choice === 'asi' ? '📈 Ability Score +2' : '⭐ Take a Feat'}
             </div>
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
               {choice === 'asi' ? '+2 to one ability or +1 to two' : 'Choose from 43 general feats'}
             </div>
           </button>
@@ -293,8 +293,8 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
       </div>
 
       {asiChoice === 'asi' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
-          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: totalBoosts === 2 ? 'var(--hp-full)' : 'var(--text-muted)', gridColumn: '1/-1', marginBottom: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: totalBoosts === 2 ? 'var(--hp-full)' : 'var(--t-2)', gridColumn: '1/-1', marginBottom: 4 }}>
             Points to distribute: {2 - totalBoosts} remaining
           </div>
           {ABILITY_NAMES.map(ab => {
@@ -302,21 +302,21 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
             const boost = abiBoosts[ab] ?? 0;
             const atCap = current + boost >= 20;
             return (
-              <div key={ab} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)' }}>
-                <span style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', flex: 1, textTransform: 'capitalize' }}>{ab.slice(0,3)}</span>
-                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>{current}</span>
+              <div key={ab} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', padding: 'var(--sp-2) var(--sp-3)', background: '#080d14', borderRadius: 'var(--r-md)' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: 'var(--t-2)', flex: 1, textTransform: 'capitalize' }}>{ab.slice(0,3)}</span>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>{current}</span>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button onClick={() => {
                     if (boost <= 0) return;
                     onSetBoosts((p: any) => ({ ...p, [ab]: boost - 1 }));
-                  }} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--border-dim)', background: 'var(--bg-raised)', cursor: 'pointer', minHeight: 0, fontSize: 14 }} disabled={boost <= 0}>−</button>
-                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--color-gold-bright)', minWidth: 16, textAlign: 'center', fontSize: 'var(--text-sm)' }}>{boost > 0 ? `+${boost}` : '0'}</span>
+                  }} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', cursor: 'pointer', minHeight: 0, fontSize: 14 }} disabled={boost <= 0}>−</button>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 16, textAlign: 'center', fontSize: 'var(--fs-sm)' }}>{boost > 0 ? `+${boost}` : '0'}</span>
                   <button onClick={() => {
                     if (totalBoosts >= 2 || atCap) return;
                     onSetBoosts((p: any) => ({ ...p, [ab]: boost + 1 }));
-                  }} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--border-dim)', background: 'var(--bg-raised)', cursor: 'pointer', minHeight: 0, fontSize: 14 }} disabled={totalBoosts >= 2 || atCap}>+</button>
+                  }} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', cursor: 'pointer', minHeight: 0, fontSize: 14 }} disabled={totalBoosts >= 2 || atCap}>+</button>
                 </div>
-                {boost > 0 && <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--color-gold-bright)', fontSize: 'var(--text-sm)' }}>→ {current + boost}</span>}
+                {boost > 0 && <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, color: 'var(--c-gold-l)', fontSize: 'var(--fs-sm)' }}>→ {current + boost}</span>}
               </div>
             );
           })}
@@ -324,12 +324,12 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
       )}
 
       {asiChoice === 'feat' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
           <input
             value={featSearch}
             onChange={e => onSetFeatSearch(e.target.value)}
             placeholder="Search feats…"
-            style={{ fontSize: 'var(--text-sm)' }}
+            style={{ fontSize: 'var(--fs-sm)' }}
             autoFocus
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
@@ -338,18 +338,18 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
                 key={feat.name}
                 onClick={() => onSetFeat(feat.name)}
                 style={{
-                  textAlign: 'left', padding: 'var(--space-2) var(--space-3)',
-                  border: selectedFeat === feat.name ? '2px solid var(--color-gold)' : '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  background: selectedFeat === feat.name ? 'rgba(212,160,23,0.08)' : 'var(--bg-sunken)',
+                  textAlign: 'left', padding: 'var(--sp-2) var(--sp-3)',
+                  border: selectedFeat === feat.name ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                  borderRadius: 'var(--r-md)',
+                  background: selectedFeat === feat.name ? 'rgba(212,160,23,0.08)' : '#080d14',
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 'var(--text-sm)', color: selectedFeat === feat.name ? 'var(--color-gold-bright)' : 'var(--text-primary)' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: selectedFeat === feat.name ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
                   {selectedFeat === feat.name ? '✓ ' : ''}{feat.name}
-                  {feat.prerequisite && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — Req: {feat.prerequisite}</span>}
+                  {feat.prerequisite && <span style={{ color: 'var(--t-2)', fontWeight: 400 }}> — Req: {feat.prerequisite}</span>}
                 </div>
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 1 }}>{feat.description}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 1 }}>{feat.description}</div>
               </button>
             ))}
           </div>
@@ -361,11 +361,11 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
 
 function ConfirmStep({ character, newLevel, avgHPGain, newMaxHP, selectedSubclass, abiBoosts, selectedFeat }: any) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--color-gold-bright)', textAlign: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--c-gold-l)', textAlign: 'center' }}>
         Ready to Level Up?
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
         <ConfirmLine icon="📖" label="New Level" value={`${character.class_name} ${newLevel}`} />
         <ConfirmLine icon="❤️" label="Max HP" value={`${character.max_hp} → ${newMaxHP} (+${avgHPGain})`} />
         {selectedSubclass && <ConfirmLine icon="⭐" label="Subclass" value={selectedSubclass} highlight />}
@@ -374,7 +374,7 @@ function ConfirmStep({ character, newLevel, avgHPGain, newMaxHP, selectedSubclas
         ))}
         {selectedFeat && <ConfirmLine icon="⭐" label="Feat Gained" value={selectedFeat} highlight />}
       </div>
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic', textAlign: 'center' }}>
         This will update your character immediately. You can always adjust stats in Character Settings.
       </div>
     </div>
@@ -383,9 +383,9 @@ function ConfirmStep({ character, newLevel, avgHPGain, newMaxHP, selectedSubclas
 
 function Gain({ icon, label, before, after, color }: any) {
   return (
-    <div style={{ padding: 'var(--space-3)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-lg)', border: `1px solid ${color}20` }}>
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>{icon} {label}</div>
-      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-lg)', color, marginTop: 2 }}>
+    <div style={{ padding: 'var(--sp-3)', background: '#080d14', borderRadius: 'var(--r-lg)', border: `1px solid ${color}20` }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-2)' }}>{icon} {label}</div>
+      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-lg)', color, marginTop: 2 }}>
         {before} → {after}
       </div>
     </div>
@@ -394,19 +394,19 @@ function Gain({ icon, label, before, after, color }: any) {
 
 function Feature({ text, icon, highlight }: { text: string; icon: string; highlight?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 10px', background: highlight ? 'rgba(212,160,23,0.08)' : 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', border: highlight ? '1px solid rgba(212,160,23,0.2)' : '1px solid var(--border-subtle)' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 10px', background: highlight ? 'rgba(212,160,23,0.08)' : '#080d14', borderRadius: 'var(--r-md)', border: highlight ? '1px solid rgba(212,160,23,0.2)' : '1px solid var(--c-border)' }}>
       <span>{icon}</span>
-      <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: highlight ? 'var(--color-gold-bright)' : 'var(--text-secondary)', fontWeight: highlight ? 600 : 400 }}>{text}</span>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: highlight ? 'var(--c-gold-l)' : 'var(--t-2)', fontWeight: highlight ? 600 : 400 }}>{text}</span>
     </div>
   );
 }
 
 function ConfirmLine({ icon, label, value, highlight }: { icon: string; label: string; value: string; highlight?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', background: highlight ? 'rgba(212,160,23,0.06)' : 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', border: highlight ? '1px solid rgba(212,160,23,0.2)' : '1px solid var(--border-subtle)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-2) var(--sp-3)', background: highlight ? 'rgba(212,160,23,0.06)' : '#080d14', borderRadius: 'var(--r-md)', border: highlight ? '1px solid rgba(212,160,23,0.2)' : '1px solid var(--c-border)' }}>
       <span>{icon}</span>
-      <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', minWidth: 80 }}>{label}</span>
-      <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: highlight ? 'var(--color-gold-bright)' : 'var(--text-secondary)', fontWeight: highlight ? 600 : 400 }}>{value}</span>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-2)', textTransform: 'uppercase', letterSpacing: '0.1em', minWidth: 80 }}>{label}</span>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: highlight ? 'var(--c-gold-l)' : 'var(--t-2)', fontWeight: highlight ? 600 : 400 }}>{value}</span>
     </div>
   );
 }

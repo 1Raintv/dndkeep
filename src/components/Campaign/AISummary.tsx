@@ -133,15 +133,15 @@ Return ONLY valid JSON in this exact format:
     setSummaries(prev => prev.filter(s => s.id !== id));
   }
 
-  if (loading) return <div className="loading-text" style={{ padding: 'var(--space-4)' }}>Loading summaries…</div>;
+  if (loading) return <div className="loading-text" style={{ padding: 'var(--sp-4)' }}>Loading summaries…</div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
       {/* Generate button */}
       {isOwner && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
           <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
               After each session, generate an AI-written narrative recap from your action log. Great for sharing with players and remembering what happened.
             </p>
           </div>
@@ -153,7 +153,7 @@ Return ONLY valid JSON in this exact format:
               background: 'linear-gradient(135deg, #2d1f5e 0%, #5b3fa8 100%)',
               color: '#e8e0ff',
               border: '1px solid rgba(91,63,168,0.5)',
-              borderRadius: 'var(--radius-lg)',
+              borderRadius: 'var(--r-lg)',
               flexShrink: 0,
             }}
           >
@@ -168,7 +168,7 @@ Return ONLY valid JSON in this exact format:
       )}
 
       {error && (
-        <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'rgba(229,57,53,0.1)', border: '1px solid rgba(229,57,53,0.3)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: '#ff8a80' }}>
+        <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'rgba(229,57,53,0.1)', border: '1px solid rgba(229,57,53,0.3)', borderRadius: 'var(--r-md)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: '#ff8a80' }}>
           {error}
         </div>
       )}
@@ -179,55 +179,55 @@ Return ONLY valid JSON in this exact format:
         return (
           <div key={summary.id} style={{
             border: '1px solid rgba(91,63,168,0.25)',
-            borderRadius: 'var(--radius-xl)',
-            background: isOpen ? 'rgba(91,63,168,0.04)' : 'var(--bg-sunken)',
+            borderRadius: 'var(--r-xl)',
+            background: isOpen ? 'rgba(91,63,168,0.04)' : '#080d14',
             overflow: 'hidden',
-            transition: 'background var(--transition-fast)',
+            transition: 'background var(--tr-fast)',
           }}>
             {/* Header */}
             <div
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-4) var(--space-5)', cursor: 'pointer' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-4) var(--sp-5)', cursor: 'pointer' }}
               onClick={() => setExpanded(isOpen ? null : summary.id)}
             >
               <span style={{ fontSize: 20 }}>📜</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: isOpen ? 'var(--color-arcane-bright)' : 'var(--text-primary)' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: isOpen ? 'var(--c-purple-l)' : 'var(--t-1)' }}>
                   {summary.title}
                 </div>
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
                   {new Date(summary.session_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
               </div>
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 18, color: 'var(--text-muted)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform var(--transition-fast)' }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 18, color: 'var(--t-2)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)' }}>
                 ⌄
               </span>
             </div>
 
             {/* Expanded content */}
             {isOpen && (
-              <div className="animate-fade-in" style={{ padding: 'var(--space-2) var(--space-5) var(--space-5)' }}>
-                <div style={{ borderTop: '1px solid rgba(91,63,168,0.2)', paddingTop: 'var(--space-4)' }}>
+              <div className="animate-fade-in" style={{ padding: 'var(--sp-2) var(--sp-5) var(--sp-5)' }}>
+                <div style={{ borderTop: '1px solid rgba(91,63,168,0.2)', paddingTop: 'var(--sp-4)' }}>
                   {/* Narrative */}
-                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-wrap', marginBottom: 'var(--space-4)' }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.8, whiteSpace: 'pre-wrap', marginBottom: 'var(--sp-4)' }}>
                     {summary.summary}
                   </div>
 
                   {/* Highlights */}
                   {summary.highlights?.length > 0 && (
-                    <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'rgba(91,63,168,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(91,63,168,0.2)', marginBottom: 'var(--space-4)' }}>
-                      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-arcane-bright)', marginBottom: 'var(--space-2)' }}>
+                    <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'rgba(91,63,168,0.08)', borderRadius: 'var(--r-md)', border: '1px solid rgba(91,63,168,0.2)', marginBottom: 'var(--sp-4)' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-purple-l)', marginBottom: 'var(--sp-2)' }}>
                         Session Highlights
                       </div>
                       {summary.highlights.map((h, i) => (
-                        <div key={i} style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                          <span style={{ color: 'var(--color-gold-bright)', flexShrink: 0 }}>★</span>
+                        <div key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 4, display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)' }}>
+                          <span style={{ color: 'var(--c-gold-l)', flexShrink: 0 }}>★</span>
                           {h}
                         </div>
                       ))}
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 'var(--sp-2)', justifyContent: 'flex-end' }}>
                     <button
                       className="btn-secondary btn-sm"
                       onClick={() => {
@@ -238,7 +238,7 @@ Return ONLY valid JSON in this exact format:
                       📋 Copy for Discord
                     </button>
                     {isOwner && (
-                      <button className="btn-ghost btn-sm" style={{ color: 'var(--color-crimson-bright)' }} onClick={() => deleteSummary(summary.id)}>
+                      <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteSummary(summary.id)}>
                         Delete
                       </button>
                     )}
@@ -251,7 +251,7 @@ Return ONLY valid JSON in this exact format:
       })}
 
       {summaries.length === 0 && !generating && (
-        <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)' }}>
+        <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
           No session recaps yet.{isOwner ? ' Play a session, then click Generate to create your first recap.' : ' Your DM will generate session recaps here.'}
         </div>
       )}

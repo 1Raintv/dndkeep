@@ -31,7 +31,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
     onUpdate({ death_saves_successes: 0, death_saves_failures: 0 });
   }
 
-  const borderColor = isDead        ? 'var(--color-blood)'
+  const borderColor = isDead        ? 'rgba(107,20,20,1)'
                     : isStabilized  ? 'var(--hp-full)'
                                     : 'var(--color-crimson)';
 
@@ -42,25 +42,25 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
   return (
     <div style={{
       border: `2px solid ${borderColor}`,
-      borderRadius: 'var(--radius-lg)',
-      padding: 'var(--space-4)',
+      borderRadius: 'var(--r-lg)',
+      padding: 'var(--sp-4)',
       background: bgColor,
-      transition: 'all var(--transition-normal)',
+      transition: 'all var(--tr-normal)',
     }}>
       {/* Header */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 'var(--space-3)',
+        marginBottom: 'var(--sp-3)',
       }}>
         <span style={{
-          fontFamily: 'var(--font-heading)',
+          fontFamily: 'var(--ff-body)',
           fontWeight: 700,
-          fontSize: 'var(--text-sm)',
+          fontSize: 'var(--fs-sm)',
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: isDead ? '#fca5a5' : isStabilized ? '#86efac' : 'var(--color-crimson-bright)',
+          color: isDead ? '#fca5a5' : isStabilized ? '#86efac' : 'var(--c-red-l)',
         }}>
           {isDead ? 'Dead' : isStabilized ? 'Stable' : 'Dying — Death Saving Throws'}
         </span>
@@ -68,7 +68,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
           <button
             className="btn-ghost btn-sm"
             onClick={reset}
-            style={{ fontSize: 'var(--text-xs)', opacity: 0.7 }}
+            style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}
             title="Reset death saves"
           >
             Reset
@@ -79,7 +79,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
       {/* Active death save tracking */}
       {!isDead && !isStabilized && (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
             <SaveRow
               label="Successes"
               count={successes}
@@ -96,10 +96,10 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
             />
           </div>
           <p style={{
-            marginTop: 'var(--space-3)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-muted)',
-            fontFamily: 'var(--font-heading)',
+            marginTop: 'var(--sp-3)',
+            fontSize: 'var(--fs-xs)',
+            color: 'var(--t-2)',
+            fontFamily: 'var(--ff-body)',
             lineHeight: 1.5,
           }}>
             Roll d20 at the start of your turn. 10+ is a success; 9 or lower is a failure.
@@ -110,8 +110,8 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
 
       {/* Stable */}
       {isStabilized && !isDead && (
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <p style={{ fontSize: 'var(--text-sm)', color: '#86efac', flex: 1 }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <p style={{ fontSize: 'var(--fs-sm)', color: '#86efac', flex: 1 }}>
             Stable. Regains consciousness with 1 HP after 1d4 hours, or sooner with aid.
           </p>
           <button className="btn-gold btn-sm" onClick={stabilize}>
@@ -122,7 +122,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
 
       {/* Dead */}
       {isDead && (
-        <p style={{ fontSize: 'var(--text-sm)', color: '#fca5a5', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 'var(--fs-sm)', color: '#fca5a5', lineHeight: 1.5 }}>
           Three failed death saving throws. Only a <em>Revivify</em>, <em>Raise Dead</em>, or
           <em> Resurrection</em> spell can bring this character back.
         </p>
@@ -141,19 +141,19 @@ function SaveRow({
   onChange: (n: number) => void;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
       <span style={{
-        fontFamily: 'var(--font-heading)',
-        fontSize: 'var(--text-xs)',
+        fontFamily: 'var(--ff-body)',
+        fontSize: 'var(--fs-xs)',
         fontWeight: 700,
-        color: 'var(--text-muted)',
+        color: 'var(--t-2)',
         minWidth: 72,
         letterSpacing: '0.06em',
         textTransform: 'uppercase',
       }}>
         {label}
       </span>
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
         {Array.from({ length: max }, (_, i) => {
           const filled = i < count;
           return (
@@ -165,17 +165,17 @@ function SaveRow({
                 width: 22,
                 height: 22,
                 borderRadius: '50%',
-                border: `2px solid ${filled ? activeColor : 'var(--border-dim)'}`,
+                border: `2px solid ${filled ? activeColor : 'var(--c-border-m)'}`,
                 background: filled ? activeColor : 'transparent',
                 cursor: 'pointer',
-                transition: 'all var(--transition-fast)',
+                transition: 'all var(--tr-fast)',
                 padding: 0,
               }}
             />
           );
         })}
       </div>
-      <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
         {count}/{max}
       </span>
     </div>

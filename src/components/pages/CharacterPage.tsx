@@ -44,7 +44,7 @@ export default function CharacterPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', padding: 'var(--space-8)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', padding: 'var(--sp-8)' }}>
         <div className="spinner" />
         <span className="loading-text">Loading character...</span>
       </div>
@@ -53,8 +53,8 @@ export default function CharacterPage() {
 
   if (error || !character) {
     return (
-      <div style={{ padding: 'var(--space-8)' }}>
-        <p style={{ color: 'var(--color-crimson-bright)', marginBottom: 'var(--space-4)' }}>
+      <div style={{ padding: 'var(--sp-8)' }}>
+        <p style={{ color: 'var(--c-red-l)', marginBottom: 'var(--sp-4)' }}>
           {error ?? 'Character not found.'}
         </p>
         <button className="btn-secondary" onClick={() => navigate('/lobby')}>
@@ -70,28 +70,28 @@ export default function CharacterPage() {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--space-2)',
-        marginBottom: 'var(--space-4)',
-        fontFamily: 'var(--font-heading)',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--text-muted)',
+        gap: 'var(--sp-2)',
+        marginBottom: 'var(--sp-4)',
+        fontFamily: 'var(--ff-body)',
+        fontSize: 'var(--fs-xs)',
+        color: 'var(--t-2)',
       }}>
         <button
           className="btn-ghost btn-sm"
           onClick={() => navigate('/lobby')}
-          style={{ padding: '2px var(--space-2)', fontSize: 'var(--text-xs)' }}
+          style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)' }}
         >
           Characters
         </button>
         <span>/</span>
-        <span style={{ color: 'var(--text-secondary)' }}>{character.name}</span>
+        <span style={{ color: 'var(--t-2)' }}>{character.name}</span>
         {isPro && (
           <span style={{
             marginLeft: 'auto',
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--space-1)',
-            color: 'var(--color-gold-dim)',
+            gap: 'var(--sp-1)',
+            color: 'var(--c-gold)',
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--hp-full)', display: 'inline-block' }} />
             Live sync active

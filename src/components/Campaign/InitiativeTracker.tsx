@@ -179,21 +179,21 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
   return (
     <div style={{ maxWidth: 680 }}>
       {/* Header bar */}
-      <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-          <div className="stat-box" style={{ minWidth: 80, padding: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
+          <div className="stat-box" style={{ minWidth: 80, padding: 'var(--sp-2)' }}>
             <div className="stat-box-label">Round</div>
             <div className="stat-box-value">{sessionState?.round ?? 1}</div>
           </div>
-          <div className="stat-box" style={{ minWidth: 80, padding: 'var(--space-2)' }}>
+          <div className="stat-box" style={{ minWidth: 80, padding: 'var(--sp-2)' }}>
             <div className="stat-box-label">Turn</div>
-            <div className="stat-box-value" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            <div className="stat-box-value" style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
               {sorted[activeTurn]?.name?.slice(0, 10) ?? '—'}
             </div>
           </div>
         </div>
         {isOwner && (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', marginLeft: 'auto' }}>
             {combatants.length > 0 && (
               <button className="btn-gold btn-sm" onClick={advanceTurnWithOngoingDamage}>Next Turn ▶</button>
             )}
@@ -209,59 +209,59 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
 
       {/* Initiative list */}
       {sorted.length === 0 ? (
-        <div className="panel" style={{ textAlign: 'center', padding: 'var(--space-6)' }}>
-          <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>
+        <div className="panel" style={{ textAlign: 'center', padding: 'var(--sp-6)' }}>
+          <p style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
             No combatants yet. Add players and monsters below.
           </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
           {sorted.map(c => {
             const isActive = c.id === activeId;
             const isExpanded = expandedId === c.id;
             const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
             return (
               <div key={c.id} style={{
-                borderRadius: 'var(--radius-md)',
-                border: isActive ? '2px solid var(--color-gold)' : '1px solid var(--border-subtle)',
-                background: isActive ? 'rgba(201,146,42,0.07)' : 'var(--bg-surface)',
+                borderRadius: 'var(--r-md)',
+                border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                background: isActive ? 'rgba(201,146,42,0.07)' : 'var(--c-surface)',
                 overflow: 'hidden',
               }}>
                 {/* Main row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
                   {/* Initiative badge */}
                   {isOwner ? (
                     <input
                       type="number"
                       value={c.initiative}
                       onChange={e => setInitiative(c.id, parseInt(e.target.value) || 0)}
-                      style={{ width: 44, textAlign: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--text-gold)', background: 'transparent', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-sm)', padding: '2px 0' }}
+                      style={{ width: 44, textAlign: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--c-gold-l)', background: 'transparent', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-sm)', padding: '2px 0' }}
                     />
                   ) : (
-                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--text-gold)', minWidth: 44, textAlign: 'center' }}>{c.initiative}</span>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 44, textAlign: 'center' }}>{c.initiative}</span>
                   )}
 
                   {/* Name + type badge */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: isActive ? 700 : 600, color: isActive ? 'var(--text-gold)' : 'var(--text-primary)', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: isActive ? 700 : 600, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)', fontSize: 'var(--fs-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {c.name}
                       </span>
                       {!c.is_monster && <span className="badge badge-muted" style={{ fontSize: 9 }}>PC</span>}
                     </div>
                     {/* HP bar */}
-                    <div style={{ width: '100%', height: 3, background: 'var(--bg-sunken)', borderRadius: 2, marginTop: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpColor(c), transition: 'width var(--transition-slow)' }} />
+                    <div style={{ width: '100%', height: 3, background: '#080d14', borderRadius: 2, marginTop: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpColor(c), transition: 'width var(--tr-slow)' }} />
                     </div>
                   </div>
 
                   {/* HP */}
-                  <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: hpColor(c), minWidth: 60, textAlign: 'right' }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: hpColor(c), minWidth: 60, textAlign: 'right' }}>
                     {c.current_hp}/{c.max_hp}
                   </span>
 
                   {/* AC */}
-                  <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', minWidth: 40, textAlign: 'center' }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', minWidth: 40, textAlign: 'center' }}>
                     AC {c.ac}
                   </span>
 
@@ -272,18 +272,18 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
 
                   {/* Expand / remove */}
                   {isOwner && (
-                    <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
                       <button
                         className="btn-ghost btn-sm"
                         onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                        style={{ fontSize: 'var(--text-xs)', padding: '2px 6px' }}
+                        style={{ fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
                       >
                         {isExpanded ? 'Less' : 'More'}
                       </button>
                       <button
                         className="btn-ghost btn-sm"
                         onClick={() => removeCombatant(c.id)}
-                        style={{ color: 'var(--color-ash)', fontSize: 'var(--text-xs)', padding: '2px 6px' }}
+                        style={{ color: 'var(--t-2)', fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
                       >
                         Remove
                       </button>
@@ -293,24 +293,24 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
 
                 {/* Expanded controls */}
                 {isExpanded && isOwner && (
-                  <div style={{ padding: 'var(--space-3) var(--space-4)', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-sunken)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                  <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderTop: '1px solid var(--c-border)', background: '#080d14', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
                     {/* HP controls */}
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
                       <input
                         type="number"
                         min="1"
                         placeholder="Amount"
                         value={hpDeltas[c.id] || ''}
                         onChange={e => setHpDeltas(prev => ({ ...prev, [c.id]: e.target.value }))}
-                        style={{ width: 80, textAlign: 'center', fontSize: 'var(--text-sm)' }}
+                        style={{ width: 80, textAlign: 'center', fontSize: 'var(--fs-sm)' }}
                       />
                       <button className="btn-danger btn-sm" onClick={() => applyHP(c.id, 'damage')} disabled={!hpDeltas[c.id]}>Damage</button>
                       <button className="btn-gold btn-sm" onClick={() => applyHP(c.id, 'heal')} disabled={!hpDeltas[c.id]}>Heal</button>
                     </div>
                     {/* Conditions */}
                     <div>
-                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>CONDITIONS</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>CONDITIONS</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1)' }}>
                         {CONDITIONS.map(cond => {
                           const active = c.conditions.includes(cond as ConditionName);
                           return (
@@ -318,11 +318,11 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                               <button
                                 onClick={() => toggleCondition(c.id, cond as ConditionName)}
                                 style={{
-                                  fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 9,
-                                  padding: '2px 6px', borderRadius: 'var(--radius-sm)',
-                                  border: active ? '1px solid var(--color-crimson-bright)' : '1px solid var(--border-subtle)',
-                                  background: active ? 'rgba(220,38,38,0.15)' : 'var(--bg-raised)',
-                                  color: active ? '#fca5a5' : 'var(--text-muted)',
+                                  fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 9,
+                                  padding: '2px 6px', borderRadius: 'var(--r-sm)',
+                                  border: active ? '1px solid var(--c-red-l)' : '1px solid var(--c-border)',
+                                  background: active ? 'rgba(220,38,38,0.15)' : 'var(--c-raised)',
+                                  color: active ? '#fca5a5' : 'var(--t-2)',
                                   cursor: 'pointer',
                                 }}
                               >
@@ -343,25 +343,25 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
 
       {/* Add combatants — DM only */}
       {isOwner && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
           {/* Add monster / NPC */}
           <div className="panel">
             <div className="section-header">Add Monster / NPC</div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div style={{ flex: 2, minWidth: 120 }}>
-                <label style={{ fontSize: 'var(--text-xs)' }}>Name</label>
+                <label style={{ fontSize: 'var(--fs-xs)' }}>Name</label>
                 <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addMonster()} placeholder="Goblin, Dragon..." />
               </div>
               <div style={{ flex: 0.5, minWidth: 60 }}>
-                <label style={{ fontSize: 'var(--text-xs)' }}>Initiative</label>
+                <label style={{ fontSize: 'var(--fs-xs)' }}>Initiative</label>
                 <input type="number" value={newInit} onChange={e => setNewInit(e.target.value)} placeholder="d20" style={{ textAlign: 'center' }} />
               </div>
               <div style={{ flex: 0.5, minWidth: 60 }}>
-                <label style={{ fontSize: 'var(--text-xs)' }}>HP</label>
+                <label style={{ fontSize: 'var(--fs-xs)' }}>HP</label>
                 <input type="number" value={newHP} onChange={e => setNewHP(e.target.value)} placeholder="10" style={{ textAlign: 'center' }} />
               </div>
               <div style={{ flex: 0.5, minWidth: 60 }}>
-                <label style={{ fontSize: 'var(--text-xs)' }}>AC</label>
+                <label style={{ fontSize: 'var(--fs-xs)' }}>AC</label>
                 <input type="number" value={newAC} onChange={e => setNewAC(e.target.value)} placeholder="12" style={{ textAlign: 'center' }} />
               </div>
               <button className="btn-primary btn-sm" onClick={addMonster} disabled={!newName.trim()}>Add</button>
@@ -372,7 +372,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
           {playerCharacters.length > 0 && (
             <div className="panel">
               <div className="section-header">Add Player Characters</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
                 {playerCharacters.map(pc => {
                   const alreadyAdded = combatants.some(c => c.id === pc.id);
                   return (
@@ -394,7 +394,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
       )}
 
       {!isOwner && combatants.length > 0 && (
-        <p style={{ marginTop: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+        <p style={{ marginTop: 'var(--sp-4)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
           Syncing in real-time. Your DM controls the tracker.
         </p>
       )}

@@ -180,28 +180,28 @@ export default function CharacterCreator() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
       {/* Step indicator */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 'var(--space-8)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 'var(--sp-8)', borderBottom: '1px solid var(--c-border)' }}>
         {STEPS.map((label, i) => (
           <button
             key={label}
             onClick={() => i < step && setStep(i)}
             style={{
-              fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700,
+              fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700,
               letterSpacing: '0.08em', textTransform: 'uppercase',
-              padding: 'var(--space-3) var(--space-4)', border: 'none',
-              borderBottom: i === step ? '2px solid var(--color-gold)' : '2px solid transparent',
+              padding: 'var(--sp-3) var(--sp-4)', border: 'none',
+              borderBottom: i === step ? '2px solid var(--c-gold)' : '2px solid transparent',
               background: 'transparent',
-              color: i === step ? 'var(--text-gold)' : i < step ? 'var(--text-secondary)' : 'var(--text-muted)',
+              color: i === step ? 'var(--c-gold-l)' : i < step ? 'var(--t-2)' : 'var(--t-2)',
               cursor: i < step ? 'pointer' : 'default',
               marginBottom: -1,
-              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              display: 'flex', alignItems: 'center', gap: 'var(--sp-2)',
             }}
           >
             <span style={{
               width: 20, height: 20, borderRadius: '50%',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px',
-              background: i < step ? 'var(--color-gold)' : i === step ? 'rgba(201,146,42,0.2)' : 'var(--bg-raised)',
-              color: i < step ? 'var(--color-void)' : i === step ? 'var(--text-gold)' : 'var(--text-muted)',
+              background: i < step ? 'var(--c-gold)' : i === step ? 'rgba(201,146,42,0.2)' : 'var(--c-raised)',
+              color: i < step ? 'var(--c-bg)' : i === step ? 'var(--c-gold-l)' : 'var(--t-2)',
               flexShrink: 0,
             }}>
               {i < step ? '✓' : i + 1}
@@ -214,7 +214,7 @@ export default function CharacterCreator() {
       </div>
 
       {/* Navigation — top */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-6)', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--sp-6)', alignItems: 'center' }}>
         <button className="btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : navigate('/lobby')} disabled={saving}>
           {step === 0 ? '✕ Cancel' : '← Back'}
         </button>
@@ -247,7 +247,7 @@ export default function CharacterCreator() {
 
       {/* Error */}
       {error && (
-        <div style={{ marginTop: 'var(--space-4)', background: 'rgba(155,28,28,0.15)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)', color: '#fca5a5', fontFamily: 'var(--font-heading)' }}>
+        <div style={{ marginTop: 'var(--sp-4)', background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>
           {error}
         </div>
       )}

@@ -59,11 +59,11 @@ export default function Notes({ character, onUpdate }: NotesProps) {
   return (
     <section>
       <div className="section-header">Character Details</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         {FIELDS.map(({ key, label, rows, placeholder }) => (
           <div key={key}>
             <label style={{
-              color: activeField === key ? 'var(--text-gold)' : undefined,
+              color: activeField === key ? 'var(--c-gold-l)' : undefined,
             }}>
               {label}
             </label>
@@ -75,9 +75,9 @@ export default function Notes({ character, onUpdate }: NotesProps) {
               onBlur={e => handleBlur(key, e.target.value)}
               style={{
                 resize: 'vertical',
-                fontFamily: 'var(--font-body)',
+                fontFamily: 'var(--ff-body)',
                 lineHeight: '1.5',
-                transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
+                transition: 'border-color var(--tr-fast), box-shadow var(--tr-fast)',
               }}
             />
           </div>

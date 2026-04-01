@@ -52,11 +52,11 @@ function xpMultiplier(count: number): number {
 }
 
 function difficultyLabel(xp: number, thresholds: number[]): { label: string; color: string } {
-  if (xp < thresholds[0]) return { label: 'Trivial', color: 'var(--text-muted)' };
+  if (xp < thresholds[0]) return { label: 'Trivial', color: 'var(--t-2)' };
   if (xp < thresholds[1]) return { label: 'Easy', color: 'var(--hp-full)' };
-  if (xp < thresholds[2]) return { label: 'Medium', color: 'var(--color-amber)' };
+  if (xp < thresholds[2]) return { label: 'Medium', color: 'var(--c-amber-l)' };
   if (xp < thresholds[3]) return { label: 'Hard', color: '#fb923c' };
-  return { label: 'Deadly ☠️', color: 'var(--color-crimson-bright)' };
+  return { label: 'Deadly ☠️', color: 'var(--c-red-l)' };
 }
 
 export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat, onClose }: EncounterBuilderProps) {
@@ -126,19 +126,19 @@ export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat,
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 700, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
           <h3>Encounter Builder</h3>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
             Party: {partySize}× Level {level}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)', flex: 1, overflow: 'hidden' }}>
           {/* Monster picker */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search monsters…" style={{ flex: 1, fontSize: 'var(--text-sm)' }} />
-              <select value={crFilter} onChange={e => setCRFilter(e.target.value)} style={{ width: 80, fontSize: 'var(--text-sm)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search monsters…" style={{ flex: 1, fontSize: 'var(--fs-sm)' }} />
+              <select value={crFilter} onChange={e => setCRFilter(e.target.value)} style={{ width: 80, fontSize: 'var(--fs-sm)' }}>
                 <option value="">CR</option>
                 {CRS.map(cr => <option key={cr} value={cr}>CR {cr}</option>)}
               </select>
@@ -150,36 +150,36 @@ export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat,
                   onClick={() => addMonster(m)}
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border-subtle)', background: 'var(--bg-sunken)',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all var(--transition-fast)',
+                    padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-sm)',
+                    border: '1px solid var(--c-border)', background: '#080d14',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all var(--tr-fast)',
                   }}
-                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-gold-dim)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-subtle)'}
+                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-border)'}
                 >
                   <div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--text-primary)' }}>{m.name}</div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)' }}>CR {formatCR(m.cr)} · {m.type} · {m.hp} HP</div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--t-1)' }}>{m.name}</div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>CR {formatCR(m.cr)} · {m.type} · {m.hp} HP</div>
                   </div>
-                  <span style={{ color: 'var(--text-gold)', fontSize: 18, lineHeight: 1 }}>+</span>
+                  <span style={{ color: 'var(--c-gold-l)', fontSize: 18, lineHeight: 1 }}>+</span>
                 </button>
               ))}
             </div>
           </div>
 
           {/* Encounter composition */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', overflow: 'hidden' }}>
             <div className="section-header">Encounter</div>
 
             {/* XP Budget */}
-            <div style={{ padding: 'var(--space-3)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', border: `1px solid ${difficulty.color}50` }}>
+            <div style={{ padding: 'var(--sp-3)', background: '#080d14', borderRadius: 'var(--r-md)', border: `1px solid ${difficulty.color}50` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: difficulty.color }}>{difficulty.label}</span>
-                <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{adjustedXP.toLocaleString()} XP (adj.)</span>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: difficulty.color }}>{difficulty.label}</span>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{adjustedXP.toLocaleString()} XP (adj.)</span>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
                 {(['Easy', 'Medium', 'Hard', 'Deadly'] as const).map((d, i) => (
-                  <div key={d} style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)' }}>
+                  <div key={d} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
                     {d}: {partyThresholds[i].toLocaleString()}
                   </div>
                 ))}
@@ -189,26 +189,26 @@ export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat,
             {/* Monster list */}
             <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {encounter.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)' }}>
+                <div style={{ textAlign: 'center', padding: 'var(--sp-6)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)' }}>
                   Click monsters on the left to add them
                 </div>
               ) : encounter.map(({ monster, count }) => (
-                <div key={monster.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <div key={monster.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', padding: 'var(--sp-2) var(--sp-3)', background: '#080d14', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--text-primary)' }}>{monster.name}</div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)' }}>{monster.xp * count} XP · {monster.hp} HP each</div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--t-1)' }}>{monster.name}</div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>{monster.xp * count} XP · {monster.hp} HP each</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                    <button onClick={() => removeMonster(monster.id)} style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--border-subtle)', background: 'var(--bg-raised)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', minWidth: 20, textAlign: 'center' }}>×{count}</span>
-                    <button onClick={() => addMonster(monster)} style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--border-gold)', background: 'rgba(201,146,42,0.1)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, color: 'var(--text-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
+                    <button onClick={() => removeMonster(monster.id)} style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--c-border)', background: 'var(--c-raised)', cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', minWidth: 20, textAlign: 'center' }}>×{count}</span>
+                    <button onClick={() => addMonster(monster)} style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--c-gold-bdr)', background: 'rgba(201,146,42,0.1)', cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--c-gold-l)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
               <button className="btn-secondary" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
               <button className="btn-gold" onClick={buildAndAdd} disabled={encounter.length === 0} style={{ flex: 2, justifyContent: 'center' }}>
                 ⚔ Add to Combat ({totalMonsters} monsters)

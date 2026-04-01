@@ -32,13 +32,13 @@ export default function AuthPage() {
 
   if (confirmed) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-16)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-16)' }}>
         <div className="card card-gold" style={{ maxWidth: 420, width: '100%', textAlign: 'center' }}>
-          <h2 style={{ marginBottom: 'var(--space-4)' }}>Check Your Email</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>
+          <h2 style={{ marginBottom: 'var(--sp-4)' }}>Check Your Email</h2>
+          <p style={{ color: 'var(--t-2)' }}>
             We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account, then sign in.
           </p>
-          <button className="btn-secondary" style={{ marginTop: 'var(--space-6)' }} onClick={() => { setConfirmed(false); setMode('signin'); }}>
+          <button className="btn-secondary" style={{ marginTop: 'var(--sp-6)' }} onClick={() => { setConfirmed(false); setMode('signin'); }}>
             Back to Sign In
           </button>
         </div>
@@ -47,24 +47,24 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-16) var(--space-4)' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-16) var(--sp-4)' }}>
       <div style={{ width: '100%', maxWidth: 420 }}>
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', color: 'var(--text-gold)', textShadow: '0 0 32px rgba(201,146,42,0.4)', marginBottom: 'var(--space-2)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--sp-8)' }}>
+          <div style={{ fontFamily: 'var(--ff-brand)', fontSize: 'var(--fs-3xl)', color: 'var(--c-gold-l)', textShadow: '0 0 32px rgba(201,146,42,0.4)', marginBottom: 'var(--sp-2)' }}>
             DNDKeep
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Your D&D 5e session companion</p>
+          <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>Your D&D 5e session companion</p>
         </div>
         <div className="card card-gold">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', padding: '3px', marginBottom: 'var(--space-6)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: '#080d14', borderRadius: 'var(--r-md)', padding: '3px', marginBottom: 'var(--sp-6)' }}>
             {(['signin', 'signup'] as Mode[]).map(m => (
               <button key={m} onClick={() => { setMode(m); setError(null); }}
-                style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: 'none', background: mode === m ? 'var(--bg-surface)' : 'transparent', color: mode === m ? 'var(--text-gold)' : 'var(--text-muted)', cursor: 'pointer', transition: 'all var(--transition-fast)' }}>
+                style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: 'var(--sp-2)', borderRadius: 'var(--r-sm)', border: 'none', background: mode === m ? 'var(--c-surface)' : 'transparent', color: mode === m ? 'var(--c-gold-l)' : 'var(--t-2)', cursor: 'pointer', transition: 'all var(--tr-fast)' }}>
                 {m === 'signin' ? 'Sign In' : 'Create Account'}
               </button>
             ))}
           </div>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
             {mode === 'signup' && (
               <div>
                 <label>Display Name</label>
@@ -80,16 +80,16 @@ export default function AuthPage() {
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'} required minLength={mode === 'signup' ? 8 : 1} />
             </div>
             {error && (
-              <div style={{ background: 'rgba(155,28,28,0.15)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)', color: '#fca5a5', fontFamily: 'var(--font-heading)' }}>{error}</div>
+              <div style={{ background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>{error}</div>
             )}
-            <button type="submit" className="btn-primary btn-lg" disabled={loading} style={{ marginTop: 'var(--space-2)' }}>
+            <button type="submit" className="btn-primary btn-lg" disabled={loading} style={{ marginTop: 'var(--sp-2)' }}>
               {loading ? 'Working...' : mode === 'signin' ? 'Enter the Keep' : 'Create Account'}
             </button>
           </form>
           {mode === 'signin' && (
-            <p style={{ textAlign: 'center', marginTop: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ textAlign: 'center', marginTop: 'var(--sp-4)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
               No account?{' '}
-              <span style={{ color: 'var(--text-gold)', cursor: 'pointer' }} onClick={() => setMode('signup')}>Create one free</span>
+              <span style={{ color: 'var(--c-gold-l)', cursor: 'pointer' }} onClick={() => setMode('signup')}>Create one free</span>
             </p>
           )}
         </div>

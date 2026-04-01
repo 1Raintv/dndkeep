@@ -119,9 +119,9 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
 
   if (rolls.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)' }}>
-        <div style={{ fontSize: 40, marginBottom: 'var(--space-3)' }}>📋</div>
-        <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)' }}>
+      <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>
+        <div style={{ fontSize: 40, marginBottom: 'var(--sp-3)' }}>📋</div>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
           No rolls logged this session yet.
         </div>
       </div>
@@ -134,24 +134,24 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
   const avgTotal = (rolls.reduce((s, r) => s + r.total, 0) / rolls.length).toFixed(1);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
       {/* Stats summary */}
-      <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', padding: 'var(--space-3) var(--space-4)', background: 'var(--bg-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap', padding: 'var(--sp-3) var(--sp-4)', background: '#080d14', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)' }}>
         {[
-          { label: 'Total Rolls', value: rolls.length, color: 'var(--text-primary)' },
+          { label: 'Total Rolls', value: rolls.length, color: 'var(--t-1)' },
           { label: 'Avg Total', value: avgTotal, color: '#60a5fa' },
-          { label: '⭐ Nat 20s', value: nat20Count, color: 'var(--color-gold-bright)' },
+          { label: '⭐ Nat 20s', value: nat20Count, color: 'var(--c-gold-l)' },
           { label: '💀 Nat 1s', value: nat1Count, color: '#f87171' },
         ].map(stat => (
           <div key={stat.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>{stat.label}</div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-xl)', color: stat.color, lineHeight: 1 }}>{stat.value}</div>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-2)' }}>{stat.label}</div>
+            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-xl)', color: stat.color, lineHeight: 1 }}>{stat.value}</div>
           </div>
         ))}
       </div>
 
       {/* Export buttons */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
         <button
           className="btn-gold btn-sm"
           onClick={downloadMarkdown}
@@ -176,25 +176,25 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
             const nat1 = roll.results.some(x => x === 1);
             return (
               <div key={roll.id} style={{
-                display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-                padding: '6px var(--space-3)',
-                border: nat20 ? '1px solid rgba(212,160,23,0.3)' : nat1 ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-                background: nat20 ? 'rgba(212,160,23,0.05)' : nat1 ? 'rgba(248,113,113,0.05)' : 'var(--bg-sunken)',
+                display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+                padding: '6px var(--sp-3)',
+                border: nat20 ? '1px solid rgba(212,160,23,0.3)' : nat1 ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--c-border)',
+                borderRadius: 'var(--r-md)',
+                background: nat20 ? 'rgba(212,160,23,0.05)' : nat1 ? 'rgba(248,113,113,0.05)' : '#080d14',
               }}>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', minWidth: 48 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', minWidth: 48 }}>
                   {new Date(roll.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                 </span>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', minWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', minWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {roll.character_name}
                 </span>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', flex: 1 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', flex: 1 }}>
                   {roll.label}
                 </span>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   {roll.expression}
                 </span>
-                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: nat20 ? 'var(--color-gold-bright)' : nat1 ? '#f87171' : 'var(--text-primary)', minWidth: 32, textAlign: 'right' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: nat20 ? 'var(--c-gold-l)' : nat1 ? '#f87171' : 'var(--t-1)', minWidth: 32, textAlign: 'right' }}>
                   {roll.total}{nat20 ? '⭐' : nat1 ? '💀' : ''}
                 </span>
               </div>

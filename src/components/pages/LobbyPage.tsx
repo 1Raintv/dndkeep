@@ -138,7 +138,7 @@ function CharacterCard({ character: c, onClick }: { character: Character; onClic
             {c.current_hp} <span style={{ color: 'var(--t-3)', fontWeight: 400 }}>/ {c.max_hp}</span>
           </span>
         </div>
-        <div style={{ height: 4, background: 'var(--bg-sunken)', borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ height: 4, background: '#080d14', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${hpPct * 100}%`, background: col, borderRadius: 999, transition: 'width 0.3s' }} />
         </div>
       </div>

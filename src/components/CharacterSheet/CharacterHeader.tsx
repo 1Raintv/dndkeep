@@ -57,28 +57,28 @@ export default function CharacterHeader({
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, var(--color-charcoal) 0%, var(--color-shadow) 100%)',
-      border: '1px solid var(--border-dim)',
-      borderRadius: 'var(--radius-xl)',
+      background: 'linear-gradient(135deg, var(--c-surface) 0%, var(--c-card) 100%)',
+      border: '1px solid var(--c-border-m)',
+      borderRadius: 'var(--r-xl)',
       overflow: 'hidden',
       boxShadow: 'var(--shadow-md)',
     }}>
       {/* Top accent bar */}
       <div style={{ height: 2, background: `linear-gradient(90deg, transparent, ${hpCol}, transparent)` }} />
 
-      <div style={{ padding: 'var(--space-4) var(--space-5)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ padding: 'var(--sp-4) var(--sp-5)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
 
         {/* Avatar + Name column */}
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', minWidth: 180 }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', minWidth: 180 }}>
           {/* Avatar */}
           <button
             onClick={onOpenAvatarPicker}
             style={{
-              width: 52, height: 52, borderRadius: 'var(--radius-lg)', flexShrink: 0,
-              background: 'var(--bg-sunken)', border: `2px solid ${hpCol}40`,
+              width: 52, height: 52, borderRadius: 'var(--r-lg)', flexShrink: 0,
+              background: '#080d14', border: `2px solid ${hpCol}40`,
               overflow: 'hidden', cursor: 'pointer', padding: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all var(--transition-fast)',
+              transition: 'all var(--tr-fast)',
             }}
             title="Change portrait"
           >
@@ -92,8 +92,8 @@ export default function CharacterHeader({
           {/* Name + identity */}
           <div style={{ minWidth: 0 }}>
             <div style={{
-              fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)',
-              color: 'var(--text-primary)', letterSpacing: '0.03em',
+              fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)',
+              color: 'var(--t-1)', letterSpacing: '0.03em',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {character.name}
@@ -101,50 +101,50 @@ export default function CharacterHeader({
                 <span title="Inspiration!" style={{ marginLeft: 6, fontSize: 12 }}>⭐</span>
               )}
             </div>
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 1 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 1 }}>
               {classDisplay}
               {character.subclass ? ` · ${character.subclass}` : ''}
             </div>
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
               {character.species}{character.background ? ` · ${character.background}` : ''}
             </div>
           </div>
         </div>
 
         {/* Divider */}
-        <div style={{ width: 1, height: 52, background: 'var(--border-subtle)', flexShrink: 0, display: 'none' }} className="desktop-only" />
+        <div style={{ width: 1, height: 52, background: 'var(--c-border)', flexShrink: 0, display: 'none' }} className="desktop-only" />
 
         {/* ── STAT CHIPS ────────────────────────── */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', flex: 1 }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', flex: 1 }}>
 
           {/* HP — largest chip */}
           <div style={{
-            padding: 'var(--space-2) var(--space-3)',
-            background: 'var(--bg-sunken)',
+            padding: 'var(--sp-2) var(--sp-3)',
+            background: '#080d14',
             border: `1px solid ${hpCol}40`,
-            borderRadius: 'var(--radius-lg)',
+            borderRadius: 'var(--r-lg)',
             minWidth: 130,
           }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>HP</span>
-              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-xl)', color: hpCol, lineHeight: 1 }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-2)' }}>HP</span>
+              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-xl)', color: hpCol, lineHeight: 1 }}>
                 {character.current_hp}
               </span>
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>/ {character.max_hp}</span>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>/ {character.max_hp}</span>
               {character.temp_hp > 0 && (
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: '#60a5fa', marginLeft: 2 }}>+{character.temp_hp}</span>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#60a5fa', marginLeft: 2 }}>+{character.temp_hp}</span>
               )}
             </div>
             {/* HP bar */}
-            <div style={{ height: 3, background: 'var(--bg-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 4 }}>
-              <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpCol, borderRadius: 999, transition: 'width var(--transition-slow), background var(--transition-normal)', boxShadow: `0 0 6px ${hpCol}` }} />
+            <div style={{ height: 3, background: 'var(--c-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 4 }}>
+              <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpCol, borderRadius: 999, transition: 'width var(--tr-slow), background var(--tr-normal)', boxShadow: `0 0 6px ${hpCol}` }} />
             </div>
             {/* Inline HP controls */}
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <button
                 onClick={() => setHpMode(m => m === 'damage' ? 'heal' : 'damage')}
                 style={{
-                  fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 700, padding: '1px 5px',
+                  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, padding: '1px 5px',
                   borderRadius: 999, cursor: 'pointer',
                   background: hpMode === 'damage' ? 'rgba(229,57,53,0.15)' : 'rgba(52,211,153,0.15)',
                   border: `1px solid ${hpMode === 'damage' ? 'rgba(229,57,53,0.4)' : 'rgba(52,211,153,0.4)'}`,
@@ -167,9 +167,9 @@ export default function CharacterHeader({
                 onClick={applyHPChange}
                 disabled={!hpDelta || isNaN(parseInt(hpDelta))}
                 style={{
-                  fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 700, padding: '1px 6px',
+                  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, padding: '1px 6px',
                   borderRadius: 4, cursor: 'pointer', minHeight: 0,
-                  background: 'var(--bg-raised)', border: '1px solid var(--border-dim)', color: 'var(--text-muted)',
+                  background: 'var(--c-raised)', border: '1px solid var(--c-border-m)', color: 'var(--t-2)',
                 }}
               >
                 Apply
@@ -178,7 +178,7 @@ export default function CharacterHeader({
           </div>
 
           {/* AC */}
-          <StatChip icon="🛡️" label="AC" value={character.armor_class} color="var(--color-gold-bright)" />
+          <StatChip icon="🛡️" label="AC" value={character.armor_class} color="var(--c-gold-l)" />
 
           {/* Initiative */}
           <StatChip
@@ -189,7 +189,7 @@ export default function CharacterHeader({
           />
 
           {/* Passive Perception */}
-          <StatChip icon="👁️" label="PASS PERC" value={10 + (computed.skills['Perception']?.total ?? 0)} color="var(--text-muted)" small />
+          <StatChip icon="👁️" label="PASS PERC" value={10 + (computed.skills['Perception']?.total ?? 0)} color="var(--t-2)" small />
 
           {/* Proficiency Bonus */}
           <StatChip icon="✦" label="PROF" value={`+${computed.proficiency_bonus}`} color="#a78bfa" small />
@@ -208,11 +208,11 @@ export default function CharacterHeader({
           )}
 
           {/* Speed */}
-          <StatChip icon="💨" label="SPEED" value={`${character.speed}ft`} color="var(--text-muted)" small />
+          <StatChip icon="💨" label="SPEED" value={`${character.speed}ft`} color="var(--t-2)" small />
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
           <button
             className="btn-secondary btn-sm"
             onClick={onOpenRest}
@@ -224,14 +224,14 @@ export default function CharacterHeader({
             className="btn-ghost btn-sm"
             onClick={onToggleInspiration}
             title="Toggle inspiration (I)"
-            style={{ color: character.inspiration ? 'var(--color-amber)' : 'var(--text-muted)' }}
+            style={{ color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-2)' }}
           >
             {character.inspiration ? '⭐ Inspired' : '☆ Inspiration'}
           </button>
           <button
             className="btn-ghost btn-sm"
             onClick={onOpenSettings}
-            style={{ color: 'var(--text-muted)' }}
+            style={{ color: 'var(--t-2)' }}
           >
             ⚙ Settings
           </button>
@@ -240,20 +240,20 @@ export default function CharacterHeader({
 
       {/* Death saves strip — only when at 0 HP */}
       {character.current_hp <= 0 && (
-        <div style={{ padding: 'var(--space-2) var(--space-5)', borderTop: '1px solid rgba(229,57,53,0.3)', background: 'rgba(229,57,53,0.06)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 700, color: '#ff8a80' }}>DEATH SAVES</span>
+        <div style={{ padding: 'var(--sp-2) var(--sp-5)', borderTop: '1px solid rgba(229,57,53,0.3)', background: 'rgba(229,57,53,0.06)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: '#ff8a80' }}>DEATH SAVES</span>
           <div style={{ display: 'flex', gap: 3 }}>
             {[0,1,2].map(i => (
               <div key={i} style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid #34d399', background: i < (character.death_saves_successes ?? 0) ? '#34d399' : 'transparent' }} />
             ))}
           </div>
-          <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Successes</span>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Successes</span>
           <div style={{ display: 'flex', gap: 3 }}>
             {[0,1,2].map(i => (
               <div key={i} style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid #e53935', background: i < (character.death_saves_failures ?? 0) ? '#e53935' : 'transparent' }} />
             ))}
           </div>
-          <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Failures</span>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Failures</span>
         </div>
       )}
     </div>
@@ -266,17 +266,17 @@ function StatChip({ icon, label, value, color, small }: {
 }) {
   return (
     <div style={{
-      padding: small ? '4px var(--space-2)' : 'var(--space-2) var(--space-3)',
-      background: 'var(--bg-sunken)',
+      padding: small ? '4px var(--sp-2)' : 'var(--sp-2) var(--sp-3)',
+      background: '#080d14',
       border: `1px solid ${color}25`,
-      borderRadius: 'var(--radius-md)',
+      borderRadius: 'var(--r-md)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
       minWidth: small ? 52 : 64,
     }}>
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 2 }}>
         <span>{icon}</span><span>{label}</span>
       </div>
-      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: small ? 'var(--text-md)' : 'var(--text-lg)', color, lineHeight: 1 }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: small ? 'var(--fs-md)' : 'var(--fs-lg)', color, lineHeight: 1 }}>
         {value}
       </div>
     </div>

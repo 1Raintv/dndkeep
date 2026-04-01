@@ -146,17 +146,17 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', marginBottom: 'var(--sp-6)' }}>
         <button className="btn-ghost btn-sm" onClick={onBack}>Back</button>
         <div style={{ flex: 1 }}>
-          <h2 style={{ marginBottom: 'var(--space-1)' }}>{campaign.name}</h2>
+          <h2 style={{ marginBottom: 'var(--sp-1)' }}>{campaign.name}</h2>
           {campaign.setting && (
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
               {campaign.setting}
             </p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
           {sessionState?.combat_active && (
             <span className="badge badge-crimson" style={{ animation: 'pulse-gold 2s infinite' }}>
               Combat Active — Round {sessionState.round}
@@ -197,19 +197,19 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
             {/* Invite Code panel — DM only */}
             {isOwner && (
-              <div className="panel" style={{ marginBottom: 'var(--space-6)' }}>
+              <div className="panel" style={{ marginBottom: 'var(--sp-6)' }}>
                 <div className="section-header">Invite Code</div>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.6 }}>
                   Share this code with players. They enter it on the Campaigns page to join.
                 </p>
-                <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{
-                    fontFamily: 'var(--font-heading)', fontWeight: 900,
+                    fontFamily: 'var(--ff-body)', fontWeight: 900,
                     fontSize: '2rem', letterSpacing: '0.25em',
-                    color: 'var(--text-gold)', background: 'var(--bg-sunken)',
-                    border: '2px solid var(--border-gold)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--space-2) var(--space-6)',
+                    color: 'var(--c-gold-l)', background: '#080d14',
+                    border: '2px solid var(--c-gold-bdr)',
+                    borderRadius: 'var(--r-md)',
+                    padding: 'var(--sp-2) var(--sp-6)',
                     minWidth: 180, textAlign: 'center',
                   }}>
                     {joinCode || '——'}
@@ -230,7 +230,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
                     {refreshingCode ? 'Refreshing...' : 'New Code'}
                   </button>
                 </div>
-                <p style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+                <p style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
                   Generating a new code invalidates the current one.
                 </p>
               </div>
@@ -238,7 +238,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
             {/* Email invite (also DM only) */}
             {isOwner && (
-              <form onSubmit={handleInvite} style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+              <form onSubmit={handleInvite} style={{ display: 'flex', gap: 'var(--sp-3)', marginBottom: 'var(--sp-4)' }}>
                 <input
                   type="email"
                   value={inviteEmail}
@@ -252,25 +252,25 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               </form>
             )}
             {inviteError && (
-              <div style={{ marginBottom: 'var(--space-4)', background: 'rgba(155,28,28,0.15)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)', color: '#fca5a5', fontFamily: 'var(--font-heading)' }}>
+              <div style={{ marginBottom: 'var(--sp-4)', background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>
                 {inviteError}
               </div>
             )}
             <div className="section-header">Players ({members.length})</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
               {members.map(m => (
-                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', background: 'var(--bg-raised)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
                   <div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, color: 'var(--t-1)', fontSize: 'var(--fs-sm)' }}>
                       {m.display_name ?? m.email}
-                      {m.user_id === user?.id && <span style={{ color: 'var(--text-muted)', marginLeft: 'var(--space-2)' }}>(you)</span>}
+                      {m.user_id === user?.id && <span style={{ color: 'var(--t-2)', marginLeft: 'var(--sp-2)' }}>(you)</span>}
                     </div>
-                    {m.display_name && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{m.email}</div>}
+                    {m.display_name && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{m.email}</div>}
                   </div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
                     <span className={m.role === 'dm' ? 'badge badge-gold' : 'badge badge-muted'}>{m.role.toUpperCase()}</span>
                     {isOwner && m.user_id !== campaign.owner_id && (
-                      <button className="btn-ghost btn-sm" onClick={() => removeMember(m.user_id)} style={{ color: 'var(--color-ash)' }}>
+                      <button className="btn-ghost btn-sm" onClick={() => removeMember(m.user_id)} style={{ color: 'var(--t-2)' }}>
                         Remove
                       </button>
                     )}
@@ -285,24 +285,24 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {activeTab === 'characters' && (
           <div>
             {characters.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-                <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+              <div className="card" style={{ textAlign: 'center', padding: 'var(--sp-8)' }}>
+                <p style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
                   No characters assigned to this campaign yet. Players can assign their characters from the character sheet.
                 </p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 'var(--space-4)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 'var(--sp-4)' }}>
                 {characters.map(c => (
                   <div key={c.id} className="card">
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>{c.name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', marginBottom: 'var(--space-3)' }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', marginBottom: 'var(--sp-1)' }}>{c.name}</div>
+                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', marginBottom: 'var(--sp-3)' }}>
                       Level {c.level} {c.class_name} — {c.species}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--fs-sm)' }}>
                       <span style={{ color: c.current_hp > c.max_hp * 0.5 ? 'var(--hp-full)' : 'var(--hp-low)' }}>
                         {c.current_hp}/{c.max_hp} HP
                       </span>
-                      <span style={{ color: 'var(--text-muted)' }}>AC {c.armor_class}</span>
+                      <span style={{ color: 'var(--t-2)' }}>AC {c.armor_class}</span>
                     </div>
                   </div>
                 ))}
@@ -343,18 +343,18 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
         {/* Notes tab — shared, real-time synced */}
         {activeTab === 'notes' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', maxWidth: 720 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', maxWidth: 720 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div className="section-header" style={{ marginBottom: 0 }}>Session Notes</div>
               <span style={{
-                fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
-                color: notesSaving ? 'var(--color-gold)' : 'var(--text-muted)',
+                fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
+                color: notesSaving ? 'var(--c-gold)' : 'var(--t-2)',
                 transition: 'color 200ms',
               }}>
                 {notesSaving ? '● Saving…' : '✓ Saved'}
               </span>
             </div>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
               Shared with all campaign members. Changes sync in real-time.
             </p>
             <textarea
@@ -363,8 +363,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               placeholder="Session recap, quest notes, NPC names, loot found…"
               rows={20}
               style={{
-                resize: 'vertical', fontSize: 'var(--text-sm)',
-                lineHeight: 1.7, fontFamily: 'var(--font-body)',
+                resize: 'vertical', fontSize: 'var(--fs-sm)',
+                lineHeight: 1.7, fontFamily: 'var(--ff-body)',
                 minHeight: 320,
               }}
             />
@@ -379,7 +379,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {/* Log tab */}
         {activeTab === 'log' && (
           <div style={{ maxWidth: 720 }}>
-            <p style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)' }}>
+            <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)' }}>
               Live feed of every attack, spell, and roll by all party members — updates in real-time.
             </p>
             <ActionLog campaignId={campaign.id} mode="campaign" maxHeight={560} />
@@ -388,7 +388,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
         {/* Party chat */}
         {activeTab === 'chat' && (
-          <div style={{ maxWidth: 600, height: 520, display: 'flex', flexDirection: 'column', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
+          <div style={{ maxWidth: 600, height: 520, display: 'flex', flexDirection: 'column', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
             <PartyChat
               campaignId={campaign.id}
               characterName={characters.find(c => c.user_id === user?.id)?.name ?? (isOwner ? 'DM' : 'Unknown')}
@@ -409,8 +409,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {/* Session Scheduler */}
         {activeTab === 'schedule' && (
           <div>
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>Session Scheduler</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-2)' }}>Session Scheduler</h3>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-4)' }}>
               Find a time that works for everyone. Results sync with Discord if connected.
             </p>
             <SessionScheduler campaignId={campaign.id} isOwner={isOwner} />
@@ -420,8 +420,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {/* NPC Manager */}
         {activeTab === 'npcs' && (
           <div>
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>NPCs</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-2)' }}>NPCs</h3>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-4)' }}>
               Track allies, enemies, merchants, and notable characters your party encounters.
             </p>
             <NPCManager campaignId={campaign.id} isOwner={isOwner} />
@@ -431,7 +431,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {/* AI Session Recap */}
         {activeTab === 'recap' && (
           <div>
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>Session Recaps</h3>
+            <h3 style={{ marginBottom: 'var(--sp-2)' }}>Session Recaps</h3>
             <AISummary campaignId={campaign.id} campaignName={campaign.name} isOwner={isOwner} />
           </div>
         )}
@@ -439,8 +439,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {/* Discord Integration */}
         {activeTab === 'discord' && isOwner && (
           <div>
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>Discord Integration</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-2)' }}>Discord Integration</h3>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-4)' }}>
               Link your Discord server for scheduling commands and session alerts.
             </p>
             <DiscordSettings campaignId={campaign.id} />

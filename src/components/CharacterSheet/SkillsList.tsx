@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character, ComputedStats } from '../../types';
 import { SKILLS } from '../../data/skills';
+import { CONDITION_MAP } from '../../data/conditions';
 import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
@@ -25,10 +26,18 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
   const { triggerRoll } = useDiceRoll();
 
   function rollSkill(skillName: string, modifier: number) {
-    const d20 = rollDie(20);
+    // Check for disadvantage from active conditions
+    const hasDisadvantage = (character.active_conditions ?? []).some(c => {
+      const mech = CONDITION_MAP[c];
+      return mech?.attackDisadvantage || mech?.abilityCheckDisadvantage;
+    });
+    const roll1 = rollDie(20);
+    const roll2 = hasDisadvantage ? rollDie(20) : roll1;
+    const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
     const total = d20 + modifier;
     setLastRoll({ skillName, d20, modifier, total, isCrit: d20 === 20, isFail: d20 === 1 });
-    triggerRoll({ result: d20, dieType: 20, modifier, total, label: skillName + ' Check' });
+    const conditionNote = hasDisadvantage ? ' (Disadvantage)' : '';
+    triggerRoll({ result: d20, dieType: 20, modifier, total, label: skillName + ' Check' + conditionNote });
   }
 
   function cycleSkill(e: React.MouseEvent, skillName: string) {
@@ -55,40 +64,40 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
       {/* Roll result display */}
       {lastRoll && (
         <div style={{
-          marginBottom: 'var(--space-4)',
-          padding: 'var(--space-3) var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border: `1px solid ${lastRoll.isCrit ? 'var(--hp-full)' : lastRoll.isFail ? 'var(--color-blood)' : 'var(--border-gold)'}`,
+          marginBottom: 'var(--sp-4)',
+          padding: 'var(--sp-3) var(--sp-4)',
+          borderRadius: 'var(--r-md)',
+          border: `1px solid ${lastRoll.isCrit ? 'var(--hp-full)' : lastRoll.isFail ? 'rgba(107,20,20,1)' : 'var(--c-gold-bdr)'}`,
           background: lastRoll.isCrit ? 'rgba(22,163,74,0.1)' : lastRoll.isFail ? 'rgba(127,29,29,0.1)' : 'rgba(201,146,42,0.06)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 'var(--space-4)',
+          gap: 'var(--sp-4)',
         }}>
           <div>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-gold)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
               {lastRoll.skillName}
             </span>
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'var(--space-2)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 'var(--sp-2)' }}>
               d20({lastRoll.d20}) {lastRoll.modifier >= 0 ? '+' : ''}{lastRoll.modifier}
             </span>
             {lastRoll.isCrit && (
-              <span style={{ marginLeft: 'var(--space-2)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--hp-full)' }}>
+              <span style={{ marginLeft: 'var(--sp-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
                 Natural 20
               </span>
             )}
             {lastRoll.isFail && (
-              <span style={{ marginLeft: 'var(--space-2)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: '#fca5a5' }}>
+              <span style={{ marginLeft: 'var(--sp-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#fca5a5' }}>
                 Natural 1
               </span>
             )}
           </div>
           <span style={{
-            fontFamily: 'var(--font-display)',
+            fontFamily: 'var(--ff-brand)',
             fontWeight: 900,
             fontSize: '2rem',
             lineHeight: 1,
-            color: lastRoll.isCrit ? 'var(--hp-full)' : lastRoll.isFail ? '#fca5a5' : 'var(--text-gold)',
+            color: lastRoll.isCrit ? 'var(--hp-full)' : lastRoll.isFail ? '#fca5a5' : 'var(--c-gold-l)',
           }}>
             {lastRoll.total}
           </span>
@@ -117,18 +126,18 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
-                padding: '4px var(--space-3)',
-                borderRadius: 'var(--radius-sm)',
+                gap: 'var(--sp-2)',
+                padding: '4px var(--sp-3)',
+                borderRadius: 'var(--r-sm)',
                 background: lastRoll?.skillName === skill.name
                   ? 'rgba(201,146,42,0.1)'
                   : data.proficient ? 'rgba(201,146,42,0.05)' : 'transparent',
-                transition: 'background var(--transition-fast)',
+                transition: 'background var(--tr-fast)',
                 cursor: 'pointer',
                 userSelect: 'none',
               }}
               onMouseEnter={e => {
-                (e.currentTarget as HTMLDivElement).style.background = 'var(--bg-raised)';
+                (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)';
               }}
               onMouseLeave={e => {
                 (e.currentTarget as HTMLDivElement).style.background =
@@ -156,20 +165,20 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
               </button>
 
               <span style={{
-                fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 'var(--text-sm)',
-                color: data.expert ? 'var(--color-amber)' : data.proficient ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)',
+                color: data.expert ? 'var(--c-amber-l)' : data.proficient ? 'var(--t-1)' : 'var(--t-2)',
                 flex: 1,
               }}>
                 {skill.name}
               </span>
 
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
                 {abilityAbbrev(skill.ability)}
               </span>
 
               <span style={{
-                fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)',
-                color: data.expert ? 'var(--color-amber)' : data.proficient ? 'var(--text-gold)' : 'var(--text-secondary)',
+                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)',
+                color: data.expert ? 'var(--c-amber-l)' : data.proficient ? 'var(--c-gold-l)' : 'var(--t-2)',
                 minWidth: '2rem', textAlign: 'right',
               }}>
                 {formatModifier(data.total)}
@@ -180,12 +189,12 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
       </div>
 
       <div style={{
-        marginTop: 'var(--space-3)',
+        marginTop: 'var(--sp-3)',
         display: 'flex',
-        gap: 'var(--space-4)',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--text-muted)',
-        fontFamily: 'var(--font-heading)',
+        gap: 'var(--sp-4)',
+        fontSize: 'var(--fs-xs)',
+        color: 'var(--t-2)',
+        fontFamily: 'var(--ff-body)',
         flexWrap: 'wrap',
       }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -197,7 +206,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span className="prof-dot expert" /> Expertise
         </span>
-        <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginLeft: 'auto' }}>
+        <span style={{ color: 'var(--t-2)', fontStyle: 'italic', marginLeft: 'auto' }}>
           Click row to roll — click dot to toggle proficiency
         </span>
       </div>

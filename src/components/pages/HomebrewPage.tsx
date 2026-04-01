@@ -148,23 +148,23 @@ export default function HomebrewPage() {
     setItems(prev => prev.filter(i => i.id !== id));
   }
 
-  const labelStyle = { display: 'block', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--text-muted)', marginBottom: 'var(--space-1)', background: 'none', WebkitTextFillColor: 'var(--text-muted)' };
-  const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' };
+  const labelStyle = { display: 'block', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 'var(--sp-1)', background: 'none', WebkitTextFillColor: 'var(--t-2)' };
+  const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' };
 
   return (
     <div style={{ maxWidth: 800 }}>
-      <div style={{ marginBottom: 'var(--space-6)' }}>
-        <h1 style={{ marginBottom: 'var(--space-2)' }}>Homebrew Creator</h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+      <div style={{ marginBottom: 'var(--sp-6)' }}>
+        <h1 style={{ marginBottom: 'var(--sp-2)' }}>Homebrew Creator</h1>
+        <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
           Create custom spells, monsters, and magic items for your campaigns.
         </p>
       </div>
 
-      <div className="tabs" style={{ marginBottom: 'var(--space-6)' }}>
+      <div className="tabs" style={{ marginBottom: 'var(--sp-6)' }}>
         {(['spells', 'monsters', 'items'] as const).map(t => (
           <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
             {t === 'spells' ? '✨ Spells' : t === 'monsters' ? '👹 Monsters' : '⚗️ Items'}
-            <span style={{ marginLeft: 6, fontFamily: 'var(--font-heading)', fontSize: 9, opacity: 0.7 }}>
+            <span style={{ marginLeft: 6, fontFamily: 'var(--ff-body)', fontSize: 9, opacity: 0.7 }}>
               ({t === 'spells' ? spells.length : t === 'monsters' ? monsters.length : items.length})
             </span>
           </button>
@@ -174,25 +174,25 @@ export default function HomebrewPage() {
       {/* ── SPELLS ── */}
       {tab === 'spells' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--sp-4)' }}>
             <button className="btn-gold" onClick={() => { setSpellForm(emptySpell()); setEditing('spell'); }}>
               + New Spell
             </button>
           </div>
           {spells.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>No homebrew spells yet.</div>
+            <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>No homebrew spells yet.</div>
           ) : spells.map(s => (
-            <div key={s.id} className="card" style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={s.id} className="card" style={{ marginBottom: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{s.name}</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{s.name}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   {s.level === 0 ? 'Cantrip' : `Level ${s.level}`} · {s.school} · {s.casting_time}
                   {s.is_public && <span style={{ marginLeft: 6, color: 'var(--hp-full)' }}>Public</span>}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                 <button className="btn-secondary btn-sm" onClick={() => { setSpellForm(s); setEditing('spell'); }}>Edit</button>
-                <button className="btn-ghost btn-sm" style={{ color: 'var(--color-crimson-bright)' }} onClick={() => deleteSpell(s.id)}>Delete</button>
+                <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteSpell(s.id)}>Delete</button>
               </div>
             </div>
           ))}
@@ -202,20 +202,20 @@ export default function HomebrewPage() {
       {/* ── MONSTERS ── */}
       {tab === 'monsters' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--sp-4)' }}>
             <button className="btn-gold" onClick={() => { setMonsterForm(emptyMonster()); setEditing('monster'); }}>+ New Monster</button>
           </div>
           {monsters.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>No homebrew monsters yet.</div>
+            <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>No homebrew monsters yet.</div>
           ) : monsters.map(m => (
-            <div key={m.id} className="card" style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={m.id} className="card" style={{ marginBottom: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{m.name}</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>CR {m.cr} · {m.size} {m.type} · {m.hp} HP · AC {m.ac}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{m.name}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>CR {m.cr} · {m.size} {m.type} · {m.hp} HP · AC {m.ac}</div>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                 <button className="btn-secondary btn-sm" onClick={() => { setMonsterForm(m); setEditing('monster'); }}>Edit</button>
-                <button className="btn-ghost btn-sm" style={{ color: 'var(--color-crimson-bright)' }} onClick={() => deleteMonster(m.id)}>Delete</button>
+                <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteMonster(m.id)}>Delete</button>
               </div>
             </div>
           ))}
@@ -225,22 +225,22 @@ export default function HomebrewPage() {
       {/* ── ITEMS ── */}
       {tab === 'items' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--sp-4)' }}>
             <button className="btn-gold" onClick={() => { setItemForm(emptyItem()); setEditing('item'); }}>+ New Item</button>
           </div>
           {items.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>No homebrew items yet.</div>
+            <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>No homebrew items yet.</div>
           ) : items.map(i => (
-            <div key={i.id} className="card" style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={i.id} className="card" style={{ marginBottom: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{i.name}</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{i.name}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   {i.rarity} · {i.item_type}{i.requires_attunement ? ' · Attunement' : ''}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                 <button className="btn-secondary btn-sm" onClick={() => { setItemForm(i); setEditing('item'); }}>Edit</button>
-                <button className="btn-ghost btn-sm" style={{ color: 'var(--color-crimson-bright)' }} onClick={() => deleteItem(i.id)}>Delete</button>
+                <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteItem(i.id)}>Delete</button>
               </div>
             </div>
           ))}
@@ -251,8 +251,8 @@ export default function HomebrewPage() {
       {editing === 'spell' && (
         <div className="modal-overlay" onClick={() => setEditing(null)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--space-4)' }}>{(spellForm as HomebrewSpell).id ? 'Edit' : 'New'} Homebrew Spell</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(spellForm as HomebrewSpell).id ? 'Edit' : 'New'} Homebrew Spell</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div><label style={labelStyle}>Name *</label><input value={spellForm.name ?? ''} onChange={e => setSpellForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
               <div style={gridStyle}>
                 <div><label style={labelStyle}>Level</label>
@@ -278,27 +278,27 @@ export default function HomebrewPage() {
                     const selected = (spellForm.classes ?? []).includes(c);
                     return (
                       <button key={c} onClick={() => setSpellForm(f => ({ ...f, classes: selected ? (f.classes ?? []).filter(x => x !== c) : [...(f.classes ?? []), c] }))}
-                        style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: selected ? '1px solid #a78bfa' : '1px solid var(--border-subtle)', background: selected ? 'rgba(167,139,250,0.15)' : 'transparent', color: selected ? '#a78bfa' : 'var(--text-muted)', cursor: 'pointer' }}>
+                        style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: selected ? '1px solid #a78bfa' : '1px solid var(--c-border)', background: selected ? 'rgba(167,139,250,0.15)' : 'transparent', color: selected ? '#a78bfa' : 'var(--t-2)', cursor: 'pointer' }}>
                         {c}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-4)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   <input type="checkbox" checked={!!spellForm.concentration} onChange={e => setSpellForm(f => ({ ...f, concentration: e.target.checked }))} /> Concentration
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   <input type="checkbox" checked={!!spellForm.ritual} onChange={e => setSpellForm(f => ({ ...f, ritual: e.target.checked }))} /> Ritual
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--hp-full)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
                   <input type="checkbox" checked={!!spellForm.is_public} onChange={e => setSpellForm(f => ({ ...f, is_public: e.target.checked }))} /> Public
                 </label>
               </div>
               <div><label style={labelStyle}>Description *</label><textarea value={spellForm.description ?? ''} onChange={e => setSpellForm(f => ({ ...f, description: e.target.value }))} rows={5} placeholder="Spell effect, saving throw, damage..." /></div>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn-gold" onClick={saveSpell} disabled={saving || !spellForm.name?.trim()}>{saving ? 'Saving…' : 'Save Spell'}</button>
             </div>
@@ -310,8 +310,8 @@ export default function HomebrewPage() {
       {editing === 'monster' && (
         <div className="modal-overlay" onClick={() => setEditing(null)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--space-4)' }}>{(monsterForm as HomebrewMonster).id ? 'Edit' : 'New'} Homebrew Monster</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(monsterForm as HomebrewMonster).id ? 'Edit' : 'New'} Homebrew Monster</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div><label style={labelStyle}>Name *</label><input value={monsterForm.name ?? ''} onChange={e => setMonsterForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
               <div style={gridStyle}>
                 <div><label style={labelStyle}>Type</label><select value={monsterForm.type ?? 'Humanoid'} onChange={e => setMonsterForm(f => ({ ...f, type: e.target.value }))}>{MONSTER_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
@@ -333,11 +333,11 @@ export default function HomebrewPage() {
                 <div><label style={labelStyle}>Damage</label><input value={monsterForm.attack_damage ?? ''} onChange={e => setMonsterForm(f => ({ ...f, attack_damage: e.target.value }))} placeholder="2d6+3" /></div>
               </div>
               <div><label style={labelStyle}>Special Traits (optional)</label><textarea value={monsterForm.traits ?? ''} onChange={e => setMonsterForm(f => ({ ...f, traits: e.target.value }))} rows={3} placeholder="Darkvision 60 ft. Pack Tactics..." /></div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--hp-full)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
                 <input type="checkbox" checked={!!monsterForm.is_public} onChange={e => setMonsterForm(f => ({ ...f, is_public: e.target.checked }))} /> Make public (others can see in Monster Browser)
               </label>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn-gold" onClick={saveMonster} disabled={saving || !monsterForm.name?.trim()}>{saving ? 'Saving…' : 'Save Monster'}</button>
             </div>
@@ -349,25 +349,25 @@ export default function HomebrewPage() {
       {editing === 'item' && (
         <div className="modal-overlay" onClick={() => setEditing(null)}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--space-4)' }}>{(itemForm as HomebrewItem).id ? 'Edit' : 'New'} Homebrew Item</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(itemForm as HomebrewItem).id ? 'Edit' : 'New'} Homebrew Item</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div><label style={labelStyle}>Name *</label><input value={itemForm.name ?? ''} onChange={e => setItemForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
               <div style={gridStyle}>
                 <div><label style={labelStyle}>Type</label><select value={itemForm.item_type ?? 'wondrous'} onChange={e => setItemForm(f => ({ ...f, item_type: e.target.value }))}>{ITEM_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
                 <div><label style={labelStyle}>Rarity</label><select value={itemForm.rarity ?? 'uncommon'} onChange={e => setItemForm(f => ({ ...f, rarity: e.target.value }))}>{RARITIES.map(r => <option key={r}>{r}</option>)}</select></div>
                 <div><label style={labelStyle}>Weight (lb)</label><input type="number" value={itemForm.weight ?? 0} step="0.5" onChange={e => setItemForm(f => ({ ...f, weight: +e.target.value }))} /></div>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-4)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   <input type="checkbox" checked={!!itemForm.requires_attunement} onChange={e => setItemForm(f => ({ ...f, requires_attunement: e.target.checked }))} /> Requires Attunement
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--hp-full)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
                   <input type="checkbox" checked={!!itemForm.is_public} onChange={e => setItemForm(f => ({ ...f, is_public: e.target.checked }))} /> Public
                 </label>
               </div>
               <div><label style={labelStyle}>Description *</label><textarea value={itemForm.description ?? ''} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} rows={5} placeholder="While attuned to this item..." /></div>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn-gold" onClick={saveItem} disabled={saving || !itemForm.name?.trim()}>{saving ? 'Saving…' : 'Save Item'}</button>
             </div>

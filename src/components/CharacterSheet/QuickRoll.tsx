@@ -10,9 +10,9 @@ interface RollSet { id: number; dice: RollResultDie[]; total: number; label: str
 const DICE = [4, 6, 8, 10, 12, 20, 100] as const;
 const DIE_COLORS: Record<number, string> = {
   4: '#e879f9', 6: '#60a5fa', 8: '#34d399', 10: '#fb923c',
-  12: '#a78bfa', 20: 'var(--color-gold-bright)', 100: '#f87171',
+  12: '#a78bfa', 20: 'var(--c-gold-l)', 100: '#f87171',
 };
-function dieColor(d: number) { return DIE_COLORS[d] ?? 'var(--text-gold)'; }
+function dieColor(d: number) { return DIE_COLORS[d] ?? 'var(--c-gold-l)'; }
 function isNat(die: number, v: number) {
   if (die === 20) return v === 20 ? 'crit' : v === 1 ? 'fumble' : null;
   return v === die ? 'max' : null;
@@ -138,26 +138,26 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
         onClick={() => setOpen(o => !o)}
         title="Dice Roller"
         style={{
-          position: 'fixed', bottom: 'var(--space-10)', right: 'var(--space-4)',
+          position: 'fixed', bottom: 'var(--sp-10)', right: 'var(--sp-4)',
           zIndex: 90, width: 52, height: 52, borderRadius: '50%',
           background: open
-            ? 'linear-gradient(160deg, var(--color-crimson) 0%, var(--color-blood) 100%)'
-            : 'linear-gradient(160deg, #8a5e18 0%, var(--color-gold-dim) 50%, #7a5216 100%)',
-          border: `2px solid ${open ? 'var(--color-crimson-bright)' : 'var(--color-gold)'}`,
+            ? 'linear-gradient(160deg, var(--color-crimson) 0%, rgba(107,20,20,1) 100%)'
+            : 'linear-gradient(160deg, #8a5e18 0%, var(--c-gold) 50%, #7a5216 100%)',
+          border: `2px solid ${open ? 'var(--c-red-l)' : 'var(--c-gold)'}`,
           boxShadow: open ? 'var(--shadow-crimson)' : 'var(--shadow-gold), 0 4px 16px rgba(0,0,0,0.5)',
-          cursor: 'pointer', transition: 'all var(--transition-fast)',
+          cursor: 'pointer', transition: 'all var(--tr-fast)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: open ? 18 : 26, color: 'var(--color-bone)',
+          fontSize: open ? 18 : 26, color: 'var(--t-1)',
         }}
       >
         {open ? '✕' : '🎲'}
         {totalDice > 0 && !open && (
           <div style={{
             position: 'absolute', top: -4, right: -4, width: 18, height: 18,
-            borderRadius: '50%', background: 'var(--color-crimson-bright)', color: 'white',
-            fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 10,
+            borderRadius: '50%', background: 'var(--c-red-l)', color: 'white',
+            fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: '2px solid var(--bg-page)',
+            border: '2px solid var(--c-bg)',
           }}>
             {totalDice}
           </div>
@@ -166,26 +166,26 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
 
       {open && (
         <div className="animate-fade-in" style={{
-          position: 'fixed', bottom: 76, right: 'var(--space-4)',
+          position: 'fixed', bottom: 76, right: 'var(--sp-4)',
           zIndex: 89, width: 296,
-          background: 'linear-gradient(160deg, var(--color-charcoal) 0%, var(--color-obsidian) 100%)',
-          border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-xl)',
+          background: 'linear-gradient(160deg, var(--c-surface) 0%, var(--color-obsidian) 100%)',
+          border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)',
           boxShadow: 'var(--shadow-lg), var(--shadow-gold)', overflow: 'hidden',
         }}>
           {/* Header */}
-          <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-gold)' }}>
+          <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
               Dice Roller
             </span>
             {queue.length > 0 && (
-              <button onClick={clearQueue} style={{ fontFamily: 'var(--font-heading)', fontSize: 9, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <button onClick={clearQueue} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 clear all
               </button>
             )}
           </div>
 
           {/* Die grid */}
-          <div style={{ padding: 'var(--space-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
+          <div style={{ padding: 'var(--sp-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
             {DICE.map(d => {
               const count = queue.find(q => q.die === d)?.count ?? 0;
               return (
@@ -195,23 +195,23 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
                   title={`Click to add d${d} · right-click to remove`}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    gap: 2, padding: 'var(--space-2) var(--space-1)',
-                    borderRadius: 'var(--radius-md)', position: 'relative',
-                    border: count > 0 ? `2px solid ${dieColor(d)}` : '1px solid var(--border-subtle)',
-                    background: count > 0 ? `${dieColor(d)}18` : 'var(--bg-sunken)',
-                    cursor: 'pointer', transition: 'all var(--transition-fast)',
+                    gap: 2, padding: 'var(--sp-2) var(--sp-1)',
+                    borderRadius: 'var(--r-md)', position: 'relative',
+                    border: count > 0 ? `2px solid ${dieColor(d)}` : '1px solid var(--c-border)',
+                    background: count > 0 ? `${dieColor(d)}18` : '#080d14',
+                    cursor: 'pointer', transition: 'all var(--tr-fast)',
                   }}>
                   {count > 0 && (
                     <div style={{
                       position: 'absolute', top: -6, right: -6, width: 16, height: 16,
-                      borderRadius: '50%', background: dieColor(d), color: 'var(--bg-page)',
-                      fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 9,
+                      borderRadius: '50%', background: dieColor(d), color: 'var(--c-bg)',
+                      fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 9,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: '1.5px solid var(--bg-page)',
+                      border: '1.5px solid var(--c-bg)',
                     }}>{count}</div>
                   )}
-                  <span style={{ fontSize: 18, lineHeight: 1, color: count > 0 ? dieColor(d) : 'var(--text-muted)' }}>⬡</span>
-                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 10, color: count > 0 ? dieColor(d) : 'var(--text-muted)' }}>d{d}</span>
+                  <span style={{ fontSize: 18, lineHeight: 1, color: count > 0 ? dieColor(d) : 'var(--t-2)' }}>⬡</span>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, color: count > 0 ? dieColor(d) : 'var(--t-2)' }}>d{d}</span>
                 </button>
               );
             })}
@@ -219,12 +219,12 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
 
           {/* Queue + Roll */}
           {queue.length > 0 && (
-            <div style={{ padding: '0 var(--space-3) var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
               {/* Queue chips */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {queue.map(({ die, count }) => (
                   <span key={die} style={{
-                    fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11,
+                    fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
                     color: dieColor(die), background: `${dieColor(die)}15`,
                     border: `1px solid ${dieColor(die)}50`,
                     borderRadius: 4, padding: '2px 8px',
@@ -248,15 +248,15 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
                 <div style={{ display: 'flex', gap: 4 }}>
                   {(['normal', 'advantage', 'disadvantage'] as const).map(mode => {
                     const active = adv === mode;
-                    const c = mode === 'advantage' ? 'var(--hp-full)' : mode === 'disadvantage' ? 'var(--color-crimson-bright)' : 'var(--text-gold)';
+                    const c = mode === 'advantage' ? 'var(--hp-full)' : mode === 'disadvantage' ? 'var(--c-red-l)' : 'var(--c-gold-l)';
                     return (
                       <button key={mode} onClick={() => setAdv(mode)} style={{
-                        flex: 1, fontFamily: 'var(--font-heading)', fontSize: 8, fontWeight: 700,
+                        flex: 1, fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
                         letterSpacing: '0.04em', textTransform: 'uppercase',
                         padding: '3px 2px', borderRadius: 4, cursor: 'pointer',
-                        border: active ? `1px solid ${c}` : '1px solid var(--border-subtle)',
+                        border: active ? `1px solid ${c}` : '1px solid var(--c-border)',
                         background: active ? `${c}20` : 'transparent',
-                        color: active ? c : 'var(--text-muted)',
+                        color: active ? c : 'var(--t-2)',
                       }}>
                         {mode === 'normal' ? 'Normal' : mode === 'advantage' ? 'Adv' : 'Dis'}
                       </button>
@@ -266,7 +266,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
               )}
 
               <button className="btn-gold" onClick={rollAll} disabled={rolling}
-                style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>
                 {rolling ? 'Rolling…' : `🎲 Roll ${buildExpr(queue)}`}
               </button>
             </div>
@@ -275,35 +275,35 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
           {/* Result */}
           {lastRoll && (
             <div key={lastRoll.id} className="animate-fade-in" style={{
-              borderTop: '1px solid var(--border-subtle)',
-              padding: 'var(--space-3) var(--space-4)',
+              borderTop: '1px solid var(--c-border)',
+              padding: 'var(--sp-3) var(--sp-4)',
             }}>
               {lastRoll.label && (
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
                   {lastRoll.label}
                 </div>
               )}
 
               {/* Individual dice results */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 'var(--sp-2)' }}>
                 {lastRoll.dice.map((d, i) => {
                   const nat = isNat(d.die, d.value);
                   const dropped = d.dropped;
-                  const color = dropped ? 'var(--text-muted)' : nat === 'crit' || nat === 'max' ? 'var(--color-gold-bright)' : nat === 'fumble' ? 'var(--color-crimson-bright)' : dieColor(d.die);
+                  const color = dropped ? 'var(--t-2)' : nat === 'crit' || nat === 'max' ? 'var(--c-gold-l)' : nat === 'fumble' ? 'var(--c-red-l)' : dieColor(d.die);
                   return (
                     <div key={i} style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'center',
                       padding: '4px 8px', borderRadius: 6, position: 'relative',
-                      border: `1px solid ${dropped ? 'var(--border-subtle)' : color}50`,
+                      border: `1px solid ${dropped ? 'var(--c-border)' : color}50`,
                       background: dropped ? 'transparent' : `${color}10`,
                       opacity: dropped ? 0.4 : 1,
                     }}>
                       {dropped && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ width: '85%', height: 1.5, background: 'var(--text-muted)', transform: 'rotate(-15deg)', borderRadius: 1 }} />
+                        <div style={{ width: '85%', height: 1.5, background: 'var(--t-2)', transform: 'rotate(-15deg)', borderRadius: 1 }} />
                       </div>}
-                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 'var(--text-xl)', lineHeight: 1, color }}>{d.value}</span>
-                      <span style={{ fontFamily: 'var(--font-heading)', fontSize: 8, color: 'var(--text-muted)' }}>d{d.die}</span>
-                      {nat && !dropped && <span style={{ fontSize: 7, color, fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-xl)', lineHeight: 1, color }}>{d.value}</span>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{d.die}</span>
+                      {nat && !dropped && <span style={{ fontSize: 7, color, fontFamily: 'var(--ff-body)', fontWeight: 700 }}>
                         {nat === 'crit' ? '★CRIT' : nat === 'max' ? 'MAX' : '✗MISS'}
                       </span>}
                     </div>
@@ -312,13 +312,13 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
               </div>
 
               {/* Total */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)' }}>
-                <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
-                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: 'var(--text-3xl)', lineHeight: 1, color: 'var(--text-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
+                <span style={{ fontFamily: 'var(--ff-brand)', fontWeight: 900, fontSize: 'var(--fs-3xl)', lineHeight: 1, color: 'var(--t-1)' }}>
                   {lastRoll.total}
                 </span>
                 {adv !== 'normal' && has20 && (
-                  <span style={{ fontFamily: 'var(--font-heading)', fontSize: 9, padding: '1px 5px', borderRadius: 3, color: adv === 'advantage' ? 'var(--hp-full)' : 'var(--color-crimson-bright)', background: adv === 'advantage' ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)' }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, padding: '1px 5px', borderRadius: 3, color: adv === 'advantage' ? 'var(--hp-full)' : 'var(--c-red-l)', background: adv === 'advantage' ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)' }}>
                     {adv === 'advantage' ? 'ADV' : 'DIS'}
                   </span>
                 )}
@@ -327,7 +327,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
           )}
 
           {!queue.length && !lastRoll && (
-            <div style={{ padding: 'var(--space-3) var(--space-4) var(--space-4)', textAlign: 'center', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            <div style={{ padding: 'var(--sp-3) var(--sp-4) var(--sp-4)', textAlign: 'center', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
               Click dice to add them · right-click to remove<br/>
               <span style={{ fontSize: 9, opacity: 0.6 }}>Mix any dice before rolling</span>
             </div>

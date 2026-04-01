@@ -87,14 +87,14 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 400 }}>
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {loading ? (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
             <div className="spinner" style={{ width: 14, height: 14 }} />
             <span className="loading-text">Loading chat…</span>
           </div>
         ) : messages.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)' }}>
+          <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
             No messages yet. Say something to your party!
           </div>
         ) : grouped.map(m => (
@@ -104,13 +104,13 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
               display: 'flex',
               flexDirection: m.isMe ? 'row-reverse' : 'row',
               alignItems: 'flex-end',
-              gap: 'var(--space-2)',
-              marginTop: m.isFirst ? 'var(--space-2)' : 0,
+              gap: 'var(--sp-2)',
+              marginTop: m.isFirst ? 'var(--sp-2)' : 0,
             }}
           >
             {/* Avatar — only on first message in a group */}
             {m.isFirst && !m.isMe ? (
-              <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, background: 'var(--bg-sunken)', border: '1px solid var(--border-subtle)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, background: '#080d14', border: '1px solid var(--c-border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {m.avatar_url
                   ? <img src={m.avatar_url} alt={m.character_name} width={28} height={28} style={{ objectFit: 'cover' }} />
                   : <span style={{ fontSize: 12 }}>🧙</span>}
@@ -122,23 +122,23 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
             <div style={{ maxWidth: '72%' }}>
               {/* Sender name on first message */}
               {m.isFirst && !m.isMe && (
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 9, fontWeight: 700, color: 'var(--text-gold)', marginBottom: 2, letterSpacing: '0.06em' }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, color: 'var(--c-gold-l)', marginBottom: 2, letterSpacing: '0.06em' }}>
                   {m.character_name}
                 </div>
               )}
 
               {/* Message bubble */}
               <div style={{
-                padding: 'var(--space-2) var(--space-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderRadius: m.isMe ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                background: m.isMe ? 'rgba(201,146,42,0.18)' : 'var(--bg-raised)',
-                border: m.isMe ? '1px solid rgba(201,146,42,0.3)' : '1px solid var(--border-subtle)',
-                fontSize: 'var(--text-sm)', color: 'var(--text-primary)',
+                background: m.isMe ? 'rgba(201,146,42,0.18)' : 'var(--c-raised)',
+                border: m.isMe ? '1px solid rgba(201,146,42,0.3)' : '1px solid var(--c-border)',
+                fontSize: 'var(--fs-sm)', color: 'var(--t-1)',
                 lineHeight: 1.5, wordBreak: 'break-word',
               }}>
                 {m.message}
               </div>
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 8, color: 'var(--text-muted)', marginTop: 1, textAlign: m.isMe ? 'right' : 'left' }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)', marginTop: 1, textAlign: m.isMe ? 'right' : 'left' }}>
                 {formatTime(m.created_at)}
               </div>
             </div>
@@ -148,14 +148,14 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
       </div>
 
       {/* Input */}
-      <div style={{ borderTop: '1px solid var(--border-subtle)', padding: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
+      <div style={{ borderTop: '1px solid var(--c-border)', padding: 'var(--sp-3)', display: 'flex', gap: 'var(--sp-2)' }}>
         <input
           ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
           placeholder={`Message as ${characterName ?? 'Unknown'}…`}
-          style={{ flex: 1, fontSize: 'var(--text-sm)' }}
+          style={{ flex: 1, fontSize: 'var(--fs-sm)' }}
           disabled={sending}
         />
         <button

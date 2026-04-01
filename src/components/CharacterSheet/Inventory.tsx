@@ -20,7 +20,7 @@ function CurrencyDisplay({
 
   const coins: { key: keyof Character['currency']; label: string; color: string }[] = [
     { key: 'pp', label: 'PP', color: '#e0e0e0' },
-    { key: 'gp', label: 'GP', color: 'var(--color-gold-bright)' },
+    { key: 'gp', label: 'GP', color: 'var(--c-gold-l)' },
     { key: 'ep', label: 'EP', color: '#60a5fa' },
     { key: 'sp', label: 'SP', color: '#9ca3af' },
     { key: 'cp', label: 'CP', color: '#b45309' },
@@ -40,9 +40,9 @@ function CurrencyDisplay({
 
   return (
     <div style={{
-      display: 'flex', gap: 'var(--space-3)', padding: 'var(--space-3)',
-      background: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)',
-      marginBottom: 'var(--space-4)',
+      display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-3)',
+      background: '#080d14', borderRadius: 'var(--r-md)',
+      marginBottom: 'var(--sp-4)',
     }}>
       {coins.map(({ key, label, color }) => (
         <div
@@ -62,18 +62,18 @@ function CurrencyDisplay({
               onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(null); }}
               onClick={e => e.stopPropagation()}
               style={{
-                width: '100%', textAlign: 'center', fontFamily: 'var(--font-heading)',
-                fontWeight: 700, fontSize: 'var(--text-md)', color,
-                background: 'var(--bg-raised)', border: '1px solid var(--border-gold)',
-                borderRadius: 'var(--radius-sm)', padding: '1px 2px',
+                width: '100%', textAlign: 'center', fontFamily: 'var(--ff-body)',
+                fontWeight: 700, fontSize: 'var(--fs-md)', color,
+                background: 'var(--c-raised)', border: '1px solid var(--c-gold-bdr)',
+                borderRadius: 'var(--r-sm)', padding: '1px 2px',
               }}
             />
           ) : (
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color }}>
               {currency[key]}
             </div>
           )}
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', letterSpacing: '0.08em' }}>
             {label}
           </div>
         </div>
@@ -130,8 +130,8 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
         <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none', flex: 1 }}>
           Inventory
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', alignSelf: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', marginBottom: 'var(--sp-2)' }}>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', alignSelf: 'center' }}>
             {totalWeight} lb
           </span>
           <button className="btn-gold btn-sm" onClick={() => setShowAdd(v => !v)}>
@@ -139,24 +139,24 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
           </button>
         </div>
       </div>
-      <div style={{ borderBottom: '1px solid var(--border-gold)', marginBottom: 'var(--space-4)' }} />
+      <div style={{ borderBottom: '1px solid var(--c-gold-bdr)', marginBottom: 'var(--sp-4)' }} />
 
       <CurrencyDisplay currency={character.currency} onUpdate={onUpdateCurrency} />
 
       {/* Add item form */}
       {showAdd && (
         <div style={{
-          background: 'var(--bg-sunken)',
-          border: '1px solid var(--border-gold)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-4)',
-          marginBottom: 'var(--space-4)',
+          background: '#080d14',
+          border: '1px solid var(--c-gold-bdr)',
+          borderRadius: 'var(--r-md)',
+          padding: 'var(--sp-4)',
+          marginBottom: 'var(--sp-4)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 'var(--space-3)',
+          gap: 'var(--sp-3)',
           animation: 'fadeIn 150ms ease both',
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--sp-2)' }}>
             <div>
               <label>Item Name</label>
               <input
@@ -198,21 +198,21 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
       )}
 
       {inventory.length === 0 ? (
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontStyle: 'italic', fontFamily: 'var(--font-heading)' }}>
+        <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontStyle: 'italic', fontFamily: 'var(--ff-body)' }}>
           No items carried
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
           {equipped.length > 0 && (
-            <div style={{ marginBottom: 'var(--space-2)' }}>
+            <div style={{ marginBottom: 'var(--sp-2)' }}>
               <div style={{
-                fontSize: 'var(--text-xs)',
-                fontFamily: 'var(--font-heading)',
+                fontSize: 'var(--fs-xs)',
+                fontFamily: 'var(--ff-body)',
                 fontWeight: 700,
                 letterSpacing: '0.1em',
                 textTransform: 'uppercase',
-                color: 'var(--text-gold)',
-                marginBottom: 'var(--space-1)',
+                color: 'var(--c-gold-l)',
+                marginBottom: 'var(--sp-1)',
               }}>
                 Equipped
               </div>
@@ -226,13 +226,13 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
             <div>
               {equipped.length > 0 && (
                 <div style={{
-                  fontSize: 'var(--text-xs)',
-                  fontFamily: 'var(--font-heading)',
+                  fontSize: 'var(--fs-xs)',
+                  fontFamily: 'var(--ff-body)',
                   fontWeight: 700,
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
-                  marginBottom: 'var(--space-1)',
+                  color: 'var(--t-2)',
+                  marginBottom: 'var(--sp-1)',
                 }}>
                   Carried
                 </div>
@@ -277,12 +277,12 @@ function InventoryRow({
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 'var(--space-2)',
-      padding: 'var(--space-2) var(--space-3)',
-      borderRadius: 'var(--radius-sm)',
+      gap: 'var(--sp-2)',
+      padding: 'var(--sp-2) var(--sp-3)',
+      borderRadius: 'var(--r-sm)',
       background: item.equipped ? 'rgba(201,146,42,0.05)' : 'transparent',
       border: item.equipped ? '1px solid rgba(201,146,42,0.2)' : '1px solid transparent',
-      transition: 'background var(--transition-fast)',
+      transition: 'background var(--tr-fast)',
     }}>
       {/* Equipped toggle */}
       <input
@@ -301,7 +301,7 @@ function InventoryRow({
           onBlur={commitName}
           onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditingName(false); }}
           autoFocus
-          style={{ flex: 1, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-body)' }}
+          style={{ flex: 1, fontSize: 'var(--fs-sm)', fontFamily: 'var(--ff-body)' }}
         />
       ) : (
         <span
@@ -309,9 +309,9 @@ function InventoryRow({
           title="Click to rename"
           style={{
             flex: 1,
-            fontFamily: 'var(--font-body)',
-            fontSize: 'var(--text-sm)',
-            color: item.equipped ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontFamily: 'var(--ff-body)',
+            fontSize: 'var(--fs-sm)',
+            color: item.equipped ? 'var(--t-1)' : 'var(--t-2)',
             fontWeight: item.equipped ? 600 : 400,
             cursor: 'text',
           }}
@@ -326,16 +326,16 @@ function InventoryRow({
           className="btn-ghost btn-sm btn-icon"
           onClick={() => onUpdate(item.id, { quantity: Math.max(1, item.quantity - 1) })}
           disabled={item.quantity <= 1}
-          style={{ width: 20, height: 20, fontSize: 12, padding: 0, color: 'var(--text-muted)' }}
+          style={{ width: 20, height: 20, fontSize: 12, padding: 0, color: 'var(--t-2)' }}
           title="Decrease quantity"
         >
           −
         </button>
         <span style={{
-          fontFamily: 'var(--font-heading)',
-          fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--ff-body)',
+          fontSize: 'var(--fs-xs)',
           fontWeight: 700,
-          color: 'var(--text-gold)',
+          color: 'var(--c-gold-l)',
           minWidth: 24,
           textAlign: 'center',
         }}>
@@ -344,7 +344,7 @@ function InventoryRow({
         <button
           className="btn-ghost btn-sm btn-icon"
           onClick={() => onUpdate(item.id, { quantity: item.quantity + 1 })}
-          style={{ width: 20, height: 20, fontSize: 12, padding: 0, color: 'var(--text-muted)' }}
+          style={{ width: 20, height: 20, fontSize: 12, padding: 0, color: 'var(--t-2)' }}
           title="Increase quantity"
         >
           +
@@ -353,7 +353,7 @@ function InventoryRow({
 
       {/* Weight */}
       {item.weight > 0 && (
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', flexShrink: 0 }}>
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', flexShrink: 0 }}>
           {(item.weight * item.quantity).toFixed(item.weight % 1 === 0 ? 0 : 1)} lb
         </span>
       )}
@@ -363,7 +363,7 @@ function InventoryRow({
         className="btn-ghost btn-sm"
         onClick={() => onRemove(item.id)}
         title="Remove item"
-        style={{ color: 'var(--color-ash)', padding: '2px 6px', flexShrink: 0 }}
+        style={{ color: 'var(--t-2)', padding: '2px 6px', flexShrink: 0 }}
       >
         ✕
       </button>

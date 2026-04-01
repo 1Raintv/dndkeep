@@ -77,60 +77,60 @@ export default function LandingPage() {
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section style={{
         textAlign: 'center',
-        padding: 'var(--space-16) var(--space-6)',
+        padding: 'var(--sp-16) var(--sp-6)',
         maxWidth: 720,
         margin: '0 auto',
         width: '100%',
       }}>
         {/* Badge */}
         <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)',
+          display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)',
           padding: '4px 14px',
-          border: '1px solid var(--border-gold)',
+          border: '1px solid var(--c-gold-bdr)',
           borderRadius: 999,
           background: 'rgba(201,146,42,0.08)',
-          fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
           fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-          color: 'var(--text-gold)',
-          marginBottom: 'var(--space-6)',
+          color: 'var(--c-gold-l)',
+          marginBottom: 'var(--sp-6)',
         }}>
           <span>✦</span> 2024 Players Handbook Rules
         </div>
 
         <h1 style={{
-          fontFamily: 'var(--font-display)',
+          fontFamily: 'var(--ff-brand)',
           fontSize: 'clamp(2.5rem, 6vw, 4rem)',
           fontWeight: 900,
           lineHeight: 1.1,
           letterSpacing: '0.04em',
-          marginBottom: 'var(--space-5)',
-          background: 'linear-gradient(160deg, var(--color-amber) 0%, var(--color-gold-bright) 40%, var(--color-parchment) 60%, var(--color-gold-bright) 80%, var(--color-gold) 100%)',
+          marginBottom: 'var(--sp-5)',
+          background: 'linear-gradient(160deg, var(--c-amber-l) 0%, var(--c-gold-l) 40%, var(--color-parchment) 60%, var(--c-gold-l) 80%, var(--c-gold) 100%)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
         }}>
           DNDKeep
         </h1>
 
         <p style={{
-          fontSize: 'var(--text-xl)', color: 'var(--text-secondary)',
-          lineHeight: 1.6, marginBottom: 'var(--space-4)',
-          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--fs-xl)', color: 'var(--t-2)',
+          lineHeight: 1.6, marginBottom: 'var(--sp-4)',
+          fontFamily: 'var(--ff-body)',
         }}>
           Your D&D 5e session companion.
         </p>
         <p style={{
-          fontSize: 'var(--text-md)', color: 'var(--text-muted)',
-          lineHeight: 1.7, marginBottom: 'var(--space-8)',
-          maxWidth: 540, margin: '0 auto var(--space-8)',
+          fontSize: 'var(--fs-md)', color: 'var(--t-2)',
+          lineHeight: 1.7, marginBottom: 'var(--sp-8)',
+          maxWidth: 540, margin: '0 auto var(--sp-8)',
         }}>
           Build characters, track HP and spells, roll dice, and run live sessions — everything
           your party needs at the table, in one place.
         </p>
 
-        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
           <button
             className="btn-gold btn-lg"
             onClick={() => navigate('/auth')}
-            style={{ minWidth: 180, justifyContent: 'center', fontSize: 'var(--text-md)' }}
+            style={{ minWidth: 180, justifyContent: 'center', fontSize: 'var(--fs-md)' }}
           >
             Get Started Free
           </button>
@@ -144,9 +144,9 @@ export default function LandingPage() {
         </div>
 
         <p style={{
-          marginTop: 'var(--space-4)',
-          fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
-          color: 'var(--text-muted)', letterSpacing: '0.06em',
+          marginTop: 'var(--sp-4)',
+          fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
+          color: 'var(--t-2)', letterSpacing: '0.06em',
         }}>
           No credit card required · Free forever plan available
         </p>
@@ -155,20 +155,20 @@ export default function LandingPage() {
       {/* ── Divider ──────────────────────────────────────────────── */}
       <div style={{
         height: 1,
-        background: 'linear-gradient(90deg, transparent, var(--color-gold-dim), transparent)',
-        margin: '0 var(--space-6)',
+        background: 'linear-gradient(90deg, transparent, var(--c-gold), transparent)',
+        margin: '0 var(--sp-6)',
       }} />
 
       {/* ── Features ─────────────────────────────────────────────── */}
-      <section style={{ padding: 'var(--space-16) var(--space-6)', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
+      <section style={{ padding: 'var(--sp-16) var(--sp-6)', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--sp-10)' }}>
           <h2 style={{
-            fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)', fontWeight: 700,
-            marginBottom: 'var(--space-3)',
+            fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-2xl)', fontWeight: 700,
+            marginBottom: 'var(--sp-3)',
           }}>
             Everything you need at the table
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-md)', fontFamily: 'var(--font-body)' }}>
+          <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-md)', fontFamily: 'var(--ff-body)' }}>
             Built specifically for D&D 5e with the 2024 ruleset
           </p>
         </div>
@@ -176,15 +176,15 @@ export default function LandingPage() {
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 'var(--space-4)',
+          gap: 'var(--sp-4)',
         }}>
           {FEATURES.map(f => (
-            <div key={f.title} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div key={f.title} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div style={{ fontSize: 28 }}>{f.icon}</div>
-              <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-md)', fontWeight: 700 }}>
+              <h3 style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-md)', fontWeight: 700 }}>
                 {f.title}
               </h3>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.6, flex: 1 }}>
+              <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6, flex: 1 }}>
                 {f.desc}
               </p>
             </div>
@@ -193,29 +193,29 @@ export default function LandingPage() {
       </section>
 
       {/* ── Pricing ──────────────────────────────────────────────── */}
-      <div style={{ background: 'rgba(201,146,42,0.03)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
-        <section style={{ padding: 'var(--space-16) var(--space-6)', maxWidth: 800, margin: '0 auto', width: '100%' }}>
-          <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)', fontWeight: 700, marginBottom: 'var(--space-3)' }}>
+      <div style={{ background: 'rgba(201,146,42,0.03)', borderTop: '1px solid var(--c-border)', borderBottom: '1px solid var(--c-border)' }}>
+        <section style={{ padding: 'var(--sp-16) var(--sp-6)', maxWidth: 800, margin: '0 auto', width: '100%' }}>
+          <div style={{ textAlign: 'center', marginBottom: 'var(--sp-10)' }}>
+            <h2 style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-2xl)', fontWeight: 700, marginBottom: 'var(--sp-3)' }}>
               Simple pricing
             </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-md)' }}>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-md)' }}>
               Start free. Upgrade when you're ready to run campaigns.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-5)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-5)' }}>
             {TIERS.map(tier => (
               <div
                 key={tier.name}
                 className={tier.highlight ? 'card card-gold' : 'card'}
-                style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', position: 'relative' }}
+                style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', position: 'relative' }}
               >
                 {tier.highlight && (
                   <div style={{
                     position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)',
-                    background: 'var(--color-gold)', color: 'var(--color-void)',
-                    fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)',
+                    background: 'var(--c-gold)', color: 'var(--c-bg)',
+                    fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)',
                     letterSpacing: '0.1em', textTransform: 'uppercase',
                     padding: '3px 14px', borderRadius: 999,
                     whiteSpace: 'nowrap',
@@ -225,26 +225,26 @@ export default function LandingPage() {
                 )}
 
                 <div>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-lg)', color: tier.highlight ? 'var(--text-gold)' : 'var(--text-primary)', marginBottom: 4 }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: tier.highlight ? 'var(--c-gold-l)' : 'var(--t-1)', marginBottom: 4 }}>
                     {tier.name}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1)' }}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '2.5rem', lineHeight: 1, color: 'var(--text-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-1)' }}>
+                    <span style={{ fontFamily: 'var(--ff-brand)', fontWeight: 900, fontSize: '2.5rem', lineHeight: 1, color: 'var(--t-1)' }}>
                       {tier.price}
                     </span>
-                    <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                       /{tier.period}
                     </span>
                   </div>
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: 4 }}>
+                  <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginTop: 4 }}>
                     {tier.desc}
                   </p>
                 </div>
 
-                <ul style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', listStyle: 'none', flex: 1 }}>
+                <ul style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', listStyle: 'none', flex: 1 }}>
                   {tier.features.map(f => (
-                    <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                      <span style={{ color: 'var(--color-gold-bright)', flexShrink: 0, fontSize: 'var(--text-xs)' }}>✓</span>
+                    <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
+                      <span style={{ color: 'var(--c-gold-l)', flexShrink: 0, fontSize: 'var(--fs-xs)' }}>✓</span>
                       {f}
                     </li>
                   ))}
@@ -264,12 +264,12 @@ export default function LandingPage() {
       </div>
 
       {/* ── Final CTA ────────────────────────────────────────────── */}
-      <section style={{ textAlign: 'center', padding: 'var(--space-16) var(--space-6)', maxWidth: 600, margin: '0 auto', width: '100%' }}>
-        <div style={{ fontSize: 36, marginBottom: 'var(--space-4)' }}>🐉</div>
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)', fontWeight: 700, marginBottom: 'var(--space-3)' }}>
+      <section style={{ textAlign: 'center', padding: 'var(--sp-16) var(--sp-6)', maxWidth: 600, margin: '0 auto', width: '100%' }}>
+        <div style={{ fontSize: 36, marginBottom: 'var(--sp-4)' }}>🐉</div>
+        <h2 style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-2xl)', fontWeight: 700, marginBottom: 'var(--sp-3)' }}>
           Ready to adventure?
         </h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--space-6)', lineHeight: 1.6 }}>
+        <p style={{ color: 'var(--t-2)', marginBottom: 'var(--sp-6)', lineHeight: 1.6 }}>
           Free to start. No credit card needed.
           Your first character awaits.
         </p>
@@ -284,16 +284,16 @@ export default function LandingPage() {
 
       {/* ── Footer ───────────────────────────────────────────────── */}
       <footer style={{
-        borderTop: '1px solid var(--border-subtle)',
-        padding: 'var(--space-6)',
+        borderTop: '1px solid var(--c-border)',
+        padding: 'var(--sp-6)',
         textAlign: 'center',
-        fontFamily: 'var(--font-heading)',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--text-muted)',
+        fontFamily: 'var(--ff-body)',
+        fontSize: 'var(--fs-xs)',
+        color: 'var(--t-2)',
         letterSpacing: '0.06em',
       }}>
         DNDKeep · D&D 5e Session Companion · Built for adventurers
-        <span style={{ margin: '0 var(--space-3)', opacity: 0.3 }}>·</span>
+        <span style={{ margin: '0 var(--sp-3)', opacity: 0.3 }}>·</span>
         D&D 5e 2024 rules
       </footer>
     </div>

@@ -10,7 +10,7 @@ interface LevelProgressionPanelProps {
 
 // Colour palette per choice type
 const CHOICE_COLORS: Record<ChoiceType, { bg: string; border: string; text: string; icon: string }> = {
-  asi:             { bg: 'rgba(201,146,42,0.15)',  border: 'var(--color-gold)',         text: 'var(--text-gold)',          icon: '⬆' },
+  asi:             { bg: 'rgba(201,146,42,0.15)',  border: 'var(--c-gold)',         text: 'var(--c-gold-l)',          icon: '⬆' },
   subclass:        { bg: 'rgba(167,139,250,0.15)', border: '#a78bfa',                  text: '#c4b5fd',                   icon: '✦' },
   fighting_style:  { bg: 'rgba(96,165,250,0.12)',  border: '#60a5fa',                  text: '#93c5fd',                   icon: '⚔' },
   expertise:       { bg: 'rgba(52,211,153,0.12)',  border: '#34d399',                  text: '#6ee7b7',                   icon: '◆' },
@@ -19,12 +19,12 @@ const CHOICE_COLORS: Record<ChoiceType, { bg: string; border: string; text: stri
   invocations:     { bg: 'rgba(248,113,113,0.1)',  border: '#f87171',                  text: '#fca5a5',                   icon: '👁' },
   metamagic:       { bg: 'rgba(217,70,239,0.1)',   border: '#d946ef',                  text: '#e879f9',                   icon: '◈' },
   mystic_arcanum:  { bg: 'rgba(248,113,113,0.12)', border: '#ef4444',                  text: '#fca5a5',                   icon: '📜' },
-  magical_secrets: { bg: 'rgba(251,191,36,0.15)',  border: 'var(--color-gold)',         text: 'var(--text-gold)',          icon: '✦' },
+  magical_secrets: { bg: 'rgba(251,191,36,0.15)',  border: 'var(--c-gold)',         text: 'var(--c-gold-l)',          icon: '✦' },
   pact_boon:       { bg: 'rgba(248,113,113,0.12)', border: '#f87171',                  text: '#fca5a5',                   icon: '⛓' },
   divine_order:    { bg: 'rgba(250,204,21,0.1)',   border: '#facc15',                  text: '#fef08a',                   icon: '☀' },
   primal_order:    { bg: 'rgba(52,211,153,0.1)',   border: '#34d399',                  text: '#6ee7b7',                   icon: '🌿' },
-  epic_boon:       { bg: 'rgba(201,146,42,0.2)',   border: 'var(--color-gold)',         text: 'var(--color-gold-bright)',  icon: '★' },
-  other:           { bg: 'rgba(156,163,175,0.1)',  border: 'var(--border-dim)',         text: 'var(--text-secondary)',     icon: '◉' },
+  epic_boon:       { bg: 'rgba(201,146,42,0.2)',   border: 'var(--c-gold)',         text: 'var(--c-gold-l)',  icon: '★' },
+  other:           { bg: 'rgba(156,163,175,0.1)',  border: 'var(--c-border-m)',         text: 'var(--t-2)',     icon: '◉' },
 };
 
 const SPELL_LEVEL_ORDINALS = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
@@ -40,8 +40,8 @@ function ChoiceBadge({ type, label }: { type: ChoiceType; label: string }) {
       borderRadius: '999px',
       border: `1px solid ${c.border}`,
       background: c.bg,
-      fontSize: 'var(--text-xs)',
-      fontFamily: 'var(--font-heading)',
+      fontSize: 'var(--fs-xs)',
+      fontFamily: 'var(--ff-body)',
       color: c.text,
       fontWeight: 600,
       letterSpacing: '0.03em',
@@ -66,23 +66,23 @@ function LevelRow({ milestone, isLast, subclassName }: {
 
   // Highlight colour for the level badge
   const badgeColor = isSubclassLevel ? '#a78bfa'
-    : isASILevel ? 'var(--color-gold)'
-    : milestone.level === 1 ? 'var(--color-gold)'
-    : 'var(--text-muted)';
+    : isASILevel ? 'var(--c-gold)'
+    : milestone.level === 1 ? 'var(--c-gold)'
+    : 'var(--t-2)';
 
   const badgeBg = isSubclassLevel ? 'rgba(167,139,250,0.2)'
     : isASILevel ? 'rgba(201,146,42,0.15)'
     : milestone.level === 1 ? 'rgba(201,146,42,0.1)'
-    : 'var(--bg-sunken)';
+    : '#080d14';
 
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-3)', position: 'relative' }}>
+    <div style={{ display: 'flex', gap: 'var(--sp-3)', position: 'relative' }}>
       {/* Timeline spine */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
         <div style={{
           width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)',
           border: `2px solid ${badgeColor}`,
           background: badgeBg,
           color: badgeColor,
@@ -91,23 +91,23 @@ function LevelRow({ milestone, isLast, subclassName }: {
           {milestone.level}
         </div>
         {!isLast && (
-          <div style={{ width: 2, flexGrow: 1, minHeight: 12, background: 'var(--border-subtle)', margin: '2px 0' }} />
+          <div style={{ width: 2, flexGrow: 1, minHeight: 12, background: 'var(--c-border)', margin: '2px 0' }} />
         )}
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, paddingBottom: isLast ? 0 : 'var(--space-4)', paddingTop: 4 }}>
+      <div style={{ flex: 1, paddingBottom: isLast ? 0 : 'var(--sp-4)', paddingTop: 4 }}>
         {/* Class features */}
         {milestone.features.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: hasContent ? 'var(--space-2)' : 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: hasContent ? 'var(--sp-2)' : 0 }}>
             {milestone.features.map(f => (
               <span key={f} style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-secondary)',
-                background: 'var(--bg-sunken)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-sm)',
+                fontFamily: 'var(--ff-body)',
+                fontSize: 'var(--fs-xs)',
+                color: 'var(--t-2)',
+                background: '#080d14',
+                border: '1px solid var(--c-border)',
+                borderRadius: 'var(--r-sm)',
                 padding: '1px 8px',
               }}>
                 {f}
@@ -118,19 +118,19 @@ function LevelRow({ milestone, isLast, subclassName }: {
 
         {/* Subclass feature note */}
         {milestone.subclassFeature && (
-          <div style={{ marginBottom: 'var(--space-2)' }}>
+          <div style={{ marginBottom: 'var(--sp-2)' }}>
             <ChoiceBadge type="other" label={subclassName ? `${subclassName} feature` : 'Subclass feature'} />
           </div>
         )}
 
         {/* New spell level access */}
         {milestone.newSpellLevel && (
-          <div style={{ marginBottom: 'var(--space-2)' }}>
+          <div style={{ marginBottom: 'var(--sp-2)' }}>
             <span style={{
-              fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
               color: '#fcd34d', background: 'rgba(251,191,36,0.08)',
               border: '1px solid rgba(251,191,36,0.3)',
-              borderRadius: 'var(--radius-sm)', padding: '1px 8px',
+              borderRadius: 'var(--r-sm)', padding: '1px 8px',
             }}>
               ✧ Unlocks {SPELL_LEVEL_ORDINALS[milestone.newSpellLevel]}-level spells
             </span>
@@ -139,7 +139,7 @@ function LevelRow({ milestone, isLast, subclassName }: {
 
         {/* Choices */}
         {milestone.choices && milestone.choices.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
             {milestone.choices.map((c, i) => (
               <ChoiceBadge key={i} type={c.type} label={c.label} />
             ))}
@@ -148,7 +148,7 @@ function LevelRow({ milestone, isLast, subclassName }: {
 
         {/* Empty level note */}
         {!hasContent && (
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic' }}>
             Spell slot progression
           </span>
         )}
@@ -169,41 +169,41 @@ export default function LevelProgressionPanel({ className, subclass, level }: Le
   const subclassAt = milestones.find(m => m.choices?.some(c => c.type === 'subclass'))?.level;
 
   return (
-    <div style={{ marginTop: 'var(--space-6)' }}>
+    <div style={{ marginTop: 'var(--sp-6)' }}>
       {/* Header */}
       <div
         onClick={() => setExpanded(v => !v)}
         style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           cursor: 'pointer', userSelect: 'none',
-          padding: 'var(--space-3) var(--space-4)',
-          background: 'var(--bg-raised)', borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border-gold)',
+          padding: 'var(--sp-3) var(--sp-4)',
+          background: 'var(--c-raised)', borderRadius: 'var(--r-md)',
+          border: '1px solid var(--c-gold-bdr)',
         }}
       >
         <div>
           <span style={{
-            fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)',
-            letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-gold)',
+            fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)',
+            letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-gold-l)',
           }}>
             Level Progression — {className}{subclass ? ` (${subclass})` : ''}
           </span>
-          <span style={{ marginLeft: 'var(--space-3)', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          <span style={{ marginLeft: 'var(--sp-3)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
             Levels 1–{level}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center' }}>
           {subclassAt && (
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: '#a78bfa' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#a78bfa' }}>
               Subclass @ {subclassAt}
             </span>
           )}
           {asiCount > 0 && (
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-gold)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)' }}>
               {asiCount} ASI{asiCount !== 1 ? 's' : ''}
             </span>
           )}
-          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+          <span style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
             {expanded ? '▲' : '▼'}
           </span>
         </div>
@@ -211,16 +211,16 @@ export default function LevelProgressionPanel({ className, subclass, level }: Le
 
       {expanded && (
         <div style={{
-          marginTop: 'var(--space-3)',
-          padding: 'var(--space-4)',
-          background: 'var(--bg-sunken)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border-subtle)',
+          marginTop: 'var(--sp-3)',
+          padding: 'var(--sp-4)',
+          background: '#080d14',
+          borderRadius: 'var(--r-md)',
+          border: '1px solid var(--c-border)',
           maxHeight: 480,
           overflowY: 'auto',
         }}>
           {/* Legend */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', paddingBottom: 'var(--space-3)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)', paddingBottom: 'var(--sp-3)', borderBottom: '1px solid var(--c-border)' }}>
             {[
               { type: 'asi' as ChoiceType,       label: 'ASI / Feat' },
               { type: 'subclass' as ChoiceType,  label: 'Subclass' },
@@ -229,7 +229,7 @@ export default function LevelProgressionPanel({ className, subclass, level }: Le
             ].map(item => (
               <ChoiceBadge key={item.type} type={item.type} label={item.label} />
             ))}
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', alignSelf: 'center', marginLeft: 4 }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', alignSelf: 'center', marginLeft: 4 }}>
               = choices to make
             </span>
           </div>

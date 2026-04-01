@@ -74,10 +74,10 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
       <button
         disabled
         style={{
-          fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 9,
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9,
           padding: '2px 8px', borderRadius: 4,
-          border: '1px solid var(--border-subtle)',
-          background: 'transparent', color: 'var(--text-muted)',
+          border: '1px solid var(--c-border)',
+          background: 'transparent', color: 'var(--t-2)',
           cursor: 'not-allowed', opacity: 0.4,
         }}
       >
@@ -91,13 +91,13 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
       <button
         onClick={() => isCantrip ? confirmCast() : setShowModal(true)}
         style={{
-          fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 9,
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9,
           letterSpacing: '0.04em', textTransform: 'uppercase',
           padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
           border: '1px solid #a78bfa60',
           background: 'rgba(167,139,250,0.12)',
           color: '#a78bfa',
-          transition: 'all var(--transition-fast)',
+          transition: 'all var(--tr-fast)',
         }}
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.25)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
@@ -108,46 +108,46 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--space-1)' }}>{spell.name}</h3>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ marginBottom: 'var(--sp-1)' }}>{spell.name}</h3>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-4)' }}>
               {spell.school} · {spell.casting_time} · {spell.range}
               {spell.concentration && ' · Concentration'}
             </p>
 
             {/* Slot selector — only for leveled spells */}
             {availableSlots.length > 0 && (
-              <div style={{ marginBottom: 'var(--space-4)' }}>
+              <div style={{ marginBottom: 'var(--sp-4)' }}>
                 <label style={{
-                  display: 'block', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
+                  display: 'block', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
                   fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
-                  color: 'var(--text-muted)', marginBottom: 'var(--space-2)',
-                  background: 'none', WebkitTextFillColor: 'var(--text-muted)',
+                  color: 'var(--t-2)', marginBottom: 'var(--sp-2)',
+                  background: 'none', WebkitTextFillColor: 'var(--t-2)',
                 }}>
                   Spell Slot
                 </label>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
                   {availableSlots.map(({ level, remaining }) => (
                     <button
                       key={level}
                       onClick={() => setSelectedSlot(level)}
                       style={{
-                        fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)',
-                        padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
-                        border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--border-subtle)',
-                        background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : 'var(--bg-sunken)',
-                        color: selectedSlot === level ? '#a78bfa' : 'var(--text-secondary)',
+                        fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)',
+                        padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-md)',
+                        border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
+                        background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
+                        color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)',
                         cursor: 'pointer',
                       }}
                     >
                       Level {level}
-                      <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--text-muted)' }}>
+                      <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--t-2)' }}>
                         {remaining} left
                       </span>
                     </button>
                   ))}
                 </div>
                 {selectedSlot > spell.level && spell.higher_levels && (
-                  <p style={{ fontSize: 'var(--text-xs)', color: '#a78bfa', marginTop: 'var(--space-2)', fontStyle: 'italic' }}>
+                  <p style={{ fontSize: 'var(--fs-xs)', color: '#a78bfa', marginTop: 'var(--sp-2)', fontStyle: 'italic' }}>
                     Upcast: {spell.higher_levels}
                   </p>
                 )}
@@ -155,12 +155,12 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
             )}
 
             {/* Target */}
-            <div style={{ marginBottom: 'var(--space-4)' }}>
+            <div style={{ marginBottom: 'var(--sp-4)' }}>
               <label style={{
-                display: 'block', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)',
+                display: 'block', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
                 fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'var(--text-muted)', marginBottom: 'var(--space-1)',
-                background: 'none', WebkitTextFillColor: 'var(--text-muted)',
+                color: 'var(--t-2)', marginBottom: 'var(--sp-1)',
+                background: 'none', WebkitTextFillColor: 'var(--t-2)',
               }}>
                 Target (optional)
               </label>
@@ -170,21 +170,21 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
                 onKeyDown={e => e.key === 'Enter' && confirmCast()}
                 placeholder='e.g. "Goblin King" or "Party"'
                 autoFocus
-                style={{ fontSize: 'var(--text-sm)' }}
+                style={{ fontSize: 'var(--fs-sm)' }}
               />
             </div>
 
             {/* Spell description preview */}
             <div style={{
-              padding: 'var(--space-3)', background: 'var(--bg-sunken)',
-              borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)',
-              fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5,
+              padding: 'var(--sp-3)', background: '#080d14',
+              borderRadius: 'var(--r-md)', marginBottom: 'var(--sp-4)',
+              fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5,
               maxHeight: 80, overflowY: 'auto',
             }}>
               {spell.description}
             </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
               <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ flex: 1, justifyContent: 'center' }}>
                 Cancel
               </button>
@@ -193,12 +193,12 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
                 disabled={casting}
                 style={{
                   flex: 2, justifyContent: 'center',
-                  fontFamily: 'var(--font-heading)', fontWeight: 700,
-                  padding: 'var(--space-2) var(--space-4)',
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                  fontFamily: 'var(--ff-body)', fontWeight: 700,
+                  padding: 'var(--sp-2) var(--sp-4)',
+                  borderRadius: 'var(--r-md)', cursor: 'pointer',
                   border: '1px solid #a78bfa60',
                   background: 'rgba(167,139,250,0.2)',
-                  color: '#a78bfa', fontSize: 'var(--text-sm)',
+                  color: '#a78bfa', fontSize: 'var(--fs-sm)',
                   display: 'flex', alignItems: 'center',
                 }}
               >

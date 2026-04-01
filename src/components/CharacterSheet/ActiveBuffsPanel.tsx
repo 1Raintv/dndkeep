@@ -59,24 +59,24 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div className="section-header" style={{ margin: 0 }}>
           Active Buffs & Debuffs
           {buffs.length > 0 && (
-            <span style={{ marginLeft: 8, fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
+            <span style={{ marginLeft: 8, fontFamily: 'var(--ff-body)', fontWeight: 400, fontSize: 'var(--fs-xs)', color: 'var(--t-2)', textTransform: 'none', letterSpacing: 0 }}>
               {buffs.length} active
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
           {buffs.length > 0 && (
             <button
               className="btn-ghost btn-sm"
               onClick={onTickDown}
               title="Advance 1 round (decrements duration timers)"
-              style={{ fontSize: 11, color: 'var(--text-muted)' }}
+              style={{ fontSize: 11, color: 'var(--t-2)' }}
             >
               ⏱ +1 Round
             </button>
@@ -92,7 +92,7 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
 
       {/* Active buff chips */}
       {buffs.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
           {buffs.map(buff => (
             <BuffChip key={buff.id} buff={buff} onRemove={() => onRemoveBuff(buff.id)} />
           ))}
@@ -100,7 +100,7 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
       )}
 
       {buffs.length === 0 && !showPicker && (
-        <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontStyle: 'italic', padding: 'var(--space-2) 0' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontStyle: 'italic', padding: 'var(--sp-2) 0' }}>
           No active buffs. Click <strong>+ Add Buff</strong> to track Rage, Bless, Haste, and more.
         </div>
       )}
@@ -108,13 +108,13 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
       {/* Buff picker panel */}
       {showPicker && (
         <div style={{
-          border: '1px solid var(--border-gold)',
-          borderRadius: 'var(--radius-xl)',
-          background: 'var(--bg-sunken)',
-          padding: 'var(--space-4)',
+          border: '1px solid var(--c-gold-bdr)',
+          borderRadius: 'var(--r-xl)',
+          background: '#080d14',
+          padding: 'var(--sp-4)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 'var(--space-3)',
+          gap: 'var(--sp-3)',
         }}>
           {/* Search */}
           <input
@@ -122,7 +122,7 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
             onChange={e => setSearch(e.target.value)}
             placeholder="Search buffs (Rage, Bless, Haste…)"
             autoFocus
-            style={{ fontSize: 'var(--text-sm)' }}
+            style={{ fontSize: 'var(--fs-sm)' }}
           />
 
           {/* Preset list */}
@@ -132,38 +132,38 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
                 key={preset.name}
                 onClick={() => addPreset(preset)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-                  padding: 'var(--space-2) var(--space-3)',
-                  background: 'var(--bg-card)', border: `1px solid ${preset.color}30`,
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'left',
-                  transition: 'all var(--transition-fast)',
+                  display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+                  padding: 'var(--sp-2) var(--sp-3)',
+                  background: 'var(--c-card)', border: `1px solid ${preset.color}30`,
+                  borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left',
+                  transition: 'all var(--tr-fast)',
                 }}
               >
                 <span style={{ fontSize: 20, flexShrink: 0 }}>{preset.icon}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 'var(--text-sm)', color: preset.color }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: preset.color }}>
                     {preset.name}
                   </div>
-                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {preset.effects[0]}
                   </div>
                 </div>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--color-gold-bright)', flexShrink: 0 }}>+ Add</span>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--c-gold-l)', flexShrink: 0 }}>+ Add</span>
               </button>
             ))}
           </div>
 
           {/* Custom buff */}
-          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 'var(--space-3)' }}>
-            <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--space-2)' }}>
+          <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-3)' }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-xs)', color: 'var(--t-2)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--sp-2)' }}>
               Custom
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
               <input
                 value={customName}
                 onChange={e => setCustomName(e.target.value)}
                 placeholder="Buff name"
-                style={{ flex: 2, minWidth: 120, fontSize: 'var(--text-sm)' }}
+                style={{ flex: 2, minWidth: 120, fontSize: 'var(--fs-sm)' }}
               />
               <input
                 value={customDuration}
@@ -171,13 +171,13 @@ export default function ActiveBuffsPanel({ buffs, onAddBuff, onRemoveBuff, onTic
                 placeholder="Rounds"
                 type="number"
                 min={1}
-                style={{ width: 72, fontSize: 'var(--text-sm)' }}
+                style={{ width: 72, fontSize: 'var(--fs-sm)' }}
               />
               <input
                 value={customEffect}
                 onChange={e => setCustomEffect(e.target.value)}
                 placeholder="Effect description"
-                style={{ flex: 3, minWidth: 160, fontSize: 'var(--text-sm)' }}
+                style={{ flex: 3, minWidth: 160, fontSize: 'var(--fs-sm)' }}
               />
               <button
                 className="btn-gold btn-sm"
@@ -203,10 +203,10 @@ function BuffChip({ buff, onRemove }: { buff: ActiveBuff; onRemove: () => void }
   return (
     <div style={{
       border: `1px solid ${buff.color ?? '#64748b'}40`,
-      borderRadius: 'var(--radius-lg)',
+      borderRadius: 'var(--r-lg)',
       background: `${buff.color ?? '#64748b'}08`,
       overflow: 'hidden',
-      transition: 'all var(--transition-fast)',
+      transition: 'all var(--tr-fast)',
       minWidth: 0,
     }}>
       <div
@@ -214,15 +214,15 @@ function BuffChip({ buff, onRemove }: { buff: ActiveBuff; onRemove: () => void }
         style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', cursor: 'pointer' }}
       >
         <span style={{ fontSize: 14 }}>{buff.icon}</span>
-        <span style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 'var(--text-sm)', color: buff.color ?? 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: buff.color ?? 'var(--t-1)', whiteSpace: 'nowrap' }}>
           {buff.name}
         </span>
         {!isPermanent && (
           <span style={{
-            fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 700,
-            color: isExpiring ? '#f87171' : 'var(--text-muted)',
-            background: isExpiring ? 'rgba(248,113,113,0.15)' : 'var(--bg-raised)',
-            border: `1px solid ${isExpiring ? 'rgba(248,113,113,0.4)' : 'var(--border-subtle)'}`,
+            fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+            color: isExpiring ? '#f87171' : 'var(--t-2)',
+            background: isExpiring ? 'rgba(248,113,113,0.15)' : 'var(--c-raised)',
+            border: `1px solid ${isExpiring ? 'rgba(248,113,113,0.4)' : 'var(--c-border)'}`,
             padding: '1px 4px', borderRadius: 999,
           }}>
             {buff.duration}r
@@ -230,7 +230,7 @@ function BuffChip({ buff, onRemove }: { buff: ActiveBuff; onRemove: () => void }
         )}
         <button
           onClick={e => { e.stopPropagation(); onRemove(); }}
-          style={{ marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 2px', fontSize: 12, minHeight: 0 }}
+          style={{ marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t-2)', padding: '0 2px', fontSize: 12, minHeight: 0 }}
         >
           ✕
         </button>
@@ -239,17 +239,17 @@ function BuffChip({ buff, onRemove }: { buff: ActiveBuff; onRemove: () => void }
       {expanded && (
         <div style={{ padding: '4px 10px 8px', borderTop: `1px solid ${buff.color ?? '#64748b'}20` }}>
           {buff.effects.map((e, i) => (
-            <div key={i} style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            <div key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
               • {e}
             </div>
           ))}
           {buff.acBonus !== undefined && buff.acBonus !== 0 && (
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: '#60a5fa', marginTop: 2 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#60a5fa', marginTop: 2 }}>
               ➤ AC {buff.acBonus > 0 ? '+' : ''}{buff.acBonus} applied to sheet
             </div>
           )}
           {buff.damageBonus !== undefined && buff.damageBonus !== 0 && (
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: '#f87171', marginTop: 2 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#f87171', marginTop: 2 }}>
               ➤ Damage {buff.damageBonus > 0 ? '+' : ''}{buff.damageBonus} per hit
             </div>
           )}

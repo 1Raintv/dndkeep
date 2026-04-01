@@ -47,31 +47,31 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
   }, [search, typeFilter, crMin, crMax]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: selected && !compact ? '1fr 1fr' : '1fr', gap: 'var(--space-6)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: selected && !compact ? '1fr 1fr' : '1fr', gap: 'var(--sp-6)' }}>
       {/* Left: list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
         {/* Filters */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
           <input
             placeholder="Search monsters..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ flex: 2, minWidth: 140, fontSize: 'var(--text-sm)' }}
+            style={{ flex: 2, minWidth: 140, fontSize: 'var(--fs-sm)' }}
           />
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ flex: 1, minWidth: 110, fontSize: 'var(--text-sm)' }}>
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ flex: 1, minWidth: 110, fontSize: 'var(--fs-sm)' }}>
             {TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
-          <select value={crMin} onChange={e => setCrMin(e.target.value)} style={{ width: 80, fontSize: 'var(--text-sm)' }}>
+          <select value={crMin} onChange={e => setCrMin(e.target.value)} style={{ width: 80, fontSize: 'var(--fs-sm)' }}>
             <option value="">CR min</option>
             {CR_ORDER.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={crMax} onChange={e => setCrMax(e.target.value)} style={{ width: 80, fontSize: 'var(--text-sm)' }}>
+          <select value={crMax} onChange={e => setCrMax(e.target.value)} style={{ width: 80, fontSize: 'var(--fs-sm)' }}>
             <option value="">CR max</option>
             {CR_ORDER.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
-        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', letterSpacing: '0.06em' }}>
           {filtered.length} monster{filtered.length !== 1 ? 's' : ''}
         </div>
 
@@ -83,23 +83,23 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
               onClick={() => setSelected(selected?.id === m.id ? null : m)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: 'var(--space-2) var(--space-3)',
-                borderRadius: 'var(--radius-sm)',
-                border: selected?.id === m.id ? '1px solid var(--color-gold)' : '1px solid var(--border-subtle)',
-                background: selected?.id === m.id ? 'rgba(201,146,42,0.1)' : 'var(--bg-sunken)',
-                cursor: 'pointer', transition: 'all var(--transition-fast)', textAlign: 'left',
+                padding: 'var(--sp-2) var(--sp-3)',
+                borderRadius: 'var(--r-sm)',
+                border: selected?.id === m.id ? '1px solid var(--c-gold)' : '1px solid var(--c-border)',
+                background: selected?.id === m.id ? 'rgba(201,146,42,0.1)' : '#080d14',
+                cursor: 'pointer', transition: 'all var(--tr-fast)', textAlign: 'left',
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: selected?.id === m.id ? 'var(--text-gold)' : 'var(--text-primary)' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: selected?.id === m.id ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
                   {m.name}
                 </span>
-                <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   {m.size} {m.type}
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
-                <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexShrink: 0 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   CR {formatCR(m.cr)} · {m.hp}hp · AC {m.ac}
                 </span>
                 {onAddToCombat && (
@@ -115,7 +115,7 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
             </button>
           ))}
           {filtered.length === 0 && (
-            <div style={{ padding: 'var(--space-6)', textAlign: 'center', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <div style={{ padding: 'var(--sp-6)', textAlign: 'center', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
               No monsters match your filters.
             </div>
           )}
@@ -143,17 +143,17 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
   const xpLabel = m.xp >= 1000 ? `${(m.xp / 1000).toFixed(1)}k` : String(m.xp);
 
   return (
-    <div className="card card-gold" style={{ fontFamily: 'var(--font-body)' }}>
+    <div className="card card-gold" style={{ fontFamily: 'var(--ff-body)' }}>
       {/* Header */}
-      <div style={{ borderBottom: '2px solid var(--color-gold-dim)', paddingBottom: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+      <div style={{ borderBottom: '2px solid var(--c-gold)', paddingBottom: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
           <div>
             <h3 style={{ marginBottom: 2 }}>{m.name}</h3>
-            <p style={{ fontStyle: 'italic', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <p style={{ fontStyle: 'italic', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
               {m.size} {m.type}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
             <span className="badge badge-gold">CR {formatCR(m.cr)}</span>
             <span className="badge badge-muted">{xpLabel} XP</span>
             {onAddToCombat && (
@@ -166,36 +166,36 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
       </div>
 
       {/* Core stats */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', marginBottom: 'var(--space-3)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-4)', marginBottom: 'var(--sp-3)', borderBottom: '1px solid var(--c-border)', paddingBottom: 'var(--sp-3)' }}>
         <Stat label="Armor Class" value={`${m.ac}${m.ac_note ? ` (${m.ac_note})` : ''}`} />
         <Stat label="Hit Points" value={`${m.hp} (${m.hp_formula})`} />
         <Stat label="Speed" value={`${m.speed} ft.`} />
       </div>
 
       {/* Ability scores */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--space-2)', textAlign: 'center', marginBottom: 'var(--space-3)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 'var(--space-3)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--sp-2)', textAlign: 'center', marginBottom: 'var(--sp-3)', borderBottom: '1px solid var(--c-border)', paddingBottom: 'var(--sp-3)' }}>
         {(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const).map((label, i) => {
           const score = [m.str, m.dex, m.con, m.int, m.wis, m.cha][i];
           return (
             <div key={label}>
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em' }}>{label}</div>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--text-primary)' }}>{score}</div>
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-gold)' }}>{mod(score)}</div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--t-2)', letterSpacing: '0.08em' }}>{label}</div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)' }}>{score}</div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)' }}>{mod(score)}</div>
             </div>
           );
         })}
       </div>
 
       {/* Attack */}
-      <div style={{ marginBottom: 'var(--space-3)' }}>
-        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4 }}>
+      <div style={{ marginBottom: 'var(--sp-3)' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 4 }}>
           Actions
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
             {m.attack_name}
           </span>
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
             Melee Weapon Attack
           </span>
           <span className="badge badge-gold">+{m.attack_bonus} to hit</span>
@@ -209,10 +209,10 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--text-primary)' }}>
+      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--t-1)' }}>
         {label}{' '}
       </span>
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{value}</span>
+      <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{value}</span>
     </div>
   );
 }

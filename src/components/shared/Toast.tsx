@@ -24,13 +24,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div style={{ position: 'fixed', bottom: 'var(--space-6)', right: 'var(--space-6)', zIndex: 200, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div style={{ position: 'fixed', bottom: 'var(--sp-6)', right: 'var(--sp-6)', zIndex: 200, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
         {toasts.map(t => (
           <div
             key={t.id}
             className="toast animate-fade-in"
             style={{
-              borderColor: t.type === 'error' ? 'var(--color-blood)' : t.type === 'success' ? 'var(--hp-full)' : 'var(--border-gold)',
+              borderColor: t.type === 'error' ? 'rgba(107,20,20,1)' : t.type === 'success' ? 'var(--hp-full)' : 'var(--c-gold-bdr)',
               boxShadow: t.type === 'error' ? 'var(--shadow-crimson)' : 'var(--shadow-gold)',
             }}
           >

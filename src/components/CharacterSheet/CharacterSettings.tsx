@@ -44,8 +44,8 @@ function EditableField({
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-2) 0', borderBottom: '1px solid var(--c-border)' }}>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)' }}>
         {label}
       </span>
       {editing ? (
@@ -58,17 +58,17 @@ function EditableField({
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-          style={{ width: 72, textAlign: 'right', fontFamily: 'var(--font-heading)', fontWeight: 700 }}
+          style={{ width: 72, textAlign: 'right', fontFamily: 'var(--ff-body)', fontWeight: 700 }}
         />
       ) : (
         <button
           className="btn-ghost"
           onClick={open}
           title={`Edit ${label.toLowerCase()}`}
-          style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-gold)', padding: '2px 8px' }}
+          style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)', padding: '2px 8px' }}
         >
           {format ? format(value) : value}
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 6 }}>edit</span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 6 }}>edit</span>
         </button>
       )}
     </div>
@@ -95,11 +95,11 @@ function AbilityRow({
   const mod = abilityModifier(editing ? (parseInt(draft, 10) || score) : score);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-sunken)' }}>
-      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)', letterSpacing: '0.08em', color: 'var(--text-muted)', width: 28 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-sm)', background: '#080d14' }}>
+      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', letterSpacing: '0.08em', color: 'var(--t-2)', width: 28 }}>
         {ABBREV[ability]}
       </span>
-      <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', width: 30, textAlign: 'center' }}>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', width: 30, textAlign: 'center' }}>
         {formatModifier(mod)}
       </span>
       {editing ? (
@@ -111,19 +111,19 @@ function AbilityRow({
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-          style={{ width: 56, fontFamily: 'var(--font-heading)', fontWeight: 700, textAlign: 'center' }}
+          style={{ width: 56, fontFamily: 'var(--ff-body)', fontWeight: 700, textAlign: 'center' }}
         />
       ) : (
         <button
           className="btn-ghost"
           onClick={open}
-          style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--text-gold)', padding: '0 var(--space-2)', minWidth: 40, textAlign: 'center' }}
+          style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--c-gold-l)', padding: '0 var(--sp-2)', minWidth: 40, textAlign: 'center' }}
           title={`Edit ${ability} (1–30)`}
         >
           {score}
         </button>
       )}
-      <span style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 'auto' }}>
         {ability}
       </span>
     </div>
@@ -164,10 +164,10 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
             <div>
               <h2 style={{ marginBottom: 2 }}>Character Settings</h2>
-              <p style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                 {character.name} — Level {character.level} {character.class_name}
               </p>
             </div>
@@ -175,20 +175,20 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', marginBottom: 'var(--space-5)' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--c-border)', marginBottom: 'var(--sp-5)' }}>
             {tabs.map(t => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 style={{
-                  fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-xs)',
+                  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)',
                   letterSpacing: '0.08em', textTransform: 'uppercase',
-                  padding: 'var(--space-2) var(--space-4)', border: 'none',
-                  borderBottom: tab === t.id ? '2px solid var(--color-gold)' : '2px solid transparent',
+                  padding: 'var(--sp-2) var(--sp-4)', border: 'none',
+                  borderBottom: tab === t.id ? '2px solid var(--c-gold)' : '2px solid transparent',
                   background: 'transparent',
-                  color: tab === t.id ? 'var(--text-gold)'
-                    : t.id === 'danger' ? 'var(--color-crimson-bright)'
-                    : 'var(--text-muted)',
+                  color: tab === t.id ? 'var(--c-gold-l)'
+                    : t.id === 'danger' ? 'var(--c-red-l)'
+                    : 'var(--t-2)',
                   cursor: 'pointer', marginBottom: -1,
                 }}
               >
@@ -199,10 +199,10 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
           {/* Edit Stats */}
           {tab === 'stats' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
               <div>
                 <div className="section-header">Ability Scores</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
                   {ABILITY_ORDER.map(ability => (
                     <AbilityRow
                       key={ability}
@@ -218,8 +218,8 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                 <div className="section-header">Combat Stats</div>
 
                 {/* Armor picker */}
-                <div style={{ marginBottom: 'var(--space-4)' }}>
-                  <label style={{ display: 'block', fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 'var(--space-1)', background: 'none', WebkitTextFillColor: 'var(--text-muted)' }}>
+                <div style={{ marginBottom: 'var(--sp-4)' }}>
+                  <label style={{ display: 'block', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 'var(--sp-1)', background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>
                     Equipped Armor
                   </label>
                   <select
@@ -229,7 +229,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       const newAC = calcArmorAC(armorId, character.dexterity);
                       onUpdate({ equipped_armor: armorId, armor_class: newAC });
                     }}
-                    style={{ marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)' }}
+                    style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--fs-sm)' }}
                   >
                     {ARMOR_LIST.map(a => (
                       <option key={a.id} value={a.id}>
@@ -237,7 +237,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       </option>
                     ))}
                   </select>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                     Auto-calculates AC from armor + DEX. Override manually below if needed.
                   </div>
                 </div>
@@ -272,16 +272,16 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
               {/* Multiclassing */}
               <div>
                 <div className="section-header">Multiclass (Optional)</div>
-                <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.5 }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
                   Add a second class. Spell slots will use multiclass rules — manage manually or via the Session tab.
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
                   <div>
                     <label>Secondary Class</label>
                     <select
                       value={character.secondary_class ?? ''}
                       onChange={e => onUpdate({ secondary_class: e.target.value, secondary_level: e.target.value ? (character.secondary_level || 1) : 0 })}
-                      style={{ fontSize: 'var(--text-sm)' }}
+                      style={{ fontSize: 'var(--fs-sm)' }}
                     >
                       <option value="">— None —</option>
                       {['Barbarian','Bard','Cleric','Druid','Fighter','Monk','Paladin','Ranger','Rogue','Sorcerer','Warlock','Wizard'].map(c => (
@@ -295,7 +295,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       value={character.secondary_level ?? 0}
                       onChange={e => onUpdate({ secondary_level: parseInt(e.target.value) })}
                       disabled={!character.secondary_class}
-                      style={{ fontSize: 'var(--text-sm)' }}
+                      style={{ fontSize: 'var(--fs-sm)' }}
                     >
                       {Array.from({ length: 19 }, (_, i) => i + 1)
                         .filter(l => l + character.level <= 20)
@@ -304,7 +304,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   </div>
                 </div>
                 {character.secondary_class && (character.secondary_level ?? 0) > 0 && (
-                  <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'rgba(91,63,168,0.08)', border: '1px solid rgba(91,63,168,0.25)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--color-arcane-bright)' }}>
+                  <div style={{ marginTop: 'var(--sp-2)', padding: 'var(--sp-2) var(--sp-3)', background: 'rgba(91,63,168,0.08)', border: '1px solid rgba(91,63,168,0.25)', borderRadius: 'var(--r-md)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-purple-l)' }}>
                     {character.class_name} {character.level} / {character.secondary_class} {character.secondary_level} — Total level {character.level + (character.secondary_level ?? 0)}
                   </div>
                 )}
@@ -316,17 +316,17 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           {tab === 'levelup' && (
             <div>
               {character.level >= 20 ? (
-                <div style={{ padding: 'var(--space-8)', textAlign: 'center' }}>
-                  <p style={{ color: 'var(--text-gold)', fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                <div style={{ padding: 'var(--sp-8)', textAlign: 'center' }}>
+                  <p style={{ color: 'var(--c-gold-l)', fontFamily: 'var(--ff-body)', fontWeight: 700, marginBottom: 'var(--sp-2)' }}>
                     Level 20
                   </p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                  <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
                     This character has reached the pinnacle of adventuring power.
                   </p>
                 </div>
               ) : (
                 <div>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                  <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-4)', lineHeight: 1.6 }}>
                     Ready to advance to Level {character.level + 1}?
                     Review your new features, then confirm to save the changes.
                   </p>
@@ -345,12 +345,12 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           {/* Danger Zone */}
           {/* Export / Print */}
           {tab === 'export' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-md)', background: 'rgba(201,146,42,0.06)' }}>
-                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-gold)', marginBottom: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+              <div style={{ padding: 'var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)', marginBottom: 'var(--sp-2)' }}>
                   Print / Save as PDF
                 </p>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-4)', lineHeight: 1.6 }}>
                   Print your character sheet or save it as a PDF using your browser's print dialog. Use "Save as PDF" in the print destination for a digital copy.
                 </p>
                 <button
@@ -364,19 +364,19 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                 </button>
               </div>
 
-              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', background: 'var(--bg-sunken)' }}>
-                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>
+              <div style={{ padding: 'var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', background: '#080d14' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
                   Share Link
                 </p>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-4)', lineHeight: 1.6 }}>
                   Generate a public read-only link anyone can view without an account.
                 </p>
                 {character.share_enabled && character.share_token ? (
-                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                     <input
                       readOnly
                       value={`${window.location.origin}/share/${character.share_token}`}
-                      style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                      style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}
                       onFocus={e => e.target.select()}
                     />
                     <button
@@ -388,7 +388,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                     <button
                       className="btn-ghost btn-sm"
                       onClick={() => onUpdate({ share_enabled: false, share_token: null })}
-                      style={{ color: 'var(--color-crimson-bright)', fontSize: 'var(--text-xs)' }}
+                      style={{ color: 'var(--c-red-l)', fontSize: 'var(--fs-xs)' }}
                     >
                       Disable
                     </button>
@@ -410,23 +410,23 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
           {/* Danger Zone */}
           {tab === 'danger' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
               {/* Share character sheet */}
-              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--border-gold)', borderRadius: 'var(--radius-md)', background: 'rgba(201,146,42,0.06)' }}>
-                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-gold)', marginBottom: 'var(--space-2)' }}>
+              <div style={{ padding: 'var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)', marginBottom: 'var(--sp-2)' }}>
                   Share Character Sheet
                 </p>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.6 }}>
                   Generate a public read-only link to share your character with anyone — no account required.
                 </p>
                 {character.share_enabled && character.share_token ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
                       <input
                         readOnly
                         value={`${window.location.origin}/share/${character.share_token}`}
-                        style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                        style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}
                         onFocus={e => e.target.select()}
                       />
                       <button
@@ -440,7 +440,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                     <button
                       className="btn-ghost btn-sm"
                       onClick={() => onUpdate({ share_enabled: false, share_token: null })}
-                      style={{ alignSelf: 'flex-start', color: 'var(--color-crimson-bright)', fontSize: 'var(--text-xs)' }}
+                      style={{ alignSelf: 'flex-start', color: 'var(--c-red-l)', fontSize: 'var(--fs-xs)' }}
                     >
                       Disable sharing
                     </button>
@@ -459,11 +459,11 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
               </div>
 
               {/* Delete */}
-              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', background: 'rgba(127,29,29,0.1)' }}>
-                <p style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 'var(--text-sm)', color: '#fca5a5', marginBottom: 'var(--space-2)' }}>
+              <div style={{ padding: 'var(--sp-4)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', background: 'rgba(127,29,29,0.1)' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: '#fca5a5', marginBottom: 'var(--sp-2)' }}>
                   Delete Character
                 </p>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-4)', lineHeight: 1.6 }}>
                   Permanently delete {character.name}. All data including inventory, notes, and progress will be lost. This cannot be undone.
                 </p>
                 {!confirmDelete ? (
@@ -474,8 +474,8 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                     Delete This Character
                   </button>
                 ) : (
-                  <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-                    <p style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xs)', color: '#fca5a5', flex: 1 }}>
+                  <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center' }}>
+                    <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#fca5a5', flex: 1 }}>
                       Are you certain? This is permanent.
                     </p>
                     <button className="btn-secondary btn-sm" onClick={() => setConfirmDelete(false)}>

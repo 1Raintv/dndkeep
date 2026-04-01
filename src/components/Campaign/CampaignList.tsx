@@ -50,7 +50,7 @@ export default function CampaignList({ onSelect }: CampaignListProps) {
 
   if (loadingCampaigns) {
     return (
-      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', padding: 'var(--space-6)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', padding: 'var(--sp-6)' }}>
         <div className="spinner" /><span className="loading-text">Loading campaigns...</span>
       </div>
     );
@@ -58,7 +58,7 @@ export default function CampaignList({ onSelect }: CampaignListProps) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-6)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-6)' }}>
         <h2>Campaigns</h2>
         <button className="btn-gold" onClick={() => setShowCreate(v => !v)}>
           {showCreate ? 'Cancel' : 'New Campaign'}
@@ -66,9 +66,9 @@ export default function CampaignList({ onSelect }: CampaignListProps) {
       </div>
 
       {showCreate && (
-        <div className="card card-gold animate-fade-in" style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ marginBottom: 'var(--space-4)' }}>Create Campaign</h3>
-          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div className="card card-gold animate-fade-in" style={{ marginBottom: 'var(--sp-6)' }}>
+          <h3 style={{ marginBottom: 'var(--sp-4)' }}>Create Campaign</h3>
+          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
             <div>
               <label>Campaign Name</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="The Curse of Strahd..." required autoFocus />
@@ -82,9 +82,9 @@ export default function CampaignList({ onSelect }: CampaignListProps) {
               <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} placeholder="A brief description of the campaign..." />
             </div>
             {error && (
-              <div style={{ background: 'rgba(155,28,28,0.15)', border: '1px solid var(--color-blood)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)', color: '#fca5a5', fontFamily: 'var(--font-heading)' }}>{error}</div>
+              <div style={{ background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>{error}</div>
             )}
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
               <button type="submit" className="btn-primary" disabled={creating}>
                 {creating ? 'Creating...' : 'Create Campaign'}
               </button>
@@ -95,15 +95,15 @@ export default function CampaignList({ onSelect }: CampaignListProps) {
       )}
 
       {campaigns.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 'var(--space-12)' }}>
-          <h3 style={{ color: 'var(--text-muted)', marginBottom: 'var(--space-4)' }}>No Campaigns Yet</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--space-6)' }}>
+        <div className="card" style={{ textAlign: 'center', padding: 'var(--sp-12)' }}>
+          <h3 style={{ color: 'var(--t-2)', marginBottom: 'var(--sp-4)' }}>No Campaigns Yet</h3>
+          <p style={{ color: 'var(--t-2)', marginBottom: 'var(--sp-6)' }}>
             Create a campaign to manage multiple characters and sync combat with your table.
           </p>
           <button className="btn-gold" onClick={() => setShowCreate(true)}>Create Your First Campaign</button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
           {campaigns.map(campaign => (
             <CampaignCard
               key={campaign.id}
@@ -128,34 +128,34 @@ function CampaignCard({ campaign, isOwner, onOpen, onDelete }: {
   return (
     <div
       className="card"
-      style={{ cursor: 'pointer', transition: 'border-color var(--transition-fast)' }}
+      style={{ cursor: 'pointer', transition: 'border-color var(--tr-fast)' }}
       onClick={onOpen}
-      onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-gold)'}
-      onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-subtle)'}
+      onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-gold-bdr)'}
+      onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border)'}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
-            <h3 style={{ fontSize: 'var(--text-lg)' }}>{campaign.name}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-2)' }}>
+            <h3 style={{ fontSize: 'var(--fs-lg)' }}>{campaign.name}</h3>
             <span className={isOwner ? 'badge badge-gold' : 'badge badge-muted'}>
               {isOwner ? 'DM' : 'Player'}
             </span>
             {!campaign.is_active && <span className="badge badge-muted">Inactive</span>}
           </div>
           {campaign.setting && (
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', marginBottom: 'var(--space-1)' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', marginBottom: 'var(--sp-1)' }}>
               {campaign.setting}
             </p>
           )}
           {campaign.description && (
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{campaign.description}</p>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{campaign.description}</p>
           )}
         </div>
         {isOwner && (
           <button
             className="btn-ghost btn-sm"
             onClick={e => { e.stopPropagation(); onDelete(); }}
-            style={{ color: 'var(--color-ash)', flexShrink: 0 }}
+            style={{ color: 'var(--t-2)', flexShrink: 0 }}
           >
             Delete
           </button>
