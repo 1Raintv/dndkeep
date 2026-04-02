@@ -38,15 +38,12 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
   const spellDC = 8 + spellAttack;
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
 
-  const num = parseInt(value);
-  const valid = !isNaN(num) && num > 0;
-
-  function applyDamage() { if (valid) { onUpdateHP(-num); setValue(''); } }
-  function applyHeal()   { if (valid) { onUpdateHP(num); setValue(''); } }
-  function applyTemp()   { if (!isNaN(num) && num >= 0) { onUpdateHP(0, num); setValue(''); } }
+  function applyDamage() { const n = parseInt(value); if (!isNaN(n) && n > 0) { onUpdateHP(-n); setValue(''); } }
+  function applyHeal()   { const n = parseInt(value); if (!isNaN(n) && n > 0) { onUpdateHP(n); setValue(''); } }
+  function applyTemp()   { const n = parseInt(value); if (!isNaN(n) && n >= 0) { onUpdateHP(0, n); setValue(''); } }
 
   function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && valid) applyDamage();
+    if (e.key === 'Enter') applyDamage();
   }
 
   function rollInitiative() {
@@ -114,22 +111,25 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
           />
           <button
             onClick={applyDamage}
-            disabled={!valid}
-            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: valid ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: valid ? 'var(--stat-str-bg)' : 'transparent', color: valid ? 'var(--stat-str)' : 'var(--t-3)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(248,113,113,0.18)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'var(--stat-str-bg)')}
           >
             Damage
           </button>
           <button
             onClick={applyHeal}
-            disabled={!valid}
-            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: valid ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: valid ? 'var(--stat-dex-bg)' : 'transparent', color: valid ? 'var(--stat-dex)' : 'var(--t-3)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(74,222,128,0.18)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'var(--stat-dex-bg)')}
           >
             Heal
           </button>
           <button
             onClick={applyTemp}
-            disabled={isNaN(num)}
-            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: !isNaN(num) ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid rgba(96,165,250,0.25)', background: !isNaN(num) ? 'rgba(96,165,250,0.08)' : 'transparent', color: !isNaN(num) ? '#60a5fa' : 'var(--t-3)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(96,165,250,0.18)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(96,165,250,0.08)')}
           >
             Temp
           </button>
