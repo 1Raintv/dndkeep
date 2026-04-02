@@ -3,18 +3,30 @@
    Inter body, Cinzel for brand only, sidebar layout
    ============================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
-  /* Palette */
-  --c-bg:       #0d1117;
-  --c-surface:  #151b26;
-  --c-card:     #1a2233;
-  --c-raised:   #1f2a3c;
-  --c-hover:    #243247;
-  --c-border:   rgba(255,255,255,0.07);
-  --c-border-m: rgba(255,255,255,0.12);
-  --c-border-b: rgba(255,255,255,0.20);
+  /* Palette — Option B Dashboard */
+  --c-bg:       #080c14;
+  --c-surface:  #0d1219;
+  --c-card:     #111827;
+  --c-raised:   #162032;
+  --c-hover:    #1c2a40;
+  --c-border:   rgba(255,255,255,0.06);
+  --c-border-m: rgba(255,255,255,0.10);
+  --c-border-b: rgba(255,255,255,0.18);
+
+  /* Stat category colors */
+  --stat-str:   #f87171;  --stat-str-bg: rgba(248,113,113,0.08);  --stat-str-bdr: rgba(248,113,113,0.25);
+  --stat-dex:   #4ade80;  --stat-dex-bg: rgba(74,222,128,0.08);   --stat-dex-bdr: rgba(74,222,128,0.25);
+  --stat-con:   #fb923c;  --stat-con-bg: rgba(251,146,60,0.08);   --stat-con-bdr: rgba(251,146,60,0.25);
+  --stat-int:   #60a5fa;  --stat-int-bg: rgba(96,165,250,0.08);   --stat-int-bdr: rgba(96,165,250,0.25);
+  --stat-wis:   #34d399;  --stat-wis-bg: rgba(52,211,153,0.08);   --stat-wis-bdr: rgba(52,211,153,0.25);
+  --stat-cha:   #e879f9;  --stat-cha-bg: rgba(232,121,249,0.08);  --stat-cha-bdr: rgba(232,121,249,0.25);
+
+  /* Glass effect */
+  --glass-bg:   rgba(255,255,255,0.03);
+  --glass-bdr:  rgba(255,255,255,0.08);
 
   --c-gold:     #d4a017;
   --c-gold-l:   #e8b93a;
@@ -56,8 +68,9 @@
 
   /* Fonts */
   --ff-brand: 'Cinzel', Georgia, serif;
-  --ff-body:  'Inter', system-ui, -apple-system, sans-serif;
-  --ff-mono:  'Fira Code', 'Courier New', monospace;
+  --ff-body:  'DM Sans', system-ui, -apple-system, sans-serif;
+  --ff-mono:  'JetBrains Mono', 'Fira Code', monospace;
+  --ff-stat:  'JetBrains Mono', monospace;  /* for numbers/stats */
 
   /* Font sizes */
   --fs-2xs: 0.65rem;
@@ -87,10 +100,12 @@
   --radius-lg: var(--r-lg);   --radius-xl: var(--r-xl);   --radius-2xl: var(--r-2xl);
 
   /* Shadows */
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
-  --shadow-md:  0 4px 16px rgba(0,0,0,0.5);
-  --shadow-lg:  0 8px 32px rgba(0,0,0,0.6);
-  --shadow-gold: 0 0 0 1px var(--c-gold-bdr), 0 4px 16px rgba(212,160,23,0.12);
+  --shadow-sm:  0 1px 4px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+  --shadow-md:  0 4px 20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  --shadow-lg:  0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05);
+  --shadow-gold: 0 0 0 1px var(--c-gold-bdr), 0 4px 20px rgba(212,160,23,0.15);
+  --shadow-glow-str: 0 0 12px rgba(248,113,113,0.3);
+  --shadow-glow-int: 0 0 12px rgba(96,165,250,0.3);
 
   /* Transitions */
   --tr-fast:   120ms ease;
@@ -320,7 +335,7 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .app-sidebar {
   width: var(--sidebar-w);
   min-height: 100vh;
-  background: var(--c-surface);
+  background: linear-gradient(180deg, var(--c-surface) 0%, var(--c-bg) 100%);
   border-right: 1px solid var(--c-border);
   display: flex;
   flex-direction: column;
@@ -404,9 +419,10 @@ button:active:not(:disabled) { transform: scale(0.97); }
   text-decoration: none;
 }
 .sidebar-link.active {
-  background: var(--c-gold-bg);
+  background: linear-gradient(90deg, var(--c-gold-bg) 0%, transparent 100%);
   color: var(--c-gold-l);
   border-color: var(--c-gold-bdr);
+  border-left: 2px solid var(--c-gold);
 }
 .sidebar-link-icon {
   flex-shrink: 0;
@@ -497,56 +513,63 @@ button:active:not(:disabled) { transform: scale(0.97); }
 
 /* ── Section headers ──────────────────────────────────────── */
 .section-header {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-family: var(--ff-body);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--t-3);
   margin-bottom: var(--sp-3);
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--c-border);
 }
 
 /* ── Tabs ────────────────────────────────────────────────── */
 .tabs {
   display: flex;
-  gap: 2px;
+  gap: 4px;
   border-bottom: 1px solid var(--c-border);
-  margin-bottom: var(--sp-5);
+  margin-bottom: var(--sp-6);
   overflow-x: auto;
   scrollbar-width: none;
+  padding-bottom: 1px;
 }
 .tabs::-webkit-scrollbar { display: none; }
 
 .tab {
-  padding: var(--sp-2) var(--sp-4);
-  font-size: var(--fs-sm);
+  padding: 6px 14px;
+  font-family: var(--ff-body);
+  font-size: 13px;
   font-weight: 500;
   color: var(--t-2);
   cursor: pointer;
   border: none;
   background: none;
-  border-radius: var(--r-md) var(--r-md) 0 0;
+  border-radius: var(--r-md);
   white-space: nowrap;
   min-height: 0;
   transition: color var(--tr-fast), background var(--tr-fast);
   position: relative;
+  letter-spacing: 0.01em;
 }
 .tab:hover { color: var(--t-1); background: var(--c-raised); }
 .tab.active {
   color: var(--c-gold-l);
   font-weight: 600;
+  background: var(--c-gold-bg);
 }
 .tab.active::after {
   content: '';
   position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
+  bottom: -2px;
+  left: 4px;
+  right: 4px;
   height: 2px;
-  background: var(--c-gold);
-  border-radius: 2px 2px 0 0;
+  background: linear-gradient(90deg, transparent, var(--c-gold), transparent);
+  border-radius: 2px;
 }
 
 /* ── Badges ──────────────────────────────────────────────── */
@@ -571,24 +594,45 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .stat-box {
   background: var(--c-card);
   border: 1px solid var(--c-border);
+  border-top-width: 2px;
   border-radius: var(--r-lg);
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) var(--sp-3);
   text-align: center;
-  transition: border-color var(--tr-fast);
+  transition: all var(--tr-normal);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
 }
-.stat-box:hover { border-color: var(--c-border-m); }
+.stat-box::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--glass-bg);
+  opacity: 0;
+  transition: opacity var(--tr-fast);
+}
+.stat-box:hover { border-color: var(--c-border-m); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.stat-box:hover::before { opacity: 1; }
 .stat-box-label {
-  font-size: var(--fs-2xs);
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  font-family: var(--ff-body);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--t-3);
-  margin-bottom: var(--sp-1);
+  margin-bottom: 4px;
+}
+.stat-box-modifier {
+  font-family: var(--ff-stat);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 2px;
 }
 .stat-box-value {
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  color: var(--t-1);
+  font-family: var(--ff-body);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--t-3);
   line-height: 1;
 }
 

@@ -14,6 +14,15 @@ const ABILITY_ORDER: AbilityKey[] = [
   'intelligence', 'wisdom', 'charisma',
 ];
 
+const STAT_META: Record<AbilityKey, { color: string; bg: string; bdr: string; abbrev: string }> = {
+  strength:     { color: 'var(--stat-str)', bg: 'var(--stat-str-bg)', bdr: 'var(--stat-str-bdr)', abbrev: 'STR' },
+  dexterity:    { color: 'var(--stat-dex)', bg: 'var(--stat-dex-bg)', bdr: 'var(--stat-dex-bdr)', abbrev: 'DEX' },
+  constitution: { color: 'var(--stat-con)', bg: 'var(--stat-con-bg)', bdr: 'var(--stat-con-bdr)', abbrev: 'CON' },
+  intelligence: { color: 'var(--stat-int)', bg: 'var(--stat-int-bg)', bdr: 'var(--stat-int-bdr)', abbrev: 'INT' },
+  wisdom:       { color: 'var(--stat-wis)', bg: 'var(--stat-wis-bg)', bdr: 'var(--stat-wis-bdr)', abbrev: 'WIS' },
+  charisma:     { color: 'var(--stat-cha)', bg: 'var(--stat-cha-bg)', bdr: 'var(--stat-cha-bdr)', abbrev: 'CHA' },
+};
+
 interface AbilityRoll {
   ability: AbilityKey;
   d20: number;
@@ -29,62 +38,61 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
 
   function rollAbility(ability: AbilityKey) {
     const mod = computed.modifiers[ability];
-    const hasDisadvantage = (character.active_conditions ?? []).some(c => {
-      const mech = CONDITION_MAP[c];
-      return mech?.abilityCheckDisadvantage;
-    });
-    const hasAutoFail = (character.active_conditions ?? []).some(c => {
-      const mech = CONDITION_MAP[c];
-      return mech?.autoFailSaves?.includes(ability);
-    });
+    const hasDisadvantage = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.abilityCheckDisadvantage);
+    const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
+
     if (hasAutoFail) {
       setLastRoll({ ability, d20: 1, modifier: mod, total: 1 + mod, isCrit: false, isFail: true });
-      triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: ability.charAt(0).toUpperCase() + ability.slice(1) + ' (Auto-Fail)' });
+      triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)` });
       return;
     }
+
     const roll1 = rollDie(20);
     const roll2 = hasDisadvantage ? rollDie(20) : roll1;
     const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
+    const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
     setLastRoll({ ability, d20, modifier: mod, total: d20 + mod, isCrit: d20 === 20, isFail: d20 === 1 });
-    const label = ability.charAt(0).toUpperCase() + ability.slice(1) + ' Check' + (hasDisadvantage ? ' (Disadvantage)' : '');
     triggerRoll({ result: d20, dieType: 20, modifier: mod, total: d20 + mod, label });
   }
 
   return (
     <section>
-      <div className="section-header">Ability Scores</div>
-
-      {/* Roll result */}
-      {lastRoll && (
-        <div style={{
-          marginBottom: 'var(--sp-3)',
-          padding: 'var(--sp-2) var(--sp-4)',
-          borderRadius: 'var(--r-md)',
-          border: `1px solid ${lastRoll.isCrit ? 'var(--hp-full)' : lastRoll.isFail ? 'rgba(107,20,20,1)' : 'var(--c-gold-bdr)'}`,
-          background: lastRoll.isCrit ? 'rgba(22,163,74,0.1)' : lastRoll.isFail ? 'rgba(127,29,29,0.1)' : 'rgba(201,146,42,0.06)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)', textTransform: 'capitalize' }}>
-              {lastRoll.ability} check
+      {/* Roll result flash banner */}
+      {lastRoll && (() => {
+        const lastMeta = STAT_META[lastRoll.ability as AbilityKey];
+        const col = lastRoll.isCrit ? 'var(--stat-dex)' : lastRoll.isFail ? 'var(--stat-str)' : lastMeta.color;
+        return (
+          <div style={{
+            marginBottom: 'var(--sp-4)', padding: 'var(--sp-3) var(--sp-4)',
+            borderRadius: 'var(--r-lg)', border: `1px solid ${col}40`,
+            background: `${col}0a`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            transition: 'all var(--tr-normal)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: col, textTransform: 'capitalize' }}>
+                {lastRoll.ability} Check
+              </span>
+              <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
+                d20({lastRoll.d20}) {lastRoll.modifier >= 0 ? '+' : ''}{lastRoll.modifier}
+              </span>
+              {lastRoll.isCrit && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--stat-dex)' }}>Natural 20</span>}
+              {lastRoll.isFail && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--stat-str)' }}>Natural 1</span>}
+            </div>
+            <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '1.8rem', lineHeight: 1, color: col }}>
+              {lastRoll.total}
             </span>
-            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 'var(--sp-2)' }}>
-              d20({lastRoll.d20}) {lastRoll.modifier >= 0 ? '+' : ''}{lastRoll.modifier}
-            </span>
-            {lastRoll.isCrit && <span style={{ marginLeft: 'var(--sp-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>Natural 20</span>}
-            {lastRoll.isFail && <span style={{ marginLeft: 'var(--sp-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#fca5a5' }}>Natural 1</span>}
           </div>
-          <span style={{ fontFamily: 'var(--ff-brand)', fontWeight: 900, fontSize: '2rem', lineHeight: 1, color: lastRoll.isCrit ? 'var(--hp-full)' : lastRoll.isFail ? '#fca5a5' : 'var(--c-gold-l)' }}>
-            {lastRoll.total}
-          </span>
-        </div>
-      )}
+        );
+      })()}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-3)' }}>
+      {/* 6-column ability score strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 'var(--sp-2)' }}>
         {ABILITY_ORDER.map(ability => {
+          const meta = STAT_META[ability];
           const score = character[ability];
-          const mod   = computed.modifiers[ability];
-          const save  = computed.saving_throws[ability];
+          const mod = computed.modifiers[ability];
+          const save = computed.saving_throws[ability];
           const isActive = lastRoll?.ability === ability;
 
           return (
@@ -97,40 +105,42 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
               onKeyDown={e => e.key === 'Enter' && rollAbility(ability)}
               title={`Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
               style={{
-                gap: 'var(--sp-2)',
-                cursor: 'pointer',
-                border: isActive ? '2px solid var(--c-gold)' : undefined,
-                background: isActive ? 'rgba(201,146,42,0.08)' : undefined,
-                transition: 'all var(--tr-fast)',
+                borderTopColor: meta.color,
+                background: isActive ? meta.bg : undefined,
+                boxShadow: isActive ? `0 0 0 1px ${meta.bdr}, 0 4px 16px ${meta.color}20` : undefined,
               }}
             >
-              <div className="stat-box-label">{abilityAbbrev(ability)}</div>
-              <div className="stat-box-modifier">{formatModifier(mod)}</div>
+              {/* Abbrev label in stat color */}
+              <div className="stat-box-label" style={{ color: meta.color }}>
+                {meta.abbrev}
+              </div>
+
+              {/* Modifier — large, prominent */}
+              <div className="stat-box-modifier" style={{ color: 'var(--t-1)' }}>
+                {formatModifier(mod)}
+              </div>
+
+              {/* Score — small, secondary */}
               <div className="stat-box-value">{score}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' }}>
-                <span
-                  className={`prof-dot ${save.proficient ? 'proficient' : ''}`}
-                  title={save.proficient ? 'Saving throw proficiency' : 'No saving throw proficiency'}
-                  style={{ pointerEvents: 'none' }}
-                />
-                <span style={{
-                  fontSize: 'var(--fs-xs)',
-                  color: save.proficient ? 'var(--c-gold-l)' : 'var(--t-2)',
-                  fontFamily: 'var(--ff-body)',
-                }}>
-                  Save {formatModifier(save.total)}
+
+              {/* Save indicator */}
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                <div style={{
+                  width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+                  background: save.proficient ? meta.color : 'transparent',
+                  border: `1px solid ${save.proficient ? meta.color : 'var(--c-border-m)'}`,
+                }} />
+                <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 9, color: save.proficient ? meta.color : 'var(--t-3)' }}>
+                  {formatModifier(save.total)}
                 </span>
               </div>
             </div>
           );
         })}
       </div>
-      <p style={{
-        marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)',
-        color: 'var(--t-2)', fontFamily: 'var(--ff-body)',
-        letterSpacing: '0.04em',
-      }}>
-        Click any score to roll an ability check. Edit scores in Character Settings.
+
+      <p style={{ fontSize: 10, color: 'var(--t-3)', fontFamily: 'var(--ff-body)', letterSpacing: '0.03em', marginBottom: 0 }}>
+        Click any score to roll · bottom dot = save proficiency · edit scores in Settings
       </p>
     </section>
   );
