@@ -8,6 +8,7 @@ import { APP_VERSION } from './version';
 import './styles/globals.css';
 
 const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
+const SrdPage        = lazy(() => import('./components/pages/SrdAttributionPage'));
 const LobbyPage      = lazy(() => import('./components/pages/LobbyPage'));
 const SharePage      = lazy(() => import('./components/pages/SharePage'));
 const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
@@ -192,6 +193,7 @@ function AppRoutes() {
             <Route path="/share/:token"   element={<SharePage />} />
             <Route path="/"               element={<HomeRedirect />} />
             <Route path="/auth"           element={<AuthPage />} />
+            <Route path="/srd"            element={<SrdPage />} />
             <Route path="/lobby"          element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
             <Route path="/creator"        element={<ProtectedRoute><CreatorPage /></ProtectedRoute>} />
             <Route path="/character/:id"  element={<ProtectedRoute><CharacterPage /></ProtectedRoute>} />

@@ -280,10 +280,14 @@ export default function LandingPage() {
         <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 14, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.1em' }}>
           DNDKEEP
         </span>
-        <span style={{ fontSize: 12, color: 'var(--t-3)' }}>
-          Compatible with 5th Edition. Not affiliated with Wizards of the Coast.
-          Content used under Creative Commons CC-BY-4.0.
-        </span>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--t-3)' }}>
+            Compatible with 5th Edition. Not affiliated with Wizards of the Coast.
+          </span>
+          <button onClick={() => navigate('/srd')} style={{ fontSize: 12, color: 'var(--t-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+            SRD Attribution (CC-BY-4.0)
+          </button>
+        </div>
       </div>
     </div>
   );
