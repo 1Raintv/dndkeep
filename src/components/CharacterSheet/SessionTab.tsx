@@ -34,12 +34,11 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
 
   async function loadCampaigns() {
     setLoading(true);
-    // Get campaigns where user is owner (DM)
+    // Get all campaigns the user is a member of (DM or player via RLS)
     const { data } = await supabase
       .from('campaigns')
       .select('id, name, owner_id, is_active, join_code')
-      .eq('owner_id', userId)
-      .order('created_at', { ascending: false });
+      .order('updated_at', { ascending: false });
     setCampaigns(data ?? []);
     setLoading(false);
   }

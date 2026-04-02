@@ -588,26 +588,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         ))}
       </div>
 
-      {/* Tab content */}
-      <div key={activeTab} className="animate-fade-in">
+      {/* Tab content + persistent roll log side by side */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 260px', gap: 'var(--sp-4)', alignItems: 'start' }}>
+        <div key={activeTab} className="animate-fade-in">
 
-        {/* ── ABILITIES: Skills + Roll Log + Conditions ── */}
+        {/* ── ABILITIES: Skills + Conditions ── */}
         {activeTab === 'abilities' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', gap: 'var(--sp-5)', alignItems: 'start' }}>
-            {/* LEFT: Skills + Conditions + Spell Slots */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
-              <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
-              {(character.active_conditions?.length > 0) && (
-                <ConditionMechanics conditions={character.active_conditions} />
-              )}
-              <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
-              {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
-              <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
-            </div>
-            {/* RIGHT: Roll Log — sticky */}
-            <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)', display: 'flex', flexDirection: 'column', maxHeight: 640, position: 'sticky', top: 16 }}>
-              <RollLog characterId={character.id} userId={userId} />
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+            <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
+            {(character.active_conditions?.length > 0) && (
+              <ConditionMechanics conditions={character.active_conditions} />
+            )}
+            <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
+            {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
+            <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
           </div>
         )}
 
@@ -788,7 +782,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             <SessionTab character={character} isPro={isPro} userId={userId} />
           </div>
         )}
-      </div>
+
+        {/* Quick Roll floating dice roller */}
+        <QuickRoll
+          characterId={userId}
+          characterName={character.name}
+          campaignId={character.campaign_id}
+        />
+      </div>{/* end tab content col */}
 
       {/* Level Up Wizard */}
       {showLevelUp && (
@@ -799,12 +800,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         />
       )}
 
-      {/* Quick Roll floating dice roller */}
-      <QuickRoll
-        characterId={userId}
-        characterName={character.name}
-        campaignId={character.campaign_id}
-      />
+        {/* Persistent Roll Log — stays visible on every tab */}
+        <div style={{
+          background: 'var(--c-card)', border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)',
+          display: 'flex', flexDirection: 'column', height: 'fit-content',
+          maxHeight: 'calc(100vh - 320px)', minHeight: 280,
+          position: 'sticky', top: 16,
+        }}>
+          <RollLog characterId={character.id} userId={userId} />
+        </div>
+      </div>{/* end tab+log grid */}
 
       {/* ── Campaign sessions bar — always visible at bottom ── */}
       {userId && <CampaignBar userId={userId} />}
