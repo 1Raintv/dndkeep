@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie } from '../../lib/gameUtils';
 import type { Character, ComputedStats } from '../../types';
-import { abilityModifier } from '../../lib/gameUtils';
 
 interface CharacterHeaderProps {
   character: Character;
@@ -18,324 +16,107 @@ interface CharacterHeaderProps {
   onShare?: () => void;
 }
 
-const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
-
-function hpColor(current: number, max: number): string {
-  const pct = max > 0 ? current / max : 0;
-  if (pct > 0.6) return 'var(--hp-full)';
-  if (pct > 0.25) return 'var(--hp-mid)';
-  return 'var(--hp-low)';
-}
-
 export default function CharacterHeader({
-  character, computed, onOpenSettings, onUpdateXP, onOpenAvatarPicker,
-  onToggleInspiration, onOpenRest, onUpdateHP, onUpdateAC, onUpdateSpeed, onShare,
+  character, computed, onOpenSettings, onOpenAvatarPicker,
+  onToggleInspiration, onOpenRest, onShare,
 }: CharacterHeaderProps) {
-  const [hpDelta, setHpDelta] = useState('');
-  const [hpMode, setHpMode] = useState<'damage' | 'heal'>('damage');
-  const { triggerRoll } = useDiceRoll();
-  const [editingAC, setEditingAC] = useState(false);
-  const [acInput, setAcInput] = useState('');
-  const [editingSpeed, setEditingSpeed] = useState(false);
-  const [speedInput, setSpeedInput] = useState('');
-
-  function rollInitiative() {
-    const d20 = rollDie(20);
-    const total = d20 + initMod;
-    triggerRoll({ result: d20, dieType: 20, modifier: initMod, total, label: 'Initiative' });
-  }
-
-  const isSpellcaster = SPELLCASTERS.includes(character.class_name);
-  const spellAbility = {
-    Bard: 'charisma', Cleric: 'wisdom', Druid: 'wisdom', Paladin: 'charisma',
-    Ranger: 'wisdom', Sorcerer: 'charisma', Warlock: 'charisma', Wizard: 'intelligence', Artificer: 'intelligence',
-  }[character.class_name] ?? 'intelligence';
-  const spellMod = abilityModifier(character[spellAbility as keyof Character] as number ?? 10);
-  const spellAttack = spellMod + computed.proficiency_bonus;
-  const spellDC = 8 + spellAttack;
-
-  const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
-  const hpPct = character.max_hp > 0 ? Math.min(1, character.current_hp / character.max_hp) : 0;
-  const hpCol = hpColor(character.current_hp, character.max_hp);
 
   const classDisplay = character.secondary_class && (character.secondary_level ?? 0) > 0
     ? `${character.class_name} ${character.level} / ${character.secondary_class} ${character.secondary_level}`
     : `${character.class_name} ${character.level}`;
 
-  const totalLevel = character.level + (character.secondary_level ?? 0);
-
   return (
     <div style={{
-      background: 'linear-gradient(135deg, var(--c-surface) 0%, var(--c-card) 100%)',
-      border: '1px solid var(--c-border-m)',
-      borderRadius: 'var(--r-xl)',
-      overflow: 'hidden',
-      boxShadow: 'var(--shadow-md)',
+      background: 'var(--c-surface)',
+      borderBottom: '1px solid var(--c-border)',
+      padding: '14px 24px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
     }}>
-      <div className="char-header-inner" style={{ padding: 'var(--sp-3) var(--sp-4)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* Avatar */}
+      <button
+        onClick={onOpenAvatarPicker}
+        style={{
+          width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+          background: 'var(--c-raised)', border: '2px solid var(--c-border-m)',
+          overflow: 'hidden', cursor: 'pointer', padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        title="Change portrait"
+      >
+        {character.avatar_url ? (
+          <img src={character.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-gold-l)' }}>
+            {character.name?.charAt(0).toUpperCase() ?? '?'}
+          </span>
+        )}
+      </button>
 
-        {/* Avatar + Name column */}
-        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', minWidth: 180 }}>
-          {/* Avatar */}
-          <button
-            onClick={onOpenAvatarPicker}
-            style={{
-              width: 52, height: 52, borderRadius: 'var(--r-lg)', flexShrink: 0,
-              background: '#080d14', border: `2px solid ${hpCol}40`,
-              overflow: 'hidden', cursor: 'pointer', padding: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all var(--tr-fast)',
-            }}
-            title="Change portrait"
-          >
-            {character.avatar_url ? (
-              <img src={character.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--c-gold-l)', fontFamily: 'var(--ff-body)' }}>
-                {character.name?.charAt(0).toUpperCase() ?? '?'}
-              </span>
-            )}
-          </button>
-
-          {/* Name + identity */}
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)',
-              color: 'var(--t-1)', letterSpacing: '0.03em',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {character.name}
-              {character.inspiration && (
-                <span title="Inspiration!" style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>INSP</span>
-              )}
-            </div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 1 }}>
-              {classDisplay}
-              {character.subclass ? ` · ${character.subclass}` : ''}
-            </div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-              {character.species}{character.background ? ` · ${character.background}` : ''}
-            </div>
-          </div>
-        </div>
-
-        {/* Divider */}
-        <div style={{ width: 1, height: 52, background: 'var(--c-border)', flexShrink: 0, display: 'none' }} className="desktop-only" />
-
-        {/* ── STAT CHIPS ────────────────────────── */}
-        <div className="char-header-chips" style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', flex: 1 }}>
-
-          {/* HP — large prominent block */}
-          <div style={{
-            padding: 'var(--sp-3) var(--sp-4)',
-            background: '#080d14',
-            border: `1px solid ${hpCol}50`,
-            borderRadius: 'var(--r-xl)',
-            minWidth: 200,
-          }}>
-            {/* HP numbers */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>HP</span>
-              <span style={{ fontWeight: 900, fontSize: '2.4rem', color: hpCol, lineHeight: 1 }}>
-                {character.current_hp}
-              </span>
-              <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontWeight: 600 }}>/ {character.max_hp}</span>
-              {character.temp_hp > 0 && (
-                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', padding: '1px 7px', borderRadius: 999 }}>
-                  +{character.temp_hp} temp
-                </span>
-              )}
-            </div>
-
-            {/* HP bar — thicker */}
-            <div style={{ height: 6, background: 'var(--c-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 8, position: 'relative' }}>
-              <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpCol, borderRadius: 999, transition: 'width var(--tr-slow), background var(--tr-normal)', boxShadow: `0 0 8px ${hpCol}80` }} />
-              {/* Temp HP overlay */}
-              {character.temp_hp > 0 && (
-                <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', width: `${Math.min(100, (character.temp_hp / character.max_hp) * 100)}%`, background: 'rgba(96,165,250,0.5)', borderRadius: 999 }} />
-              )}
-            </div>
-
-            {/* Quick adjust + temp HP */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Damage buttons */}
-              <div style={{ display: 'flex', gap: 3 }}>
-                {[-10, -5, -1].map(v => (
-                  <button key={v} onClick={() => onUpdateHP?.(v)}
-                    style={{ fontSize: 10, fontWeight: 700, padding: '3px 6px', borderRadius: 4,
-                      minHeight: 0, cursor: 'pointer',
-                      background: 'rgba(229,57,53,0.1)', border: '1px solid rgba(229,57,53,0.35)',
-                      color: '#ff8a80' }}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-              {/* Heal buttons */}
-              <div style={{ display: 'flex', gap: 3 }}>
-                {[1, 5, 10].map(v => (
-                  <button key={v} onClick={() => onUpdateHP?.(v)}
-                    style={{ fontSize: 10, fontWeight: 700, padding: '3px 6px', borderRadius: 4,
-                      minHeight: 0, cursor: 'pointer',
-                      background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.35)',
-                      color: 'var(--hp-full)' }}>
-                    +{v}
-                  </button>
-                ))}
-              </div>
-
-              {/* Temp HP input */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Temp</span>
-                <input
-                  type="number"
-                  placeholder="0"
-                  min={0}
-                  value={character.temp_hp || ''}
-                  onChange={e => {
-                    const v = parseInt(e.target.value);
-                    onUpdateHP?.(0, isNaN(v) ? 0 : Math.max(0, v));
-                  }}
-                  style={{ width: 40, padding: '2px 4px', fontSize: 11, textAlign: 'center', borderRadius: 4, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.06)', color: '#93c5fd' }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* AC */}
-          <StatChip label="AC" value={character.armor_class} color="var(--c-gold-l)" />
-
-          {/* Initiative — click to roll */}
-          <StatChip
-            label="INIT"
-            value={initMod >= 0 ? `+${initMod}` : String(initMod)}
-            color="#60a5fa"
-            onClick={rollInitiative}
-            clickable
-          />
-
-          {/* Passive Perception */}
-          <StatChip label="PASS PERC" value={10 + (computed.skills['Perception']?.total ?? 0)} color="var(--t-2)" small />
-
-          {/* Proficiency Bonus */}
-          <StatChip label="PROF" value={`+${computed.proficiency_bonus}`} color="#a78bfa" small />
-
-          {/* Spell attack + DC — spellcasters only */}
-          {isSpellcaster && (
-            <>
-              <StatChip
-                label="SPELL ATK"
-                value={spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack)}
-                color="#c084fc"
-              />
-              <StatChip label="SPELL DC" value={spellDC} color="#c084fc" />
-            </>
-          )}
-
-          {/* Speed — click to edit */}
-          {editingSpeed ? (
-            <div style={{ padding: '4px var(--sp-2)', background: '#080d14', border: '2px solid var(--c-blue-l)', borderRadius: 'var(--r-md)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 52 }}>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)' }}>SPEED</div>
-              <input
-                type="number" autoFocus value={speedInput}
-                onChange={e => setSpeedInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v) && v >= 0) onUpdateSpeed?.(v); setEditingSpeed(false); }
-                  if (e.key === 'Escape') setEditingSpeed(false);
-                }}
-                onBlur={() => { const v = parseInt(speedInput); if (!isNaN(v) && v >= 0) onUpdateSpeed?.(v); setEditingSpeed(false); }}
-                style={{ width: 36, textAlign: 'center', fontSize: 'var(--fs-sm)', fontWeight: 900, padding: '0 2px', background: 'transparent', border: 'none', color: '#93c5fd' }}
-              />
-            </div>
-          ) : (
-            <StatChip label="SPEED" value={`${character.speed}ft`} color="var(--t-2)" small clickable
-              onClick={() => { setSpeedInput(String(character.speed)); setEditingSpeed(true); }} />
+      {/* Identity */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--t-1)', letterSpacing: '0.01em' }}>
+            {character.name}
+          </span>
+          {character.inspiration && (
+            <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 6px', borderRadius: 999, letterSpacing: '0.08em' }}>
+              INSPIRED
+            </span>
           )}
         </div>
-
-        {/* Actions */}
-        <div className="char-header-actions" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
-          <button
-            className="btn-secondary btn-sm"
-            onClick={onOpenRest}
-            title="Short or long rest (T)"
-          >
-            Rest
-          </button>
-          <button
-            className="btn-ghost btn-sm"
-            onClick={onToggleInspiration}
-            title="Toggle inspiration (I)"
-            style={{ color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-2)' }}
-          >
-            {character.inspiration ? 'Inspired' : 'Inspiration'}
-          </button>
-          {onShare && (
-            <button
-              className="btn-ghost btn-sm"
-              onClick={onShare}
-              style={{ color: 'var(--c-gold-l)' }}
-              title="Share character sheet"
-            >
-              🔗 Share
-            </button>
-          )}
-          <button
-            className="btn-ghost btn-sm"
-            onClick={onOpenSettings}
-            style={{ color: character.level < 20 ? 'var(--c-gold-l)' : 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 4 }}
-            title={character.level < 20 ? `Level up available — open Settings to level up` : 'Settings'}
-          >
-            Settings
-            {character.level < 20 && (
-              <span style={{ fontSize: 8, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999, letterSpacing: '0.05em' }}>
-                LVL UP
-              </span>
-            )}
-          </button>
+        <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 1 }}>
+          {classDisplay}{character.subclass ? ` — ${character.subclass}` : ''} · {character.species}{character.background ? ` · ${character.background}` : ''}
         </div>
       </div>
 
-      {/* Death saves strip — only when at 0 HP */}
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+        {onShare && (
+          <button className="btn-ghost btn-sm" onClick={onShare} style={{ color: 'var(--t-2)', fontSize: 12 }}>
+            Share
+          </button>
+        )}
+        <button
+          className="btn-ghost btn-sm"
+          onClick={onToggleInspiration}
+          style={{ color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-2)', fontSize: 12 }}
+        >
+          {character.inspiration ? 'Inspired' : 'Inspiration'}
+        </button>
+        <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12 }}>
+          Rest
+        </button>
+        <button
+          className="btn-ghost btn-sm"
+          onClick={onOpenSettings}
+          style={{ color: character.level < 20 ? 'var(--c-gold-l)' : 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+          title={character.level < 20 ? 'Level up available — open Settings' : 'Settings'}
+        >
+          Settings
+          {character.level < 20 && (
+            <span style={{ fontSize: 8, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>
+              LVL UP
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Death saves strip */}
       {character.current_hp <= 0 && (
-        <div style={{ padding: 'var(--sp-2) var(--sp-5)', borderTop: '1px solid rgba(229,57,53,0.3)', background: 'rgba(229,57,53,0.06)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: '#ff8a80' }}>DEATH SAVES</span>
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 24px', borderTop: '1px solid rgba(229,57,53,0.3)', background: 'rgba(229,57,53,0.06)', display: 'flex', gap: 16, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#ff8a80', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Death Saves</span>
           <div style={{ display: 'flex', gap: 3 }}>
-            {[0,1,2].map(i => (
-              <div key={i} style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid #34d399', background: i < (character.death_saves_successes ?? 0) ? '#34d399' : 'transparent' }} />
-            ))}
+            {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #34d399', background: i < (character.death_saves_successes ?? 0) ? '#34d399' : 'transparent' }} />)}
           </div>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Successes</span>
+          <span style={{ fontSize: 10, color: 'var(--t-2)' }}>Successes</span>
           <div style={{ display: 'flex', gap: 3 }}>
-            {[0,1,2].map(i => (
-              <div key={i} style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid #e53935', background: i < (character.death_saves_failures ?? 0) ? '#e53935' : 'transparent' }} />
-            ))}
+            {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #e53935', background: i < (character.death_saves_failures ?? 0) ? '#e53935' : 'transparent' }} />)}
           </div>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>Failures</span>
+          <span style={{ fontSize: 10, color: 'var(--t-2)' }}>Failures</span>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Small reusable stat chip ───────────────────────────────────────
-function StatChip({ icon, label, value, color, small, onClick, clickable }: {
-  icon?: string; label: string; value: string | number; color: string; small?: boolean; onClick?: () => void; clickable?: boolean;
-}) {
-  return (
-    <div style={{
-      padding: small ? '4px var(--sp-2)' : 'var(--sp-2) var(--sp-3)',
-      background: '#080d14',
-      border: `1px solid ${color}25`,
-      borderRadius: 'var(--r-md)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
-      minWidth: small ? 52 : 64,
-    }}>
-      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 2 }}>
-        <span>{icon}</span><span>{label}</span>
-      </div>
-      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: small ? 'var(--fs-md)' : 'var(--fs-lg)', color, lineHeight: 1 }}>
-        {value}
-      </div>
     </div>
   );
 }

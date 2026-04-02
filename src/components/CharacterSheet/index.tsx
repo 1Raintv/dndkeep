@@ -10,6 +10,8 @@ import { getCharacterResources, buildDefaultResources } from '../../data/classRe
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
+import HPStatsPanel from './HPStatsPanel';
+import RollLog from './RollLog';
 import CombatStats from './CombatStats';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
@@ -563,21 +565,43 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       {/* Tab content */}
       <div key={activeTab} className="animate-fade-in">
 
-        {/* ── ABILITIES: Stats + Skills merged ── */}
+        {/* ── ABILITIES: Dashboard layout ── */}
         {activeTab === 'abilities' && (
-          <div className="abilities-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 'var(--sp-6)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
-              <AbilityScores character={character} computed={computed} />
-              <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
-              <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
-              <CombatStats character={character} computed={computed} onUpdateHP={handleUpdateHP} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.6fr) minmax(0,1fr)', gap: 'var(--sp-5)', alignItems: 'start' }}>
+
+            {/* LEFT: HP + Stats + Conditions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+              <HPStatsPanel
+                character={character}
+                computed={computed}
+                onUpdateHP={(delta, tempHP) => {
+                  if (tempHP !== undefined) {
+                    handleUpdateHP(character.current_hp, tempHP);
+                  } else {
+                    const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
+                    handleUpdateHP(newHP, character.temp_hp);
+                  }
+                }}
+                onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
+                onUpdateSpeed={speed => applyUpdate({ speed }, true)}
+              />
               {(character.active_conditions?.length > 0) && (
                 <ConditionMechanics conditions={character.active_conditions} />
               )}
               <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
               {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
+              <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
+            </div>
+
+            {/* MIDDLE: Ability scores + Skills */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+              <AbilityScores character={character} computed={computed} />
+              <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
+            </div>
+
+            {/* RIGHT: Roll log */}
+            <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)', display: 'flex', flexDirection: 'column', maxHeight: 700, position: 'sticky', top: 16 }}>
+              <RollLog characterId={character.id} userId={userId} />
             </div>
           </div>
         )}
