@@ -459,15 +459,60 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
   const [mode, setMode] = useState<'asi' | 'feat'>(!choices.feats[level] ? 'asi' : 'feat');
   const [featSearch, setFeatSearch] = useState('');
   const [expandedFeat, setExpandedFeat] = useState<string | null>(null);
-  const generalFeats = FEATS.filter(f => f.category === 'general' && (!featSearch || f.name.toLowerCase().includes(featSearch.toLowerCase())));
+  const generalFeats = FEATS.filter(f => f.category === 'general' && (!featSearch || f.name.toLowerCase().includes(featSearch.toLowerCase()) || f.benefits?.some(b => b.toLowerCase().includes(featSearch.toLowerCase()))));
   const asi = choices.asiChoices[level];
   const feat = choices.feats[level];
-
   const totalBoost = asi ? asi.amount + (asi.amount2 ?? 0) : 0;
 
-  function setASI(ability: string, amount: number, ability2?: string) {
-    const next = { ability, amount, ...(ability2 ? { ability2, amount2: 2 - amount } : {}) };
-    onUpdate({ asiChoices: { ...choices.asiChoices, [level]: next } });
+  function handleASIClick(ab: string, amt: number) {
+    const current = choices.asiChoices[level];
+
+    if (amt === 2) {
+      // +2 to one ability — clear any split and set this one
+      onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 2 } } });
+      return;
+    }
+
+    // amt === 1 cases
+    if (!current) {
+      // Nothing selected yet — set first +1
+      onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1 } } });
+      return;
+    }
+
+    if (current.ability === ab) {
+      if (current.amount === 2) {
+        // Was +2, downgrade to +1
+        onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1 } } });
+      } else {
+        // Was +1 main, deselect main
+        if (current.ability2) {
+          // Promote ability2 to main
+          onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: current.ability2, amount: 1 } } });
+        } else {
+          const { [level]: _, ...rest } = choices.asiChoices;
+          onUpdate({ asiChoices: rest });
+        }
+      }
+      return;
+    }
+
+    if (current.ability2 === ab) {
+      // Deselect the second ability — keep first
+      onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: current.ability, amount: current.amount } } });
+      return;
+    }
+
+    // New ability — if we have room (totalBoost < 2), add as +1 split
+    if (totalBoost < 2) {
+      if (current.amount === 1 && !current.ability2) {
+        // Add second +1
+        onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: current.ability, amount: 1, ability2: ab, amount2: 1 } } });
+      } else {
+        // Replace with new single +1
+        onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1 } } });
+      }
+    }
   }
 
   return (
@@ -486,31 +531,34 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
 
       {mode === 'asi' && (
         <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginBottom: 8 }}>+2 to one ability, or +1 to two different abilities. {totalBoost > 0 && `(${totalBoost}/2 points used)`}</div>
+          <div style={{ fontSize: 11, color: totalBoost === 2 ? 'var(--hp-full)' : 'var(--t-3)', marginBottom: 8, fontWeight: 600 }}>
+            {totalBoost === 2 ? '✓ Points allocated' : `${2 - totalBoost} point${2 - totalBoost !== 1 ? 's' : ''} remaining — +2 one ability or +1 to two`}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
             {ABILITIES.map(ab => {
               const isMain = asi?.ability === ab;
               const isSub = asi?.ability2 === ab;
               const isSel = isMain || isSub;
+              const boost = isMain ? (asi?.amount ?? 0) : isSub ? (asi?.amount2 ?? 0) : 0;
               return (
-                <div key={ab} style={{ padding: '6px 8px', borderRadius: 'var(--r-md)', border: `1px solid ${isSel ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: isSel ? 'var(--c-gold-bg)' : 'var(--c-raised)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: isSel ? 'var(--c-gold-l)' : 'var(--t-2)' }}>{ABILITY_ABBREV[ab]}</span>
-                  <div style={{ display: 'flex', gap: 3 }}>
-                    {[1, 2].map(amt => (
-                      <button key={amt} onClick={() => {
-                        if (amt === 2) { setASI(ab, 2); }
-                        else if (isMain && asi.amount === 1) {
-                          // Already +1 main, click again to deselect
-                          const { [level]: _, ...rest } = choices.asiChoices;
-                          onUpdate({ asiChoices: rest });
-                        } else { setASI(ab, 1, undefined); }
-                      }}
-                        style={{ width: 20, height: 20, borderRadius: '50%', border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700, minHeight: 0,
-                          background: (isMain && asi.amount >= amt) ? 'var(--c-gold)' : (isSub && amt === 1) ? 'var(--c-gold)' : 'var(--c-raised)',
-                          color: (isMain && asi.amount >= amt) || (isSub && amt === 1) ? '#0d0900' : 'var(--t-3)' }}>
-                        +{amt}
-                      </button>
-                    ))}
+                <div key={ab} style={{ padding: '8px 10px', borderRadius: 'var(--r-md)', border: `1px solid ${isSel ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: isSel ? 'var(--c-gold-bg)' : 'var(--c-raised)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: isSel ? 'var(--c-gold-l)' : 'var(--t-2)', letterSpacing: '0.06em' }}>{ABILITY_ABBREV[ab]}</span>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    {isSel && <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800, color: 'var(--c-gold-l)', marginRight: 2 }}>+{boost}</span>}
+                    {[1, 2].map(amt => {
+                      const active = isMain && asi!.amount >= amt;
+                      const active2 = isSub && amt === 1;
+                      return (
+                        <button key={amt} onClick={() => handleASIClick(ab, amt)}
+                          style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 800, minHeight: 0,
+                            background: active || active2 ? 'var(--c-gold)' : 'var(--c-card)',
+                            color: active || active2 ? '#0d0900' : 'var(--t-3)',
+                            outline: active || active2 ? 'none' : '1px solid var(--c-border-m)',
+                          }}>
+                          +{amt}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -521,36 +569,71 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
 
       {mode === 'feat' && (
         <div>
-          {feat && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', marginBottom: 8, fontWeight: 600 }}>✓ Selected: {feat}</div>}
-          <input value={featSearch} onChange={e => setFeatSearch(e.target.value)} placeholder="Search feats…" style={{ fontSize: 'var(--fs-xs)', marginBottom: 8 }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
+          {feat && <div style={{ fontSize: 11, color: 'var(--hp-full)', marginBottom: 8, fontWeight: 600 }}>✓ Selected: {feat}</div>}
+          <input value={featSearch} onChange={e => setFeatSearch(e.target.value)} placeholder="Search feats by name or benefit…" style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }} />
+          <div style={{ fontSize: 10, color: 'var(--t-3)', marginBottom: 6 }}>
+            {generalFeats.length} feats · click name to expand · click Select to choose
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflowY: 'auto' }}>
             {generalFeats.map(f => {
               const sel = feat === f.name;
               const isExp = expandedFeat === f.name;
               return (
-                <div key={f.name} style={{ borderRadius: 'var(--r-sm)', border: sel ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)', background: sel ? 'var(--c-gold-bg)' : 'var(--c-raised)', overflow: 'hidden' }}>
-                  <button onClick={() => setExpandedFeat(isExp ? null : f.name)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 0 }}>
-                    <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExp ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
-                    <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: sel ? 600 : 400, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{sel ? '✓ ' : ''}{f.name}</span>
-                    {f.prerequisite && <span style={{ fontSize: 9, color: 'var(--t-3)' }}>{f.prerequisite}</span>}
-                  </button>
+                <div key={f.name} style={{ borderRadius: 8, border: sel ? '2px solid var(--c-gold)' : isExp ? '1px solid var(--c-border-m)' : '1px solid var(--c-border)', background: sel ? 'var(--c-gold-bg)' : 'var(--c-card)', overflow: 'hidden', transition: 'all var(--tr-fast)' }}>
+                  {/* Header — click to expand */}
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', cursor: 'pointer' }}
+                    onClick={() => setExpandedFeat(isExp ? null : f.name)}
+                  >
+                    {/* Select dot */}
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        const newFeats = { ...choices.feats, [level]: sel ? '' : f.name };
+                        if (sel) delete newFeats[level];
+                        onUpdate({ feats: newFeats });
+                      }}
+                      style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, cursor: 'pointer', minHeight: 0, padding: 0, border: `2px solid ${sel ? 'var(--c-gold)' : 'var(--c-border-m)'}`, background: sel ? 'var(--c-gold)' : 'transparent' }}
+                    />
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isExp ? 'normal' : 'nowrap' }}>
+                      {f.name}
+                    </span>
+                    {f.prerequisite && <span style={{ fontSize: 9, color: 'var(--t-3)', flexShrink: 0 }}>{f.prerequisite}</span>}
+                    <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)', flexShrink: 0 }}>▼</span>
+                  </div>
+                  {/* Expanded body */}
                   {isExp && (
-                    <div style={{ padding: '0 8px 8px 22px', borderTop: '1px solid var(--c-border)' }}>
-                      <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5, margin: '5px 0' }}>{f.description}</p>
-                      <button className={sel ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
+                    <div style={{ padding: '0 10px 10px', borderTop: '1px solid var(--c-border)' }}>
+                      <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, margin: '8px 0 6px' }}>{f.description}</p>
+                      {f.benefits && f.benefits.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
+                          {f.benefits.map((b, i) => (
+                            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                              <span style={{ color: 'var(--c-gold-l)', fontSize: 10, flexShrink: 0, marginTop: 1 }}>•</span>
+                              <span style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>{b}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        className={sel ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
                         onClick={() => {
                           const newFeats = { ...choices.feats, [level]: sel ? '' : f.name };
                           if (sel) delete newFeats[level];
                           onUpdate({ feats: newFeats });
                           setExpandedFeat(null);
-                        }}>
-                        {sel ? 'Remove' : 'Select this feat'}
+                        }}
+                      >
+                        {sel ? 'Remove selection' : 'Select this feat'}
                       </button>
                     </div>
                   )}
                 </div>
               );
             })}
+            {generalFeats.length === 0 && (
+              <div style={{ textAlign: 'center', padding: 16, color: 'var(--t-3)', fontSize: 12 }}>No feats match your search.</div>
+            )}
           </div>
         </div>
       )}
