@@ -57,13 +57,16 @@ export default function SpellsTab({
           : character.wisdom) - 10) / 2))
     : 0;
 
-  // Slot info per level
+  // Slot info per level — SpellSlotLevel uses { total, used }
   const slotInfo = useMemo(() => {
     const info: Record<number, { max: number; remaining: number }> = {};
     if (character.spell_slots) {
       Object.entries(character.spell_slots).forEach(([k, v]) => {
         const lvl = parseInt(k.replace('level_', ''));
-        if (!isNaN(lvl)) info[lvl] = v as unknown as { max: number; remaining: number };
+        const slot = v as { total: number; used: number };
+        if (!isNaN(lvl) && slot?.total) {
+          info[lvl] = { max: slot.total, remaining: slot.total - (slot.used ?? 0) };
+        }
       });
     }
     return info;

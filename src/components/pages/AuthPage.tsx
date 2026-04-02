@@ -47,13 +47,21 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-16) var(--sp-4)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-8) var(--sp-4)', background: 'var(--c-bg)' }}>
+      {/* Back to landing */}
+      <div style={{ width: '100%', maxWidth: 420, marginBottom: 'var(--sp-4)' }}>
+        <button className="btn-ghost btn-sm" onClick={() => navigate('/')} style={{ color: 'var(--t-3)', fontSize: 'var(--fs-xs)' }}>
+          ← Back to home
+        </button>
+      </div>
       <div style={{ width: '100%', maxWidth: 420 }}>
         <div style={{ textAlign: 'center', marginBottom: 'var(--sp-8)' }}>
-          <div style={{ fontFamily: 'var(--ff-brand)', fontSize: 'var(--fs-3xl)', color: 'var(--c-gold-l)', textShadow: '0 0 32px rgba(201,146,42,0.4)', marginBottom: 'var(--sp-2)' }}>
-            DNDKeep
+          <div style={{ fontFamily: 'var(--ff-brand)', fontSize: 'var(--fs-3xl)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.1em', marginBottom: 'var(--sp-2)' }}>
+            DNDKEEP
           </div>
-          <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>Your D&D 5e session companion</p>
+          <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
+            {mode === 'signup' ? 'Create a free account to get started.' : 'Welcome back — sign in to your account.'}
+          </p>
         </div>
         <div className="card card-gold">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: '#080d14', borderRadius: 'var(--r-md)', padding: '3px', marginBottom: 'var(--sp-6)' }}>

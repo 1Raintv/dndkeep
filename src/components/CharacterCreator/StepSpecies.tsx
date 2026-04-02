@@ -17,6 +17,9 @@ const SPECIES_LEVEL_FEATURES: Record<string, { level: number; features: string[]
   'Half-Orc': [{ level: 1, features: ['Adrenaline Rush — Dash as Bonus Action (Prof/rest)', 'Darkvision 60ft', 'Relentless Endurance — 1 HP instead of 0 (1/LR)', 'Powerful Build — count as Large for carrying'] }],
   Aasimar:    [{ level: 1, features: ['Celestial Resistance — resist Necrotic & Radiant', 'Darkvision 60ft', 'Healing Hands — restore HP = Prof Bonus (Prof/LR)', 'Light Bearer — Light cantrip'] }, { level: 3, features: ['Celestial Revelation — choose Heavenly Wings, Inner Radiance, or Necrotic Shroud'] }],
   Orc:        [{ level: 1, features: ['Adrenaline Rush — Dash as Bonus Action (Prof/rest)', 'Darkvision 120ft', 'Relentless Endurance — 1 HP instead of 0 (1/LR)', 'Powerful Build — count as Large for carrying'] }],
+  Goliath:    [{ level: 1, features: ['Little Giant — Athletics prof, count as one size larger', 'Mountain Born — acclimated to high altitude and cold', 'Stone Endurance — reduce damage by 1d12+CON (Prof uses/LR)'] }, { level: 5, features: ['Large Form — become Large as Bonus Action (1/LR)'] }],
+  Tabaxi:    [{ level: 1, features: ['Darkvision 60ft', 'Cat Claws — climb speed = walk speed, 1d6 natural weapon', 'Cat Talent — proficiency in Perception and Stealth', 'Feline Agility — double speed on turn (recharges on 0-foot turn)'] }],
+  Ardling:    [{ level: 1, features: ['Darkvision 60ft', 'Celestial Legacy — choose animal form (Elephant/Hippogriff/Owl)', 'Divine Magic — Sacred Flame cantrip', 'Resistance to Radiant damage'] }, { level: 3, features: ['Celestial Legacy: Divine Favor (1/LR)'] }, { level: 5, features: ['Celestial Legacy: Lesser Restoration (1/LR)'] }],
 };
 
 interface StepSpeciesProps {

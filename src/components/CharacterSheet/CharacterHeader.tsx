@@ -191,7 +191,7 @@ export default function CharacterHeader({
           </div>
 
           {/* AC */}
-          <StatChip icon="🛡️" label="AC" value={character.armor_class} color="var(--c-gold-l)" />
+          <StatChip label="AC" value={character.armor_class} color="var(--c-gold-l)" />
 
           {/* Initiative — click to roll */}
           <StatChip
@@ -204,10 +204,10 @@ export default function CharacterHeader({
           />
 
           {/* Passive Perception */}
-          <StatChip icon="👁️" label="PASS PERC" value={10 + (computed.skills['Perception']?.total ?? 0)} color="var(--t-2)" small />
+          <StatChip label="PASS PERC" value={10 + (computed.skills['Perception']?.total ?? 0)} color="var(--t-2)" small />
 
           {/* Proficiency Bonus */}
-          <StatChip icon="✦" label="PROF" value={`+${computed.proficiency_bonus}`} color="#a78bfa" small />
+          <StatChip label="PROF" value={`+${computed.proficiency_bonus}`} color="#a78bfa" small />
 
           {/* Spell attack + DC — spellcasters only */}
           {isSpellcaster && (
@@ -218,7 +218,7 @@ export default function CharacterHeader({
                 value={spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack)}
                 color="#c084fc"
               />
-              <StatChip icon="🔮" label="SPELL DC" value={spellDC} color="#c084fc" />
+              <StatChip label="SPELL DC" value={spellDC} color="#c084fc" />
             </>
           )}
 
@@ -238,7 +238,7 @@ export default function CharacterHeader({
               />
             </div>
           ) : (
-            <StatChip icon="💨" label="SPEED" value={`${character.speed}ft`} color="var(--t-2)" small clickable
+            <StatChip label="SPEED" value={`${character.speed}ft`} color="var(--t-2)" small clickable
               onClick={() => { setSpeedInput(String(character.speed)); setEditingSpeed(true); }} />
           )}
         </div>
@@ -304,7 +304,7 @@ export default function CharacterHeader({
 
 // ── Small reusable stat chip ───────────────────────────────────────
 function StatChip({ icon, label, value, color, small, onClick, clickable }: {
-  icon: string; label: string; value: string | number; color: string; small?: boolean; onClick?: () => void; clickable?: boolean;
+  icon?: string; label: string; value: string | number; color: string; small?: boolean; onClick?: () => void; clickable?: boolean;
 }) {
   return (
     <div style={{

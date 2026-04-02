@@ -122,6 +122,39 @@ export const SPECIES: SpeciesData[] = [
       { name: 'Relentless Endurance', description: 'When reduced to 0 HP but not killed outright, you can drop to 1 HP instead. Once per Long Rest.' },
     ],
   },
+  {
+    name: 'Goliath',
+    size: 'Medium', speed: 35, darkvision: 0,
+    languages: ['Common', 'Giant'],
+    traits: [
+      { name: 'Large Form', description: 'Starting at 5th level, you can change your size to Large as a Bonus Action if you\'re in a big enough space. This lasts until you return to Medium as a Bonus Action or until you die. Once per Long Rest.' },
+      { name: 'Little Giant', description: 'You have proficiency in the Athletics skill, and you count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift.' },
+      { name: 'Mountain Born', description: 'You\'re acclimated to high altitude, including elevations above 20,000 feet. You also naturally adapted to cold climates (as per the Dungeon Master\'s Guide).' },
+      { name: 'Stone\'s Endurance', description: 'When you take damage, you can use your Reaction to roll a d12 and add your Constitution modifier. Reduce the damage taken by the total. Uses equal to Proficiency Bonus per Long Rest.' },
+    ],
+  },
+  {
+    name: 'Tabaxi',
+    size: 'Medium', speed: 30, darkvision: 60,
+    languages: ['Common', 'One of your choice'],
+    traits: [
+      { name: 'Darkvision', description: 'You can see in dim light within 60 feet as if it were bright light, and in darkness as if it were dim light.' },
+      { name: 'Cat\'s Claws', description: 'You have retractable claws. Climb speed equal to your walking speed. Claws are natural weapons dealing 1d6 + Strength modifier Slashing damage.' },
+      { name: 'Cat\'s Talent', description: 'You have proficiency in Perception and Stealth.' },
+      { name: 'Feline Agility', description: 'Your reflexes let you move with a burst of speed. When you move on your turn, you can double your speed until the end of your turn. Once you do this, you can\'t do it again until you move 0 feet on one of your turns.' },
+    ],
+  },
+  {
+    name: 'Ardling',
+    size: 'Medium', speed: 30, darkvision: 60,
+    languages: ['Common', 'Celestial'],
+    traits: [
+      { name: 'Darkvision', description: 'You can see in dim light within 60 feet as if it were bright light, and in darkness as if it were dim light.' },
+      { name: 'Celestial Legacy', description: 'Choose an animal form: Elephant (Strength), Hippogriff (Dexterity), or Owl (Intelligence/Wisdom). You gain a trait, a 1st-level spell, and higher-level spells at levels 3 and 5 based on your choice. Charisma is your spellcasting ability.' },
+      { name: 'Divine Magic', description: 'You know the Sacred Flame cantrip. At 3rd level you can cast Divine Favor once per Long Rest. At 5th level you can cast Lesser Restoration once per Long Rest.' },
+      { name: 'Resistance', description: 'You have Resistance to Radiant damage.' },
+    ],
+  },
 ];
 
 export const SPECIES_MAP: Record<string, SpeciesData> = Object.fromEntries(
