@@ -79,7 +79,7 @@ export default function CharacterHeader({
       overflow: 'hidden',
       boxShadow: 'var(--shadow-md)',
     }}>
-      <div style={{ padding: 'var(--sp-3) var(--sp-4)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="char-header-inner" style={{ padding: 'var(--sp-3) var(--sp-4)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
 
         {/* Avatar + Name column */}
         <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', minWidth: 180 }}>
@@ -128,7 +128,7 @@ export default function CharacterHeader({
         <div style={{ width: 1, height: 52, background: 'var(--c-border)', flexShrink: 0, display: 'none' }} className="desktop-only" />
 
         {/* ── STAT CHIPS ────────────────────────── */}
-        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', flex: 1 }}>
+        <div className="char-header-chips" style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', flex: 1 }}>
 
           {/* HP — largest chip */}
           <div style={{
@@ -244,7 +244,7 @@ export default function CharacterHeader({
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
+        <div className="char-header-actions" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
           <button
             className="btn-secondary btn-sm"
             onClick={onOpenRest}

@@ -510,6 +510,36 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </div>
       )}
 
+      {/* Level Up prompt — shown when character is below level 20 and not in session tab */}
+      {character.level < 20 && activeTab !== 'session' && (
+        <div
+          onClick={() => setShowLevelUp(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+            padding: 'var(--sp-2) var(--sp-4)',
+            background: 'rgba(201,146,42,0.06)',
+            border: '1px solid var(--c-gold-bdr)',
+            borderRadius: 'var(--r-md)',
+            cursor: 'pointer',
+            transition: 'all var(--tr-fast)',
+          }}
+          title="Open Level Up Wizard"
+        >
+          <span style={{ fontSize: 16 }}>✨</span>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Level Up Available
+            </span>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginLeft: 8 }}>
+              {character.class_name} → Level {character.level + 1}
+            </span>
+          </div>
+          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '2px 10px', borderRadius: 999 }}>
+            Level Up →
+          </span>
+        </div>
+      )}
+
       {/* Active condition warning banner */}
       {(() => {
         const mechConditions = (character.active_conditions ?? []).filter(c => {
@@ -537,7 +567,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       })()}
 
       {/* Tabs */}
-      <div className="tabs">
+      <div className="tabs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
@@ -559,7 +589,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── ABILITIES: Stats + Skills merged ── */}
         {activeTab === 'abilities' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 'var(--sp-6)' }}>
+          <div className="abilities-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 'var(--sp-6)' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
               <AbilityScores character={character} computed={computed} />
               <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
@@ -638,9 +668,48 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {/* ── BIO: Features + Notes merged ── */}
         {activeTab === 'bio' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--sp-6)', maxWidth: 900 }}>
-            <div>
-              <div className="section-header">Features & Traits</div>
-              <FeaturesPanel character={character} onUpdateNotes={notes => applyUpdate({ features_text: notes }, true)} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+              {/* Structured features from character creation */}
+              {character.features_and_traits && (() => {
+                const raw = character.features_and_traits;
+                const sections = raw.split(/\n\n(?=\[)/).filter(Boolean);
+                if (sections.length <= 1) return (
+                  <div>
+                    <div className="section-header">Features & Traits</div>
+                    <FeaturesPanel character={character} onUpdateNotes={notes => applyUpdate({ features_text: notes }, true)} />
+                  </div>
+                );
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                    <div className="section-header">Features & Traits</div>
+                    {sections.map((section, i) => {
+                      const match = section.match(/^\[([^\]]+)\]\n([\s\S]*)$/);
+                      if (!match) return <div key={i} style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', whiteSpace: 'pre-wrap' }}>{section}</div>;
+                      const [, title, body] = match;
+                      const sectionIcons: Record<string, string> = {
+                        'Origin Feat': '⭐', 'Fighting Style': '⚔️', 'Metamagic': '💫',
+                        'Eldritch Invocations': '👿', 'Expertise': '⭐', 'Divine Order': '✝️',
+                        'Primal Order': '🌿', 'Feats from ASI': '📈',
+                      };
+                      return (
+                        <div key={i} style={{ background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)' }}>
+                          <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-gold-l)', marginBottom: 6 }}>
+                            {sectionIcons[title] ?? '📖'} {title}
+                          </div>
+                          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6 }}>{body.trim()}</div>
+                        </div>
+                      );
+                    })}
+                    <FeaturesPanel character={character} onUpdateNotes={notes => applyUpdate({ features_text: notes }, true)} />
+                  </div>
+                );
+              })()}
+              {!character.features_and_traits && (
+                <div>
+                  <div className="section-header">Features & Traits</div>
+                  <FeaturesPanel character={character} onUpdateNotes={notes => applyUpdate({ features_text: notes }, true)} />
+                </div>
+              )}
             </div>
             <div>
               <div className="section-header">Notes & Personality</div>

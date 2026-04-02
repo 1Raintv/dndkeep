@@ -95,10 +95,6 @@ export default function CharacterCreator() {
       case 1: return className !== '';
       case 2: return background !== '';
       case 3: return ABILITIES.every(ab => scores[ab] >= 1);
-      case 1: {
-        const cls = CLASS_MAP[className];
-        return !!className && selectedSkills.length === (cls?.skill_count ?? 2);
-      }
       case 4: return level < 3 || buildChoices.subclass !== '';
       case 5: return !!name.trim();
     }
@@ -278,7 +274,7 @@ export default function CharacterCreator() {
       </div>
 
       {/* Layout: step content + sticky summary sidebar */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 'var(--sp-6)', alignItems: 'start' }}>
+      <div className="creator-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 'var(--sp-6)', alignItems: 'start' }}>
       <div key={step} className="animate-fade-in" style={{ minHeight: 400 }}>
         {/* Breadcrumb — what you've chosen so far */}
         {(name || species || className || background) && step > 0 && (
@@ -326,7 +322,7 @@ export default function CharacterCreator() {
       </div>
 
       {/* Sticky character summary */}
-      <div style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+      <div className="creator-summary" style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
         <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)' }}>
           Character Summary
         </div>

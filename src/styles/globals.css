@@ -776,12 +776,93 @@ button:active:not(:disabled) { transform: scale(0.97); }
   .sidebar-logo-text,
   .sidebar-link-label,
   .sidebar-version { display: none; }
-  .app-main { padding: var(--sp-4) var(--sp-4); }
-  .app-content { padding: var(--sp-4) var(--sp-4); }
+  .app-main { padding: var(--sp-3) var(--sp-3); }
+  .app-content { padding: var(--sp-3) var(--sp-3); }
+
+  /* Character sheet header — stack chips on mobile */
+  .char-header-chips {
+    flex-wrap: wrap;
+    gap: var(--sp-2) !important;
+  }
+  .char-header-chips > div {
+    min-width: 52px !important;
+    flex: 1 1 auto;
+  }
+
+  /* Abilities tab — single column on mobile */
+  .abilities-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stat boxes — smaller on mobile */
+  .stat-box {
+    padding: var(--sp-2) !important;
+  }
+  .stat-box-modifier {
+    font-size: var(--fs-xl) !important;
+  }
+
+  /* Tabs — scrollable row on mobile */
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap !important;
+    gap: 0 !important;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    white-space: nowrap;
+    padding: var(--sp-2) var(--sp-3) !important;
+    font-size: var(--fs-xs) !important;
+    min-height: 44px;
+  }
+
+  /* Character creator — single column on mobile */
+  .creator-two-col {
+    grid-template-columns: 1fr !important;
+  }
+  .creator-summary {
+    display: none !important;
+  }
+
+  /* Campaign list — stack cards */
+  .campaign-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
+
 @media (max-width: 480px) {
   .app-sidebar { display: none; }
-  .app-main { padding: var(--sp-3); }
+  .app-main { padding: var(--sp-2); }
+
+  /* Header — tighter on phones */
+  .char-header-inner {
+    flex-wrap: wrap;
+    gap: var(--sp-2) !important;
+  }
+  .char-header-identity {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+  .char-header-chips {
+    order: 3;
+    width: 100%;
+  }
+  .char-header-actions {
+    order: 2;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+  }
+
+  /* HP number — slightly smaller on phone */
+  .hp-number { font-size: 1.8rem !important; }
+
+  /* Skills list — bigger tap targets */
+  .skill-row {
+    padding: 6px var(--sp-3) !important;
+    min-height: 40px;
+  }
 }
 
 /* ── Print ───────────────────────────────────────────────── */

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { getCharacters } from '../../lib/supabase';
+import { getCharacters, createCharacter } from '../../lib/supabase';
 
 const CLASS_ICONS: Record<string, string> = {
   Barbarian:'⚔️', Bard:'🎵', Cleric:'✝️', Druid:'🌿', Fighter:'🛡️',
@@ -30,6 +30,15 @@ export default function LobbyPage() {
   }, [user]);
 
   const canCreate = isPro || characters.length === 0;
+
+  async function handleDuplicate(char: Character, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!user) return;
+    const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = char as any;
+    const copy = { ...rest, user_id: user.id, name: char.name + ' (Copy)', campaign_id: null };
+    const { data } = await createCharacter(copy);
+    if (data) navigate(`/character/${data.id}`);
+  }
 
   if (loading) return (
     <div style={{ display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-8)', alignItems: 'center' }}>
@@ -90,14 +99,14 @@ export default function LobbyPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 'var(--sp-4)' }}>
-          {characters.map(c => <CharacterCard key={c.id} character={c} onClick={() => navigate(`/character/${c.id}`)} />)}
+          {characters.map(c => <CharacterCard key={c.id} character={c} onClick={() => navigate(`/character/${c.id}`)} onDuplicate={e => handleDuplicate(c, e)} />)}
         </div>
       )}
     </div>
   );
 }
 
-function CharacterCard({ character: c, onClick }: { character: Character; onClick: () => void }) {
+function CharacterCard({ character: c, onClick, onDuplicate }: { character: Character; onClick: () => void; onDuplicate?: (e: React.MouseEvent) => void }) {
   const hpPct = c.max_hp > 0 ? Math.min(1, c.current_hp / c.max_hp) : 0;
   const col = hpColor(c.current_hp, c.max_hp);
   const icon = CLASS_ICONS[c.class_name] ?? '🧙';
