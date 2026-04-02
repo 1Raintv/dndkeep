@@ -13,8 +13,10 @@ export interface BuildChoices {
   subclass: string;
   spells: string[];       // spell IDs
   cantrips: string[];     // cantrip IDs
-  metamagic: string[];    // metamagic IDs
-  invocations: string[];  // invocation IDs
+  metamagic: string[];    // flat list of ALL known metamagic (derived from metamagicByLevel)
+  metamagicByLevel: Record<number, string[]>;  // level -> metamagic chosen at that level
+  invocations: string[];  // flat list of ALL known invocations
+  invocationsByLevel: Record<number, string[]>;  // level -> invocations chosen at that level
   fightingStyle: string;
   expertise: string[];    // skill names
   feats: Record<number, string>;  // level -> feat name
@@ -24,7 +26,7 @@ export interface BuildChoices {
 }
 
 export const emptyBuildChoices = (): BuildChoices => ({
-  subclass: '', spells: [], cantrips: [], metamagic: [], invocations: [],
+  subclass: '', spells: [], cantrips: [], metamagic: [], metamagicByLevel: {}, invocations: [], invocationsByLevel: {},
   fightingStyle: '', expertise: [], feats: {}, asiChoices: {},
   divineOrder: '', primalOrder: '',
 });
@@ -276,19 +278,50 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   }
 
   if (type === 'metamagic') {
-    return <MultiPicker label={label} options={METAMAGIC_OPTIONS.map(m => ({ id: m.id, name: m.name, desc: m.description }))}
-      selected={choices.metamagic} onToggle={id => {
-        const next = choices.metamagic.includes(id) ? choices.metamagic.filter(x => x !== id) : [...choices.metamagic, id];
-        onUpdate({ metamagic: next });
-      }} />;
+    // Parse max for this level (e.g. "Learn 2 Metamagic" → 2)
+    const metaMax = parseInt(label.match(/Learn (\d+)|Choose (\d+)/)?.[1] ?? label.match(/Learn (\d+)|Choose (\d+)/)?.[2] ?? '1');
+    // All metamagic chosen at PREVIOUS levels
+    const priorMeta = Object.entries(choices.metamagicByLevel ?? {})
+      .filter(([lvl]) => parseInt(lvl) < level)
+      .flatMap(([, ids]) => ids);
+    const thisLevelMeta = (choices.metamagicByLevel ?? {})[level] ?? [];
+    return <MultiPicker
+      label={label}
+      max={metaMax}
+      options={METAMAGIC_OPTIONS.map(m => ({ id: m.id, name: m.name, desc: m.description }))}
+      excluded={priorMeta}
+      selected={thisLevelMeta}
+      onToggle={id => {
+        const current = (choices.metamagicByLevel ?? {})[level] ?? [];
+        const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
+        const newByLevel = { ...(choices.metamagicByLevel ?? {}), [level]: next };
+        // Flatten all levels into the flat array
+        const allMeta = Object.values(newByLevel).flat();
+        onUpdate({ metamagicByLevel: newByLevel, metamagic: allMeta });
+      }}
+    />;
   }
 
   if (type === 'invocations') {
-    return <MultiPicker label={label} options={WARLOCK_INVOCATIONS.map(i => ({ id: i.id, name: i.name, desc: i.description, badge: i.prereq ?? undefined }))}
-      selected={choices.invocations} onToggle={id => {
-        const next = choices.invocations.includes(id) ? choices.invocations.filter(x => x !== id) : [...choices.invocations, id];
-        onUpdate({ invocations: next });
-      }} />;
+    const invMax = parseInt(label.match(/Learn (\d+)|Choose (\d+)/)?.[1] ?? label.match(/Learn (\d+)|Choose (\d+)/)?.[2] ?? '1');
+    const priorInv = Object.entries(choices.invocationsByLevel ?? {})
+      .filter(([lvl]) => parseInt(lvl) < level)
+      .flatMap(([, ids]) => ids);
+    const thisLevelInv = (choices.invocationsByLevel ?? {})[level] ?? [];
+    return <MultiPicker
+      label={label}
+      max={invMax}
+      options={WARLOCK_INVOCATIONS.map(i => ({ id: i.id, name: i.name, desc: i.description, badge: i.prereq ?? undefined }))}
+      excluded={priorInv}
+      selected={thisLevelInv}
+      onToggle={id => {
+        const current = (choices.invocationsByLevel ?? {})[level] ?? [];
+        const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
+        const newByLevel = { ...(choices.invocationsByLevel ?? {}), [level]: next };
+        const allInv = Object.values(newByLevel).flat();
+        onUpdate({ invocationsByLevel: newByLevel, invocations: allInv });
+      }}
+    />;
   }
 
   if (type === 'fighting_style') {
@@ -321,7 +354,7 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   }
 
   if (type === 'asi') {
-    return <ASIFeatPicker label={label} level={level} choices={choices} onUpdate={onUpdate} />;
+    return <ASIFeatPicker key={`asi-${level}`} label={label} level={level} choices={choices} onUpdate={onUpdate} />;
   }
 
   if (type === 'divine_order') {
@@ -412,34 +445,85 @@ function SpellPicker({ label, type, className, choices, onUpdate, maxLevel }: {
 }
 
 // ── Multi-select picker ─────────────────────────────────────────────
-function MultiPicker({ label, options, selected, onToggle, single }: {
+function MultiPicker({ label, options, selected, onToggle, single, max, excluded = [] }: {
   label: string; options: { id: string; name: string; desc: string; badge?: string }[];
   selected: string[]; onToggle: (id: string) => void; single?: boolean;
+  max?: number;         // max selections allowed at this level
+  excluded?: string[];  // already chosen at prior levels — greyed out, not selectable
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const atMax = max !== undefined && selected.length >= max;
+
   return (
     <div>
-      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
-        {label}
-        {!single && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontWeight: 400, marginLeft: 6 }}>{selected.length} selected</span>}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-2)' }}>
+        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>
+          {label}
+        </div>
+        {max !== undefined && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+            background: atMax ? 'rgba(5,150,105,0.12)' : 'var(--c-raised)',
+            border: `1px solid ${atMax ? 'var(--c-green-l)' : 'var(--c-border-m)'}`,
+            color: atMax ? 'var(--c-green-l)' : 'var(--t-3)',
+          }}>
+            {selected.length} / {max} chosen
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {options.map(opt => {
           const sel = selected.includes(opt.id);
+          const isExcluded = excluded.includes(opt.id);
+          const isDisabled = !sel && atMax && !single; // greyed if at max and not selected
           const isExp = expanded === opt.id;
+
           return (
-            <div key={opt.id} style={{ borderRadius: 'var(--r-md)', border: sel ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)', background: sel ? 'var(--c-gold-bg)' : 'var(--c-raised)', overflow: 'hidden' }}>
-              <button onClick={() => setExpanded(isExp ? null : opt.id)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: '5px var(--sp-3)', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 0 }}>
-                <span style={{ fontSize: 10, color: 'var(--t-3)', transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform 120ms', flexShrink: 0 }}>▶</span>
-                <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: sel ? 600 : 400, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{sel ? '✓ ' : ''}{opt.name}</span>
+            <div key={opt.id} style={{
+              borderRadius: 'var(--r-md)',
+              border: isExcluded ? '1px solid var(--c-border)' : sel ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+              background: isExcluded ? 'transparent' : sel ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+              overflow: 'hidden',
+              opacity: isExcluded ? 0.35 : isDisabled ? 0.45 : 1,
+              transition: 'opacity 0.15s',
+            }}>
+              <button
+                onClick={() => !isExcluded && !isDisabled && setExpanded(isExp ? null : opt.id)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+                  padding: '7px var(--sp-3)', background: 'transparent', border: 'none',
+                  cursor: isExcluded ? 'not-allowed' : isDisabled ? 'not-allowed' : 'pointer',
+                  textAlign: 'left', minHeight: 0,
+                }}
+              >
+                {/* Status indicator */}
+                <div style={{
+                  width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
+                  background: isExcluded ? 'var(--t-3)' : sel ? 'var(--c-gold-l)' : 'transparent',
+                  border: `2px solid ${isExcluded ? 'var(--t-3)' : sel ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+                }} />
+                <span style={{
+                  flex: 1, fontSize: 'var(--fs-sm)',
+                  fontWeight: sel ? 600 : 400,
+                  color: isExcluded ? 'var(--t-3)' : sel ? 'var(--c-gold-l)' : 'var(--t-1)',
+                }}>
+                  {sel ? '✓ ' : ''}{opt.name}
+                  {isExcluded && <span style={{ fontSize: 9, color: 'var(--t-3)', marginLeft: 6 }}>already known</span>}
+                  {isDisabled && <span style={{ fontSize: 9, color: 'var(--t-3)', marginLeft: 6 }}>limit reached</span>}
+                </span>
                 {opt.badge && <span style={{ fontSize: 9, color: 'var(--t-3)' }}>{opt.badge}</span>}
+                {!isExcluded && !isDisabled && (
+                  <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform 120ms' }}>▶</span>
+                )}
               </button>
-              {isExp && (
+              {isExp && !isExcluded && (
                 <div style={{ padding: '0 var(--sp-3) var(--sp-2) calc(var(--sp-3) + 18px)', borderTop: '1px solid var(--c-border)' }}>
                   <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.6, margin: '6px 0' }}>{opt.desc}</p>
-                  <button className={sel ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
-                    onClick={() => { onToggle(opt.id); setExpanded(null); }}>
+                  <button
+                    className={sel ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
+                    disabled={!sel && isDisabled}
+                    onClick={() => { onToggle(opt.id); setExpanded(null); }}
+                  >
                     {sel ? 'Remove' : 'Select'}
                   </button>
                 </div>
