@@ -282,9 +282,15 @@ export default function CharacterHeader({
           <button
             className="btn-ghost btn-sm"
             onClick={onOpenSettings}
-            style={{ color: 'var(--t-2)' }}
+            style={{ color: character.level < 20 ? 'var(--c-gold-l)' : 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 4 }}
+            title={character.level < 20 ? `Level up available — open Settings to level up` : 'Settings'}
           >
-            ⚙ Settings
+            Settings
+            {character.level < 20 && (
+              <span style={{ fontSize: 8, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999, letterSpacing: '0.05em' }}>
+                LVL UP
+              </span>
+            )}
           </button>
         </div>
       </div>
