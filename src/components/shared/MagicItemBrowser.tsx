@@ -53,28 +53,42 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
       {/* Search + filters */}
-      <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search magic items…"
-          style={{ flex: 1, minWidth: 160, fontSize: 'var(--fs-sm)' }}
+          placeholder="Search magic items by name or description…"
+          style={{ fontSize: 'var(--fs-sm)', width: '100%' }}
         />
-        <select value={filterRarity} onChange={e => setFilterRarity(e.target.value as MagicItemRarity | '')} style={{ fontSize: 'var(--fs-sm)' }}>
-          <option value="">All Rarities</option>
-          {RARITY_ORDER.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-        </select>
-        <select value={filterType} onChange={e => setFilterType(e.target.value as MagicItemType | '')} style={{ fontSize: 'var(--fs-sm)' }}>
-          <option value="">All Types</option>
-          {types.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-        </select>
-        {!compact && (
-          <select value={filterAttunement === null ? '' : String(filterAttunement)} onChange={e => setFilterAttunement(e.target.value === '' ? null : e.target.value === 'true')} style={{ fontSize: 'var(--fs-sm)' }}>
-            <option value="">Attunement: Any</option>
-            <option value="true">Requires Attunement</option>
-            <option value="false">No Attunement</option>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <select
+            value={filterRarity}
+            onChange={e => setFilterRarity(e.target.value as MagicItemRarity | '')}
+            style={{ flex: '1 1 140px', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)', cursor: 'pointer' }}
+          >
+            <option value="">All Rarities</option>
+            {RARITY_ORDER.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
           </select>
-        )}
+          <select
+            value={filterType}
+            onChange={e => setFilterType(e.target.value as MagicItemType | '')}
+            style={{ flex: '1 1 140px', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)', cursor: 'pointer' }}
+          >
+            <option value="">All Types</option>
+            {types.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+          </select>
+          {!compact && (
+            <select
+              value={filterAttunement === null ? '' : String(filterAttunement)}
+              onChange={e => setFilterAttunement(e.target.value === '' ? null : e.target.value === 'true')}
+              style={{ flex: '1 1 140px', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)', cursor: 'pointer' }}
+            >
+              <option value="">Attunement: Any</option>
+              <option value="true">Requires Attunement</option>
+              <option value="false">No Attunement</option>
+            </select>
+          )}
+        </div>
       </div>
 
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
@@ -82,7 +96,7 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       </div>
 
       {/* Item list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)', maxHeight: compact ? 320 : 560, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: compact ? 320 : 520, overflowY: 'auto' }}>
         {filtered.map(item => {
           const rarityColor = RARITY_COLORS[item.rarity as MagicItemRarity] ?? '#c4c4c4';
           const isExpanded = expanded === item.id;
@@ -91,62 +105,75 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
             <div
               key={item.id}
               style={{
-                borderRadius: 'var(--r-sm)',
-                border: `1px solid ${rarityColor}30`,
-                background: '#080d14',
+                borderRadius: 'var(--r-md)',
+                border: `1px solid ${isExpanded ? rarityColor + '40' : 'var(--c-border)'}`,
+                background: isExpanded ? rarityColor + '06' : 'var(--c-card)',
                 overflow: 'hidden',
+                transition: 'border-color var(--tr-fast)',
               }}
             >
+              {/* Collapsed row — always readable, min height guaranteed */}
               <div
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
-                  padding: 'var(--sp-2) var(--sp-3)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '8px 12px', cursor: 'pointer', minHeight: 40,
                 }}
                 onClick={() => setExpanded(isExpanded ? null : item.id)}
               >
+                {/* Left: name + badges */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflow: 'hidden' }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto' }}>
                       {item.name}
                     </span>
-                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, color: rarityColor, padding: '1px 5px', borderRadius: 3, border: `1px solid ${rarityColor}50`, background: `${rarityColor}10`, whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: rarityColor, padding: '1px 5px', borderRadius: 3, border: `1px solid ${rarityColor}50`, background: `${rarityColor}12`, whiteSpace: 'nowrap', flexShrink: 0 }}>
                       {item.rarity}
                     </span>
                     {item.requiresAttunement && (
-                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(245,200,66,0.08)', padding: '1px 5px', borderRadius: 3, border: '1px solid rgba(245,200,66,0.3)' }}>
+                      <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(245,200,66,0.08)', padding: '1px 5px', borderRadius: 3, border: '1px solid rgba(245,200,66,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         Attunement
                       </span>
                     )}
-                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
+                    <span style={{ fontSize: 9, color: 'var(--t-3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       {TYPE_LABELS[item.type as MagicItemType] ?? item.type}
                     </span>
                   </div>
                   {!isExpanded && (
-                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
                       {item.description}
                     </div>
                   )}
                 </div>
-                {onAddToInventory && (
-                  <button
-                    onClick={e => { e.stopPropagation(); addToInventory(item); }}
-                    className={wasAdded ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
-                    style={{ flexShrink: 0, fontSize: 'var(--fs-xs)' }}
-                  >
-                    {wasAdded ? '✓ Added' : '+ Add'}
-                  </button>
-                )}
+
+                {/* Right: add button + expand chevron */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  {onAddToInventory && (
+                    <button
+                      onClick={e => { e.stopPropagation(); addToInventory(item); }}
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+                        cursor: 'pointer', minHeight: 0,
+                        border: wasAdded ? '1px solid var(--c-border-m)' : `1px solid ${rarityColor}50`,
+                        background: wasAdded ? 'var(--c-raised)' : `${rarityColor}12`,
+                        color: wasAdded ? 'var(--t-3)' : rarityColor,
+                        transition: 'all var(--tr-fast)',
+                      }}
+                    >
+                      {wasAdded ? '✓' : '+ Add'}
+                    </button>
+                  )}
+                  <span style={{ fontSize: 10, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)' }}>▼</span>
+                </div>
               </div>
 
+              {/* Expanded description */}
               {isExpanded && (
-                <div className="animate-fade-in" style={{ padding: 'var(--sp-3)', borderTop: `1px solid ${rarityColor}20`, background: `${rarityColor}05` }}>
-                  <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6, margin: 0 }}>
+                <div className="animate-fade-in" style={{ padding: '0 12px 12px', borderTop: `1px solid ${rarityColor}20` }}>
+                  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '8px 0' }}>
                     {item.description}
                   </p>
                   {item.weight !== undefined && item.weight > 0 && (
-                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', marginTop: 'var(--sp-2)' }}>
-                      Weight: {item.weight} lb
-                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 4 }}>Weight: {item.weight} lb</div>
                   )}
                 </div>
               )}
