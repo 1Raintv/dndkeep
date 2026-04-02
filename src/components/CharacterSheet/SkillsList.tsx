@@ -93,7 +93,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         title={`Roll ${skill.name} (d20${data.total >= 0 ? '+' : ''}${data.total})`}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '4px 6px', borderRadius: 'var(--r-sm)',
+          padding: '3px 4px', borderRadius: 'var(--r-sm)',
           background: isLastRolled ? 'var(--c-raised)' : 'transparent',
           transition: 'background var(--tr-fast)', cursor: 'pointer', userSelect: 'none',
         }}
@@ -117,22 +117,22 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         {/* Skill name */}
         <span style={{
           fontFamily: 'var(--ff-body)', fontWeight: data.proficient ? 600 : 400,
-          fontSize: 12, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontSize: 11, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           color: data.expert ? 'var(--c-gold-xl)' : data.proficient ? 'var(--t-1)' : 'var(--t-2)',
         }}>
           {skill.name}
         </span>
 
         {/* Ability abbreviation in stat color */}
-        <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 8, color: abilityColor, letterSpacing: '0.05em', flexShrink: 0 }}>
+        <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 7, color: abilityColor, letterSpacing: '0.04em', flexShrink: 0, minWidth: 18, textAlign: 'right' }}>
           {abilityAbbrev}
         </span>
 
         {/* Bonus */}
         <span style={{
-          fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 12,
+          fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 11,
           color: data.expert ? 'var(--c-gold-xl)' : data.proficient ? 'var(--c-gold-l)' : 'var(--t-3)',
-          minWidth: 28, textAlign: 'right', flexShrink: 0,
+          minWidth: 24, textAlign: 'right', flexShrink: 0,
         }}>
           {formatModifier(data.total)}
         </span>

@@ -38,15 +38,16 @@ import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 
-type Tab = 'abilities' | 'spells' | 'combat' | 'bio' | 'history' | 'session';
+type Tab = 'abilities' | 'spells' | 'combat' | 'inventory' | 'bio' | 'history' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'abilities', label: 'Abilities' },
-  { id: 'spells',    label: 'Spells' },
-  { id: 'combat',    label: 'Combat' },
-  { id: 'bio',       label: 'Bio' },
-  { id: 'history',   label: 'History' },
-  { id: 'session',   label: 'Session' },
+  { id: 'abilities',  label: 'Abilities' },
+  { id: 'spells',     label: 'Spells' },
+  { id: 'combat',     label: 'Combat' },
+  { id: 'inventory',  label: 'Inventory' },
+  { id: 'bio',        label: 'Bio' },
+  { id: 'history',    label: 'History' },
+  { id: 'session',    label: 'Session' },
 ];
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -636,20 +637,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           />
         )}
 
-        {/* ── COMBAT: Weapons + Inventory + Magic Items ── */}
+        {/* ── COMBAT: Weapons & Attacks only ── */}
         {activeTab === 'combat' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-8)', maxWidth: 720 }}>
-            <div>
-              <div className="section-header">Weapons & Attacks</div>
-              {(!character.weapons || character.weapons.length === 0) && (
-                <div style={{ padding: 'var(--sp-4)', background: '#080d14', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-lg)', textAlign: 'center', marginBottom: 'var(--sp-3)' }}>
-                  <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
-                    No weapons added yet. Add your weapons to roll attacks directly from your sheet.
-                  </p>
-                </div>
-              )}
-              <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} activeBufss={(character as any).active_buffs ?? []} />
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 800 }}>
+            <div className="section-header">Weapons & Attacks</div>
+            {(!character.weapons || character.weapons.length === 0) && (
+              <div style={{ padding: 'var(--sp-4)', background: 'var(--c-card)', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-lg)', textAlign: 'center' }}>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
+                  No weapons added yet. Add your weapons to roll attacks directly from your sheet.
+                </p>
+              </div>
+            )}
+            <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} activeBufss={(character as any).active_buffs ?? []} />
+          </div>
+        )}
+
+        {/* ── INVENTORY ── */}
+        {activeTab === 'inventory' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)', maxWidth: 900 }}>
             <div>
               <div className="section-header">Inventory</div>
               <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} />

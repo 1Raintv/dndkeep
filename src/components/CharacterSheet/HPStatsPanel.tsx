@@ -21,9 +21,7 @@ function hpColor(current: number, max: number): string {
 }
 
 export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdateAC, onUpdateSpeed }: HPStatsPanelProps) {
-  const [damageInput, setDamageInput] = useState('');
-  const [healInput, setHealInput] = useState('');
-  const [tempInput, setTempInput] = useState('');
+  const [value, setValue] = useState('');
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
   const [editingSpeed, setEditingSpeed] = useState(false);
@@ -40,163 +38,140 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
   const spellDC = 8 + spellAttack;
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
 
-  function applyDamage() {
-    const v = parseInt(damageInput);
-    if (!isNaN(v) && v > 0) { onUpdateHP(-v); setDamageInput(''); }
+  const num = parseInt(value);
+  const valid = !isNaN(num) && num > 0;
+
+  function applyDamage() { if (valid) { onUpdateHP(-num); setValue(''); } }
+  function applyHeal()   { if (valid) { onUpdateHP(num); setValue(''); } }
+  function applyTemp()   { if (!isNaN(num) && num >= 0) { onUpdateHP(0, num); setValue(''); } }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && valid) applyDamage();
   }
-  function applyHeal() {
-    const v = parseInt(healInput);
-    if (!isNaN(v) && v > 0) { onUpdateHP(v); setHealInput(''); }
-  }
-  function applyTemp() {
-    const v = parseInt(tempInput);
-    if (!isNaN(v) && v >= 0) { onUpdateHP(0, v); setTempInput(''); }
-  }
+
   function rollInitiative() {
     const d20 = rollDie(20);
     triggerRoll({ result: d20, dieType: 20, modifier: initMod, total: d20 + initMod, label: 'Initiative' });
   }
 
   const stats = [
-    { label: 'AC', value: character.armor_class, color: 'var(--c-gold-l)', editable: true, onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); } },
-    { label: 'INIT', value: initMod >= 0 ? `+${initMod}` : String(initMod), color: '#60a5fa', clickable: true, onClick: rollInitiative },
-    { label: 'SPEED', value: `${character.speed}ft`, color: 'var(--t-2)', editable: true, onEdit: () => { setSpeedInput(String(character.speed)); setEditingSpeed(true); } },
-    { label: 'PROF', value: `+${computed.proficiency_bonus}`, color: '#a78bfa' },
-    { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0), color: 'var(--t-2)' },
+    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: true,   onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); } },
+    { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
+    { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: true,   onEdit: () => { setSpeedInput(String(character.speed)); setEditingSpeed(true); } },
+    { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
+    { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0),                color: 'var(--t-2)' },
     ...(isSpellcaster ? [
-      { label: 'SPELL ATK', value: spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack), color: '#c084fc' },
-      { label: 'SPELL DC', value: spellDC, color: '#c084fc' },
+      { label: 'SPL ATK', value: spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack), color: '#c084fc' },
+      { label: 'SPL DC',  value: spellDC,                                                     color: '#c084fc' },
     ] : []),
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* HP Block */}
-      <div style={{ background: 'var(--c-card)', border: `1px solid ${hpCol}30`, borderRadius: 'var(--r-xl)', padding: '16px 20px' }}>
-        {/* Numbers row */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '3rem', color: hpCol, lineHeight: 1 }}>
-              {character.current_hp}
-            </span>
-            <span style={{ fontSize: 14, color: 'var(--t-3)', fontWeight: 500 }}>/ {character.max_hp}</span>
-          </div>
+      {/* HP Card */}
+      <div style={{
+        background: 'var(--c-card)',
+        border: `1px solid ${hpCol}40`,
+        borderRadius: 'var(--r-xl)',
+        padding: '14px 16px',
+        boxShadow: `0 0 16px ${hpCol}08`,
+      }}>
+        {/* HP numbers */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '2.8rem', color: hpCol, lineHeight: 1 }}>
+            {character.current_hp}
+          </span>
+          <span style={{ fontSize: 14, color: 'var(--t-3)', fontWeight: 500, paddingBottom: 4 }}>/ {character.max_hp}</span>
           {character.temp_hp > 0 && (
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', padding: '2px 8px', borderRadius: 999, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', padding: '2px 7px', borderRadius: 999, paddingBottom: 4 }}>
               +{character.temp_hp} temp
             </span>
           )}
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 8 }}>
-            Hit Points
-          </span>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)', paddingBottom: 6, marginLeft: 2 }}>HP</span>
         </div>
 
         {/* HP bar */}
-        <div style={{ height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 999, marginBottom: 14, position: 'relative', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${Math.max(2, hpPct * 100)}%`, background: hpCol, borderRadius: 999, transition: 'width 0.4s ease, background 0.3s ease', boxShadow: `0 0 12px ${hpCol}` }} />
-          {character.temp_hp > 0 && (
-            <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', width: `${Math.min(30, (character.temp_hp / character.max_hp) * 100)}%`, background: '#60a5fa80', borderRadius: 999 }} />
-          )}
+        <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 999, marginBottom: 12, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.max(1, hpPct * 100)}%`, background: hpCol, borderRadius: 999, transition: 'width 0.4s ease, background 0.3s ease', boxShadow: `0 0 8px ${hpCol}` }} />
         </div>
 
-        {/* Three input controls */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          {/* Damage */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--stat-str)' }}>Damage</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input
-                type="number" min={0} value={damageInput} onChange={e => setDamageInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && applyDamage()}
-                placeholder="0"
-                style={{ flex: 1, fontSize: 13, fontFamily: 'var(--ff-stat)', textAlign: 'center', padding: '5px 4px', borderRadius: 6, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', minWidth: 0 }}
-              />
-              <button onClick={applyDamage} disabled={!damageInput}
-                style={{ fontSize: 11, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)' }}>
-                Hit
-              </button>
-            </div>
-          </div>
-
-          {/* Heal */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--stat-dex)' }}>Heal</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input
-                type="number" min={0} value={healInput} onChange={e => setHealInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && applyHeal()}
-                placeholder="0"
-                style={{ flex: 1, fontSize: 13, fontFamily: 'var(--ff-stat)', textAlign: 'center', padding: '5px 4px', borderRadius: 6, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)', minWidth: 0 }}
-              />
-              <button onClick={applyHeal} disabled={!healInput}
-                style={{ fontSize: 11, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>
-                Heal
-              </button>
-            </div>
-          </div>
-
-          {/* Temp HP */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#60a5fa' }}>Temp HP</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input
-                type="number" min={0} value={tempInput} onChange={e => setTempInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && applyTemp()}
-                placeholder="0"
-                style={{ flex: 1, fontSize: 13, fontFamily: 'var(--ff-stat)', textAlign: 'center', padding: '5px 4px', borderRadius: 6, border: '1px solid rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.06)', color: '#60a5fa', minWidth: 0 }}
-              />
-              <button onClick={applyTemp} disabled={!tempInput}
-                style={{ fontSize: 11, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.06)', color: '#60a5fa' }}>
-                Set
-              </button>
-            </div>
-          </div>
+        {/* Single input + 3 action buttons */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="number"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Amount"
+            min={0}
+            style={{
+              flex: 1, fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 600,
+              textAlign: 'center', padding: '6px 8px', borderRadius: 8,
+              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)',
+              color: 'var(--t-1)', minWidth: 0,
+            }}
+          />
+          <button
+            onClick={applyDamage}
+            disabled={!valid}
+            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: valid ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: valid ? 'var(--stat-str-bg)' : 'transparent', color: valid ? 'var(--stat-str)' : 'var(--t-3)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+          >
+            Damage
+          </button>
+          <button
+            onClick={applyHeal}
+            disabled={!valid}
+            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: valid ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: valid ? 'var(--stat-dex-bg)' : 'transparent', color: valid ? 'var(--stat-dex)' : 'var(--t-3)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+          >
+            Heal
+          </button>
+          <button
+            onClick={applyTemp}
+            disabled={isNaN(num)}
+            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: !isNaN(num) ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid rgba(96,165,250,0.25)', background: !isNaN(num) ? 'rgba(96,165,250,0.08)' : 'transparent', color: !isNaN(num) ? '#60a5fa' : 'var(--t-3)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
+          >
+            Temp
+          </button>
         </div>
       </div>
 
-      {/* Stats strip */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {/* Stat chips strip */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {stats.map(stat => (
           <div
             key={stat.label}
             onClick={stat.onClick ?? (stat.editable ? stat.onEdit : undefined)}
             style={{
-              background: 'var(--c-raised)', border: `1px solid ${stat.color}25`,
-              borderRadius: 'var(--r-md)', padding: '6px 10px', textAlign: 'center',
-              cursor: stat.onClick || stat.editable ? 'pointer' : 'default',
-              flex: '1 0 auto', minWidth: 52, transition: 'all var(--tr-fast)',
+              background: 'var(--c-card)', border: `1px solid ${stat.color}22`,
+              borderRadius: 'var(--r-md)', padding: '5px 8px', textAlign: 'center',
+              cursor: (stat as any).onClick || (stat as any).editable ? 'pointer' : 'default',
+              flex: '1 1 auto', minWidth: 48, maxWidth: 80,
+              transition: 'all var(--tr-fast)',
             }}
-            onMouseEnter={e => { if (stat.onClick || stat.editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}50`; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}20`; }}
+            onMouseEnter={e => { if ((stat as any).onClick || (stat as any).editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}55`; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}22`; }}
           >
-            {/* Editing AC */}
             {stat.label === 'AC' && editingAC ? (
               <input autoFocus type="number" value={acInput}
                 onChange={e => setAcInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); }
-                  if (e.key === 'Escape') setEditingAC(false);
-                }}
+                onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); } if (e.key === 'Escape') setEditingAC(false); }}
                 onBlur={() => { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); }}
-                style={{ width: 36, textAlign: 'center', fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 700, background: 'transparent', border: 'none', color: stat.color, outline: 'none' }}
+                style={{ width: '100%', textAlign: 'center', fontSize: 13, fontFamily: 'var(--ff-stat)', fontWeight: 700, background: 'transparent', border: 'none', color: stat.color, outline: 'none' }}
               />
             ) : stat.label === 'SPEED' && editingSpeed ? (
               <input autoFocus type="number" value={speedInput}
                 onChange={e => setSpeedInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); }
-                  if (e.key === 'Escape') setEditingSpeed(false);
-                }}
+                onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); } if (e.key === 'Escape') setEditingSpeed(false); }}
                 onBlur={() => { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); }}
-                style={{ width: 40, textAlign: 'center', fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 700, background: 'transparent', border: 'none', color: stat.color, outline: 'none' }}
+                style={{ width: '100%', textAlign: 'center', fontSize: 13, fontFamily: 'var(--ff-stat)', fontWeight: 700, background: 'transparent', border: 'none', color: stat.color, outline: 'none' }}
               />
             ) : (
-              <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 15, color: stat.color, lineHeight: 1 }}>
+              <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 13, color: stat.color, lineHeight: 1 }}>
                 {stat.value}
               </div>
             )}
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-3)', marginTop: 3 }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginTop: 3 }}>
               {stat.label}
             </div>
           </div>
