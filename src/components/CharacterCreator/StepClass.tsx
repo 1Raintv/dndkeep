@@ -113,7 +113,7 @@ export default function StepClass({ selected, level, selectedSkills, onSelect, o
                 ? <span style={{ marginLeft: 8, color: 'var(--c-purple-l)', fontWeight: 600,
                     background: 'var(--c-purple-bg)', padding: '1px 8px', borderRadius: 999,
                     textTransform: 'none', letterSpacing: 0, fontSize: 'var(--fs-xs)' }}>
-                    ✦ Choose on a following screen
+                    Choose on a following screen
                   </span>
                 : <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--t-3)',
                     textTransform: 'none', letterSpacing: 0 }}>
@@ -142,7 +142,7 @@ export default function StepClass({ selected, level, selectedSkills, onSelect, o
       {!preview && (
         <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-3)',
           background: 'var(--c-card)', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-xl)' }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>⚔️</div>
+          
           <div style={{ fontSize: 'var(--fs-sm)' }}>Select a class to see details</div>
         </div>
       )}

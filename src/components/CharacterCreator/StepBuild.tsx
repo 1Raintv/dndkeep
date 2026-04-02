@@ -269,7 +269,7 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
     // Spells are added from the character sheet after creation
     return (
       <div style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic' }}>
-        ✨ {label} — you'll add spells from your character sheet after creation.
+        {label} — you'll add spells from your character sheet after creation.
       </div>
     );
   }
@@ -336,7 +336,7 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   // Default: just show label
   return (
     <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)' }}>
-      📋 {label} — record this choice on your character sheet after creation.
+      {label} — record this choice on your character sheet after creation.
     </div>
   );
 }
@@ -479,7 +479,7 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
             border: mode === m ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
             background: mode === m ? 'var(--c-gold-bg)' : 'var(--c-raised)',
             color: mode === m ? 'var(--c-gold-l)' : 'var(--t-2)', fontWeight: mode === m ? 600 : 400 }}>
-            {m === 'asi' ? '📈 +2 Ability Score' : '⭐ Take a Feat'}
+            {m === 'asi' ? '+2 Ability Score' : 'Take a Feat'}
           </button>
         ))}
       </div>

@@ -171,7 +171,7 @@ export default function StepReview({ name, species, className, subclass, backgro
       )}
 
       <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 'var(--r-lg)', fontSize: 'var(--fs-sm)', color: 'var(--c-green-l)', fontWeight: 600 }}>
-        ✓ Looking good! Click "Create Character" to save your build.
+        Looking good — click Create Character to save your build.
       </div>
     </div>
   );

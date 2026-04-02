@@ -129,7 +129,7 @@ export default function StepSpecies({ selected, originFeat, name, level, onNameC
             <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>Origin Feat</span>
             {!originFeat
               ? <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '2px 8px', borderRadius: 999 }}>Required to continue</span>
-              : <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '2px 8px', borderRadius: 999 }}>✓ Selected</span>
+              : <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '2px 8px', borderRadius: 999 }}>Selected</span>
             }
           </div>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>

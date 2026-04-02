@@ -111,7 +111,7 @@ export default function StepBackground({ selected, onSelect }: StepBackgroundPro
       ) : (
         <div style={{ textAlign: 'center', padding: 'var(--sp-6)', color: 'var(--t-3)',
           background: 'var(--c-card)', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-xl)' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🎒</div>
+          
           <div style={{ fontSize: 'var(--fs-sm)' }}>Select a background to see details</div>
         </div>
       )}

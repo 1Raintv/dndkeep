@@ -525,7 +525,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           }}
           title="Open Level Up Wizard"
         >
-          <span style={{ fontSize: 16 }}>✨</span>
+          
           <div style={{ flex: 1 }}>
             <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
               Level Up Available
@@ -687,14 +687,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                       if (!match) return <div key={i} style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', whiteSpace: 'pre-wrap' }}>{section}</div>;
                       const [, title, body] = match;
                       const sectionIcons: Record<string, string> = {
-                        'Origin Feat': '⭐', 'Fighting Style': '⚔️', 'Metamagic': '💫',
-                        'Eldritch Invocations': '👿', 'Expertise': '⭐', 'Divine Order': '✝️',
-                        'Primal Order': '🌿', 'Feats from ASI': '📈',
+                        'Origin Feat': '', 'Fighting Style': '', 'Metamagic': '',
+                        'Eldritch Invocations': '', 'Expertise': '', 'Divine Order': '',
+                        'Primal Order': '', 'Feats from ASI': '',
                       };
                       return (
                         <div key={i} style={{ background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)' }}>
                           <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-gold-l)', marginBottom: 6 }}>
-                            {sectionIcons[title] ?? '📖'} {title}
+                            {title}
                           </div>
                           <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6 }}>{body.trim()}</div>
                         </div>
