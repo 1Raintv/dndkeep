@@ -74,12 +74,11 @@ const Icons = {
 };
 
 const NAV_ITEMS = [
-  { to: '/lobby',     label: 'Characters', icon: Icons.characters },
-  { to: '/campaigns', label: 'Campaigns',  icon: Icons.campaigns,  pro: true },
+  { to: '/lobby',     label: 'Home',       icon: Icons.characters },
   { to: '/spells',    label: 'Spells',     icon: Icons.spells },
   { to: '/combat',    label: 'Combat',     icon: Icons.combat },
   { to: '/dice',      label: 'Dice',       icon: Icons.dice },
-  { to: '/homebrew',  label: 'Homebrew',   icon: Icons.homebrew },
+  { to: '/homebrew',  label: 'Homebrew',   icon: Icons.homebrew, pro: true },
 ];
 
 function Sidebar() {
@@ -197,7 +196,7 @@ function AppRoutes() {
             <Route path="/lobby"          element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
             <Route path="/creator"        element={<ProtectedRoute><CreatorPage /></ProtectedRoute>} />
             <Route path="/character/:id"  element={<ProtectedRoute><CharacterPage /></ProtectedRoute>} />
-            <Route path="/campaigns"      element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
+            <Route path="/campaigns"      element={<Navigate to="/lobby" replace />} />
             <Route path="/campaigns/:id"  element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
             <Route path="/homebrew"       element={<ProtectedRoute><HomebrewPage /></ProtectedRoute>} />
             <Route path="/spells"         element={<ProtectedRoute><SpellsPage /></ProtectedRoute>} />
