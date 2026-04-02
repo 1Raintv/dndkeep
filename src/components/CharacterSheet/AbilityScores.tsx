@@ -87,7 +87,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
       })()}
 
       {/* 6-column ability score strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 'var(--sp-2)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8, marginBottom: 'var(--sp-2)' }}>
         {ABILITY_ORDER.map(ability => {
           const meta = STAT_META[ability];
           const score = character[ability];

@@ -93,10 +93,10 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
         </div>
 
         {/* HP bar */}
-        <div style={{ height: 6, background: 'var(--c-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 14, position: 'relative' }}>
-          <div style={{ height: '100%', width: `${hpPct * 100}%`, background: `linear-gradient(90deg, ${hpCol}cc, ${hpCol})`, borderRadius: 999, transition: 'width 0.4s ease, background 0.3s ease', boxShadow: `0 0 10px ${hpCol}60` }} />
+        <div style={{ height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 999, marginBottom: 14, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.max(2, hpPct * 100)}%`, background: hpCol, borderRadius: 999, transition: 'width 0.4s ease, background 0.3s ease', boxShadow: `0 0 12px ${hpCol}` }} />
           {character.temp_hp > 0 && (
-            <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', width: `${Math.min(30, (character.temp_hp / character.max_hp) * 100)}%`, background: 'rgba(96,165,250,0.4)', borderRadius: 999 }} />
+            <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', width: `${Math.min(30, (character.temp_hp / character.max_hp) * 100)}%`, background: '#60a5fa80', borderRadius: 999 }} />
           )}
         </div>
 
@@ -162,7 +162,7 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
             key={stat.label}
             onClick={stat.onClick ?? (stat.editable ? stat.onEdit : undefined)}
             style={{
-              background: 'var(--c-card)', border: `1px solid ${stat.color}20`,
+              background: 'var(--c-raised)', border: `1px solid ${stat.color}25`,
               borderRadius: 'var(--r-md)', padding: '6px 10px', textAlign: 'center',
               cursor: stat.onClick || stat.editable ? 'pointer' : 'default',
               flex: '1 0 auto', minWidth: 52, transition: 'all var(--tr-fast)',

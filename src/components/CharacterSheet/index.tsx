@@ -12,6 +12,7 @@ import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
 import HPStatsPanel from './HPStatsPanel';
 import RollLog from './RollLog';
+import CampaignBar from './CampaignBar';
 import CombatStats from './CombatStats';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
@@ -799,6 +800,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         characterName={character.name}
         campaignId={character.campaign_id}
       />
+
+      {/* ── Campaign sessions bar — always visible at bottom ── */}
+      {userId && <CampaignBar userId={userId} />}
     </div>
   );
 }
@@ -899,6 +903,7 @@ function SpellRow({
           )}
         </div>
       )}
+
     </div>
   );
 }
