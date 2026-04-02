@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import ProGate from '../shared/ProGate';
 
 type HomebrewTab = 'spells' | 'monsters' | 'items';
 
@@ -69,7 +70,7 @@ function emptyItem(): Partial<HomebrewItem> {
 }
 
 export default function HomebrewPage() {
-  const { user } = useAuth();
+  const { user, isPro } = useAuth();
   const [tab, setTab] = useState<HomebrewTab>('spells');
   const [spells, setSpells] = useState<HomebrewSpell[]>([]);
   const [monsters, setMonsters] = useState<HomebrewMonster[]>([]);
