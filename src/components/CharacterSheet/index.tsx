@@ -247,9 +247,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         onShare={character.share_token && character.share_enabled ? () => {
           navigator.clipboard.writeText(window.location.origin + '/share/' + character.share_token);
         } : undefined}
-        onUpdateHP={delta => {
-            const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
-            handleUpdateHP(newHP, character.temp_hp);
+        onUpdateHP={(delta, tempHP) => {
+            if (tempHP !== undefined) {
+              handleUpdateHP(character.current_hp, tempHP);
+            } else {
+              const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
+              handleUpdateHP(newHP, character.temp_hp);
+            }
           }}
       />
 
@@ -510,35 +514,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </div>
       )}
 
-      {/* Level Up prompt — shown when character is below level 20 and not in session tab */}
-      {character.level < 20 && activeTab !== 'session' && (
-        <div
-          onClick={() => setShowLevelUp(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
-            padding: 'var(--sp-2) var(--sp-4)',
-            background: 'rgba(201,146,42,0.06)',
-            border: '1px solid var(--c-gold-bdr)',
-            borderRadius: 'var(--r-md)',
-            cursor: 'pointer',
-            transition: 'all var(--tr-fast)',
-          }}
-          title="Open Level Up Wizard"
-        >
-          
-          <div style={{ flex: 1 }}>
-            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              Level Up Available
-            </span>
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginLeft: 8 }}>
-              {character.class_name} → Level {character.level + 1}
-            </span>
-          </div>
-          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '2px 10px', borderRadius: 999 }}>
-            Level Up →
-          </span>
-        </div>
-      )}
+
 
       {/* Active condition warning banner */}
       {(() => {
@@ -774,18 +750,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               </div>
             )}
 
-            {/* Level up button */}
-            {character.level < 20 && (
-              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 'var(--sp-2)' }}>
-                <button
-                  className="btn-gold"
-                  onClick={() => setShowLevelUp(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}
-                >
-                  Level Up to {character.class_name} {character.level + 1}
-                </button>
-              </div>
-            )}
+
 
             <SessionTab character={character} isPro={isPro} userId={userId} />
           </div>

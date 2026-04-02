@@ -12,7 +12,7 @@ interface CharacterHeaderProps {
   onOpenAvatarPicker?: () => void;
   onToggleInspiration?: () => void;
   onOpenRest?: () => void;
-  onUpdateHP?: (delta: number) => void;
+  onUpdateHP?: (delta: number, tempHP?: number) => void;
   onUpdateAC?: (ac: number) => void;
   onUpdateSpeed?: (speed: number) => void;
   onShare?: () => void;
@@ -57,13 +57,6 @@ export default function CharacterHeader({
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
   const hpPct = character.max_hp > 0 ? Math.min(1, character.current_hp / character.max_hp) : 0;
   const hpCol = hpColor(character.current_hp, character.max_hp);
-
-  function applyHPChange() {
-    const val = parseInt(hpDelta);
-    if (isNaN(val) || val <= 0) return;
-    onUpdateHP?.(hpMode === 'damage' ? -val : val);
-    setHpDelta('');
-  }
 
   const classDisplay = character.secondary_class && (character.secondary_level ?? 0) > 0
     ? `${character.class_name} ${character.level} / ${character.secondary_class} ${character.secondary_level}`
@@ -132,48 +125,79 @@ export default function CharacterHeader({
         {/* ── STAT CHIPS ────────────────────────── */}
         <div className="char-header-chips" style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', flex: 1 }}>
 
-          {/* HP — largest chip */}
+          {/* HP — large prominent block */}
           <div style={{
-            padding: 'var(--sp-2) var(--sp-3)',
+            padding: 'var(--sp-3) var(--sp-4)',
             background: '#080d14',
-            border: `1px solid ${hpCol}40`,
-            borderRadius: 'var(--r-lg)',
-            minWidth: 130,
+            border: `1px solid ${hpCol}50`,
+            borderRadius: 'var(--r-xl)',
+            minWidth: 200,
           }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-2)' }}>HP</span>
-              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-xl)', color: hpCol, lineHeight: 1 }}>
+            {/* HP numbers */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>HP</span>
+              <span style={{ fontWeight: 900, fontSize: '2.4rem', color: hpCol, lineHeight: 1 }}>
                 {character.current_hp}
               </span>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>/ {character.max_hp}</span>
+              <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontWeight: 600 }}>/ {character.max_hp}</span>
               {character.temp_hp > 0 && (
-                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: '#60a5fa', marginLeft: 2 }}>+{character.temp_hp}</span>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', padding: '1px 7px', borderRadius: 999 }}>
+                  +{character.temp_hp} temp
+                </span>
               )}
             </div>
-            {/* HP bar */}
-            <div style={{ height: 3, background: 'var(--c-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 4 }}>
-              <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpCol, borderRadius: 999, transition: 'width var(--tr-slow), background var(--tr-normal)', boxShadow: `0 0 6px ${hpCol}` }} />
+
+            {/* HP bar — thicker */}
+            <div style={{ height: 6, background: 'var(--c-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 8, position: 'relative' }}>
+              <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpCol, borderRadius: 999, transition: 'width var(--tr-slow), background var(--tr-normal)', boxShadow: `0 0 8px ${hpCol}80` }} />
+              {/* Temp HP overlay */}
+              {character.temp_hp > 0 && (
+                <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', width: `${Math.min(100, (character.temp_hp / character.max_hp) * 100)}%`, background: 'rgba(96,165,250,0.5)', borderRadius: 999 }} />
+              )}
             </div>
-            {/* Quick HP adjust buttons */}
-            <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
-              {[-10, -5, -1].map(v => (
-                <button key={v} onClick={() => onUpdateHP?.(v)}
-                  style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4,
-                    minHeight: 0, cursor: 'pointer',
-                    background: 'rgba(229,57,53,0.1)', border: '1px solid rgba(229,57,53,0.3)',
-                    color: '#ff8a80' }}>
-                  {v}
-                </button>
-              ))}
-              {[1, 5, 10].map(v => (
-                <button key={v} onClick={() => onUpdateHP?.(v)}
-                  style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4,
-                    minHeight: 0, cursor: 'pointer',
-                    background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)',
-                    color: 'var(--hp-full)' }}>
-                  +{v}
-                </button>
-              ))}
+
+            {/* Quick adjust + temp HP */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Damage buttons */}
+              <div style={{ display: 'flex', gap: 3 }}>
+                {[-10, -5, -1].map(v => (
+                  <button key={v} onClick={() => onUpdateHP?.(v)}
+                    style={{ fontSize: 10, fontWeight: 700, padding: '3px 6px', borderRadius: 4,
+                      minHeight: 0, cursor: 'pointer',
+                      background: 'rgba(229,57,53,0.1)', border: '1px solid rgba(229,57,53,0.35)',
+                      color: '#ff8a80' }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+              {/* Heal buttons */}
+              <div style={{ display: 'flex', gap: 3 }}>
+                {[1, 5, 10].map(v => (
+                  <button key={v} onClick={() => onUpdateHP?.(v)}
+                    style={{ fontSize: 10, fontWeight: 700, padding: '3px 6px', borderRadius: 4,
+                      minHeight: 0, cursor: 'pointer',
+                      background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.35)',
+                      color: 'var(--hp-full)' }}>
+                    +{v}
+                  </button>
+                ))}
+              </div>
+
+              {/* Temp HP input */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Temp</span>
+                <input
+                  type="number"
+                  placeholder="0"
+                  min={0}
+                  value={character.temp_hp || ''}
+                  onChange={e => {
+                    const v = parseInt(e.target.value);
+                    onUpdateHP?.(0, isNaN(v) ? 0 : Math.max(0, v));
+                  }}
+                  style={{ width: 40, padding: '2px 4px', fontSize: 11, textAlign: 'center', borderRadius: 4, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.06)', color: '#93c5fd' }}
+                />
+              </div>
             </div>
           </div>
 
