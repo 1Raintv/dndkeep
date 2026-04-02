@@ -86,7 +86,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
           background: 'rgba(201,146,42,0.06)',
           textAlign: 'center',
         }}>
-          <div style={{ fontSize: 36, marginBottom: 'var(--sp-3)' }}>⚔️</div>
+          
           <h3 style={{ marginBottom: 'var(--sp-2)', fontFamily: 'var(--ff-body)', color: 'var(--c-gold-l)' }}>
             DM Sessions — Pro Feature
           </h3>
@@ -172,7 +172,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
         <div>
           {campaigns.length === 0 && (
             <div style={{ textAlign: 'center', padding: 'var(--sp-6)', marginBottom: 'var(--sp-4)' }}>
-              <div style={{ fontSize: 32, marginBottom: 'var(--sp-3)' }}>🗺️</div>
+              
               <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
                 No sessions yet. Create one and share the join code with your players.
               </p>

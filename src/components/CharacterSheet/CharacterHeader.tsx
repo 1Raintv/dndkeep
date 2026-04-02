@@ -98,7 +98,9 @@ export default function CharacterHeader({
             {character.avatar_url ? (
               <img src={character.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <span style={{ fontSize: 24 }}>🧙</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--c-gold-l)', fontFamily: 'var(--ff-body)' }}>
+                {character.name?.charAt(0).toUpperCase() ?? '?'}
+              </span>
             )}
           </button>
 
@@ -111,7 +113,7 @@ export default function CharacterHeader({
             }}>
               {character.name}
               {character.inspiration && (
-                <span title="Inspiration!" style={{ marginLeft: 6, fontSize: 12 }}>⭐</span>
+                <span title="Inspiration!" style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>INSP</span>
               )}
             </div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 1 }}>
@@ -152,41 +154,26 @@ export default function CharacterHeader({
             <div style={{ height: 3, background: 'var(--c-raised)', borderRadius: 999, overflow: 'hidden', marginBottom: 4 }}>
               <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpCol, borderRadius: 999, transition: 'width var(--tr-slow), background var(--tr-normal)', boxShadow: `0 0 6px ${hpCol}` }} />
             </div>
-            {/* Inline HP controls */}
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <button
-                onClick={() => setHpMode(m => m === 'damage' ? 'heal' : 'damage')}
-                style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, padding: '1px 5px',
-                  borderRadius: 999, cursor: 'pointer',
-                  background: hpMode === 'damage' ? 'rgba(229,57,53,0.15)' : 'rgba(52,211,153,0.15)',
-                  border: `1px solid ${hpMode === 'damage' ? 'rgba(229,57,53,0.4)' : 'rgba(52,211,153,0.4)'}`,
-                  color: hpMode === 'damage' ? '#ff8a80' : 'var(--hp-full)',
-                  minHeight: 0,
-                }}
-              >
-                {hpMode === 'damage' ? '− DMG' : '+ HEAL'}
-              </button>
-              <input
-                type="number"
-                value={hpDelta}
-                onChange={e => setHpDelta(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && applyHPChange()}
-                placeholder="0"
-                min={0}
-                style={{ width: 36, padding: '1px 4px', fontSize: 11, textAlign: 'center', borderRadius: 4 }}
-              />
-              <button
-                onClick={applyHPChange}
-                disabled={!hpDelta || isNaN(parseInt(hpDelta))}
-                style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, padding: '1px 6px',
-                  borderRadius: 4, cursor: 'pointer', minHeight: 0,
-                  background: 'var(--c-raised)', border: '1px solid var(--c-border-m)', color: 'var(--t-2)',
-                }}
-              >
-                Apply
-              </button>
+            {/* Quick HP adjust buttons */}
+            <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+              {[-10, -5, -1].map(v => (
+                <button key={v} onClick={() => onUpdateHP?.(v)}
+                  style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4,
+                    minHeight: 0, cursor: 'pointer',
+                    background: 'rgba(229,57,53,0.1)', border: '1px solid rgba(229,57,53,0.3)',
+                    color: '#ff8a80' }}>
+                  {v}
+                </button>
+              ))}
+              {[1, 5, 10].map(v => (
+                <button key={v} onClick={() => onUpdateHP?.(v)}
+                  style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4,
+                    minHeight: 0, cursor: 'pointer',
+                    background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)',
+                    color: 'var(--hp-full)' }}>
+                  +{v}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -195,7 +182,6 @@ export default function CharacterHeader({
 
           {/* Initiative — click to roll */}
           <StatChip
-            icon="⚡"
             label="INIT"
             value={initMod >= 0 ? `+${initMod}` : String(initMod)}
             color="#60a5fa"
@@ -213,7 +199,6 @@ export default function CharacterHeader({
           {isSpellcaster && (
             <>
               <StatChip
-                icon="✨"
                 label="SPELL ATK"
                 value={spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack)}
                 color="#c084fc"
@@ -225,7 +210,7 @@ export default function CharacterHeader({
           {/* Speed — click to edit */}
           {editingSpeed ? (
             <div style={{ padding: '4px var(--sp-2)', background: '#080d14', border: '2px solid var(--c-blue-l)', borderRadius: 'var(--r-md)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 52 }}>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)' }}>💨 SPEED</div>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)' }}>SPEED</div>
               <input
                 type="number" autoFocus value={speedInput}
                 onChange={e => setSpeedInput(e.target.value)}
@@ -250,7 +235,7 @@ export default function CharacterHeader({
             onClick={onOpenRest}
             title="Short or long rest (T)"
           >
-            🌙 Rest
+            Rest
           </button>
           <button
             className="btn-ghost btn-sm"
@@ -258,7 +243,7 @@ export default function CharacterHeader({
             title="Toggle inspiration (I)"
             style={{ color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-2)' }}
           >
-            {character.inspiration ? '⭐ Inspired' : '☆ Inspiration'}
+            {character.inspiration ? 'Inspired' : 'Inspiration'}
           </button>
           {onShare && (
             <button

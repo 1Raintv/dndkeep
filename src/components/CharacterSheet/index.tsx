@@ -38,12 +38,12 @@ import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 type Tab = 'abilities' | 'spells' | 'combat' | 'bio' | 'history' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'abilities', label: '⚔ Abilities' },
-  { id: 'spells',    label: '✨ Spells' },
-  { id: 'combat',    label: '🗡 Combat' },
-  { id: 'bio',       label: '📖 Bio' },
-  { id: 'history',   label: '🎲 History' },
-  { id: 'session',   label: '⚡ Session' },
+  { id: 'abilities', label: 'Abilities' },
+  { id: 'spells',    label: 'Spells' },
+  { id: 'combat',    label: 'Combat' },
+  { id: 'bio',       label: 'Bio' },
+  { id: 'history',   label: 'History' },
+  { id: 'session',   label: 'Session' },
 ];
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -285,7 +285,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             gap: 'var(--sp-3)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-              <span style={{ fontSize: 18 }}>🔮</span>
+              
               <div>
                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: '#a78bfa' }}>
                   Concentrating: {spell.name}
@@ -320,7 +320,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             gap: 'var(--sp-3)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 18 }}>🐾</span>
+              
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--hp-full)', marginBottom: 4 }}>
                   Wildshape: {character.wildshape_beast_name}
@@ -640,7 +640,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               {(!character.weapons || character.weapons.length === 0) && (
                 <div style={{ padding: 'var(--sp-4)', background: '#080d14', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-lg)', textAlign: 'center', marginBottom: 'var(--sp-3)' }}>
                   <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
-                    ⚔️ No weapons added yet. Add your weapons to roll attacks directly from your sheet.
+                    No weapons added yet. Add your weapons to roll attacks directly from your sheet.
                   </p>
                 </div>
               )}
@@ -782,7 +782,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   onClick={() => setShowLevelUp(true)}
                   style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}
                 >
-                  ✨ Level Up to {character.class_name} {character.level + 1}
+                  Level Up to {character.class_name} {character.level + 1}
                 </button>
               </div>
             )}

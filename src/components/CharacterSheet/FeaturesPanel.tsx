@@ -7,17 +7,7 @@ interface FeaturesPanelProps {
   onUpdateNotes?: (notes: string) => void;
 }
 
-const FEATURE_ICONS: Record<string, string> = {
-  'Rage': '🔥', 'Extra Attack': '⚔️', 'Action Surge': '⚡', 'Second Wind': '💨',
-  'Sneak Attack': '🗡️', 'Bardic Inspiration': '🎵', 'Spellcasting': '✨',
-  'Channel Divinity': '✝️', 'Wild Shape': '🐾', 'Stunning Strike': '☯️',
-  'Lay on Hands': '🤲', 'Aura of Protection': '🛡️', 'Cunning Action': '👟',
-  'Evasion': '💨', 'Unarmored Defense': '🥋', 'Eldritch Invocations': '👿',
-  'Pact Magic': '📜', 'Font of Magic': '✨', 'Arcane Recovery': '📚',
-  'Favored Enemy': '🎯', 'Expertise': '⭐', 'Fighting Style': '⚔️',
-  'Subclass Feature': '🌟', 'Ability Score Improvement': '📈',
-  'Mystic Arcanum': '🔮', 'Metamagic': '💫', 'Eldritch Master': '👿',
-};
+const FEATURE_ICONS: Record<string, string> = {};
 
 function getIcon(name: string): string {
   for (const [key, icon] of Object.entries(FEATURE_ICONS)) {
