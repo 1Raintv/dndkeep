@@ -150,7 +150,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange }
                 </div>
                 {/* Show choice labels */}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>
-                  {choiceItems.filter(ch => ch.type !== 'cantrips' && ch.type !== 'spells').map((ch, i) => {
+                  {choiceItems.map((ch, i) => {
                     const done = !isChoiceIncomplete(ch.type, lvl, choices);
                     return (
                       <span key={i} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
@@ -269,12 +269,7 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   }
 
   if (type === 'cantrips' || type === 'spells') {
-    // Spells are added from the character sheet after creation
-    return (
-      <div style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic' }}>
-        {label} — you'll add spells from your character sheet after creation.
-      </div>
-    );
+    return <SpellPicker label={label} type={type} className={className} choices={choices} onUpdate={onUpdate} maxLevel={maxSpellLevel} />;
   }
 
   if (type === 'metamagic') {
@@ -375,71 +370,203 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   );
 }
 
-// ── Spell Picker ────────────────────────────────────────────────────
+// ── Spell Picker — level-tabbed ────────────────────────────────────
 function SpellPicker({ label, type, className, choices, onUpdate, maxLevel }: {
   label: string; type: string; className: string;
   choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void; maxLevel: number;
 }) {
-  const [search, setSearch] = useState('');
-  const [filterLvl, setFilterLvl] = useState<number | 'all'>('all');
   const isCantrip = type === 'cantrips';
   const selected = isCantrip ? choices.cantrips : choices.spells;
+  const [activeLevel, setActiveLevel] = useState<number>(isCantrip ? 0 : 1);
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const available = useMemo(() => SPELLS.filter(s => {
-    if (!s.classes.includes(className)) return false;
-    if (isCantrip ? s.level !== 0 : s.level === 0) return false;
-    if (!isCantrip && s.level > maxLevel) return false;
-    if (filterLvl !== 'all' && s.level !== filterLvl) return false;
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  }), [className, isCantrip, maxLevel, filterLvl, search]);
+  const levelOptions: number[] = isCantrip ? [0] : Array.from({ length: maxLevel }, (_, i) => i + 1);
+
+  // All spells for this class grouped by level
+  const allByLevel = useMemo(() => {
+    const map: Record<number, typeof SPELLS> = {};
+    SPELLS.forEach(s => {
+      if (!s.classes.includes(className)) return;
+      if (isCantrip ? s.level !== 0 : (s.level === 0 || s.level > maxLevel)) return;
+      if (!map[s.level]) map[s.level] = [];
+      map[s.level].push(s);
+    });
+    return map;
+  }, [className, isCantrip, maxLevel]);
+
+  const spellsAtLevel = useMemo(() => {
+    const base = allByLevel[activeLevel] ?? [];
+    if (!search.trim()) return base;
+    const q = search.toLowerCase();
+    return base.filter(s => s.name.toLowerCase().includes(q) || s.school.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q));
+  }, [allByLevel, activeLevel, search]);
 
   function toggle(id: string) {
     const next = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
     onUpdate(isCantrip ? { cantrips: next } : { spells: next });
   }
 
-  const levelOptions = isCantrip ? [0] : Array.from({ length: maxLevel }, (_, i) => i + 1);
+  const SCHOOL_COLORS: Record<string, string> = {
+    Abjuration: '#60a5fa', Conjuration: '#a78bfa', Divination: '#34d399',
+    Enchantment: '#f472b6', Evocation: '#fb923c', Illusion: '#c084fc',
+    Necromancy: '#94a3b8', Transmutation: '#4ade80',
+  };
+
+  const LEVEL_LABELS = ['Cantrip', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 
   return (
-    <div>
-      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
-        {label} <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontWeight: 400 }}>— {selected.length} selected</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+          {label}
+        </div>
+        <span style={{ fontSize: 10, color: selected.length > 0 ? 'var(--c-gold-l)' : 'var(--t-3)', fontWeight: 600 }}>
+          {selected.length} selected
+        </span>
       </div>
-      <div style={{ display: 'flex', gap: 'var(--sp-2)', marginBottom: 'var(--sp-2)', flexWrap: 'wrap' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search spells…" style={{ fontSize: 'var(--fs-xs)', flex: 1, minWidth: 120 }} />
-        {!isCantrip && (
-          <div style={{ display: 'flex', gap: 3 }}>
-            <button onClick={() => setFilterLvl('all')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 999, minHeight: 0, cursor: 'pointer',
-              border: filterLvl === 'all' ? '1px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-              background: filterLvl === 'all' ? 'var(--c-gold-bg)' : 'transparent', color: filterLvl === 'all' ? 'var(--c-gold-l)' : 'var(--t-3)' }}>All</button>
-            {levelOptions.map(l => (
-              <button key={l} onClick={() => setFilterLvl(l)} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 999, minHeight: 0, cursor: 'pointer',
-                border: filterLvl === l ? '1px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-                background: filterLvl === l ? 'var(--c-gold-bg)' : 'transparent', color: filterLvl === l ? 'var(--c-gold-l)' : 'var(--t-3)' }}>{l}</button>
-            ))}
+
+      {/* Search */}
+      <input
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder={`Search ${isCantrip ? 'cantrips' : 'spells'}…`}
+        style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+      />
+
+      {/* Level tabs */}
+      {!isCantrip && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {levelOptions.map(lvl => {
+            const countAtLevel = (allByLevel[lvl] ?? []).length;
+            const selectedAtLevel = (allByLevel[lvl] ?? []).filter(s => selected.includes(s.id)).length;
+            const isActive = activeLevel === lvl;
+            return (
+              <button
+                key={lvl}
+                onClick={() => { setActiveLevel(lvl); setExpanded(null); setSearch(''); }}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 999,
+                  cursor: 'pointer', minHeight: 0, position: 'relative',
+                  border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                  background: isActive ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                  color: isActive ? 'var(--c-gold-l)' : 'var(--t-2)',
+                }}
+              >
+                {LEVEL_LABELS[lvl]}
+                {selectedAtLevel > 0 && (
+                  <span style={{ marginLeft: 4, fontSize: 9, fontWeight: 800, color: 'var(--c-gold-l)', background: 'rgba(212,160,23,0.2)', padding: '0 4px', borderRadius: 999 }}>
+                    {selectedAtLevel}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Spell list for active level */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 280, overflowY: 'auto' }}>
+        {spellsAtLevel.length === 0 ? (
+          <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--t-3)', fontSize: 12 }}>
+            {search ? `No ${isCantrip ? 'cantrips' : 'spells'} match "${search}"` : `No ${isCantrip ? 'cantrips' : `${LEVEL_LABELS[activeLevel]}-level spells`} available`}
           </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 240, overflowY: 'auto' }}>
-        {available.map(spell => {
+        ) : spellsAtLevel.map(spell => {
           const sel = selected.includes(spell.id);
+          const isExp = expanded === spell.id;
+          const schoolColor = SCHOOL_COLORS[spell.school] ?? 'var(--t-3)';
           return (
-            <button key={spell.id} onClick={() => toggle(spell.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: '5px var(--sp-3)', borderRadius: 'var(--r-sm)', cursor: 'pointer', textAlign: 'left', minHeight: 0,
-                border: sel ? '1px solid var(--c-gold-bdr)' : '1px solid transparent',
-                background: sel ? 'var(--c-gold-bg)' : 'transparent' }}>
-              <div style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
-                background: sel ? 'var(--c-gold-l)' : 'transparent',
-                border: `1.5px solid ${sel ? 'var(--c-gold)' : 'var(--c-border-m)'}` }} />
-              <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: sel ? 600 : 400, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{spell.name}</span>
-              <span style={{ fontSize: 9, color: 'var(--t-3)' }}>{spell.school}</span>
-              {!isCantrip && <span style={{ fontSize: 9, color: 'var(--t-3)', minWidth: 16, textAlign: 'right' }}>Lv{spell.level}</span>}
-            </button>
+            <div key={spell.id} style={{
+              borderRadius: 8,
+              border: sel ? '1px solid var(--c-gold-bdr)' : isExp ? '1px solid var(--c-border-m)' : '1px solid var(--c-border)',
+              background: sel ? 'rgba(212,160,23,0.06)' : 'var(--c-card)',
+              overflow: 'hidden',
+            }}>
+              {/* Spell row */}
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', minHeight: 40 }}
+                onClick={() => setExpanded(isExp ? null : spell.id)}
+              >
+                {/* School color pip */}
+                <div style={{ width: 3, height: 28, borderRadius: 2, background: schoolColor, flexShrink: 0, opacity: 0.7 }} />
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: sel ? 700 : 500, fontSize: 13, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+                      {spell.name}
+                    </span>
+                    <span style={{ fontSize: 9, color: schoolColor, background: `${schoolColor}15`, border: `1px solid ${schoolColor}30`, padding: '1px 4px', borderRadius: 3 }}>
+                      {spell.school}
+                    </span>
+                    {spell.concentration && (
+                      <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)', padding: '1px 4px', borderRadius: 3 }}>C</span>
+                    )}
+                    {spell.ritual && (
+                      <span style={{ fontSize: 9, color: '#a78bfa', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', padding: '1px 4px', borderRadius: 3 }}>R</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 1 }}>
+                    {spell.casting_time} · {spell.range} · {spell.duration}
+                  </div>
+                </div>
+
+                {/* Add/Remove button */}
+                <button
+                  onClick={e => { e.stopPropagation(); toggle(spell.id); }}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                    cursor: 'pointer', minHeight: 0, flexShrink: 0,
+                    border: sel ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--c-gold-bdr)',
+                    background: sel ? 'rgba(248,113,113,0.08)' : 'var(--c-gold-bg)',
+                    color: sel ? 'var(--stat-str)' : 'var(--c-gold-l)',
+                  }}
+                >
+                  {sel ? '− Remove' : '+ Add'}
+                </button>
+
+                <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
+              </div>
+
+              {/* Expanded description */}
+              {isExp && (
+                <div style={{ padding: '0 12px 10px 23px', borderTop: '1px solid var(--c-border)' }}>
+                  <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, margin: '8px 0 0' }}>
+                    {spell.description}
+                  </p>
+                  {spell.components && (
+                    <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 5 }}>
+                      Components: {spell.components}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           );
         })}
-        {available.length === 0 && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', padding: 'var(--sp-2)', textAlign: 'center' }}>No spells match</div>}
       </div>
+
+      {/* Selected summary pills */}
+      {selected.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingTop: 4, borderTop: '1px solid var(--c-border)' }}>
+          {selected.map(id => {
+            const spell = SPELLS.find(s => s.id === id);
+            if (!spell) return null;
+            return (
+              <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, padding: '2px 6px 2px 8px', borderRadius: 999, background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', color: 'var(--c-gold-l)' }}>
+                {spell.name}
+                <button
+                  onClick={() => toggle(id)}
+                  style={{ fontSize: 10, color: 'var(--c-gold-l)', opacity: 0.6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+                >
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

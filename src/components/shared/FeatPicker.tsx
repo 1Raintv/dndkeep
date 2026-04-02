@@ -148,12 +148,18 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
                   }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: isSel ? 700 : 500, fontSize: 13, color: isSel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
                       {feat.name}
                     </span>
+                    {/* ASI badge — e.g. "+1 STR" */}
+                    {feat.asi && feat.asi.map((a, i) => (
+                      <span key={i} style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-green-l)', background: 'rgba(5,150,105,0.1)', border: '1px solid rgba(5,150,105,0.3)', padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>
+                        +{a.amount} {a.ability}
+                      </span>
+                    ))}
                     {feat.prerequisite && (
-                      <span style={{ fontSize: 9, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', padding: '1px 4px', borderRadius: 3 }}>
+                      <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)', padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>
                         Req: {feat.prerequisite}
                       </span>
                     )}
@@ -168,6 +174,29 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
               {/* Expanded */}
               {isExp && (
                 <div style={{ padding: '0 14px 12px 38px', borderTop: '1px solid var(--c-border)' }}>
+
+                  {/* Prerequisite banner */}
+                  {feat.prerequisite && (
+                    <div style={{ marginTop: 8, marginBottom: 6, padding: '4px 10px', borderRadius: 6, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-amber-l)' }}>Prerequisite</span>
+                      <span style={{ fontSize: 11, color: 'var(--c-amber-l)' }}>{feat.prerequisite}</span>
+                    </div>
+                  )}
+
+                  {/* ASI section */}
+                  {feat.asi && feat.asi.length > 0 && (
+                    <div style={{ marginTop: feat.prerequisite ? 4 : 8, marginBottom: 8, padding: '8px 10px', borderRadius: 6, background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-green-l)', marginBottom: 4 }}>
+                        Ability Score Increase
+                      </div>
+                      {feat.asi.map((a, i) => (
+                        <div key={i} style={{ fontSize: 12, color: 'var(--c-green-l)', fontWeight: 600 }}>
+                          +{a.amount} {a.ability} (max 20)
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65, margin: '8px 0 8px' }}>
                     {feat.description}
                   </p>
@@ -233,7 +262,14 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
         <div style={{ minWidth: 0 }}>
           {selectedFeat ? (
             <>
-              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-gold-l)' }}>✓ {selectedFeat.name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-gold-l)' }}>✓ {selectedFeat.name}</span>
+                {selectedFeat.asi?.map((a, i) => (
+                  <span key={i} style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-green-l)', background: 'rgba(5,150,105,0.1)', border: '1px solid rgba(5,150,105,0.3)', padding: '1px 5px', borderRadius: 3 }}>
+                    +{a.amount} {a.ability}
+                  </span>
+                ))}
+              </div>
               <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {selectedFeat.description}
               </div>
