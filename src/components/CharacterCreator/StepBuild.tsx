@@ -3,6 +3,7 @@ import { CLASS_MAP } from '../../data/classes';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 import { SPELLS } from '../../data/spells';
 import { FEATS } from '../../data/feats';
+import FeatPicker from '../shared/FeatPicker';
 import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
@@ -457,9 +458,6 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
   choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
 }) {
   const [mode, setMode] = useState<'asi' | 'feat'>(!choices.feats[level] ? 'asi' : 'feat');
-  const [featSearch, setFeatSearch] = useState('');
-  const [expandedFeat, setExpandedFeat] = useState<string | null>(null);
-  const generalFeats = FEATS.filter(f => f.category === 'general' && (!featSearch || f.name.toLowerCase().includes(featSearch.toLowerCase()) || f.benefits?.some(b => b.toLowerCase().includes(featSearch.toLowerCase()))));
   const asi = choices.asiChoices[level];
   const feat = choices.feats[level];
   const totalBoost = asi ? asi.amount + (asi.amount2 ?? 0) : 0;
@@ -568,74 +566,15 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
       )}
 
       {mode === 'feat' && (
-        <div>
-          {feat && <div style={{ fontSize: 11, color: 'var(--hp-full)', marginBottom: 8, fontWeight: 600 }}>✓ Selected: {feat}</div>}
-          <input value={featSearch} onChange={e => setFeatSearch(e.target.value)} placeholder="Search feats by name or benefit…" style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }} />
-          <div style={{ fontSize: 10, color: 'var(--t-3)', marginBottom: 6 }}>
-            {generalFeats.length} feats · click name to expand · click Select to choose
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflowY: 'auto' }}>
-            {generalFeats.map(f => {
-              const sel = feat === f.name;
-              const isExp = expandedFeat === f.name;
-              return (
-                <div key={f.name} style={{ borderRadius: 8, border: sel ? '2px solid var(--c-gold)' : isExp ? '1px solid var(--c-border-m)' : '1px solid var(--c-border)', background: sel ? 'var(--c-gold-bg)' : 'var(--c-card)', overflow: 'hidden', transition: 'all var(--tr-fast)' }}>
-                  {/* Header — click to expand */}
-                  <div
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', cursor: 'pointer' }}
-                    onClick={() => setExpandedFeat(isExp ? null : f.name)}
-                  >
-                    {/* Select dot */}
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        const newFeats = { ...choices.feats, [level]: sel ? '' : f.name };
-                        if (sel) delete newFeats[level];
-                        onUpdate({ feats: newFeats });
-                      }}
-                      style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, cursor: 'pointer', minHeight: 0, padding: 0, border: `2px solid ${sel ? 'var(--c-gold)' : 'var(--c-border-m)'}`, background: sel ? 'var(--c-gold)' : 'transparent' }}
-                    />
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isExp ? 'normal' : 'nowrap' }}>
-                      {f.name}
-                    </span>
-                    {f.prerequisite && <span style={{ fontSize: 9, color: 'var(--t-3)', flexShrink: 0 }}>{f.prerequisite}</span>}
-                    <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)', flexShrink: 0 }}>▼</span>
-                  </div>
-                  {/* Expanded body */}
-                  {isExp && (
-                    <div style={{ padding: '0 10px 10px', borderTop: '1px solid var(--c-border)' }}>
-                      <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, margin: '8px 0 6px' }}>{f.description}</p>
-                      {f.benefits && f.benefits.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
-                          {f.benefits.map((b, i) => (
-                            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                              <span style={{ color: 'var(--c-gold-l)', fontSize: 10, flexShrink: 0, marginTop: 1 }}>•</span>
-                              <span style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>{b}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <button
-                        className={sel ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
-                        onClick={() => {
-                          const newFeats = { ...choices.feats, [level]: sel ? '' : f.name };
-                          if (sel) delete newFeats[level];
-                          onUpdate({ feats: newFeats });
-                          setExpandedFeat(null);
-                        }}
-                      >
-                        {sel ? 'Remove selection' : 'Select this feat'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {generalFeats.length === 0 && (
-              <div style={{ textAlign: 'center', padding: 16, color: 'var(--t-3)', fontSize: 12 }}>No feats match your search.</div>
-            )}
-          </div>
-        </div>
+        <FeatPicker
+          selected={feat ?? null}
+          onSelect={featName => {
+            const newFeats = { ...choices.feats };
+            if (featName) newFeats[level] = featName;
+            else delete newFeats[level];
+            onUpdate({ feats: newFeats });
+          }}
+        />
       )}
     </div>
   );
