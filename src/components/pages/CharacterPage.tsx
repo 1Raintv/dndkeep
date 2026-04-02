@@ -53,12 +53,16 @@ export default function CharacterPage() {
 
   if (error || !character) {
     return (
-      <div style={{ padding: 'var(--sp-8)' }}>
-        <p style={{ color: 'var(--c-red-l)', marginBottom: 'var(--sp-4)' }}>
-          {error ?? 'Character not found.'}
+      <div style={{ padding: 'var(--sp-8)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--sp-4)', textAlign: 'center', maxWidth: 400, margin: '80px auto' }}>
+        <div style={{ fontSize: 48, opacity: 0.2 }}>⚔</div>
+        <div style={{ fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--t-1)' }}>
+          Character Not Found
+        </div>
+        <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', lineHeight: 1.6 }}>
+          This character may have been deleted or you may not have permission to view it.
         </p>
-        <button className="btn-secondary" onClick={() => navigate('/lobby')}>
-          Back to Characters
+        <button className="btn-gold" onClick={() => navigate('/lobby')}>
+          Back to Home
         </button>
       </div>
     );

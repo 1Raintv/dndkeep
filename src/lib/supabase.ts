@@ -143,7 +143,7 @@ export async function getCharacter(characterId: string): Promise<{ data: Charact
     .from('characters')
     .select('*')
     .eq('id', characterId)
-    .single();
+    .maybeSingle();
   return { data: data as Character | null, error: error ? new Error(error.message) : null };
 }
 
