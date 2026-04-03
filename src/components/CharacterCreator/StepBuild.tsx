@@ -4,6 +4,7 @@ import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 import { SPELLS } from '../../data/spells';
 import { FEATS } from '../../data/feats';
 import FeatPicker from '../shared/FeatPicker';
+import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
@@ -269,7 +270,21 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   }
 
   if (type === 'cantrips' || type === 'spells') {
-    return <SpellPicker label={label} type={type} className={className} choices={choices} onUpdate={onUpdate} maxLevel={maxSpellLevel} />;
+    const isCantrip = type === 'cantrips';
+    const selected = isCantrip ? choices.cantrips : choices.spells;
+    return (
+      <SpellPickerDropdown
+        label={label}
+        isCantrip={isCantrip}
+        className={className}
+        maxLevel={maxSpellLevel}
+        selected={selected}
+        onToggle={id => {
+          const next = selected.includes(id) ? selected.filter((x: string) => x !== id) : [...selected, id];
+          onUpdate(isCantrip ? { cantrips: next } : { spells: next });
+        }}
+      />
+    );
   }
 
   if (type === 'metamagic') {
