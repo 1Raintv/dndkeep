@@ -151,19 +151,7 @@ export default function SpellsTab({
             onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
           />
         </div>
-        {/* Add cantrips separately if applicable */}
-        {maxSpellLevel >= 0 && (
-          <div style={{ minWidth: 180 }}>
-            <SpellPickerDropdown
-              label="Add Cantrips"
-              isCantrip={true}
-              className={character.class_name}
-              maxLevel={0}
-              selected={character.known_spells}
-              onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
-            />
-          </div>
-        )}
+
       </div>
 
       {/* ── Search ── */}

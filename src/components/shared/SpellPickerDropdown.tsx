@@ -17,13 +17,13 @@ const SCHOOL_COLORS: Record<string, string> = {
   Necromancy: '#94a3b8', Transmutation: '#4ade80',
 };
 
-const LEVEL_LABELS = ['Cantrip', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
+const LEVEL_LABELS = ['Cantrips', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 
 export default function SpellPickerDropdown({
   label, isCantrip, className, maxLevel, selected, onToggle,
 }: SpellPickerDropdownProps) {
   const [open, setOpen] = useState(false);
-  const [activeLevel, setActiveLevel] = useState(isCantrip ? 0 : 1);
+  const [activeLevel, setActiveLevel] = useState(0);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -64,13 +64,13 @@ export default function SpellPickerDropdown({
     return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); };
   }, [open]);
 
-  const levelOptions: number[] = isCantrip ? [0] : Array.from({ length: maxLevel }, (_, i) => i + 1);
+  const levelOptions: number[] = isCantrip ? [0] : [0, ...Array.from({ length: maxLevel }, (_, i) => i + 1)];
 
   const allByLevel = useMemo(() => {
     const map: Record<number, typeof SPELLS> = {};
     SPELLS.forEach(s => {
       if (!s.classes.includes(className)) return;
-      if (isCantrip ? s.level !== 0 : (s.level === 0 || s.level > maxLevel)) return;
+      if (isCantrip ? s.level !== 0 : s.level > maxLevel) return;
       if (!map[s.level]) map[s.level] = [];
       map[s.level].push(s);
     });
@@ -147,7 +147,7 @@ export default function SpellPickerDropdown({
 
       {/* Spell count */}
       <div style={{ padding: '5px 14px 3px', fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>
-        {spellsAtLevel.length} {isCantrip ? 'cantrip' : `${LEVEL_LABELS[activeLevel]}-level spell`}{spellsAtLevel.length !== 1 ? 's' : ''} available
+        {spellsAtLevel.length} {activeLevel === 0 ? 'cantrip' : `${LEVEL_LABELS[activeLevel]}-level spell`}{spellsAtLevel.length !== 1 ? 's' : ''} available
         {search && ` matching "${search}"`}
       </div>
 
