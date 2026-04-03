@@ -19,7 +19,8 @@ const ASI_LEVELS = new Set([4, 8, 12, 16, 19]);
 export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUpWizardProps) {
   const newLevel = character.level + 1;
   const classData = CLASSES.find(c => c.name === character.class_name);
-  const needsSubclass = newLevel === 3 && !character.subclass;
+  const subclassUnlockLevel = classData?.subclasses?.[0]?.unlock_level ?? 3;
+  const needsSubclass = newLevel === subclassUnlockLevel && !character.subclass;
   const needsASI = ASI_LEVELS.has(newLevel);
 
   const [step, setStep] = useState<'overview' | 'subclass' | 'asi' | 'confirm'>('overview');
@@ -51,13 +52,36 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
     const updates: Partial<Character> = {
       level: newLevel,
       max_hp: newMaxHP,
-      current_hp: character.current_hp + avgHPGain,
+      current_hp: Math.min(character.current_hp + avgHPGain, newMaxHP),
     };
     if (selectedSubclass && needsSubclass) updates.subclass = selectedSubclass;
-    if (needsASI && asiChoice === 'asi') {
-      for (const [key, val] of Object.entries(abiBoosts)) {
-        const numVal = val as number;
-        if (numVal) updates[key as AbilityKey] = (character[key as AbilityKey] as number) + numVal;
+    if (needsASI) {
+      if (asiChoice === 'asi') {
+        // Apply ability score boosts (cap at 20)
+        for (const [key, val] of Object.entries(abiBoosts)) {
+          const numVal = val as number;
+          if (numVal) {
+            const current = character[key as AbilityKey] as number;
+            updates[key as AbilityKey] = Math.min(20, current + numVal);
+          }
+        }
+      } else if (asiChoice === 'feat' && selectedFeat) {
+        // Apply ASI from feat if any
+        const featData = FEATS.find(f => f.name === selectedFeat);
+        if (featData?.asi) {
+          for (const asiGrant of featData.asi) {
+            const ability = asiGrant.ability.toLowerCase();
+            // Handle "Any", "Strength or Dexterity", etc — skip auto-apply for choice ASIs
+            const exactMatch = ABILITY_NAMES.find(a => ability === a);
+            if (exactMatch) {
+              updates[exactMatch] = Math.min(20, (character[exactMatch] as number) + asiGrant.amount);
+            }
+          }
+        }
+        // Store feat in features_and_traits note
+        const existing = character.features_and_traits ?? '';
+        const featNote = `\n[Feat — Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}`;
+        updates.features_and_traits = existing + featNote;
       }
     }
     return updates;
@@ -148,9 +172,6 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
               totalBoosts={totalBoosts}
               selectedFeat={selectedFeat}
               onSetFeat={setSelectedFeat}
-              featSearch={featSearch}
-              onSetFeatSearch={setFeatSearch}
-              availableFeats={availableFeats}
             />
           )}
 
@@ -265,7 +286,7 @@ function SubclassStep({ classData, selected, onSelect }: any) {
   );
 }
 
-function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat, featSearch, onSetFeatSearch, availableFeats }: any) {
+function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat }: any) {
   const [asiMode, setAsiMode] = useState<'+2' | '+1+1'>('+2');
 
   // When ASI mode changes, reset boosts

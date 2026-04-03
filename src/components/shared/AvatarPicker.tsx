@@ -1,15 +1,36 @@
 import { useState } from 'react';
 
-// Uses DiceBear adventurer style — free, no auth required
-// https://www.dicebear.com/styles/adventurer/
-const PRESET_SEEDS = [
-  'warrior', 'mage', 'rogue', 'cleric',
-  'ranger', 'bard', 'paladin', 'druid',
-  'monk', 'barbarian', 'warlock', 'sorcerer',
+// DiceBear adventurer style — free, no auth needed
+// Seeds chosen to generate diverse, recognizable fantasy archetypes
+const PRESETS = [
+  { seed: 'warrior',    label: 'Warrior' },
+  { seed: 'mage',       label: 'Mage' },
+  { seed: 'rogue',      label: 'Rogue' },
+  { seed: 'cleric',     label: 'Cleric' },
+  { seed: 'ranger',     label: 'Ranger' },
+  { seed: 'bard',       label: 'Bard' },
+  { seed: 'paladin',    label: 'Paladin' },
+  { seed: 'druid',      label: 'Druid' },
+  { seed: 'monk',       label: 'Monk' },
+  { seed: 'barbarian',  label: 'Barbarian' },
+  { seed: 'warlock',    label: 'Warlock' },
+  { seed: 'sorcerer',   label: 'Sorcerer' },
+  { seed: 'artificer',  label: 'Artificer' },
+  { seed: 'shadowblade',label: 'Shadow' },
+  { seed: 'archmage',   label: 'Archmage' },
+  { seed: 'champion',   label: 'Champion' },
+  { seed: 'hexblade',   label: 'Hexblade' },
+  { seed: 'warden',     label: 'Warden' },
+  { seed: 'oracle',     label: 'Oracle' },
+  { seed: 'shaman',     label: 'Shaman' },
+  { seed: 'assassin',   label: 'Assassin' },
+  { seed: 'crusader',   label: 'Crusader' },
+  { seed: 'trickster',  label: 'Trickster' },
+  { seed: 'stormcaller',label: 'Storm' },
 ];
 
-function avatarUrl(seed: string) {
-  return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(seed)}&backgroundColor=0d0b09`;
+export function avatarUrl(seed: string) {
+  return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(seed)}&backgroundColor=0d1219`;
 }
 
 interface AvatarPickerProps {
@@ -20,75 +41,115 @@ interface AvatarPickerProps {
 }
 
 export default function AvatarPicker({ currentSeed, characterName, onSelect, onClose }: AvatarPickerProps) {
-  const [customSeed, setCustomSeed] = useState(characterName ?? '');
-  const [preview, setPreview] = useState<string | null>(currentSeed);
+  const [selected, setSelected] = useState<string>(currentSeed ?? characterName.toLowerCase());
+  const [customSeed, setCustomSeed] = useState('');
+  const [customPreview, setCustomPreview] = useState<string | null>(null);
 
-  const allSeeds = [...PRESET_SEEDS, ...(customSeed && !PRESET_SEEDS.includes(customSeed.toLowerCase()) ? [customSeed.toLowerCase()] : [])];
+  const previewSeed = customPreview ?? selected;
+
+  function applyCustom() {
+    const seed = customSeed.trim().toLowerCase();
+    if (!seed) return;
+    setCustomPreview(seed);
+    setSelected(seed);
+  }
+
+  function handleUse() {
+    onSelect(avatarUrl(previewSeed));
+    onClose();
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 'var(--sp-2)' }}>Choose Portrait</h3>
-        <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-4)' }}>
-          Pick a preset or type any name to generate a unique portrait.
-        </p>
-
-        {/* Custom seed input */}
-        <div style={{ marginBottom: 'var(--sp-4)', display: 'flex', gap: 'var(--sp-2)' }}>
-          <input
-            value={customSeed}
-            onChange={e => setCustomSeed(e.target.value)}
-            placeholder="Type anything for a custom portrait…"
-            style={{ flex: 1, fontSize: 'var(--fs-sm)' }}
-          />
-          {customSeed && (
-            <button
-              className="btn-gold btn-sm"
-              onClick={() => setPreview(customSeed.toLowerCase())}
-            >
-              Preview
-            </button>
-          )}
+      <div
+        className="modal"
+        style={{ maxWidth: 540, width: '100%', padding: 0, overflow: 'hidden' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--c-border)', background: 'linear-gradient(135deg, var(--c-surface), var(--c-card))' }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--t-1)', marginBottom: 4 }}>Choose Portrait</div>
+          <div style={{ fontSize: 12, color: 'var(--t-3)' }}>Pick a preset archetype or enter any name for a unique portrait.</div>
         </div>
 
-        {/* Grid of preset portraits */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
-          {allSeeds.map(seed => (
-            <button
-              key={seed}
-              onClick={() => setPreview(seed)}
-              style={{
-                border: preview === seed ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
-                borderRadius: 'var(--r-md)',
-                background: preview === seed ? 'rgba(201,146,42,0.1)' : '#080d14',
-                padding: 'var(--sp-2)',
-                cursor: 'pointer', transition: 'all var(--tr-fast)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-              }}
-            >
+        <div style={{ display: 'flex', height: 380 }}>
+          {/* Left: portrait grid */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {PRESETS.map(({ seed, label }) => {
+                const isSel = selected === seed && !customPreview;
+                return (
+                  <button
+                    key={seed}
+                    onClick={() => { setSelected(seed); setCustomPreview(null); setCustomSeed(''); }}
+                    style={{
+                      border: isSel ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                      borderRadius: 10, background: isSel ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                      padding: '8px 4px 6px', cursor: 'pointer',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-border-m)'; }}
+                    onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-border)'; }}
+                  >
+                    <img
+                      src={avatarUrl(seed)}
+                      alt={label}
+                      width={52}
+                      height={52}
+                      style={{ borderRadius: 8, display: 'block' }}
+                      loading="lazy"
+                    />
+                    <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: isSel ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right: preview + custom */}
+          <div style={{ width: 160, borderLeft: '1px solid var(--c-border)', padding: '20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+            {/* Large preview */}
+            <div>
               <img
-                src={avatarUrl(seed)}
-                alt={seed}
-                width={56}
-                height={56}
-                style={{ borderRadius: 'var(--r-sm)', display: 'block' }}
-                loading="lazy"
+                src={avatarUrl(previewSeed)}
+                alt="preview"
+                width={100}
+                height={100}
+                style={{ borderRadius: 14, border: '2px solid var(--c-gold-bdr)', display: 'block' }}
               />
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, textTransform: 'capitalize', color: preview === seed ? 'var(--c-gold-l)' : 'var(--t-2)', letterSpacing: '0.06em' }}>
-                {seed}
-              </span>
-            </button>
-          ))}
+              <div style={{ fontSize: 10, color: 'var(--t-3)', textAlign: 'center', marginTop: 6, textTransform: 'capitalize' }}>
+                {previewSeed}
+              </div>
+            </div>
+
+            {/* Custom seed */}
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Custom</div>
+              <input
+                value={customSeed}
+                onChange={e => setCustomSeed(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && applyCustom()}
+                placeholder="Any name or word…"
+                style={{ fontSize: 11, padding: '5px 8px', borderRadius: 6, width: '100%' }}
+              />
+              <button
+                onClick={applyCustom}
+                disabled={!customSeed.trim()}
+                style={{ fontSize: 11, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: customSeed.trim() ? 'pointer' : 'not-allowed', minHeight: 0, background: 'var(--c-raised)', border: '1px solid var(--c-border-m)', color: 'var(--t-2)' }}
+              >
+                Preview
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 'var(--sp-3)', justifyContent: 'flex-end' }}>
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--c-border)', display: 'flex', gap: 10, justifyContent: 'flex-end', background: 'var(--c-surface)' }}>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button
-            className="btn-gold"
-            disabled={!preview}
-            onClick={() => { if (preview) { onSelect(avatarUrl(preview)); onClose(); } }}
-          >
+          <button className="btn-gold" onClick={handleUse}>
             Use This Portrait
           </button>
         </div>
@@ -96,5 +157,3 @@ export default function AvatarPicker({ currentSeed, characterName, onSelect, onC
     </div>
   );
 }
-
-export { avatarUrl };
