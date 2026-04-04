@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Character } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
-import { xpToLevel, xpForNextLevel } from '../../lib/gameUtils';
+import { xpToLevel, xpForNextLevel, computeStats, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
 import { SPELLS } from '../../data/spells';
 
 interface PartyDashboardProps {
@@ -35,7 +35,14 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
   const [xpNote, setXpNote] = useState('');
   const [lootGold, setLootGold] = useState('');
   const [lootItem, setLootItem] = useState('');
-  const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | null>(null);
+  const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | 'aoe' | 'rest' | null>(null);
+  // AoE
+  const [aoeDamage, setAoeDamage] = useState('');
+  const [aoeTargets, setAoeTargets] = useState<Set<string>>(new Set());
+  const [aoeHalved, setAoeHalved] = useState(false);
+  const [aoeApplied, setAoeApplied] = useState<{ name: string; took: number; concentration: boolean }[] | null>(null);
+  // Passive perception
+  const [perceptionDC, setPerceptionDC] = useState('');
 
   useEffect(() => {
     loadCharacters();
@@ -89,6 +96,50 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
     setLootItem('');
   }
 
+  async function applyAoE() {
+    const dmg = parseInt(aoeDamage);
+    if (isNaN(dmg) || dmg <= 0 || aoeTargets.size === 0) return;
+    const results: { name: string; took: number; concentration: boolean }[] = [];
+    await Promise.all([...aoeTargets].map(id => {
+      const c = characters.find(x => x.id === id);
+      if (!c) return Promise.resolve();
+      const actual = aoeHalved ? Math.floor(dmg / 2) : dmg;
+      const newHP = Math.max(0, c.current_hp - actual);
+      const concBreaks = !!(c.concentration_spell && actual > 0);
+      results.push({ name: c.name, took: actual, concentration: concBreaks });
+      const patch: Partial<Character> = { current_hp: newHP };
+      if (concBreaks) patch.concentration_spell = '';
+      return supabase.from('characters').update(patch).eq('id', id);
+    }));
+    setAoeApplied(results);
+    setAoeDamage('');
+    setAoeTargets(new Set());
+    setAoeHalved(false);
+  }
+
+  async function partyLongRest() {
+    await Promise.all(characters.map(c => {
+      const recoveredSlots = Object.fromEntries(
+        Object.entries(c.spell_slots ?? {}).map(([k, s]) => [k, { ...(s as object), used: 0 }])
+      );
+      const recoveredHD = Math.max(1, Math.floor(c.level / 2));
+      const newSpent = Math.max(0, (c.hit_dice_spent ?? 0) - recoveredHD);
+      // Remove Exhaustion from conditions
+      const newConditions = (c.active_conditions ?? []).filter((x: string) => x !== 'Exhaustion');
+      return supabase.from('characters').update({
+        current_hp: c.max_hp,
+        temp_hp: 0,
+        spell_slots: recoveredSlots,
+        active_conditions: newConditions,
+        death_saves_successes: 0,
+        death_saves_failures: 0,
+        hit_dice_spent: newSpent,
+        concentration_spell: '',
+      }).eq('id', c.id);
+    }));
+    setDmPanel(null);
+  }
+
   async function loadCharacters() {
     const { data: members } = await supabase.from('campaign_members').select('user_id').eq('campaign_id', campaignId);
     if (!members?.length) { setLoading(false); return; }
@@ -124,8 +175,16 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
         {downedCount > 0 && <SummaryChip label="Downed" value={downedCount} color="#dc2626" />}
         <SummaryChip label="Conditions" value={characters.reduce((s, c) => s + (c.active_conditions?.length ?? 0), 0)} color={characters.some(c => (c.active_conditions?.length ?? 0) > 0) ? '#f59e0b' : 'var(--t-2)'} />
         {isOwner && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '2px 8px', borderRadius: 999 }}>DM Controls Active</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', whiteSpace: 'nowrap' }}>Passive Perc DC</span>
+              <input
+                type="number" value={perceptionDC} onChange={e => setPerceptionDC(e.target.value)}
+                placeholder="—" min={0} max={30}
+                style={{ width: 44, fontSize: 12, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '2px 4px', borderRadius: 5, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -134,26 +193,128 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
       {isOwner && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {/* Panel toggle buttons */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => setDmPanel(dmPanel === 'xp' ? null : 'xp')}
-              style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                border: dmPanel === 'xp' ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
-                background: dmPanel === 'xp' ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                color: dmPanel === 'xp' ? 'var(--c-gold-l)' : 'var(--t-2)' }}
-            >
-              Award XP
-            </button>
-            <button
-              onClick={() => setDmPanel(dmPanel === 'loot' ? null : 'loot')}
-              style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                border: dmPanel === 'loot' ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
-                background: dmPanel === 'loot' ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                color: dmPanel === 'loot' ? 'var(--c-gold-l)' : 'var(--t-2)' }}
-            >
-              Distribute Loot
-            </button>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {([
+              { id: 'aoe',  label: 'AoE Damage' },
+              { id: 'rest', label: 'Party Long Rest' },
+              { id: 'xp',   label: 'Award XP' },
+              { id: 'loot', label: 'Distribute Loot' },
+            ] as const).map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => { setDmPanel(dmPanel === id ? null : id); setAoeApplied(null); }}
+                style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                  border: dmPanel === id ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+                  background: dmPanel === id ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                  color: dmPanel === id ? 'var(--c-gold-l)' : 'var(--t-2)' }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+
+          {/* ── AoE DAMAGE PANEL ── */}
+          {dmPanel === 'aoe' && (
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#f87171' }}>
+                AoE / Mass Damage — select targets, enter damage, apply
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {characters.map(c => {
+                  const sel = aoeTargets.has(c.id);
+                  return (
+                    <button key={c.id}
+                      onClick={() => { const next = new Set(aoeTargets); sel ? next.delete(c.id) : next.add(c.id); setAoeTargets(next); setAoeApplied(null); }}
+                      style={{ fontSize: 11, fontWeight: sel ? 700 : 400, padding: '4px 10px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                        border: sel ? '1px solid rgba(248,113,113,0.5)' : '1px solid var(--c-border-m)',
+                        background: sel ? 'rgba(248,113,113,0.12)' : 'var(--c-raised)',
+                        color: sel ? '#f87171' : 'var(--t-2)' }}
+                    >
+                      {sel ? '✓ ' : ''}{c.name}
+                      <span style={{ marginLeft: 5, fontSize: 9, opacity: 0.7 }}>{c.current_hp}/{c.max_hp}</span>
+                    </button>
+                  );
+                })}
+                <button onClick={() => setAoeTargets(aoeTargets.size === characters.length ? new Set() : new Set(characters.map(c => c.id)))}
+                  style={{ fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-3)' }}>
+                  {aoeTargets.size === characters.length ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input type="number" value={aoeDamage} onChange={e => { setAoeDamage(e.target.value); setAoeApplied(null); }}
+                  placeholder="Damage amount…" min={0} onKeyDown={e => e.key === 'Enter' && applyAoE()}
+                  style={{ flex: 1, minWidth: 120, fontSize: 14, fontFamily: 'var(--ff-stat)', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                />
+                <button onClick={() => { setAoeHalved(v => !v); setAoeApplied(null); }}
+                  style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: aoeHalved ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+                    background: aoeHalved ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                    color: aoeHalved ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
+                  {aoeHalved ? '½ Halved' : 'Half damage?'}
+                </button>
+                <button onClick={applyAoE} disabled={!aoeDamage || parseInt(aoeDamage) <= 0 || aoeTargets.size === 0}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: '1px solid rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.1)', color: '#f87171',
+                    opacity: (!aoeDamage || parseInt(aoeDamage) <= 0 || aoeTargets.size === 0) ? 0.4 : 1 }}>
+                  Apply to {aoeTargets.size} target{aoeTargets.size !== 1 ? 's' : ''}
+                </button>
+              </div>
+              {/* Preview */}
+              {aoeDamage && parseInt(aoeDamage) > 0 && aoeTargets.size > 0 && !aoeApplied && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {[...aoeTargets].map(id => {
+                    const c = characters.find(x => x.id === id);
+                    if (!c) return null;
+                    const dmg = aoeHalved ? Math.floor(parseInt(aoeDamage) / 2) : parseInt(aoeDamage);
+                    const newHP = Math.max(0, c.current_hp - dmg);
+                    return (
+                      <span key={id} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999,
+                        background: newHP <= 0 ? 'rgba(220,38,38,0.12)' : 'rgba(248,113,113,0.08)',
+                        border: `1px solid ${newHP <= 0 ? 'rgba(220,38,38,0.4)' : 'rgba(248,113,113,0.2)'}`,
+                        color: newHP <= 0 ? '#dc2626' : '#f87171' }}>
+                        {c.name}: {c.current_hp} → {newHP}{newHP <= 0 ? ' ☠' : ''}{c.concentration_spell && dmg > 0 ? ' ⚠ Conc.' : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Result */}
+              {aoeApplied && (
+                <div style={{ padding: '8px 10px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-green-l)', marginBottom: 4 }}>Applied</div>
+                  {aoeApplied.map((r, i) => (
+                    <div key={i} style={{ fontSize: 11, color: 'var(--t-2)' }}>
+                      {r.name} took {r.took} damage{r.concentration ? ' — concentration broken' : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── PARTY LONG REST PANEL ── */}
+          {dmPanel === 'rest' && (
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
+                Party Long Rest — all {characters.length} characters
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>
+                All characters: full HP, all spell slots restored, half spent hit dice recovered, conditions cleared, death saves reset.
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {characters.map(c => (
+                  <span key={c.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-2)' }}>
+                    {c.name}: {c.current_hp}/{c.max_hp} → {c.max_hp}/{c.max_hp} HP
+                  </span>
+                ))}
+              </div>
+              <button onClick={partyLongRest}
+                style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 700, padding: '7px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+                  border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}>
+                Start Long Rest for Party
+              </button>
+            </div>
+          )}
 
           {/* XP Award panel */}
           {dmPanel === 'xp' && (
@@ -251,6 +412,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
             key={char.id}
             character={char}
             isDM={isOwner}
+            perceptionDC={perceptionDC}
             onUpdate={patch => updateChar(char.id, patch)}
           />
         ))}
@@ -261,9 +423,10 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
 
 // ── Per-character card with DM controls ──────────────────────────────
 
-function PlayerCard({ character: c, isDM, onUpdate }: {
+function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
   character: Character;
   isDM: boolean;
+  perceptionDC: string;
   onUpdate: (patch: Partial<Character>) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -374,7 +537,7 @@ function PlayerCard({ character: c, isDM, onUpdate }: {
         </div>
 
         {/* Stats row */}
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {c.temp_hp > 0 && <StatMini label="THP" value={`+${c.temp_hp}`} color="#60a5fa" />}
           <StatMini label="AC" value={c.armor_class} color="var(--c-gold-l)" />
           <StatMini label="Speed" value={`${c.speed}ft`} color="var(--t-2)" />
@@ -382,6 +545,7 @@ function PlayerCard({ character: c, isDM, onUpdate }: {
             [1,2,3,4,5].filter(l => (slots[`level_${l}`]?.total ?? 0) > 0)
               .map(l => { const s = slots[`level_${l}`]; return `${s.total-(s.used??0)}/${s.total}`; }).join(' ')
           } color="#a78bfa" />}
+          <PassivePerceptionChip character={c} dcInput={isDM ? perceptionDC : ''} />
         </div>
 
         {/* Active conditions */}
@@ -622,6 +786,35 @@ function StatMini({ label, value, color }: { label: string; value: string | numb
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)' }}>{label}</span>
       <span style={{ fontSize: 11, fontWeight: 700, color }}>{value}</span>
+    </div>
+  );
+}
+
+// ── Passive Perception chip ──────────────────────────────────────────
+function PassivePerceptionChip({ character: c, dcInput }: { character: Character; dcInput: string }) {
+  const pb = proficiencyBonus(c.level);
+  const wisMod = abilityModifier(c.wisdom);
+  const hasPerception = (c.skill_proficiencies ?? []).includes('Perception');
+  const hasExpertise = (c.skill_expertises ?? []).includes('Perception');
+  const bonus = wisMod + (hasExpertise ? pb * 2 : hasPerception ? pb : 0);
+  const passivePerc = 10 + bonus;
+  const dc = parseInt(dcInput);
+  const meetsCheck = !isNaN(dc) && dc > 0 && passivePerc >= dc;
+  const failsCheck = !isNaN(dc) && dc > 0 && passivePerc < dc;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)' }}>Pass. Perc.</span>
+      <span style={{
+        fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 12,
+        color: meetsCheck ? 'var(--c-green-l)' : failsCheck ? '#f87171' : 'var(--t-2)',
+        padding: meetsCheck || failsCheck ? '0 4px' : '0',
+        borderRadius: 4,
+        background: meetsCheck ? 'rgba(5,150,105,0.12)' : failsCheck ? 'rgba(248,113,113,0.1)' : 'transparent',
+        transition: 'all 0.2s',
+      }}>
+        {passivePerc}{meetsCheck ? ' ✓' : failsCheck ? ' ✗' : ''}
+      </span>
     </div>
   );
 }
