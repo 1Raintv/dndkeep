@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, ActiveBuff } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
-import { updateCharacter } from '../../lib/supabase';
+import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { SPELL_MAP, SPELLS } from '../../data/spells';
 import { CLASS_MAP } from '../../data/classes';
@@ -71,6 +71,48 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [showRest, setShowRest] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
+
+  // ── Initiative / "your turn" banner ──────────────────────────────
+  const [isMyTurn, setIsMyTurn] = useState(false);
+  const [combatActive, setCombatActive] = useState(false);
+  const [currentTurnName, setCurrentTurnName] = useState('');
+  const [combatRound, setCombatRound] = useState(1);
+
+  useEffect(() => {
+    if (!character.campaign_id) return;
+
+    // Fetch initial state
+    supabase
+      .from('session_states')
+      .select('*')
+      .eq('campaign_id', character.campaign_id)
+      .maybeSingle()
+      .then(({ data }) => { if (data) applySessionState(data); });
+
+    // Subscribe to changes
+    const ch = supabase
+      .channel(`session-state-${character.campaign_id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_states', filter: `campaign_id=eq.${character.campaign_id}` },
+        payload => { if (payload.new) applySessionState(payload.new as any); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); };
+  }, [character.campaign_id, character.id]);
+
+  function applySessionState(state: any) {
+    const active = !!state.combat_active;
+    setCombatActive(active);
+    setCombatRound(state.round ?? 1);
+    if (!active) { setIsMyTurn(false); setCurrentTurnName(''); return; }
+    const order: any[] = state.initiative_order ?? [];
+    const sorted = [...order].sort((a, b) => b.initiative - a.initiative);
+    const idx = state.current_turn % Math.max(sorted.length, 1);
+    const current = sorted[idx];
+    if (!current) return;
+    setCurrentTurnName(current.name ?? '');
+    setIsMyTurn(current.character_id === character.id || current.name === character.name);
+  }
   const [concentrationSpellId, setConcentrationSpellId] = useState<string | null>(null);
 
   // Keyboard shortcuts: R = rest, I = inspiration
@@ -566,6 +608,39 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {/* RIGHT: 6 ability score boxes */}
         <AbilityScores character={character} computed={computed} />
       </div>
+
+      {/* ── Your Turn banner ── */}
+      {combatActive && (
+        <div style={{
+          padding: '8px 16px',
+          background: isMyTurn
+            ? 'linear-gradient(90deg, rgba(212,160,23,0.18), rgba(212,160,23,0.06))'
+            : 'rgba(255,255,255,0.03)',
+          border: `1px solid ${isMyTurn ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+          borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 10,
+          transition: 'all 0.3s',
+          animation: isMyTurn ? 'pulse-gold 2s infinite' : 'none',
+        }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+            background: isMyTurn ? 'var(--c-gold)' : 'var(--t-3)',
+            boxShadow: isMyTurn ? '0 0 8px var(--c-gold)' : 'none',
+          }} />
+          {isMyTurn ? (
+            <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--c-gold-l)', letterSpacing: '0.04em' }}>
+              ⚔ YOUR TURN
+            </span>
+          ) : (
+            <span style={{ fontWeight: 500, fontSize: 12, color: 'var(--t-3)' }}>
+              Combat active — {currentTurnName ? `${currentTurnName}'s turn` : 'waiting…'}
+            </span>
+          )}
+          <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)', fontWeight: 600 }}>
+            ROUND {combatRound}
+          </span>
+        </div>
+      )}
 
       {/* ── Divider ── */}
       <div style={{ height: 1, background: 'var(--c-border)' }} />

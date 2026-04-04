@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Character } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
+import { xpToLevel, xpForNextLevel } from '../../lib/gameUtils';
 import { SPELLS } from '../../data/spells';
 
 interface PartyDashboardProps {
@@ -30,6 +31,11 @@ function hpLabel(current: number, max: number) {
 export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
+  const [xpInput, setXpInput] = useState('');
+  const [xpNote, setXpNote] = useState('');
+  const [lootGold, setLootGold] = useState('');
+  const [lootItem, setLootItem] = useState('');
+  const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | null>(null);
 
   useEffect(() => {
     loadCharacters();
@@ -39,6 +45,49 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [campaignId]);
+
+  async function awardXP() {
+    const amount = parseInt(xpInput);
+    if (isNaN(amount) || amount <= 0 || characters.length === 0) return;
+    const perPlayer = Math.floor(amount / characters.length);
+    const remainder = amount % characters.length;
+    await Promise.all(characters.map((c, i) => {
+      const gain = perPlayer + (i < remainder ? 1 : 0);
+      const newXP = (c.experience_points ?? 0) + gain;
+      return supabase.from('characters').update({ experience_points: newXP }).eq('id', c.id);
+    }));
+    setXpInput('');
+    setXpNote('');
+  }
+
+  async function distributeLoot() {
+    const gold = parseInt(lootGold) || 0;
+    const item = lootItem.trim();
+    if (!gold && !item) return;
+
+    const perPlayer = characters.length > 0 ? Math.floor(gold / characters.length) : 0;
+    const remainder = gold % Math.max(characters.length, 1);
+
+    await Promise.all(characters.map((c, i) => {
+      const patch: Partial<Character> = {};
+      // Distribute gold evenly (first players get +1 remainder GP)
+      if (gold > 0) {
+        const curr: any = { ...(c.currency ?? { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 }) };
+        curr.gp = (curr.gp ?? 0) + perPlayer + (i < remainder ? 1 : 0);
+        patch.currency = curr;
+      }
+      // Give each player a copy of the item
+      if (item) {
+        const newItem = { id: `loot-${Date.now()}-${i}`, name: item, quantity: 1, weight: 0, description: '', equipped: false };
+        patch.inventory = [...(c.inventory ?? []), newItem];
+      }
+      return Object.keys(patch).length
+        ? supabase.from('characters').update(patch).eq('id', c.id)
+        : Promise.resolve();
+    }));
+    setLootGold('');
+    setLootItem('');
+  }
 
   async function loadCharacters() {
     const { data: members } = await supabase.from('campaign_members').select('user_id').eq('campaign_id', campaignId);
@@ -80,6 +129,120 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           </div>
         )}
       </div>
+
+      {/* ── DM action panels ── */}
+      {isOwner && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Panel toggle buttons */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => setDmPanel(dmPanel === 'xp' ? null : 'xp')}
+              style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                border: dmPanel === 'xp' ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+                background: dmPanel === 'xp' ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                color: dmPanel === 'xp' ? 'var(--c-gold-l)' : 'var(--t-2)' }}
+            >
+              Award XP
+            </button>
+            <button
+              onClick={() => setDmPanel(dmPanel === 'loot' ? null : 'loot')}
+              style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                border: dmPanel === 'loot' ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+                background: dmPanel === 'loot' ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                color: dmPanel === 'loot' ? 'var(--c-gold-l)' : 'var(--t-2)' }}
+            >
+              Distribute Loot
+            </button>
+          </div>
+
+          {/* XP Award panel */}
+          {dmPanel === 'xp' && (
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
+                Award XP to Party — splits evenly among {characters.length} player{characters.length !== 1 ? 's' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number" value={xpInput} onChange={e => setXpInput(e.target.value)}
+                  placeholder="Total XP earned…" min={0}
+                  onKeyDown={e => e.key === 'Enter' && awardXP()}
+                  style={{ flex: 1, fontSize: 14, fontFamily: 'var(--ff-stat)', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                />
+                {xpInput && parseInt(xpInput) > 0 && characters.length > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--t-3)', whiteSpace: 'nowrap' }}>
+                    = {Math.floor(parseInt(xpInput) / characters.length)} XP each
+                  </span>
+                )}
+                <button onClick={awardXP} disabled={!xpInput || parseInt(xpInput) <= 0}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                    opacity: (!xpInput || parseInt(xpInput) <= 0) ? 0.4 : 1 }}>
+                  Award
+                </button>
+              </div>
+              {/* Per-character XP preview with LVL UP indicator */}
+              {characters.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {characters.map(c => {
+                    const gain = xpInput && parseInt(xpInput) > 0
+                      ? Math.floor(parseInt(xpInput) / characters.length)
+                      : 0;
+                    const newXP = (c.experience_points ?? 0) + gain;
+                    const currentLevel = xpToLevel(c.experience_points ?? 0);
+                    const newLevel = xpToLevel(newXP);
+                    const willLevelUp = newLevel > currentLevel;
+                    const nextXP = xpForNextLevel(c.level);
+                    return (
+                      <div key={c.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6,
+                        background: willLevelUp ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                        border: `1px solid ${willLevelUp ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+                        color: willLevelUp ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
+                        {c.name}: {c.experience_points ?? 0}{gain > 0 ? ` → ${newXP}` : ''} / {nextXP} XP
+                        {willLevelUp && ' ⬆ LVL UP!'}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Loot Distribution panel */}
+          {dmPanel === 'loot' && (
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
+                Distribute Loot — each player receives a copy
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <input
+                    type="number" value={lootGold} onChange={e => setLootGold(e.target.value)}
+                    placeholder="Gold to split (GP)…" min={0}
+                    style={{ fontSize: 13, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                  />
+                  <input
+                    value={lootItem} onChange={e => setLootItem(e.target.value)}
+                    placeholder="Item name (each player gets one)…"
+                    onKeyDown={e => e.key === 'Enter' && distributeLoot()}
+                    style={{ fontSize: 13, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                  />
+                </div>
+                <button onClick={distributeLoot} disabled={!lootGold && !lootItem.trim()}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0, alignSelf: 'stretch',
+                    border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                    opacity: (!lootGold && !lootItem.trim()) ? 0.4 : 1 }}>
+                  Distribute
+                </button>
+              </div>
+              {lootGold && parseInt(lootGold) > 0 && characters.length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
+                  {Math.floor(parseInt(lootGold) / characters.length)} GP each ({parseInt(lootGold) % characters.length > 0 ? `${parseInt(lootGold) % characters.length} leftover GP to first player` : 'splits evenly'})
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Character cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 'var(--sp-3)' }}>

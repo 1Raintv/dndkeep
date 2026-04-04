@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { Character } from '../../types';
 
 interface DeathSavesProps {
@@ -30,6 +31,13 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
   function reset() {
     onUpdate({ death_saves_successes: 0, death_saves_failures: 0 });
   }
+
+  // Auto-stabilize at 3 successes
+  useEffect(() => {
+    if (successes >= 3 && !isStabilized) stabilize();
+  }, [successes]);
+
+  // Auto-trigger dead state is already handled visually via isDead flag
 
   const borderColor = isDead        ? 'rgba(107,20,20,1)'
                     : isStabilized  ? 'var(--hp-full)'
