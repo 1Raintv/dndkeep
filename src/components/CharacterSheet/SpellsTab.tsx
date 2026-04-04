@@ -40,7 +40,6 @@ export default function SpellsTab({
   onRemoveSpell, onTogglePrepared, onConcentrate, userId, campaignId,
 }: SpellsTabProps) {
   const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
-  const [search, setSearch] = useState('');
   const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
   const [filterPrepared, setFilterPrepared] = useState(false);
 
@@ -78,13 +77,9 @@ export default function SpellsTab({
     return knownSpellData.filter(s => {
       if (activeLevel !== 'all' && s.level !== activeLevel) return false;
       if (filterPrepared && isPreparer && s.level > 0 && !character.prepared_spells.includes(s.id)) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return s.name.toLowerCase().includes(q) || s.school.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
-      }
       return true;
     });
-  }, [knownSpellData, activeLevel, filterPrepared, search, character.prepared_spells, isPreparer]);
+  }, [knownSpellData, activeLevel, filterPrepared, character.prepared_spells, isPreparer]);
 
   // Group visible spells by level
   const byLevel = useMemo(() => {
@@ -153,14 +148,6 @@ export default function SpellsTab({
         </div>
 
       </div>
-
-      {/* ── Search ── */}
-      <input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search your spells…"
-        style={{ fontSize: 13, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
-      />
 
       {/* ── Level tabs ── */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
