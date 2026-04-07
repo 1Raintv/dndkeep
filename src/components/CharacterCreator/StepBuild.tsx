@@ -46,9 +46,8 @@ const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DE
 export default function StepBuild({ className, level, choices, onChoicesChange }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
-  const [openLevel, setOpenLevel] = useState<number>(1); // auto-opens level 1
+  const [currentLevel, setCurrentLevel] = useState<number>(1);
 
-  // Get all levels up to current
   const levelsToShow = useMemo(() =>
     Array.from({ length: level }, (_, i) => i + 1)
       .map(lvl => ({
@@ -57,150 +56,197 @@ export default function StepBuild({ className, level, choices, onChoicesChange }
       })),
   [level, progression]);
 
+  const { prog } = levelsToShow.find(l => l.lvl === currentLevel) ?? levelsToShow[0] ?? { lvl: 1, prog: { level: 1, features: [], choices: [] } };
+  const choiceItems = prog.choices ?? [];
+
   function update(patch: Partial<BuildChoices>) {
     onChoicesChange({ ...choices, ...patch });
   }
 
-  // Count how many choices still need to be made
-  const incomplete = levelsToShow.filter(({ prog }) => {
-    const c = prog.choices ?? [];
-    return c.some(ch => {
-      if (ch.type === 'subclass') return !choices.subclass;
-      if (ch.type === 'cantrips') return countNeeded(ch.label, 'cantrip', choices.cantrips) > 0;
-      if (ch.type === 'spells') return countNeeded(ch.label, 'spell', choices.spells) > 0;
-      if (ch.type === 'metamagic') return countNeeded(ch.label, 'metamagic', choices.metamagic) > 0;
-      if (ch.type === 'invocations') return countNeeded(ch.label, 'invocation', choices.invocations) > 0;
-      if (ch.type === 'fighting_style') return !choices.fightingStyle;
-      if (ch.type === 'asi') return !choices.asiChoices[prog.level] && !choices.feats[prog.level];
-      if (ch.type === 'divine_order') return !choices.divineOrder;
-      if (ch.type === 'primal_order') return !choices.primalOrder;
-      return false;
-    });
-  }).length;
+  // Build summary entries for right panel
+  const summary = levelsToShow.map(({ lvl, prog: p }) => {
+    const entries: string[] = [];
+    if (choices.subclass && (p.choices ?? []).some(c => c.type === 'subclass')) entries.push(`Subclass: ${choices.subclass}`);
+    if (choices.feats[lvl]) entries.push(`Feat: ${choices.feats[lvl]}`);
+    if (choices.asiChoices[lvl]) {
+      const a = choices.asiChoices[lvl];
+      entries.push(`ASI: +${a.amount} ${a.ability.slice(0,3).toUpperCase()}${a.ability2 ? ` / +${a.amount2} ${a.ability2.slice(0,3).toUpperCase()}` : ''}`);
+    }
+    if (choices.fightingStyle && (p.choices ?? []).some(c => c.type === 'fighting_style')) entries.push(`Style: ${choices.fightingStyle}`);
+    if (choices.divineOrder && (p.choices ?? []).some(c => c.type === 'divine_order')) entries.push(`Order: ${choices.divineOrder}`);
+    if (choices.primalOrder && (p.choices ?? []).some(c => c.type === 'primal_order')) entries.push(`Order: ${choices.primalOrder}`);
+    const invAtLevel = choices.invocationsByLevel?.[lvl] ?? [];
+    if (invAtLevel.length) entries.push(`Invocations: ${invAtLevel.join(', ')}`);
+    const mmAtLevel = choices.metamagicByLevel?.[lvl] ?? [];
+    if (mmAtLevel.length) entries.push(`Metamagic: ${mmAtLevel.join(', ')}`);
+    const isComplete = (p.choices ?? []).length === 0 || !(p.choices ?? []).some(c => isChoiceIncomplete(c.type, lvl, choices));
+    const hasRequired = (p.choices ?? []).some(c => ['subclass','asi','fighting_style','divine_order','primal_order'].includes(c.type));
+    const isMissing = hasRequired && (p.choices ?? []).some(c => ['subclass','asi','fighting_style','divine_order','primal_order'].includes(c.type) && isChoiceIncomplete(c.type, lvl, choices));
+    return { lvl, entries, isComplete, isMissing, hasChoices: (p.choices ?? []).length > 0 };
+  });
 
-  if (!cls) return <div style={{ color: 'var(--t-2)', padding: 'var(--sp-4)' }}>Select a class first.</div>;
+  const totalIncomplete = summary.filter(s => s.isMissing).length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-2)' }}>
-        <div>
-          <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--t-1)' }}>
-            Build Your {className}
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+
+      {/* ── LEFT: Level wizard ── */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--t-1)' }}>Build Your {className}</div>
+            <div style={{ fontSize: 12, color: 'var(--t-3)', marginTop: 2 }}>Level {currentLevel} of {level}</div>
           </div>
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginTop: 2 }}>
-            Make choices for each level from 1 to {level}. Click a level to expand it.
-          </div>
+          {totalIncomplete > 0 ? (
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '3px 10px', borderRadius: 999 }}>
+              {totalIncomplete} level{totalIncomplete !== 1 ? 's' : ''} need choices
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '3px 10px', borderRadius: 999 }}>
+              ✓ All choices made
+            </span>
+          )}
         </div>
-        {incomplete > 0 ? (
-          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '3px 10px', borderRadius: 999 }}>
-            {incomplete} level{incomplete !== 1 ? 's' : ''} need choices
-          </span>
-        ) : (
-          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '3px 10px', borderRadius: 999 }}>
-            ✓ All choices made
-          </span>
-        )}
-      </div>
 
-      {levelsToShow.map(({ lvl, prog }) => {
-        const choiceItems = prog.choices ?? [];
-        const hasChoices = choiceItems.length > 0;
-        const hasFeatures = (prog.features ?? []).length > 0 || prog.subclassFeature || prog.newSpellLevel;
-        const isOpen = openLevel === lvl;
-        // Only mark complete if ALL required choices are made
-        const requiredChoiceTypes = ['subclass', 'asi', 'fighting_style', 'divine_order', 'primal_order'];
-        const hasRequiredChoices = choiceItems.some(ch => requiredChoiceTypes.includes(ch.type));
-        const isComplete = hasChoices && !choiceItems.some(ch => isChoiceIncomplete(ch.type, lvl, choices));
-        const isMissing = hasChoices && hasRequiredChoices && choiceItems.some(ch => requiredChoiceTypes.includes(ch.type) && isChoiceIncomplete(ch.type, lvl, choices));
+        {/* Level progress dots */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {levelsToShow.map(({ lvl }) => {
+            const s = summary.find(s => s.lvl === lvl)!;
+            const isActive = lvl === currentLevel;
+            return (
+              <button key={lvl} onClick={() => setCurrentLevel(lvl)} style={{
+                width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: 11,
+                background: isActive ? 'var(--c-gold)' : s.isMissing ? 'rgba(220,38,38,0.2)' : s.hasChoices && s.isComplete ? 'rgba(5,150,105,0.2)' : 'var(--c-raised)',
+                color: isActive ? '#000' : s.isMissing ? 'var(--c-red-l)' : s.hasChoices && s.isComplete ? 'var(--c-green-l)' : 'var(--t-3)',
+                boxShadow: isActive ? '0 0 0 2px var(--c-gold)' : 'none',
+                transition: 'all 0.15s',
+              }}>{lvl}</button>
+            );
+          })}
+        </div>
 
-        return (
-          <div key={lvl} style={{
-            border: `1px solid ${isMissing ? 'rgba(220,38,38,0.35)' : isComplete ? 'rgba(5,150,105,0.3)' : 'var(--c-border-m)'}`,
-            borderRadius: 'var(--r-lg)',
-            background: isMissing ? 'rgba(220,38,38,0.03)' : 'var(--c-card)',
-            overflow: 'hidden',
-          }}>
-            {/* Level header */}
-            <button
-              onClick={() => setOpenLevel(isOpen ? -1 : lvl)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
-                padding: 'var(--sp-2) var(--sp-3)', background: 'transparent', border: 'none',
-                cursor: 'pointer', textAlign: 'left', minHeight: 0,
-              }}
-            >
-              <div style={{
-                width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: 'var(--fs-xs)', fontWeight: 700, flexShrink: 0,
-                background: isMissing ? 'var(--c-red-bg)' : isComplete ? 'var(--c-green-bg)' : 'var(--c-raised)',
-                color: isMissing ? 'var(--c-red-l)' : isComplete ? 'var(--c-green-l)' : 'var(--t-2)',
-                border: `1.5px solid ${isMissing ? 'rgba(220,38,38,0.4)' : isComplete ? 'rgba(5,150,105,0.4)' : 'var(--c-border-m)'}`,
-              }}>{lvl}</div>
+        {/* Level card */}
+        <div style={{ border: '1px solid var(--c-border-m)', borderRadius: 12, background: 'var(--c-card)', overflow: 'hidden' }}>
+          {/* Level title bar */}
+          <div style={{ padding: '12px 16px', background: 'rgba(212,160,23,0.06)', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--c-gold-bg)', border: '2px solid var(--c-gold-bdr)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14, color: 'var(--c-gold-l)', flexShrink: 0 }}>
+              {currentLevel}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>Level {currentLevel}</div>
+              {prog.newSpellLevel && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#fcd34d', background: 'rgba(251,191,36,0.1)', padding: '1px 6px', borderRadius: 999 }}>
+                  Unlocks {SPELL_ORDINAL[prog.newSpellLevel]}-level spells
+                </span>
+              )}
+            </div>
+          </div>
 
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {/* Show summary of features */}
-                  {(prog.features ?? []).slice(0, 2).map((f, i) => (
-                    <span key={i} style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{i > 0 && '· '}{f.split('(')[0].trim()}</span>
+          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Features */}
+            {((prog.features ?? []).length > 0 || prog.subclassFeature) && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 8 }}>Features Gained</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {(prog.features ?? []).map((f, i) => (
+                    <div key={i} style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.5, display: 'flex', gap: 8 }}>
+                      <span style={{ color: 'var(--c-gold)', flexShrink: 0 }}>+</span>
+                      <span>{f}</span>
+                    </div>
                   ))}
-                  {(prog.features ?? []).length > 2 && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>+{(prog.features ?? []).length - 2} more</span>}
-                  {prog.newSpellLevel && <span style={{ fontSize: 9, fontWeight: 700, color: '#fcd34d', background: 'rgba(251,191,36,0.1)', padding: '1px 6px', borderRadius: 999 }}>{SPELL_ORDINAL[prog.newSpellLevel]}-level spells</span>}
-                  {prog.subclassFeature && lvl > (cls.subclasses[0]?.unlock_level ?? 3) && choices.subclass && (
-                    <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--c-purple-l)', background: 'var(--c-purple-bg)', padding: '1px 6px', borderRadius: 999 }}>{choices.subclass} feature</span>
+                  {prog.subclassFeature && currentLevel > (cls.subclasses[0]?.unlock_level ?? 3) && choices.subclass && (
+                    <div style={{ fontSize: 13, color: '#a78bfa', lineHeight: 1.5, display: 'flex', gap: 8 }}>
+                      <span style={{ flexShrink: 0 }}>+</span>
+                      <span>{choices.subclass} class feature</span>
+                    </div>
                   )}
                 </div>
-                {/* Show choice labels */}
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>
-                  {choiceItems.map((ch, i) => {
-                    const done = !isChoiceIncomplete(ch.type, lvl, choices);
-                    return (
-                      <span key={i} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
-                        color: done ? 'var(--c-green-l)' : 'var(--c-amber-l)',
-                        background: done ? 'var(--c-green-bg)' : 'var(--c-amber-bg)',
-                        border: `1px solid ${done ? 'rgba(5,150,105,0.3)' : 'rgba(217,119,6,0.3)'}` }}>
-                        {done ? '✓ ' : ''}{ch.label}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <span style={{ color: 'var(--t-3)', fontSize: 12, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>▶</span>
-            </button>
-
-            {/* Expanded choice panel */}
-            {isOpen && (
-              <div className="animate-fade-in" style={{ borderTop: '1px solid var(--c-border)', padding: 'var(--sp-3) var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-                {/* All features at this level */}
-                {(prog.features ?? []).length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Features Gained</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {prog.features.map((f, i) => (
-                        <div key={i} style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.5 }}>• {f}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Render each choice */}
-                {choiceItems.map((ch, i) => (
-                  <ChoicePanel
-                    key={i}
-                    type={ch.type}
-                    label={ch.label}
-                    level={lvl}
-                    className={className}
-                    choices={choices}
-                    onUpdate={update}
-                    maxSpellLevel={prog.newSpellLevel ?? getMaxSpellLevel(lvl, cls.spellcaster_type ?? 'full')}
-                  />
-                ))}
               </div>
             )}
+
+            {/* No features, no choices */}
+            {(prog.features ?? []).length === 0 && !prog.subclassFeature && choiceItems.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--t-3)', fontSize: 13 }}>
+                No new choices at this level. Features continue from previous levels.
+              </div>
+            )}
+
+            {/* Choices */}
+            {choiceItems.map((ch, i) => (
+              <ChoicePanel
+                key={i}
+                type={ch.type}
+                label={ch.label}
+                level={currentLevel}
+                className={className}
+                choices={choices}
+                onUpdate={update}
+                maxSpellLevel={prog.newSpellLevel ?? getMaxSpellLevel(currentLevel, cls.spellcaster_type ?? 'full')}
+              />
+            ))}
           </div>
-        );
-      })}
+        </div>
+
+        {/* Prev / Next navigation */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            onClick={() => setCurrentLevel(v => Math.max(1, v - 1))}
+            disabled={currentLevel <= 1}
+            style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: currentLevel <= 1 ? 'not-allowed' : 'pointer', minHeight: 0,
+              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel <= 1 ? 'var(--t-3)' : 'var(--t-1)',
+              opacity: currentLevel <= 1 ? 0.4 : 1 }}
+          >
+            ← Level {currentLevel - 1}
+          </button>
+
+          <span style={{ fontSize: 12, color: 'var(--t-3)' }}>{currentLevel} / {level}</span>
+
+          {currentLevel < level ? (
+            <button
+              onClick={() => setCurrentLevel(v => Math.min(level, v + 1))}
+              style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+                border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}
+            >
+              Level {currentLevel + 1} →
+            </button>
+          ) : (
+            <div style={{ width: 120 }} />
+          )}
+        </div>
+      </div>
+
+      {/* ── RIGHT: Choices summary ── */}
+      <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, position: 'sticky', top: 16 }}>
+        <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--t-3)', marginBottom: 4 }}>
+          All Choices
+        </div>
+        {summary.map(({ lvl, entries, isComplete, isMissing, hasChoices }) => (
+          <button key={lvl} onClick={() => setCurrentLevel(lvl)} style={{
+            textAlign: 'left', background: lvl === currentLevel ? 'rgba(212,160,23,0.08)' : 'var(--c-card)',
+            border: `1px solid ${lvl === currentLevel ? 'var(--c-gold-bdr)' : isMissing ? 'rgba(220,38,38,0.3)' : isComplete && hasChoices ? 'rgba(5,150,105,0.25)' : 'var(--c-border)'}`,
+            borderRadius: 8, padding: '7px 10px', cursor: 'pointer', width: '100%',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: entries.length > 0 ? 4 : 0 }}>
+              <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 11,
+                color: lvl === currentLevel ? 'var(--c-gold-l)' : isMissing ? 'var(--c-red-l)' : isComplete && hasChoices ? 'var(--c-green-l)' : 'var(--t-3)' }}>
+                Lv {lvl}
+              </span>
+              {isMissing && <span style={{ fontSize: 9, color: 'var(--c-red-l)' }}>●</span>}
+              {isComplete && hasChoices && !isMissing && <span style={{ fontSize: 9, color: 'var(--c-green-l)' }}>✓</span>}
+            </div>
+            {entries.map((e, i) => (
+              <div key={i} style={{ fontSize: 10, color: 'var(--t-2)', lineHeight: 1.4 }}>{e}</div>
+            ))}
+            {entries.length === 0 && hasChoices && (
+              <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>Pending…</div>
+            )}
+          </button>
+        ))}
+      </div>
+
     </div>
   );
 }
