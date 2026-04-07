@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { Campaign } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { CampaignProvider } from '../../context/CampaignContext';
+import { useCampaign } from '../../context/CampaignContext';
 import { joinCampaignByCode, addCampaignMember } from '../../lib/supabase';
 import CampaignList from '../Campaign/CampaignList';
 import CampaignDashboard from '../Campaign/CampaignDashboard';
@@ -85,13 +85,27 @@ function JoinCampaignByCode() {
 
 // ── Pro DM view (campaign management) ───────────────────────────────────────
 function CampaignsContent() {
-  const [selected, setSelected] = useState<Campaign | null>(null);
+  const { id } = useParams<{ id: string }>();
+  const { campaigns, loadingCampaigns } = useCampaign();
+  const navigate = useNavigate();
 
-  if (selected) {
-    return <CampaignDashboard campaign={selected} onBack={() => setSelected(null)} />;
+  // If URL has a campaign ID, find and show that campaign directly
+  const selected = id ? campaigns.find(c => c.id === id) ?? null : null;
+
+  // If we have an ID but campaigns are still loading, show spinner
+  if (id && loadingCampaigns) {
+    return (
+      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', padding: 'var(--sp-8)' }}>
+        <div className="spinner" /><span className="loading-text">Loading campaign...</span>
+      </div>
+    );
   }
 
-  return <CampaignList onSelect={setSelected} />;
+  if (selected) {
+    return <CampaignDashboard campaign={selected} onBack={() => navigate('/campaigns')} />;
+  }
+
+  return <CampaignList onSelect={c => navigate('/campaigns/' + c.id)} />;
 }
 
 // ── Page root ────────────────────────────────────────────────────────────────

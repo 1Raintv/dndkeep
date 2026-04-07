@@ -3,9 +3,8 @@ import type { Campaign, Character, CampaignMember } from '../../types';
 import { useCampaign } from '../../context/CampaignContext';
 import { useAuth } from '../../context/AuthContext';
 import {
-  getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail,
+  getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail, getCharacters, supabase,
   addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
-  supabase,
 } from '../../lib/supabase';
 import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
@@ -32,7 +31,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'notes' | 'schedule' | 'npcs' | 'recap' | 'dm' | 'discord'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'notes' | 'schedule' | 'npcs' | 'recap' | 'dm' | 'discord'>('characters');
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -197,7 +196,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
       {/* Tabs */}
       <div className="tabs">
-        {(['members', 'characters', 'session', 'party', 'log', 'chat', 'schedule', 'npcs', 'recap', 'notes', ...(isOwner ? ['dm', 'discord'] : [])] as const).map(tab => {
+        {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'session', 'log', 'chat', 'npcs', 'members', 'notes', 'schedule', 'recap', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
             members: 'Members', characters: 'Characters', session: '⚔️ Combat',
             party: '👥 Party', log: '📜 Log', chat: '💬 Chat', notes: 'Notes',
@@ -305,32 +304,12 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
         {/* Characters tab */}
         {activeTab === 'characters' && (
-          <div>
-            {characters.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: 'var(--sp-8)' }}>
-                <p style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
-                  No characters assigned to this campaign yet. Players can assign their characters from the character sheet.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 'var(--sp-4)' }}>
-                {characters.map(c => (
-                  <div key={c.id} className="card">
-                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', marginBottom: 'var(--sp-1)' }}>{c.name}</div>
-                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', marginBottom: 'var(--sp-3)' }}>
-                      Level {c.level} {c.class_name} — {c.species}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--fs-sm)' }}>
-                      <span style={{ color: c.current_hp > c.max_hp * 0.5 ? 'var(--hp-full)' : 'var(--hp-low)' }}>
-                        {c.current_hp}/{c.max_hp} HP
-                      </span>
-                      <span style={{ color: 'var(--t-2)' }}>AC {c.armor_class}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <CharactersTab
+            campaignId={campaign.id}
+            userId={user?.id ?? ''}
+            characters={characters}
+            onRefresh={loadCharacters}
+          />
         )}
 
         {/* Session tab — DM Lobby for owners, read-only tracker for players */}
@@ -467,6 +446,126 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
             </p>
             <DiscordSettings campaignId={campaign.id} />
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Characters Tab ────────────────────────────────────────────────────────────
+function CharactersTab({ campaignId, userId, characters, onRefresh }: {
+  campaignId: string;
+  userId: string;
+  characters: Character[];
+  onRefresh: () => void;
+}) {
+  const [myChars, setMyChars] = useState<Character[]>([]);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (userId) {
+      getCharacters(userId).then(({ data }) => setMyChars(data ?? []));
+    }
+  }, [userId]);
+
+  async function assign(charId: string) {
+    setAssigning(charId);
+    await supabase.from('characters').update({ campaign_id: campaignId }).eq('id', charId);
+    await onRefresh();
+    // Refresh my chars list
+    const { data } = await getCharacters(userId);
+    setMyChars(data ?? []);
+    setAssigning(null);
+  }
+
+  async function unassign(charId: string) {
+    setAssigning(charId);
+    await supabase.from('characters').update({ campaign_id: null }).eq('id', charId);
+    await onRefresh();
+    const { data } = await getCharacters(userId);
+    setMyChars(data ?? []);
+    setAssigning(null);
+  }
+
+  const assignedIds = new Set(characters.map(c => c.id));
+  const unassignedMyChars = myChars.filter(c => !assignedIds.has(c.id));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* My unassigned characters — assign prompt */}
+      {unassignedMyChars.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 10 }}>
+            Assign Your Character to This Campaign
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {unassignedMyChars.map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--c-raised)', border: '1px solid var(--c-border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: 'var(--c-gold-l)' }}>
+                  {c.avatar_url ? <img src={c.avatar_url} width={36} height={36} style={{ objectFit: 'cover' }} alt="" /> : c.name[0]}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--t-3)' }}>Lv {c.level} {c.class_name} · {c.species}</div>
+                </div>
+                <button
+                  onClick={() => assign(c.id)}
+                  disabled={assigning === c.id}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)', opacity: assigning === c.id ? 0.5 : 1 }}
+                >
+                  {assigning === c.id ? 'Assigning…' : 'Assign to Campaign'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Assigned characters */}
+      <div>
+        {characters.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 12 }}>
+            {unassignedMyChars.length > 0
+              ? 'Use "Assign to Campaign" above to add your character to this campaign.'
+              : 'No characters assigned yet. Each player assigns their character from this tab.'}
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--t-2)', marginBottom: 10 }}>
+              Party — {characters.length} character{characters.length !== 1 ? 's' : ''}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+              {characters.map(c => {
+                const isOwn = c.user_id === userId;
+                const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
+                const col = hpPct > 0.6 ? 'var(--hp-full)' : hpPct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
+                return (
+                  <div key={c.id} style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ height: 3, background: col, width: `${Math.max(2, hpPct * 100)}%` }} />
+                    <div style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{c.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--t-3)' }}>Lv {c.level} {c.class_name} · {c.species}</div>
+                        </div>
+                        {isOwn && (
+                          <button onClick={() => unassign(c.id)} disabled={assigning === c.id}
+                            style={{ fontSize: 9, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer' }}>
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 12 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: col, fontFamily: 'var(--ff-stat)' }}>{c.current_hp}/{c.max_hp} HP</span>
+                        <span style={{ fontSize: 11, color: 'var(--t-3)' }}>AC {c.armor_class}</span>
+                        {c.inspiration && <span style={{ fontSize: 11, color: 'var(--c-gold-l)' }}>★</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>
