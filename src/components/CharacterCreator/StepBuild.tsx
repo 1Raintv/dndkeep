@@ -64,6 +64,9 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
     onChoicesChange({ ...choices, ...patch });
   }
 
+  // Subclass data for feature lookup
+  const selectedSubclass = choices.subclass ? cls?.subclasses?.find((sc: any) => sc.name === choices.subclass) : null;
+
   // Build summary entries for right panel
   const summary = levelsToShow.map(({ lvl, prog: p }) => {
     const entries: string[] = [];
@@ -80,6 +83,15 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
     if (invAtLevel.length) entries.push(`Invocations: ${invAtLevel.join(', ')}`);
     const mmAtLevel = choices.metamagicByLevel?.[lvl] ?? [];
     if (mmAtLevel.length) entries.push(`Metamagic: ${mmAtLevel.join(', ')}`);
+    // Class features at this level
+    const classFeatures = (p.features ?? []).map((f: string) => f.split('(')[0].trim()).filter(Boolean);
+    if (classFeatures.length) entries.push(...classFeatures.map((f: string) => `+ ${f}`));
+    // Subclass features at this level
+    if (selectedSubclass && p.subclassFeature) {
+      const subFeats = (selectedSubclass as any).features?.filter((f: any) => f.level === lvl) ?? [];
+      subFeats.forEach((f: any) => entries.push(`[${choices.subclass}] ${f.name}`));
+      if (!subFeats.length) entries.push(`[${choices.subclass}] class feature`);
+    }
     const isComplete = (p.choices ?? []).length === 0 || !(p.choices ?? []).some(c => isChoiceIncomplete(c.type, lvl, choices));
     const hasRequired = (p.choices ?? []).some(c => ['subclass','asi','fighting_style','divine_order','primal_order'].includes(c.type));
     const isMissing = hasRequired && (p.choices ?? []).some(c => ['subclass','asi','fighting_style','divine_order','primal_order'].includes(c.type) && isChoiceIncomplete(c.type, lvl, choices));
@@ -190,7 +202,19 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
                   {prog.subclassFeature && currentLevel > (cls.subclasses[0]?.unlock_level ?? 3) && choices.subclass && (
                     <div style={{ fontSize: 13, color: '#a78bfa', lineHeight: 1.5, display: 'flex', gap: 8 }}>
                       <span style={{ flexShrink: 0 }}>+</span>
-                      <span>{choices.subclass} class feature</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {(() => {
+                          const subFeats = (selectedSubclass as any)?.features?.filter((f: any) => f.level === currentLevel) ?? [];
+                          return subFeats.length > 0
+                            ? subFeats.map((f: any) => (
+                                <div key={f.name}>
+                                  <span style={{ fontWeight: 700 }}>{choices.subclass}: {f.name}</span>
+                                  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>{f.description}</div>
+                                </div>
+                              ))
+                            : <span>{choices.subclass} class feature</span>;
+                        })()}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -323,26 +347,7 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   const cls = CLASS_MAP[className];
 
   if (type === 'subclass') {
-    return (
-      <div>
-        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>{label}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-          {cls?.subclasses.map(sc => (
-            <button key={sc.name} onClick={() => onUpdate({ subclass: sc.name })}
-              style={{ textAlign: 'left', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--r-lg)', cursor: 'pointer',
-                border: choices.subclass === sc.name ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-                background: choices.subclass === sc.name ? 'var(--c-gold-bg)' : 'var(--c-raised)' }}>
-              <div style={{ fontWeight: 700, fontSize: 'var(--fs-sm)', color: choices.subclass === sc.name ? 'var(--c-gold-l)' : 'var(--t-1)', marginBottom: 4 }}>
-                {choices.subclass === sc.name ? '✓ ' : ''}{sc.name}
-              </div>
-              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                {sc.description}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
+    return <SubclassPicker label={label} cls={cls} choices={choices} onUpdate={onUpdate} />;
   }
 
   if (type === 'cantrips' || type === 'spells') {
@@ -754,128 +759,179 @@ function MultiPicker({ label, options, selected, onToggle, single, max, excluded
   );
 }
 
-// ── ASI / Feat picker ───────────────────────────────────────────────
+// ── Subclass Picker ─────────────────────────────────────────────────
+function SubclassPicker({ label, cls, choices, onUpdate }: {
+  label: string; cls: any;
+  choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
+}) {
+  const [preview, setPreview] = useState<string | null>(choices.subclass || null);
+  const subclasses: any[] = cls?.subclasses ?? [];
+  const selected = choices.subclass;
+  const previewData = subclasses.find((sc: any) => sc.name === preview);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>{label}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {subclasses.map((sc: any) => {
+          const isSelected = selected === sc.name;
+          const isPreviewed = preview === sc.name;
+          return (
+            <button key={sc.name} onClick={() => setPreview(isPreviewed && !isSelected ? null : sc.name)}
+              style={{
+                fontSize: 13, fontWeight: isSelected ? 700 : 500, padding: '8px 16px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+                border: isSelected ? '2px solid var(--c-gold)' : isPreviewed ? '1px solid var(--c-border-m)' : '1px solid var(--c-border)',
+                background: isSelected ? 'var(--c-gold-bg)' : isPreviewed ? 'var(--c-raised)' : 'var(--c-card)',
+                color: isSelected ? 'var(--c-gold-l)' : 'var(--t-1)',
+              }}>
+              {isSelected && <span style={{ marginRight: 4 }}>✓</span>}
+              {sc.name}
+              {sc.source === 'ua' && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '0 5px', borderRadius: 999 }}>UA</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {previewData && (
+        <div style={{ padding: '14px 16px', borderRadius: 10, border: selected === previewData.name ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)', background: selected === previewData.name ? 'rgba(212,160,23,0.05)' : 'var(--c-raised)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: selected === previewData.name ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{previewData.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>Unlocks at level {previewData.unlock_level}</div>
+            </div>
+            <button onClick={() => onUpdate({ subclass: previewData.name })} style={{ fontSize: 12, fontWeight: 700, padding: '6px 18px', borderRadius: 7, cursor: 'pointer', minHeight: 0, flexShrink: 0, border: selected === previewData.name ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--c-gold-bdr)', background: selected === previewData.name ? 'rgba(248,113,113,0.08)' : 'var(--c-gold-bg)', color: selected === previewData.name ? '#f87171' : 'var(--c-gold-l)' }}>
+              {selected === previewData.name ? 'Deselect' : 'Choose this Subclass'}
+            </button>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.7, margin: 0 }}>{previewData.description}</p>
+          {previewData.features && previewData.features.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Features at each level</div>
+              {previewData.features.map((f: any) => (
+                <div key={f.name} style={{ padding: '6px 10px', background: 'var(--c-card)', borderRadius: 6, borderLeft: `2px solid ${selected === previewData.name ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 11, color: selected === previewData.name ? 'var(--c-gold-l)' : 'var(--t-2)' }}>Lv {f.level} — {f.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.5 }}>{f.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ASI / Feat picker ─────────────────────────────────────────────────────────
 function ASIFeatPicker({ label, level, choices, onUpdate }: {
   label: string; level: number;
   choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
 }) {
-  const [mode, setMode] = useState<'asi' | 'feat'>(!choices.feats[level] ? 'asi' : 'feat');
   const asi = choices.asiChoices[level];
-  const feat = choices.feats[level];
-  const totalBoost = asi ? asi.amount + (asi.amount2 ?? 0) : 0;
+  const hasFeat = !!choices.feats[level];
+  const currentMode: 'plus2' | 'split' | 'feat' | null =
+    hasFeat ? 'feat' : asi?.amount === 2 ? 'plus2' : asi ? 'split' : null;
+  const [mode, setMode] = useState<'plus2' | 'split' | 'feat' | null>(currentMode);
 
-  function handleASIClick(ab: string, amt: number) {
-    const current = choices.asiChoices[level];
+  const OPTION_CARDS = [
+    { id: 'plus2' as const, label: '+2 to One Ability', desc: 'Raise one ability score by 2 (max 20).' },
+    { id: 'split' as const, label: '+1 / +1 Split', desc: 'Raise two different abilities by 1 each (max 20).' },
+    { id: 'feat' as const, label: 'Take a Feat', desc: 'Pick a feat instead of improving ability scores.' },
+  ];
 
-    if (amt === 2) {
-      // +2 to one ability — clear any split and set this one
-      onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 2 } } });
-      return;
-    }
-
-    // amt === 1 cases
-    if (!current) {
-      // Nothing selected yet — set first +1
-      onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1 } } });
-      return;
-    }
-
-    if (current.ability === ab) {
-      if (current.amount === 2) {
-        // Was +2, downgrade to +1
-        onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1 } } });
-      } else {
-        // Was +1 main, deselect main
-        if (current.ability2) {
-          // Promote ability2 to main
-          onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: current.ability2, amount: 1 } } });
-        } else {
-          const { [level]: _, ...rest } = choices.asiChoices;
-          onUpdate({ asiChoices: rest });
-        }
-      }
-      return;
-    }
-
-    if (current.ability2 === ab) {
-      // Deselect the second ability — keep first
-      onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: current.ability, amount: current.amount } } });
-      return;
-    }
-
-    // New ability — if we have room (totalBoost < 2), add as +1 split
-    if (totalBoost < 2) {
-      if (current.amount === 1 && !current.ability2) {
-        // Add second +1
-        onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: current.ability, amount: 1, ability2: ab, amount2: 1 } } });
-      } else {
-        // Replace with new single +1
-        onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1 } } });
-      }
-    }
+  function clearChoice() {
+    const { [level]: _a, ...restASI } = choices.asiChoices;
+    const { [level]: _f, ...restFeats } = choices.feats;
+    onUpdate({ asiChoices: restASI, feats: restFeats });
   }
 
+  const ABILITIES_LIST = ['strength','dexterity','constitution','intelligence','wisdom','charisma'];
+  const ABILITY_LABELS: Record<string,string> = { strength:'STR', dexterity:'DEX', constitution:'CON', intelligence:'INT', wisdom:'WIS', charisma:'CHA' };
+
   return (
-    <div>
-      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>{label}</div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-3)' }}>
-        {(['asi', 'feat'] as const).map(m => (
-          <button key={m} onClick={() => setMode(m)} style={{ fontSize: 'var(--fs-sm)', padding: '5px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
-            border: mode === m ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-            background: mode === m ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-            color: mode === m ? 'var(--c-gold-l)' : 'var(--t-2)', fontWeight: mode === m ? 600 : 400 }}>
-            {m === 'asi' ? '+2 Ability Score' : 'Take a Feat'}
-          </button>
-        ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>Ability Score Improvement or Feat</div>
+
+      {/* Three option cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {OPTION_CARDS.map(opt => {
+          const isActive = mode === opt.id;
+          return (
+            <button key={opt.id} onClick={() => { clearChoice(); setMode(opt.id); }}
+              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 9, cursor: 'pointer',
+                border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                background: isActive ? 'var(--c-gold-bg)' : 'var(--c-card)',
+                display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+                {isActive ? '✓ ' : ''}{opt.label}
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--t-3)', lineHeight: 1.4 }}>{opt.desc}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {mode === 'asi' && (
+      {/* +2 single ability */}
+      {mode === 'plus2' && (
         <div>
-          <div style={{ fontSize: 11, color: totalBoost === 2 ? 'var(--hp-full)' : 'var(--t-3)', marginBottom: 8, fontWeight: 600 }}>
-            {totalBoost === 2 ? '✓ Points allocated' : `${2 - totalBoost} point${2 - totalBoost !== 1 ? 's' : ''} remaining — +2 one ability or +1 to two`}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-            {ABILITIES.map(ab => {
-              const isMain = asi?.ability === ab;
-              const isSub = asi?.ability2 === ab;
-              const isSel = isMain || isSub;
-              const boost = isMain ? (asi?.amount ?? 0) : isSub ? (asi?.amount2 ?? 0) : 0;
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 8 }}>Which ability? (+2)</div>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            {ABILITIES_LIST.map(ab => {
+              const isChosen = asi?.ability === ab && asi?.amount === 2;
               return (
-                <div key={ab} style={{ padding: '8px 10px', borderRadius: 'var(--r-md)', border: `1px solid ${isSel ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: isSel ? 'var(--c-gold-bg)' : 'var(--c-raised)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: isSel ? 'var(--c-gold-l)' : 'var(--t-2)', letterSpacing: '0.06em' }}>{ABILITY_ABBREV[ab]}</span>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    {isSel && <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800, color: 'var(--c-gold-l)', marginRight: 2 }}>+{boost}</span>}
-                    {[1, 2].map(amt => {
-                      const active = isMain && asi!.amount >= amt;
-                      const active2 = isSub && amt === 1;
-                      return (
-                        <button key={amt} onClick={() => handleASIClick(ab, amt)}
-                          style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 800, minHeight: 0,
-                            background: active || active2 ? 'var(--c-gold)' : 'var(--c-card)',
-                            color: active || active2 ? '#0d0900' : 'var(--t-3)',
-                            outline: active || active2 ? 'none' : '1px solid var(--c-border-m)',
-                          }}>
-                          +{amt}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <button key={ab} onClick={() => onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 2 } } })}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: isChosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                    background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: isChosen ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
+                  {ABILITY_LABELS[ab]}
+                </button>
               );
             })}
           </div>
         </div>
       )}
 
+      {/* +1/+1 split */}
+      {mode === 'split' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[0, 1].map(idx => {
+            const chosen = idx === 0 ? asi?.ability : asi?.ability2;
+            const otherChosen = idx === 0 ? asi?.ability2 : asi?.ability;
+            return (
+              <div key={idx}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 6 }}>
+                  {idx === 0 ? 'First ability (+1)' : 'Second ability (+1)'}
+                </div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  {ABILITIES_LIST.map(ab => {
+                    const isChosen = chosen === ab;
+                    const isOther = otherChosen === ab;
+                    return (
+                      <button key={ab} disabled={isOther} onClick={() => {
+                        if (idx === 0) {
+                          onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 1, ability2: asi?.ability2, amount2: asi?.ability2 ? 1 : undefined } } });
+                        } else {
+                          onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ...asi, ability: asi?.ability ?? ab, amount: 1, ability2: ab, amount2: 1 } as any } });
+                        }
+                      }} style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: isOther ? 'not-allowed' : 'pointer', minHeight: 0,
+                        border: isChosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                        background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: isChosen ? 'var(--c-gold-l)' : isOther ? 'var(--t-3)' : 'var(--t-2)',
+                        opacity: isOther ? 0.4 : 1 }}>
+                        {ABILITY_LABELS[ab]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Feat picker */}
       {mode === 'feat' && (
         <FeatPicker
-          selected={feat ?? null}
-          onSelect={featName => {
-            const newFeats = { ...choices.feats };
-            if (featName) newFeats[level] = featName;
-            else delete newFeats[level];
-            onUpdate({ feats: newFeats });
-          }}
+          selected={choices.feats[level] ?? ''}
+          onSelect={name => onUpdate({ feats: { ...choices.feats, [level]: name } as Record<number, string> })}
         />
       )}
     </div>
