@@ -1,380 +1,558 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import ProGate from '../shared/ProGate';
+import { CLASSES } from '../../data/classes';
+import { useClassRegistry, type ClassEntry } from '../../lib/classRegistry';
+import { supabase } from '../../lib/supabase';
+import type { SubclassData, SubclassFeature } from '../../types';
 
-type HomebrewTab = 'spells' | 'monsters' | 'items';
+const ABILITIES = ['strength','dexterity','constitution','intelligence','wisdom','charisma'];
+const ALL_SKILLS = ['Acrobatics','Animal Handling','Arcana','Athletics','Deception','History',
+  'Insight','Intimidation','Investigation','Medicine','Nature','Perception','Performance',
+  'Persuasion','Religion','Sleight of Hand','Stealth','Survival'];
+const HIT_DICE = [6, 8, 10, 12];
 
-interface HomebrewSpell {
-  id: string;
-  name: string;
-  level: number;
-  school: string;
-  casting_time: string;
-  range: string;
-  components: string;
-  duration: string;
-  description: string;
-  classes: string[];
-  concentration: boolean;
-  ritual: boolean;
-  is_public: boolean;
-}
+const emptySubclass = (): Partial<SubclassData> => ({
+  name: '', description: '', unlock_level: 3, source: 'homebrew', features: [], spell_list: [],
+});
 
-interface HomebrewMonster {
-  id: string;
-  name: string;
-  type: string;
-  cr: string;
-  size: string;
-  hp: number;
-  ac: number;
-  speed: number;
-  str: number; dex: number; con: number;
-  int: number; wis: number; cha: number;
-  attack_name: string;
-  attack_bonus: number;
-  attack_damage: string;
-  xp: number;
-  traits: string;
-  is_public: boolean;
-}
-
-interface HomebrewItem {
-  id: string;
-  name: string;
-  item_type: string;
-  rarity: string;
-  requires_attunement: boolean;
-  description: string;
-  weight: number;
-  is_public: boolean;
-}
-
-const SCHOOLS = ['Abjuration', 'Conjuration', 'Divination', 'Enchantment', 'Evocation', 'Illusion', 'Necromancy', 'Transmutation'];
-const CLASSES = ['Bard', 'Cleric', 'Druid', 'Paladin', 'Ranger', 'Sorcerer', 'Warlock', 'Wizard'];
-const RARITIES = ['common', 'uncommon', 'rare', 'very rare', 'legendary'];
-const ITEM_TYPES = ['armor', 'potion', 'ring', 'rod', 'scroll', 'staff', 'wand', 'weapon', 'wondrous'];
-const MONSTER_TYPES = ['Aberration', 'Beast', 'Celestial', 'Construct', 'Dragon', 'Elemental', 'Fey', 'Fiend', 'Giant', 'Humanoid', 'Monstrosity', 'Ooze', 'Plant', 'Undead'];
-const SIZES = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
-const CRS = ['0', '1/8', '1/4', '1/2', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
-
-function emptySpell(): Partial<HomebrewSpell> {
-  return { name: '', level: 0, school: 'Evocation', casting_time: '1 action', range: '60 feet', components: 'V, S', duration: 'Instantaneous', description: '', classes: [], concentration: false, ritual: false, is_public: false };
-}
-function emptyMonster(): Partial<HomebrewMonster> {
-  return { name: '', type: 'Humanoid', cr: '1', size: 'Medium', hp: 10, ac: 12, speed: 30, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, attack_name: 'Strike', attack_bonus: 3, attack_damage: '1d6', xp: 200, traits: '', is_public: false };
-}
-function emptyItem(): Partial<HomebrewItem> {
-  return { name: '', item_type: 'wondrous', rarity: 'uncommon', requires_attunement: false, description: '', weight: 0, is_public: false };
-}
+const emptyFeature = (): SubclassFeature => ({
+  level: 3, name: '', description: '', mechanics: [],
+});
 
 export default function HomebrewPage() {
   const { user, isPro } = useAuth();
-  const [tab, setTab] = useState<HomebrewTab>('spells');
-  const [spells, setSpells] = useState<HomebrewSpell[]>([]);
-  const [monsters, setMonsters] = useState<HomebrewMonster[]>([]);
-  const [items, setItems] = useState<HomebrewItem[]>([]);
-  const [editing, setEditing] = useState<'spell' | 'monster' | 'item' | null>(null);
-  const [spellForm, setSpellForm] = useState<Partial<HomebrewSpell>>(emptySpell());
-  const [monsterForm, setMonsterForm] = useState<Partial<HomebrewMonster>>(emptyMonster());
-  const [itemForm, setItemForm] = useState<Partial<HomebrewItem>>(emptyItem());
+  const { classes, loading, refresh } = useClassRegistry(user?.id);
+  const [tab, setTab] = useState<'browse' | 'create'>('browse');
+  const [editing, setEditing] = useState<Partial<ClassEntry> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
 
-  useEffect(() => { if (user) loadAll(); }, [user]);
+  const homebrew = classes.filter(c => c.source === 'homebrew' && (c as ClassEntry).owner_id === user?.id);
+  const ua = classes.filter(c => c.source === 'ua');
 
-  async function loadAll() {
-    const [{ data: s }, { data: m }, { data: i }] = await Promise.all([
-      supabase.from('homebrew_spells').select('*').eq('user_id', user!.id).order('name'),
-      supabase.from('homebrew_monsters').select('*').eq('user_id', user!.id).order('name'),
-      supabase.from('homebrew_items').select('*').eq('user_id', user!.id).order('name'),
-    ]);
-    if (s) setSpells(s as HomebrewSpell[]);
-    if (m) setMonsters(m as HomebrewMonster[]);
-    if (i) setItems(i as HomebrewItem[]);
+  function newClass(): any {
+    return {
+      name: '', description: '', hit_die: 8,
+      primary_abilities: [], saving_throw_proficiencies: [],
+      skill_choices: [], skill_count: 2,
+      armor_proficiencies: [], weapon_proficiencies: [], tool_proficiencies: [],
+      is_spellcaster: false, spellcasting_ability: null, spellcaster_type: 'none',
+      subclasses: [], source: 'homebrew', is_public: false,
+    };
   }
 
-  async function saveSpell() {
-    if (!spellForm.name?.trim() || !user) return;
+  async function save() {
+    if (!editing?.name?.trim() || !user) return;
     setSaving(true);
-    if ((spellForm as HomebrewSpell).id) {
-      await supabase.from('homebrew_spells').update({ ...spellForm }).eq('id', (spellForm as HomebrewSpell).id);
+    const payload = {
+      user_id: user.id,
+      name: editing.name!.trim(),
+      description: editing.description ?? '',
+      hit_die: editing.hit_die ?? 8,
+      primary_abilities: editing.primary_abilities ?? [],
+      saving_throw_proficiencies: editing.saving_throw_proficiencies ?? [],
+      skill_choices: editing.skill_choices ?? [],
+      skill_count: editing.skill_count ?? 2,
+      armor_proficiencies: editing.armor_proficiencies ?? [],
+      weapon_proficiencies: editing.weapon_proficiencies ?? [],
+      tool_proficiencies: editing.tool_proficiencies ?? [],
+      is_spellcaster: editing.is_spellcaster ?? false,
+      spellcasting_ability: editing.is_spellcaster ? (editing.spellcasting_ability ?? 'intelligence') : null,
+      spellcaster_type: editing.is_spellcaster ? (editing.spellcaster_type ?? 'full') : 'none',
+      subclasses: editing.subclasses ?? [],
+      is_public: (editing as ClassEntry).is_public ?? false,
+    };
+
+    const existingId = (editing as ClassEntry).id;
+    if (existingId) {
+      await supabase.from('homebrew_classes').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', existingId);
     } else {
-      await supabase.from('homebrew_spells').insert({ ...spellForm, user_id: user.id });
+      await supabase.from('homebrew_classes').insert(payload);
     }
-    await loadAll();
-    setSaving(false);
+
+    setSaveMsg('Saved!');
+    setTimeout(() => setSaveMsg(''), 2000);
+    await refresh();
     setEditing(null);
-    setSpellForm(emptySpell());
-  }
-
-  async function saveMonster() {
-    if (!monsterForm.name?.trim() || !user) return;
-    setSaving(true);
-    if ((monsterForm as HomebrewMonster).id) {
-      await supabase.from('homebrew_monsters').update({ ...monsterForm }).eq('id', (monsterForm as HomebrewMonster).id);
-    } else {
-      await supabase.from('homebrew_monsters').insert({ ...monsterForm, user_id: user.id });
-    }
-    await loadAll();
+    setTab('browse');
     setSaving(false);
-    setEditing(null);
-    setMonsterForm(emptyMonster());
   }
 
-  async function saveItem() {
-    if (!itemForm.name?.trim() || !user) return;
-    setSaving(true);
-    if ((itemForm as HomebrewItem).id) {
-      await supabase.from('homebrew_items').update({ ...itemForm }).eq('id', (itemForm as HomebrewItem).id);
-    } else {
-      await supabase.from('homebrew_items').insert({ ...itemForm, user_id: user.id });
-    }
-    await loadAll();
-    setSaving(false);
-    setEditing(null);
-    setItemForm(emptyItem());
+  async function deleteClass(id: string) {
+    if (!confirm('Delete this homebrew class?')) return;
+    await supabase.from('homebrew_classes').delete().eq('id', id);
+    await refresh();
   }
 
-  async function deleteSpell(id: string) {
-    await supabase.from('homebrew_spells').delete().eq('id', id);
-    setSpells(prev => prev.filter(s => s.id !== id));
+  if (!isPro) {
+    return (
+      <div style={{ maxWidth: 560, margin: '60px auto', padding: '0 20px', textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🎲</div>
+        <h2 style={{ marginBottom: 12 }}>Homebrew Workshop</h2>
+        <p style={{ color: 'var(--t-2)', marginBottom: 24, lineHeight: 1.7 }}>
+          Create custom classes and subclasses, or import UA content.<br />
+          Available on the Pro plan.
+        </p>
+        <button className="btn-gold">Upgrade to Pro</button>
+      </div>
+    );
   }
-  async function deleteMonster(id: string) {
-    await supabase.from('homebrew_monsters').delete().eq('id', id);
-    setMonsters(prev => prev.filter(m => m.id !== id));
-  }
-  async function deleteItem(id: string) {
-    await supabase.from('homebrew_items').delete().eq('id', id);
-    setItems(prev => prev.filter(i => i.id !== id));
-  }
-
-  const labelStyle = { display: 'block', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 'var(--sp-1)', background: 'none', WebkitTextFillColor: 'var(--t-2)' };
-  const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' };
 
   return (
-    <div style={{ maxWidth: 800 }}>
-      <div style={{ marginBottom: 'var(--sp-6)' }}>
-        <h1 style={{ marginBottom: 'var(--sp-2)' }}>Homebrew Creator</h1>
-        <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
-          Create custom spells, monsters, and magic items for your campaigns.
-        </p>
+    <div style={{ maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ marginBottom: 4 }}>Homebrew Workshop</h2>
+          <p style={{ fontSize: 13, color: 'var(--t-3)', margin: 0 }}>
+            Custom classes merge automatically with official content everywhere in the app.
+          </p>
+        </div>
+        <button className="btn-gold btn-sm" onClick={() => { setEditing(newClass()); setTab('create'); }}>
+          + New Class
+        </button>
       </div>
 
-      <div className="tabs" style={{ marginBottom: 'var(--sp-6)' }}>
-        {(['spells', 'monsters', 'items'] as const).map(t => (
-          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'spells' ? '✨ Spells' : t === 'monsters' ? '👹 Monsters' : '⚗️ Items'}
-            <span style={{ marginLeft: 6, fontFamily: 'var(--ff-body)', fontSize: 9, opacity: 0.7 }}>
-              ({t === 'spells' ? spells.length : t === 'monsters' ? monsters.length : items.length})
-            </span>
-          </button>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--c-border)' }}>
+        {([['browse','Browse'], ['create', editing ? 'Editor' : 'Create']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            fontWeight: 700, fontSize: 12, padding: '7px 16px', background: 'transparent', border: 'none',
+            borderBottom: tab === id ? '2px solid var(--c-gold)' : '2px solid transparent',
+            color: tab === id ? 'var(--c-gold-l)' : 'var(--t-2)', cursor: 'pointer', marginBottom: -1,
+          }}>{label}</button>
         ))}
       </div>
 
-      {/* ── SPELLS ── */}
-      {tab === 'spells' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--sp-4)' }}>
-            <button className="btn-gold" onClick={() => { setSpellForm(emptySpell()); setEditing('spell'); }}>
-              + New Spell
-            </button>
-          </div>
-          {spells.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>No homebrew spells yet.</div>
-          ) : spells.map(s => (
-            <div key={s.id} className="card" style={{ marginBottom: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{s.name}</div>
-                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                  {s.level === 0 ? 'Cantrip' : `Level ${s.level}`} · {s.school} · {s.casting_time}
-                  {s.is_public && <span style={{ marginLeft: 6, color: 'var(--hp-full)' }}>Public</span>}
-                </div>
+      {/* ── BROWSE ── */}
+      {tab === 'browse' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* UA Subclasses */}
+          {ua.length > 0 && (
+            <section>
+              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#a78bfa', marginBottom: 10 }}>
+                Unearthed Arcana 2026 — {ua.flatMap(c => c.subclasses.filter(s => s.source === 'ua')).length} Subclasses
               </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button className="btn-secondary btn-sm" onClick={() => { setSpellForm(s); setEditing('spell'); }}>Edit</button>
-                <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteSpell(s.id)}>Delete</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+                {CLASSES.map(cls =>
+                  cls.subclasses.filter(s => s.source === 'ua').map(sub => (
+                    <UACard key={`${cls.name}-${sub.name}`} className={cls.name} sub={sub} />
+                  ))
+                )}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            </section>
+          )}
 
-      {/* ── MONSTERS ── */}
-      {tab === 'monsters' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--sp-4)' }}>
-            <button className="btn-gold" onClick={() => { setMonsterForm(emptyMonster()); setEditing('monster'); }}>+ New Monster</button>
-          </div>
-          {monsters.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>No homebrew monsters yet.</div>
-          ) : monsters.map(m => (
-            <div key={m.id} className="card" style={{ marginBottom: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{m.name}</div>
-                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>CR {m.cr} · {m.size} {m.type} · {m.hp} HP · AC {m.ac}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button className="btn-secondary btn-sm" onClick={() => { setMonsterForm(m); setEditing('monster'); }}>Edit</button>
-                <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteMonster(m.id)}>Delete</button>
-              </div>
+          {/* My Homebrew */}
+          <section>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 10 }}>
+              My Homebrew Classes ({homebrew.length})
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── ITEMS ── */}
-      {tab === 'items' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--sp-4)' }}>
-            <button className="btn-gold" onClick={() => { setItemForm(emptyItem()); setEditing('item'); }}>+ New Item</button>
-          </div>
-          {items.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>No homebrew items yet.</div>
-          ) : items.map(i => (
-            <div key={i.id} className="card" style={{ marginBottom: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{i.name}</div>
-                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                  {i.rarity} · {i.item_type}{i.requires_attunement ? ' · Attunement' : ''}
-                </div>
+            {homebrew.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 12 }}>
+                No homebrew classes yet. Click "+ New Class" to create one.
               </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button className="btn-secondary btn-sm" onClick={() => { setItemForm(i); setEditing('item'); }}>Edit</button>
-                <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteItem(i.id)}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── SPELL FORM MODAL ── */}
-      {editing === 'spell' && (
-        <div className="modal-overlay" onClick={() => setEditing(null)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(spellForm as HomebrewSpell).id ? 'Edit' : 'New'} Homebrew Spell</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <div><label style={labelStyle}>Name *</label><input value={spellForm.name ?? ''} onChange={e => setSpellForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
-              <div style={gridStyle}>
-                <div><label style={labelStyle}>Level</label>
-                  <select value={spellForm.level ?? 0} onChange={e => setSpellForm(f => ({ ...f, level: +e.target.value }))}>
-                    <option value={0}>Cantrip</option>
-                    {[1,2,3,4,5,6,7,8,9].map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </div>
-                <div><label style={labelStyle}>School</label>
-                  <select value={spellForm.school ?? 'Evocation'} onChange={e => setSpellForm(f => ({ ...f, school: e.target.value }))}>
-                    {SCHOOLS.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div><label style={labelStyle}>Casting Time</label><input value={spellForm.casting_time ?? ''} onChange={e => setSpellForm(f => ({ ...f, casting_time: e.target.value }))} placeholder="1 action" /></div>
-                <div><label style={labelStyle}>Range</label><input value={spellForm.range ?? ''} onChange={e => setSpellForm(f => ({ ...f, range: e.target.value }))} placeholder="60 feet" /></div>
-                <div><label style={labelStyle}>Components</label><input value={spellForm.components ?? ''} onChange={e => setSpellForm(f => ({ ...f, components: e.target.value }))} placeholder="V, S, M (a pinch of...)" /></div>
-                <div><label style={labelStyle}>Duration</label><input value={spellForm.duration ?? ''} onChange={e => setSpellForm(f => ({ ...f, duration: e.target.value }))} placeholder="Instantaneous" /></div>
-              </div>
-              <div>
-                <label style={labelStyle}>Available to Classes</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {CLASSES.map(c => {
-                    const selected = (spellForm.classes ?? []).includes(c);
-                    return (
-                      <button key={c} onClick={() => setSpellForm(f => ({ ...f, classes: selected ? (f.classes ?? []).filter(x => x !== c) : [...(f.classes ?? []), c] }))}
-                        style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: selected ? '1px solid #a78bfa' : '1px solid var(--c-border)', background: selected ? 'rgba(167,139,250,0.15)' : 'transparent', color: selected ? '#a78bfa' : 'var(--t-2)', cursor: 'pointer' }}>
-                        {c}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-4)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                  <input type="checkbox" checked={!!spellForm.concentration} onChange={e => setSpellForm(f => ({ ...f, concentration: e.target.checked }))} /> Concentration
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                  <input type="checkbox" checked={!!spellForm.ritual} onChange={e => setSpellForm(f => ({ ...f, ritual: e.target.checked }))} /> Ritual
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
-                  <input type="checkbox" checked={!!spellForm.is_public} onChange={e => setSpellForm(f => ({ ...f, is_public: e.target.checked }))} /> Public
-                </label>
-              </div>
-              <div><label style={labelStyle}>Description *</label><textarea value={spellForm.description ?? ''} onChange={e => setSpellForm(f => ({ ...f, description: e.target.value }))} rows={5} placeholder="Spell effect, saving throw, damage..." /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn-gold" onClick={saveSpell} disabled={saving || !spellForm.name?.trim()}>{saving ? 'Saving…' : 'Save Spell'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MONSTER FORM MODAL ── */}
-      {editing === 'monster' && (
-        <div className="modal-overlay" onClick={() => setEditing(null)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(monsterForm as HomebrewMonster).id ? 'Edit' : 'New'} Homebrew Monster</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <div><label style={labelStyle}>Name *</label><input value={monsterForm.name ?? ''} onChange={e => setMonsterForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
-              <div style={gridStyle}>
-                <div><label style={labelStyle}>Type</label><select value={monsterForm.type ?? 'Humanoid'} onChange={e => setMonsterForm(f => ({ ...f, type: e.target.value }))}>{MONSTER_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
-                <div><label style={labelStyle}>Size</label><select value={monsterForm.size ?? 'Medium'} onChange={e => setMonsterForm(f => ({ ...f, size: e.target.value }))}>{SIZES.map(s => <option key={s}>{s}</option>)}</select></div>
-                <div><label style={labelStyle}>CR</label><select value={monsterForm.cr ?? '1'} onChange={e => setMonsterForm(f => ({ ...f, cr: e.target.value }))}>{CRS.map(c => <option key={c} value={c}>CR {c}</option>)}</select></div>
-                <div><label style={labelStyle}>XP</label><input type="number" value={monsterForm.xp ?? 200} onChange={e => setMonsterForm(f => ({ ...f, xp: +e.target.value }))} /></div>
-                <div><label style={labelStyle}>HP</label><input type="number" value={monsterForm.hp ?? 10} onChange={e => setMonsterForm(f => ({ ...f, hp: +e.target.value }))} /></div>
-                <div><label style={labelStyle}>AC</label><input type="number" value={monsterForm.ac ?? 12} onChange={e => setMonsterForm(f => ({ ...f, ac: +e.target.value }))} /></div>
-                <div><label style={labelStyle}>Speed (ft)</label><input type="number" value={monsterForm.speed ?? 30} onChange={e => setMonsterForm(f => ({ ...f, speed: +e.target.value }))} /></div>
-              </div>
-              <div style={{ ...gridStyle, gridTemplateColumns: 'repeat(6, 1fr)' }}>
-                {(['str','dex','con','int','wis','cha'] as const).map(ab => (
-                  <div key={ab}><label style={labelStyle}>{ab.toUpperCase()}</label><input type="number" value={(monsterForm as any)[ab] ?? 10} onChange={e => setMonsterForm(f => ({ ...f, [ab]: +e.target.value }))} /></div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                {homebrew.map(c => (
+                  <HomebrewCard key={(c as ClassEntry).id} cls={c as ClassEntry}
+                    onEdit={() => { setEditing(c); setTab('create'); }}
+                    onDelete={() => deleteClass((c as ClassEntry).id!)} />
                 ))}
               </div>
-              <div style={gridStyle}>
-                <div><label style={labelStyle}>Attack Name</label><input value={monsterForm.attack_name ?? ''} onChange={e => setMonsterForm(f => ({ ...f, attack_name: e.target.value }))} placeholder="Bite, Claw..." /></div>
-                <div><label style={labelStyle}>Attack Bonus</label><input type="number" value={monsterForm.attack_bonus ?? 3} onChange={e => setMonsterForm(f => ({ ...f, attack_bonus: +e.target.value }))} /></div>
-                <div><label style={labelStyle}>Damage</label><input value={monsterForm.attack_damage ?? ''} onChange={e => setMonsterForm(f => ({ ...f, attack_damage: e.target.value }))} placeholder="2d6+3" /></div>
-              </div>
-              <div><label style={labelStyle}>Special Traits (optional)</label><textarea value={monsterForm.traits ?? ''} onChange={e => setMonsterForm(f => ({ ...f, traits: e.target.value }))} rows={3} placeholder="Darkvision 60 ft. Pack Tactics..." /></div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
-                <input type="checkbox" checked={!!monsterForm.is_public} onChange={e => setMonsterForm(f => ({ ...f, is_public: e.target.checked }))} /> Make public (others can see in Monster Browser)
-              </label>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn-gold" onClick={saveMonster} disabled={saving || !monsterForm.name?.trim()}>{saving ? 'Saving…' : 'Save Monster'}</button>
-            </div>
-          </div>
+            )}
+          </section>
         </div>
       )}
 
-      {/* ── ITEM FORM MODAL ── */}
-      {editing === 'item' && (
-        <div className="modal-overlay" onClick={() => setEditing(null)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(itemForm as HomebrewItem).id ? 'Edit' : 'New'} Homebrew Item</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <div><label style={labelStyle}>Name *</label><input value={itemForm.name ?? ''} onChange={e => setItemForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
-              <div style={gridStyle}>
-                <div><label style={labelStyle}>Type</label><select value={itemForm.item_type ?? 'wondrous'} onChange={e => setItemForm(f => ({ ...f, item_type: e.target.value }))}>{ITEM_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
-                <div><label style={labelStyle}>Rarity</label><select value={itemForm.rarity ?? 'uncommon'} onChange={e => setItemForm(f => ({ ...f, rarity: e.target.value }))}>{RARITIES.map(r => <option key={r}>{r}</option>)}</select></div>
-                <div><label style={labelStyle}>Weight (lb)</label><input type="number" value={itemForm.weight ?? 0} step="0.5" onChange={e => setItemForm(f => ({ ...f, weight: +e.target.value }))} /></div>
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-4)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                  <input type="checkbox" checked={!!itemForm.requires_attunement} onChange={e => setItemForm(f => ({ ...f, requires_attunement: e.target.checked }))} /> Requires Attunement
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)' }}>
-                  <input type="checkbox" checked={!!itemForm.is_public} onChange={e => setItemForm(f => ({ ...f, is_public: e.target.checked }))} /> Public
-                </label>
-              </div>
-              <div><label style={labelStyle}>Description *</label><textarea value={itemForm.description ?? ''} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} rows={5} placeholder="While attuned to this item..." /></div>
+      {/* ── EDITOR ── */}
+      {tab === 'create' && (
+        <ClassEditor
+          value={editing ?? newClass()}
+          onChange={setEditing}
+          onSave={save}
+          onCancel={() => { setEditing(null); setTab('browse'); }}
+          saving={saving}
+          saveMsg={saveMsg}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── UA Card ────────────────────────────────────────────────────────────────────
+function UACard({ className, sub }: { className: string; sub: SubclassData }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ background: 'var(--c-card)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }} onClick={() => setOpen(v => !v)}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{sub.name}</span>
+            <span style={{ fontSize: 9, fontWeight: 800, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 6px', borderRadius: 999 }}>UA 2026</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>{className} · Unlocks at level {sub.unlock_level}</div>
+        </div>
+        <span style={{ fontSize: 10, color: 'var(--t-3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
+      </div>
+      {open && (
+        <div style={{ borderTop: '1px solid var(--c-border)', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, margin: 0 }}>{sub.description}</p>
+          {sub.features && sub.features.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sub.features.map(f => (
+                <div key={f.name} style={{ padding: '6px 8px', background: 'var(--c-raised)', borderRadius: 6, borderLeft: '2px solid rgba(167,139,250,0.4)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>Lv {f.level} — {f.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.5 }}>{f.description}</div>
+                  {f.mechanics?.map((m, i) => (
+                    <div key={i} style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 3 }}>
+                      [{m.type}] {m.details}{m.dice ? ` · ${m.dice}` : ''}{m.ability ? ` · ${m.ability}` : ''}
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
-            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn-gold" onClick={saveItem} disabled={saving || !itemForm.name?.trim()}>{saving ? 'Saving…' : 'Save Item'}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Homebrew Card ─────────────────────────────────────────────────────────────
+function HomebrewCard({ cls, onEdit, onDelete }: { cls: ClassEntry; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--c-gold-l)' }}>{cls.name}</div>
+          <div style={{ fontSize: 11, color: 'var(--t-3)' }}>d{cls.hit_die} · {cls.subclasses.length} subclass{cls.subclasses.length !== 1 ? 'es' : ''} · {cls.is_spellcaster ? cls.spellcaster_type + ' caster' : 'Non-caster'}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={onEdit} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-2)' }}>Edit</button>
+          <button onClick={onDelete} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(248,113,113,0.3)', background: 'transparent', color: '#f87171' }}>Delete</button>
+        </div>
+      </div>
+      {(cls as any).description && <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5, margin: 0 }}>{(cls as any).description}</p>}
+      {cls.is_public && <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', padding: '1px 6px', borderRadius: 999, width: 'fit-content' }}>Public</span>}
+    </div>
+  );
+}
+
+// ── Class Editor ──────────────────────────────────────────────────────────────
+function ClassEditor({ value, onChange, onSave, onCancel, saving, saveMsg }: {
+  value: any;
+  onChange: (v: any) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  saveMsg: string;
+}) {
+  const set = (patch: any) => onChange({ ...value, ...patch });
+  const [editingSubIdx, setEditingSubIdx] = useState<number | null>(null);
+
+  function toggleArr(field: keyof ClassEntry, val: string) {
+    const arr = (value[field] as string[]) ?? [];
+    set({ [field]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] });
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-gold-l)' }}>
+        {(value as ClassEntry).id ? `Editing: ${value.name}` : 'New Homebrew Class'}
+      </div>
+
+      {/* ── IDENTITY ── */}
+      <Section title="Class Identity">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Class Name *">
+            <input value={value.name ?? ''} onChange={e => set({ name: e.target.value })} placeholder="Shadow Dancer" autoFocus />
+          </Field>
+          <Field label="Hit Die">
+            <select value={value.hit_die ?? 8} onChange={e => set({ hit_die: Number(e.target.value) })}>
+              {HIT_DICE.map(d => <option key={d} value={d}>d{d}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Description">
+          <textarea value={value.description ?? ''} onChange={e => set({ description: e.target.value })} rows={2} placeholder="A master of the shadows who..." />
+        </Field>
+      </Section>
+
+      {/* ── ABILITIES ── */}
+      <Section title="Abilities & Proficiencies">
+        <Field label="Primary Abilities">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {ABILITIES.map(a => (
+              <Toggle key={a} active={(value.primary_abilities ?? []).includes(a)} onClick={() => toggleArr('primary_abilities', a)} label={a.slice(0,3).toUpperCase()} />
+            ))}
+          </div>
+        </Field>
+        <Field label="Saving Throw Proficiencies">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {ABILITIES.map(a => (
+              <Toggle key={a} active={(value.saving_throw_proficiencies ?? []).includes(a)} onClick={() => toggleArr('saving_throw_proficiencies', a)} label={a.slice(0,3).toUpperCase()} />
+            ))}
+          </div>
+        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
+          <Field label="Skill Choices">
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {ALL_SKILLS.map(s => (
+                <Toggle key={s} active={(value.skill_choices ?? []).includes(s)} onClick={() => toggleArr('skill_choices', s)} label={s.length > 9 ? s.slice(0,8)+'…' : s} small />
+              ))}
+            </div>
+          </Field>
+          <Field label="# Choices">
+            <input type="number" min={1} max={6} value={value.skill_count ?? 2} onChange={e => set({ skill_count: Number(e.target.value) })} style={{ width: 60 }} />
+          </Field>
+        </div>
+        <Field label="Armor Proficiencies">
+          <input value={(value.armor_proficiencies ?? []).join(', ')} onChange={e => set({ armor_proficiencies: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} placeholder="Light Armor, Medium Armor, Shields" />
+        </Field>
+        <Field label="Weapon Proficiencies">
+          <input value={(value.weapon_proficiencies ?? []).join(', ')} onChange={e => set({ weapon_proficiencies: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} placeholder="Simple Weapons, Martial Weapons" />
+        </Field>
+      </Section>
+
+      {/* ── SPELLCASTING ── */}
+      <Section title="Spellcasting">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 13, textTransform: 'none', letterSpacing: 0, marginBottom: 0, fontWeight: 400 }}>
+          <input type="checkbox" checked={value.is_spellcaster ?? false} onChange={e => set({ is_spellcaster: e.target.checked, spellcaster_type: e.target.checked ? 'full' : 'none' })} />
+          This class can cast spells
+        </label>
+        {value.is_spellcaster && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Spellcasting Ability">
+              <select value={value.spellcasting_ability ?? 'intelligence'} onChange={e => set({ spellcasting_ability: e.target.value as any })}>
+                {ABILITIES.map(a => <option key={a} value={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</option>)}
+              </select>
+            </Field>
+            <Field label="Caster Type">
+              <select value={value.spellcaster_type ?? 'full'} onChange={e => set({ spellcaster_type: e.target.value as any })}>
+                <option value="full">Full (Wizard / Cleric)</option>
+                <option value="half">Half (Ranger / Paladin)</option>
+                <option value="warlock">Pact (Warlock)</option>
+              </select>
+            </Field>
+          </div>
+        )}
+      </Section>
+
+      {/* ── SUBCLASSES ── */}
+      <Section title={`Subclasses (${(value.subclasses ?? []).length})`} action={
+        <button onClick={() => {
+          const subs = [...(value.subclasses ?? []), emptySubclass() as SubclassData];
+          set({ subclasses: subs });
+          setEditingSubIdx(subs.length - 1);
+        }} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}>
+          + Add Subclass
+        </button>
+      }>
+        {(value.subclasses ?? []).map((sub, i) => (
+          <SubclassEditor
+            key={i}
+            sub={sub}
+            open={editingSubIdx === i}
+            onToggle={() => setEditingSubIdx(editingSubIdx === i ? null : i)}
+            onChange={updated => {
+              const subs = [...(value.subclasses ?? [])];
+              subs[i] = updated;
+              set({ subclasses: subs });
+            }}
+            onDelete={() => {
+              set({ subclasses: (value.subclasses ?? []).filter((_, idx) => idx !== i) });
+              if (editingSubIdx === i) setEditingSubIdx(null);
+            }}
+          />
+        ))}
+        {(value.subclasses ?? []).length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--t-3)', fontStyle: 'italic' }}>No subclasses yet. Add one above.</div>
+        )}
+      </Section>
+
+      {/* ── SHARING ── */}
+      <Section title="Sharing">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 13, textTransform: 'none', letterSpacing: 0, marginBottom: 0, fontWeight: 400 }}>
+          <input type="checkbox" checked={(value as ClassEntry).is_public ?? false} onChange={e => set({ is_public: e.target.checked } as any)} />
+          Make this class public (visible to all DNDKeep users)
+        </label>
+      </Section>
+
+      {/* ── ACTIONS ── */}
+      <div style={{ display: 'flex', gap: 10, paddingTop: 8, borderTop: '1px solid var(--c-border)' }}>
+        <button onClick={onSave} disabled={saving || !value.name?.trim()} className="btn-gold">
+          {saving ? 'Saving…' : 'Save Class'}
+        </button>
+        <button onClick={onCancel} className="btn-secondary">Cancel</button>
+        {saveMsg && <span style={{ fontSize: 12, color: '#34d399', alignSelf: 'center' }}>{saveMsg}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Subclass Editor ───────────────────────────────────────────────────────────
+function SubclassEditor({ sub, open, onToggle, onChange, onDelete }: {
+  sub: SubclassData; open: boolean;
+  onToggle: () => void; onChange: (s: SubclassData) => void; onDelete: () => void;
+}) {
+  const set = (patch: Partial<SubclassData>) => onChange({ ...sub, ...patch });
+
+  function addFeature() {
+    onChange({ ...sub, features: [...(sub.features ?? []), emptyFeature()] });
+  }
+
+  function updateFeature(i: number, f: SubclassFeature) {
+    const feats = [...(sub.features ?? [])];
+    feats[i] = f;
+    onChange({ ...sub, features: feats });
+  }
+
+  function deleteFeature(i: number) {
+    onChange({ ...sub, features: (sub.features ?? []).filter((_, idx) => idx !== i) });
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--c-raised)', cursor: 'pointer' }} onClick={onToggle}>
+        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--t-1)', flex: 1 }}>
+          {sub.name || <span style={{ color: 'var(--t-3)', fontStyle: 'italic' }}>Unnamed subclass</span>}
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--t-3)' }}>Lv {sub.unlock_level} · {(sub.features ?? []).length} feature{(sub.features ?? []).length !== 1 ? 's' : ''}</span>
+        <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ fontSize: 9, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Remove</button>
+        <span style={{ fontSize: 10, color: 'var(--t-3)', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
+            <Field label="Subclass Name *">
+              <input value={sub.name} onChange={e => set({ name: e.target.value })} placeholder="Path of the Shadow" />
+            </Field>
+            <Field label="Unlock Level">
+              <input type="number" min={1} max={20} value={sub.unlock_level} onChange={e => set({ unlock_level: Number(e.target.value) })} style={{ width: 60 }} />
+            </Field>
+          </div>
+          <Field label="Description (overview for players)">
+            <textarea value={sub.description} onChange={e => set({ description: e.target.value })} rows={2} placeholder="Masters of shadow who..." />
+          </Field>
+          <Field label="Bonus Spell List (comma separated, optional)">
+            <input value={(sub.spell_list ?? []).join(', ')} onChange={e => set({ spell_list: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} placeholder="Darkness, Pass without Trace, Shadow Blade" />
+          </Field>
+
+          {/* Features */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-2)' }}>
+                Features ({(sub.features ?? []).length})
+              </span>
+              <button onClick={addFeature} style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-2)' }}>
+                + Feature
+              </button>
+            </div>
+            {(sub.features ?? []).map((f, i) => (
+              <FeatureEditor key={i} feature={f} onChange={updated => updateFeature(i, updated)} onDelete={() => deleteFeature(i)} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Feature Editor ────────────────────────────────────────────────────────────
+function FeatureEditor({ feature, onChange, onDelete }: {
+  feature: SubclassFeature; onChange: (f: SubclassFeature) => void; onDelete: () => void;
+}) {
+  const set = (patch: Partial<SubclassFeature>) => onChange({ ...feature, ...patch });
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 6, marginBottom: 6, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(0,0,0,0.15)', cursor: 'pointer' }} onClick={() => setOpen(v => !v)}>
+        <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 12, color: 'var(--c-gold-l)', minWidth: 24 }}>Lv {feature.level}</span>
+        <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--t-1)', flex: 1 }}>{feature.name || <span style={{ color: 'var(--t-3)', fontStyle: 'italic' }}>Unnamed feature</span>}</span>
+        <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ fontSize: 9, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+        <span style={{ fontSize: 9, color: 'var(--t-3)', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
+      </div>
+      {open && (
+        <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
+            <Field label="Feature Name *">
+              <input value={feature.name} onChange={e => set({ name: e.target.value })} placeholder="Shadow Step" />
+            </Field>
+            <Field label="Level">
+              <input type="number" min={1} max={20} value={feature.level} onChange={e => set({ level: Number(e.target.value) })} style={{ width: 55 }} />
+            </Field>
+          </div>
+          <Field label="Description (rules text)">
+            <textarea value={feature.description} onChange={e => set({ description: e.target.value })} rows={3} placeholder="You can teleport up to 60 feet to an unoccupied space you can see that is in dim light or darkness..." />
+          </Field>
+          {/* Mechanics (optional) */}
+          <div style={{ padding: '8px 10px', background: 'var(--c-raised)', borderRadius: 6, borderLeft: '2px solid rgba(96,165,250,0.4)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#60a5fa', marginBottom: 6 }}>
+              Automation (optional) — drives dice roller and combat tracking
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Dice Expression">
+                <input value={feature.mechanics?.[0]?.dice ?? ''} onChange={e => set({ mechanics: [{ ...(feature.mechanics?.[0] ?? { type: 'bonus', details: '' }), dice: e.target.value }] })} placeholder="2d6, 1d8+3, Xd6" />
+              </Field>
+              <Field label="Type">
+                <select value={feature.mechanics?.[0]?.type ?? 'bonus'} onChange={e => set({ mechanics: [{ ...(feature.mechanics?.[0] ?? { details: '' }), type: e.target.value as any }] })}>
+                  <option value="bonus">Bonus damage/healing</option>
+                  <option value="resource">Resource (uses per rest)</option>
+                  <option value="reaction">Reaction</option>
+                  <option value="passive">Passive</option>
+                  <option value="spell_list">Spell list addition</option>
+                </select>
+              </Field>
+              <Field label="Details">
+                <input value={feature.mechanics?.[0]?.details ?? ''} onChange={e => set({ mechanics: [{ ...(feature.mechanics?.[0] ?? { type: 'bonus' }), details: e.target.value }] })} placeholder="Extra Force damage on hit" />
+              </Field>
+              <Field label="Key Ability">
+                <select value={feature.mechanics?.[0]?.ability ?? ''} onChange={e => set({ mechanics: [{ ...(feature.mechanics?.[0] ?? { type: 'bonus', details: '' }), ability: e.target.value }] })}>
+                  <option value="">None</option>
+                  {ABILITIES.map(a => <option key={a} value={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</option>)}
+                </select>
+              </Field>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--t-2)' }}>{title}</div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--t-3)', textTransform: 'none', letterSpacing: 0, marginBottom: 0 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Toggle({ active, onClick, label, small }: { active: boolean; onClick: () => void; label: string; small?: boolean }) {
+  return (
+    <button onClick={onClick} style={{
+      fontSize: small ? 9 : 10, fontWeight: active ? 700 : 400, padding: small ? '2px 6px' : '3px 9px',
+      borderRadius: 999, cursor: 'pointer', minHeight: 0,
+      border: `1px solid ${active ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
+      background: active ? 'var(--c-gold-bg)' : 'transparent',
+      color: active ? 'var(--c-gold-l)' : 'var(--t-3)',
+    }}>{label}</button>
   );
 }

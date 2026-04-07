@@ -41,10 +41,14 @@ export type ConditionName =
   | 'Grappled' | 'Incapacitated' | 'Invisible' | 'Paralyzed' | 'Petrified'
   | 'Poisoned' | 'Prone' | 'Restrained' | 'Stunned' | 'Unconscious';
 
-export type ClassName =
+/** Official classes. Homebrew/UA classes use plain string in CharacterData. */
+export type OfficialClassName =
   | 'Fighter' | 'Wizard' | 'Rogue' | 'Cleric' | 'Barbarian'
   | 'Paladin' | 'Druid' | 'Ranger' | 'Warlock' | 'Monk'
   | 'Sorcerer' | 'Bard' | 'Psion';
+
+/** Allows official + any homebrew class name */
+export type ClassName = OfficialClassName | (string & {});
 
 export type SpeciesName =
   | 'Human' | 'Elf' | 'Dwarf' | 'Halfling' | 'Gnome'
@@ -241,14 +245,32 @@ export interface BackgroundData {
   starting_equipment: string[];
 }
 
+export interface SubclassFeature {
+  level: number;
+  name: string;
+  description: string;
+  /** Optional: mechanics this feature provides, used by dice roller / automation */
+  mechanics?: {
+    type: 'spell_list' | 'resource' | 'bonus' | 'reaction' | 'passive';
+    details: string;          // human-readable, e.g. "1d6 per spell level absorbed"
+    dice?: string;            // dice expression, e.g. "1d6"
+    ability?: string;         // relevant ability, e.g. "intelligence"
+  }[];
+}
+
 export interface SubclassData {
   name: string;
   description: string;
   unlock_level: number;
+  source?: 'official' | 'ua' | 'homebrew';   // track where it came from
+  features?: SubclassFeature[];               // optional rich features
+  spell_list?: string[];                      // bonus spells always prepared
 }
 
 export interface ClassData {
   name: ClassName;
+  description?: string;          // optional for official classes, required for homebrew
+  source?: 'official' | 'ua' | 'homebrew';
   hit_die: number;
   primary_abilities: AbilityKey[];
   saving_throw_proficiencies: AbilityKey[];

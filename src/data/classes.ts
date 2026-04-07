@@ -100,6 +100,7 @@ export const CLASSES: ClassData[] = [
       { name: 'Warrior of Mercy', description: 'Hand of Harm (Martial Arts die + Wis Necrotic) and Hand of Healing (Martial Arts die + Wis). Implements of Mercy at 6.', unlock_level: 3 },
       { name: 'Warrior of Shadow', description: 'Darkness casting. Shadow Step: 60ft teleport in dim light. Cloak of Shadows turns invisible at level 6.', unlock_level: 3 },
       { name: 'Warrior of the Elements', description: 'Elemental damage type. Environmental Burst AoE. Attune to the Elements lets you shift damage type.', unlock_level: 3 },
+      { name: 'Warrior of the Mystic Arts', description: 'UA 2026. Spellcasting via Sorcerer spell list (Wisdom). Mystic Focus converts spell slots↔Focus Points. Mystic Fighting Style replaces attacks with cantrips. Level 17: replace two attacks with a level 1–2 spell.', unlock_level: 3, source: 'ua', features: [{level:3,name:'Spellcasting',description:'Full Sorcerer spell list prepared spells using Wisdom, up to spell level 4 by level 19.'},{level:6,name:'Mystic Focus',description:'Convert spell slots to Focus Points or vice versa. Recovering Spell Slots costs 2–6 Focus Points.'},{level:6,name:'Mystic Fighting Style',description:'Replace one attack with a Sorcerer cantrip (action casting time).'},{level:11,name:'Centered Focus',description:'Advantage on Concentration saves when spending Focus Points on ki features.'},{level:17,name:'Improved Mystic Fighting Style',description:'Replace two attacks with one level 1–2 Sorcerer spell.'}] },
       { name: 'Warrior of the Open Hand', description: 'Flurry riders: Addle (no reactions), Push (15ft), Topple (Str save or prone). Open Hand Technique at 3.', unlock_level: 3 },
     ],
   },
@@ -117,6 +118,7 @@ export const CLASSES: ClassData[] = [
       { name: 'Oath of Devotion', description: 'Sacred Weapon adds Cha to attacks. Aura of Devotion grants Charmed immunity. Holy Nimbus at level 20.', unlock_level: 3 },
       { name: 'Oath of Glory', description: 'Inspiring Smite distributes temp HP after smite. Glorious Defense Cha reaction. Aura boosts speed +10ft.', unlock_level: 3 },
       { name: 'Oath of the Ancients', description: "Nature's Wrath restrains. Aura gives resistance to Necrotic/Psychic/Radiant. Elder Champion at 20.", unlock_level: 3 },
+      { name: 'Oath of the Spellguard', description: 'UA 2026. Guardian Bond: Channel Divinity to add Cha mod to ally AC as Reaction. Spellguard Strike: melee attack as Reaction when enemy casts within reach. Aura of Concentration: Advantage on Concentration saves for allies. Level 15: cast Counterspell free as part of Spellguard Strike.', unlock_level: 3, source: 'ua', spell_list: ['Detect Magic','Shield','See Invisibility','Silence','Counterspell','Dispel Magic','Freedom of Movement','Resilient Sphere','Circle of Power','Hallow'], features: [{level:3,name:'Guardian Bond',description:'Expend Channel Divinity: add Cha mod to bonded ally AC as Reaction when they are hit.'},{level:3,name:'Spellguard Strike',description:'Take a Reaction to make a melee attack when a creature within reach casts a spell.'},{level:7,name:'Aura of Concentration',description:'You and allies in Aura of Protection have Advantage on Concentration saves.'},{level:15,name:'Spell-Breaking Blade',description:'After Spellguard Strike, cast Counterspell as part of same Reaction. Slot not expended on failure.'},{level:20,name:'Eternal Spellguard',description:'1 min: bonded ally Resistance to all damage; allies Advantage on spell saves; spell attacks Disadvantage.'}] },
       { name: 'Oath of Vengeance', description: "Vow of Enmity grants advantage on one target. Soul of Vengeance reaction attacks. Avenging Angel at 20.", unlock_level: 3 },
     ],
   },
@@ -151,6 +153,7 @@ export const CLASSES: ClassData[] = [
       { name: 'Arcane Trickster', description: '1/3 Wizard caster. Invisible Mage Hand. Magical Ambush grants spell disadvantage on sneak attack turns.', unlock_level: 3 },
       { name: 'Assassin', description: 'Advantage on Initiative. Bonus damage = Rogue level in first round. Infiltration Expertise at 9.', unlock_level: 3 },
       { name: 'Soulknife', description: 'Psionic Energy Dice pool. Manifest psychic blades. Psychic Whispers telepathy. Rend Mind at level 17.', unlock_level: 3 },
+      { name: 'Magic Stealer', description: 'UA 2026. Empower Sneak Attack: absorb spell energy as Reaction (Int mod uses/LR), add d6s equal to spell level as Force damage. Drain Magic: touch to end a spell and restore a slot. Level 9: Cunning Strike options including Disrupt Spell and Steal Resistance.', unlock_level: 3, source: 'ua', features: [{level:3,name:'Empower Sneak Attack',description:'Reaction when enemy casts: next Sneak Attack deals extra Force damage (d6 × spell level). Int mod uses per Long Rest.',mechanics:[{type:'bonus',details:'Extra Force damage equal to spell level × d6',dice:'Xd6',ability:'intelligence'}]},{level:3,name:'Drain Magic',description:'Touch willing creature to end a level 1–2 spell on it; restore one spell slot of level 2 or lower. Short/Long Rest recharge.'},{level:9,name:'Magical Sabotage',description:'New Cunning Strike options: Spell Susceptibility (2d6), Disrupt Spell (3d6), Steal Resistance (2d6).'},{level:13,name:'Occult Shroud',description:'Cast Nondetection on yourself (24h duration) after each Long Rest. Intelligence-based.'},{level:13,name:'Improved Drain Magic',description:'Drain Magic is now a Bonus Action. Can end level 3 spells; restore level 3 slots.'},{level:17,name:'Eldritch Implosion',description:'On Empower Sneak Attack: target makes Con save (DC 8+Dex+Prof) or spell fails and target is Stunned until start of next turn.'}] },
       { name: 'Thief', description: 'Fast Hands uses Magic action as Bonus Action. Use Object as Bonus Action. Second Story Work climb speed. Supreme Sneak.', unlock_level: 3 },
     ],
   },
@@ -182,6 +185,7 @@ export const CLASSES: ClassData[] = [
     tool_proficiencies: [],
     is_spellcaster: true, spellcasting_ability: 'charisma', spellcaster_type: 'warlock',
     subclasses: [
+      { name: 'Vestige Patron', description: 'UA 2026. A dying god shares fading power. Vestige Companion: summoned creature (Celestial/Fiend/Undead) with shared HP pool that fights alongside you. Grows more powerful as you level.', unlock_level: 3, source: 'ua', features: [{level:3,name:'Vestige Companion',description:'Summon a Celestial, Fiend, or Undead companion using the Vestige Companion stat block. Shares a HP pool with you.'},{level:6,name:'Shared Suffering',description:'When the Vestige takes damage, reduce damage by your Proficiency Bonus. When you take damage, same benefit.'},{level:10,name:'Dying God\'s Gift',description:'Once per Long Rest, the Vestige can grant you resistance to one damage type for 1 minute as a Bonus Action.'},{level:14,name:'Last Rites',description:'When the Vestige would be destroyed, it instead returns at half HP after 1 minute. The dying god clings to existence.'}] },
       { name: 'Archfey Patron', description: 'Steps of the Fey: free Misty Step Cha mod×/LR with riders (Refreshing Step temp HP, Taunting Step disadvantage).', unlock_level: 3 },
       { name: 'Celestial Patron', description: 'Healing Light pool (d6s = 1+Warlock level, spend up to Cha mod). Sacred Flame always prepared. Searing Vengeance at 14.', unlock_level: 3 },
       { name: 'Fiend Patron', description: "Dark One's Blessing: temp HP = Cha + Warlock level on kills. Hurl Through Hell at 14. Fire Resistance at 10.", unlock_level: 3 },
@@ -225,3 +229,12 @@ export const CLASSES: ClassData[] = [
 ];
 
 export const CLASS_MAP: Record<string, ClassData> = Object.fromEntries(CLASSES.map(c => [c.name, c]));
+
+/**
+ * buildClassMap — builds a name→ClassData lookup from any class list.
+ * Use with useClassRegistry() to get a merged official+homebrew map.
+ * The static CLASS_MAP stays for backward compatibility.
+ */
+export function buildClassMap(classList: typeof CLASSES): Record<string, typeof CLASSES[0]> {
+  return Object.fromEntries(classList.map(c => [c.name, c]));
+}
