@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useLocati
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
 import { DiceRollProvider } from './context/DiceRollContext';
+import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
 import './styles/globals.css';
 
@@ -215,11 +216,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <DiceRollProvider>
-          <ToastProvider>
-            <AppRoutes />
-          </ToastProvider>
-        </DiceRollProvider>
+        <CampaignProvider>
+          <DiceRollProvider>
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
+          </DiceRollProvider>
+        </CampaignProvider>
       </AuthProvider>
     </BrowserRouter>
   );

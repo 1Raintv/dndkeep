@@ -140,9 +140,5 @@ export default function CampaignsPage() {
     );
   }
 
-  return (
-    <CampaignProvider>
-      <CampaignsContent />
-    </CampaignProvider>
-  );
+  return <CampaignsContent />;
 }
