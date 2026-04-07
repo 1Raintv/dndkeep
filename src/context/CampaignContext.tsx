@@ -37,18 +37,18 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
 
   const refreshCampaigns = useCallback(async () => {
-    if (!user || !isPro) return;
+    if (!user) return;
     setLoadingCampaigns(true);
     const { data } = await getCampaignsByMember();
     setCampaigns(data);
     setLoadingCampaigns(false);
-  }, [user, isPro]);
+  }, [user]);
 
   useEffect(() => { refreshCampaigns(); }, [refreshCampaigns]);
 
   // Subscribe to session state changes when a campaign is active
   useEffect(() => {
-    if (!activeCampaign || !isPro) return;
+    if (!activeCampaign) return;
 
     // Load current session state
     getSessionState(activeCampaign.id).then(({ data }) => {

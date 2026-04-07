@@ -195,11 +195,20 @@ export async function deleteCharacter(characterId: string): Promise<{ error: nul
  * (RLS handles filtering to rows the user belongs to).
  */
 export async function getCampaignsByMember(): Promise<{ data: Campaign[]; error: null | Error }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: [], error: null };
+  // Fetch campaigns where user is owner OR a member
   const { data, error } = await supabase
     .from('campaigns')
-    .select('*')
+    .select('*, campaign_members!inner(user_id)')
+    .eq('campaign_members.user_id', user.id)
     .order('created_at', { ascending: false });
-  return { data: (data ?? []) as Campaign[], error: error ? new Error(error.message) : null };
+  if (error) {
+    // Fallback: just get owned campaigns
+    const { data: owned } = await supabase.from('campaigns').select('*').eq('owner_id', user.id).order('created_at', { ascending: false });
+    return { data: (owned ?? []) as Campaign[], error: null };
+  }
+  return { data: (data ?? []) as Campaign[], error: null };
 }
 
 export async function createCampaign(
