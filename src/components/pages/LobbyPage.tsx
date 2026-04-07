@@ -27,6 +27,7 @@ export default function LobbyPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', description: '', setting: '' });
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -69,6 +70,7 @@ export default function LobbyPage() {
     e.preventDefault();
     if (!user || !createForm.name.trim()) return;
     setCreating(true);
+    setCreateError('');
     const { createCampaign } = await import('../../lib/supabase');
     const { error } = await createCampaign({
       owner_id: user.id,
@@ -76,12 +78,13 @@ export default function LobbyPage() {
       description: createForm.description.trim(),
       setting: createForm.setting.trim(),
       is_active: true,
-      join_code: '',
-    });
+    } as any);
     if (!error) {
       setCreateForm({ name: '', description: '', setting: '' });
       setShowCreate(false);
       await refreshCampaigns();
+    } else {
+      setCreateError(error.message ?? 'Failed to create campaign. Try again.');
     }
     setCreating(false);
   }
@@ -163,9 +166,14 @@ export default function LobbyPage() {
               <input value={createForm.name} onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))} placeholder="Campaign name *" required />
               <input value={createForm.setting} onChange={e => setCreateForm(p => ({ ...p, setting: e.target.value }))} placeholder="Setting (e.g. Forgotten Realms)" />
               <input value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))} placeholder="Short description (optional)" />
+              {createError && (
+                <div style={{ fontSize: 12, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 6, padding: '6px 10px' }}>
+                  {createError}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="submit" className="btn-gold btn-sm" disabled={creating}>{creating ? 'Creating...' : 'Create Campaign'}</button>
-                <button type="button" className="btn-ghost btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => { setShowCreate(false); setCreateError(''); }}>Cancel</button>
               </div>
             </form>
           </div>

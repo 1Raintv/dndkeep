@@ -78,6 +78,30 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [currentTurnName, setCurrentTurnName] = useState('');
   const [combatRound, setCombatRound] = useState(1);
 
+  // ── DM Announcements & Save Prompts ────────────────────────────
+  const [dmAnnouncement, setDmAnnouncement] = useState<string | null>(null);
+  const [savePrompt, setSavePrompt] = useState<{ ability: string; dc: number } | null>(null);
+
+  useEffect(() => {
+    if (!character.campaign_id) return;
+    const ch = supabase
+      .channel(`dm-broadcast-${character.campaign_id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'campaign_chat',
+        filter: `campaign_id=eq.${character.campaign_id}`,
+      }, payload => {
+        const row = payload.new as any;
+        if (row.message_type === 'announcement') {
+          setDmAnnouncement(row.message);
+          setTimeout(() => setDmAnnouncement(null), 30000);
+        } else if (row.message_type === 'save_prompt') {
+          try { setSavePrompt(JSON.parse(row.message)); } catch {}
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [character.campaign_id]);
+
   useEffect(() => {
     if (!character.campaign_id) return;
 
@@ -608,6 +632,67 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {/* RIGHT: 6 ability score boxes */}
         <AbilityScores character={character} computed={computed} />
       </div>
+
+      {/* ── DM Announcement banner ── */}
+      {dmAnnouncement && (
+        <div style={{
+          padding: '12px 16px', borderRadius: 10,
+          background: 'linear-gradient(135deg, rgba(212,160,23,0.18), rgba(212,160,23,0.08))',
+          border: '1px solid var(--c-gold-bdr)',
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          animation: 'pulse-gold 2s ease-out 1',
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>📣</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 4 }}>
+              DM Announcement
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--t-1)', lineHeight: 1.6 }}>{dmAnnouncement}</div>
+          </div>
+          <button onClick={() => setDmAnnouncement(null)}
+            style={{ fontSize: 11, color: 'var(--t-3)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: '0 4px' }}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── Save Prompt banner ── */}
+      {savePrompt && (() => {
+        const abilityKey = savePrompt.ability.toLowerCase() as keyof typeof character;
+        const score = (character[abilityKey] as number) ?? 10;
+        const mod = Math.floor((score - 10) / 2);
+        const pb = computed.proficiencyBonus ?? 2;
+        const hasSaveProf = character.saving_throw_proficiencies?.includes(savePrompt.ability.toLowerCase());
+        const total = mod + (hasSaveProf ? pb : 0);
+        const needsToRoll = savePrompt.dc - total;
+        return (
+          <div style={{
+            padding: '12px 16px', borderRadius: 10,
+            background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.4)',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#60a5fa', marginBottom: 4 }}>
+                Saving Throw Required
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>
+                {savePrompt.ability} Save — DC {savePrompt.dc}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
+                Your modifier: {total >= 0 ? '+' : ''}{total}{hasSaveProf ? ' (proficient)' : ''}
+                {' · '}Need to roll {Math.max(1, Math.min(20, needsToRoll))}+ on d20
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => setSavePrompt(null)}
+                style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa' }}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Your Turn banner ── */}
       {combatActive && (

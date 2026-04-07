@@ -35,7 +35,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
   const [xpNote, setXpNote] = useState('');
   const [lootGold, setLootGold] = useState('');
   const [lootItem, setLootItem] = useState('');
-  const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | 'aoe' | 'rest' | null>(null);
+  const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | 'aoe' | 'rest' | 'announce' | 'save' | null>(null);
   // AoE
   const [aoeDamage, setAoeDamage] = useState('');
   const [aoeTargets, setAoeTargets] = useState<Set<string>>(new Set());
@@ -43,6 +43,11 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
   const [aoeApplied, setAoeApplied] = useState<{ name: string; took: number; concentration: boolean }[] | null>(null);
   // Passive perception
   const [perceptionDC, setPerceptionDC] = useState('');
+  // Announce
+  const [announceText, setAnnounceText] = useState('');
+  // Save prompt
+  const [saveAbility, setSaveAbility] = useState('Constitution');
+  const [saveDC, setSaveDC] = useState('');
 
   useEffect(() => {
     loadCharacters();
@@ -140,6 +145,33 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
     setDmPanel(null);
   }
 
+  async function broadcastAnnouncement() {
+    if (!announceText.trim()) return;
+    await supabase.from('campaign_chat').insert({
+      campaign_id: campaignId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      character_name: 'DM',
+      message: announceText.trim(),
+      message_type: 'announcement',
+    });
+    setAnnounceText('');
+    setDmPanel(null);
+  }
+
+  async function broadcastSavePrompt() {
+    const dc = parseInt(saveDC);
+    if (isNaN(dc) || dc <= 0) return;
+    await supabase.from('campaign_chat').insert({
+      campaign_id: campaignId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      character_name: 'DM',
+      message: JSON.stringify({ ability: saveAbility, dc }),
+      message_type: 'save_prompt',
+    });
+    setSaveDC('');
+    setDmPanel(null);
+  }
+
   async function loadCharacters() {
     const { data: members } = await supabase.from('campaign_members').select('user_id').eq('campaign_id', campaignId);
     if (!members?.length) { setLoading(false); return; }
@@ -195,10 +227,12 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           {/* Panel toggle buttons */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {([
-              { id: 'aoe',  label: 'AoE Damage' },
-              { id: 'rest', label: 'Party Long Rest' },
-              { id: 'xp',   label: 'Award XP' },
-              { id: 'loot', label: 'Distribute Loot' },
+              { id: 'aoe',      label: 'AoE Damage' },
+              { id: 'rest',     label: 'Party Long Rest' },
+              { id: 'announce', label: 'Announcement' },
+              { id: 'save',     label: 'Call for Save' },
+              { id: 'xp',       label: 'Award XP' },
+              { id: 'loot',     label: 'Distribute Loot' },
             ] as const).map(({ id, label }) => (
               <button
                 key={id}
@@ -282,11 +316,19 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
               {aoeApplied && (
                 <div style={{ padding: '8px 10px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 8 }}>
                   <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-green-l)', marginBottom: 4 }}>Applied</div>
-                  {aoeApplied.map((r, i) => (
-                    <div key={i} style={{ fontSize: 11, color: 'var(--t-2)' }}>
-                      {r.name} took {r.took} damage{r.concentration ? ' — concentration broken' : ''}
-                    </div>
-                  ))}
+                  {aoeApplied.map((r, i) => {
+                    const concDC = r.took > 0 ? Math.max(10, Math.floor(r.took / 2)) : 0;
+                    return (
+                      <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{r.name} took {r.took} damage</span>
+                        {r.concentration && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 7px', borderRadius: 999 }}>
+                            Conc. check DC {concDC}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -313,6 +355,86 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                   border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}>
                 Start Long Rest for Party
               </button>
+            </div>
+          )}
+
+          {/* ── ANNOUNCEMENT PANEL ── */}
+          {dmPanel === 'announce' && (
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(212,160,23,0.4)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
+                DM Announcement — appears as a banner on all player sheets
+              </div>
+              <textarea
+                value={announceText}
+                onChange={e => setAnnounceText(e.target.value)}
+                placeholder="You hear the distant sound of thunder from beneath the keep…"
+                rows={3}
+                style={{ fontSize: 13, lineHeight: 1.6, resize: 'vertical', borderRadius: 8, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)', padding: '8px 10px', fontFamily: 'var(--ff-body)' }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={broadcastAnnouncement} disabled={!announceText.trim()}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                    opacity: !announceText.trim() ? 0.4 : 1 }}>
+                  Send to All Players
+                </button>
+                <span style={{ fontSize: 11, color: 'var(--t-3)', alignSelf: 'center' }}>Dismissible after 30 seconds</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── SAVE PROMPT PANEL ── */}
+          {dmPanel === 'save' && (
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#60a5fa' }}>
+                Call for Saving Throw — players see the DC and their modifier on their sheet
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={saveAbility} onChange={e => setSaveAbility(e.target.value)}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(96,165,250,0.3)', background: 'var(--c-raised)', color: '#60a5fa', cursor: 'pointer' }}>
+                  {['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'].map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 13, color: 'var(--t-3)', fontWeight: 600 }}>Save</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--t-2)' }}>DC</span>
+                  <input type="number" value={saveDC} onChange={e => setSaveDC(e.target.value)}
+                    placeholder="15" min={1} max={30}
+                    onKeyDown={e => e.key === 'Enter' && broadcastSavePrompt()}
+                    style={{ width: 60, fontSize: 16, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '6px 8px', borderRadius: 7, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.05)', color: '#60a5fa' }}
+                  />
+                </div>
+                <button onClick={broadcastSavePrompt} disabled={!saveDC || parseInt(saveDC) <= 0}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.1)', color: '#60a5fa',
+                    opacity: (!saveDC || parseInt(saveDC) <= 0) ? 0.4 : 1 }}>
+                  Send Prompt
+                </button>
+              </div>
+              {/* Preview what players will see */}
+              {saveDC && parseInt(saveDC) > 0 && characters.length > 0 && (
+                <div style={{ padding: '8px 10px', background: 'rgba(96,165,250,0.05)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', marginBottom: 4 }}>Preview — players will see:</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {characters.map(c => {
+                      const abilityMap: Record<string, keyof typeof c> = {
+                        Strength: 'strength', Dexterity: 'dexterity', Constitution: 'constitution',
+                        Intelligence: 'intelligence', Wisdom: 'wisdom', Charisma: 'charisma',
+                      };
+                      const score = c[abilityMap[saveAbility] as keyof typeof c] as number ?? 10;
+                      const mod = Math.floor((score - 10) / 2);
+                      const hasSaveProf = true; // simplified — always show modifier
+                      const total = mod; // players add their own prof bonus
+                      return (
+                        <span key={c.id} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-2)' }}>
+                          {c.name}: {total >= 0 ? '+' : ''}{total} vs DC {saveDC}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -438,10 +560,18 @@ function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
   const status = hpLabel(c.current_hp, c.max_hp);
   const isDowned = c.current_hp <= 0;
 
+  const [concDC, setConcDC] = useState<number | null>(null);
+
   function applyHP(delta: number) {
     const newHP = Math.max(0, Math.min(c.max_hp, c.current_hp + delta));
     onUpdate({ current_hp: newHP });
     setHpInput('');
+    // If damage and concentrating, compute DC
+    if (delta < 0 && c.concentration_spell) {
+      setConcDC(Math.max(10, Math.floor(Math.abs(delta) / 2)));
+    } else {
+      setConcDC(null);
+    }
   }
 
   function applyHPInput(type: 'damage' | 'heal') {
@@ -610,12 +740,59 @@ function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
                   ))}
                 </div>
                 {/* Set exact HP */}
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button onClick={() => onUpdate({ current_hp: c.max_hp })} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>Full HP</button>
                   <button onClick={() => onUpdate({ current_hp: 0 })} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)' }}>Set to 0</button>
-                  <button onClick={() => onUpdate({ inspiration: !c.inspiration })} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: `1px solid ${c.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: c.inspiration ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: c.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
+                  <button onClick={() => { onUpdate({ inspiration: !c.inspiration }); }} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: `1px solid ${c.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: c.inspiration ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: c.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
                     {c.inspiration ? '★ Inspired' : 'Give Inspiration'}
                   </button>
+                </div>
+                {/* Concentration break prompt */}
+                {concDC !== null && c.concentration_spell && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>Concentration Check Required</div>
+                      <div style={{ fontSize: 10, color: 'var(--t-2)', marginTop: 1 }}>
+                        {c.name} is concentrating on <strong>{c.concentration_spell}</strong>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 8, padding: '4px 10px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#a78bfa' }}>DC</div>
+                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 20, color: '#a78bfa', lineHeight: 1 }}>{concDC}</div>
+                    </div>
+                    <button onClick={() => { onUpdate({ concentration_spell: '' }); setConcDC(null); }}
+                      style={{ fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.08)', color: '#f87171' }}>
+                      Break
+                    </button>
+                    <button onClick={() => setConcDC(null)}
+                      style={{ fontSize: 10, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+                {/* Temp HP */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', paddingTop: 6, borderTop: '1px solid var(--c-border)' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#60a5fa', whiteSpace: 'nowrap' }}>
+                    Temp HP {c.temp_hp > 0 ? `(${c.temp_hp})` : ''}
+                  </span>
+                  <input
+                    type="number" placeholder="Amount…" min={0}
+                    id={`thp-${c.id}`}
+                    style={{ flex: 1, fontSize: 12, fontFamily: 'var(--ff-stat)', textAlign: 'center', padding: '4px 6px', borderRadius: 6, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.05)', color: 'var(--t-1)' }}
+                  />
+                  <button
+                    onClick={() => {
+                      const input = document.getElementById(`thp-${c.id}`) as HTMLInputElement;
+                      const v = parseInt(input?.value ?? '');
+                      if (!isNaN(v) && v > 0) { onUpdate({ temp_hp: v }); if (input) input.value = ''; }
+                    }}
+                    style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa' }}
+                  >
+                    Grant THP
+                  </button>
+                  {c.temp_hp > 0 && (
+                    <button onClick={() => onUpdate({ temp_hp: 0 })} style={{ fontSize: 9, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}>Clear</button>
+                  )}
                 </div>
               </div>
             )}
