@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { CLASS_MAP } from '../../data/classes';
-import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
+import { CLASS_LEVEL_PROGRESSION, hpPerLevel } from '../../data/levelProgression';
 import { SPELLS } from '../../data/spells';
 import { FEATS } from '../../data/feats';
 import FeatPicker from '../shared/FeatPicker';
@@ -37,13 +37,14 @@ interface StepBuildProps {
   level: number;
   choices: BuildChoices;
   onChoicesChange: (c: BuildChoices) => void;
+  constitutionMod?: number;
 }
 
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
 const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DEX', constitution: 'CON', intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA' };
 
-export default function StepBuild({ className, level, choices, onChoicesChange }: StepBuildProps) {
+export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0 }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
   const [currentLevel, setCurrentLevel] = useState<number>(1);
@@ -138,14 +139,43 @@ export default function StepBuild({ className, level, choices, onChoicesChange }
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>Level {currentLevel}</div>
               {prog.newSpellLevel && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#fcd34d', background: 'rgba(251,191,36,0.1)', padding: '1px 6px', borderRadius: 999 }}>
-                  Unlocks {SPELL_ORDINAL[prog.newSpellLevel]}-level spells
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#fcd34d', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', padding: '2px 8px', borderRadius: 999 }}>
+                  Unlocks {SPELL_ORDINAL[prog.newSpellLevel]}-level spell slots
                 </span>
               )}
             </div>
           </div>
 
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* HP gain info */}
+            {(() => {
+              const hitDie = cls?.hit_die ?? 8;
+              const hpGain = currentLevel === 1
+                ? hitDie + constitutionMod
+                : hpPerLevel(hitDie) + constitutionMod;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#34d399' }}>HP</span>
+                  <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 14, color: '#34d399' }}>+{hpGain}</span>
+                  <span style={{ fontSize: 11, color: 'var(--t-3)' }}>
+                    {currentLevel === 1
+                      ? `d${hitDie} max (${hitDie}) + CON mod (${constitutionMod >= 0 ? '+' : ''}${constitutionMod})`
+                      : `d${hitDie} avg (${hpPerLevel(hitDie)}) + CON mod (${constitutionMod >= 0 ? '+' : ''}${constitutionMod})`}
+                  </span>
+                  {cls?.is_spellcaster && prog.newSpellLevel && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#fcd34d', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', padding: '2px 8px', borderRadius: 999 }}>
+                      + {SPELL_ORDINAL[prog.newSpellLevel]}-level slots
+                    </span>
+                  )}
+                  {cls?.is_spellcaster && currentLevel > 0 && !prog.newSpellLevel && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)' }}>
+                      Prepared spells: {cls.spellcasting_ability?.slice(0,3).toUpperCase() ?? 'KEY'} mod + level — manage on character sheet
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Features */}
             {((prog.features ?? []).length > 0 || prog.subclassFeature) && (
               <div>
