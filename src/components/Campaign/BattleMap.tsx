@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { MONSTERS } from '../../data/monsters';
 
@@ -437,7 +437,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
 
   function cloneMonster(m:typeof MONSTERS[0]){
     const npc:Partial<DMRosterNPC>={
-      name:m.name, type:m.type, cr:m.cr, size:m.size,
+      name:m.name, type:String(m.type), cr:String(m.cr), size:String(m.size),
       hp:m.hp, max_hp:m.hp, ac:m.ac, speed:m.speed??30,
       str:m.str, dex:m.dex, con:m.con, int:m.int, wis:m.wis, cha:m.cha,
       attack_name:m.attack_name, attack_bonus:m.attack_bonus, attack_damage:m.attack_damage, xp:m.xp,
@@ -516,7 +516,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
               <button onClick={()=>{
                 const rosterNpc:DMRosterNPC={
                   id:'',owner_id:userId,campaign_id:campaignId,
-                  name:m.name,type:m.type,cr:m.cr,size:m.size,
+                  name:m.name,type:String(m.type),cr:String(m.cr),size:String(m.size),
                   hp:m.hp,max_hp:m.hp,ac:m.ac,speed:m.speed??30,
                   str:m.str,dex:m.dex,con:m.con,int:m.int,wis:m.wis,cha:m.cha,
                   attack_name:m.attack_name,attack_bonus:m.attack_bonus,attack_damage:m.attack_damage,xp:m.xp,
@@ -646,6 +646,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   const [showRoster,setShowRoster]=useState(false);
   const [showAddPlayer,setShowAddPlayer]=useState(false);
   const [saving,setSaving]=useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   // user display name
   const [userName,setUserName]=useState('Player');
@@ -694,11 +695,22 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(data) setTokenNotes(data);
   }
 
-  async function saveTokens(tokens:MapToken[]){
+  async function saveTokensImmediate(tokens:MapToken[]){
     if(!activeMap)return;
     setSaving(true);
     await supabase.from('battle_maps').update({tokens}).eq('id',activeMap.id);
     setSaving(false);
+  }
+
+  function saveTokens(tokens:MapToken[], immediate=false){
+    if(!activeMap)return;
+    if(saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if(immediate){
+      saveTokensImmediate(tokens);
+    } else {
+      setSaving(true);
+      saveTimerRef.current = setTimeout(()=>saveTokensImmediate(tokens), 400);
+    }
   }
 
   async function createMap(name:string,cols:number,rows:number){
@@ -709,11 +721,11 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(data){ setMaps(p=>[...p,data]); setActiveMap(data); }
   }
 
-  function updateToken(tokenId:string,updates:Partial<MapToken>){
+  function updateToken(tokenId:string,updates:Partial<MapToken>,immediate=true){
     if(!activeMap)return;
     const tokens=activeMap.tokens.map(t=>t.id===tokenId?{...t,...updates}:t);
     setActiveMap({...activeMap,tokens});
-    saveTokens(tokens);
+    saveTokens(tokens, immediate);
     const token=tokens.find(t=>t.id===tokenId);
     if(token?.character_id&&updates.conditions!==undefined&&onConditionApplied){
       onConditionApplied(token.character_id,updates.conditions);
@@ -728,7 +740,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(!activeMap)return;
     const tokens=activeMap.tokens.filter(t=>t.id!==tokenId);
     setActiveMap({...activeMap,tokens});
-    saveTokens(tokens);
+    saveTokens(tokens, true);
     setSelectedTokenId(null);
   }
 
@@ -741,7 +753,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     }
     const token:MapToken={
       id:crypto.randomUUID(),name:npc.name,type:'npc',col,row,
-      npc_roster_id:npc.id||undefined,
+      npc_roster_id:npc.id||undefined as string|undefined,
       color:npc.color,emoji:npc.emoji,
       hp:npc.hp,max_hp:npc.max_hp,ac:npc.ac,speed:npc.speed,
       conditions:[],
@@ -755,7 +767,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     };
     const tokens=[...activeMap.tokens,token];
     setActiveMap({...activeMap,tokens});
-    saveTokens(tokens);
+    saveTokens(tokens, true);
     // Update times_used
     if(npc.id) supabase.from('dm_npc_roster').update({times_used:npc.times_used+1,last_used_at:new Date().toISOString()}).eq('id',npc.id);
     setShowRoster(false);
@@ -782,7 +794,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     };
     const tokens=[...activeMap.tokens,token];
     setActiveMap({...activeMap,tokens});
-    saveTokens(tokens);
+    saveTokens(tokens, true);
     setShowAddPlayer(false);
   }
 
@@ -819,7 +831,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     const tokenId=e.dataTransfer.getData('tokenId');
     if(!tokenId||!activeMap)return;
     if(activeMap.tokens.find(t=>t.col===col&&t.row===row&&t.id!==tokenId))return;
-    updateToken(tokenId,{col,row});
+    updateToken(tokenId,{col,row},false); // debounced position save
     setDraggingTokenId(null);
   }
 

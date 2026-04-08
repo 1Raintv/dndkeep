@@ -176,7 +176,9 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
     const { data: members } = await supabase.from('campaign_members').select('user_id').eq('campaign_id', campaignId);
     if (!members?.length) { setLoading(false); return; }
     const userIds = members.map((m: any) => m.user_id);
-    const { data: chars } = await supabase.from('characters').select('*').in('user_id', userIds).eq('campaign_id', campaignId);
+    const { data: chars } = await supabase.from('characters').select(
+      'id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs'
+    ).in('user_id', userIds).eq('campaign_id', campaignId);
     setCharacters(chars ?? []);
     setLoading(false);
   }

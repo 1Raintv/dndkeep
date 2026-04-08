@@ -31,6 +31,39 @@ function PageLoader() {
   );
 }
 
+function CharacterSkeleton() {
+  return (
+    <div style={{ padding: '24px 32px', maxWidth: 900 }}>
+      {/* Header skeleton */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
+        <div className="skeleton" style={{ width: 56, height: 56, borderRadius: '50%' }} />
+        <div style={{ flex: 1 }}>
+          <div className="skeleton skeleton-text lg" style={{ width: '30%' }} />
+          <div className="skeleton skeleton-text sm" style={{ width: '50%' }} />
+        </div>
+      </div>
+      {/* HP bar skeleton */}
+      <div className="skeleton" style={{ height: 80, marginBottom: 20, borderRadius: 12 }} />
+      {/* Ability scores skeleton */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 20 }}>
+        {Array.from({length: 6}).map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 80, borderRadius: 10 }} />
+        ))}
+      </div>
+      {/* Tab bar skeleton */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {Array.from({length: 6}).map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 32, width: 70, borderRadius: 6 }} />
+        ))}
+      </div>
+      {/* Content skeleton */}
+      {Array.from({length: 5}).map((_, i) => (
+        <div key={i} className="skeleton skeleton-text" style={{ width: `${70 + Math.random() * 25}%` }} />
+      ))}
+    </div>
+  );
+}
+
 // ── SVG Icons ──────────────────────────────────────────────────────
 const Icons = {
   characters: (
@@ -197,7 +230,7 @@ function AppRoutes() {
             <Route path="/srd"            element={<SrdPage />} />
             <Route path="/lobby"          element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
             <Route path="/creator"        element={<ProtectedRoute><CreatorPage /></ProtectedRoute>} />
-            <Route path="/character/:id"  element={<ProtectedRoute><CharacterPage /></ProtectedRoute>} />
+            <Route path="/character/:id"  element={<ProtectedRoute><Suspense fallback={<CharacterSkeleton />}><CharacterPage /></Suspense></ProtectedRoute>} />
             <Route path="/campaigns"      element={<Navigate to="/lobby" replace />} />
             <Route path="/campaigns/:id"  element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
             <Route path="/homebrew"       element={<ProtectedRoute><HomebrewPage /></ProtectedRoute>} />

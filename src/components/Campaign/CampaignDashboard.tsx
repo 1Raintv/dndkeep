@@ -18,6 +18,7 @@ import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
+import ErrorBoundary from '../ErrorBoundary';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -226,6 +227,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         })}
       </div>
 
+      <ErrorBoundary section={activeTab}>
       <div key={activeTab} className="animate-fade-in">
         {/* Members tab */}
         {activeTab === 'members' && (
@@ -479,6 +481,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           </div>
         )}
       </div>
+      </ErrorBoundary>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import InitiativeTracker from './InitiativeTracker';
 interface DMlobbyProps {
   campaign: { id: string; name: string; description?: string };
   sessionState: SessionState | null;
-  playerCharacters: { id: string; name: string; current_hp: number; max_hp: number; armor_class: number; class_name: string; level: number; conditions: ConditionName[] }[];
+  playerCharacters: { id: string; name: string; current_hp: number; max_hp: number; armor_class: number; class_name: string; level: number; conditions: ConditionName[]; active_conditions?: string[]; strength?: number; dexterity?: number; constitution?: number; intelligence?: number; wisdom?: number; charisma?: number; speed?: number }[];
   members: { user_id: string; display_name?: string; email: string; role: string }[];
   isOwner: boolean;
   onUpdateSession: (updates: Partial<SessionState>) => void;
@@ -69,7 +69,7 @@ function PlayerCard({ pc, isOwner, onApplyHP, onToggleCondition }: {
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
             {CONDITIONS.map(cond => {
-              const active = pc.conditions?.includes(cond);
+              const active = pc.conditions?.includes(cond as any);
               return (
                 <button key={cond} onClick={()=>onToggleCondition(pc.id, cond as ConditionName)} style={{ fontFamily:'var(--ff-body)', fontWeight:600, fontSize:9, padding:'2px 6px', borderRadius:'var(--r-sm)', border: active?'1px solid var(--c-red-l)':'1px solid var(--c-border)', background: active?'rgba(220,38,38,0.15)':'var(--c-raised)', color: active?'#fca5a5':'var(--t-2)', cursor:'pointer' }}>
                   {cond}
@@ -270,14 +270,14 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
             current_hp: pc.current_hp,
             max_hp: pc.max_hp,
             armor_class: pc.armor_class,
-            active_conditions: pc.active_conditions ?? [],
-            strength: pc.strength,
-            dexterity: pc.dexterity,
-            constitution: pc.constitution,
-            intelligence: pc.intelligence,
-            wisdom: pc.wisdom,
-            charisma: pc.charisma,
-            speed: pc.speed,
+            active_conditions: pc.active_conditions ?? pc.conditions.map(String) ?? [],
+            strength: pc.strength ?? 10,
+            dexterity: pc.dexterity ?? 10,
+            constitution: pc.constitution ?? 10,
+            intelligence: pc.intelligence ?? 10,
+            wisdom: pc.wisdom ?? 10,
+            charisma: pc.charisma ?? 10,
+            speed: pc.speed ?? 30,
           }))}
         />
       )}

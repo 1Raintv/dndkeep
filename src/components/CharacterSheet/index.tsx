@@ -34,6 +34,7 @@ import SpellsTab from './SpellsTab';
 import ConditionMechanics from './ConditionMechanics';
 import ActionLog from '../shared/ActionLog';
 import WildshapeTracker from './WildshapeTracker';
+import ErrorBoundary from '../ErrorBoundary';
 import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
@@ -752,6 +753,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
       {/* Tab content + persistent roll log side by side */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 260px', gap: 'var(--sp-4)', alignItems: 'start' }}>
+        <ErrorBoundary section={activeTab}>
         <div key={activeTab} className="animate-fade-in">
 
         {/* ── ABILITIES: Skills + Conditions ── */}
@@ -931,6 +933,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         )}
 
       </div>
+        </ErrorBoundary>
 
         {/* Persistent Roll Log — second column of grid */}
         <div style={{

@@ -106,7 +106,7 @@ export async function getSession() {
 export async function getProfile(userId: string): Promise<{ data: Profile | null; error: null | Error }> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select('id,email,display_name,subscription_tier,stripe_customer_id,subscription_status,created_at,updated_at')
     .eq('id', userId)
     .single();
   return { data: data as Profile | null, error: error ? new Error(error.message) : null };
@@ -205,7 +205,7 @@ export async function getCampaignsByMember(): Promise<{ data: Campaign[]; error:
     .order('created_at', { ascending: false });
   if (error) {
     // Fallback: just get owned campaigns
-    const { data: owned } = await supabase.from('campaigns').select('*').eq('owner_id', user.id).order('created_at', { ascending: false });
+    const { data: owned } = await supabase.from('campaigns').select('id,owner_id,name,description,setting,is_active,join_code,created_at,updated_at,notes').eq('owner_id', user.id).order('created_at', { ascending: false });
     return { data: (owned ?? []) as Campaign[], error: null };
   }
   return { data: (data ?? []) as Campaign[], error: null };
@@ -331,7 +331,7 @@ export async function appendRollLog(
 export async function getRollLog(userId: string, limit = 50) {
   return supabase
     .from('roll_logs')
-    .select('*')
+    .select('id,label,dice_expression,individual_results,total,rolled_at,character_id,campaign_id')
     .eq('user_id', userId)
     .order('rolled_at', { ascending: false })
     .limit(limit);
@@ -346,7 +346,7 @@ export async function getSessionState(
 ): Promise<{ data: SessionState | null; error: null | Error }> {
   const { data, error } = await supabase
     .from('session_states')
-    .select('*')
+    .select('id,campaign_id,initiative_order,current_turn,round,combat_active,updated_at')
     .eq('campaign_id', campaignId)
     .maybeSingle();
   return { data: data as SessionState | null, error: error ? new Error(error.message) : null };

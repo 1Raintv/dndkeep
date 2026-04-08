@@ -28,6 +28,7 @@ export default function CampaignList({ onSelect }: CampaignListProps) {
       description: form.description.trim(),
       setting: form.setting.trim(),
       is_active: true,
+      join_code: '',
     });
 
     if (err) {

@@ -940,3 +940,18 @@ button:active:not(:disabled) { transform: scale(0.97); }
 /* Backwards compat for old class names */
 .app-nav { display: none; }
 .app-logo { font-family: var(--ff-brand); color: var(--c-gold-l); font-size: var(--fs-lg); font-weight: 700; }
+
+/* ── Loading Skeletons ─────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--c-raised) 25%, rgba(255,255,255,0.06) 50%, var(--c-raised) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+.skeleton-text { height: 14px; margin-bottom: 8px; }
+.skeleton-text.lg { height: 20px; }
+.skeleton-text.sm { height: 10px; }

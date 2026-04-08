@@ -93,7 +93,7 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
   }, [campaignId, characterId]);
 
   async function loadAll() {
-    let q = supabase.from('action_logs').select('*').order('created_at', { ascending: false }).limit(100);
+    let q = supabase.from('action_logs').select('id,campaign_id,character_id,character_name,action_type,action_name,target_name,dice_expression,individual_results,total,hit_result,notes,created_at').order('created_at', { ascending: false }).limit(50);
     if (campaignId) q = q.eq('campaign_id', campaignId);
     else if (characterId) q = q.eq('character_id', characterId);
     const { data } = await q;
@@ -105,7 +105,7 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
   async function loadReactions(ids?: string[]) {
     const targetIds = ids ?? entries.map(e => e.id);
     if (!targetIds.length) return;
-    const { data } = await supabase.from('action_log_reactions').select('*').in('log_id', targetIds);
+    const { data } = await supabase.from('action_log_reactions').select('id,log_id,user_id,character_name,emoji,created_at').in('log_id', targetIds);
     if (!data) return;
     const map: ReactionMap = {};
     for (const r of data) {
