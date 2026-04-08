@@ -106,25 +106,34 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   }, [character.campaign_id]);
 
   // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
+  // Uses a ref to avoid stale closure — always reads current character value
+  const characterRef = useRef(character);
+  useEffect(() => { characterRef.current = character; });
+
   useEffect(() => {
     if (!character.id) return;
+    const charId = character.id; // capture stable id
     const ch = supabase
-      .channel(`char-self-${character.id}`)
+      .channel(`char-self-${charId}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'characters',
-        filter: `id=eq.${character.id}`,
+        filter: `id=eq.${charId}`,
       }, payload => {
-        const updated = payload.new as Partial<typeof character>;
-        // Only apply fields that the sheet doesn't own locally to avoid fighting
-        // debounced saves — these come from external sources like BattleMap
-        const externalFields: (keyof typeof character)[] = [
+        const updated = payload.new as Record<string, unknown>;
+        if (!updated) return;
+        // Fields that can be written by external sources (BattleMap, DM actions)
+        const externalFields = [
           'current_hp', 'temp_hp', 'active_conditions', 'concentration_spell',
           'spell_slots', 'death_saves_successes', 'death_saves_failures',
-        ];
-        const patch: Partial<typeof character> = {};
+        ] as const;
+        const patch: Partial<Character> = {};
+        const current = characterRef.current as Record<string, unknown>;
         for (const field of externalFields) {
-          if (updated[field] !== undefined && updated[field] !== (character as any)[field]) {
-            (patch as any)[field] = updated[field];
+          const newVal = updated[field];
+          const curVal = current[field];
+          // Apply if value actually changed (deep compare for arrays/objects)
+          if (newVal !== undefined && JSON.stringify(newVal) !== JSON.stringify(curVal)) {
+            (patch as Record<string, unknown>)[field] = newVal;
           }
         }
         if (Object.keys(patch).length > 0) {
@@ -133,7 +142,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [character.id]);
+  }, [character.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!character.campaign_id) return;

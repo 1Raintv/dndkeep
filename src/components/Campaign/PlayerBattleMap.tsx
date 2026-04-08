@@ -203,7 +203,8 @@ export default function PlayerBattleMap({ campaignId, myCharacterId }: {
 
   useEffect(() => {
     loadMap();
-    const ch = supabase.channel(`pbmap:${campaignId}`)
+    // Realtime: battle map token positions and reveals
+    const mapCh = supabase.channel(`pbmap:${campaignId}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'battle_maps',
         filter:`campaign_id=eq.${campaignId}`},p=>{
           if(p.eventType==='UPDATE'||p.eventType==='INSERT'){
@@ -212,7 +213,31 @@ export default function PlayerBattleMap({ campaignId, myCharacterId }: {
           }
         })
       .subscribe();
-    return ()=>{ supabase.removeChannel(ch); };
+
+    // Realtime: character HP/conditions update player tokens immediately
+    const charCh = supabase.channel(`pbmap-chars:${campaignId}`)
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'characters',
+        filter:`campaign_id=eq.${campaignId}`},payload=>{
+          const updated = payload.new as {id:string;current_hp:number;active_conditions:string[]};
+          if(!updated?.id) return;
+          setMap(prev=>{
+            if(!prev) return prev;
+            const tokens = prev.tokens.map(t=>{
+              if(t.character_id!==updated.id) return t;
+              const upd:Partial<MapToken>={};
+              if(t.hp!==updated.current_hp) upd.hp=updated.current_hp;
+              if(JSON.stringify(t.conditions)!==JSON.stringify(updated.active_conditions??[])) upd.conditions=updated.active_conditions??[];
+              return Object.keys(upd).length?{...t,...upd}:t;
+            });
+            return {...prev,tokens};
+          });
+        })
+      .subscribe();
+
+    return ()=>{
+      supabase.removeChannel(mapCh);
+      supabase.removeChannel(charCh);
+    };
   },[campaignId]);
 
   async function loadMap(){

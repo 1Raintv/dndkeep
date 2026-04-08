@@ -725,34 +725,39 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
 
   function updateToken(tokenId:string,updates:Partial<MapToken>,immediate=true){
     if(!activeMap)return;
+    // Get the OLD token value BEFORE mapping (for delta calculation)
+    const oldToken=activeMap.tokens.find(t=>t.id===tokenId);
     const tokens=activeMap.tokens.map(t=>t.id===tokenId?{...t,...updates}:t);
     setActiveMap({...activeMap,tokens});
     saveTokens(tokens, immediate);
     const token=tokens.find(t=>t.id===tokenId);
-    if(token?.character_id&&updates.conditions!==undefined&&onConditionApplied){
-      onConditionApplied(token.character_id,updates.conditions);
+    // Write to characters table — this is the single source of truth
+    // Realtime will propagate to character sheet and all other views
+    if(token?.character_id&&updates.conditions!==undefined){
+      onConditionApplied?.(token.character_id,updates.conditions);
       supabase.from('characters').update({active_conditions:updates.conditions}).eq('id',token.character_id);
     }
     if(token?.character_id&&updates.hp!==undefined){
       supabase.from('characters').update({current_hp:updates.hp}).eq('id',token.character_id);
     }
-    // Log damage/healing to action_logs so all players see it in roll log
-    if(updates.hp!==undefined&&token){
-      const delta = Math.abs(updates.hp - token.hp);
-      const isDamage = updates.hp < token.hp;
-      const isHeal = updates.hp > token.hp;
+    // Log damage/healing using the OLD hp for correct delta
+    if(updates.hp!==undefined&&oldToken){
+      const prevHp = oldToken.hp;
+      const newHp = updates.hp;
+      const delta = Math.abs(newHp - prevHp);
+      const isDamage = newHp < prevHp;
       if(delta > 0){
         supabase.from('action_logs').insert({
           campaign_id: campaignId,
-          character_id: token.character_id ?? null,
+          character_id: token?.character_id ?? null,
           character_name: 'DM',
           action_type: isDamage ? 'damage' : 'heal',
-          action_name: isDamage ? `Damage → ${token.name}` : `Heal → ${token.name}`,
-          target_name: token.name,
+          action_name: isDamage ? `Damage → ${oldToken.name}` : `Heal → ${oldToken.name}`,
+          target_name: oldToken.name,
           dice_expression: '',
           individual_results: [delta],
           total: delta,
-          notes: `${token.name}: ${token.hp} → ${updates.hp} HP`,
+          notes: `${oldToken.name}: ${prevHp} → ${newHp} HP`,
         });
       }
     }
@@ -821,20 +826,29 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   }
 
   // Sync player tokens from live character data
+  // Subscribe directly to characters table — single source of truth for player HP
   useEffect(()=>{
-    if(!activeMap||!playerCharacters.length)return;
-    let changed=false;
-    const tokens=activeMap.tokens.map(t=>{
-      if(t.type!=='player'||!t.character_id)return t;
-      const pc=playerCharacters.find(p=>p.id===t.character_id);
-      if(!pc)return t;
-      const upd:Partial<MapToken>={};
-      if(t.hp!==pc.current_hp){upd.hp=pc.current_hp;changed=true;}
-      if(JSON.stringify(t.conditions)!==JSON.stringify(pc.active_conditions??[])){upd.conditions=pc.active_conditions??[];changed=true;}
-      return Object.keys(upd).length?{...t,...upd}:t;
-    });
-    if(changed) setActiveMap(prev=>prev?{...prev,tokens}:prev);
-  },[playerCharacters]);
+    if(!campaignId) return;
+    const ch = supabase.channel(`bmap-chars-${campaignId}`)
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'characters',
+        filter:`campaign_id=eq.${campaignId}`},payload=>{
+          const updated = payload.new as {id:string;current_hp:number;active_conditions:string[]};
+          if(!updated?.id) return;
+          setActiveMap(prev=>{
+            if(!prev) return prev;
+            const tokens = prev.tokens.map(t=>{
+              if(t.character_id!==updated.id) return t;
+              const upd:Partial<MapToken>={};
+              if(t.hp!==updated.current_hp) upd.hp=updated.current_hp;
+              if(JSON.stringify(t.conditions)!==JSON.stringify(updated.active_conditions??[])) upd.conditions=updated.active_conditions??[];
+              return Object.keys(upd).length?{...t,...upd}:t;
+            });
+            return {...prev,tokens};
+          });
+        })
+      .subscribe();
+    return ()=>{ supabase.removeChannel(ch); };
+  },[campaignId]);
 
   async function toggleMapActiveForPlayers(){
     if(!activeMap)return;
