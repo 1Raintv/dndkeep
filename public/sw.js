@@ -1,5 +1,5 @@
 // DNDKeep Service Worker v1.0
-const CACHE_NAME = 'dndkeep-v2';
+const CACHE_NAME = 'dndkeep-v3';
 const STATIC_ASSETS = [
   '/',
   '/lobby',
@@ -35,15 +35,22 @@ self.addEventListener('activate', (event) => {
 
 // Fetch — network first, fall back to cache
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests for same-origin or CDN assets
   if (event.request.method !== 'GET') return;
   if (event.request.url.includes('supabase.co')) return;
   if (event.request.url.includes('stripe.com')) return;
 
+  const url = new URL(event.request.url);
+
+  // Never cache hashed JS/CSS chunks — they change every deploy
+  // These have content hashes in filenames (e.g. index-Abc123.js)
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful responses
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
@@ -51,10 +58,8 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // Fallback to cache when offline
         return caches.match(event.request).then((cached) => {
           if (cached) return cached;
-          // Return offline page for navigation requests
           if (event.request.mode === 'navigate') {
             return caches.match('/');
           }
