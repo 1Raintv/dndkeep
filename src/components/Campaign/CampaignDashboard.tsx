@@ -54,8 +54,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
     loadCharacters();
     loadNotes();
 
-    // Realtime subscription for notes
-    const channel = supabase
+    // Realtime: campaign notes
+    const notesChannel = supabase
       .channel(`campaign-notes-${campaign.id}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'campaigns',
@@ -67,7 +67,26 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Realtime: character HP / conditions sync — keeps BattleMap and party panel live
+    const charsChannel = supabase
+      .channel(`campaign-chars-${campaign.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'characters',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { new: Record<string, unknown> }) => {
+        if (!payload.new?.id) return;
+        setCharacters(prev => prev.map(c =>
+          c.id === payload.new.id
+            ? { ...c, ...(payload.new as Partial<typeof c>) }
+            : c
+        ));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notesChannel);
+      supabase.removeChannel(charsChannel);
+    };
   }, [campaign.id]);
 
   async function loadNotes() {

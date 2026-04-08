@@ -35,6 +35,7 @@ import ConditionMechanics from './ConditionMechanics';
 import ActionLog from '../shared/ActionLog';
 import WildshapeTracker from './WildshapeTracker';
 import ErrorBoundary from '../ErrorBoundary';
+import { PlayerRollPrompt } from '../Campaign/RollRequest';
 import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
@@ -956,6 +957,26 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         />
       )}
 
+      {/* DM-requested roll prompt — floats in bottom center when DM asks for a roll */}
+      {character.campaign_id && userId && (
+        <PlayerRollPrompt
+          campaignId={character.campaign_id}
+          characterId={character.id}
+          character={{
+            id: character.id,
+            name: character.name,
+            strength: character.strength,
+            dexterity: character.dexterity,
+            constitution: character.constitution,
+            intelligence: character.intelligence,
+            wisdom: character.wisdom,
+            charisma: character.charisma,
+            skill_proficiencies: character.skill_proficiencies ?? [],
+            saving_throw_proficiencies: character.saving_throw_proficiencies ?? [],
+            level: character.level,
+          }}
+        />
+      )}
       {userId && <CampaignBar userId={userId} />}
     </div>
   );

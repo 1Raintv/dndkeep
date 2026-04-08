@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { MONSTERS } from '../../data/monsters';
+import { DMRollRequestPanel } from './RollRequest';
+import { logRoll } from '../CharacterSheet/QuickRoll';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface MapToken {
@@ -734,6 +736,26 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(token?.character_id&&updates.hp!==undefined){
       supabase.from('characters').update({current_hp:updates.hp}).eq('id',token.character_id);
     }
+    // Log damage/healing to action_logs so all players see it in roll log
+    if(updates.hp!==undefined&&token){
+      const delta = Math.abs(updates.hp - token.hp);
+      const isDamage = updates.hp < token.hp;
+      const isHeal = updates.hp > token.hp;
+      if(delta > 0){
+        supabase.from('action_logs').insert({
+          campaign_id: campaignId,
+          character_id: token.character_id ?? null,
+          character_name: 'DM',
+          action_type: isDamage ? 'damage' : 'heal',
+          action_name: isDamage ? `Damage → ${token.name}` : `Heal → ${token.name}`,
+          target_name: token.name,
+          dice_expression: '',
+          individual_results: [delta],
+          total: delta,
+          notes: `${token.name}: ${token.hp} → ${updates.hp} HP`,
+        });
+      }
+    }
   }
 
   function removeToken(tokenId:string){
@@ -1013,6 +1035,24 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             onAddToMap={addRosterNPC} onClose={()=>setShowRoster(false)}/>
         )}
       </div>
+
+      {/* DM Roll Request Panel */}
+      {isDM && activeMap && (
+        <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--c-raised)', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+          <DMRollRequestPanel
+            campaignId={campaignId}
+            userId={userId}
+            playerCharacters={playerCharacters.map(pc => ({
+              id: pc.id, name: pc.name,
+              strength: pc.strength, dexterity: pc.dexterity, constitution: pc.constitution,
+              intelligence: pc.intelligence, wisdom: pc.wisdom, charisma: pc.charisma,
+              skill_proficiencies: [],
+              saving_throw_proficiencies: [],
+              level: 1,
+            }))}
+          />
+        </div>
+      )}
 
       {/* Add player token modal */}
       {showAddPlayer&&isDM&&(
