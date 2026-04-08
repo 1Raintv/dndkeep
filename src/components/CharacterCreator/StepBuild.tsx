@@ -38,13 +38,15 @@ interface StepBuildProps {
   choices: BuildChoices;
   onChoicesChange: (c: BuildChoices) => void;
   constitutionMod?: number;
+  onBack?: () => void;
+  onNext?: () => void;
 }
 
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
 const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DEX', constitution: 'CON', intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA' };
 
-export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0 }: StepBuildProps) {
+export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
   const [currentLevel, setCurrentLevel] = useState<number>(1);
@@ -70,19 +72,19 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
   // Build summary entries for right panel
   const summary = levelsToShow.map(({ lvl, prog: p }) => {
     const entries: string[] = [];
-    if (choices.subclass && (p.choices ?? []).some(c => c.type === 'subclass')) entries.push(`Subclass: ${choices.subclass}`);
+    if (choices.subclass && (p.choices ?? []).some(c => c.type === 'subclass')) entries.push(`Subclass ${choices.subclass}`);
     if (choices.feats[lvl]) entries.push(`Feat: ${choices.feats[lvl]}`);
     if (choices.asiChoices[lvl]) {
       const a = choices.asiChoices[lvl];
-      entries.push(`ASI: +${a.amount} ${a.ability.slice(0,3).toUpperCase()}${a.ability2 ? ` / +${a.amount2} ${a.ability2.slice(0,3).toUpperCase()}` : ''}`);
+      entries.push(`+${a.amount} ${a.ability.slice(0,3).toUpperCase()}${a.ability2 ? ` / +${a.amount2} ${a.ability2.slice(0,3).toUpperCase()}` : ''}`);
     }
-    if (choices.fightingStyle && (p.choices ?? []).some(c => c.type === 'fighting_style')) entries.push(`Style: ${choices.fightingStyle}`);
-    if (choices.divineOrder && (p.choices ?? []).some(c => c.type === 'divine_order')) entries.push(`Order: ${choices.divineOrder}`);
-    if (choices.primalOrder && (p.choices ?? []).some(c => c.type === 'primal_order')) entries.push(`Order: ${choices.primalOrder}`);
+    if (choices.fightingStyle && (p.choices ?? []).some(c => c.type === 'fighting_style')) entries.push(`Style ${choices.fightingStyle}`);
+    if (choices.divineOrder && (p.choices ?? []).some(c => c.type === 'divine_order')) entries.push(`Order ${choices.divineOrder}`);
+    if (choices.primalOrder && (p.choices ?? []).some(c => c.type === 'primal_order')) entries.push(`Order ${choices.primalOrder}`);
     const invAtLevel = choices.invocationsByLevel?.[lvl] ?? [];
-    if (invAtLevel.length) entries.push(`Invocations: ${invAtLevel.join(', ')}`);
+    if (invAtLevel.length) entries.push(`Invocations ${invAtLevel.join(', ')}`);
     const mmAtLevel = choices.metamagicByLevel?.[lvl] ?? [];
-    if (mmAtLevel.length) entries.push(`Metamagic: ${mmAtLevel.join(', ')}`);
+    if (mmAtLevel.length) entries.push(`Metamagic ${mmAtLevel.join(', ')}`);
     // Note: class features and subclass features are intentionally excluded from this summary.
     // Summary only shows choices the player actively made.
     const isComplete = (p.choices ?? []).length === 0 || !(p.choices ?? []).some(c => isChoiceIncomplete(c.type, lvl, choices));
@@ -116,32 +118,33 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
           )}
         </div>
 
-        {/* ── Prev / Next nav — top ── */}
+        {/* ── Unified Back / Next nav ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <button
-            onClick={() => setCurrentLevel(v => Math.max(1, v - 1))}
-            disabled={currentLevel <= 1}
-            style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: currentLevel <= 1 ? 'not-allowed' : 'pointer', minHeight: 0,
-              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel <= 1 ? 'var(--t-3)' : 'var(--t-1)',
-              opacity: currentLevel <= 1 ? 0.4 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
+            onClick={() => {
+              if (currentLevel > 1) setCurrentLevel(v => v - 1);
+              else onBack?.();
+            }}
+            style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)',
+              display: 'flex', alignItems: 'center', gap: 5 }}
           >
-            ← {currentLevel > 1 ? `Level ${currentLevel - 1}` : 'Back'}
+            ← Back
           </button>
 
           <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{currentLevel} / {level}</span>
 
-          {currentLevel < level ? (
-            <button
-              onClick={() => setCurrentLevel(v => Math.min(level, v + 1))}
-              style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
-                display: 'flex', alignItems: 'center', gap: 5 }}
-            >
-              Level {currentLevel + 1} →
-            </button>
-          ) : (
-            <div style={{ width: 100 }} />
-          )}
+          <button
+            onClick={() => {
+              if (currentLevel < level) setCurrentLevel(v => v + 1);
+              else onNext?.();
+            }}
+            style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+              border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+              display: 'flex', alignItems: 'center', gap: 5 }}
+          >
+            {currentLevel < level ? 'Next →' : 'Review →'}
+          </button>
         </div>
 
         {/* Level progress dots */}
@@ -220,20 +223,22 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
                       <span>{f}</span>
                     </div>
                   ))}
-                  {prog.subclassFeature && currentLevel > (cls.subclasses[0]?.unlock_level ?? 3) && choices.subclass && (
+                  {prog.subclassFeature && choices.subclass && (
                     <div style={{ fontSize: 13, color: '#a78bfa', lineHeight: 1.5, display: 'flex', gap: 8 }}>
                       <span style={{ flexShrink: 0 }}>+</span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {(() => {
                           const subFeats = (selectedSubclass as any)?.features?.filter((f: any) => f.level === currentLevel) ?? [];
-                          return subFeats.length > 0
-                            ? subFeats.map((f: any) => (
-                                <div key={f.name}>
-                                  <span style={{ fontWeight: 700 }}>{choices.subclass}: {f.name}</span>
-                                  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>{f.description}</div>
-                                </div>
-                              ))
-                            : <span>{choices.subclass} class feature</span>;
+                          if (subFeats.length > 0) {
+                            return subFeats.map((f: any) => (
+                              <div key={f.name}>
+                                <span style={{ fontWeight: 700 }}>{f.name}</span>
+                                {f.description && <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>{f.description}</div>}
+                              </div>
+                            ));
+                          }
+                          // Fallback: show subclass name as the feature (for official subclasses without detailed data)
+                          return <span style={{ fontWeight: 600 }}>{choices.subclass} feature</span>;
                         })()}
                       </div>
                     </div>
@@ -279,8 +284,8 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
             border: `1px solid ${lvl === currentLevel ? 'var(--c-gold-bdr)' : isMissing ? 'rgba(220,38,38,0.3)' : isComplete && hasChoices ? 'rgba(5,150,105,0.25)' : 'var(--c-border)'}`,
             borderRadius: 8, padding: '7px 10px', cursor: 'pointer', width: '100%',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: entries.length > 0 ? 4 : 0 }}>
-              <span style={{ fontWeight: 700, fontSize: 10,
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontWeight: 800, fontSize: 11,
                 color: lvl === currentLevel ? 'var(--c-gold-l)' : isMissing ? 'var(--c-red-l)' : isComplete && hasChoices ? 'var(--c-green-l)' : 'var(--t-3)' }}>
                 Level {lvl}
               </span>
@@ -288,10 +293,10 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
               {isComplete && hasChoices && !isMissing && <span style={{ fontSize: 9, color: 'var(--c-green-l)' }}>✓</span>}
             </div>
             {entries.map((e, i) => (
-              <div key={i} style={{ fontSize: 10, color: 'var(--t-2)', lineHeight: 1.4 }}>{e}</div>
+              <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5, marginTop: 3 }}>{e}</div>
             ))}
             {entries.length === 0 && hasChoices && (
-              <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>Pending…</div>
+              <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic', marginTop: 3 }}>Pending…</div>
             )}
           </button>
         ))}
