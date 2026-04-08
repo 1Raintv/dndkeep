@@ -943,7 +943,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           </div>
         )}
 
-      </div>{/* end keyed tab content */}
+      </div>
 
         {/* Quick Roll floating dice roller — outside keyed div so it persists across tab switches */}
         <QuickRoll
@@ -972,7 +972,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         }}>
           <RollLog characterId={character.id} userId={userId} />
         </div>
-      </div>{/* end tab+log grid */}
+      </div>
 
       {/* ── Campaign sessions bar — always visible at bottom ── */}
       {userId && <CampaignBar userId={userId} />}
