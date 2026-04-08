@@ -51,6 +51,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
   const [rolling, setRolling] = useState(false);
   const { triggerRoll } = useDiceRoll();
   const [adv, setAdv] = useState<'normal'|'advantage'|'disadvantage'>('normal');
+  const [animValues, setAnimValues] = useState<Record<number, number>>({}); // die index → displayed value during animation
 
   function addDie(die: number) {
     setQueue(q => {
@@ -71,7 +72,20 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
   async function rollAll() {
     if (!queue.length) return;
     setRolling(true);
+
+    // Animate random values cycling for each die slot
+    const dieSlots = queue.flatMap(({ die, count }) => Array.from({ length: count }, () => die));
+    let tick = 0;
+    const interval = setInterval(() => {
+      tick++;
+      const fakeVals: Record<number, number> = {};
+      dieSlots.forEach((die, i) => { fakeVals[i] = Math.ceil(Math.random() * die); });
+      setAnimValues(fakeVals);
+    }, 80);
+
     setTimeout(async () => {
+      clearInterval(interval);
+      setAnimValues({});
       // For advantage/disadvantage, always roll 2d20
       const effectiveQueue = queue.map(d =>
         d.die === 20 && adv !== 'normal' ? { ...d, count: Math.max(2, d.count) } : d
@@ -127,7 +141,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
           total,
         });
       }
-    }, 150);
+    }, 900);
   }
 
   const totalDice = queue.reduce((s, d) => s + d.count, 0);
@@ -135,6 +149,22 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
 
   return createPortal(
     <>
+      <style>{`
+        @keyframes diceShake {
+          0%   { transform: translate(-1px, -1px) rotate(-3deg) scale(1.05); }
+          25%  { transform: translate(1px, -2px) rotate(2deg) scale(1.08); }
+          50%  { transform: translate(-1px, 1px) rotate(-1deg) scale(1.04); }
+          75%  { transform: translate(2px, 1px) rotate(3deg) scale(1.07); }
+          100% { transform: translate(0px, 2px) rotate(-2deg) scale(1.05); }
+        }
+        @keyframes diceLand {
+          0%   { transform: scale(1.4) rotate(-8deg); }
+          60%  { transform: scale(0.92) rotate(2deg); }
+          80%  { transform: scale(1.06) rotate(-1deg); }
+          100% { transform: scale(1) rotate(0deg); }
+        }
+        .dice-land { animation: diceLand 0.35s cubic-bezier(0.34,1.56,0.64,1) both; }
+      `}</style>
       <button
         onClick={() => setOpen(o => !o)}
         title="Dice Roller"
@@ -266,9 +296,29 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
                 </div>
               )}
 
+              {/* Animated dice during roll */}
+              {rolling && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', padding: '6px 0' }}>
+                  {queue.flatMap(({ die, count }) => Array.from({ length: count }, (_, i) => ({ die, i }))).map(({ die, i }, idx) => (
+                    <div key={idx} style={{
+                      width: 40, height: 40, borderRadius: 8,
+                      border: `2px solid ${dieColor(die)}`,
+                      background: `${dieColor(die)}20`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      animation: 'diceShake 0.08s ease-in-out infinite alternate',
+                    }}>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, lineHeight: 1, color: dieColor(die) }}>
+                        {animValues[idx] ?? die}
+                      </span>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{die}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button className="btn-gold" onClick={rollAll} disabled={rolling}
-                style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>
-                {rolling ? 'Rolling…' : `🎲 Roll ${buildExpr(queue)}`}
+                style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700,
+                  opacity: rolling ? 0.5 : 1 }}>
+                {rolling ? '🎲 Rolling…' : `🎲 Roll ${buildExpr(queue)}`}
               </button>
             </div>
           )}
@@ -292,7 +342,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
                   const dropped = d.dropped;
                   const color = dropped ? 'var(--t-2)' : nat === 'crit' || nat === 'max' ? 'var(--c-gold-l)' : nat === 'fumble' ? 'var(--c-red-l)' : dieColor(d.die);
                   return (
-                    <div key={i} style={{
+                    <div key={i} className={!dropped ? "dice-land" : ""} style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'center',
                       padding: '4px 8px', borderRadius: 6, position: 'relative',
                       border: `1px solid ${dropped ? 'var(--c-border)' : color}50`,
