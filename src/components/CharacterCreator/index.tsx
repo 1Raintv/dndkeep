@@ -282,13 +282,13 @@ export default function CharacterCreator() {
             }}
             disabled={!canAdvance() || saving}
           >
-            {saving ? 'Creating...' : (() => {
-              if (step === STEPS.length - 1) return '✨ Create Character';
-              if (step === 4 && currentBuildLevel < level) return `Level ${currentBuildLevel + 1} →`;
-              if (step === 4) return 'Review →';
-              if (step === STEPS.length - 2) return 'Review →';
-              return 'Continue →';
-            })()}
+            {saving ? 'Creating...' : (
+              step === STEPS.length - 1 ? '✨ Create Character' :
+              step === 4 && currentBuildLevel < level ? `Level ${currentBuildLevel + 1} →` :
+              step === 4 ? 'Review →' :
+              step === STEPS.length - 2 ? 'Review →' :
+              'Continue →'
+            )}
           </button>
         </div>
 
