@@ -945,24 +945,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
       </div>
 
-        {/* Quick Roll floating dice roller — outside keyed div so it persists across tab switches */}
-        <QuickRoll
-          characterId={userId}
-          characterName={character.name}
-          campaignId={character.campaign_id}
-        />
-      </div>{/* end tab content col */}
-
-      {/* Level Up Wizard */}
-      {showLevelUp && (
-        <LevelUpWizard
-          character={character}
-          onLevelUp={updates => applyUpdate(updates, true)}
-          onClose={() => setShowLevelUp(false)}
-        />
-      )}
-
-        {/* Persistent Roll Log — stays visible on every tab */}
+        {/* Persistent Roll Log — second column of grid */}
         <div style={{
           background: 'var(--c-card)', border: '1px solid var(--c-border)',
           borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)',
@@ -974,7 +957,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </div>
       </div>
 
-      {/* ── Campaign sessions bar — always visible at bottom ── */}
+      {/* Level Up Wizard */}
+      {showLevelUp && (
+        <LevelUpWizard
+          character={character}
+          onLevelUp={updates => applyUpdate(updates, true)}
+          onClose={() => setShowLevelUp(false)}
+        />
+      )}
+
+      {/* Quick Roll — fixed position, persists across all tabs */}
+      <QuickRoll
+        characterId={userId}
+        characterName={character.name}
+        campaignId={character.campaign_id}
+      />
+
       {userId && <CampaignBar userId={userId} />}
     </div>
   );
