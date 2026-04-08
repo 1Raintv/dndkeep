@@ -40,16 +40,24 @@ interface StepBuildProps {
   constitutionMod?: number;
   onBack?: () => void;
   onNext?: () => void;
+  currentLevel?: number;
+  onCurrentLevelChange?: (l: number) => void;
 }
 
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
 const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DEX', constitution: 'CON', intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA' };
 
-export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext }: StepBuildProps) {
+export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
-  const [currentLevel, setCurrentLevel] = useState<number>(1);
+  const [_currentLevel, _setCurrentLevel] = useState<number>(1);
+  const currentLevel = controlledLevel ?? _currentLevel;
+  const setCurrentLevel = (updater: number | ((v: number) => number)) => {
+    const next = typeof updater === 'function' ? updater(currentLevel) : updater;
+    _setCurrentLevel(next);
+    onCurrentLevelChange?.(next);
+  };
 
   const levelsToShow = useMemo(() =>
     Array.from({ length: level }, (_, i) => i + 1)
@@ -118,24 +126,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
           )}
         </div>
 
-        {/* Compact level prev / next */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setCurrentLevel(v => Math.max(1, v - 1))}
-            disabled={currentLevel <= 1}
-            style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: currentLevel <= 1 ? 'not-allowed' : 'pointer', minHeight: 0,
-              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel <= 1 ? 'var(--t-3)' : 'var(--t-2)',
-              opacity: currentLevel <= 1 ? 0.4 : 1 }}
-          >← Prev Level</button>
-          <span style={{ fontSize: 11, color: 'var(--t-3)' }}>{currentLevel} / {level}</span>
-          <button
-            onClick={() => setCurrentLevel(v => Math.min(level, v + 1))}
-            disabled={currentLevel >= level}
-            style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: currentLevel >= level ? 'not-allowed' : 'pointer', minHeight: 0,
-              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel >= level ? 'var(--t-3)' : 'var(--t-2)',
-              opacity: currentLevel >= level ? 0.4 : 1 }}
-          >Next Level →</button>
-        </div>
+
 
         {/* Level progress dots */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

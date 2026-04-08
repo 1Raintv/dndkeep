@@ -73,6 +73,7 @@ export default function CharacterCreator() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [buildChoices, setBuildChoices] = useState<BuildChoices>(emptyBuildChoices());
   const [level, setLevel] = useState(1);
+  const [currentBuildLevel, setCurrentBuildLevel] = useState(1);
   const [originFeat, setOriginFeat] = useState('');
 
   function handleSkillToggle(skill: string) {
@@ -260,16 +261,34 @@ export default function CharacterCreator() {
 
       {/* Navigation — top, consistent across all steps */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--sp-6)', alignItems: 'center' }}>
-          <button className="btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : navigate('/lobby')} disabled={saving}>
+          <button className="btn-secondary btn-sm" onClick={() => {
+            if (step === 4 && currentBuildLevel > 1) setCurrentBuildLevel(l => l - 1);
+            else if (step > 0) setStep(s => s - 1);
+            else navigate('/lobby');
+          }} disabled={saving}>
             {step === 0 ? '✕ Cancel' : '← Back'}
           </button>
           <button
-            className={step === STEPS.length - 1 ? 'btn-gold' : 'btn-gold'}
+            className="btn-gold"
             style={{ minWidth: 120 }}
-            onClick={() => step < STEPS.length - 1 ? setStep(s => s + 1) : handleCreate()}
+            onClick={() => {
+              if (step === 4 && currentBuildLevel < level) {
+                setCurrentBuildLevel(l => l + 1);
+              } else if (step < STEPS.length - 1) {
+                setStep(s => s + 1);
+              } else {
+                handleCreate();
+              }
+            }}
             disabled={!canAdvance() || saving}
           >
-            {saving ? 'Creating...' : step === STEPS.length - 1 ? '✨ Create Character' : step === STEPS.length - 2 ? 'Review →' : 'Continue →'}
+            {saving ? 'Creating...' : (() => {
+              if (step === STEPS.length - 1) return '✨ Create Character';
+              if (step === 4 && currentBuildLevel < level) return `Level ${currentBuildLevel + 1} →`;
+              if (step === 4) return 'Review →';
+              if (step === STEPS.length - 2) return 'Review →';
+              return 'Continue →';
+            })()}
           </button>
         </div>
 
