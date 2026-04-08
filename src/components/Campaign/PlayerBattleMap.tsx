@@ -243,7 +243,27 @@ export default function PlayerBattleMap({ campaignId, myCharacterId }: {
   async function loadMap(){
     const {data}=await supabase.from('battle_maps').select('*')
       .eq('campaign_id',campaignId).eq('active',true).maybeSingle();
-    setMap(data);
+    if(!data){ setMap(null); return; }
+
+    // Sync player token HP from characters table so map never shows stale HP
+    const charIds=[...new Set(
+      (data.tokens as MapToken[]).filter(t=>t.character_id).map(t=>t.character_id!)
+    )];
+    let liveChars:Record<string,{current_hp:number;active_conditions:string[]}>={};
+    if(charIds.length>0){
+      const {data:chars}=await supabase.from('characters')
+        .select('id,current_hp,active_conditions').in('id',charIds);
+      if(chars) chars.forEach(c=>{liveChars[c.id]={current_hp:c.current_hp,active_conditions:c.active_conditions??[]};});
+    }
+    const patched={
+      ...data,
+      tokens:(data.tokens as MapToken[]).map(t=>{
+        if(!t.character_id||!liveChars[t.character_id]) return t;
+        const live=liveChars[t.character_id];
+        return {...t,hp:live.current_hp,conditions:live.active_conditions};
+      })
+    };
+    setMap(patched);
   }
 
   const gridSize = map?.grid_size ?? 48;

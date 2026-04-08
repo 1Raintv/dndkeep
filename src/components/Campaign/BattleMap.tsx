@@ -685,11 +685,35 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
 
   async function loadMaps(){
     const {data}=await supabase.from('battle_maps').select('*').eq('campaign_id',campaignId).order('created_at');
-    if(data){
-      setMaps(data);
-      const active=data.find(m=>m.active)??data[0]??null;
-      setActiveMap(active);
+    if(!data) return;
+
+    // Collect all character_ids from player tokens across all maps
+    const charIds = [...new Set(
+      data.flatMap(m=>(m.tokens as MapToken[]).filter(t=>t.character_id).map(t=>t.character_id!))
+    )];
+
+    // Fetch live HP/conditions from characters table — single source of truth
+    let liveChars: Record<string,{current_hp:number;active_conditions:string[]}> = {};
+    if(charIds.length>0){
+      const {data:chars}=await supabase.from('characters')
+        .select('id,current_hp,active_conditions')
+        .in('id',charIds);
+      if(chars) chars.forEach(c=>{ liveChars[c.id]={current_hp:c.current_hp,active_conditions:c.active_conditions??[]}; });
     }
+
+    // Patch tokens with live values so map never shows stale HP on load
+    const patchedData = data.map(m=>({
+      ...m,
+      tokens:(m.tokens as MapToken[]).map(t=>{
+        if(!t.character_id||!liveChars[t.character_id]) return t;
+        const live = liveChars[t.character_id];
+        return {...t, hp:live.current_hp, conditions:live.active_conditions};
+      })
+    }));
+
+    setMaps(patchedData);
+    const active=patchedData.find(m=>m.active)??patchedData[0]??null;
+    setActiveMap(active);
   }
 
   async function loadNotes(tokenKey:string){
