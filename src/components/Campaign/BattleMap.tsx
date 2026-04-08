@@ -1,59 +1,67 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
+import { MONSTERS } from '../../data/monsters';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface MapToken {
   id: string;
   name: string;
   type: 'player' | 'npc' | 'object';
-  col: number;  // grid column
-  row: number;  // grid row
+  col: number; row: number;
   character_id?: string;
-  npc_id?: string;
-  color: string;
-  emoji: string;
-  hp: number;
-  max_hp: number;
-  ac: number;
+  npc_roster_id?: string;
+  color: string; emoji: string;
+  hp: number; max_hp: number; ac: number; speed: number;
   conditions: string[];
+  str: number; dex: number; con: number; int: number; wis: number; cha: number;
+  description: string;
+  image_url: string;
+  immunities: string;
+  attack_name: string; attack_bonus: number; attack_damage: string;
+  cr: string; xp: number;
   visible_to_players: boolean;
-  is_hidden: boolean;  // DM-only hidden (invisible to players)
-  initiative?: number;
-  str?: number; dex?: number; con?: number; int?: number; wis?: number; cha?: number;
-  speed?: number;
+  is_hidden: boolean;
+  // What fields the DM has revealed to players
+  revealed: {
+    hp: boolean; ac: boolean; stats: boolean;
+    description: boolean; immunities: boolean; attacks: boolean;
+  };
 }
 
 interface BattleMapData {
-  id: string;
-  campaign_id: string;
-  name: string;
-  image_url: string;
-  grid_cols: number;
-  grid_rows: number;
-  grid_size: number;
-  tokens: MapToken[];
-  active: boolean;
+  id: string; campaign_id: string; name: string; image_url: string;
+  grid_cols: number; grid_rows: number; grid_size: number;
+  tokens: MapToken[]; active: boolean;
+  map_active_for_players: boolean; background_color: string;
+}
+
+interface TokenNote {
+  id: string; campaign_id: string; token_key: string;
+  author_id: string; author_name: string; note: string; created_at: string;
+}
+
+interface DMRosterNPC {
+  id: string; owner_id: string; campaign_id?: string;
+  name: string; type: string; cr: string; size: string;
+  hp: number; max_hp: number; ac: number; speed: number;
+  str: number; dex: number; con: number; int: number; wis: number; cha: number;
+  attack_name: string; attack_bonus: number; attack_damage: string; xp: number;
+  description: string; traits: string; immunities: string;
+  image_url?: string; emoji: string; color: string;
+  source_monster_id?: string; times_used: number;
 }
 
 interface PlayerChar {
-  id: string;
-  name: string;
-  class_name: string;
-  level: number;
-  current_hp: number;
-  max_hp: number;
-  armor_class: number;
+  id: string; name: string; class_name: string; level: number;
+  current_hp: number; max_hp: number; armor_class: number;
   active_conditions: string[];
   strength: number; dexterity: number; constitution: number;
-  intelligence: number; wisdom: number; charisma: number;
-  speed: number;
+  intelligence: number; wisdom: number; charisma: number; speed: number;
 }
 
 interface BattleMapProps {
-  campaignId: string;
-  isDM: boolean;
-  userId: string;
-  playerCharacters?: PlayerChar[];  // live player data from parent
+  campaignId: string; isDM: boolean; userId: string;
+  playerCharacters?: PlayerChar[];
   onConditionApplied?: (characterId: string, conditions: string[]) => void;
 }
 
@@ -62,721 +70,962 @@ const ALL_CONDITIONS = [
   'Grappled','Incapacitated','Invisible','Paralyzed','Petrified',
   'Poisoned','Prone','Restrained','Stunned','Unconscious',
 ];
-
-const CONDITION_COLORS: Record<string, string> = {
-  Blinded:'#94a3b8', Charmed:'#f472b6', Deafened:'#78716c', Exhaustion:'#a78bfa',
-  Frightened:'#fb923c', Grappled:'#84cc16', Incapacitated:'#f87171', Invisible:'#60a5fa',
-  Paralyzed:'#e879f9', Petrified:'#6b7280', Poisoned:'#4ade80', Prone:'#fbbf24',
-  Restrained:'#f97316', Stunned:'#c084fc', Unconscious:'#ef4444',
+const COND_COLOR: Record<string,string> = {
+  Blinded:'#94a3b8',Charmed:'#f472b6',Deafened:'#78716c',Exhaustion:'#a78bfa',
+  Frightened:'#fb923c',Grappled:'#84cc16',Incapacitated:'#f87171',Invisible:'#60a5fa',
+  Paralyzed:'#e879f9',Petrified:'#6b7280',Poisoned:'#4ade80',Prone:'#fbbf24',
+  Restrained:'#f97316',Stunned:'#c084fc',Unconscious:'#ef4444',
 };
+const TOKEN_EMOJIS = ['⚔️','🛡️','🏹','🧙','🧝','🧟','👹','👺','🐉','🐺','🐗','💀','👻','🔥','❄️','⚡','🌊','🌿','🗡️','🪄','🐍','🦅','🐻','🦁','🐊','👤'];
+const TOKEN_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#6366f1','#a855f7','#ec4899','#14b8a6','#f59e0b','#64748b','#ffffff'];
+const MOD = (s:number) => Math.floor((s-10)/2);
+const FMT_MOD = (s:number) => { const m=MOD(s); return (m>=0?'+':'')+m; };
 
-const TOKEN_EMOJIS = ['⚔️','🛡️','🏹','🧙','🧝','🧟','👹','👺','🐉','🐺','🐗','💀','👻','🔥','❄️','⚡','🌊','🌿','🗡️','🪄'];
-const TOKEN_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#6366f1','#a855f7','#ec4899','#14b8a6','#f59e0b'];
+function hpColor(pct:number){ return pct>0.5?'#22c55e':pct>0.25?'#f59e0b':'#ef4444'; }
 
-function mod(base: number, stat: number) { return Math.floor((stat - 10) / 2); }
-
-// ── Token Dot ─────────────────────────────────────────────────────
-function TokenDot({ token, isSelected, isDragging, onClick, onDragStart, isDM }: {
-  token: MapToken; isSelected: boolean; isDragging: boolean;
-  onClick: () => void; onDragStart: (e: React.DragEvent) => void; isDM: boolean;
+// ── Token dot on grid ─────────────────────────────────────────────
+function TokenDot({ token, selected, dragging, onClick, onDragStart, isDM }:{
+  token:MapToken; selected:boolean; dragging:boolean;
+  onClick:()=>void; onDragStart:(e:React.DragEvent)=>void; isDM:boolean;
 }) {
-  const hpPct = token.max_hp > 0 ? token.hp / token.max_hp : 1;
-  const hpColor = hpPct > 0.5 ? '#22c55e' : hpPct > 0.25 ? '#f59e0b' : '#ef4444';
-  const showHp = isDM || token.visible_to_players;
-
+  const pct = token.max_hp>0 ? token.hp/token.max_hp : 1;
+  const showHp = isDM || token.revealed.hp;
   return (
-    <div
-      draggable={isDM}
-      onDragStart={onDragStart}
-      onClick={onClick}
+    <div draggable={isDM} onDragStart={onDragStart} onClick={onClick} title={isDM||token.visible_to_players?token.name:'???'}
       style={{
-        position: 'absolute', inset: 3,
-        borderRadius: '50%',
-        background: token.is_hidden && !isDM ? 'transparent' : token.color + 'cc',
-        border: `2px solid ${isSelected ? '#fff' : token.color}`,
-        boxShadow: isSelected ? `0 0 0 2px #fff, 0 0 0 4px ${token.color}` : '0 2px 6px rgba(0,0,0,0.5)',
-        cursor: isDM ? 'grab' : 'pointer',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        opacity: (token.is_hidden && !isDM) ? 0 : isDragging ? 0.4 : 1,
-        transition: 'box-shadow 0.15s, opacity 0.15s',
-        overflow: 'hidden',
-        userSelect: 'none',
-      }}
-    >
-      <span style={{ fontSize: 16, lineHeight: 1, pointerEvents: 'none' }}>{token.emoji}</span>
-      {token.conditions.length > 0 && (
-        <div style={{ position: 'absolute', bottom: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#f97316', border: '1px solid rgba(0,0,0,0.3)' }} />
+        position:'absolute',inset:3,borderRadius:'50%',
+        background: token.is_hidden&&!isDM ? 'transparent' : token.color+'bb',
+        border:`2px solid ${selected?'#fff':token.color}`,
+        boxShadow: selected?`0 0 0 2px #fff,0 0 0 4px ${token.color}`:undefined,
+        cursor:isDM?'grab':'pointer',
+        opacity:(token.is_hidden&&!isDM)?0:dragging?0.35:1,
+        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+        overflow:'hidden',userSelect:'none',transition:'box-shadow .15s,opacity .15s',
+      }}>
+      <span style={{fontSize:16,lineHeight:1,pointerEvents:'none'}}>
+        {(!isDM&&token.is_hidden)?'👁':token.emoji}
+      </span>
+      {token.conditions.length>0&&(
+        <div style={{position:'absolute',top:2,right:2,width:7,height:7,borderRadius:'50%',background:'#f97316',border:'1px solid rgba(0,0,0,0.4)'}}/>
       )}
-      {showHp && token.max_hp > 0 && (
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(0,0,0,0.4)' }}>
-          <div style={{ height: '100%', width: `${hpPct * 100}%`, background: hpColor, transition: 'width 0.3s' }} />
+      {showHp&&token.max_hp>0&&(
+        <div style={{position:'absolute',bottom:0,left:0,right:0,height:3,background:'rgba(0,0,0,0.4)'}}>
+          <div style={{height:'100%',width:`${Math.max(0,Math.min(100,pct*100))}%`,background:hpColor(pct),transition:'width .3s'}}/>
         </div>
+      )}
+      {selected&&(
+        <div style={{position:'absolute',inset:-4,borderRadius:'50%',border:'2px dashed #fff',pointerEvents:'none',animation:'spin 4s linear infinite'}}/>
       )}
     </div>
   );
 }
 
-// ── Token Inspector Panel ──────────────────────────────────────────
-function TokenInspector({ token, isDM, onApplyCondition, onRemoveCondition, onUpdateHP, onDelete, onToggleHidden, onClose }: {
-  token: MapToken; isDM: boolean;
-  onApplyCondition: (c: string) => void;
-  onRemoveCondition: (c: string) => void;
-  onUpdateHP: (delta: number, mode: 'damage'|'heal'|'set') => void;
-  onDelete: () => void;
-  onToggleHidden: () => void;
-  onClose: () => void;
+// ── Left panel: Token Detail ──────────────────────────────────────
+function TokenDetailPanel({ token, isDM, notes, userId, userName, campaignId, onUpdateToken, onApplyCond, onRemoveCond, onUpdateHP, onDeleteToken, onToggleHide, onReveal, onClose }:{
+  token:MapToken; isDM:boolean; notes:TokenNote[];
+  userId:string; userName:string; campaignId:string;
+  onUpdateToken:(id:string, u:Partial<MapToken>)=>void;
+  onApplyCond:(c:string)=>void; onRemoveCond:(c:string)=>void;
+  onUpdateHP:(delta:number, mode:'damage'|'heal'|'set')=>void;
+  onDeleteToken:()=>void; onToggleHide:()=>void;
+  onReveal:(field:keyof MapToken['revealed'], val:boolean)=>void;
+  onClose:()=>void;
 }) {
-  const [hpInput, setHpInput] = useState('');
-  const [mode, setMode] = useState<'damage'|'heal'|'set'>('damage');
-  const hpPct = token.max_hp > 0 ? token.hp / token.max_hp : 1;
-  const hpColor = hpPct > 0.5 ? '#22c55e' : hpPct > 0.25 ? '#f59e0b' : '#ef4444';
+  const [hpInput,setHpInput]=useState('');
+  const [hpMode,setHpMode]=useState<'damage'|'heal'|'set'>('damage');
+  const [newNote,setNewNote]=useState('');
+  const [editDesc,setEditDesc]=useState(false);
+  const [descDraft,setDescDraft]=useState(token.description);
+  const [uploadingImg,setUploadingImg]=useState(false);
+  const fileRef=useRef<HTMLInputElement>(null);
+  const pct=token.max_hp>0?token.hp/token.max_hp:1;
 
-  const stats = token.str ? [
-    { label: 'STR', val: token.str }, { label: 'DEX', val: token.dex! },
-    { label: 'CON', val: token.con! }, { label: 'INT', val: token.int! },
-    { label: 'WIS', val: token.wis! }, { label: 'CHA', val: token.cha! },
-  ] : [];
+  async function submitNote(){
+    if(!newNote.trim())return;
+    await supabase.from('token_notes').insert({
+      campaign_id:campaignId, token_key:token.id,
+      author_id:userId, author_name:userName, note:newNote.trim(),
+    });
+    setNewNote('');
+  }
+
+  async function deleteNote(noteId:string){
+    await supabase.from('token_notes').delete().eq('id',noteId);
+  }
+
+  async function uploadImage(file:File){
+    setUploadingImg(true);
+    const ext=file.name.split('.').pop();
+    const path=`token-images/${campaignId}/${token.id}.${ext}`;
+    const { error } = await supabase.storage.from('avatars').upload(path,file,{upsert:true});
+    if(!error){
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      onUpdateToken(token.id,{image_url:data.publicUrl});
+    }
+    setUploadingImg(false);
+  }
+
+  const REVEAL_FIELDS: {key:keyof MapToken['revealed'],label:string}[] = [
+    {key:'hp',label:'HP Bar'},{key:'ac',label:'AC'},{key:'stats',label:'Ability Scores'},
+    {key:'attacks',label:'Attack'},{key:'immunities',label:'Immunities'},{key:'description',label:'Description'},
+  ];
+
+  // What a player sees depends on revealed flags
+  const showHp = isDM || token.revealed.hp;
+  const showAc = isDM || token.revealed.ac;
+  const showStats = isDM || token.revealed.stats;
+  const showAttacks = isDM || token.revealed.attacks;
+  const showImmunities = isDM || token.revealed.immunities;
+  const showDescription = isDM || token.revealed.description;
 
   return (
-    <div style={{
-      position: 'absolute', right: 0, top: 0, width: 240, zIndex: 20,
-      background: 'linear-gradient(160deg, var(--c-surface) 0%, var(--color-obsidian,#0d1117) 100%)',
-      border: '1px solid var(--c-gold-bdr)', borderRadius: 12,
-      boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
-    }}>
+    <div style={{width:280,flexShrink:0,background:'linear-gradient(160deg,#111827,#0d1117)',border:'1px solid var(--c-gold-bdr)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden',maxHeight:'80vh'}}>
       {/* Header */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 20 }}>{token.emoji}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{token.name}</div>
-          <div style={{ fontSize: 10, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            {token.type === 'player' ? 'Player' : token.type === 'npc' ? 'NPC' : 'Object'}
-          </div>
+      <div style={{padding:'12px 14px',borderBottom:'1px solid var(--c-border)',display:'flex',alignItems:'center',gap:10,background:'rgba(212,160,23,0.06)'}}>
+        {/* Token image or emoji */}
+        <div style={{width:48,height:48,borderRadius:'50%',border:`2px solid ${token.color}`,overflow:'hidden',flexShrink:0,background:token.color+'20',
+          display:'flex',alignItems:'center',justifyContent:'center',cursor:isDM?'pointer':undefined,position:'relative'}}
+          onClick={isDM?()=>fileRef.current?.click():undefined}>
+          {token.image_url ? (
+            <img src={token.image_url} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          ) : (
+            <span style={{fontSize:24}}>{token.emoji}</span>
+          )}
+          {isDM&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .15s'}} className="hover-show">📷</div>}
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>✕</button>
+        <input type="file" accept="image/*" ref={fileRef} style={{display:'none'}} onChange={e=>e.target.files?.[0]&&uploadImage(e.target.files[0])}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:14,color:'var(--t-1)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{token.name}</div>
+          <div style={{fontSize:10,color:'var(--t-3)',textTransform:'uppercase',letterSpacing:'0.08em'}}>
+            {token.type==='player'?'Player':token.type==='npc'?`NPC · CR ${token.cr}`:'Object'}
+          </div>
+          {isDM&&<div style={{fontSize:9,color:token.is_hidden?'#f97316':'#22c55e',marginTop:2}}>{token.is_hidden?'👁 Hidden from players':'👁 Visible to players'}</div>}
+        </div>
+        <button onClick={onClose} style={{background:'none',border:'none',color:'var(--t-2)',cursor:'pointer',fontSize:14,padding:'2px 4px',flexShrink:0}}>✕</button>
       </div>
 
-      <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 520, overflowY: 'auto' }}>
-        {/* HP bar */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>HP</span>
-            <span style={{ fontWeight: 900, fontSize: 16, color: hpColor }}>{token.hp}<span style={{ fontSize: 11, color: 'var(--t-2)', fontWeight: 400 }}>/{token.max_hp}</span></span>
+      <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:12}}>
+
+        {/* HP */}
+        {showHp&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+              <span style={{fontSize:10,color:'var(--t-3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em'}}>HP</span>
+              <span style={{fontWeight:900,fontSize:18,color:hpColor(pct)}}>{token.hp}<span style={{fontSize:11,color:'var(--t-3)',fontWeight:400}}>/{token.max_hp}</span></span>
+            </div>
+            <div style={{height:6,borderRadius:3,background:'rgba(255,255,255,0.08)',overflow:'hidden'}}>
+              <div style={{height:'100%',width:`${Math.max(0,Math.min(100,pct*100))}%`,background:hpColor(pct),transition:'width .3s'}}/>
+            </div>
           </div>
-          <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.max(0,Math.min(100,hpPct*100))}%`, background: hpColor, transition: 'width 0.3s, background 0.3s' }} />
-          </div>
-        </div>
+        )}
 
         {/* AC + Speed */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '6px 8px', textAlign: 'center' }}>
-            <div style={{ fontSize: 9, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>AC</div>
-            <div style={{ fontWeight: 900, fontSize: 18, color: '#60a5fa' }}>{token.ac || '—'}</div>
+        <div style={{display:'flex',gap:6}}>
+          {showAc&&<div style={{flex:1,background:'rgba(255,255,255,0.04)',borderRadius:7,padding:'6px 8px',textAlign:'center'}}>
+            <div style={{fontSize:9,color:'var(--t-3)',textTransform:'uppercase',letterSpacing:'0.08em'}}>AC</div>
+            <div style={{fontWeight:900,fontSize:20,color:'#60a5fa'}}>{token.ac}</div>
+          </div>}
+          <div style={{flex:1,background:'rgba(255,255,255,0.04)',borderRadius:7,padding:'6px 8px',textAlign:'center'}}>
+            <div style={{fontSize:9,color:'var(--t-3)',textTransform:'uppercase',letterSpacing:'0.08em'}}>Speed</div>
+            <div style={{fontWeight:900,fontSize:20,color:'var(--c-gold-l)'}}>{token.speed}</div>
           </div>
-          {token.speed && (
-            <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '6px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 9, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Speed</div>
-              <div style={{ fontWeight: 900, fontSize: 18, color: 'var(--c-gold-l)' }}>{token.speed}</div>
+          {showAttacks&&token.attack_name&&(
+            <div style={{flex:2,background:'rgba(239,68,68,0.06)',borderRadius:7,padding:'6px 8px',border:'1px solid rgba(239,68,68,0.2)'}}>
+              <div style={{fontSize:9,color:'#f87171',textTransform:'uppercase',letterSpacing:'0.08em'}}>{token.attack_name}</div>
+              <div style={{fontWeight:700,fontSize:12,color:'var(--t-1)',marginTop:2}}>+{token.attack_bonus} · {token.attack_damage}</div>
             </div>
           )}
         </div>
 
         {/* Ability scores */}
-        {stats.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-            {stats.map(s => (
-              <div key={s.label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '4px 6px', textAlign: 'center' }}>
-                <div style={{ fontSize: 8, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{mod(0, s.val!) >= 0 ? '+' : ''}{mod(0, s.val!)}</div>
-                <div style={{ fontSize: 9, color: 'var(--t-3)' }}>{s.val}</div>
+        {showStats&&(
+          <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:4}}>
+            {(['str','dex','con','int','wis','cha'] as const).map(ab=>(
+              <div key={ab} style={{background:'rgba(255,255,255,0.04)',borderRadius:6,padding:'4px 3px',textAlign:'center'}}>
+                <div style={{fontSize:8,color:'var(--t-3)',textTransform:'uppercase'}}>{ab}</div>
+                <div style={{fontWeight:700,fontSize:13,color:'var(--t-1)'}}>{FMT_MOD(token[ab])}</div>
+                <div style={{fontSize:9,color:'var(--t-3)'}}>{token[ab]}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Active conditions */}
-        {token.conditions.length > 0 && (
+        {/* Immunities */}
+        {showImmunities&&token.immunities&&(
+          <div style={{fontSize:11,color:'#a78bfa',background:'rgba(167,139,250,0.08)',borderRadius:7,padding:'6px 10px',border:'1px solid rgba(167,139,250,0.2)'}}>
+            <span style={{fontWeight:700,color:'var(--t-3)',fontSize:9,textTransform:'uppercase',letterSpacing:'0.08em'}}>Immunities: </span>
+            {token.immunities}
+          </div>
+        )}
+
+        {/* Conditions */}
+        {token.conditions.length>0&&(
           <div>
-            <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5 }}>Conditions</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {token.conditions.map(c => (
-                <span key={c} onClick={isDM ? () => onRemoveCondition(c) : undefined} style={{
-                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-                  background: (CONDITION_COLORS[c] ?? '#6b7280') + '25',
-                  border: `1px solid ${(CONDITION_COLORS[c] ?? '#6b7280')}60`,
-                  color: CONDITION_COLORS[c] ?? '#9ca3af',
-                  cursor: isDM ? 'pointer' : 'default',
-                }}>
-                  {c} {isDM && '✕'}
-                </span>
+            <div style={{fontSize:10,color:'var(--t-3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}}>Conditions</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+              {token.conditions.map(c=>(
+                <span key={c} onClick={isDM?()=>onRemoveCond(c):undefined} style={{
+                  fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:99,
+                  background:(COND_COLOR[c]??'#6b7280')+'22',border:`1px solid ${(COND_COLOR[c]??'#6b7280')}55`,
+                  color:COND_COLOR[c]??'#9ca3af',cursor:isDM?'pointer':undefined,
+                }}>{c}{isDM&&' ✕'}</span>
               ))}
             </div>
           </div>
         )}
 
-        {/* DM Controls */}
-        {isDM && (
+        {/* Description */}
+        {showDescription&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
+              <div style={{fontSize:10,color:'var(--t-3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em'}}>Description</div>
+              {isDM&&<button onClick={()=>{setEditDesc(v=>!v);setDescDraft(token.description)}} style={{fontSize:9,background:'none',border:'none',color:'var(--c-gold-l)',cursor:'pointer'}}>
+                {editDesc?'Cancel':'Edit'}
+              </button>}
+            </div>
+            {editDesc&&isDM ? (
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                <textarea value={descDraft} onChange={e=>setDescDraft(e.target.value)} rows={4}
+                  style={{fontSize:12,resize:'vertical',fontFamily:'var(--ff-body)'}}/>
+                <button onClick={()=>{onUpdateToken(token.id,{description:descDraft});setEditDesc(false)}}
+                  className="btn-gold btn-sm" style={{alignSelf:'flex-end'}}>Save</button>
+              </div>
+            ) : (
+              <p style={{fontSize:12,color:'var(--t-2)',lineHeight:1.6,margin:0,fontFamily:'var(--ff-body)'}}>
+                {token.description||<span style={{color:'var(--t-3)',fontStyle:'italic'}}>No description yet.</span>}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── DM Controls ── */}
+        {isDM&&(
           <>
-            {/* HP controls */}
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5 }}>Adjust HP</div>
-              <div style={{ display: 'flex', gap: 4, marginBottom: 5 }}>
-                {(['damage','heal','set'] as const).map(m => (
-                  <button key={m} onClick={() => setMode(m)} style={{
-                    flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 4px', borderRadius: 5, cursor: 'pointer',
-                    border: mode === m ? `1px solid ${m === 'damage' ? '#ef4444' : m === 'heal' ? '#22c55e' : '#60a5fa'}` : '1px solid var(--c-border)',
-                    background: mode === m ? (m === 'damage' ? 'rgba(239,68,68,0.15)' : m === 'heal' ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.15)') : 'transparent',
-                    color: mode === m ? (m === 'damage' ? '#ef4444' : m === 'heal' ? '#22c55e' : '#60a5fa') : 'var(--t-2)',
+            {/* HP adjust */}
+            <div style={{borderTop:'1px solid var(--c-border)',paddingTop:10}}>
+              <div style={{fontSize:10,color:'var(--c-gold-l)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>DM Controls</div>
+              <div style={{display:'flex',gap:4,marginBottom:6}}>
+                {(['damage','heal','set'] as const).map(m=>(
+                  <button key={m} onClick={()=>setHpMode(m)} style={{
+                    flex:1,fontSize:9,fontWeight:700,padding:'3px 4px',borderRadius:5,cursor:'pointer',
+                    border:`1px solid ${m==='damage'?'rgba(239,68,68,0.4)':m==='heal'?'rgba(34,197,94,0.4)':'rgba(96,165,250,0.4)'}`,
+                    background:hpMode===m?(m==='damage'?'rgba(239,68,68,0.15)':m==='heal'?'rgba(34,197,94,0.15)':'rgba(96,165,250,0.15)'):'transparent',
+                    color:hpMode===m?(m==='damage'?'#ef4444':m==='heal'?'#22c55e':'#60a5fa'):'var(--t-2)',
                   }}>{m}</button>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <input
-                  type="number" value={hpInput} onChange={e => setHpInput(e.target.value)}
-                  placeholder="Amount"
-                  style={{ flex: 1, fontSize: 12, padding: '5px 8px' }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && hpInput) { onUpdateHP(parseInt(hpInput), mode); setHpInput(''); }
-                  }}
-                />
-                <button
-                  onClick={() => { if (hpInput) { onUpdateHP(parseInt(hpInput), mode); setHpInput(''); } }}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
-                    border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}
-                >Apply</button>
+              <div style={{display:'flex',gap:5}}>
+                <input type="number" value={hpInput} onChange={e=>setHpInput(e.target.value)} placeholder="Amount"
+                  style={{flex:1,fontSize:12,padding:'5px 8px'}}
+                  onKeyDown={e=>{ if(e.key==='Enter'&&hpInput){onUpdateHP(parseInt(hpInput),hpMode);setHpInput('');} }}/>
+                <button onClick={()=>{if(hpInput){onUpdateHP(parseInt(hpInput),hpMode);setHpInput('');}}}
+                  style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,cursor:'pointer',
+                    border:'1px solid var(--c-gold-bdr)',background:'var(--c-gold-bg)',color:'var(--c-gold-l)'}}>Apply</button>
               </div>
             </div>
 
-            {/* Add condition */}
+            {/* Apply conditions */}
             <div>
-              <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5 }}>Apply Condition</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                {ALL_CONDITIONS.filter(c => !token.conditions.includes(c)).map(c => (
-                  <button key={c} onClick={() => onApplyCondition(c)} style={{
-                    fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 99, cursor: 'pointer',
-                    border: `1px solid ${(CONDITION_COLORS[c] ?? '#6b7280')}50`,
-                    background: (CONDITION_COLORS[c] ?? '#6b7280') + '15',
-                    color: CONDITION_COLORS[c] ?? '#9ca3af',
+              <div style={{fontSize:10,color:'var(--t-3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}}>Apply Condition</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                {ALL_CONDITIONS.filter(c=>!token.conditions.includes(c)).map(c=>(
+                  <button key={c} onClick={()=>onApplyCond(c)} style={{
+                    fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:99,cursor:'pointer',
+                    border:`1px solid ${(COND_COLOR[c]??'#6b7280')}44`,
+                    background:(COND_COLOR[c]??'#6b7280')+'11',color:COND_COLOR[c]??'#9ca3af',
                   }}>{c}</button>
                 ))}
               </div>
             </div>
 
-            {/* Token visibility + delete */}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={onToggleHidden} style={{
-                flex: 1, fontSize: 10, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
-                border: '1px solid var(--c-border)', background: token.is_hidden ? 'rgba(255,255,255,0.08)' : 'transparent',
-                color: token.is_hidden ? 'var(--t-1)' : 'var(--t-2)',
-              }}>{token.is_hidden ? '👁 Show' : '🙈 Hide'}</button>
-              <button onClick={onDelete} style={{
-                flex: 1, fontSize: 10, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
-                border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.1)', color: '#ef4444',
-              }}>Remove</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Add Token Dialog ───────────────────────────────────────────────
-function AddTokenDialog({ playerChars, onAdd, onClose }: {
-  playerChars: PlayerChar[];
-  onAdd: (token: Omit<MapToken, 'col' | 'row'>) => void;
-  onClose: () => void;
-}) {
-  const [type, setType] = useState<'player'|'npc'>('npc');
-  const [name, setName] = useState('');
-  const [selectedChar, setSelectedChar] = useState<string>('');
-  const [hp, setHp] = useState('10');
-  const [maxHp, setMaxHp] = useState('10');
-  const [ac, setAc] = useState('12');
-  const [emoji, setEmoji] = useState('👹');
-  const [color, setColor] = useState(TOKEN_COLORS[0]);
-  const [str, setStr] = useState('10'); const [dex, setDex] = useState('10');
-  const [con, setCon] = useState('10'); const [int_, setInt] = useState('10');
-  const [wis, setWis] = useState('10'); const [cha, setCha] = useState('10');
-
-  function submit() {
-    if (type === 'player' && selectedChar) {
-      const pc = playerChars.find(p => p.id === selectedChar);
-      if (!pc) return;
-      onAdd({
-        id: crypto.randomUUID(), name: pc.name, type: 'player',
-        character_id: pc.id, color, emoji: '🧝',
-        hp: pc.current_hp, max_hp: pc.max_hp, ac: pc.armor_class,
-        conditions: pc.active_conditions ?? [],
-        str: pc.strength, dex: pc.dexterity, con: pc.constitution,
-        int: pc.intelligence, wis: pc.wisdom, cha: pc.charisma,
-        speed: pc.speed, visible_to_players: true, is_hidden: false,
-      });
-    } else {
-      if (!name.trim()) return;
-      onAdd({
-        id: crypto.randomUUID(), name: name.trim(), type: 'npc',
-        color, emoji, hp: parseInt(hp)||10, max_hp: parseInt(maxHp)||10,
-        ac: parseInt(ac)||12, conditions: [],
-        str: parseInt(str)||10, dex: parseInt(dex)||10, con: parseInt(con)||10,
-        int: parseInt(int_)||10, wis: parseInt(wis)||10, cha: parseInt(cha)||10,
-        speed: 30, visible_to_players: true, is_hidden: false,
-      });
-    }
-    onClose();
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-      onClick={onClose}>
-      <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 14, width: '100%', maxWidth: 460, padding: 20, boxShadow: 'var(--shadow-lg)' }}
-        onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--c-gold-l)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Add Token</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', fontSize: 16 }}>✕</button>
-        </div>
-
-        {/* Type toggle */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          {(['player','npc'] as const).map(t => (
-            <button key={t} onClick={() => setType(t)} style={{
-              flex: 1, fontWeight: 700, fontSize: 12, padding: '7px', borderRadius: 7, cursor: 'pointer',
-              border: type === t ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
-              background: type === t ? 'var(--c-gold-bg)' : 'transparent',
-              color: type === t ? 'var(--c-gold-l)' : 'var(--t-2)',
-            }}>{t === 'player' ? '🧝 Player Character' : '👹 NPC / Monster'}</button>
-          ))}
-        </div>
-
-        {type === 'player' ? (
-          <div>
-            <label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 4 }}>Select Player</label>
-            <select value={selectedChar} onChange={e => setSelectedChar(e.target.value)}
-              style={{ width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 7, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-1)' }}>
-              <option value="">Choose character...</option>
-              {playerChars.map(pc => (
-                <option key={pc.id} value={pc.id}>{pc.name} — {pc.class_name} {pc.level}</option>
-              ))}
-            </select>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Reveal controls */}
             <div>
-              <label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 4 }}>Name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Goblin 1" style={{ width: '100%', fontSize: 13 }} autoFocus />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              <div><label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 3 }}>HP</label>
-                <input type="number" value={hp} onChange={e => { setHp(e.target.value); setMaxHp(e.target.value); }} style={{ width: '100%', fontSize: 13 }} /></div>
-              <div><label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 3 }}>Max HP</label>
-                <input type="number" value={maxHp} onChange={e => setMaxHp(e.target.value)} style={{ width: '100%', fontSize: 13 }} /></div>
-              <div><label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 3 }}>AC</label>
-                <input type="number" value={ac} onChange={e => setAc(e.target.value)} style={{ width: '100%', fontSize: 13 }} /></div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 5 }}>
-              {[['STR',str,setStr],['DEX',dex,setDex],['CON',con,setCon],['INT',int_,setInt],['WIS',wis,setWis],['CHA',cha,setCha]].map(([label, val, setter]) => (
-                <div key={label as string}><label style={{ fontSize: 9, color: 'var(--t-3)', display: 'block', marginBottom: 2 }}>{label as string}</label>
-                  <input type="number" value={val as string} onChange={e => (setter as (v:string)=>void)(e.target.value)} style={{ width: '100%', fontSize: 11, padding: '3px 4px' }} /></div>
-              ))}
-            </div>
-            {/* Emoji picker */}
-            <div>
-              <label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 4 }}>Icon</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {TOKEN_EMOJIS.map(e => (
-                  <button key={e} onClick={() => setEmoji(e)} style={{
-                    width: 34, height: 34, fontSize: 18, borderRadius: 7, cursor: 'pointer',
-                    border: emoji === e ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
-                    background: emoji === e ? 'var(--c-gold-bg)' : 'transparent',
-                  }}>{e}</button>
+              <div style={{fontSize:10,color:'var(--t-3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Reveal to Players</div>
+              <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                {REVEAL_FIELDS.map(({key,label})=>(
+                  <label key={key} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:11,color:'var(--t-2)'}}>
+                    <div onClick={()=>onReveal(key,!token.revealed[key])} style={{
+                      width:32,height:18,borderRadius:9,position:'relative',cursor:'pointer',transition:'background .2s',
+                      background:token.revealed[key]?'var(--c-gold)':'rgba(255,255,255,0.12)',flexShrink:0,
+                    }}>
+                      <div style={{
+                        position:'absolute',top:2,left:token.revealed[key]?14:2,width:14,height:14,
+                        borderRadius:'50%',background:'#fff',transition:'left .2s',
+                      }}/>
+                    </div>
+                    {label}
+                    {token.revealed[key]&&<span style={{fontSize:9,color:'var(--c-gold-l)'}}>✓ Revealed</span>}
+                  </label>
                 ))}
               </div>
             </div>
-          </div>
+
+            {/* Token actions */}
+            <div style={{display:'flex',gap:5}}>
+              <button onClick={onToggleHide} style={{flex:1,fontSize:10,fontWeight:700,padding:'5px 6px',borderRadius:6,cursor:'pointer',
+                border:'1px solid var(--c-border)',background:token.is_hidden?'rgba(255,255,255,0.06)':'transparent',color:'var(--t-2)'}}>
+                {token.is_hidden?'👁 Show':'🙈 Hide'}
+              </button>
+              <button onClick={onDeleteToken} style={{flex:1,fontSize:10,fontWeight:700,padding:'5px 6px',borderRadius:6,cursor:'pointer',
+                border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.08)',color:'#ef4444'}}>Remove</button>
+            </div>
+          </>
         )}
 
-        {/* Color */}
-        <div style={{ marginTop: 10 }}>
-          <label style={{ fontSize: 11, color: 'var(--t-3)', display: 'block', marginBottom: 4 }}>Token Color</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {TOKEN_COLORS.map(c => (
-              <button key={c} onClick={() => setColor(c)} style={{
-                width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer',
-                border: color === c ? '3px solid #fff' : '2px solid transparent',
-              }} />
-            ))}
+        {/* ── Party Notes ── */}
+        <div style={{borderTop:'1px solid var(--c-border)',paddingTop:10}}>
+          <div style={{fontSize:10,color:'var(--t-3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Party Notes</div>
+          {notes.map(n=>(
+            <div key={n.id} style={{background:'rgba(255,255,255,0.04)',borderRadius:7,padding:'7px 10px',marginBottom:5}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                <span style={{fontSize:10,fontWeight:700,color:'var(--c-gold-l)'}}>{n.author_name}</span>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span style={{fontSize:9,color:'var(--t-3)'}}>{new Date(n.created_at).toLocaleDateString()}</span>
+                  {n.author_id===userId&&<button onClick={()=>deleteNote(n.id)} style={{fontSize:9,background:'none',border:'none',color:'var(--t-3)',cursor:'pointer'}}>✕</button>}
+                </div>
+              </div>
+              <p style={{margin:0,fontSize:12,color:'var(--t-2)',lineHeight:1.5,fontFamily:'var(--ff-body)'}}>{n.note}</p>
+            </div>
+          ))}
+          <div style={{display:'flex',gap:5,marginTop:4}}>
+            <input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Add a note for the party…"
+              style={{flex:1,fontSize:12}} onKeyDown={e=>e.key==='Enter'&&submitNote()}/>
+            <button onClick={submitNote} disabled={!newNote.trim()}
+              style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,cursor:'pointer',
+                border:'1px solid var(--c-gold-bdr)',background:'var(--c-gold-bg)',color:'var(--c-gold-l)'}}>Add</button>
           </div>
         </div>
-
-        <button onClick={submit} className="btn-gold" style={{ width: '100%', marginTop: 16, fontWeight: 700 }}>
-          Add to Map
-        </button>
       </div>
     </div>
   );
 }
 
-// ── Main BattleMap Component ───────────────────────────────────────
-export default function BattleMap({ campaignId, isDM, userId, playerCharacters = [], onConditionApplied }: BattleMapProps) {
-  const [maps, setMaps] = useState<BattleMapData[]>([]);
-  const [activeMap, setActiveMap] = useState<BattleMapData | null>(null);
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
-  const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
-  const [showAddToken, setShowAddToken] = useState(false);
-  const [showNewMapForm, setShowNewMapForm] = useState(false);
-  const [newMapName, setNewMapName] = useState('');
-  const [newMapCols, setNewMapCols] = useState('20');
-  const [newMapRows, setNewMapRows] = useState('15');
-  const [saving, setSaving] = useState(false);
-  const dropTarget = useRef<{ col: number; row: number } | null>(null);
+// ── Right panel: NPC Roster (DM only) ────────────────────────────
+function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
+  campaignId:string; userId:string;
+  onAddToMap:(npc:DMRosterNPC)=>void; onClose:()=>void;
+}) {
+  const [roster,setRoster]=useState<DMRosterNPC[]>([]);
+  const [search,setSearch]=useState('');
+  const [tab,setTab]=useState<'mine'|'stock'>('mine');
+  const [editNPC,setEditNPC]=useState<DMRosterNPC|null>(null);
+  const [loading,setLoading]=useState(true);
 
-  // Load maps on mount
-  useEffect(() => {
+  useEffect(()=>{ loadRoster(); },[]);
+
+  async function loadRoster(){
+    setLoading(true);
+    const {data}=await supabase.from('dm_npc_roster').select('*').eq('owner_id',userId).order('updated_at',{ascending:false});
+    if(data) setRoster(data);
+    setLoading(false);
+  }
+
+  async function saveNPC(npc:Partial<DMRosterNPC>&{name:string}){
+    if(npc.id){
+      await supabase.from('dm_npc_roster').update({...npc,updated_at:new Date().toISOString()}).eq('id',npc.id);
+    } else {
+      await supabase.from('dm_npc_roster').insert({...npc,owner_id:userId,campaign_id:campaignId,times_used:0});
+    }
+    loadRoster();
+    setEditNPC(null);
+  }
+
+  async function deleteNPC(id:string){
+    await supabase.from('dm_npc_roster').delete().eq('id',id);
+    setRoster(r=>r.filter(n=>n.id!==id));
+  }
+
+  function cloneMonster(m:typeof MONSTERS[0]){
+    const npc:Partial<DMRosterNPC>={
+      name:m.name, type:m.type, cr:m.cr, size:m.size,
+      hp:m.hp, max_hp:m.hp, ac:m.ac, speed:m.speed??30,
+      str:m.str, dex:m.dex, con:m.con, int:m.int, wis:m.wis, cha:m.cha,
+      attack_name:m.attack_name, attack_bonus:m.attack_bonus, attack_damage:m.attack_damage, xp:m.xp,
+      description:(m as any).traits||'', traits:(m as any).traits||'', immunities:'',
+      emoji:'👹', color:'#ef4444', source_monster_id:m.id,
+    };
+    setEditNPC(npc as DMRosterNPC);
+  }
+
+  const filteredRoster = roster.filter(n=>n.name.toLowerCase().includes(search.toLowerCase())||n.type.toLowerCase().includes(search.toLowerCase()));
+  const filteredStock = MONSTERS.filter(m=>m.name.toLowerCase().includes(search.toLowerCase())||m.type.toLowerCase().includes(search.toLowerCase()));
+
+  if(editNPC) return (
+    <NPCEditForm npc={editNPC} onSave={saveNPC} onCancel={()=>setEditNPC(null)}/>
+  );
+
+  return (
+    <div style={{width:260,flexShrink:0,background:'#0d1117',border:'1px solid var(--c-border)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden',maxHeight:'80vh'}}>
+      <div style={{padding:'10px 14px',borderBottom:'1px solid var(--c-border)',display:'flex',alignItems:'center',gap:8}}>
+        <div style={{fontWeight:800,fontSize:12,color:'var(--c-gold-l)',textTransform:'uppercase',letterSpacing:'0.1em',flex:1}}>NPC Roster</div>
+        <button onClick={()=>setEditNPC({} as DMRosterNPC)} style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:5,cursor:'pointer',
+          border:'1px solid var(--c-gold-bdr)',background:'var(--c-gold-bg)',color:'var(--c-gold-l)'}}>+ New</button>
+        <button onClick={onClose} style={{background:'none',border:'none',color:'var(--t-2)',cursor:'pointer',fontSize:13}}>✕</button>
+      </div>
+
+      {/* Search */}
+      <div style={{padding:'8px 12px',borderBottom:'1px solid var(--c-border)'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search NPCs & monsters…" style={{width:'100%',fontSize:12}}/>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:'flex',borderBottom:'1px solid var(--c-border)'}}>
+        {(['mine','stock'] as const).map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{
+            flex:1,fontSize:11,fontWeight:700,padding:'7px 4px',cursor:'pointer',
+            border:'none',borderBottom:tab===t?`2px solid var(--c-gold)`:undefined,
+            background:'transparent',color:tab===t?'var(--c-gold-l)':'var(--t-2)',
+          }}>{t==='mine'?`My NPCs (${roster.length})`:`SRD Library (${MONSTERS.length})`}</button>
+        ))}
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'6px 8px',display:'flex',flexDirection:'column',gap:4}}>
+        {loading&&tab==='mine'&&<div style={{textAlign:'center',padding:'20px 0',color:'var(--t-3)',fontSize:12}}>Loading…</div>}
+
+        {tab==='mine'&&!loading&&filteredRoster.map(npc=>(
+          <div key={npc.id} style={{background:'rgba(255,255,255,0.04)',borderRadius:8,padding:'8px 10px',border:'1px solid var(--c-border)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+              <span style={{fontSize:16}}>{npc.emoji}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:12,color:'var(--t-1)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{npc.name}</div>
+                <div style={{fontSize:9,color:'var(--t-3)'}}>{npc.type} · CR {npc.cr} · HP {npc.hp} · AC {npc.ac}</div>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:4}}>
+              <button onClick={()=>onAddToMap(npc)} style={{flex:2,fontSize:9,fontWeight:700,padding:'3px 6px',borderRadius:5,cursor:'pointer',
+                border:'1px solid var(--c-gold-bdr)',background:'var(--c-gold-bg)',color:'var(--c-gold-l)'}}>Add to Map</button>
+              <button onClick={()=>setEditNPC(npc)} style={{flex:1,fontSize:9,fontWeight:700,padding:'3px 6px',borderRadius:5,cursor:'pointer',
+                border:'1px solid var(--c-border)',background:'transparent',color:'var(--t-2)'}}>Edit</button>
+              <button onClick={()=>deleteNPC(npc.id)} style={{flex:1,fontSize:9,fontWeight:700,padding:'3px 6px',borderRadius:5,cursor:'pointer',
+                border:'1px solid rgba(239,68,68,0.3)',background:'transparent',color:'#ef4444'}}>Del</button>
+            </div>
+          </div>
+        ))}
+
+        {tab==='mine'&&!loading&&filteredRoster.length===0&&(
+          <div style={{textAlign:'center',padding:'20px 0',color:'var(--t-3)',fontSize:12}}>
+            {search?`No results for "${search}"`:'No NPCs saved yet. Clone from library or create new.'}
+          </div>
+        )}
+
+        {tab==='stock'&&filteredStock.map(m=>(
+          <div key={m.id} style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'7px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
+            <div style={{fontWeight:700,fontSize:12,color:'var(--t-1)'}}>{m.name}</div>
+            <div style={{fontSize:9,color:'var(--t-3)',marginBottom:4}}>{m.type} · CR {m.cr} · HP {m.hp} · AC {m.ac}</div>
+            <div style={{display:'flex',gap:4}}>
+              <button onClick={()=>{
+                const rosterNpc:DMRosterNPC={
+                  id:'',owner_id:userId,campaign_id:campaignId,
+                  name:m.name,type:m.type,cr:m.cr,size:m.size,
+                  hp:m.hp,max_hp:m.hp,ac:m.ac,speed:m.speed??30,
+                  str:m.str,dex:m.dex,con:m.con,int:m.int,wis:m.wis,cha:m.cha,
+                  attack_name:m.attack_name,attack_bonus:m.attack_bonus,attack_damage:m.attack_damage,xp:m.xp,
+                  description:'',traits:(m as any).traits||'',immunities:'',
+                  emoji:'👹',color:'#ef4444',source_monster_id:m.id,times_used:0,
+                };
+                onAddToMap(rosterNpc);
+              }} style={{flex:2,fontSize:9,fontWeight:700,padding:'3px 6px',borderRadius:5,cursor:'pointer',
+                border:'1px solid rgba(96,165,250,0.4)',background:'rgba(96,165,250,0.1)',color:'#60a5fa'}}>Add to Map</button>
+              <button onClick={()=>cloneMonster(m)} style={{flex:2,fontSize:9,fontWeight:700,padding:'3px 6px',borderRadius:5,cursor:'pointer',
+                border:'1px solid var(--c-gold-bdr)',background:'var(--c-gold-bg)',color:'var(--c-gold-l)'}}>Clone → Mine</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── NPC Edit Form ─────────────────────────────────────────────────
+function NPCEditForm({ npc, onSave, onCancel }:{
+  npc:Partial<DMRosterNPC>; onSave:(n:Partial<DMRosterNPC>&{name:string})=>void; onCancel:()=>void;
+}) {
+  const [name,setName]=useState(npc.name||'');
+  const [type,setType]=useState(npc.type||'Humanoid');
+  const [cr,setCr]=useState(npc.cr||'1');
+  const [hp,setHp]=useState(String(npc.hp||10));
+  const [ac,setAc]=useState(String(npc.ac||12));
+  const [speed,setSpeed]=useState(String(npc.speed||30));
+  const [str,setStr]=useState(String(npc.str||10)); const [dex,setDex]=useState(String(npc.dex||10));
+  const [con,setCon]=useState(String(npc.con||10)); const [int_,setInt]=useState(String(npc.int||10));
+  const [wis,setWis]=useState(String(npc.wis||10)); const [cha,setCha]=useState(String(npc.cha||10));
+  const [atk,setAtk]=useState(npc.attack_name||'Strike'); const [atkBonus,setAtkBonus]=useState(String(npc.attack_bonus||3));
+  const [atkDmg,setAtkDmg]=useState(npc.attack_damage||'1d6'); const [xp,setXp]=useState(String(npc.xp||100));
+  const [desc,setDesc]=useState(npc.description||''); const [traits,setTraits]=useState(npc.traits||'');
+  const [immunities,setImmunities]=useState(npc.immunities||'');
+  const [emoji,setEmoji]=useState(npc.emoji||'👹'); const [color,setColor]=useState(npc.color||'#ef4444');
+
+  function submit(){
+    if(!name.trim())return;
+    onSave({...npc,name,type,cr,hp:parseInt(hp)||10,max_hp:parseInt(hp)||10,ac:parseInt(ac)||12,
+      speed:parseInt(speed)||30,str:parseInt(str)||10,dex:parseInt(dex)||10,con:parseInt(con)||10,
+      int:parseInt(int_)||10,wis:parseInt(wis)||10,cha:parseInt(cha)||10,
+      attack_name:atk,attack_bonus:parseInt(atkBonus)||3,attack_damage:atkDmg,xp:parseInt(xp)||100,
+      description:desc,traits,immunities,emoji,color,
+    });
+  }
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:8}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+        <div style={{fontWeight:800,fontSize:12,color:'var(--c-gold-l)',textTransform:'uppercase'}}>
+          {npc.id?'Edit NPC':'New NPC'}
+        </div>
+        <button onClick={onCancel} style={{background:'none',border:'none',color:'var(--t-2)',cursor:'pointer',fontSize:12}}>← Back</button>
+      </div>
+
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Name *" style={{fontSize:13,fontWeight:700}} autoFocus/>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6}}>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Type</label>
+          <input value={type} onChange={e=>setType(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>CR</label>
+          <input value={cr} onChange={e=>setCr(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>XP</label>
+          <input type="number" value={xp} onChange={e=>setXp(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6}}>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>HP</label>
+          <input type="number" value={hp} onChange={e=>setHp(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>AC</label>
+          <input type="number" value={ac} onChange={e=>setAc(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Speed</label>
+          <input type="number" value={speed} onChange={e=>setSpeed(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:4}}>
+        {[['STR',str,setStr],['DEX',dex,setDex],['CON',con,setCon],['INT',int_,setInt],['WIS',wis,setWis],['CHA',cha,setCha]].map(([l,v,s])=>(
+          <div key={l as string}><label style={{fontSize:8,color:'var(--t-3)',display:'block',marginBottom:2}}>{l as string}</label>
+            <input type="number" value={v as string} onChange={e=>(s as (v:string)=>void)(e.target.value)} style={{width:'100%',fontSize:10,padding:'2px 3px'}}/></div>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 2fr',gap:6}}>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Attack Name</label>
+          <input value={atk} onChange={e=>setAtk(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Bonus</label>
+          <input type="number" value={atkBonus} onChange={e=>setAtkBonus(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+        <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Damage</label>
+          <input value={atkDmg} onChange={e=>setAtkDmg(e.target.value)} style={{width:'100%',fontSize:11}}/></div>
+      </div>
+      <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Immunities (e.g. sleep, charm, poison)</label>
+        <input value={immunities} onChange={e=>setImmunities(e.target.value)} style={{width:'100%',fontSize:12}}/></div>
+      <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Description</label>
+        <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3} style={{width:'100%',fontSize:11,resize:'vertical'}}/></div>
+      <div><label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:2}}>Traits & Abilities</label>
+        <textarea value={traits} onChange={e=>setTraits(e.target.value)} rows={3} style={{width:'100%',fontSize:11,resize:'vertical'}}/></div>
+      <div>
+        <label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:4}}>Icon</label>
+        <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+          {TOKEN_EMOJIS.map(e=>(
+            <button key={e} onClick={()=>setEmoji(e)} style={{width:28,height:28,fontSize:14,borderRadius:5,cursor:'pointer',
+              border:emoji===e?'2px solid var(--c-gold)':'1px solid var(--c-border)',background:emoji===e?'var(--c-gold-bg)':'transparent'}}>{e}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label style={{fontSize:9,color:'var(--t-3)',display:'block',marginBottom:4}}>Color</label>
+        <div style={{display:'flex',gap:5}}>
+          {TOKEN_COLORS.map(c=>(
+            <button key={c} onClick={()=>setColor(c)} style={{width:22,height:22,borderRadius:'50%',background:c,cursor:'pointer',
+              border:color===c?'3px solid #fff':'2px solid transparent',flexShrink:0}}/>
+          ))}
+        </div>
+      </div>
+      <button onClick={submit} className="btn-gold" style={{marginTop:4,fontWeight:700}}>
+        {npc.id?'Save Changes':'Create NPC'}
+      </button>
+    </div>
+  );
+}
+
+// ── Main BattleMap ─────────────────────────────────────────────────
+export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[], onConditionApplied }:BattleMapProps) {
+  const [maps,setMaps]=useState<BattleMapData[]>([]);
+  const [activeMap,setActiveMap]=useState<BattleMapData|null>(null);
+  const [selectedTokenId,setSelectedTokenId]=useState<string|null>(null);
+  const [draggingTokenId,setDraggingTokenId]=useState<string|null>(null);
+  const [tokenNotes,setTokenNotes]=useState<TokenNote[]>([]);
+  const [showRoster,setShowRoster]=useState(false);
+  const [showAddPlayer,setShowAddPlayer]=useState(false);
+  const [saving,setSaving]=useState(false);
+
+  // user display name
+  const [userName,setUserName]=useState('Player');
+  useEffect(()=>{
+    if(userId) supabase.from('profiles').select('display_name,email').eq('id',userId).single()
+      .then(({data})=>{ if(data) setUserName(data.display_name||data.email?.split('@')[0]||'Player'); });
+  },[userId]);
+
+  // Load maps + realtime
+  useEffect(()=>{
     loadMaps();
-    const channel = supabase.channel(`battle_maps:${campaignId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'battle_maps', filter: `campaign_id=eq.${campaignId}` }, payload => {
-        if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-          const updated = payload.new as BattleMapData;
-          setMaps(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m));
-          setActiveMap(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
-        } else if (payload.eventType === 'DELETE') {
-          setMaps(prev => prev.filter(m => m.id !== payload.old.id));
-          setActiveMap(prev => prev?.id === payload.old.id ? null : prev);
+    const ch=supabase.channel(`bmaps:${campaignId}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'battle_maps',filter:`campaign_id=eq.${campaignId}`},p=>{
+        if(p.eventType==='UPDATE'||p.eventType==='INSERT'){
+          const u=p.new as BattleMapData;
+          setMaps(prev=>prev.map(m=>m.id===u.id?{...m,...u}:m));
+          setActiveMap(prev=>prev?.id===u.id?{...prev,...u}:prev);
         }
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [campaignId]);
+    return ()=>{ supabase.removeChannel(ch); };
+  },[campaignId]);
 
-  async function loadMaps() {
-    const { data } = await supabase.from('battle_maps').select('*').eq('campaign_id', campaignId).order('created_at');
-    if (data) {
+  // Load notes for selected token
+  useEffect(()=>{
+    if(!selectedTokenId||!activeMap) return;
+    loadNotes(selectedTokenId);
+    const ch=supabase.channel(`notes:${selectedTokenId}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'token_notes',
+        filter:`campaign_id=eq.${campaignId}`},()=>loadNotes(selectedTokenId))
+      .subscribe();
+    return ()=>{ supabase.removeChannel(ch); };
+  },[selectedTokenId,campaignId]);
+
+  async function loadMaps(){
+    const {data}=await supabase.from('battle_maps').select('*').eq('campaign_id',campaignId).order('created_at');
+    if(data){
       setMaps(data);
-      const active = data.find(m => m.active) ?? data[0] ?? null;
+      const active=data.find(m=>m.active)??data[0]??null;
       setActiveMap(active);
     }
   }
 
-  async function saveTokens(tokens: MapToken[]) {
-    if (!activeMap) return;
+  async function loadNotes(tokenKey:string){
+    const {data}=await supabase.from('token_notes').select('*').eq('campaign_id',campaignId).eq('token_key',tokenKey).order('created_at');
+    if(data) setTokenNotes(data);
+  }
+
+  async function saveTokens(tokens:MapToken[]){
+    if(!activeMap)return;
     setSaving(true);
-    await supabase.from('battle_maps').update({ tokens }).eq('id', activeMap.id);
+    await supabase.from('battle_maps').update({tokens}).eq('id',activeMap.id);
     setSaving(false);
   }
 
-  async function createMap() {
-    if (!newMapName.trim()) return;
-    const { data } = await supabase.from('battle_maps').insert({
-      campaign_id: campaignId,
-      name: newMapName.trim(),
-      image_url: '',
-      grid_cols: parseInt(newMapCols) || 20,
-      grid_rows: parseInt(newMapRows) || 15,
-      grid_size: 48,
-      tokens: [],
-      active: maps.length === 0,
+  async function createMap(name:string,cols:number,rows:number){
+    const {data}=await supabase.from('battle_maps').insert({
+      campaign_id:campaignId,name,image_url:'',grid_cols:cols,grid_rows:rows,grid_size:48,
+      tokens:[],active:maps.length===0,map_active_for_players:false,background_color:'#0d1117',
     }).select().single();
-    if (data) {
-      setMaps(prev => [...prev, data]);
-      setActiveMap(data);
-      setShowNewMapForm(false);
-      setNewMapName('');
-    }
+    if(data){ setMaps(p=>[...p,data]); setActiveMap(data); }
   }
 
-  async function setMapActive(mapId: string) {
-    await supabase.from('battle_maps').update({ active: false }).eq('campaign_id', campaignId);
-    await supabase.from('battle_maps').update({ active: true }).eq('id', mapId);
-    setMaps(prev => prev.map(m => ({ ...m, active: m.id === mapId })));
-    const map = maps.find(m => m.id === mapId);
-    if (map) setActiveMap({ ...map, active: true });
-  }
-
-  function updateToken(tokenId: string, updates: Partial<MapToken>) {
-    if (!activeMap) return;
-    const tokens = activeMap.tokens.map(t => t.id === tokenId ? { ...t, ...updates } : t);
-    const updated = { ...activeMap, tokens };
-    setActiveMap(updated);
+  function updateToken(tokenId:string,updates:Partial<MapToken>){
+    if(!activeMap)return;
+    const tokens=activeMap.tokens.map(t=>t.id===tokenId?{...t,...updates}:t);
+    setActiveMap({...activeMap,tokens});
     saveTokens(tokens);
-    // Auto-sync conditions to character if player token
-    const token = tokens.find(t => t.id === tokenId);
-    if (token?.character_id && updates.conditions !== undefined && onConditionApplied) {
-      onConditionApplied(token.character_id, updates.conditions);
-      // Also update Supabase character directly
-      supabase.from('characters').update({ active_conditions: updates.conditions }).eq('id', token.character_id);
+    const token=tokens.find(t=>t.id===tokenId);
+    if(token?.character_id&&updates.conditions!==undefined&&onConditionApplied){
+      onConditionApplied(token.character_id,updates.conditions);
+      supabase.from('characters').update({active_conditions:updates.conditions}).eq('id',token.character_id);
     }
-    // Auto-sync HP to character if player token
-    if (token?.character_id && updates.hp !== undefined) {
-      supabase.from('characters').update({ current_hp: updates.hp }).eq('id', token.character_id);
+    if(token?.character_id&&updates.hp!==undefined){
+      supabase.from('characters').update({current_hp:updates.hp}).eq('id',token.character_id);
     }
   }
 
-  function removeToken(tokenId: string) {
-    if (!activeMap) return;
-    const tokens = activeMap.tokens.filter(t => t.id !== tokenId);
-    setActiveMap({ ...activeMap, tokens });
+  function removeToken(tokenId:string){
+    if(!activeMap)return;
+    const tokens=activeMap.tokens.filter(t=>t.id!==tokenId);
+    setActiveMap({...activeMap,tokens});
     saveTokens(tokens);
     setSelectedTokenId(null);
   }
 
-  function addToken(token: Omit<MapToken, 'col'|'row'>) {
-    if (!activeMap) return;
-    // Place at first empty cell
-    const occupied = new Set(activeMap.tokens.map(t => `${t.col},${t.row}`));
-    let col = 1, row = 1;
-    outer: for (let r = 1; r <= activeMap.grid_rows; r++) {
-      for (let c = 1; c <= activeMap.grid_cols; c++) {
-        if (!occupied.has(`${c},${r}`)) { col = c; row = r; break outer; }
-      }
+  function addRosterNPC(npc:DMRosterNPC){
+    if(!activeMap)return;
+    const occupied=new Set(activeMap.tokens.map(t=>`${t.col},${t.row}`));
+    let col=1,row=1;
+    outer:for(let r=1;r<=activeMap.grid_rows;r++)for(let c=1;c<=activeMap.grid_cols;c++){
+      if(!occupied.has(`${c},${r}`)){col=c;row=r;break outer;}
     }
-    const full: MapToken = { ...token, col, row };
-    const tokens = [...activeMap.tokens, full];
-    setActiveMap({ ...activeMap, tokens });
+    const token:MapToken={
+      id:crypto.randomUUID(),name:npc.name,type:'npc',col,row,
+      npc_roster_id:npc.id||undefined,
+      color:npc.color,emoji:npc.emoji,
+      hp:npc.hp,max_hp:npc.max_hp,ac:npc.ac,speed:npc.speed,
+      conditions:[],
+      str:npc.str,dex:npc.dex,con:npc.con,int:npc.int,wis:npc.wis,cha:npc.cha,
+      description:npc.description,image_url:npc.image_url||'',
+      immunities:npc.immunities,attack_name:npc.attack_name,
+      attack_bonus:npc.attack_bonus,attack_damage:npc.attack_damage,
+      cr:npc.cr,xp:npc.xp,
+      visible_to_players:true,is_hidden:false,
+      revealed:{hp:false,ac:false,stats:false,description:false,immunities:false,attacks:false},
+    };
+    const tokens=[...activeMap.tokens,token];
+    setActiveMap({...activeMap,tokens});
     saveTokens(tokens);
+    // Update times_used
+    if(npc.id) supabase.from('dm_npc_roster').update({times_used:npc.times_used+1,last_used_at:new Date().toISOString()}).eq('id',npc.id);
+    setShowRoster(false);
   }
 
-  // Sync player token HP/conditions from live character data
-  useEffect(() => {
-    if (!activeMap || !playerCharacters.length) return;
-    let changed = false;
-    const tokens = activeMap.tokens.map(t => {
-      if (t.type !== 'player' || !t.character_id) return t;
-      const pc = playerCharacters.find(p => p.id === t.character_id);
-      if (!pc) return t;
-      const updates: Partial<MapToken> = {};
-      if (t.hp !== pc.current_hp) { updates.hp = pc.current_hp; changed = true; }
-      if (JSON.stringify(t.conditions) !== JSON.stringify(pc.active_conditions ?? [])) {
-        updates.conditions = pc.active_conditions ?? []; changed = true;
-      }
-      return Object.keys(updates).length ? { ...t, ...updates } : t;
-    });
-    if (changed) setActiveMap(prev => prev ? { ...prev, tokens } : prev);
-  }, [playerCharacters]);
+  function addPlayerToken(pc:PlayerChar){
+    if(!activeMap)return;
+    const occupied=new Set(activeMap.tokens.map(t=>`${t.col},${t.row}`));
+    let col=1,row=1;
+    outer:for(let r=1;r<=activeMap.grid_rows;r++)for(let c=1;c<=activeMap.grid_cols;c++){
+      if(!occupied.has(`${c},${r}`)){col=c;row=r;break outer;}
+    }
+    const token:MapToken={
+      id:crypto.randomUUID(),name:pc.name,type:'player',col,row,character_id:pc.id,
+      color:'#60a5fa',emoji:'🧝',
+      hp:pc.current_hp,max_hp:pc.max_hp,ac:pc.armor_class,speed:pc.speed,
+      conditions:pc.active_conditions??[],
+      str:pc.strength,dex:pc.dexterity,con:pc.constitution,
+      int:pc.intelligence,wis:pc.wisdom,cha:pc.charisma,
+      description:'',image_url:'',immunities:'',
+      attack_name:'',attack_bonus:0,attack_damage:'',cr:'—',xp:0,
+      visible_to_players:true,is_hidden:false,
+      revealed:{hp:true,ac:true,stats:true,description:true,immunities:true,attacks:true},
+    };
+    const tokens=[...activeMap.tokens,token];
+    setActiveMap({...activeMap,tokens});
+    saveTokens(tokens);
+    setShowAddPlayer(false);
+  }
 
-  // ── Drag handlers ──
-  function handleDragStart(e: React.DragEvent, tokenId: string) {
-    e.dataTransfer.setData('tokenId', tokenId);
+  // Sync player tokens from live character data
+  useEffect(()=>{
+    if(!activeMap||!playerCharacters.length)return;
+    let changed=false;
+    const tokens=activeMap.tokens.map(t=>{
+      if(t.type!=='player'||!t.character_id)return t;
+      const pc=playerCharacters.find(p=>p.id===t.character_id);
+      if(!pc)return t;
+      const upd:Partial<MapToken>={};
+      if(t.hp!==pc.current_hp){upd.hp=pc.current_hp;changed=true;}
+      if(JSON.stringify(t.conditions)!==JSON.stringify(pc.active_conditions??[])){upd.conditions=pc.active_conditions??[];changed=true;}
+      return Object.keys(upd).length?{...t,...upd}:t;
+    });
+    if(changed) setActiveMap(prev=>prev?{...prev,tokens}:prev);
+  },[playerCharacters]);
+
+  async function toggleMapActiveForPlayers(){
+    if(!activeMap)return;
+    const val=!activeMap.map_active_for_players;
+    await supabase.from('battle_maps').update({map_active_for_players:val}).eq('id',activeMap.id);
+    setActiveMap({...activeMap,map_active_for_players:val});
+  }
+
+  // Drag
+  function handleDragStart(e:React.DragEvent,tokenId:string){
+    e.dataTransfer.setData('tokenId',tokenId);
     setDraggingTokenId(tokenId);
   }
-
-  function handleCellDrop(e: React.DragEvent, col: number, row: number) {
+  function handleCellDrop(e:React.DragEvent,col:number,row:number){
     e.preventDefault();
-    const tokenId = e.dataTransfer.getData('tokenId');
-    if (!tokenId || !activeMap) return;
-    // Check if cell is occupied
-    const occupied = activeMap.tokens.find(t => t.col === col && t.row === row && t.id !== tokenId);
-    if (occupied) return;
-    updateToken(tokenId, { col, row });
+    const tokenId=e.dataTransfer.getData('tokenId');
+    if(!tokenId||!activeMap)return;
+    if(activeMap.tokens.find(t=>t.col===col&&t.row===row&&t.id!==tokenId))return;
+    updateToken(tokenId,{col,row});
     setDraggingTokenId(null);
   }
 
-  const selectedToken = activeMap?.tokens.find(t => t.id === selectedTokenId) ?? null;
-  const visibleTokens = activeMap?.tokens.filter(t => isDM || !t.is_hidden) ?? [];
-  const gridSize = activeMap?.grid_size ?? 48;
+  const selectedToken=activeMap?.tokens.find(t=>t.id===selectedTokenId)??null;
+  const visibleTokens=(activeMap?.tokens??[]).filter(t=>isDM||!t.is_hidden);
+  const mapIsLive=activeMap?.map_active_for_players??false;
+  const gridSize=activeMap?.grid_size??48;
 
-  if (!activeMap && !isDM) {
-    return (
-      <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--t-3)', fontSize: 14 }}>
-        No active battle map. Waiting for DM to set one up...
-      </div>
-    );
-  }
+  // Player sees greyed-out overlay until DM activates
+  const playerBlocked=!isDM&&!mapIsLive;
+
+  // ── New map form state ──
+  const [showNewMap,setShowNewMap]=useState(false);
+  const [newMapName,setNewMapName]=useState('');
+  const [newCols,setNewCols]=useState('20');
+  const [newRows,setNewRows]=useState('15');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+    <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%'}}>
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {/* Map selector */}
-        {maps.length > 1 && (
-          <div style={{ display: 'flex', gap: 4 }}>
-            {maps.map(m => (
-              <button key={m.id} onClick={() => setMapActive(m.id)} style={{
-                fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                border: activeMap?.id === m.id ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
-                background: activeMap?.id === m.id ? 'var(--c-gold-bg)' : 'transparent',
-                color: activeMap?.id === m.id ? 'var(--c-gold-l)' : 'var(--t-2)',
-              }}>{m.name}</button>
-            ))}
+      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        {maps.length>0&&maps.map(m=>(
+          <button key={m.id} onClick={()=>setActiveMap(m)} style={{
+            fontSize:11,fontWeight:700,padding:'4px 10px',borderRadius:6,cursor:'pointer',
+            border:activeMap?.id===m.id?'1px solid var(--c-gold-bdr)':'1px solid var(--c-border)',
+            background:activeMap?.id===m.id?'var(--c-gold-bg)':'transparent',
+            color:activeMap?.id===m.id?'var(--c-gold-l)':'var(--t-2)',
+          }}>{m.name}</button>
+        ))}
+        {isDM&&<>
+          <button onClick={()=>setShowAddPlayer(true)} className="btn-secondary btn-sm" disabled={!activeMap}>+ Player Token</button>
+          <button onClick={()=>setShowRoster(v=>!v)} style={{
+            fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,cursor:'pointer',
+            border:showRoster?'1px solid var(--c-gold-bdr)':'1px solid var(--c-border)',
+            background:showRoster?'var(--c-gold-bg)':'transparent',
+            color:showRoster?'var(--c-gold-l)':'var(--t-2)',
+          }}>🗂 NPC Roster</button>
+          <button onClick={()=>setShowNewMap(v=>!v)} className="btn-secondary btn-sm">+ New Map</button>
+          <button onClick={toggleMapActiveForPlayers} style={{
+            fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,cursor:'pointer',
+            border:mapIsLive?'1px solid rgba(34,197,94,0.5)':'1px solid rgba(239,68,68,0.4)',
+            background:mapIsLive?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.08)',
+            color:mapIsLive?'#22c55e':'#ef4444',
+          }} disabled={!activeMap}>{mapIsLive?'🟢 Live for Players':'🔴 Hidden from Players'}</button>
+          {saving&&<span style={{fontSize:11,color:'var(--t-3)',fontStyle:'italic'}}>Saving…</span>}
+        </>}
+        {!isDM&&(
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{width:8,height:8,borderRadius:'50%',background:mapIsLive?'#22c55e':'#6b7280'}}/>
+            <span style={{fontSize:11,color:mapIsLive?'#22c55e':'var(--t-3)'}}>{mapIsLive?'Map Active':'Waiting for DM…'}</span>
           </div>
-        )}
-        {isDM && (
-          <>
-            <button onClick={() => setShowAddToken(true)} className="btn-gold btn-sm" disabled={!activeMap}>
-              + Add Token
-            </button>
-            <button onClick={() => setShowNewMapForm(v => !v)} className="btn-secondary btn-sm">
-              {showNewMapForm ? 'Cancel' : '+ New Map'}
-            </button>
-            {saving && <span style={{ fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>Saving…</span>}
-          </>
-        )}
-        {activeMap && (
-          <span style={{ fontSize: 11, color: 'var(--t-3)', marginLeft: 'auto' }}>
-            {activeMap.grid_cols}×{activeMap.grid_rows} grid · {visibleTokens.length} token{visibleTokens.length !== 1 ? 's' : ''}
-          </span>
         )}
       </div>
 
       {/* New map form */}
-      {showNewMapForm && isDM && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', background: 'var(--c-raised)', borderRadius: 8, border: '1px solid var(--c-border)' }}>
-          <input value={newMapName} onChange={e => setNewMapName(e.target.value)} placeholder="Map name (e.g. Goblin Cave)" style={{ flex: 1, fontSize: 13 }} onKeyDown={e => e.key === 'Enter' && createMap()} autoFocus />
-          <input type="number" value={newMapCols} onChange={e => setNewMapCols(e.target.value)} style={{ width: 52, fontSize: 12 }} placeholder="Cols" />
-          <span style={{ fontSize: 11, color: 'var(--t-3)' }}>×</span>
-          <input type="number" value={newMapRows} onChange={e => setNewMapRows(e.target.value)} style={{ width: 52, fontSize: 12 }} placeholder="Rows" />
-          <span style={{ fontSize: 11, color: 'var(--t-3)' }}>grid</span>
-          <button onClick={createMap} className="btn-gold btn-sm">Create</button>
+      {showNewMap&&isDM&&(
+        <div style={{display:'flex',gap:8,alignItems:'center',padding:'8px 12px',background:'var(--c-raised)',borderRadius:8,border:'1px solid var(--c-border)'}}>
+          <input value={newMapName} onChange={e=>setNewMapName(e.target.value)} placeholder="Map name" style={{flex:1,fontSize:13}}
+            onKeyDown={e=>e.key==='Enter'&&createMap(newMapName,parseInt(newCols)||20,parseInt(newRows)||15)} autoFocus/>
+          <input type="number" value={newCols} onChange={e=>setNewCols(e.target.value)} style={{width:50,fontSize:12}} placeholder="Cols"/>
+          <span style={{fontSize:11,color:'var(--t-3)'}}>×</span>
+          <input type="number" value={newRows} onChange={e=>setNewRows(e.target.value)} style={{width:50,fontSize:12}} placeholder="Rows"/>
+          <button onClick={()=>createMap(newMapName,parseInt(newCols)||20,parseInt(newRows)||15)} className="btn-gold btn-sm">Create</button>
         </div>
       )}
 
-      {/* Map grid */}
-      {activeMap ? (
-        <div style={{ position: 'relative', width: '100%' }}>
-          {/* Scrollable grid wrapper */}
-          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '75vh', border: '1px solid var(--c-border)', borderRadius: 10, background: '#0d1117' }}>
-            <div style={{
-              position: 'relative',
-              width: activeMap.grid_cols * gridSize,
-              height: activeMap.grid_rows * gridSize,
-              backgroundImage: activeMap.image_url ? `url(${activeMap.image_url})` : 'none',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}>
-              {/* Grid lines */}
-              <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-                {Array.from({ length: activeMap.grid_cols + 1 }, (_, i) => (
-                  <line key={`v${i}`} x1={i * gridSize} y1={0} x2={i * gridSize} y2={activeMap.grid_rows * gridSize}
-                    stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
-                ))}
-                {Array.from({ length: activeMap.grid_rows + 1 }, (_, i) => (
-                  <line key={`h${i}`} x1={0} y1={i * gridSize} x2={activeMap.grid_cols * gridSize} y2={i * gridSize}
-                    stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
-                ))}
-              </svg>
+      {/* Main layout: Detail | Map | Roster */}
+      <div style={{display:'flex',gap:12,alignItems:'flex-start',width:'100%'}}>
+        {/* LEFT: Token detail */}
+        {selectedToken&&(
+          <TokenDetailPanel
+            token={selectedToken} isDM={isDM} notes={tokenNotes}
+            userId={userId} userName={userName} campaignId={campaignId}
+            onUpdateToken={updateToken}
+            onApplyCond={c=>updateToken(selectedToken.id,{conditions:[...selectedToken.conditions.filter(x=>x!==c),c]})}
+            onRemoveCond={c=>updateToken(selectedToken.id,{conditions:selectedToken.conditions.filter(x=>x!==c)})}
+            onUpdateHP={(delta,mode)=>{
+              let hp=selectedToken.hp;
+              if(mode==='damage')hp=Math.max(0,hp-delta);
+              else if(mode==='heal')hp=Math.min(selectedToken.max_hp,hp+delta);
+              else hp=Math.max(0,Math.min(selectedToken.max_hp,delta));
+              const updates:Partial<MapToken>={hp};
+              if(hp===0&&!selectedToken.conditions.includes('Unconscious')){
+                updates.conditions=[...selectedToken.conditions,'Unconscious'];
+              }
+              updateToken(selectedToken.id,updates);
+            }}
+            onDeleteToken={()=>removeToken(selectedToken.id)}
+            onToggleHide={()=>updateToken(selectedToken.id,{is_hidden:!selectedToken.is_hidden})}
+            onReveal={(field,val)=>updateToken(selectedToken.id,{revealed:{...selectedToken.revealed,[field]:val}})}
+            onClose={()=>setSelectedTokenId(null)}
+          />
+        )}
 
-              {/* Drop cells — only render when dragging */}
-              {draggingTokenId && Array.from({ length: activeMap.grid_rows }, (_, row) =>
-                Array.from({ length: activeMap.grid_cols }, (_, col) => (
-                  <div key={`cell-${col}-${row}`}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => handleCellDrop(e, col + 1, row + 1)}
-                    style={{
-                      position: 'absolute',
-                      left: col * gridSize, top: row * gridSize,
-                      width: gridSize, height: gridSize,
-                    }}
-                  />
-                ))
-              )}
-
-              {/* Tokens */}
-              {visibleTokens.map(token => (
-                <div
-                  key={token.id}
-                  style={{
-                    position: 'absolute',
-                    left: (token.col - 1) * gridSize,
-                    top: (token.row - 1) * gridSize,
-                    width: gridSize, height: gridSize,
-                    zIndex: selectedTokenId === token.id ? 10 : 5,
-                    transition: draggingTokenId === token.id ? 'none' : 'left 0.2s, top 0.2s',
-                  }}
-                >
-                  <TokenDot
-                    token={token}
-                    isSelected={selectedTokenId === token.id}
-                    isDragging={draggingTokenId === token.id}
-                    isDM={isDM}
-                    onClick={() => setSelectedTokenId(prev => prev === token.id ? null : token.id)}
-                    onDragStart={e => handleDragStart(e, token.id)}
-                  />
-                  {/* Token name label */}
-                  <div style={{
-                    position: 'absolute', bottom: -16, left: '50%', transform: 'translateX(-50%)',
-                    fontSize: 9, fontWeight: 700, color: 'var(--t-1)',
-                    whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                    pointerEvents: 'none',
-                  }}>{token.name.split(' ')[0]}</div>
+        {/* CENTER: Grid */}
+        <div style={{flex:1,minWidth:0,position:'relative'}}>
+          {activeMap ? (
+            <div style={{position:'relative'}}>
+              <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'72vh',border:'1px solid var(--c-border)',borderRadius:10,
+                background:activeMap.background_color||'#0d1117',
+                filter:playerBlocked?'grayscale(100%) brightness(0.4)':'none',
+                pointerEvents:playerBlocked?'none':'auto',transition:'filter .3s'}}>
+                <div style={{position:'relative',width:activeMap.grid_cols*gridSize,height:activeMap.grid_rows*gridSize,
+                  backgroundImage:activeMap.image_url?`url(${activeMap.image_url})`:'none',backgroundSize:'cover',backgroundPosition:'center'}}>
+                  {/* Grid SVG */}
+                  <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>
+                    {Array.from({length:activeMap.grid_cols+1},(_,i)=>(
+                      <line key={`v${i}`} x1={i*gridSize} y1={0} x2={i*gridSize} y2={activeMap.grid_rows*gridSize} stroke="rgba(255,255,255,0.07)" strokeWidth={1}/>
+                    ))}
+                    {Array.from({length:activeMap.grid_rows+1},(_,i)=>(
+                      <line key={`h${i}`} x1={0} y1={i*gridSize} x2={activeMap.grid_cols*gridSize} y2={i*gridSize} stroke="rgba(255,255,255,0.07)" strokeWidth={1}/>
+                    ))}
+                  </svg>
+                  {/* Drop zones */}
+                  {draggingTokenId&&Array.from({length:activeMap.grid_rows},(_,r)=>
+                    Array.from({length:activeMap.grid_cols},(_,c)=>(
+                      <div key={`cell-${c}-${r}`}
+                        onDragOver={e=>e.preventDefault()}
+                        onDrop={e=>handleCellDrop(e,c+1,r+1)}
+                        style={{position:'absolute',left:c*gridSize,top:r*gridSize,width:gridSize,height:gridSize}}/>
+                    ))
+                  )}
+                  {/* Tokens */}
+                  {visibleTokens.map(token=>(
+                    <div key={token.id} style={{
+                      position:'absolute',
+                      left:(token.col-1)*gridSize,top:(token.row-1)*gridSize,
+                      width:gridSize,height:gridSize,zIndex:selectedTokenId===token.id?10:5,
+                      transition:draggingTokenId===token.id?'none':'left .2s,top .2s',
+                    }}>
+                      <TokenDot
+                        token={token} selected={selectedTokenId===token.id}
+                        dragging={draggingTokenId===token.id} isDM={isDM}
+                        onClick={()=>setSelectedTokenId(prev=>prev===token.id?null:token.id)}
+                        onDragStart={e=>handleDragStart(e,token.id)}
+                      />
+                      <div style={{position:'absolute',bottom:-15,left:'50%',transform:'translateX(-50%)',
+                        fontSize:9,fontWeight:700,color:'#fff',whiteSpace:'nowrap',
+                        textShadow:'0 1px 3px rgba(0,0,0,0.9)',pointerEvents:'none'}}>
+                        {(!isDM&&token.is_hidden)?'???':token.name.length>8?token.name.slice(0,8)+'…':token.name}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-
-              {/* Selected token target indicator */}
-              {selectedToken && (
-                <div style={{
-                  position: 'absolute',
-                  left: (selectedToken.col - 1) * gridSize - 3,
-                  top: (selectedToken.row - 1) * gridSize - 3,
-                  width: gridSize + 6, height: gridSize + 6,
-                  borderRadius: '50%', border: '2px dashed #fff',
-                  pointerEvents: 'none', zIndex: 11,
-                  animation: 'spin 4s linear infinite',
-                }} />
+              </div>
+              {/* Player blocked overlay */}
+              {playerBlocked&&(
+                <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
+                  borderRadius:10,zIndex:5,pointerEvents:'none'}}>
+                  <div style={{background:'rgba(0,0,0,0.8)',borderRadius:12,padding:'20px 32px',textAlign:'center',
+                    border:'1px solid var(--c-border)'}}>
+                    <div style={{fontSize:28,marginBottom:8}}>🗺️</div>
+                    <div style={{fontSize:13,fontWeight:700,color:'var(--t-1)',marginBottom:4}}>Battle Map</div>
+                    <div style={{fontSize:11,color:'var(--t-3)'}}>Waiting for DM to activate the map…</div>
+                  </div>
+                </div>
               )}
             </div>
-          </div>
-
-          {/* Token inspector */}
-          {selectedToken && (
-            <div style={{ position: 'absolute', top: 0, right: -250, zIndex: 30 }}>
-              <TokenInspector
-                token={selectedToken}
-                isDM={isDM}
-                onApplyCondition={c => {
-                  const newConds = [...selectedToken.conditions.filter(x => x !== c), c];
-                  updateToken(selectedToken.id, { conditions: newConds });
-                }}
-                onRemoveCondition={c => {
-                  updateToken(selectedToken.id, { conditions: selectedToken.conditions.filter(x => x !== c) });
-                }}
-                onUpdateHP={(delta, mode) => {
-                  let newHp = selectedToken.hp;
-                  if (mode === 'damage') newHp = Math.max(0, selectedToken.hp - delta);
-                  else if (mode === 'heal') newHp = Math.min(selectedToken.max_hp, selectedToken.hp + delta);
-                  else newHp = Math.max(0, Math.min(selectedToken.max_hp, delta));
-                  updateToken(selectedToken.id, { hp: newHp });
-                  // Auto-apply unconscious at 0 hp
-                  if (newHp === 0 && !selectedToken.conditions.includes('Unconscious')) {
-                    const newConds = [...selectedToken.conditions, 'Unconscious'];
-                    updateToken(selectedToken.id, { hp: newHp, conditions: newConds });
-                  }
-                }}
-                onDelete={() => removeToken(selectedToken.id)}
-                onToggleHidden={() => updateToken(selectedToken.id, { is_hidden: !selectedToken.is_hidden })}
-                onClose={() => setSelectedTokenId(null)}
-              />
+          ) : (
+            <div style={{padding:'60px 20px',textAlign:'center',color:'var(--t-3)',fontSize:14,
+              border:'1px dashed var(--c-border)',borderRadius:10}}>
+              {isDM?'Create a new map above to get started.':'Waiting for DM to set up the map…'}
+            </div>
+          )}
+          {/* Legend */}
+          {activeMap&&(
+            <div style={{display:'flex',gap:12,fontSize:10,color:'var(--t-3)',marginTop:6,flexWrap:'wrap'}}>
+              <span>🟢 Full HP · 🟡 Bloodied · 🔴 Critical</span>
+              <span>🟠 dot = conditions active</span>
+              {isDM&&<span>· Drag tokens to move · Click to inspect</span>}
+              {!isDM&&<span>· Click tokens for details & party notes</span>}
             </div>
           )}
         </div>
-      ) : (
-        <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--t-3)', fontSize: 14, border: '1px dashed var(--c-border)', borderRadius: 10 }}>
-          {isDM ? 'Create a new map to get started.' : 'No active map. Waiting for DM…'}
+
+        {/* RIGHT: NPC Roster */}
+        {showRoster&&isDM&&(
+          <NPCRoster campaignId={campaignId} userId={userId}
+            onAddToMap={addRosterNPC} onClose={()=>setShowRoster(false)}/>
+        )}
+      </div>
+
+      {/* Add player token modal */}
+      {showAddPlayer&&isDM&&(
+        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}
+          onClick={()=>setShowAddPlayer(false)}>
+          <div style={{background:'var(--c-card)',border:'1px solid var(--c-gold-bdr)',borderRadius:14,width:'100%',maxWidth:400,padding:20}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:14,color:'var(--c-gold-l)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:14}}>Add Player Token</div>
+            {playerCharacters.length===0?(
+              <p style={{color:'var(--t-3)',fontSize:13}}>No player characters connected to this campaign.</p>
+            ):playerCharacters.map(pc=>(
+              <div key={pc.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',
+                background:'var(--c-raised)',borderRadius:8,marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:'var(--t-1)'}}>{pc.name}</div>
+                  <div style={{fontSize:10,color:'var(--t-3)'}}>{pc.class_name} · HP {pc.current_hp}/{pc.max_hp} · AC {pc.armor_class}</div>
+                </div>
+                <button onClick={()=>addPlayerToken(pc)} className="btn-gold btn-sm">Add</button>
+              </div>
+            ))}
+            <button onClick={()=>setShowAddPlayer(false)} className="btn-secondary btn-sm" style={{marginTop:8,width:'100%'}}>Cancel</button>
+          </div>
         </div>
       )}
-
-      {/* Legend */}
-      {activeMap && (
-        <div style={{ display: 'flex', gap: 16, fontSize: 10, color: 'var(--t-3)', flexWrap: 'wrap' }}>
-          <span>🟢 Full HP</span>
-          <span>🟡 Bloodied (&lt;50%)</span>
-          <span>🔴 Critical (&lt;25%)</span>
-          <span>🟠 dot = has conditions</span>
-          {isDM && <span>· Drag tokens to move · Click to inspect · Right-click to select</span>}
-          {!isDM && <span>· Click a token to inspect and target</span>}
-        </div>
-      )}
-
-      {/* Modals */}
-      {showAddToken && (
-        <AddTokenDialog
-          playerChars={playerCharacters}
-          onAdd={addToken}
-          onClose={() => setShowAddToken(false)}
-        />
-      )}
-
-      {/* CSS for spin animation */}
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
