@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import BattleMap from './BattleMap';
 import { supabase } from '../../lib/supabase';
 
 interface PartyMember {
@@ -23,6 +24,7 @@ interface PartyViewProps {
 export default function PartyView({ campaignId }: PartyViewProps) {
   const [members, setMembers] = useState<PartyMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     loadParty();
@@ -71,7 +73,15 @@ export default function PartyView({ campaignId }: PartyViewProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-      <div className="section-header">Party Status</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-2)' }}>
+        <div className="section-header" style={{ marginBottom: 0 }}>Party Status</div>
+        <button onClick={() => setShowMap(v => !v)} style={{
+          fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
+          border: showMap ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
+          background: showMap ? 'var(--c-gold-bg)' : 'transparent',
+          color: showMap ? 'var(--c-gold-l)' : 'var(--t-2)',
+        }}>🗺 {showMap ? 'Hide Map' : 'Battle Map'}</button>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 'var(--sp-3)' }}>
         {members.map(m => {
           const hpPct = m.max_hp > 0 ? m.current_hp / m.max_hp : 0;

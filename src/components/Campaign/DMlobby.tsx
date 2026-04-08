@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import BattleMap from './BattleMap';
 import type { SessionState, ConditionName } from '../../types';
 import InitiativeTracker from './InitiativeTracker';
 
@@ -83,7 +84,7 @@ function PlayerCard({ pc, isOwner, onApplyHP, onToggleCondition }: {
 }
 
 export default function DMlobby({ campaign, sessionState, playerCharacters, members, isOwner, onUpdateSession, onToggleCombat }: DMlobbyProps) {
-  const [activeTab, setActiveTab] = useState<'players'|'combat'|'notes'>('players');
+  const [activeTab, setActiveTab] = useState<'players'|'combat'|'map'|'notes'>('players');
   const [notes, setNotes] = useState<SceneNote[]>([]);
   const [newNote, setNewNote] = useState('');
 
@@ -127,6 +128,7 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
   const TABS = [
     { id: 'players', label: `Players (${playerCharacters.length})` },
     { id: 'combat', label: sessionState?.combat_active ? '⚔ Combat Active' : 'Combat' },
+    { id: 'map', label: '🗺 Battle Map' },
     { id: 'notes', label: `Notes${notes.length > 0 ? ` (${notes.length})` : ''}` },
   ];
 
@@ -251,6 +253,32 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
           }))}
           onUpdateSession={onUpdateSession}
           onToggleCombat={onToggleCombat}
+        />
+      )}
+
+      {/* Battle Map Tab */}
+      {activeTab === 'map' && (
+        <BattleMap
+          campaignId={campaign.id}
+          isDM={true}
+          userId={''}
+          playerCharacters={playerCharacters.map(pc => ({
+            id: pc.id,
+            name: pc.name,
+            class_name: pc.class_name,
+            level: pc.level,
+            current_hp: pc.current_hp,
+            max_hp: pc.max_hp,
+            armor_class: pc.armor_class,
+            active_conditions: pc.active_conditions ?? [],
+            strength: pc.strength,
+            dexterity: pc.dexterity,
+            constitution: pc.constitution,
+            intelligence: pc.intelligence,
+            wisdom: pc.wisdom,
+            charisma: pc.charisma,
+            speed: pc.speed,
+          }))}
         />
       )}
 
