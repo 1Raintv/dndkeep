@@ -51,13 +51,12 @@ const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DE
 export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
-  // Use parent-controlled level; fall back to internal state when uncontrolled
-  const [_internalLevel, _setInternalLevel] = useState<number>(1);
-  const currentLevel = controlledLevel !== undefined ? controlledLevel : _internalLevel;
+  // Level is fully controlled by parent via currentLevel prop.
+  // setCurrentLevel only used by dot indicators - it notifies parent which re-renders with new prop.
+  const currentLevel = controlledLevel ?? 1;
   const setCurrentLevel = (updater: number | ((v: number) => number)) => {
     const next = typeof updater === 'function' ? updater(currentLevel) : updater;
-    _setInternalLevel(next); // keep internal in sync too
-    onCurrentLevelChange?.(next); // notify parent
+    onCurrentLevelChange?.(next);
   };
 
   const levelsToShow = useMemo(() =>

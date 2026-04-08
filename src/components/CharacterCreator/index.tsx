@@ -74,6 +74,11 @@ export default function CharacterCreator() {
   const [buildChoices, setBuildChoices] = useState<BuildChoices>(emptyBuildChoices());
   const [level, setLevel] = useState(1);
   const [currentBuildLevel, setCurrentBuildLevel] = useState(1);
+  // Reset to level 1 each time the user enters the Build step
+  const goToStep = (n: number) => {
+    if (n === 4) setCurrentBuildLevel(1);
+    setStep(n);
+  };
   const [originFeat, setOriginFeat] = useState('');
 
   function handleSkillToggle(skill: string) {
@@ -230,7 +235,7 @@ export default function CharacterCreator() {
         {STEPS.map((label, i) => (
           <button
             key={label}
-            onClick={() => i < step && setStep(i)}
+            onClick={() => i < step && goToStep(i)}
             style={{
               fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700,
               letterSpacing: '0.08em', textTransform: 'uppercase',
@@ -263,7 +268,7 @@ export default function CharacterCreator() {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--sp-6)', alignItems: 'center' }}>
           <button className="btn-secondary btn-sm" onClick={() => {
             if (step === 4 && currentBuildLevel > 1) setCurrentBuildLevel(l => l - 1);
-            else if (step > 0) setStep(s => s - 1);
+            else if (step > 0) goToStep(step - 1);
             else navigate('/lobby');
           }} disabled={saving}>
             {step === 0 ? '✕ Cancel' : '← Back'}
@@ -275,11 +280,11 @@ export default function CharacterCreator() {
               if (step === 4 && currentBuildLevel < level) {
                 setCurrentBuildLevel(l => l + 1);
               } else if (step === 4 && (level < 3 || buildChoices.subclass !== '')) {
-                setStep(s => s + 1);
+                goToStep(step + 1);
               } else if (step === 4) {
                 // subclass required before review
               } else if (step < STEPS.length - 1) {
-                setStep(s => s + 1);
+                goToStep(step + 1);
               } else {
                 handleCreate();
               }
@@ -324,7 +329,8 @@ export default function CharacterCreator() {
               setBuildChoices(c);
               if (c.subclass) setSubclass(c.subclass);
             }}
-
+            currentLevel={currentBuildLevel}
+            onCurrentLevelChange={setCurrentBuildLevel}
           />
         )}
         {step === 5 && (
