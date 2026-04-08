@@ -241,7 +241,6 @@ function ItemPickerModal({ onAdd, onClose }: {
 }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ItemCategory | 'All'>('All');
-  const [qty, setQty] = useState<Record<string, number>>({});
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
@@ -262,7 +261,7 @@ function ItemPickerModal({ onAdd, onClose }: {
   });
 
   function addItem(item: CatalogueItem) {
-    onAdd(item, qty[item.name] ?? 1);
+    onAdd(item, 1);
   }
 
   return (
@@ -373,15 +372,6 @@ function ItemPickerModal({ onAdd, onClose }: {
                 <div style={{ textAlign: 'right', flexShrink: 0, fontSize: 11, color: 'var(--t-3)' }}>
                   {item.cost && <div>{item.cost}</div>}
                   {item.weight > 0 && <div>{item.weight} lb</div>}
-                </div>
-
-                {/* Qty stepper */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <button onClick={() => setQty(q => ({ ...q, [item.name]: Math.max(1, (q[item.name] ?? 1) - 1) }))}
-                    style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--c-border)', background: 'var(--c-card)', color: 'var(--t-2)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 20, textAlign: 'center' }}>{qty[item.name] ?? 1}</span>
-                  <button onClick={() => setQty(q => ({ ...q, [item.name]: (q[item.name] ?? 1) + 1 }))}
-                    style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--c-border)', background: 'var(--c-card)', color: 'var(--t-2)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                 </div>
 
                 {/* Add button */}
@@ -601,6 +591,114 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
   );
 }
 
+// ── Item Detail Modal ─────────────────────────────────────────────
+function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate }: {
+  item: InventoryItem;
+  onClose: () => void;
+  onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<InventoryItem>) => void;
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(item.name);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descDraft, setDescDraft] = useState(item.description || '');
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}
+    >
+      <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 14,
+        width: '100%', maxWidth: 440, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--c-border)',
+          background: item.equipped ? 'rgba(201,146,42,0.08)' : 'var(--c-surface)',
+          display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            {editingName ? (
+              <input value={nameDraft} onChange={e => setNameDraft(e.target.value)} autoFocus
+                onBlur={() => { onUpdate(item.id, { name: nameDraft.trim() || item.name }); setEditingName(false); }}
+                onKeyDown={e => { if (e.key === 'Enter') { onUpdate(item.id, { name: nameDraft.trim() || item.name }); setEditingName(false); } if (e.key === 'Escape') setEditingName(false); }}
+                style={{ fontSize: 16, fontWeight: 700, width: '100%' }} />
+            ) : (
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--t-1)', cursor: 'text' }}
+                onClick={() => setEditingName(true)} title="Click to rename">{item.name}</div>
+            )}
+            {item.magical && <span style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, marginTop: 2, display: 'block' }}>✦ MAGIC ITEM</span>}
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Stats row */}
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Qty</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => onUpdate(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+                  style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)', cursor: 'pointer', fontSize: 14 }}>−</button>
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 28, textAlign: 'center' }}>{item.quantity}</span>
+                <button onClick={() => onUpdate(item.id, { quantity: item.quantity + 1 })}
+                  style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)', cursor: 'pointer', fontSize: 14 }}>+</button>
+              </div>
+            </div>
+            {item.weight > 0 && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Weight</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t-2)' }}>{(item.weight * item.quantity).toFixed(1)} lb</div>
+              </div>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Notes</div>
+            {editingDesc ? (
+              <textarea value={descDraft} onChange={e => setDescDraft(e.target.value)} autoFocus rows={3}
+                onBlur={() => { onUpdate(item.id, { description: descDraft }); setEditingDesc(false); }}
+                style={{ width: '100%', fontSize: 13, resize: 'vertical', fontFamily: 'var(--ff-body)' }} />
+            ) : (
+              <div onClick={() => setEditingDesc(true)} title="Click to edit notes"
+                style={{ fontSize: 13, color: item.description ? 'var(--t-2)' : 'var(--t-3)', cursor: 'text',
+                  fontStyle: item.description ? 'normal' : 'italic', lineHeight: 1.5,
+                  padding: '6px 8px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', minHeight: 36 }}>
+                {item.description || 'Click to add notes...'}
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+            <button onClick={() => { onToggle(item.id); onClose(); }}
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                border: item.equipped ? '1px solid var(--c-border-m)' : '1px solid var(--c-gold-bdr)',
+                background: item.equipped ? 'var(--c-raised)' : 'var(--c-gold-bg)',
+                color: item.equipped ? 'var(--t-2)' : 'var(--c-gold-l)' }}>
+              {item.equipped ? 'Unequip' : '⚔ Equip'}
+            </button>
+            <button onClick={() => { onRemove(item.id); onClose(); }}
+              style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(220,38,38,0.08)', color: 'var(--c-red-l)' }}>
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Inventory Row ──────────────────────────────────────────────────
 function InventoryRow({ item, onToggle, onRemove, onUpdate }: {
   item: InventoryItem;
@@ -608,60 +706,56 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate }: {
   onRemove: (id: string) => void;
   onUpdate: (id: string, updates: Partial<InventoryItem>) => void;
 }) {
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState('');
-
-  function openName() { setNameDraft(item.name); setEditingName(true); }
-  function commitName() {
-    const trimmed = nameDraft.trim();
-    if (trimmed && trimmed !== item.name) onUpdate(item.id, { name: trimmed });
-    setEditingName(false);
-  }
+  const [showDetail, setShowDetail] = useState(false);
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 'var(--sp-2)',
-      padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-sm)',
-      background: item.equipped ? 'rgba(201,146,42,0.05)' : 'transparent',
-      border: item.equipped ? '1px solid rgba(201,146,42,0.2)' : '1px solid transparent',
-    }}>
-      <input type="checkbox" checked={item.equipped} onChange={() => onToggle(item.id)}
-        title="Toggle equipped" style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
+    <>
+      <div
+        onClick={() => setShowDetail(true)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--sp-2)',
+          padding: '8px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+          background: item.equipped ? 'rgba(201,146,42,0.06)' : 'var(--c-raised)',
+          border: item.equipped ? '1px solid rgba(201,146,42,0.25)' : '1px solid var(--c-border)',
+          marginBottom: 4, transition: 'background 0.1s',
+        }}
+      >
+        {/* Equipped dot */}
+        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+          background: item.equipped ? 'var(--c-gold-l)' : 'var(--c-border-m)' }} />
 
-      {editingName ? (
-        <input value={nameDraft} onChange={e => setNameDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditingName(false); }}
-          autoFocus style={{ flex: 1, fontSize: 'var(--fs-sm)', fontFamily: 'var(--ff-body)' }} />
-      ) : (
-        <span onClick={openName} title="Click to rename" style={{
-          flex: 1, fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)',
-          color: item.equipped ? 'var(--t-1)' : 'var(--t-2)',
-          fontWeight: item.equipped ? 600 : 400, cursor: 'text',
-        }}>{item.name}</span>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-        <button className="btn-ghost btn-sm btn-icon"
-          onClick={() => onUpdate(item.id, { quantity: Math.max(1, item.quantity - 1) })}
-          disabled={item.quantity <= 1}
-          style={{ width: 20, height: 20, fontSize: 12, padding: 0, color: 'var(--t-2)' }}>−</button>
-        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 24, textAlign: 'center' }}>
-          {item.quantity}
+        {/* Name */}
+        <span style={{ flex: 1, fontFamily: 'var(--ff-body)', fontSize: 13,
+          fontWeight: item.equipped ? 600 : 400,
+          color: item.equipped ? 'var(--t-1)' : 'var(--t-2)' }}>
+          {item.name}
+          {item.magical && <span style={{ fontSize: 9, color: '#a78bfa', marginLeft: 5 }}>✦</span>}
         </span>
-        <button className="btn-ghost btn-sm btn-icon"
-          onClick={() => onUpdate(item.id, { quantity: item.quantity + 1 })}
-          style={{ width: 20, height: 20, fontSize: 12, padding: 0, color: 'var(--t-2)' }}>+</button>
+
+        {/* Qty */}
+        {item.quantity > 1 && (
+          <span style={{ fontSize: 11, color: 'var(--c-gold-l)', fontWeight: 700, flexShrink: 0 }}>×{item.quantity}</span>
+        )}
+
+        {/* Weight */}
+        {item.weight > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--t-3)', flexShrink: 0 }}>
+            {(item.weight * item.quantity).toFixed(item.weight % 1 === 0 ? 0 : 1)} lb
+          </span>
+        )}
+
+        <span style={{ fontSize: 11, color: 'var(--t-3)', flexShrink: 0 }}>›</span>
       </div>
 
-      {item.weight > 0 && (
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', flexShrink: 0 }}>
-          {(item.weight * item.quantity).toFixed(item.weight % 1 === 0 ? 0 : 1)} lb
-        </span>
+      {showDetail && (
+        <ItemDetailModal
+          item={item}
+          onClose={() => setShowDetail(false)}
+          onToggle={onToggle}
+          onRemove={onRemove}
+          onUpdate={onUpdate}
+        />
       )}
-
-      <button className="btn-ghost btn-sm" onClick={() => onRemove(item.id)}
-        title="Remove item" style={{ color: 'var(--t-2)', padding: '2px 6px', flexShrink: 0 }}>✕</button>
-    </div>
+    </>
   );
 }

@@ -24,7 +24,6 @@ import DeathSaves from './DeathSaves';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
 import SessionTab from './SessionTab';
-import QuickRoll from './QuickRoll';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
@@ -950,13 +949,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           onClose={() => setShowLevelUp(false)}
         />
       )}
-
-      {/* Quick Roll — fixed position, persists across all tabs */}
-      <QuickRoll
-        characterId={userId}
-        characterName={character.name}
-        campaignId={character.campaign_id}
-      />
 
       {userId && <CampaignBar userId={userId} />}
     </div>

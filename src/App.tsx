@@ -6,6 +6,7 @@ import { ToastProvider } from './components/shared/Toast';
 import { DiceRollProvider } from './context/DiceRollContext';
 import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
+import QuickRoll from './components/CharacterSheet/QuickRoll';
 import './styles/globals.css';
 
 const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
@@ -208,6 +209,8 @@ function AppRoutes() {
           </Routes>
         </Suspense>
       </main>
+      {/* Global floating dice roller — always visible when logged in */}
+      {user && <QuickRoll />}
     </div>
   );
 }
