@@ -101,24 +101,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
       {/* ── LEFT: Level wizard ── */}
       <div style={{ flex: 1, minWidth: 0, maxWidth: 'calc(100% - 186px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--t-1)' }}>Build Your {className}</div>
-            <div style={{ fontSize: 12, color: 'var(--t-3)', marginTop: 2 }}>Level {currentLevel} of {level}</div>
-          </div>
-          {totalIncomplete > 0 ? (
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '3px 10px', borderRadius: 999 }}>
-              {totalIncomplete} level{totalIncomplete !== 1 ? 's' : ''} need choices
-            </span>
-          ) : (
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '3px 10px', borderRadius: 999 }}>
-              ✓ All choices made
-            </span>
-          )}
-        </div>
-
-        {/* ── Unified Back / Next nav ── */}
+        {/* ── Unified Back / Next nav — TOP ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <button
             onClick={() => {
@@ -145,6 +128,23 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
           >
             {currentLevel < level ? 'Next →' : 'Review →'}
           </button>
+        </div>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--t-1)' }}>Build Your {className}</div>
+            <div style={{ fontSize: 12, color: 'var(--t-3)', marginTop: 2 }}>Level {currentLevel} of {level}</div>
+          </div>
+          {totalIncomplete > 0 ? (
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '3px 10px', borderRadius: 999 }}>
+              {totalIncomplete} level{totalIncomplete !== 1 ? 's' : ''} need choices
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '3px 10px', borderRadius: 999 }}>
+              ✓ All choices made
+            </span>
+          )}
         </div>
 
         {/* Level progress dots */}
@@ -283,6 +283,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
             textAlign: 'left', background: lvl === currentLevel ? 'rgba(212,160,23,0.08)' : 'var(--c-card)',
             border: `1px solid ${lvl === currentLevel ? 'var(--c-gold-bdr)' : isMissing ? 'rgba(220,38,38,0.3)' : isComplete && hasChoices ? 'rgba(5,150,105,0.25)' : 'var(--c-border)'}`,
             borderRadius: 8, padding: '7px 10px', cursor: 'pointer', width: '100%',
+            overflow: 'hidden',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ fontWeight: 800, fontSize: 11,
@@ -293,7 +294,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
               {isComplete && hasChoices && !isMissing && <span style={{ fontSize: 9, color: 'var(--c-green-l)' }}>✓</span>}
             </div>
             {entries.map((e, i) => (
-              <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5, marginTop: 3 }}>{e}</div>
+              <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5, marginTop: 3, overflowWrap: 'break-word', wordBreak: 'break-word' }}>{e}</div>
             ))}
             {entries.length === 0 && hasChoices && (
               <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic', marginTop: 3 }}>Pending…</div>
