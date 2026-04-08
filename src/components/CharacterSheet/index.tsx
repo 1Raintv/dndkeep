@@ -808,23 +808,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── INVENTORY ── */}
         {activeTab === 'inventory' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)', maxWidth: 900 }}>
-            <div>
-              <div className="section-header">Inventory</div>
-              <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} />
-            </div>
-            <div>
-              <div className="section-header">
-                Magic Items
-                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 400, fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginLeft: 'var(--sp-2)', textTransform: 'none', letterSpacing: 0 }}>
-                  — Browse SRD items and add to inventory
-                </span>
-              </div>
-              <MagicItemBrowser
-                compact
-                onAddToInventory={item => handleUpdateInventory([...(character.inventory ?? []), item])}
-              />
-            </div>
+          <div style={{ maxWidth: 900 }}>
+            <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} />
           </div>
         )}
 

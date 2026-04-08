@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { rollDie } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
 import { useDiceRoll } from '../../context/DiceRollContext';
@@ -132,7 +133,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
   const totalDice = queue.reduce((s, d) => s + d.count, 0);
   const has20 = queue.some(d => d.die === 20);
 
-  return (
+  return createPortal(
     <>
       <button
         onClick={() => setOpen(o => !o)}
@@ -335,5 +336,5 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
         </div>
       )}
     </>
-  );
+  , document.body);
 }
