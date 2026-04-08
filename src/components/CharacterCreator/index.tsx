@@ -96,7 +96,7 @@ export default function CharacterCreator() {
       case 1: return className !== '';
       case 2: return background !== '';
       case 3: return ABILITIES.every(ab => scores[ab] >= 1);
-      case 4: return level < 3 || buildChoices.subclass !== '';
+      case 4: return true; // level nav always allowed; subclass gate handled in onClick
       case 5: return !!name.trim();
     }
     return true;
@@ -274,6 +274,10 @@ export default function CharacterCreator() {
             onClick={() => {
               if (step === 4 && currentBuildLevel < level) {
                 setCurrentBuildLevel(l => l + 1);
+              } else if (step === 4 && (level < 3 || buildChoices.subclass !== '')) {
+                setStep(s => s + 1);
+              } else if (step === 4) {
+                // subclass required before review
               } else if (step < STEPS.length - 1) {
                 setStep(s => s + 1);
               } else {
