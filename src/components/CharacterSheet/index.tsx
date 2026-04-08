@@ -943,7 +943,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           </div>
         )}
 
-        {/* Quick Roll floating dice roller */}
+      </div>{/* end keyed tab content */}
+
+        {/* Quick Roll floating dice roller — outside keyed div so it persists across tab switches */}
         <QuickRoll
           characterId={userId}
           characterName={character.name}
