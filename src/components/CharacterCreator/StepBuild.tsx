@@ -764,59 +764,102 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
   label: string; cls: any;
   choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
 }) {
-  const [preview, setPreview] = useState<string | null>(choices.subclass || null);
+  const [expanded, setExpanded] = useState<string | null>(choices.subclass || null);
   const subclasses: any[] = cls?.subclasses ?? [];
   const selected = choices.subclass;
-  const previewData = subclasses.find((sc: any) => sc.name === preview);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>{label}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {subclasses.map((sc: any) => {
-          const isSelected = selected === sc.name;
-          const isPreviewed = preview === sc.name;
-          return (
-            <button key={sc.name} onClick={() => setPreview(isPreviewed && !isSelected ? null : sc.name)}
-              style={{
-                fontSize: 13, fontWeight: isSelected ? 700 : 500, padding: '8px 16px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-                border: isSelected ? '2px solid var(--c-gold)' : isPreviewed ? '1px solid var(--c-border-m)' : '1px solid var(--c-border)',
-                background: isSelected ? 'var(--c-gold-bg)' : isPreviewed ? 'var(--c-raised)' : 'var(--c-card)',
-                color: isSelected ? 'var(--c-gold-l)' : 'var(--t-1)',
-              }}>
-              {isSelected && <span style={{ marginRight: 4 }}>✓</span>}
-              {sc.name}
-              {sc.source === 'ua' && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '0 5px', borderRadius: 999 }}>UA</span>}
-            </button>
-          );
-        })}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)', marginBottom: 2 }}>Choose Your Subclass</div>
+      <div style={{ fontSize: 11, color: 'var(--t-3)', marginBottom: 6 }}>Click a subclass to see its description, then confirm your choice.</div>
 
-      {previewData && (
-        <div style={{ padding: '14px 16px', borderRadius: 10, border: selected === previewData.name ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)', background: selected === previewData.name ? 'rgba(212,160,23,0.05)' : 'var(--c-raised)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: selected === previewData.name ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{previewData.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>Unlocks at level {previewData.unlock_level}</div>
-            </div>
-            <button onClick={() => onUpdate({ subclass: previewData.name })} style={{ fontSize: 12, fontWeight: 700, padding: '6px 18px', borderRadius: 7, cursor: 'pointer', minHeight: 0, flexShrink: 0, border: selected === previewData.name ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--c-gold-bdr)', background: selected === previewData.name ? 'rgba(248,113,113,0.08)' : 'var(--c-gold-bg)', color: selected === previewData.name ? '#f87171' : 'var(--c-gold-l)' }}>
-              {selected === previewData.name ? 'Deselect' : 'Choose this Subclass'}
-            </button>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.7, margin: 0 }}>{previewData.description}</p>
-          {previewData.features && previewData.features.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Features at each level</div>
-              {previewData.features.map((f: any) => (
-                <div key={f.name} style={{ padding: '6px 10px', background: 'var(--c-card)', borderRadius: 6, borderLeft: `2px solid ${selected === previewData.name ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 11, color: selected === previewData.name ? 'var(--c-gold-l)' : 'var(--t-2)' }}>Lv {f.level} — {f.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.5 }}>{f.description}</div>
+      {subclasses.map((sc: any) => {
+        const isSelected = selected === sc.name;
+        const isExpanded = expanded === sc.name;
+
+        return (
+          <div key={sc.name} style={{
+            border: isSelected ? '2px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+            borderRadius: 10, overflow: 'hidden',
+            background: isSelected ? 'rgba(212,160,23,0.05)' : 'var(--c-card)',
+            transition: 'border-color 0.15s',
+          }}>
+            {/* Row */}
+            <button onClick={() => setExpanded(isExpanded && !isSelected ? null : sc.name)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+              background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 0,
+            }}>
+              {/* Selection indicator */}
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: isSelected ? '2px solid var(--c-gold)' : '2px solid var(--c-border-m)',
+                background: isSelected ? 'var(--c-gold)' : 'transparent',
+              }}>
+                {isSelected && <span style={{ fontSize: 10, color: '#000', fontWeight: 900 }}>✓</span>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: isSelected ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{sc.name}</span>
+                  {sc.source === 'ua' && (
+                    <span style={{ fontSize: 9, fontWeight: 800, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 6px', borderRadius: 999 }}>UA 2026</span>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                {/* One-liner teaser */}
+                {!isExpanded && (
+                  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
+                    {sc.description.split('.')[0]}.
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 10, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
+            </button>
+
+            {/* Expanded description */}
+            {isExpanded && (
+              <div style={{ borderTop: '1px solid var(--c-border)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.7, margin: 0 }}>{sc.description}</p>
+
+                {/* Features list if available (UA/homebrew subclasses) */}
+                {sc.features && sc.features.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Features</div>
+                    {sc.features.map((f: any) => (
+                      <div key={f.name} style={{ padding: '6px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: 6, borderLeft: '2px solid var(--c-border-m)' }}>
+                        <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--t-2)' }}>Lv {f.level} — {f.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.5 }}>{f.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Bonus spells */}
+                {sc.spell_list && sc.spell_list.length > 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--t-2)' }}>Oath/Domain spells: </span>
+                    {sc.spell_list.join(', ')}
+                  </div>
+                )}
+
+                {/* Choose button */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button onClick={() => { onUpdate({ subclass: sc.name }); setExpanded(sc.name); }}
+                    style={{ fontSize: 12, fontWeight: 700, padding: '7px 20px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                      border: isSelected ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--c-gold-bdr)',
+                      background: isSelected ? 'rgba(248,113,113,0.08)' : 'var(--c-gold-bg)',
+                      color: isSelected ? '#f87171' : 'var(--c-gold-l)' }}>
+                    {isSelected ? '✕ Deselect' : 'Choose this Subclass'}
+                  </button>
+                  {!isSelected && (
+                    <button onClick={() => setExpanded(null)} style={{ fontSize: 11, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '7px 12px', borderRadius: 7, cursor: 'pointer' }}>
+                      Close
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -833,9 +876,9 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
   const [mode, setMode] = useState<'plus2' | 'split' | 'feat' | null>(currentMode);
 
   const OPTION_CARDS = [
-    { id: 'plus2' as const, label: '+2 to One Ability', desc: 'Raise one ability score by 2 (max 20).' },
-    { id: 'split' as const, label: '+1 / +1 Split', desc: 'Raise two different abilities by 1 each (max 20).' },
-    { id: 'feat' as const, label: 'Take a Feat', desc: 'Pick a feat instead of improving ability scores.' },
+    { id: 'plus2' as const, label: '+2 to One Ability', desc: 'Raise a single ability score by 2 points. Cannot exceed 20.' },
+    { id: 'split' as const, label: '+1 to Two Abilities', desc: 'Raise two different ability scores by 1 point each. Neither can exceed 20.' },
+    { id: 'feat' as const, label: 'Choose a Feat', desc: 'Forgo the ASI entirely and gain a feat from the feat list.' },
   ];
 
   function clearChoice() {
@@ -879,10 +922,12 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
               const isChosen = asi?.ability === ab && asi?.amount === 2;
               return (
                 <button key={ab} onClick={() => onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 2 } } })}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                  style={{ fontSize: 11, fontWeight: 700, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                     border: isChosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-                    background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: isChosen ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
-                  {ABILITY_LABELS[ab]}
+                    background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: isChosen ? 'var(--c-gold-l)' : 'var(--t-2)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800 }}>{ABILITY_LABELS[ab]}</span>
+                  <span style={{ fontSize: 9, opacity: 0.7, textTransform: 'capitalize' }}>{ab.slice(0,3)}</span>
                 </button>
               );
             })}
