@@ -17,6 +17,7 @@ import NPCManager from './NPCManager';
 import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
+import BattleMap from './BattleMap';
 
 interface CampaignDashboardProps {
   campaign: Campaign;

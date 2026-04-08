@@ -309,7 +309,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         character={character}
         computed={computed}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenMap={character.campaign_id ? () => navigate(`/campaign/${character.campaign_id}?tab=map`) : undefined}
+        onOpenMap={character.campaign_id ? () => navigate(`/campaigns/${character.campaign_id}?tab=map`) : undefined}
         onUpdateXP={xp => applyUpdate({ experience_points: xp })}
         onOpenAvatarPicker={() => setShowAvatarPicker(true)}
         onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
