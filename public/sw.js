@@ -1,5 +1,5 @@
 // DNDKeep Service Worker v1.0
-const CACHE_NAME = 'dndkeep-v1';
+const CACHE_NAME = 'dndkeep-v2';
 const STATIC_ASSETS = [
   '/',
   '/lobby',

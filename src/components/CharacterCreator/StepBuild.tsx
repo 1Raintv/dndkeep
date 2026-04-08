@@ -899,7 +899,7 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
               style={{ textAlign: 'left', padding: '9px 14px', borderRadius: 9, cursor: 'pointer',
                 border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
                 background: isActive ? 'var(--c-gold-bg)' : 'var(--c-card)',
-                display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+                display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
                 border: isActive ? '2px solid var(--c-gold)' : '2px solid var(--c-border-m)',
                 background: isActive ? 'var(--c-gold)' : 'transparent',
@@ -908,6 +908,7 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{opt.label}</div>
+                <div style={{ display: 'none' }}>{opt.desc}</div>
               </div>
             </button>
           );
