@@ -99,7 +99,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
     <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', width: '100%', overflow: 'hidden' }}>
 
       {/* ── LEFT: Level wizard ── */}
-      <div style={{ flex: 1, minWidth: 0, maxWidth: 'calc(100% - 186px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, minWidth: 0, maxWidth: 'calc(100% - 156px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* ── Unified Back / Next nav — TOP ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -273,32 +273,24 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
 
       </div>
 
-      {/* ── RIGHT: Choices summary ── */}
-      <div style={{ width: 170, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5, position: 'sticky', top: 16 }}>
+      {/* ── RIGHT: Choices summary — level list only ── */}
+      <div style={{ width: 140, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, position: 'sticky', top: 16 }}>
         <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--t-3)', marginBottom: 4 }}>
           All Choices
         </div>
-        {summary.map(({ lvl, entries, isComplete, isMissing, hasChoices }) => (
+        {summary.map(({ lvl, isComplete, isMissing, hasChoices }) => (
           <button key={lvl} onClick={() => setCurrentLevel(lvl)} style={{
-            textAlign: 'left', background: lvl === currentLevel ? 'rgba(212,160,23,0.08)' : 'var(--c-card)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: lvl === currentLevel ? 'rgba(212,160,23,0.08)' : 'transparent',
             border: `1px solid ${lvl === currentLevel ? 'var(--c-gold-bdr)' : isMissing ? 'rgba(220,38,38,0.3)' : isComplete && hasChoices ? 'rgba(5,150,105,0.25)' : 'var(--c-border)'}`,
-            borderRadius: 8, padding: '7px 10px', cursor: 'pointer', width: '100%',
-            overflow: 'hidden',
+            borderRadius: 7, padding: '6px 10px', cursor: 'pointer', width: '100%', minHeight: 0,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontWeight: 800, fontSize: 11,
-                color: lvl === currentLevel ? 'var(--c-gold-l)' : isMissing ? 'var(--c-red-l)' : isComplete && hasChoices ? 'var(--c-green-l)' : 'var(--t-3)' }}>
-                Level {lvl}
-              </span>
-              {isMissing && <span style={{ fontSize: 9, color: 'var(--c-red-l)' }}>●</span>}
-              {isComplete && hasChoices && !isMissing && <span style={{ fontSize: 9, color: 'var(--c-green-l)' }}>✓</span>}
-            </div>
-            {entries.map((e, i) => (
-              <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5, marginTop: 3, overflowWrap: 'break-word', wordBreak: 'break-word' }}>{e}</div>
-            ))}
-            {entries.length === 0 && hasChoices && (
-              <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic', marginTop: 3 }}>Pending…</div>
-            )}
+            <span style={{ fontWeight: 700, fontSize: 12,
+              color: lvl === currentLevel ? 'var(--c-gold-l)' : isMissing ? 'var(--c-red-l)' : isComplete && hasChoices ? 'var(--c-green-l)' : 'var(--t-3)' }}>
+              Level {lvl}
+            </span>
+            {isMissing && <span style={{ fontSize: 9, color: 'var(--c-red-l)' }}>●</span>}
+            {isComplete && hasChoices && !isMissing && <span style={{ fontSize: 9, color: 'var(--c-green-l)' }}>✓</span>}
           </button>
         ))}
       </div>
