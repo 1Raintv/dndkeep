@@ -83,15 +83,8 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
     if (invAtLevel.length) entries.push(`Invocations: ${invAtLevel.join(', ')}`);
     const mmAtLevel = choices.metamagicByLevel?.[lvl] ?? [];
     if (mmAtLevel.length) entries.push(`Metamagic: ${mmAtLevel.join(', ')}`);
-    // Class features at this level
-    const classFeatures = (p.features ?? []).map((f: string) => f.split('(')[0].trim()).filter(Boolean);
-    if (classFeatures.length) entries.push(...classFeatures.map((f: string) => `+ ${f}`));
-    // Subclass features at this level
-    if (selectedSubclass && p.subclassFeature) {
-      const subFeats = (selectedSubclass as any).features?.filter((f: any) => f.level === lvl) ?? [];
-      subFeats.forEach((f: any) => entries.push(`[${choices.subclass}] ${f.name}`));
-      if (!subFeats.length) entries.push(`[${choices.subclass}] class feature`);
-    }
+    // Note: class features and subclass features are intentionally excluded from this summary.
+    // Summary only shows choices the player actively made.
     const isComplete = (p.choices ?? []).length === 0 || !(p.choices ?? []).some(c => isChoiceIncomplete(c.type, lvl, choices));
     const hasRequired = (p.choices ?? []).some(c => ['subclass','asi','fighting_style','divine_order','primal_order'].includes(c.type));
     const isMissing = hasRequired && (p.choices ?? []).some(c => ['subclass','asi','fighting_style','divine_order','primal_order'].includes(c.type) && isChoiceIncomplete(c.type, lvl, choices));
@@ -120,6 +113,34 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '3px 10px', borderRadius: 999 }}>
               ✓ All choices made
             </span>
+          )}
+        </div>
+
+        {/* ── Prev / Next nav — top ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setCurrentLevel(v => Math.max(1, v - 1))}
+            disabled={currentLevel <= 1}
+            style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: currentLevel <= 1 ? 'not-allowed' : 'pointer', minHeight: 0,
+              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel <= 1 ? 'var(--t-3)' : 'var(--t-1)',
+              opacity: currentLevel <= 1 ? 0.4 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
+          >
+            ← {currentLevel > 1 ? `Level ${currentLevel - 1}` : 'Back'}
+          </button>
+
+          <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{currentLevel} / {level}</span>
+
+          {currentLevel < level ? (
+            <button
+              onClick={() => setCurrentLevel(v => Math.min(level, v + 1))}
+              style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              Level {currentLevel + 1} →
+            </button>
+          ) : (
+            <div style={{ width: 100 }} />
           )}
         </div>
 
@@ -244,32 +265,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
           </div>
         </div>
 
-        {/* Prev / Next navigation */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button
-            onClick={() => setCurrentLevel(v => Math.max(1, v - 1))}
-            disabled={currentLevel <= 1}
-            style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: currentLevel <= 1 ? 'not-allowed' : 'pointer', minHeight: 0,
-              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel <= 1 ? 'var(--t-3)' : 'var(--t-1)',
-              opacity: currentLevel <= 1 ? 0.4 : 1 }}
-          >
-            ← Level {currentLevel - 1}
-          </button>
 
-          <span style={{ fontSize: 12, color: 'var(--t-3)' }}>{currentLevel} / {level}</span>
-
-          {currentLevel < level ? (
-            <button
-              onClick={() => setCurrentLevel(v => Math.min(level, v + 1))}
-              style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-                border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}
-            >
-              Level {currentLevel + 1} →
-            </button>
-          ) : (
-            <div style={{ width: 120 }} />
-          )}
-        </div>
       </div>
 
       {/* ── RIGHT: Choices summary ── */}
@@ -284,9 +280,9 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
             borderRadius: 8, padding: '7px 10px', cursor: 'pointer', width: '100%',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: entries.length > 0 ? 4 : 0 }}>
-              <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 11,
+              <span style={{ fontWeight: 700, fontSize: 11,
                 color: lvl === currentLevel ? 'var(--c-gold-l)' : isMissing ? 'var(--c-red-l)' : isComplete && hasChoices ? 'var(--c-green-l)' : 'var(--t-3)' }}>
-                Lv {lvl}
+                Level {lvl}
               </span>
               {isMissing && <span style={{ fontSize: 9, color: 'var(--c-red-l)' }}>●</span>}
               {isComplete && hasChoices && !isMissing && <span style={{ fontSize: 9, color: 'var(--c-green-l)' }}>✓</span>}
