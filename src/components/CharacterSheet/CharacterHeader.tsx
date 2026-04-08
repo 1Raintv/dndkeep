@@ -6,6 +6,7 @@ interface CharacterHeaderProps {
   character: Character;
   computed: ComputedStats;
   onOpenSettings: () => void;
+  onOpenMap?: () => void;
   onUpdateXP?: (xp: number) => void;
   onOpenAvatarPicker?: () => void;
   onToggleInspiration?: () => void;
@@ -18,7 +19,7 @@ interface CharacterHeaderProps {
 
 export default function CharacterHeader({
   character, computed, onOpenSettings, onOpenAvatarPicker,
-  onToggleInspiration, onOpenRest, onShare,
+  onToggleInspiration, onOpenRest, onShare, onOpenMap,
 }: CharacterHeaderProps) {
 
   const classDisplay = character.secondary_class && (character.secondary_level ?? 0) > 0
@@ -88,6 +89,13 @@ export default function CharacterHeader({
         <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12 }}>
           Rest
         </button>
+        {onOpenMap && (
+          <button className="btn-ghost btn-sm" onClick={onOpenMap}
+            title="Battle Map"
+            style={{ fontSize: 12, color: 'var(--t-2)' }}>
+            🗺 Map
+          </button>
+        )}
         <button
           className="btn-ghost btn-sm"
           onClick={onOpenSettings}

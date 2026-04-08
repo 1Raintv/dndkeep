@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, ActiveBuff } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter, supabase } from '../../lib/supabase';
@@ -67,6 +68,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const navigate = useNavigate();
   const [showRest, setShowRest] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
@@ -307,6 +309,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         character={character}
         computed={computed}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenMap={character.campaign_id ? () => navigate(`/campaign/${character.campaign_id}?tab=map`) : undefined}
         onUpdateXP={xp => applyUpdate({ experience_points: xp })}
         onOpenAvatarPicker={() => setShowAvatarPicker(true)}
         onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}

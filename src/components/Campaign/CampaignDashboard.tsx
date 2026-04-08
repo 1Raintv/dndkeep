@@ -31,7 +31,13 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'notes' | 'schedule' | 'npcs' | 'recap' | 'dm' | 'discord'>('characters');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'notes' | 'schedule' | 'npcs' | 'recap' | 'dm' | 'discord' | 'map'>('characters');
+  // Handle deep-link ?tab=map from character sheet Map button
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'map') setActiveTab('map');
+  }, []);
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -183,6 +189,14 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               Combat Active — Round {sessionState.round}
             </span>
           )}
+          <button
+            className="btn-ghost btn-sm"
+            onClick={() => setActiveTab('map')}
+            style={{ color: activeTab === 'map' ? 'var(--c-gold-l)' : 'var(--t-2)', fontSize: 12 }}
+            title="Battle Map"
+          >
+            🗺 Map
+          </button>
           {isOwner && (
             <button
               className={sessionState?.combat_active ? 'btn-danger btn-sm' : 'btn-primary btn-sm'}
@@ -196,12 +210,12 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
       {/* Tabs */}
       <div className="tabs">
-        {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'session', 'log', 'chat', 'npcs', 'members', 'notes', 'schedule', 'recap', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
+        {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'members', 'notes', 'schedule', 'recap', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
             members: 'Members', characters: 'Characters', session: '⚔️ Combat',
             party: '👥 Party', log: '📜 Log', chat: '💬 Chat', notes: 'Notes',
             schedule: '📅 Schedule', npcs: '🧙 NPCs', recap: '✨ Recap',
-            dm: '🎲 DM Screen', discord: '🎮 Discord',
+            dm: '🎲 DM Screen', discord: '🎮 Discord', map: '🗺 Battle Map',
           };
           return (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab as typeof activeTab)}>
@@ -438,6 +452,22 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         )}
 
         {/* Discord Integration */}
+        {activeTab === 'map' && (
+          <BattleMap
+            campaignId={campaign.id}
+            isDM={isOwner}
+            userId={user?.id ?? ''}
+            playerCharacters={characters.map(c => ({
+              id: c.id, name: c.name, class_name: c.class_name, level: c.level,
+              current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
+              active_conditions: c.active_conditions ?? [],
+              strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
+              intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
+              speed: c.speed,
+            }))}
+          />
+        )}
+
         {activeTab === 'discord' && isOwner && (
           <div>
             <h3 style={{ marginBottom: 'var(--sp-2)' }}>Discord Integration</h3>
