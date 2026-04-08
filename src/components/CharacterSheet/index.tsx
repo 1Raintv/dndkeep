@@ -105,6 +105,36 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     return () => { supabase.removeChannel(ch); };
   }, [character.campaign_id]);
 
+  // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
+  useEffect(() => {
+    if (!character.id) return;
+    const ch = supabase
+      .channel(`char-self-${character.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'characters',
+        filter: `id=eq.${character.id}`,
+      }, payload => {
+        const updated = payload.new as Partial<typeof character>;
+        // Only apply fields that the sheet doesn't own locally to avoid fighting
+        // debounced saves — these come from external sources like BattleMap
+        const externalFields: (keyof typeof character)[] = [
+          'current_hp', 'temp_hp', 'active_conditions', 'concentration_spell',
+          'spell_slots', 'death_saves_successes', 'death_saves_failures',
+        ];
+        const patch: Partial<typeof character> = {};
+        for (const field of externalFields) {
+          if (updated[field] !== undefined && updated[field] !== (character as any)[field]) {
+            (patch as any)[field] = updated[field];
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          setCharacter(prev => ({ ...prev, ...patch }));
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [character.id]);
+
   useEffect(() => {
     if (!character.campaign_id) return;
 

@@ -18,6 +18,7 @@ import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
+import PlayerBattleMap from './PlayerBattleMap';
 import ErrorBoundary from '../ErrorBoundary';
 
 interface CampaignDashboardProps {
@@ -474,10 +475,10 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         )}
 
         {/* Discord Integration */}
-        {activeTab === 'map' && (
+        {activeTab === 'map' && isOwner && (
           <BattleMap
             campaignId={campaign.id}
-            isDM={isOwner}
+            isDM={true}
             userId={user?.id ?? ''}
             playerCharacters={characters.map(c => ({
               id: c.id, name: c.name, class_name: c.class_name, level: c.level,
@@ -487,6 +488,12 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
               speed: c.speed,
             }))}
+          />
+        )}
+        {activeTab === 'map' && !isOwner && (
+          <PlayerBattleMap
+            campaignId={campaign.id}
+            myCharacterId={characters.find(c => c.user_id === user?.id)?.id}
           />
         )}
 
