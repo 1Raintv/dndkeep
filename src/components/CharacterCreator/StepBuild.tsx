@@ -96,39 +96,42 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
   const totalIncomplete = summary.filter(s => s.isMissing).length;
 
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', width: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%' }}>
+
+      {/* ── NAV ROW — always at the very top, full width ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button
+          onClick={() => {
+            if (currentLevel > 1) setCurrentLevel(v => v - 1);
+            else onBack?.();
+          }}
+          style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+            border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)',
+            display: 'flex', alignItems: 'center', gap: 5 }}
+        >
+          ← Back
+        </button>
+
+        <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{currentLevel} / {level}</span>
+
+        <button
+          onClick={() => {
+            if (currentLevel < level) setCurrentLevel(v => v + 1);
+            else onNext?.();
+          }}
+          style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
+            border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+            display: 'flex', alignItems: 'center', gap: 5 }}
+        >
+          {currentLevel < level ? 'Next →' : 'Review →'}
+        </button>
+      </div>
+
+      {/* ── TWO-COLUMN ROW: wizard + All Choices ── */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', width: '100%' }}>
 
       {/* ── LEFT: Level wizard ── */}
       <div style={{ flex: 1, minWidth: 0, maxWidth: 'calc(100% - 156px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-        {/* ── Unified Back / Next nav — TOP ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => {
-              if (currentLevel > 1) setCurrentLevel(v => v - 1);
-              else onBack?.();
-            }}
-            style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)',
-              display: 'flex', alignItems: 'center', gap: 5 }}
-          >
-            ← Back
-          </button>
-
-          <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{currentLevel} / {level}</span>
-
-          <button
-            onClick={() => {
-              if (currentLevel < level) setCurrentLevel(v => v + 1);
-              else onNext?.();
-            }}
-            style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-              border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
-              display: 'flex', alignItems: 'center', gap: 5 }}
-          >
-            {currentLevel < level ? 'Next →' : 'Review →'}
-          </button>
-        </div>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -294,6 +297,8 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
           </button>
         ))}
       </div>
+
+      </div>{/* end two-column row */}
 
     </div>
   );
