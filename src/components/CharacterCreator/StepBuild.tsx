@@ -51,12 +51,13 @@ const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DE
 export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
-  const [_currentLevel, _setCurrentLevel] = useState<number>(1);
-  const currentLevel = controlledLevel ?? _currentLevel;
+  // Use parent-controlled level; fall back to internal state when uncontrolled
+  const [_internalLevel, _setInternalLevel] = useState<number>(1);
+  const currentLevel = controlledLevel !== undefined ? controlledLevel : _internalLevel;
   const setCurrentLevel = (updater: number | ((v: number) => number)) => {
     const next = typeof updater === 'function' ? updater(currentLevel) : updater;
-    _setCurrentLevel(next);
-    onCurrentLevelChange?.(next);
+    _setInternalLevel(next); // keep internal in sync too
+    onCurrentLevelChange?.(next); // notify parent
   };
 
   const levelsToShow = useMemo(() =>
@@ -147,7 +148,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
         </div>
 
         {/* Level card */}
-        <div style={{ border: '1px solid var(--c-border-m)', borderRadius: 12, background: 'var(--c-card)', overflow: 'hidden' }}>
+        <div key={currentLevel} style={{ border: '1px solid var(--c-border-m)', borderRadius: 12, background: 'var(--c-card)', overflow: 'hidden' }}>
           {/* Level title bar */}
           <div style={{ padding: '12px 16px', background: 'rgba(212,160,23,0.06)', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--c-gold-bg)', border: '2px solid var(--c-gold-bdr)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14, color: 'var(--c-gold-l)', flexShrink: 0 }}>
