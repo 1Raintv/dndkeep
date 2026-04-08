@@ -94,10 +94,10 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
   const totalIncomplete = summary.filter(s => s.isMissing).length;
 
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', width: '100%', overflow: 'hidden' }}>
 
       {/* ── LEFT: Level wizard ── */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, minWidth: 0, maxWidth: 'calc(100% - 186px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -269,7 +269,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
       </div>
 
       {/* ── RIGHT: Choices summary ── */}
-      <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, position: 'sticky', top: 16 }}>
+      <div style={{ width: 170, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5, position: 'sticky', top: 16 }}>
         <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--t-3)', marginBottom: 4 }}>
           All Choices
         </div>
@@ -280,7 +280,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
             borderRadius: 8, padding: '7px 10px', cursor: 'pointer', width: '100%',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: entries.length > 0 ? 4 : 0 }}>
-              <span style={{ fontWeight: 700, fontSize: 11,
+              <span style={{ fontWeight: 700, fontSize: 10,
                 color: lvl === currentLevel ? 'var(--c-gold-l)' : isMissing ? 'var(--c-red-l)' : isComplete && hasChoices ? 'var(--c-green-l)' : 'var(--t-3)' }}>
                 Level {lvl}
               </span>
@@ -890,20 +890,26 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>Ability Score Improvement or Feat</div>
 
-      {/* Three option cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+      {/* Three option rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {OPTION_CARDS.map(opt => {
           const isActive = mode === opt.id;
           return (
             <button key={opt.id} onClick={() => { clearChoice(); setMode(opt.id); }}
-              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 9, cursor: 'pointer',
+              style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 9, cursor: 'pointer',
                 border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
                 background: isActive ? 'var(--c-gold-bg)' : 'var(--c-card)',
-                display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
-                {isActive ? '✓ ' : ''}{opt.label}
-              </span>
-              <span style={{ fontSize: 10, color: 'var(--t-3)', lineHeight: 1.4 }}>{opt.desc}</span>
+                display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                border: isActive ? '2px solid var(--c-gold)' : '2px solid var(--c-border-m)',
+                background: isActive ? 'var(--c-gold)' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isActive && <span style={{ fontSize: 9, color: '#000', fontWeight: 900 }}>✓</span>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{opt.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>{opt.desc}</div>
+              </div>
             </button>
           );
         })}
@@ -913,17 +919,15 @@ function ASIFeatPicker({ label, level, choices, onUpdate }: {
       {mode === 'plus2' && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 8 }}>Which ability? (+2)</div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: '100%' }}>
             {ABILITIES_LIST.map(ab => {
               const isChosen = asi?.ability === ab && asi?.amount === 2;
               return (
                 <button key={ab} onClick={() => onUpdate({ asiChoices: { ...choices.asiChoices, [level]: { ability: ab, amount: 2 } } })}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                     border: isChosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-                    background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: isChosen ? 'var(--c-gold-l)' : 'var(--t-2)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800 }}>{ABILITY_LABELS[ab]}</span>
-                  <span style={{ fontSize: 9, opacity: 0.7, textTransform: 'capitalize' }}>{ab.slice(0,3)}</span>
+                    background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: isChosen ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
+                  {ABILITY_LABELS[ab]}
                 </button>
               );
             })}
