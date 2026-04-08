@@ -96,39 +96,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
   const totalIncomplete = summary.filter(s => s.isMissing).length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%' }}>
-
-      {/* ── NAV ROW — always at the very top, full width ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button
-          onClick={() => {
-            if (currentLevel > 1) setCurrentLevel(v => v - 1);
-            else onBack?.();
-          }}
-          style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-            border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)',
-            display: 'flex', alignItems: 'center', gap: 5 }}
-        >
-          ← Back
-        </button>
-
-        <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{currentLevel} / {level}</span>
-
-        <button
-          onClick={() => {
-            if (currentLevel < level) setCurrentLevel(v => v + 1);
-            else onNext?.();
-          }}
-          style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-            border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
-            display: 'flex', alignItems: 'center', gap: 5 }}
-        >
-          {currentLevel < level ? 'Next →' : 'Review →'}
-        </button>
-      </div>
-
-      {/* ── TWO-COLUMN ROW: wizard + All Choices ── */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', width: '100%' }}>
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', width: '100%' }}>
 
       {/* ── LEFT: Level wizard ── */}
       <div style={{ flex: 1, minWidth: 0, maxWidth: 'calc(100% - 156px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -148,6 +116,25 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
               ✓ All choices made
             </span>
           )}
+        </div>
+
+        {/* Compact level prev / next */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setCurrentLevel(v => Math.max(1, v - 1))}
+            disabled={currentLevel <= 1}
+            style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: currentLevel <= 1 ? 'not-allowed' : 'pointer', minHeight: 0,
+              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel <= 1 ? 'var(--t-3)' : 'var(--t-2)',
+              opacity: currentLevel <= 1 ? 0.4 : 1 }}
+          >← Prev Level</button>
+          <span style={{ fontSize: 11, color: 'var(--t-3)' }}>{currentLevel} / {level}</span>
+          <button
+            onClick={() => setCurrentLevel(v => Math.min(level, v + 1))}
+            disabled={currentLevel >= level}
+            style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: currentLevel >= level ? 'not-allowed' : 'pointer', minHeight: 0,
+              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: currentLevel >= level ? 'var(--t-3)' : 'var(--t-2)',
+              opacity: currentLevel >= level ? 0.4 : 1 }}
+          >Next Level →</button>
         </div>
 
         {/* Level progress dots */}
@@ -297,8 +284,6 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
           </button>
         ))}
       </div>
-
-      </div>{/* end two-column row */}
 
     </div>
   );

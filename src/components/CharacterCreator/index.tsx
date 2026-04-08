@@ -258,8 +258,7 @@ export default function CharacterCreator() {
         ))}
       </div>
 
-      {/* Navigation — top (hidden on Build step, StepBuild handles its own nav) */}
-      {step !== 4 && (
+      {/* Navigation — top, consistent across all steps */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--sp-6)', alignItems: 'center' }}>
           <button className="btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : navigate('/lobby')} disabled={saving}>
             {step === 0 ? '✕ Cancel' : '← Back'}
@@ -273,7 +272,6 @@ export default function CharacterCreator() {
             {saving ? 'Creating...' : step === STEPS.length - 1 ? '✨ Create Character' : step === STEPS.length - 2 ? 'Review →' : 'Continue →'}
           </button>
         </div>
-      )}
 
       {/* Layout: step content + sticky summary sidebar */}
       <div className="creator-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 'var(--sp-6)', alignItems: 'start' }}>
@@ -303,8 +301,7 @@ export default function CharacterCreator() {
               setBuildChoices(c);
               if (c.subclass) setSubclass(c.subclass);
             }}
-            onBack={() => setStep(3)}
-            onNext={() => setStep(5)}
+
           />
         )}
         {step === 5 && (
