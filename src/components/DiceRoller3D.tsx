@@ -216,7 +216,9 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     sun.shadow.camera.top=8; sun.shadow.camera.bottom=-8;
     sun.shadow.camera.far=30; sun.shadow.bias=-0.001;
     scene.add(sun);
-    scene.add(Object.assign(new THREE.DirectionalLight(0x8899ff,0.4),{position:new THREE.Vector3(-3,-2,2)}));
+    const fill=new THREE.DirectionalLight(0x8899ff,0.4);
+    fill.position.set(-3,-2,2);
+    scene.add(fill);
 
     const shadowFloor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:0.25}));
     shadowFloor.rotation.x=-Math.PI/2; shadowFloor.receiveShadow=true;
