@@ -229,8 +229,8 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             </span>
           </div>
 
-          {/* Die grid */}
-          <div style={{ padding: 'var(--sp-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
+          {/* Die grid — padding-top accommodates the badge overflow so it never affects layout */}
+          <div style={{ padding: 'var(--sp-3)', paddingTop: 14, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
             {DICE.map(d => {
               const count = queue.find(q => q.die === d)?.count ?? 0;
               return (
@@ -242,7 +242,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     gap: 2, padding: 'var(--sp-2) var(--sp-1)',
                     borderRadius: 'var(--r-md)', position: 'relative',
-                    border: count > 0 ? `2px solid ${dieColor(d)}` : '1px solid var(--c-border)',
+                    border: count > 0 ? `2px solid ${dieColor(d)}` : '2px solid var(--c-border)',
                     background: count > 0 ? `${dieColor(d)}18` : '#080d14',
                     cursor: 'pointer', transition: 'all var(--tr-fast)',
                   }}>
