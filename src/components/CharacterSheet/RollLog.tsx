@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 
 interface RollEntry {
@@ -30,6 +31,7 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
   const [rolls, setRolls] = useState<RollEntry[]>([]);
   const [reactions, setReactions] = useState<Record<string, Reaction[]>>({});
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{x: number; y: number} | null>(null);
   const [loading, setLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -159,6 +161,7 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
   }
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div className="section-header" style={{ marginBottom: 6, flexShrink: 0 }}>
         <span>Roll Log</span>
@@ -248,7 +251,12 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
                 <div style={{ position: 'relative', flexShrink: 0 }}
                   ref={isOpen ? menuRef : undefined}>
                   <button
-                    onClick={() => setOpenMenu(isOpen ? null : roll.id)}
+                    onClick={e => {
+                      if (isOpen) { setOpenMenu(null); setMenuPos(null); return; }
+                      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setMenuPos({ x: r.right, y: r.top });
+                      setOpenMenu(roll.id);
+                    }}
                     title="React"
                     style={{ fontSize: 12, background: 'none', border: 'none', cursor: 'pointer',
                       padding: '0 2px', lineHeight: 1, minHeight: 0,
@@ -256,28 +264,7 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
                     {myEmoji || '＋'}
                   </button>
 
-                  {isOpen && (
-                    <div style={{
-                      position: 'absolute', right: 0, bottom: 22, zIndex: 200,
-                      background: 'var(--c-card)', border: '1px solid var(--c-border-m)',
-                      borderRadius: 10, padding: '5px 6px',
-                      display: 'flex', gap: 4,
-                      boxShadow: 'var(--shadow-lg)',
-                    }}>
-                      {REACTION_OPTIONS.map(emoji => (
-                        <button key={emoji} onClick={() => react(roll.id, emoji)}
-                          style={{
-                            fontSize: 16, cursor: 'pointer', padding: '2px 4px', borderRadius: 6,
-                            background: myEmoji === emoji ? 'var(--c-raised)' : 'none',
-                            border: 'none', minHeight: 0,
-                            transform: myEmoji === emoji ? 'scale(1.25)' : 'scale(1)',
-                            transition: 'transform 0.1s',
-                          }}>
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+
                 </div>
 
                 {/* Total */}
@@ -317,5 +304,43 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
         })}
       </div>
     </div>
+
+    {/* Emoji picker portal — renders at document body level, escapes all overflow clipping */}
+    {openMenu && menuPos && createPortal(
+      <div
+        ref={menuRef}
+        style={{
+          position: 'fixed',
+          right: window.innerWidth - menuPos.x + 4,
+          top: menuPos.y - 44,
+          zIndex: 9999,
+          background: 'var(--c-card)',
+          border: '1px solid var(--c-border-m)',
+          borderRadius: 10,
+          padding: '5px 6px',
+          display: 'flex',
+          gap: 4,
+          boxShadow: 'var(--shadow-lg)',
+        }}
+      >
+        {REACTION_OPTIONS.map(emoji => {
+          const curMyEmoji = (reactions[openMenu] ?? []).find(r => r.user_id === userId)?.emoji ?? '';
+          return (
+            <button key={emoji} onClick={() => react(openMenu, emoji)}
+              style={{
+                fontSize: 16, cursor: 'pointer', padding: '2px 4px', borderRadius: 6,
+                background: curMyEmoji === emoji ? 'var(--c-raised)' : 'none',
+                border: 'none', minHeight: 0,
+                transform: curMyEmoji === emoji ? 'scale(1.25)' : 'scale(1)',
+                transition: 'transform 0.1s',
+              }}>
+              {emoji}
+            </button>
+          );
+        })}
+      </div>,
+      document.body
+    )}
+    </>
   );
 }
