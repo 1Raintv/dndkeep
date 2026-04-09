@@ -218,26 +218,19 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
         <div className="animate-fade-in" style={{
           position: 'fixed', bottom: 76, right: 'var(--sp-4)',
           zIndex: 89, width: 296,
-          height: 380,
-          display: 'flex', flexDirection: 'column',
           background: 'linear-gradient(160deg, #1a1f2e 0%, #0d1117 100%)',
           border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)',
           boxShadow: 'var(--shadow-lg), var(--shadow-gold)', overflow: 'hidden',
         }}>
           {/* Header */}
-          <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border)' }}>
             <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
               Dice Roller
             </span>
-            {(queue.length > 0 || lastRoll) && (
-              <button onClick={clearQueue} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                clear all
-              </button>
-            )}
           </div>
 
-          {/* Die grid — fixed size, never shrinks */}
-          <div style={{ padding: 'var(--sp-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)', flexShrink: 0 }}>
+          {/* Die grid */}
+          <div style={{ padding: 'var(--sp-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
             {DICE.map(d => {
               const count = queue.find(q => q.die === d)?.count ?? 0;
               return (
@@ -269,112 +262,27 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             })}
           </div>
 
-          {/* Roll controls — fixed size */}
-          <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
-            {/* Queue chips — always present, fixed height to prevent layout shift */}
-            <div style={{ minHeight: 26, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+          {/* Controls — queue chips (fixed height) + roll button */}
+          <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            <div style={{ height: 26, display: 'flex', flexWrap: 'nowrap', gap: 4, alignItems: 'center', overflow: 'hidden' }}>
               {queue.length === 0 ? (
                 <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
                   Click dice to add them
                 </span>
               ) : queue.map(({ die, count }) => (
                 <span key={die} style={{
-                  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, flexShrink: 0,
                   color: dieColor(die), background: `${dieColor(die)}15`,
                   border: `1px solid ${dieColor(die)}50`,
                   borderRadius: 4, padding: '2px 8px',
                 }}>{count}d{die}</span>
               ))}
             </div>
-
-
-
-            {/* Shake animation — fixed height container so it never causes shift */}
-            <div style={{ height: rolling ? 52 : 0, overflow: 'hidden', transition: 'height 0.15s ease',
-              display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
-              {rolling && queue.flatMap(({ die, count }) => Array.from({ length: count }, (_, i) => ({ die, i }))).map(({ die, i }, idx) => (
-                <div key={idx} style={{
-                  width: 40, height: 40, borderRadius: 8,
-                  border: `2px solid ${dieColor(die)}`,
-                  background: `${dieColor(die)}20`,
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  animation: 'diceShake 0.08s ease-in-out infinite alternate',
-                }}>
-                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, lineHeight: 1, color: dieColor(die) }}>{animValues[idx] ?? die}</span>
-                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{die}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Roll button — always visible */}
             <button className="btn-gold" onClick={rollAll} disabled={rolling || queue.length === 0}
               style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700,
                 opacity: (rolling || queue.length === 0) ? 0.45 : 1 }}>
               {rolling ? '🎲 Rolling…' : queue.length > 0 ? `🎲 Roll ${buildExpr(queue)}` : '🎲 Roll'}
             </button>
-          </div>
-
-          {/* Result — always present, fills remaining space, scrollable */}
-          <div style={{
-            flex: 1, minHeight: 0, overflowY: 'auto',
-            borderTop: '1px solid var(--c-border)',
-          }}>
-          {lastRoll ? (
-            <div key={lastRoll.id} className="animate-fade-in" style={{
-              padding: 'var(--sp-3) var(--sp-4)',
-            }}>
-              {lastRoll.label && (
-                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
-                  {lastRoll.label}
-                </div>
-              )}
-
-              {/* Individual dice results */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 'var(--sp-2)' }}>
-                {lastRoll.dice.map((d, i) => {
-                  const nat = isNat(d.die, d.value);
-                  const dropped = d.dropped;
-                  const color = dropped ? 'var(--t-2)' : nat === 'crit' || nat === 'max' ? 'var(--c-gold-l)' : nat === 'fumble' ? 'var(--c-red-l)' : dieColor(d.die);
-                  return (
-                    <div key={i} className={!dropped ? "dice-land" : ""} style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      padding: '4px 8px', borderRadius: 6, position: 'relative',
-                      border: `1px solid ${dropped ? 'var(--c-border)' : color}50`,
-                      background: dropped ? 'transparent' : `${color}10`,
-                      opacity: dropped ? 0.4 : 1,
-                    }}>
-                      {dropped && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ width: '85%', height: 1.5, background: 'var(--t-2)', transform: 'rotate(-15deg)', borderRadius: 1 }} />
-                      </div>}
-                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-xl)', lineHeight: 1, color }}>{d.value}</span>
-                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{d.die}</span>
-                      {nat && !dropped && <span style={{ fontSize: 7, color, fontFamily: 'var(--ff-body)', fontWeight: 700 }}>
-                        {nat === 'crit' ? '★CRIT' : nat === 'max' ? 'MAX' : '✗MISS'}
-                      </span>}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Total */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)' }}>
-                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
-                <span style={{ fontFamily: 'var(--ff-brand)', fontWeight: 900, fontSize: 'var(--fs-3xl)', lineHeight: 1, color: 'var(--t-1)' }}>
-                  {lastRoll.total}
-                </span>
-                {adv !== 'normal' && has20 && (
-                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, padding: '1px 5px', borderRadius: 3, color: adv === 'advantage' ? 'var(--hp-full)' : 'var(--c-red-l)', background: adv === 'advantage' ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)' }}>
-                    {adv === 'advantage' ? 'ADV' : 'DIS'}
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%',
-              color: 'var(--t-3)', fontSize: 11, fontFamily: 'var(--ff-body)', fontStyle: 'italic', padding: 16, textAlign: 'center' }}>
-              Results will appear here
-            </div>
-          )}
           </div>
 
         </div>
