@@ -243,7 +243,7 @@ function AppRoutes() {
         </Suspense>
       </main>
       {/* Global floating dice roller — always visible when logged in */}
-      {user && <QuickRoll />}
+      {user && <QuickRoll userId={user.id} />}
     </div>
   );
 }

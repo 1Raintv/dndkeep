@@ -21,29 +21,44 @@ function isNat(die: number, v: number) {
 
 export async function logRoll(p: {
   campaignId?: string | null; characterId?: string | null;
+  userId?: string | null;
   characterName?: string; label: string; expression: string;
   results: number[]; total: number;
 }) {
   if (!p.characterId) return;
-  await supabase.from('action_logs').insert({
-    campaign_id: p.campaignId ?? null,
+  // Write to roll_logs (character's personal history) 
+  await supabase.from('roll_logs').insert({
+    user_id: p.userId ?? p.characterId,
     character_id: p.characterId,
-    character_name: p.characterName ?? '',
-    action_type: 'roll',
-    action_name: p.label || p.expression,
+    campaign_id: p.campaignId ?? null,
+    label: p.label || p.expression,
     dice_expression: p.expression,
     individual_results: p.results,
     total: p.total,
   });
+  // Also write to action_logs if in a campaign (shared roll log)
+  if (p.campaignId) {
+    await supabase.from('action_logs').insert({
+      campaign_id: p.campaignId,
+      character_id: p.characterId,
+      character_name: p.characterName ?? '',
+      action_type: 'roll',
+      action_name: p.label || p.expression,
+      dice_expression: p.expression,
+      individual_results: p.results,
+      total: p.total,
+    });
+  }
 }
 
 interface QuickRollProps {
   characterId?: string;
   characterName?: string;
   campaignId?: string | null;
+  userId?: string;
 }
 
-export default function QuickRoll({ characterId, characterName, campaignId }: QuickRollProps) {
+export default function QuickRoll({ characterId, characterName, campaignId, userId }: QuickRollProps) {
   const [open, setOpen] = useState(false);
   const [queue, setQueue] = useState<DiceInQueue[]>([]);
   const [label, setLabel] = useState('');
@@ -138,7 +153,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
 
       if (characterId) {
         await logRoll({
-          campaignId, characterId, characterName,
+          campaignId, characterId, characterName, userId,
           label: label || expression,
           expression,
           results: dice.map(d => d.value),
@@ -252,10 +267,10 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
             })}
           </div>
 
-          {/* Queue + Roll */}
-          {queue.length > 0 && (
-            <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-              {/* Queue chips */}
+          {/* Roll controls — always rendered, stable height */}
+          <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            {/* Queue chips */}
+            {queue.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {queue.map(({ die, count }) => (
                   <span key={die} style={{
@@ -263,69 +278,56 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
                     color: dieColor(die), background: `${dieColor(die)}15`,
                     border: `1px solid ${dieColor(die)}50`,
                     borderRadius: 4, padding: '2px 8px',
-                  }}>
-                    {count}d{die}
-                  </span>
+                  }}>{count}d{die}</span>
                 ))}
               </div>
+            )}
 
-              {/* Label */}
-              <input
-                value={label}
-                onChange={e => setLabel(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && rollAll()}
-                placeholder='Label (e.g. "Fireball damage")'
-                style={{ fontSize: 11, padding: '4px 8px' }}
-              />
+            {/* Adv/Dis — only when d20 queued */}
+            {has20 && (
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['normal', 'advantage', 'disadvantage'] as const).map(mode => {
+                  const active = adv === mode;
+                  const c = mode === 'advantage' ? 'var(--hp-full)' : mode === 'disadvantage' ? 'var(--c-red-l)' : 'var(--c-gold-l)';
+                  return (
+                    <button key={mode} onClick={() => setAdv(mode)} style={{
+                      flex: 1, fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      padding: '3px 2px', borderRadius: 4, cursor: 'pointer',
+                      border: active ? `1px solid ${c}` : '1px solid var(--c-border)',
+                      background: active ? `${c}20` : 'transparent',
+                      color: active ? c : 'var(--t-2)',
+                    }}>{mode === 'normal' ? 'Normal' : mode === 'advantage' ? 'Adv' : 'Dis'}</button>
+                  );
+                })}
+              </div>
+            )}
 
-              {/* Adv/Dis toggle — only when d20 in queue */}
-              {has20 && (
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {(['normal', 'advantage', 'disadvantage'] as const).map(mode => {
-                    const active = adv === mode;
-                    const c = mode === 'advantage' ? 'var(--hp-full)' : mode === 'disadvantage' ? 'var(--c-red-l)' : 'var(--c-gold-l)';
-                    return (
-                      <button key={mode} onClick={() => setAdv(mode)} style={{
-                        flex: 1, fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
-                        letterSpacing: '0.04em', textTransform: 'uppercase',
-                        padding: '3px 2px', borderRadius: 4, cursor: 'pointer',
-                        border: active ? `1px solid ${c}` : '1px solid var(--c-border)',
-                        background: active ? `${c}20` : 'transparent',
-                        color: active ? c : 'var(--t-2)',
-                      }}>
-                        {mode === 'normal' ? 'Normal' : mode === 'advantage' ? 'Adv' : 'Dis'}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+            {/* Shake animation during roll */}
+            {rolling && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', padding: '6px 0' }}>
+                {queue.flatMap(({ die, count }) => Array.from({ length: count }, (_, i) => ({ die, i }))).map(({ die, i }, idx) => (
+                  <div key={idx} style={{
+                    width: 40, height: 40, borderRadius: 8,
+                    border: `2px solid ${dieColor(die)}`,
+                    background: `${dieColor(die)}20`,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    animation: 'diceShake 0.08s ease-in-out infinite alternate',
+                  }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, lineHeight: 1, color: dieColor(die) }}>{animValues[idx] ?? die}</span>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{die}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
-              {/* Animated dice during roll */}
-              {rolling && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', padding: '6px 0' }}>
-                  {queue.flatMap(({ die, count }) => Array.from({ length: count }, (_, i) => ({ die, i }))).map(({ die, i }, idx) => (
-                    <div key={idx} style={{
-                      width: 40, height: 40, borderRadius: 8,
-                      border: `2px solid ${dieColor(die)}`,
-                      background: `${dieColor(die)}20`,
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                      animation: 'diceShake 0.08s ease-in-out infinite alternate',
-                    }}>
-                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, lineHeight: 1, color: dieColor(die) }}>
-                        {animValues[idx] ?? die}
-                      </span>
-                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{die}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button className="btn-gold" onClick={rollAll} disabled={rolling}
-                style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700,
-                  opacity: rolling ? 0.5 : 1 }}>
-                {rolling ? '🎲 Rolling…' : `🎲 Roll ${buildExpr(queue)}`}
-              </button>
-            </div>
-          )}
+            {/* Roll button — always visible */}
+            <button className="btn-gold" onClick={rollAll} disabled={rolling || queue.length === 0}
+              style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700,
+                opacity: (rolling || queue.length === 0) ? 0.45 : 1 }}>
+              {rolling ? '🎲 Rolling…' : queue.length > 0 ? `🎲 Roll ${buildExpr(queue)}` : '🎲 Roll'}
+            </button>
+          </div>
 
           {/* Result */}
           {lastRoll && (
@@ -381,12 +383,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
             </div>
           )}
 
-          {!queue.length && !lastRoll && (
-            <div style={{ padding: 'var(--sp-3) var(--sp-4) var(--sp-4)', textAlign: 'center', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-              Click dice to add them · right-click to remove<br/>
-              <span style={{ fontSize: 9, opacity: 0.6 }}>Mix any dice before rolling</span>
-            </div>
-          )}
+
         </div>
       )}
     </>

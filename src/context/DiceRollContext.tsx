@@ -35,7 +35,7 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   const triggerRoll = useCallback((event: DiceRollEvent) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setCurrent(event);
-    timeoutRef.current = setTimeout(() => setCurrent(null), 2200);
+    timeoutRef.current = setTimeout(() => setCurrent(null), 4400);
   }, []);
 
   return (
