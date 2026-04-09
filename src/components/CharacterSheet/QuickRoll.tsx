@@ -269,19 +269,21 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
 
           {/* Roll controls — always rendered, stable height */}
           <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-            {/* Queue chips */}
-            {queue.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {queue.map(({ die, count }) => (
-                  <span key={die} style={{
-                    fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
-                    color: dieColor(die), background: `${dieColor(die)}15`,
-                    border: `1px solid ${dieColor(die)}50`,
-                    borderRadius: 4, padding: '2px 8px',
-                  }}>{count}d{die}</span>
-                ))}
-              </div>
-            )}
+            {/* Queue chips — always present, fixed height to prevent layout shift */}
+            <div style={{ minHeight: 26, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+              {queue.length === 0 ? (
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
+                  Click dice to add them
+                </span>
+              ) : queue.map(({ die, count }) => (
+                <span key={die} style={{
+                  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                  color: dieColor(die), background: `${dieColor(die)}15`,
+                  border: `1px solid ${dieColor(die)}50`,
+                  borderRadius: 4, padding: '2px 8px',
+                }}>{count}d{die}</span>
+              ))}
+            </div>
 
             {/* Adv/Dis — only when d20 queued */}
             {has20 && (
