@@ -215,6 +215,7 @@ function NotFound() {
 function AppRoutes() {
   const { user, profile } = useAuth();
   const location = useLocation();
+  const [activeCharName, setActiveCharName] = useState<string>('');
   const isLanding = !user && location.pathname === '/';
   const isShare = location.pathname.startsWith('/share/');
   const isAuth = location.pathname === '/auth';
@@ -225,6 +226,15 @@ function AppRoutes() {
   const campMatch = location.pathname.match(/^\/campaigns\/([\w-]+)/);
   const activeCharId = charMatch?.[1];
   const activeCampId = campMatch?.[1];
+
+  // Fetch character name when on a character page
+  useEffect(() => {
+    if (!activeCharId) { setActiveCharName(''); return; }
+    import('./lib/supabase').then(({ supabase }) => {
+      supabase.from('characters').select('name').eq('id', activeCharId).single()
+        .then(({ data }) => { if (data) setActiveCharName(data.name); });
+    });
+  }, [activeCharId]);
 
   return (
     <div className={showSidebar ? 'app-layout-sidebar' : 'app-layout-full'}>
@@ -252,7 +262,7 @@ function AppRoutes() {
       </main>
       {/* Global floating dice roller — always visible when logged in */}
       {user && <QuickRoll userId={user.id} characterId={activeCharId} campaignId={activeCampId} />}
-      {user && <FloatingRollLog userId={user.id} characterId={activeCharId ?? ''} characterName={profile?.display_name ?? 'You'} />}
+      {user && <FloatingRollLog userId={user.id} characterId={activeCharId ?? ''} characterName={activeCharName || profile?.display_name || 'You'} />}
     </div>
   );
 }
