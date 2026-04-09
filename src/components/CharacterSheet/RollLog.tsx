@@ -26,23 +26,24 @@ export default function RollLog({ characterId, userId }: RollLogProps) {
 
   useEffect(() => {
     loadRolls();
+    // Subscribe by user_id — catches all rolls regardless of character_id being set
     const channel = supabase
-      .channel(`roll-log-${characterId}`)
+      .channel(`roll-log-${userId}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'roll_logs',
-        filter: `character_id=eq.${characterId}`,
+        filter: `user_id=eq.${userId}`,
       }, payload => {
         setRolls(prev => [payload.new as RollEntry, ...prev].slice(0, 60));
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [characterId]);
+  }, [userId]);
 
   async function loadRolls() {
     const { data } = await supabase
       .from('roll_logs')
       .select('id, label, dice_expression, individual_results, total, rolled_at')
-      .eq('character_id', characterId)
+      .eq('user_id', userId)
       .order('rolled_at', { ascending: false })
       .limit(60);
     if (data) setRolls(data as RollEntry[]);

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -44,6 +45,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     if (hasAutoFail) {
       setLastRoll({ ability, d20: 1, modifier: mod, total: 1 + mod, isCrit: false, isFail: true });
       triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)` });
+      supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod });
       return;
     }
 
@@ -53,6 +55,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
     setLastRoll({ ability, d20, modifier: mod, total: d20 + mod, isCrit: d20 === 20, isFail: d20 === 1 });
     triggerRoll({ result: d20, dieType: 20, modifier: mod, total: d20 + mod, label });
+    supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [d20], total: d20 + mod });
   }
 
   return (
