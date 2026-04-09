@@ -149,21 +149,26 @@ function Sidebar() {
       <nav className="sidebar-nav">
         {/* Home with submenu */}
         <div>
-          <button
-            onClick={() => !collapsed && setHomeOpen(o => !o)}
-            className={`sidebar-link ${location.pathname === '/lobby' || location.pathname.startsWith('/character') ? 'active' : ''}`}
-            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }}
-            title={collapsed ? 'Home' : undefined}
-          >
-            <span className="sidebar-link-icon">{Icons.characters}</span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <NavLink
+              to="/lobby"
+              className={({ isActive }) => `sidebar-link ${isActive || location.pathname.startsWith('/character') ? 'active' : ''}`}
+              style={{ flex: 1 }}
+              title={collapsed ? 'Home' : undefined}
+            >
+              <span className="sidebar-link-icon">{Icons.characters}</span>
+              {!collapsed && <span className="sidebar-link-label">Home</span>}
+            </NavLink>
             {!collapsed && (
-              <>
-                <span className="sidebar-link-label">Home</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)', transition: 'transform 0.2s',
-                  display: 'inline-block', transform: homeOpen ? 'rotate(90deg)' : 'none' }}>›</span>
-              </>
+              <button
+                onClick={() => setHomeOpen(o => !o)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px',
+                  color: 'var(--t-3)', fontSize: 12, flexShrink: 0, minHeight: 0,
+                  transform: homeOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}
+                title={homeOpen ? 'Collapse' : 'Expand'}
+              >›</button>
             )}
-          </button>
+          </div>
 
           {/* Submenu */}
           {!collapsed && homeOpen && (

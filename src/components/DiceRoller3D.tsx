@@ -1,10 +1,12 @@
 /**
- * DiceRoller3D — Full 3D room with physics-based dice.
- * Dice have real X/Y/Z positions and velocities, bounce off all 6 walls,
- * scale with depth for genuine perspective, rendered with flat shading.
+ * DiceRoller3D — Three.js + Cannon-es physics dice roller.
+ * Real WebGL 3D rendering with proper rigid-body physics simulation.
+ * Dice collide with each other and with all 6 room walls.
  */
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 
 export interface DiceRollEvent {
   result: number;
@@ -19,396 +21,455 @@ export interface DiceRollEvent {
 
 interface Props { event: DiceRollEvent; onDismiss: () => void; }
 
-// ── 3D math ─────────────────────────────────────────────────────────
-type V3 = readonly [number, number, number];
-const dot   = (a: V3, b: V3) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-const sub   = (a: V3, b: V3): V3 => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
-const cross = (a: V3, b: V3): V3 => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-const norm  = (a: V3): V3 => { const l = Math.sqrt(dot(a,a)); return l > 0 ? [a[0]/l, a[1]/l, a[2]/l] : [0,0,1]; };
+// ── Die theme colors ─────────────────────────────────────────────────
+const THEMES: Record<number, { body: number; edge: number; text: number }> = {
+  4:   { body: 0x2a0545, edge: 0xc084fc, text: 0xe9d5ff },
+  6:   { body: 0x2d1500, edge: 0xf97316, text: 0xfed7aa },
+  8:   { body: 0x052e16, edge: 0x22c55e, text: 0xbbf7d0 },
+  10:  { body: 0x0c1f3a, edge: 0x38bdf8, text: 0xe0f2fe },
+  12:  { body: 0x3b0764, edge: 0xe879f9, text: 0xfae8ff },
+  20:  { body: 0x2d2000, edge: 0xf0c040, text: 0xfef9c3 },
+  100: { body: 0x3b1500, edge: 0xfb923c, text: 0xffedd5 },
+};
+const theme = (s: number) => THEMES[s] ?? THEMES[20];
 
-function rotate(v: V3, rx: number, ry: number, rz: number): V3 {
-  let [x, y, z] = v;
-  let y2 = y*Math.cos(rx) - z*Math.sin(rx), z2 = y*Math.sin(rx) + z*Math.cos(rx); y=y2; z=z2;
-  let x2 = x*Math.cos(ry) + z*Math.sin(ry); z2 = -x*Math.sin(ry) + z*Math.cos(ry); x=x2; z=z2;
-  x2 = x*Math.cos(rz) - y*Math.sin(rz); y2 = x*Math.sin(rz) + y*Math.cos(rz);
-  return [x2, y2, z];
+const PHI = (1 + Math.sqrt(5)) / 2;
+
+// ── Geometry helpers ─────────────────────────────────────────────────
+function unitize(verts: [number,number,number][]): [number,number,number][] {
+  return verts.map(v => {
+    const l = Math.sqrt(v[0]**2+v[1]**2+v[2]**2);
+    return [v[0]/l, v[1]/l, v[2]/l];
+  });
 }
 
-// ── Geometry ─────────────────────────────────────────────────────────
-const PHI = (1+Math.sqrt(5))/2;
-type Face = { vi: number[]; n: number };
-interface Geo { verts: V3[]; faces: Face[] }
+interface DieGeoDef {
+  vertices: [number,number,number][];
+  faces: number[][];   // each face = array of vertex indices
+  faceNums: number[];  // face label for index i
+}
 
-function unitize(vs: V3[]): V3[] { return vs.map(v => { const l=Math.sqrt(dot(v,v)); return l>0?[v[0]/l,v[1]/l,v[2]/l]:[0,0,1]; }); }
+function d4Geo(): DieGeoDef {
+  const v = unitize([[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]]);
+  return { vertices: v, faces: [[0,1,2],[0,2,3],[0,3,1],[1,3,2]], faceNums: [1,2,3,4] };
+}
 
-const GEOS: Record<number, Geo> = {
-  4: (() => { const v = unitize([[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]]); return { verts:v, faces:[{vi:[0,1,2],n:1},{vi:[0,2,3],n:2},{vi:[0,3,1],n:3},{vi:[1,3,2],n:4}]}; })(),
-  6: (() => { const v: V3[] = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]]; return { verts:v, faces:[{vi:[0,3,2,1],n:1},{vi:[4,5,6,7],n:6},{vi:[0,1,5,4],n:2},{vi:[3,7,6,2],n:5},{vi:[0,4,7,3],n:3},{vi:[1,2,6,5],n:4}]}; })(),
-  8: (() => { const v: V3[] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]; return { verts:v, faces:[{vi:[0,2,4],n:1},{vi:[2,1,4],n:2},{vi:[1,3,4],n:3},{vi:[3,0,4],n:4},{vi:[0,5,2],n:5},{vi:[2,5,1],n:6},{vi:[1,5,3],n:7},{vi:[3,5,0],n:8}]}; })(),
-  10: (() => {
-    const verts: V3[] = [];
-    for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2;verts.push([Math.cos(a),0.5,Math.sin(a)]);}
-    for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2+Math.PI/5;verts.push([Math.cos(a),-0.5,Math.sin(a)]);}
-    verts.push([0,1.2,0],[0,-1.2,0]);
-    const nv = unitize(verts.slice(0,10));
-    nv.push([0,1,0],[0,-1,0]);
-    const faces: Face[] = [];
-    for(let i=0;i<5;i++){faces.push({vi:[10,(i+1)%5,i],n:i+1},{vi:[11,i+5,((i+1)%5)+5],n:i+6});}
-    return {verts:nv,faces};
-  })(),
-  12: (() => {
-    const inv=1/PHI;
-    const raw: V3[]=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[0,-inv,-PHI],[0,inv,-PHI],[0,-inv,PHI],[0,inv,PHI],[-inv,-PHI,0],[inv,-PHI,0],[inv,PHI,0],[-inv,PHI,0],[-PHI,0,-inv],[-PHI,0,inv],[PHI,0,-inv],[PHI,0,inv]];
-    return {verts:unitize(raw),faces:[{vi:[0,8,13,12,16],n:1},{vi:[1,18,13,8,9],n:2},{vi:[2,9,8,0,3],n:3},{vi:[3,0,16,17,15],n:4},{vi:[4,17,16,12,10],n:5},{vi:[5,19,18,1,6],n:6},{vi:[6,1,2,14,19],n:7},{vi:[7,11,14,2,3],n:8},{vi:[7,15,17,4,11],n:9},{vi:[5,10,12,13,18],n:10},{vi:[4,10,5,6,7],n:11},{vi:[11,4,19,14,15],n:12}]};
-  })(),
-  20: (() => {
-    const raw: V3[]=[[0,1,PHI],[0,-1,PHI],[0,1,-PHI],[0,-1,-PHI],[1,PHI,0],[-1,PHI,0],[1,-PHI,0],[-1,-PHI,0],[PHI,0,1],[PHI,0,-1],[-PHI,0,1],[-PHI,0,-1]];
-    return {verts:unitize(raw),faces:[{vi:[0,1,8],n:1},{vi:[0,8,4],n:2},{vi:[0,4,5],n:3},{vi:[0,5,10],n:4},{vi:[0,10,1],n:5},{vi:[3,2,11],n:6},{vi:[3,11,7],n:7},{vi:[3,7,6],n:8},{vi:[3,6,9],n:9},{vi:[3,9,2],n:10},{vi:[1,6,8],n:11},{vi:[8,6,9],n:12},{vi:[8,9,4],n:13},{vi:[4,9,2],n:14},{vi:[4,2,5],n:15},{vi:[5,2,11],n:16},{vi:[5,11,10],n:17},{vi:[10,11,7],n:18},{vi:[10,7,1],n:19},{vi:[1,7,6],n:20}]};
-  })(),
-};
-function getGeo(sides: number): Geo { return GEOS[sides] ?? GEOS[20]; }
+function d6Geo(): DieGeoDef {
+  const v: [number,number,number][] = [
+    [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],
+    [-1,-1, 1],[1,-1, 1],[1,1, 1],[-1,1, 1],
+  ];
+  return { vertices: v,
+    faces: [[0,3,2,1],[4,5,6,7],[0,1,5,4],[3,7,6,2],[0,4,7,3],[1,2,6,5]],
+    faceNums: [1,6,2,5,3,4] };
+}
 
-// ── Palette ──────────────────────────────────────────────────────────
-const PAL: Record<number, [string, string, string]> = {
-  4:  ['#2a0545','#c084fc','#e9d5ff'],  6:  ['#2d1500','#f97316','#fed7aa'],
-  8:  ['#052e16','#22c55e','#bbf7d0'],  10: ['#0c2a4a','#38bdf8','#e0f2fe'],
-  12: ['#3b0764','#e879f9','#fae8ff'],  20: ['#2d2000','#f0c040','#fef9c3'],
-  100:['#3b1500','#fb923c','#ffedd5'],
-};
-const LIGHT: V3 = norm([0.5,-1,0.7]);
+function d8Geo(): DieGeoDef {
+  const v: [number,number,number][] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  return { vertices: v,
+    faces: [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[0,5,2],[2,5,1],[1,5,3],[3,5,0]],
+    faceNums: [1,2,3,4,5,6,7,8] };
+}
 
-// ── Die instance ─────────────────────────────────────────────────────
-interface Die {
-  geo: Geo; sides: number; finalVal: number;
-  wx: number; wy: number; wz: number;    // 3D world pos
-  vx: number; vy: number; vz: number;    // 3D velocity
-  rx: number; ry: number; rz: number;    // rotation angles
-  arx: number; ary: number; arz: number; // angular velocity
-  phase: 'fly'|'done';
-  delay: number;
+function d12Geo(): DieGeoDef {
+  const inv = 1/PHI;
+  const v = unitize([
+    [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],
+    [0,-inv,-PHI],[0,inv,-PHI],[0,-inv,PHI],[0,inv,PHI],
+    [-inv,-PHI,0],[inv,-PHI,0],[inv,PHI,0],[-inv,PHI,0],
+    [-PHI,0,-inv],[-PHI,0,inv],[PHI,0,-inv],[PHI,0,inv],
+  ]);
+  return { vertices: v,
+    faces: [[0,8,13,12,16],[1,18,13,8,9],[2,9,8,0,3],[3,0,16,17,15],[4,17,16,12,10],
+            [5,19,18,1,6],[6,1,2,14,19],[7,11,14,2,3],[7,15,17,4,11],[5,10,12,13,18],
+            [4,10,5,6,7],[11,4,19,14,15]],
+    faceNums: [1,2,3,4,5,6,7,8,9,10,11,12] };
+}
+
+function d20Geo(): DieGeoDef {
+  const v = unitize([
+    [0,1,PHI],[0,-1,PHI],[0,1,-PHI],[0,-1,-PHI],
+    [1,PHI,0],[-1,PHI,0],[1,-PHI,0],[-1,-PHI,0],
+    [PHI,0,1],[PHI,0,-1],[-PHI,0,1],[-PHI,0,-1],
+  ]);
+  return { vertices: v,
+    faces: [[0,1,8],[0,8,4],[0,4,5],[0,5,10],[0,10,1],[3,2,11],[3,11,7],[3,7,6],[3,6,9],[3,9,2],
+            [1,6,8],[8,6,9],[8,9,4],[4,9,2],[4,2,5],[5,2,11],[5,11,10],[10,11,7],[10,7,1],[1,7,6]],
+    faceNums: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20] };
+}
+
+function getGeoDef(sides: number): DieGeoDef {
+  switch(sides) { case 4: return d4Geo(); case 6: return d6Geo(); case 8: return d8Geo();
+    case 12: return d12Geo(); default: return d20Geo(); }
+}
+
+// Build a THREE.BufferGeometry from faces (triangulated)
+function buildThreeGeo(def: DieGeoDef, scale = 0.95): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  for (const face of def.faces) {
+    // Fan triangulation
+    for (let i = 1; i < face.length - 1; i++) {
+      const a = def.vertices[face[0]], b = def.vertices[face[i]], c = def.vertices[face[i+1]];
+      const ax=a[0]*scale, ay=a[1]*scale, az=a[2]*scale;
+      const bx=b[0]*scale, by=b[1]*scale, bz=b[2]*scale;
+      const cx=c[0]*scale, cy=c[1]*scale, cz=c[2]*scale;
+      // Normal via cross product
+      const ex=bx-ax, ey=by-ay, ez=bz-az;
+      const fx=cx-ax, fy=cy-ay, fz=cz-az;
+      const nx=ey*fz-ez*fy, ny=ez*fx-ex*fz, nz=ex*fy-ey*fx;
+      const nl=Math.sqrt(nx*nx+ny*ny+nz*nz);
+      positions.push(ax,ay,az, bx,by,bz, cx,cy,cz);
+      normals.push(nx/nl,ny/nl,nz/nl, nx/nl,ny/nl,nz/nl, nx/nl,ny/nl,nz/nl);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  return geo;
+}
+
+// Build CANNON ConvexPolyhedron for a die
+function buildCannonShape(def: DieGeoDef, scale = 1.0): CANNON.ConvexPolyhedron {
+  const verts = def.vertices.map(v => new CANNON.Vec3(v[0]*scale, v[1]*scale, v[2]*scale));
+  const faces = def.faces.map(f => [...f]);
+  return new CANNON.ConvexPolyhedron({ vertices: verts, faces });
+}
+
+// Build a number label texture
+function makeNumTexture(num: number, col: number): THREE.CanvasTexture {
+  const cv = document.createElement('canvas');
+  cv.width = 128; cv.height = 128;
+  const ctx = cv.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.font = `900 ${num >= 10 ? 56 : 72}px system-ui`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const r=(col>>16)&255, g=(col>>8)&255, b=col&255;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fillText(String(num), 64, 68);
+  return new THREE.CanvasTexture(cv);
 }
 
 // ── Component ────────────────────────────────────────────────────────
 export default function DiceRoller3D({ event, onDismiss }: Props) {
-  const cvRef = useRef<HTMLCanvasElement>(null);
+  const cvRef = useRef<HTMLDivElement>(null);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
 
   useEffect(() => {
-    const cv = cvRef.current; if(!cv) return;
-    const ctx = cv.getContext('2d')!;
+    const container = cvRef.current;
+    if (!container) return;
+
     const W = window.innerWidth, H = window.innerHeight;
-    cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio;
-    cv.style.width = W+'px'; cv.style.height = H+'px';
-    ctx.scale(devicePixelRatio, devicePixelRatio);
 
-    // ── Room & camera constants ───────────────────────────────────────
-    const FOV  = 520;         // perspective strength
-    const RX   = 520;         // room half-width
-    const RY   = 380;         // room half-height
-    const Z_N  = 120;         // front wall Z
-    const Z_F  = 1400;        // back wall Z
-    const FLOOR_Y = 320;      // floor Y (gravity target)
-    const CEIL_Y  = -320;     // ceiling Y
-    const BASE_R  = 68;       // die world-space radius
-    const GRAVITY = 1800;
-    const BOUNCE_FLOOR = 0.65, BOUNCE_WALL = 0.72, BOUNCE_ANG = 0.78, ROLL_FX = 0.955;
+    // ── Three.js setup ───────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+    container.appendChild(renderer.domElement);
 
-    // project world pos to screen
-    const proj = (wx: number, wy: number, wz: number) => {
-      const d = FOV / Math.max(wz, 1);
-      return [wx * d + W/2, wy * d + H/2, d] as [number, number, number];
-    };
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 200);
+    camera.position.set(0, 14, 22);
+    camera.lookAt(0, 0, 0);
 
-    const dList = event.allDice?.length ? event.allDice : [{die:event.dieType,value:event.result}];
-    const n = dList.length;
+    // Lights
+    const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+    scene.add(ambient);
+    const sun = new THREE.DirectionalLight(0xfff8e8, 1.8);
+    sun.position.set(6, 14, 8);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.near = 0.1;
+    sun.shadow.camera.far = 60;
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -20;
+    sun.shadow.camera.right = sun.shadow.camera.top = 20;
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0x8888ff, 0.5);
+    fill.position.set(-6, 4, -4);
+    scene.add(fill);
 
-    // ── Create dice: thrown from near camera into room ────────────────
-    const dice: Die[] = dList.map((d, i) => {
-      const sign = Math.random() > 0.5 ? 1 : -1;
-      return {
-        geo: getGeo(d.die), sides: d.die, finalVal: d.value,
-        wx: (Math.random()-0.5) * 200,
-        wy: (Math.random()-0.5) * 150,
-        wz: Z_N + 40,
-        vx: sign * (180 + Math.random()*280),
-        vy: -300 - Math.random()*250,
-        vz: 400 + Math.random()*350,
-        rx: Math.random()*Math.PI*2, ry: Math.random()*Math.PI*2, rz: Math.random()*Math.PI*2,
-        arx: (Math.random()-0.5)*18, ary: (Math.random()-0.5)*18, arz: (Math.random()-0.5)*12,
-        phase: 'fly' as const,
-        delay: i * 0.11,
-      };
+    // Table surface (visual only)
+    const tableGeo = new THREE.PlaneGeometry(60, 60);
+    const tableMat = new THREE.MeshLambertMaterial({
+      color: 0x0a1a0e,
+      transparent: true, opacity: 0.92,
+    });
+    const table = new THREE.Mesh(tableGeo, tableMat);
+    table.rotation.x = -Math.PI / 2;
+    table.position.y = -3.5;
+    table.receiveShadow = true;
+    scene.add(table);
+
+    // Subtle grid on table
+    const grid = new THREE.GridHelper(40, 20, 0x1a3a1a, 0x1a3a1a);
+    grid.position.y = -3.49;
+    (grid.material as THREE.Material).opacity = 0.4;
+    (grid.material as THREE.Material).transparent = true;
+    scene.add(grid);
+
+    // ── Cannon-es physics world ──────────────────────────────────────
+    const world = new CANNON.World({
+      gravity: new CANNON.Vec3(0, -28, 0),
+    });
+    world.broadphase = new CANNON.NaiveBroadphase();
+    (world.solver as CANNON.GSSolver).iterations = 10;
+
+    // Dice material
+    const diceMat = new CANNON.Material('dice');
+    const tableMate = new CANNON.Material('table');
+    const contactMat = new CANNON.ContactMaterial(diceMat, tableMate, {
+      friction: 0.4, restitution: 0.42,
+    });
+    const dieDieMat = new CANNON.ContactMaterial(diceMat, diceMat, {
+      friction: 0.3, restitution: 0.35,
+    });
+    world.addContactMaterial(contactMat);
+    world.addContactMaterial(dieDieMat);
+
+    // Static floor plane
+    const floorBody = new CANNON.Body({ mass: 0, material: tableMate });
+    floorBody.addShape(new CANNON.Plane());
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+    floorBody.position.set(0, -3.5, 0);
+    world.addBody(floorBody);
+
+    // Walls (invisible but physical) — box/cylinder scene bounds
+    const WALL = 14, WALLH = 20;
+    [[0,0,-WALL,0], [0,0,WALL,Math.PI], [WALL,0,0,-Math.PI/2], [-WALL,0,0,Math.PI/2]].forEach(([x,y,z,a]) => {
+      const b = new CANNON.Body({ mass: 0 });
+      b.addShape(new CANNON.Plane());
+      b.position.set(x as number, y as number, z as number);
+      b.quaternion.setFromAxisAngle(new CANNON.Vec3(0,1,0), a as number);
+      world.addBody(b);
+    });
+    // Ceiling
+    const ceilBody = new CANNON.Body({ mass: 0 });
+    ceilBody.addShape(new CANNON.Plane());
+    ceilBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), Math.PI/2);
+    ceilBody.position.set(0, WALLH, 0);
+    world.addBody(ceilBody);
+
+    // ── Create dice ──────────────────────────────────────────────────
+    const diceInput = event.allDice?.length
+      ? event.allDice
+      : [{ die: event.dieType, value: event.result }];
+
+    const diceScale = Math.max(0.7, 1.1 - diceInput.length * 0.06);
+
+    interface DieObj {
+      mesh: THREE.Group;
+      body: CANNON.Body;
+      sides: number;
+      finalVal: number;
+      settled: boolean;
+    }
+
+    const dieObjects: DieObj[] = diceInput.map((d, i) => {
+      const def = getGeoDef(d.die);
+      const pal = theme(d.die);
+      const s = diceScale;
+
+      // Three.js mesh group
+      const group = new THREE.Group();
+
+      // Main body
+      const geo = buildThreeGeo(def, s);
+      const mat = new THREE.MeshPhongMaterial({
+        color: pal.body, specular: 0x444444, shininess: 60,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+
+      // Edge wireframe
+      const edgeMat = new THREE.LineBasicMaterial({ color: pal.edge, linewidth: 1 });
+      const edges = new THREE.EdgesGeometry(buildThreeGeo(def, s * 1.01));
+      group.add(new THREE.LineSegments(edges, edgeMat));
+
+      // Face number sprites
+      def.faces.forEach((face, fi) => {
+        // Face center
+        const centroid = face.reduce((acc, vi) => {
+          const v = def.vertices[vi];
+          return [acc[0]+v[0], acc[1]+v[1], acc[2]+v[2]];
+        }, [0,0,0]).map(x => x / face.length * s * 1.05);
+
+        const tex = makeNumTexture(def.faceNums[fi], pal.text);
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(centroid[0], centroid[1], centroid[2]);
+        sprite.scale.set(0.55 * s, 0.28 * s, 1);
+        group.add(sprite);
+      });
+
+      scene.add(group);
+
+      // CANNON physics body
+      const body = new CANNON.Body({
+        mass: 1,
+        material: diceMat,
+        linearDamping: 0.12,
+        angularDamping: 0.18,
+      });
+      body.addShape(buildCannonShape(def, s * 0.92));
+
+      // Random starting position — thrown from above with spread
+      const spread = Math.min(6, diceInput.length * 1.2);
+      body.position.set(
+        (Math.random() - 0.5) * spread,
+        8 + Math.random() * 5,
+        (Math.random() - 0.5) * spread * 0.5,
+      );
+      body.quaternion.setFromEuler(
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+      );
+      // Initial throw velocity — random direction with good energy
+      body.velocity.set(
+        (Math.random() - 0.5) * 14,
+        (Math.random() - 0.5) * 4,
+        (Math.random() - 0.5) * 10,
+      );
+      body.angularVelocity.set(
+        (Math.random() - 0.5) * 20,
+        (Math.random() - 0.5) * 20,
+        (Math.random() - 0.5) * 20,
+      );
+
+      world.addBody(body);
+      return { mesh: group, body, sides: d.die, finalVal: d.value, settled: false };
     });
 
-    // ── Draw room (floor grid + faint walls) ─────────────────────────
-    function drawRoom() {
-      ctx.save();
+    // ── Animation loop ───────────────────────────────────────────────
+    const FIXED_STEP = 1/60;
+    let allSettled = false;
+    let settleTimer = 0;
+    let dismissed = false;
+    let raf = 0;
+    let lastTs = performance.now();
 
-      // Floor grid — perspective grid lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-      ctx.lineWidth = 1;
-      const floorY3D = FLOOR_Y;
-      const gridStep = 180;
-      // Horizontal lines (z varying, x constant)
-      for (let z = Z_N; z <= Z_F; z += gridStep) {
-        const [lx,,] = proj(-RX, floorY3D, z), [rx,,] = proj(RX, floorY3D, z);
-        const [ly] = [proj(-RX,floorY3D,z)[1]];
-        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ly); ctx.stroke();
-      }
-      // Vertical lines (x varying, z constant)
-      for (let x = -RX; x <= RX; x += gridStep) {
-        const [sx1, sy1] = proj(x, floorY3D, Z_N);
-        const [sx2, sy2] = proj(x, floorY3D, Z_F);
-        ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2); ctx.stroke();
-      }
+    // Total label (HTML overlay, shown after settle)
+    let totalShown = false;
 
-      // Faint ceiling
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-      for (let z = Z_N; z <= Z_F; z += gridStep) {
-        const [lx,,] = proj(-RX, CEIL_Y, z), [rx,,] = proj(RX, CEIL_Y, z);
-        const ly = proj(-RX, CEIL_Y, z)[1];
-        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ly); ctx.stroke();
-      }
-
-      // Side walls — left and right vanishing lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-      const steps = 4;
-      for (let s = 0; s <= steps; s++) {
-        const y3 = CEIL_Y + (FLOOR_Y - CEIL_Y) * (s / steps);
-        const [lx1,ly1] = proj(-RX, y3, Z_N), [lx2,ly2] = proj(-RX, y3, Z_F);
-        ctx.beginPath(); ctx.moveTo(lx1,ly1); ctx.lineTo(lx2,ly2); ctx.stroke();
-        const [rx1,ry1] = proj(RX, y3, Z_N), [rx2,ry2] = proj(RX, y3, Z_F);
-        ctx.beginPath(); ctx.moveTo(rx1,ry1); ctx.lineTo(rx2,ry2); ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-
-    // ── Draw a single die ────────────────────────────────────────────
-    function drawDie(die: Die) {
-      const {geo, sides, wx, wy, wz, rx, ry, rz, phase} = die;
-      const pal = PAL[sides] ?? PAL[20];
-
-      // Project all vertices into screen space
-      const tVerts = geo.verts.map(v => rotate(v, rx, ry, rz));
-      // Each vertex is an offset from die center in world space
-      const pVerts = tVerts.map(rv => {
-        const vwx = wx + rv[0] * BASE_R;
-        const vwy = wy + rv[1] * BASE_R;
-        const vwz = wz + rv[2] * BASE_R;
-        return proj(vwx, vwy, vwz);
-      });
-
-      // Face info
-      type FI = {vi:number[];depth:number;normal:V3;visible:boolean;faceN:number};
-      const faceInfos: FI[] = geo.faces.map(f => {
-        const a = tVerts[f.vi[0]], b = tVerts[f.vi[1]], c = tVerts[f.vi[2]];
-        const normal = norm(cross(sub(b,a), sub(c,a)));
-        const visible = normal[2] > 0.0;
-        const depth = f.vi.reduce((s,vi) => s + (wz + tVerts[vi][2] * BASE_R), 0) / f.vi.length;
-        return {vi:f.vi, depth, normal, visible, faceN:f.n};
-      });
-
-      faceInfos.sort((a,b) => a.depth - b.depth);
-
-      for (const fi of faceInfos) {
-        if (!fi.visible) continue;
-
-        // Phong shading
-        const diffuse = Math.max(0, -dot(fi.normal, LIGHT));
-        const brightness = 0.18 + 0.82 * diffuse;
-
-        // Parse base + light colors for lerp
-        const bh = parseInt(pal[0].slice(1), 16);
-        const lh = parseInt(pal[2].slice(1), 16);
-        const br = (bh>>16)&255, bg = (bh>>8)&255, bb = bh&255;
-        const lr = (lh>>16)&255, lg = (lh>>8)&255, lb = lh&255;
-        const r = Math.min(255, Math.round(br + (lr-br) * brightness * 0.85));
-        const g = Math.min(255, Math.round(bg + (lg-bg) * brightness * 0.85));
-        const b2= Math.min(255, Math.round(bb + (lb-bb) * brightness * 0.85));
-
-        const pts = fi.vi.map(vi => pVerts[vi]);
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.fillStyle = `rgb(${r},${g},${b2})`;
-        if (phase !== 'done') { ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=10; }
-        ctx.fill();
-        ctx.shadowColor = 'transparent';
-        ctx.strokeStyle = phase === 'done' ? pal[1] : pal[1]+'88';
-        ctx.lineWidth = phase === 'done' ? 1.8 : 1;
-        ctx.stroke();
-        if (phase === 'done') {
-          ctx.strokeStyle = pal[1]+'35'; ctx.lineWidth = 5; ctx.stroke();
-        }
-
-        // Face number — only on clearly visible faces
-        if (diffuse > 0.25 || (phase==='done' && fi.normal[2] > 0.45)) {
-          const cx2 = pts.reduce((s,p)=>s+p[0],0)/pts.length;
-          const cy2 = pts.reduce((s,p)=>s+p[1],0)/pts.length;
-          const faceR = Math.sqrt((pts[0][0]-cx2)**2+(pts[0][1]-cy2)**2);
-          const fs = faceR * (fi.faceN >= 10 ? 0.55 : 0.7);
-          if (fs >= 6) {
-            ctx.font = `900 ${fs}px system-ui`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillStyle = phase === 'done' ? pal[1] : pal[2]+'cc';
-            if (phase === 'done') { ctx.shadowColor = pal[1]+'70'; ctx.shadowBlur = 8; }
-            ctx.fillText(String(fi.faceN), cx2, cy2+fs*0.05);
-            ctx.shadowColor = 'transparent';
-          }
-        }
-        ctx.restore();
-      }
-    }
-
-    // ── Draw die shadow on floor ──────────────────────────────────────
-    function drawShadow(die: Die) {
-      if (die.phase === 'done') return;
-      const dist = FLOOR_Y - die.wy;
-      const alpha = Math.min(0.4, 0.4 * (1 - dist/700));
-      if (alpha <= 0) return;
-      const [sx, sy] = proj(die.wx, FLOOR_Y, die.wz);
-      const scale = FOV / Math.max(die.wz, 1);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.beginPath();
-      ctx.ellipse(sx, sy, BASE_R * scale * 0.7, BASE_R * scale * 0.18, 0, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // ── Physics update ────────────────────────────────────────────────
-    function update(dt: number) {
-      for (const die of dice) {
-        if (die.delay > 0) { die.delay -= dt; continue; }
-        if (die.phase !== 'fly') continue;
-
-        die.vy += GRAVITY * dt;
-        die.wx += die.vx * dt; die.wy += die.vy * dt; die.wz += die.vz * dt;
-        die.rx += die.arx * dt; die.ry += die.ary * dt; die.rz += die.arz * dt;
-
-        const r = BASE_R * 0.55;
-
-        // Floor bounce
-        if (die.wy + r > FLOOR_Y) {
-          die.wy = FLOOR_Y - r;
-          die.vy = -Math.abs(die.vy) * BOUNCE_FLOOR;
-          die.vx *= 0.88; die.vz *= 0.88;
-          die.arx *= BOUNCE_ANG; die.ary *= BOUNCE_ANG; die.arz *= BOUNCE_ANG;
-          if (Math.abs(die.vy) < 40) die.vy = 0;
-        }
-        // Ceiling
-        if (die.wy - r < CEIL_Y) {
-          die.wy = CEIL_Y + r;
-          die.vy = Math.abs(die.vy) * BOUNCE_WALL;
-          die.arx *= BOUNCE_ANG; die.ary *= BOUNCE_ANG;
-        }
-        // Left / Right walls
-        if (die.wx - r < -RX) { die.wx=-RX+r; die.vx = Math.abs(die.vx)*BOUNCE_WALL; die.arx*=BOUNCE_ANG; die.arz*=BOUNCE_ANG; }
-        if (die.wx + r >  RX) { die.wx= RX-r; die.vx = -Math.abs(die.vx)*BOUNCE_WALL; die.arx*=BOUNCE_ANG; die.arz*=BOUNCE_ANG; }
-        // Front wall (near camera)
-        if (die.wz - r < Z_N) { die.wz=Z_N+r; die.vz=Math.abs(die.vz)*BOUNCE_WALL; die.ary*=BOUNCE_ANG; }
-        // Back wall
-        if (die.wz + r > Z_F) { die.wz=Z_F-r; die.vz=-Math.abs(die.vz)*BOUNCE_WALL; die.ary*=BOUNCE_ANG; }
-
-        // Rolling friction on floor
-        if (Math.abs(die.wy + r - FLOOR_Y) < 5) {
-          die.vx *= ROLL_FX; die.vz *= ROLL_FX;
-          die.arx *= ROLL_FX; die.ary *= ROLL_FX; die.arz *= ROLL_FX;
-        }
-
-        // Settle check
-        const spd = Math.sqrt(die.vx**2+die.vy**2+die.vz**2);
-        const ang = Math.sqrt(die.arx**2+die.ary**2+die.arz**2);
-        if (spd < 18 && ang < 1.0 && Math.abs(die.wy + r - FLOOR_Y) < 8) {
-          die.phase = 'done';
-          die.vx=die.vy=die.vz=die.arx=die.ary=die.arz=0;
-          die.wy = FLOOR_Y - r;
-        }
-      }
-    }
-
-    // ── Total display ─────────────────────────────────────────────────
-    function drawTotal(alpha: number) {
-      if (alpha <= 0) return;
-      const tot = event.total ?? (event.modifier !== undefined ? event.result+event.modifier : event.result);
-      const multi = dList.length > 1;
+    function showTotal() {
+      if (totalShown) return;
+      totalShown = true;
+      const tot = event.total ?? (event.modifier !== undefined
+        ? event.result + event.modifier : event.result);
+      const multi = diceInput.length > 1;
       const hasMod = !multi && event.modifier !== undefined && event.modifier !== 0;
       if (!multi && !hasMod) return;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.textAlign = 'center';
-      const ty = H * 0.88;
-      if (hasMod) {
-        ctx.font = '500 17px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.textBaseline = 'middle';
-        ctx.fillText(`${event.result} ${(event.modifier??0)>=0?'+':''}${event.modifier} =`, W/2, ty);
-        ctx.font = '900 58px system-ui'; ctx.fillStyle='#fff';
-        ctx.shadowColor='rgba(255,255,255,0.3)'; ctx.shadowBlur=20;
-        ctx.fillText(String(tot), W/2, ty+48);
-      } else if (multi) {
-        ctx.font = '700 13px system-ui'; ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.textBaseline='middle';
-        ctx.fillText('TOTAL', W/2, ty);
-        ctx.font = '900 68px system-ui'; ctx.fillStyle='#fff';
-        ctx.shadowColor='rgba(255,255,255,0.3)'; ctx.shadowBlur=24;
-        ctx.fillText(String(tot), W/2, ty+52);
-      }
-      ctx.restore();
-    }
 
-    // ── Render loop ───────────────────────────────────────────────────
-    let last = performance.now(), allDone = false, doneT = 0, dismissed = false, raf = 0;
+      const div = document.createElement('div');
+      div.style.cssText = `
+        position:absolute; bottom:8%; left:50%; transform:translateX(-50%);
+        text-align:center; pointer-events:none; animation: totalPop 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+      `;
+      div.innerHTML = `
+        ${hasMod ? `<div style="font:500 18px system-ui;color:rgba(255,255,255,0.5);margin-bottom:4px">${event.result} ${(event.modifier??0)>=0?'+':''}${event.modifier} =</div>` : ''}
+        ${multi ? `<div style="font:700 13px system-ui;color:rgba(255,255,255,0.4);letter-spacing:0.15em;margin-bottom:4px">TOTAL</div>` : ''}
+        <div style="font:900 72px system-ui;color:#fff;text-shadow:0 0 30px rgba(255,255,255,0.4);line-height:1">${tot}</div>
+      `;
+      container.appendChild(div);
+    }
 
     function frame(ts: number) {
       if (dismissed) return;
-      const dt = Math.min((ts-last)/1000, 0.05); last = ts;
-      update(dt);
+      raf = requestAnimationFrame(frame);
 
-      ctx.clearRect(0, 0, W, H);
-      drawRoom();
+      const dt = Math.min((ts - lastTs) / 1000, 0.05);
+      lastTs = ts;
 
-      // Sort dice by Z depth (paint far ones first)
-      const ready = dice.filter(d => d.delay <= 0);
-      [...ready].sort((a,b) => b.wz - a.wz).forEach(d => {
-        drawShadow(d);
-        drawDie(d);
+      // Step physics
+      world.step(FIXED_STEP, dt, 3);
+
+      // Sync Three.js to Cannon
+      dieObjects.forEach(obj => {
+        obj.mesh.position.copy(obj.body.position as unknown as THREE.Vector3);
+        obj.mesh.quaternion.copy(obj.body.quaternion as unknown as THREE.Quaternion);
       });
 
-      if (ready.length > 0 && ready.every(d => d.phase === 'done')) {
-        if (!allDone) allDone = true;
-        doneT += dt;
-        drawTotal(Math.min(1, (doneT-0.25)/0.5));
-        if (doneT > 3.8) { dismissed = true; dismissRef.current(); return; }
+      // Check settle
+      if (!allSettled) {
+        const settled = dieObjects.every(obj => {
+          const lv = obj.body.velocity.length();
+          const av = obj.body.angularVelocity.length();
+          return lv < 0.4 && av < 0.4;
+        });
+        if (settled) {
+          settleTimer += dt;
+          if (settleTimer > 0.4) {
+            allSettled = true;
+            showTotal();
+          }
+        } else {
+          settleTimer = 0;
+        }
+      } else {
+        settleTimer += dt;
+        if (settleTimer > 4.2) {
+          dismissed = true;
+          dismissRef.current();
+          cancelAnimationFrame(raf);
+          return;
+        }
       }
-      raf = requestAnimationFrame(frame);
+
+      renderer.render(scene, camera);
     }
 
     raf = requestAnimationFrame(frame);
-    return () => { dismissed = true; cancelAnimationFrame(raf); };
+
+    return () => {
+      dismissed = true;
+      cancelAnimationFrame(raf);
+      renderer.dispose();
+      if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
+      scene.clear();
+    };
   }, []);
 
   return createPortal(
-    <div onClick={onDismiss} style={{
-      position:'fixed',inset:0,zIndex:9999,
-      background:'rgba(2,4,10,0.93)',backdropFilter:'blur(12px)',cursor:'pointer',
-    }}>
+    <div
+      ref={cvRef}
+      onClick={onDismiss}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(2,6,10,0.92)',
+        backdropFilter: 'blur(14px)',
+        cursor: 'pointer',
+      }}
+    >
       {event.label && (
         <div style={{
-          position:'absolute',top:'6%',left:0,right:0,textAlign:'center',pointerEvents:'none',
-          fontFamily:'var(--ff-body)',fontWeight:700,fontSize:17,
-          letterSpacing:'0.22em',textTransform:'uppercase',color:'rgba(255,255,255,0.45)',
-          animation:'diceLabel 0.4s ease both',
-        }}>{event.label}</div>
+          position: 'absolute', top: '6%', left: 0, right: 0,
+          textAlign: 'center', pointerEvents: 'none',
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 17,
+          letterSpacing: '0.22em', textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.45)',
+          animation: 'diceLabel 0.4s ease both',
+        }}>
+          {event.label}
+        </div>
       )}
-      <canvas ref={cvRef} style={{position:'absolute',inset:0,pointerEvents:'none'}} />
       <div style={{
-        position:'absolute',bottom:16,left:0,right:0,textAlign:'center',
-        pointerEvents:'none',fontFamily:'var(--ff-body)',fontSize:11,color:'rgba(255,255,255,0.18)',
-      }}>Click anywhere to dismiss</div>
-      <style>{`@keyframes diceLabel{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
+        position: 'absolute', bottom: 16, left: 0, right: 0,
+        textAlign: 'center', pointerEvents: 'none',
+        fontFamily: 'var(--ff-body)', fontSize: 11,
+        color: 'rgba(255,255,255,0.18)',
+      }}>
+        Click anywhere to dismiss
+      </div>
+      <style>{`
+        @keyframes diceLabel { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes totalPop { from{opacity:0;transform:translateX(-50%) scale(0.8)} to{opacity:1;transform:translateX(-50%) scale(1)} }
+      `}</style>
     </div>,
     document.body
   );
