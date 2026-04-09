@@ -36,6 +36,7 @@ import ConditionMechanics from './ConditionMechanics';
 import ActionLog from '../shared/ActionLog';
 import WildshapeTracker from './WildshapeTracker';
 import ErrorBoundary from '../ErrorBoundary';
+import DamageEffect from './DamageEffect';
 import { PlayerRollPrompt } from '../Campaign/RollRequest';
 import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
@@ -71,6 +72,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [lastDamageNotes, setLastDamageNotes] = useState('');
   const navigate = useNavigate();
   const [showRest, setShowRest] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
@@ -105,6 +107,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [character.campaign_id]);
+
+  // ── Track last damage type from action log for sound/flash effect ──
+  useEffect(() => {
+    if (!character.campaign_id) return;
+    const ch = supabase.channel(`dmg-notes-${character.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'action_logs',
+        filter: `campaign_id=eq.${character.campaign_id}`,
+      }, payload => {
+        const row = payload.new as any;
+        if (row.action_type === 'damage' && (row.character_id === character.id || !row.character_id)) {
+          setLastDamageNotes(row.notes ?? row.action_name ?? '');
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [character.campaign_id, character.id]);
 
   // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
   // Uses a ref to avoid stale closure — always reads current character value
@@ -794,7 +813,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
       {/* Tab content + persistent roll log side by side */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 260px', gap: 'var(--sp-4)', alignItems: 'start' }}>
-        <ErrorBoundary section={activeTab}>
+        <DamageEffect
+        currentHP={character.current_hp}
+        maxHP={character.max_hp}
+        lastDamageNotes={lastDamageNotes}
+      />
+    <ErrorBoundary section={activeTab}>
         <div key={activeTab} className="animate-fade-in">
 
         {/* ── ABILITIES: Skills + Conditions ── */}
