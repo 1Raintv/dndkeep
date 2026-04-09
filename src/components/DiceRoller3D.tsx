@@ -26,28 +26,29 @@ const norm=(v:V3):V3=>{const l=Math.sqrt(dot(v,v))||1;return[v[0]/l,v[1]/l,v[2]/
 
 interface GeoDef{verts:V3[];faces:number[][];nums:number[]}
 
-// ── D10: Pentagonal bipyramid — 10 triangular faces, unit-normalized
-// This shape was confirmed working. The elongated trapezohedron with kite
-// faces creates seams; the bipyramid with triangular faces renders cleanly.
+// ── D10: Elongated pentagonal bipyramid — NOT normalized
+// Tall apices + narrow equatorial ring = clearly elongated shape, won't slide flat.
+// Aspect ratio ~2.3:1 (height vs width) makes it visually distinct from d20.
 function makeD10(nums: number[]): GeoDef {
   const verts: V3[] = [];
+  const R = 0.55, H = 0.18; // narrow equatorial ring
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5;
-    verts.push([Math.cos(a), 0.5, Math.sin(a)]);  // upper ring
+    verts.push([R * Math.cos(a), H, R * Math.sin(a)]);  // upper ring
   }
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5 + Math.PI / 5;
-    verts.push([Math.cos(a), -0.5, Math.sin(a)]); // lower ring offset 36°
+    verts.push([R * Math.cos(a), -H, R * Math.sin(a)]); // lower ring offset 36deg
   }
-  verts.push([0, 1.2, 0]);   // top apex  idx 10
-  verts.push([0, -1.2, 0]);  // bottom apex idx 11
+  verts.push([0, 1.15, 0]);   // top apex — tall
+  verts.push([0, -1.15, 0]);  // bottom apex — tall
   const faces: number[][] = [];
   for (let i = 0; i < 5; i++) {
     const n = (i + 1) % 5;
-    faces.push([10, (n), i]);              // upper triangles
-    faces.push([11, i + 5, n + 5]);       // lower triangles
+    faces.push([10, n, i]);          // upper triangles
+    faces.push([11, i+5, n+5]);      // lower triangles
   }
-  return { verts: unit(verts), faces, nums };
+  return { verts, faces, nums }; // no unit() — preserve elongated shape
 }
 
 // ── D12: Dodecahedron (12 regular pentagonal faces) ──────────────────
@@ -358,7 +359,10 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
         }
         const spd = Math.sqrt(d.vx**2+d.vy**2+d.vz**2);
         const ang = Math.sqrt(d.arx**2+d.ary**2+d.arz**2);
-        if (spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) {
+        // Force settle after 3.2s or when naturally stopped
+        const forceSettle = (d as any)._t !== undefined && ((d as any)._t += dt) > 3.2;
+        if ((d as any)._t === undefined) (d as any)._t = 0;
+        if ((spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) || forceSettle) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
           // Detect what face naturally landed on top
