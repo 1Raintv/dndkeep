@@ -151,7 +151,7 @@ function numTex(n:number, edgeCol:number):THREE.CanvasTexture {
 }
 
 // Face centroid + outward normal for placing sprite
-function faceInfo(def:GeoDef, fi:number, s:number):{pos:V3; normal:V3} {
+function faceInfo(def:GeoDef, fi:number, s:number):{pos:V3; normal:V3; radius:number} {
   const face=def.faces[fi];
   const vs=face.map(vi=>def.verts[vi]);
   const cx=vs.reduce((a,v)=>a+v[0],0)/vs.length*s;
@@ -161,7 +161,9 @@ function faceInfo(def:GeoDef, fi:number, s:number):{pos:V3; normal:V3} {
   const n1=norm(cross(sub(b,a),sub(c,a)));
   const fc:V3=[cx/s,cy/s,cz/s];
   const outward:V3=dot(n1,fc)>=0?n1:[-n1[0],-n1[1],-n1[2]];
-  return {pos:[cx,cy,cz], normal:outward};
+  // Average distance from centroid to each vertex (face "radius")
+  const radius=vs.reduce((sum,v)=>sum+Math.sqrt((v[0]*s-cx)**2+(v[1]*s-cy)**2+(v[2]*s-cz)**2),0)/vs.length;
+  return {pos:[cx,cy,cz], normal:outward, radius};
 }
 
 // Snap die mesh so face with targetNum points toward camera direction
@@ -247,24 +249,32 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
       group.add(mesh);
       group.add(edges);
 
-      // Number sprites — one per face, depth-tested
+      // Number planes — one per face, oriented to match face normal.
+      // Rotates WITH the die. Only visible when face points toward camera.
       def.faces.forEach((_,fi)=>{
-        const {pos,normal}=faceInfo(def,fi,S);
-        const offset=0.08*S; // push sprite slightly outside face surface
-        const sp=new THREE.Sprite(new THREE.SpriteMaterial({
+        const {pos,normal,radius}=faceInfo(def,fi,S);
+        const offset=0.04*S;
+        const sz=Math.min(radius*1.6, S*0.95);
+        const planeGeo=new THREE.PlaneGeometry(sz,sz);
+        const planeMat=new THREE.MeshBasicMaterial({
           map:numTex(def.nums[fi],t.edge),
           transparent:true,
-          depthTest:true,     // hidden when face points away from camera
+          side:THREE.FrontSide,  // culled when face points away = no bleed
+          depthTest:true,
           depthWrite:false,
-        }));
-        sp.position.set(
+          alphaTest:0.05,
+        });
+        const plane=new THREE.Mesh(planeGeo,planeMat);
+        plane.position.set(
           pos[0]+normal[0]*offset,
           pos[1]+normal[1]*offset,
           pos[2]+normal[2]*offset
         );
-        const sz=S*0.55;
-        sp.scale.set(sz,sz,1);
-        group.add(sp);
+        // Rotate plane so +Z aligns with face outward normal
+        const q=new THREE.Quaternion();
+        q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
+        plane.quaternion.copy(q);
+        group.add(plane);
       });
 
       scene.add(group);
