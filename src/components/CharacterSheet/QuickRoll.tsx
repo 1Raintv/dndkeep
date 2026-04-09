@@ -191,10 +191,10 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
           position: 'fixed', bottom: 'var(--sp-10)', right: 'var(--sp-4)',
           zIndex: 90, width: 52, height: 52, borderRadius: '50%',
           background: open
-            ? 'linear-gradient(160deg, var(--color-crimson) 0%, rgba(107,20,20,1) 100%)'
+            ? 'linear-gradient(160deg, #7f1d1d 0%, #450a0a 100%)'
             : 'linear-gradient(160deg, #8a5e18 0%, var(--c-gold) 50%, #7a5216 100%)',
-          border: `2px solid ${open ? 'var(--c-red-l)' : 'var(--c-gold)'}`,
-          boxShadow: open ? 'var(--shadow-crimson)' : 'var(--shadow-gold), 0 4px 16px rgba(0,0,0,0.5)',
+          border: `2px solid ${open ? '#f87171' : 'var(--c-gold)'}`,
+          boxShadow: open ? '0 4px 20px rgba(239,68,68,0.4), 0 2px 8px rgba(0,0,0,0.6)' : 'var(--shadow-gold), 0 4px 16px rgba(0,0,0,0.5)',
           cursor: 'pointer', transition: 'all var(--tr-fast)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: open ? 18 : 26, color: 'var(--t-1)',
