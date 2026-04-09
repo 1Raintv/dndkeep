@@ -812,13 +812,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       </div>
 
       {/* Tab content + roll log left column */}
-      <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0,1fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '220px minmax(0,1fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
         {/* Roll log — left column, sticky */}
         <div style={{
           background: 'var(--c-card)', border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-xl)', padding: 'var(--sp-3)',
+          borderRadius: 'var(--r-xl)', padding: '10px 10px',
           display: 'flex', flexDirection: 'column',
-          maxHeight: 'calc(100vh - 200px)', minHeight: 300,
+          height: 'calc(100vh - 220px)',
           position: 'sticky', top: 16, overflow: 'hidden',
         }}>
           <RollLog characterId={character.id} userId={userId} characterName={character.name} />

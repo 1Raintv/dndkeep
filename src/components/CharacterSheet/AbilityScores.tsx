@@ -55,7 +55,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
     setLastRoll({ ability, d20, modifier: mod, total: d20 + mod, isCrit: d20 === 20, isFail: d20 === 1 });
     triggerRoll({ result: d20, dieType: 20, modifier: mod, total: d20 + mod, label });
-    supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [d20], total: d20 + mod, modifier: mod });
+    supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [d20], total: d20 + mod, modifier: mod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
   }
 
   return (
