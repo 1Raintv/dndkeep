@@ -9,6 +9,8 @@ interface HPStatsPanelProps {
   onUpdateHP: (delta: number, tempHP?: number) => void;
   onUpdateAC?: (ac: number) => void;
   onUpdateSpeed?: (speed: number) => void;
+  onToggleInspiration?: () => void;
+  acTooltip?: string;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
@@ -20,7 +22,7 @@ function hpColor(current: number, max: number): string {
   return 'var(--hp-low)';
 }
 
-export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdateAC, onUpdateSpeed }: HPStatsPanelProps) {
+export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdateAC, onUpdateSpeed, onToggleInspiration, acTooltip }: HPStatsPanelProps) {
   const [value, setValue] = useState('');
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
@@ -52,7 +54,8 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
   }
 
   const stats = [
-    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: true,   onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); } },
+    { label: 'INSP', value: character.inspiration ? '✦' : '○', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
+    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: true,   onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: acTooltip ?? '10 + DEX (Unarmored)' },
     { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: true,   onEdit: () => { setSpeedInput(String(character.speed)); setEditingSpeed(true); } },
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
@@ -142,6 +145,7 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
           <div
             key={stat.label}
             onClick={stat.onClick ?? (stat.editable ? stat.onEdit : undefined)}
+            title={(stat as any).tooltip}
             style={{
               background: 'var(--c-card)', border: `1px solid ${stat.color}22`,
               borderRadius: 'var(--r-md)', padding: '5px 8px', textAlign: 'center',

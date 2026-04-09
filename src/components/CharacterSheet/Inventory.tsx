@@ -1,4 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
+import { useDiceRoll } from '../../context/DiceRollContext';
+import { rollDie } from '../../lib/gameUtils';
+import { calcArmorAC, acBreakdown } from '../../data/equipment';
 import type { Character, InventoryItem } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -6,6 +9,7 @@ interface InventoryProps {
   character: Character;
   onUpdateInventory: (items: InventoryItem[]) => void;
   onUpdateCurrency: (currency: Character['currency']) => void;
+  onUpdateAC?: (ac: number) => void;
 }
 
 import { CATALOGUE, ALL_CATEGORIES, type CatalogueItem, type ItemCategory } from '../../data/equipment';
@@ -251,15 +255,17 @@ function CurrencyDisplay({ currency, onUpdate }: {
 }
 
 // ── Main Inventory Component ───────────────────────────────────────
-export default function Inventory({ character, onUpdateInventory, onUpdateCurrency }: InventoryProps) {
+export default function Inventory({ character, onUpdateInventory, onUpdateCurrency, onUpdateAC }: InventoryProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
 
+  const { triggerRoll } = useDiceRoll();
   const inventory = character.inventory;
   const totalWeight = inventory.reduce((sum, item) => sum + item.weight * item.quantity, 0);
 
   function toggleEquipped(id: string) {
-    onUpdateInventory(inventory.map(item => item.id === id ? { ...item, equipped: !item.equipped } : item));
+    // toggleEquipped moved to toggleEquippedWithAC for armor AC sync
+    toggleEquippedWithAC(id);
   }
 
   function removeItem(id: string) {
@@ -278,10 +284,84 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
       weight: catalogueItem.weight,
       description: catalogueItem.notes ?? '',
       equipped: false,
-      magical: catalogueItem.category === 'Magic Item',
+      magical: catalogueItem.category === 'Magic Item' || catalogueItem.category === 'Wondrous Item' || catalogueItem.category === 'Scroll' || catalogueItem.category === 'Potion',
+      category: catalogueItem.category,
+      armorType: catalogueItem.armorType,
+      baseAC: catalogueItem.baseAC,
+      addDexMod: catalogueItem.addDexMod,
+      maxDexBonus: catalogueItem.maxDexBonus,
+      rollExpression: catalogueItem.rollExpression,
+      rollLabel: catalogueItem.rollLabel,
+      cost: catalogueItem.cost,
     };
     onUpdateInventory([...inventory, item]);
   }
+
+  function toggleEquippedWithAC(id: string) {
+    const item = inventory.find(i => i.id === id);
+    if (!item) return;
+    const newEquipped = !item.equipped;
+    const updated = inventory.map(i => i.id === id ? { ...i, equipped: newEquipped } : i);
+    onUpdateInventory(updated);
+
+    // If this is armor that affects AC, recalculate
+    if (item.armorType && item.baseAC !== undefined && onUpdateAC) {
+      const dexMod = Math.floor((character.dexterity - 10) / 2);
+      if (newEquipped) {
+        // Unequip other armor of same type first (can't wear two chest pieces)
+        const newAC = calcArmorAC(item as any, dexMod);
+        onUpdateAC(newAC);
+      } else {
+        // Revert to unarmored or next equipped armor
+        const remaining = updated.filter(i => i.equipped && i.armorType && i.baseAC !== undefined && i.id !== id);
+        if (remaining.length > 0) {
+          const best = remaining.reduce((a, b) => {
+            const aAC = calcArmorAC(a as any, dexMod);
+            const bAC = calcArmorAC(b as any, dexMod);
+            return bAC > aAC ? b : a;
+          });
+          onUpdateAC(calcArmorAC(best as any, dexMod));
+        } else {
+          onUpdateAC(10 + dexMod); // unarmored
+        }
+      }
+    }
+  }
+
+  function rollItemExpression(item: InventoryItem) {
+    if (!item.rollExpression) return;
+    const expr = item.rollExpression;
+    // Parse expressions like "2d4+2", "8d6", "1d8+3", "2d8+4d6"
+    let total = 0;
+    const dice: {die: number; value: number}[] = [];
+    const parts = expr.replace(/\s/g,'').split(/(?=[+-])/);
+    for (const part of parts) {
+      const diceMatch = part.match(/([+-]?\d*)d(\d+)/);
+      const flatMatch = part.match(/^([+-]?\d+)$/);
+      if (diceMatch) {
+        const count = parseInt(diceMatch[1] || '1');
+        const sides = parseInt(diceMatch[2]);
+        for (let i = 0; i < Math.abs(count); i++) {
+          const v = rollDie(sides);
+          dice.push({ die: sides, value: v });
+          total += count < 0 ? -v : v;
+        }
+      } else if (flatMatch) {
+        total += parseInt(flatMatch[1]);
+      }
+    }
+    triggerRoll({
+      result: dice[0]?.value ?? total,
+      dieType: dice[0]?.die ?? 20,
+      total: total,
+      label: `${item.name}${item.rollLabel ? ' — ' + item.rollLabel : ''}`,
+    });
+  }
+
+  // Get the equipped armor item for AC tooltip
+  const equippedArmor = inventory.find(i => i.equipped && i.armorType && i.baseAC !== undefined);
+  const dexMod = Math.floor((character.dexterity - 10) / 2);
+  const acTooltip = acBreakdown(equippedArmor as any ?? null, dexMod);
 
   const filtered = search.trim()
     ? inventory.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
@@ -337,7 +417,7 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
                 Equipped
               </div>
               {equipped.map(item => (
-                <InventoryRow key={item.id} item={item} onToggle={toggleEquipped} onRemove={removeItem} onUpdate={updateItem} />
+                <InventoryRow key={item.id} item={item} onToggle={toggleEquippedWithAC} onRemove={removeItem} onUpdate={updateItem} onRoll={rollItemExpression} />
               ))}
             </div>
           )}
@@ -349,7 +429,7 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
                 </div>
               )}
               {carried.map(item => (
-                <InventoryRow key={item.id} item={item} onToggle={toggleEquipped} onRemove={removeItem} onUpdate={updateItem} />
+                <InventoryRow key={item.id} item={item} onToggle={toggleEquippedWithAC} onRemove={removeItem} onUpdate={updateItem} onRoll={rollItemExpression} />
               ))}
             </div>
           )}
@@ -368,12 +448,13 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
 }
 
 // ── Item Detail Modal ─────────────────────────────────────────────
-function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate }: {
+function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }: {
   item: InventoryItem;
   onClose: () => void;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, updates: Partial<InventoryItem>) => void;
+  onRoll: (item: InventoryItem) => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(item.name);
@@ -455,13 +536,20 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate }: {
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+          <div style={{ display: 'flex', gap: 8, paddingTop: 4, flexWrap: 'wrap' }}>
+            {item.rollExpression && (
+              <button onClick={() => { onRoll(item); }}
+                style={{ flex: 2, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.1)', color: '#60a5fa' }}>
+                🎲 Roll {item.rollExpression}{item.rollLabel ? ` (${item.rollLabel})` : ''}
+              </button>
+            )}
             <button onClick={() => { onToggle(item.id); onClose(); }}
               style={{ flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
                 border: item.equipped ? '1px solid var(--c-border-m)' : '1px solid var(--c-gold-bdr)',
                 background: item.equipped ? 'var(--c-raised)' : 'var(--c-gold-bg)',
                 color: item.equipped ? 'var(--t-2)' : 'var(--c-gold-l)' }}>
-              {item.equipped ? 'Unequip' : '⚔ Equip'}
+              {item.armorType ? (item.equipped ? '🛡 Unequip' : '🛡 Equip Armor') : (item.equipped ? 'Unequip' : '⚔ Equip')}
             </button>
             <button onClick={() => { onRemove(item.id); onClose(); }}
               style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
@@ -476,11 +564,12 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate }: {
 }
 
 // ── Inventory Row ──────────────────────────────────────────────────
-function InventoryRow({ item, onToggle, onRemove, onUpdate }: {
+function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll }: {
   item: InventoryItem;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, updates: Partial<InventoryItem>) => void;
+  onRoll: (item: InventoryItem) => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
 
@@ -520,6 +609,22 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate }: {
           </span>
         )}
 
+        {item.rollExpression && (
+          <span
+            onClick={e => { e.stopPropagation(); onRoll(item); }}
+            title={`Roll ${item.rollExpression}`}
+            style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)',
+              border: '1px solid rgba(96,165,250,0.3)', borderRadius: 99, padding: '1px 7px',
+              cursor: 'pointer', flexShrink: 0 }}>
+            🎲
+          </span>
+        )}
+        {item.armorType && item.equipped && (
+          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)',
+            border: '1px solid var(--c-gold-bdr)', borderRadius: 99, padding: '1px 6px', flexShrink: 0 }}>
+            AC +{item.baseAC}
+          </span>
+        )}
         <span style={{ fontSize: 11, color: 'var(--t-3)', flexShrink: 0 }}>›</span>
       </div>
 
@@ -530,6 +635,7 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate }: {
           onToggle={onToggle}
           onRemove={onRemove}
           onUpdate={onUpdate}
+          onRoll={onRoll}
         />
       )}
     </>

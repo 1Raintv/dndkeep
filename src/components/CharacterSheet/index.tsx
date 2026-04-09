@@ -8,6 +8,7 @@ import { SPELL_MAP, SPELLS } from '../../data/spells';
 import { CLASS_MAP } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
+import { acBreakdown } from '../../data/equipment';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -853,7 +854,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {/* ── INVENTORY ── */}
         {activeTab === 'inventory' && (
           <div style={{ maxWidth: 900 }}>
-            <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} />
+            <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)} />
           </div>
         )}
 

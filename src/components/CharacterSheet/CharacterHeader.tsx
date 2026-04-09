@@ -79,13 +79,7 @@ export default function CharacterHeader({
             Share
           </button>
         )}
-        <button
-          className="btn-ghost btn-sm"
-          onClick={onToggleInspiration}
-          style={{ color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-2)', fontSize: 12 }}
-        >
-          {character.inspiration ? 'Inspired' : 'Inspiration'}
-        </button>
+
         <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12 }}>
           Rest
         </button>

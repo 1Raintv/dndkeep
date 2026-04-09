@@ -87,6 +87,16 @@ export interface InventoryItem {
   description: string;
   equipped: boolean;
   magical: boolean;
+  // Armor properties (for AC auto-calc)
+  category?: string;
+  armorType?: 'light' | 'medium' | 'heavy' | 'shield';
+  baseAC?: number;
+  addDexMod?: boolean;
+  maxDexBonus?: number;
+  // Roll button
+  rollExpression?: string;
+  rollLabel?: string;
+  cost?: string;
 }
 
 export interface WeaponItem {
