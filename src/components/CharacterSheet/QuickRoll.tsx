@@ -120,16 +120,20 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
       setLastRoll(set);
       setRolling(false);
 
-      // Trigger visual dice animation — show the primary die result
+      // Trigger visual dice animation
       const primaryDie = queue[0];
-      const primaryResult = finalDice.find(d => !d.dropped && d.die === (primaryDie?.die ?? 20));
+      const keptDice = finalDice.filter(d => !d.dropped);
+      const primaryResult = keptDice.find(d => d.die === (primaryDie?.die ?? 20));
+      const totalDiceCount = queue.reduce((s, d) => s + d.count, 0);
       triggerRoll({
         result: primaryResult?.value ?? total,
         dieType: primaryDie?.die ?? 20,
-        total: queue.length > 1 ? total : undefined,
+        total: totalDiceCount > 1 ? total : undefined,
         label: label || expression,
         advantage: adv === 'advantage',
         disadvantage: adv === 'disadvantage',
+        allDice: totalDiceCount > 1 ? keptDice.map(d => ({ die: d.die, value: d.value })) : undefined,
+        expression: totalDiceCount > 1 ? expression : undefined,
       });
 
       if (characterId) {

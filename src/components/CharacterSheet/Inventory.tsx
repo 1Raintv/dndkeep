@@ -329,9 +329,9 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
   function rollItemExpression(item: InventoryItem) {
     if (!item.rollExpression) return;
     const expr = item.rollExpression;
-    // Parse expressions like "2d4+2", "8d6", "1d8+3", "2d8+4d6"
     let total = 0;
-    const dice: {die: number; value: number}[] = [];
+    let flatBonus = 0;
+    const allDice: {die: number; value: number}[] = [];
     const parts = expr.replace(/\s/g,'').split(/(?=[+-])/);
     for (const part of parts) {
       const diceMatch = part.match(/([+-]?\d*)d(\d+)/);
@@ -341,18 +341,23 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
         const sides = parseInt(diceMatch[2]);
         for (let i = 0; i < Math.abs(count); i++) {
           const v = rollDie(sides);
-          dice.push({ die: sides, value: v });
+          allDice.push({ die: sides, value: v });
           total += count < 0 ? -v : v;
         }
       } else if (flatMatch) {
-        total += parseInt(flatMatch[1]);
+        const n = parseInt(flatMatch[1]);
+        total += n;
+        flatBonus += n;
       }
     }
     triggerRoll({
-      result: dice[0]?.value ?? total,
-      dieType: dice[0]?.die ?? 20,
-      total: total,
+      result: allDice[0]?.value ?? total,
+      dieType: allDice[0]?.die ?? 6,
+      total,
       label: `${item.name}${item.rollLabel ? ' — ' + item.rollLabel : ''}`,
+      allDice,
+      expression: expr,
+      flatBonus: flatBonus !== 0 ? flatBonus : undefined,
     });
   }
 
