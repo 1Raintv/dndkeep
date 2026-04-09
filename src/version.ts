@@ -1,2 +1,2 @@
 // Bump this every deployment session
-export const APP_VERSION = '1.2.4';
+export const APP_VERSION = '1.2.5';

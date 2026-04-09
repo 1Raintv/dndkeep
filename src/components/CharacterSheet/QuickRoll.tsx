@@ -199,7 +199,7 @@ export default function QuickRoll({ characterId, characterName, campaignId }: Qu
         <div className="animate-fade-in" style={{
           position: 'fixed', bottom: 76, right: 'var(--sp-4)',
           zIndex: 89, width: 296,
-          background: 'linear-gradient(160deg, var(--c-surface) 0%, var(--color-obsidian) 100%)',
+          background: 'linear-gradient(160deg, #1a1f2e 0%, #0d1117 100%)',
           border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)',
           boxShadow: 'var(--shadow-lg), var(--shadow-gold)', overflow: 'hidden',
         }}>

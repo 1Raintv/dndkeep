@@ -968,7 +968,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             onUpdateToken={updateToken}
             onApplyCond={c=>updateToken(selectedToken.id,{conditions:[...selectedToken.conditions.filter(x=>x!==c),c]})}
             onRemoveCond={c=>updateToken(selectedToken.id,{conditions:selectedToken.conditions.filter(x=>x!==c)})}
-            onUpdateHP={(delta,mode)=>{
+            onUpdateHP={async (delta,mode)=>{
               let hp=selectedToken.hp;
               if(mode==='damage')hp=Math.max(0,hp-delta);
               else if(mode==='heal')hp=Math.min(selectedToken.max_hp,hp+delta);
@@ -977,7 +977,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
               if(hp===0&&!selectedToken.conditions.includes('Unconscious')){
                 updates.conditions=[...selectedToken.conditions,'Unconscious'];
               }
-              updateToken(selectedToken.id,updates);
+              await updateToken(selectedToken.id,updates);
             }}
             onDeleteToken={()=>removeToken(selectedToken.id)}
             onToggleHide={()=>updateToken(selectedToken.id,{is_hidden:!selectedToken.is_hidden})}
