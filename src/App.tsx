@@ -7,6 +7,7 @@ import { DiceRollProvider } from './context/DiceRollContext';
 import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
 import QuickRoll from './components/CharacterSheet/QuickRoll';
+import FloatingRollLog from './components/CharacterSheet/FloatingRollLog';
 
 import './styles/globals.css';
 
@@ -212,7 +213,7 @@ function NotFound() {
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const location = useLocation();
   const isLanding = !user && location.pathname === '/';
   const isShare = location.pathname.startsWith('/share/');
@@ -251,6 +252,7 @@ function AppRoutes() {
       </main>
       {/* Global floating dice roller — always visible when logged in */}
       {user && <QuickRoll userId={user.id} characterId={activeCharId} campaignId={activeCampId} />}
+      {user && <FloatingRollLog userId={user.id} characterId={activeCharId ?? ''} characterName={profile?.display_name ?? 'You'} />}
     </div>
   );
 }

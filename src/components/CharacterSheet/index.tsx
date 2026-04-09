@@ -13,7 +13,6 @@ import { acBreakdown } from '../../data/equipment';
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
 import HPStatsPanel from './HPStatsPanel';
-import RollLog from './RollLog';
 import CampaignBar from './CampaignBar';
 import CombatStats from './CombatStats';
 import SkillsList from './SkillsList';
@@ -811,19 +810,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         ))}
       </div>
 
-      {/* Tab content + roll log left column */}
-      <div style={{ display: 'grid', gridTemplateColumns: '275px minmax(0,1fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
-        {/* Roll log — left column, sticky */}
-        <div style={{
-          background: 'var(--c-card)', border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-xl)', padding: '10px 10px',
-          display: 'flex', flexDirection: 'column',
-          height: 'calc(100vh - 220px)',
-          position: 'sticky', top: 16, overflow: 'hidden',
-        }}>
-          <RollLog characterId={character.id} userId={userId} characterName={character.name} />
-        </div>
-        <div>
+      {/* Tab content */}
+      <div>
         <DamageEffect
         currentHP={character.current_hp}
         maxHP={character.max_hp}
@@ -1012,7 +1000,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </ErrorBoundary>
 
 
-      </div>
       </div>
 
       {/* Level Up Wizard */}
