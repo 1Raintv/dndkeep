@@ -31,6 +31,7 @@ export async function logRoll(p: {
     user_id: p.userId ?? p.characterId,
     character_id: p.characterId,
     campaign_id: p.campaignId ?? null,
+    character_name: p.characterName ?? '',
     label: p.label || p.expression,
     dice_expression: p.expression,
     individual_results: p.results,
