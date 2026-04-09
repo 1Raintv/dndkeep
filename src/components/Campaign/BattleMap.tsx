@@ -747,7 +747,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(data){ setMaps(p=>[...p,data]); setActiveMap(data); }
   }
 
-  function updateToken(tokenId:string,updates:Partial<MapToken>,immediate=true){
+  async function updateToken(tokenId:string,updates:Partial<MapToken>,immediate=true){
     if(!activeMap)return;
     // Get the OLD token value BEFORE mapping (for delta calculation)
     const oldToken=activeMap.tokens.find(t=>t.id===tokenId);
@@ -759,10 +759,10 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     // Realtime will propagate to character sheet and all other views
     if(token?.character_id&&updates.conditions!==undefined){
       onConditionApplied?.(token.character_id,updates.conditions);
-      supabase.from('characters').update({active_conditions:updates.conditions}).eq('id',token.character_id);
+      await supabase.from('characters').update({active_conditions:updates.conditions}).eq('id',token.character_id);
     }
     if(token?.character_id&&updates.hp!==undefined){
-      supabase.from('characters').update({current_hp:updates.hp}).eq('id',token.character_id);
+      await supabase.from('characters').update({current_hp:updates.hp}).eq('id',token.character_id);
     }
     // Log damage/healing using the OLD hp for correct delta
     if(updates.hp!==undefined&&oldToken){
