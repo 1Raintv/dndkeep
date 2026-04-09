@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
+import DiceRoller3D from '../components/DiceRoller3D';
 
 export interface DiceRollEvent {
   result: number;      // the raw die result (primary die)
@@ -35,13 +36,13 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   const triggerRoll = useCallback((event: DiceRollEvent) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setCurrent(event);
-    timeoutRef.current = setTimeout(() => setCurrent(null), 4400);
+    timeoutRef.current = setTimeout(() => setCurrent(null), 5000);
   }, []);
 
   return (
     <DiceRollContext.Provider value={{ triggerRoll, current }}>
       {children}
-      {current && <DiceRollOverlay event={current} onDismiss={() => setCurrent(null)} />}
+      {current && <DiceRoller3D event={current} onDismiss={() => setCurrent(null)} />}
     </DiceRollContext.Provider>
   );
 }
