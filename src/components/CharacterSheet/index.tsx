@@ -812,7 +812,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       </div>
 
       {/* Tab content + roll log left column */}
-      <div style={{ display: 'grid', gridTemplateColumns: '220px minmax(0,1fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '275px minmax(0,1fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
         {/* Roll log — left column, sticky */}
         <div style={{
           background: 'var(--c-card)', border: '1px solid var(--c-border)',

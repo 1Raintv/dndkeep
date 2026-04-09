@@ -122,7 +122,7 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
   }
 
   function formatTime(iso: string) {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   function getDisplayLabel(roll: RollEntry) {
