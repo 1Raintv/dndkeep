@@ -140,11 +140,10 @@ function buildMaterials(def:GeoDef, sides:number, metalness=0.65, roughness=0.32
   });
 }
 
-function buildCannon(def:GeoDef, s=1.0): CANNON.ConvexPolyhedron {
-  return new CANNON.ConvexPolyhedron({
-    vertices: def.verts.map(v=>new CANNON.Vec3(v[0]*s,v[1]*s,v[2]*s)),
-    faces: def.faces.map(f=>[...f]),
-  });
+// Use simple sphere/box primitives — ConvexPolyhedron winding issues crash cannon-es
+function buildCannonShape(sides: number, s: number): CANNON.Shape {
+  if (sides === 6) return new CANNON.Box(new CANNON.Vec3(s*0.88, s*0.88, s*0.88));
+  return new CANNON.Sphere(s * 0.92);  // sphere works for all other dice
 }
 
 // Compute the local face normal for face `fi` of the geometry def
@@ -273,7 +272,7 @@ export default function DiceRoller3D({ event, onDismiss }: Props) {
       const body = new CANNON.Body({
         mass:1, material:matD,
         linearDamping:0.1, angularDamping:0.18,
-        shape:buildCannon(def, S*0.88),
+        shape:buildCannonShape(d.die, S),
       });
       const spread = Math.min(tableHalfW*0.55, n*1.8);
       body.position.set((Math.random()-.5)*spread, 7+Math.random()*4, (Math.random()-.5)*(tableHalfZ*0.5));
