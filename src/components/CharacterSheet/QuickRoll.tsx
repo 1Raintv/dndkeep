@@ -218,6 +218,8 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
         <div className="animate-fade-in" style={{
           position: 'fixed', bottom: 76, right: 'var(--sp-4)',
           zIndex: 89, width: 296,
+          height: 380,
+          display: 'flex', flexDirection: 'column',
           background: 'linear-gradient(160deg, #1a1f2e 0%, #0d1117 100%)',
           border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-xl)',
           boxShadow: 'var(--shadow-lg), var(--shadow-gold)', overflow: 'hidden',
@@ -234,8 +236,8 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             )}
           </div>
 
-          {/* Die grid */}
-          <div style={{ padding: 'var(--sp-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)' }}>
+          {/* Die grid — fixed size, never shrinks */}
+          <div style={{ padding: 'var(--sp-3)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)', flexShrink: 0 }}>
             {DICE.map(d => {
               const count = queue.find(q => q.die === d)?.count ?? 0;
               return (
@@ -267,8 +269,8 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             })}
           </div>
 
-          {/* Roll controls — always rendered, stable height */}
-          <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          {/* Roll controls — fixed size */}
+          <div style={{ padding: '0 var(--sp-3) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
             {/* Queue chips — always present, fixed height to prevent layout shift */}
             <div style={{ minHeight: 26, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
               {queue.length === 0 ? (
@@ -287,23 +289,22 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
 
 
 
-            {/* Shake animation during roll */}
-            {rolling && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', padding: '6px 0' }}>
-                {queue.flatMap(({ die, count }) => Array.from({ length: count }, (_, i) => ({ die, i }))).map(({ die, i }, idx) => (
-                  <div key={idx} style={{
-                    width: 40, height: 40, borderRadius: 8,
-                    border: `2px solid ${dieColor(die)}`,
-                    background: `${dieColor(die)}20`,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    animation: 'diceShake 0.08s ease-in-out infinite alternate',
-                  }}>
-                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, lineHeight: 1, color: dieColor(die) }}>{animValues[idx] ?? die}</span>
-                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{die}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Shake animation — fixed height container so it never causes shift */}
+            <div style={{ height: rolling ? 52 : 0, overflow: 'hidden', transition: 'height 0.15s ease',
+              display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
+              {rolling && queue.flatMap(({ die, count }) => Array.from({ length: count }, (_, i) => ({ die, i }))).map(({ die, i }, idx) => (
+                <div key={idx} style={{
+                  width: 40, height: 40, borderRadius: 8,
+                  border: `2px solid ${dieColor(die)}`,
+                  background: `${dieColor(die)}20`,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  animation: 'diceShake 0.08s ease-in-out infinite alternate',
+                }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, lineHeight: 1, color: dieColor(die) }}>{animValues[idx] ?? die}</span>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-2)' }}>d{die}</span>
+                </div>
+              ))}
+            </div>
 
             {/* Roll button — always visible */}
             <button className="btn-gold" onClick={rollAll} disabled={rolling || queue.length === 0}
@@ -313,10 +314,13 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             </button>
           </div>
 
-          {/* Result */}
-          {lastRoll && (
+          {/* Result — always present, fills remaining space, scrollable */}
+          <div style={{
+            flex: 1, minHeight: 0, overflowY: 'auto',
+            borderTop: '1px solid var(--c-border)',
+          }}>
+          {lastRoll ? (
             <div key={lastRoll.id} className="animate-fade-in" style={{
-              borderTop: '1px solid var(--c-border)',
               padding: 'var(--sp-3) var(--sp-4)',
             }}>
               {lastRoll.label && (
@@ -365,8 +369,13 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
                 )}
               </div>
             </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%',
+              color: 'var(--t-3)', fontSize: 11, fontFamily: 'var(--ff-body)', fontStyle: 'italic', padding: 16, textAlign: 'center' }}>
+              Results will appear here
+            </div>
           )}
-
+          </div>
 
         </div>
       )}
