@@ -73,7 +73,7 @@ function buildGeo(def:GeoDef, s:number):THREE.BufferGeometry {
       nor.push(nx/nl,ny/nl,nz/nl,nx/nl,ny/nl,nz/nl,nx/nl,ny/nl,nz/nl);
       uv.push(0.5,1,0,0,1,0); tc++;
     }
-    g.addGroup(start*3,tc*3,fi); off+=tc*3;
+    g.addGroup(start,tc*3,fi); off+=tc*3;
   });
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
@@ -169,8 +169,8 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     const scene=new THREE.Scene();
 
     // Overhead camera — close enough that die fills good portion of screen
-    const camera=new THREE.PerspectiveCamera(55, W/H, 0.1, 200);
-    camera.position.set(0, 11, 5);
+    const camera=new THREE.PerspectiveCamera(60, W/H, 0.1, 200);
+    camera.position.set(0, 7, 3);
     camera.lookAt(0, 0, 0);
 
     // Bright lights
@@ -178,8 +178,8 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     const sun=new THREE.DirectionalLight(0xffffff, 2.5);
     sun.position.set(3,12,5); sun.castShadow=true;
     sun.shadow.mapSize.set(1024,1024);
-    sun.shadow.camera.left=-15; sun.shadow.camera.right=15;
-    sun.shadow.camera.top=15; sun.shadow.camera.bottom=-15;
+    sun.shadow.camera.left=-8; sun.shadow.camera.right=8;
+    sun.shadow.camera.top=8; sun.shadow.camera.bottom=-8;
     sun.shadow.camera.far=40; sun.shadow.bias=-0.001;
     scene.add(sun);
     const fill=new THREE.DirectionalLight(0x8899ff,0.5);
@@ -197,11 +197,11 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     // World units: 1 unit ≈ 75px on screen at this camera distance
     const FLOOR=0, GRAV=22, BOUNCE=0.5, WALL_B=0.55, ANG_D=0.80, ROLL_F=0.96;
     // Visible table area at floor: roughly ±5 wide, ±3 deep
-    const BX=4.5, BZ=3.5;
+    const BX=3.0, BZ=2.2;
 
     const dList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
     const n=dList.length;
-    const S=Math.max(0.7, 1.1-n*0.05); // die scale in world units
+    const S=Math.max(1.0, 1.6-n*0.08); // die scale in world units
 
     const dice:PhysDie[]=dList.map((d,i)=>{
       const def=gd(d.die);
@@ -211,17 +211,17 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
       mesh.castShadow=true; mesh.receiveShadow=true;
       scene.add(mesh);
 
-      const spread=Math.min(BX*0.45, n*0.4);
+      const spread=Math.min(BX*0.35, n*0.35);
       return{
         mesh,def,sides:d.die,val:d.value,
-        // Start just above center, spread across table
-        x:(Math.random()-.5)*spread*2,
-        y: 4+Math.random()*2,
-        z:(Math.random()-.5)*spread,
-        // Throw inward with moderate velocity
-        vx:(Math.random()-.5)*4,
-        vy:-(2+Math.random()*2),
-        vz:(Math.random()-.5)*3,
+        // Start near center, drop straight down
+        x:(Math.random()-.5)*spread,
+        y: 3.5+Math.random()*1.5,
+        z:(Math.random()-.5)*spread*0.5,
+        // Gentle throw — stays visible
+        vx:(Math.random()-.5)*2.5,
+        vy:-(1+Math.random()*1.5),
+        vz:(Math.random()-.5)*1.5,
         rx:Math.random()*Math.PI*2, ry:Math.random()*Math.PI*2, rz:Math.random()*Math.PI*2,
         arx:(Math.random()-.5)*16, ary:(Math.random()-.5)*16, arz:(Math.random()-.5)*12,
         done:false, delay:i*0.1,
