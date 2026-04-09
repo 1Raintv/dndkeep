@@ -107,17 +107,18 @@ function solidGeo(def:GeoDef, s:number): THREE.BufferGeometry {
   const pos:number[]=[], nor:number[]=[];
   const g = new THREE.BufferGeometry(); let off = 0;
   def.faces.forEach((face,fi) => {
+    // Compute ONE face normal for the whole face — no seams between triangles
+    const fa=def.verts[face[0]],fb=def.verts[face[1]],fc2=def.verts[face[2]];
+    const fex=fb[0]-fa[0],fey=fb[1]-fa[1],fez=fb[2]-fa[2];
+    const ffx=fc2[0]-fa[0],ffy=fc2[1]-fa[1],ffz=fc2[2]-fa[2];
+    let fnx=fey*ffz-fez*ffy,fny=fez*ffx-fex*ffz,fnz=fex*ffy-fey*ffx;
+    const fnl=Math.sqrt(fnx*fnx+fny*fny+fnz*fnz)||1;
+    fnx/=fnl; fny/=fnl; fnz/=fnl; // flat face normal — same for all tris in this face
     const start = off; let tc = 0;
     for (let i = 1; i < face.length-1; i++) {
       const a=def.verts[face[0]],b=def.verts[face[i]],c=def.verts[face[i+1]];
-      const [ax,ay,az]=[a[0]*s,a[1]*s,a[2]*s];
-      const [bx,by,bz]=[b[0]*s,b[1]*s,b[2]*s];
-      const [cx,cy,cz]=[c[0]*s,c[1]*s,c[2]*s];
-      const [ex,ey,ez]=[bx-ax,by-ay,bz-az],[fx,fy,fz]=[cx-ax,cy-ay,cz-az];
-      const [nx,ny,nz]=[ey*fz-ez*fy,ez*fx-ex*fz,ex*fy-ey*fx];
-      const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
-      pos.push(ax,ay,az,bx,by,bz,cx,cy,cz);
-      nor.push(nx/nl,ny/nl,nz/nl,nx/nl,ny/nl,nz/nl,nx/nl,ny/nl,nz/nl);
+      pos.push(a[0]*s,a[1]*s,a[2]*s, b[0]*s,b[1]*s,b[2]*s, c[0]*s,c[1]*s,c[2]*s);
+      nor.push(fnx,fny,fnz, fnx,fny,fnz, fnx,fny,fnz); // same normal for all verts
       tc++;
     }
     g.addGroup(start, tc*3, fi); off += tc*3;
@@ -214,7 +215,7 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
   const fc = new THREE.Color(t.f);
   const mats = def.faces.map(() => new THREE.MeshPhongMaterial({
     color:fc, emissive:fc.clone().multiplyScalar(0.1),
-    specular:new THREE.Color(t.e), shininess:55, side:THREE.FrontSide,
+    specular:new THREE.Color(t.e), shininess:55, side:THREE.DoubleSide,
   }));
   const mesh = new THREE.Mesh(geo, mats);
   mesh.castShadow=true; mesh.receiveShadow=true;
@@ -231,7 +232,7 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
     const off = 0.03 * S;
     const mat = new THREE.MeshBasicMaterial({
       map: numTex(numLabel(def.nums[fi]), t.e),
-      transparent:true, side:THREE.FrontSide,
+      transparent:true, side:THREE.DoubleSide,
       depthTest:true, depthWrite:false, alphaTest:0.05,
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(sz,sz), mat);
