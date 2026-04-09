@@ -1008,7 +1008,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           maxHeight: 'calc(100vh - 320px)', minHeight: 280,
           position: 'sticky', top: 16,
         }}>
-          <RollLog characterId={character.id} userId={userId} />
+          <RollLog characterId={character.id} userId={userId} characterName={character.name} />
         </div>
       </div>
 
