@@ -26,29 +26,28 @@ const norm=(v:V3):V3=>{const l=Math.sqrt(dot(v,v))||1;return[v[0]/l,v[1]/l,v[2]/
 
 interface GeoDef{verts:V3[];faces:number[][];nums:number[]}
 
-// ── D10: Proper pentagonal trapezohedron ─────────────────────────────
-// 10 kite-shaped faces. Two pointed poles + equatorial rings.
-// NOT normalized — elongated shape must be preserved (unit() would make it look like d20)
+// ── D10: Pentagonal bipyramid — 10 triangular faces, unit-normalized
+// This shape was confirmed working. The elongated trapezohedron with kite
+// faces creates seams; the bipyramid with triangular faces renders cleanly.
 function makeD10(nums: number[]): GeoDef {
   const verts: V3[] = [];
-  const R = 0.78, H = 0.28, T = 1.0;
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5;
-    verts.push([R * Math.sin(a), H, R * Math.cos(a)]);  // upper ring y=+H
+    verts.push([Math.cos(a), 0.5, Math.sin(a)]);  // upper ring
   }
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5 + Math.PI / 5;
-    verts.push([R * Math.sin(a), -H, R * Math.cos(a)]); // lower ring y=-H offset 36deg
+    verts.push([Math.cos(a), -0.5, Math.sin(a)]); // lower ring offset 36°
   }
-  verts.push([0, T, 0]);    // top apex, index 10
-  verts.push([0, -T, 0]);   // bottom apex, index 11
+  verts.push([0, 1.2, 0]);   // top apex  idx 10
+  verts.push([0, -1.2, 0]);  // bottom apex idx 11
   const faces: number[][] = [];
   for (let i = 0; i < 5; i++) {
     const n = (i + 1) % 5;
-    faces.push([10, i, 5 + i, n]);       // upper kite (outward CCW)
-    faces.push([11, 5 + n, n, 5 + i]);   // lower kite (reversed for outward CCW)
+    faces.push([10, (n), i]);              // upper triangles
+    faces.push([11, i + 5, n + 5]);       // lower triangles
   }
-  return { verts, faces, nums }; // no unit() - preserve elongated shape
+  return { verts: unit(verts), faces, nums };
 }
 
 // ── D12: Dodecahedron (12 regular pentagonal faces) ──────────────────
@@ -210,19 +209,20 @@ function faceUpQuat(def:GeoDef, targetNum:number, s:number): THREE.Quaternion|nu
 }
 
 function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
-                  numLabel:(n:number)=>string): THREE.Group {
-  const geo = solidGeo(def,S);
+                  numLabel:(n:number)=>string, dieType=0): THREE.Group {
+  // d12: use Three.js built-in DodecahedronGeometry (correct winding)
+  const isD12 = dieType === 12;
   const fc = new THREE.Color(t.f);
-  const mats = def.faces.map(() => new THREE.MeshPhongMaterial({
-    color:fc, emissive:fc.clone().multiplyScalar(0.1),
-    specular:new THREE.Color(t.e), shininess:55, side:THREE.DoubleSide,
-  }));
-  const mesh = new THREE.Mesh(geo, mats);
+  const bodyGeo = isD12
+    ? new THREE.DodecahedronGeometry(S, 0)
+    : solidGeo(def, S);
+  const mats = isD12
+    ? [new THREE.MeshPhongMaterial({color:fc,emissive:fc.clone().multiplyScalar(0.1),specular:new THREE.Color(t.e),shininess:55,side:THREE.FrontSide})]
+    : def.faces.map(()=>new THREE.MeshPhongMaterial({color:fc,emissive:fc.clone().multiplyScalar(0.1),specular:new THREE.Color(t.e),shininess:55,side:THREE.DoubleSide}));
+  const mesh = new THREE.Mesh(bodyGeo, isD12 ? mats[0] : mats);
   mesh.castShadow=true; mesh.receiveShadow=true;
-  const edges = new THREE.LineSegments(
-    boundaryEdges(def, S*1.003),
-    new THREE.LineBasicMaterial({color:t.e})
-  );
+  const edgeGeo = isD12 ? new THREE.EdgesGeometry(bodyGeo) : boundaryEdges(def, S*1.003);
+  const edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({color:t.e}));
   const group = new THREE.Group();
   group.add(mesh); group.add(edges);
 
@@ -301,7 +301,7 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     const dice:PhysDie[] = specs.map((sp,i) => {
       const def = gd(sp.gk);
       const S = baseS * (SM[sp.die]??1.0);
-      const group = buildDie(def, S, th(sp.tk), FF[sp.die]??1.0, sp.label);
+      const group = buildDie(def, S, th(sp.tk), FF[sp.die]??1.0, sp.label, sp.die);
       scene.add(group);
       // Fully random starting orientation — natural roll
       const startQ = new THREE.Quaternion();
