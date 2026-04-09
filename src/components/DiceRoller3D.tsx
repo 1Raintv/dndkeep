@@ -27,31 +27,28 @@ const norm=(v:V3):V3=>{const l=Math.sqrt(dot(v,v))||1;return[v[0]/l,v[1]/l,v[2]/
 interface GeoDef{verts:V3[];faces:number[][];nums:number[]}
 
 // ── D10: Proper pentagonal trapezohedron ─────────────────────────────
-// 10 kite-shaped faces. Top/bottom apices + 2 rings of 5 equatorial vertices.
+// 10 kite-shaped faces. Two pointed poles + equatorial rings.
+// NOT normalized — elongated shape must be preserved (unit() would make it look like d20)
 function makeD10(nums: number[]): GeoDef {
   const verts: V3[] = [];
-  // Upper ring: 5 vertices at y=0.35, angles 0°,72°,144°,216°,288°
+  const R = 0.78, H = 0.28, T = 1.0;
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5;
-    verts.push([Math.sin(a), 0.35, Math.cos(a)]);
+    verts.push([R * Math.sin(a), H, R * Math.cos(a)]);  // upper ring y=+H
   }
-  // Lower ring: 5 vertices at y=-0.35, offset 36°
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5 + Math.PI / 5;
-    verts.push([Math.sin(a), -0.35, Math.cos(a)]);
+    verts.push([R * Math.sin(a), -H, R * Math.cos(a)]); // lower ring y=-H offset 36deg
   }
-  // Apices: idx 10 = top, idx 11 = bottom
-  verts.push([0, 1.1, 0]);  // top
-  verts.push([0, -1.1, 0]); // bottom
-  // Upper kite faces: [top, upper_i, lower_i, upper_{i+1}]
-  // Lower kite faces: [bot, lower_i, upper_{i+1}, lower_{i+1}]
+  verts.push([0, T, 0]);    // top apex, index 10
+  verts.push([0, -T, 0]);   // bottom apex, index 11
   const faces: number[][] = [];
   for (let i = 0; i < 5; i++) {
     const n = (i + 1) % 5;
-    faces.push([10, i, 5 + i, n]);        // upper kite
-    faces.push([11, 5 + i, n, 5 + n]);    // lower kite
+    faces.push([10, i, 5 + i, n]);       // upper kite (outward CCW)
+    faces.push([11, 5 + n, n, 5 + i]);   // lower kite (reversed for outward CCW)
   }
-  return { verts: unit(verts), faces, nums };
+  return { verts, faces, nums }; // no unit() - preserve elongated shape
 }
 
 // ── D12: Dodecahedron (12 regular pentagonal faces) ──────────────────
@@ -217,7 +214,7 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
   const fc = new THREE.Color(t.f);
   const mats = def.faces.map(() => new THREE.MeshPhongMaterial({
     color:fc, emissive:fc.clone().multiplyScalar(0.1),
-    specular:new THREE.Color(t.e), shininess:55, side:THREE.DoubleSide,
+    specular:new THREE.Color(t.e), shininess:55, side:THREE.FrontSide,
   }));
   const mesh = new THREE.Mesh(geo, mats);
   mesh.castShadow=true; mesh.receiveShadow=true;
