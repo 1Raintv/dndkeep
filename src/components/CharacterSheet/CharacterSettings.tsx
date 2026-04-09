@@ -3,7 +3,6 @@ import type { Character, AbilityKey } from '../../types';
 import { abilityModifier, formatModifier } from '../../lib/gameUtils';
 import LevelUp from './LevelUp';
 import { deleteCharacter } from '../../lib/supabase';
-import { ARMOR_LIST, calcArmorAC } from '../../data/armor';
 import { useNavigate } from 'react-router-dom';
 
 type SettingsTab = 'stats' | 'levelup' | 'export' | 'danger';
@@ -160,7 +159,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
       <div className="modal-overlay" onClick={onClose}>
         <div
           className="modal"
-          style={{ maxWidth: 520, width: '100%' }}
+          style={{ maxWidth: 660, width: '100%' }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -216,31 +215,6 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
               <div>
                 <div className="section-header">Combat Stats</div>
-
-                {/* Armor picker */}
-                <div style={{ marginBottom: 'var(--sp-4)' }}>
-                  <label style={{ display: 'block', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 'var(--sp-1)', background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>
-                    Equipped Armor
-                  </label>
-                  <select
-                    value={character.equipped_armor ?? 'unarmored'}
-                    onChange={e => {
-                      const armorId = e.target.value;
-                      const newAC = calcArmorAC(armorId, character.dexterity);
-                      onUpdate({ equipped_armor: armorId, armor_class: newAC });
-                    }}
-                    style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--fs-sm)' }}
-                  >
-                    {ARMOR_LIST.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} — AC {calcArmorAC(a.id, character.dexterity)} ({a.type})
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                    Auto-calculates AC from armor + DEX. Override manually below if needed.
-                  </div>
-                </div>
 
                 <EditableField
                   label="Armor Class (override)"

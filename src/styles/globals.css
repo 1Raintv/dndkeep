@@ -643,10 +643,11 @@ button:active:not(:disabled) { transform: scale(0.97); }
   background: rgba(0,0,0,0.7);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
-  padding: var(--sp-4);
+  padding: var(--sp-8) var(--sp-4) var(--sp-4);
+  overflow-y: auto;
 }
 .modal {
   background: var(--c-card);
@@ -654,11 +655,12 @@ button:active:not(:disabled) { transform: scale(0.97); }
   border-radius: var(--r-2xl);
   box-shadow: var(--shadow-lg);
   width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
+  max-width: 660px;
+  max-height: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .modal-header {
   padding: var(--sp-5) var(--sp-6);
