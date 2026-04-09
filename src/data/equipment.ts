@@ -18,6 +18,12 @@ export interface CatalogueItem {
   // Roll expression for use button (potions, scrolls, etc.)
   rollExpression?: string;  // e.g. "2d4+2", "1d4", "4d4"
   rollLabel?: string;       // e.g. "Healing", "Fire Damage"
+  // Weapon stat table fields (D&D Beyond style)
+  damage?: string;          // e.g. "1d8 slashing", "2d6 fire"
+  range?: string;           // e.g. "5 ft.", "80/320 ft.", "Touch"
+  properties?: string;      // e.g. "Versatile, Finesse"
+  castingTime?: string;     // for scrolls: "1 Action"
+  saveOrHit?: string;       // e.g. "+13 to hit" or "DC 15 DEX"
   // Effects when equipped
   effect?: string;
 }
@@ -29,36 +35,36 @@ export const ALL_CATEGORIES: ItemCategory[] = [
 
 export const CATALOGUE: CatalogueItem[] = [
   // ── Weapons — Simple Melee ──────────────────────────────────────
-  { name: 'Club',          category: 'Weapon', weight: 2,    cost: '1 sp',   notes: '1d4 bludgeoning · light' },
-  { name: 'Dagger',        category: 'Weapon', weight: 1,    cost: '2 gp',   notes: '1d4 piercing · finesse, light, thrown (20/60)' },
+  { name: 'Club',          category: 'Weapon', weight: 2,    cost: '1 sp',   damage: '1d4 bludgeoning', range: '5 ft.', properties: 'Light', notes: '1d4 bludgeoning · light' },
+  { name: 'Dagger',        category: 'Weapon', weight: 1,    cost: '2 gp',   damage: '1d4 piercing', range: '5 ft. / 20/60 ft.', properties: 'Finesse, Light, Thrown', notes: '1d4 piercing · finesse, light, thrown (20/60)' },
   { name: 'Greatclub',     category: 'Weapon', weight: 10,   cost: '2 sp',   notes: '1d8 bludgeoning · two-handed' },
-  { name: 'Handaxe',       category: 'Weapon', weight: 2,    cost: '5 gp',   notes: '1d6 slashing · light, thrown (20/60)' },
+  { name: 'Handaxe',       category: 'Weapon', weight: 2,    cost: '5 gp',   damage: '1d6 slashing', range: '5 ft. / 20/60 ft.', properties: 'Light, Thrown', notes: '1d6 slashing · light, thrown (20/60)' },
   { name: 'Javelin',       category: 'Weapon', weight: 2,    cost: '5 sp',   notes: '1d6 piercing · thrown (30/120)' },
   { name: 'Light Hammer',  category: 'Weapon', weight: 2,    cost: '2 gp',   notes: '1d4 bludgeoning · light, thrown (20/60)' },
-  { name: 'Mace',          category: 'Weapon', weight: 4,    cost: '5 gp',   notes: '1d6 bludgeoning' },
-  { name: 'Quarterstaff',  category: 'Weapon', weight: 4,    cost: '2 sp',   notes: '1d6/1d8 bludgeoning · versatile' },
+  { name: 'Mace',          category: 'Weapon', weight: 4,    cost: '5 gp',   damage: '1d6 bludgeoning', range: '5 ft.', properties: '—', notes: '1d6 bludgeoning' },
+  { name: 'Quarterstaff',  category: 'Weapon', weight: 4,    cost: '2 sp',   damage: '1d6/1d8 bludgeoning', range: '5 ft.', properties: 'Versatile', notes: '1d6/1d8 bludgeoning · versatile' },
   { name: 'Sickle',        category: 'Weapon', weight: 2,    cost: '1 gp',   notes: '1d4 slashing · light' },
-  { name: 'Spear',         category: 'Weapon', weight: 3,    cost: '1 gp',   notes: '1d6/1d8 piercing · thrown (20/60), versatile' },
+  { name: 'Spear',         category: 'Weapon', weight: 3,    cost: '1 gp',   damage: '1d6/1d8 piercing', range: '5 ft. / 20/60 ft.', properties: 'Versatile, Thrown', notes: '1d6/1d8 piercing · thrown (20/60), versatile' },
   // ── Weapons — Simple Ranged ──────────────────────────────────────
-  { name: 'Crossbow, Light', category: 'Weapon', weight: 5,  cost: '25 gp',  notes: '1d8 piercing · loading, two-handed (80/320)' },
+  { name: 'Crossbow, Light', category: 'Weapon', weight: 5,  cost: '25 gp',  damage: '1d8 piercing', range: '80/320 ft.', properties: 'Loading, Two-Handed', notes: '1d8 piercing · loading, two-handed (80/320)' },
   { name: 'Dart',            category: 'Weapon', weight: 0.25, cost: '5 cp', notes: '1d4 piercing · finesse, thrown (20/60)' },
-  { name: 'Shortbow',        category: 'Weapon', weight: 2,  cost: '25 gp',  notes: '1d6 piercing · two-handed (80/320)' },
+  { name: 'Shortbow',        category: 'Weapon', weight: 2,  cost: '25 gp',  damage: '1d6 piercing', range: '80/320 ft.', properties: 'Two-Handed', notes: '1d6 piercing · two-handed (80/320)' },
   { name: 'Sling',           category: 'Weapon', weight: 0,  cost: '1 sp',   notes: '1d4 bludgeoning · (30/120)' },
   // ── Weapons — Martial Melee ──────────────────────────────────────
-  { name: 'Battleaxe',     category: 'Weapon', weight: 4,    cost: '10 gp',  notes: '1d8/1d10 slashing · versatile' },
+  { name: 'Battleaxe',     category: 'Weapon', weight: 4,    cost: '10 gp',  damage: '1d8/1d10 slashing', range: '5 ft.', properties: 'Versatile', notes: '1d8/1d10 slashing · versatile' },
   { name: 'Flail',         category: 'Weapon', weight: 2,    cost: '10 gp',  notes: '1d8 bludgeoning' },
   { name: 'Glaive',        category: 'Weapon', weight: 6,    cost: '20 gp',  notes: '1d10 slashing · heavy, reach, two-handed' },
   { name: 'Greataxe',      category: 'Weapon', weight: 7,    cost: '30 gp',  notes: '1d12 slashing · heavy, two-handed' },
-  { name: 'Greatsword',    category: 'Weapon', weight: 6,    cost: '50 gp',  notes: '2d6 slashing · heavy, two-handed' },
+  { name: 'Greatsword',    category: 'Weapon', weight: 6,    cost: '50 gp',  damage: '2d6 slashing', range: '5 ft.', properties: 'Heavy, Two-Handed', notes: '2d6 slashing · heavy, two-handed' },
   { name: 'Halberd',       category: 'Weapon', weight: 6,    cost: '20 gp',  notes: '1d10 slashing · heavy, reach, two-handed' },
   { name: 'Lance',         category: 'Weapon', weight: 6,    cost: '10 gp',  notes: '1d12 piercing · reach' },
-  { name: 'Longsword',     category: 'Weapon', weight: 3,    cost: '15 gp',  notes: '1d8/1d10 slashing · versatile' },
+  { name: 'Longsword',     category: 'Weapon', weight: 3,    cost: '15 gp',  damage: '1d8/1d10 slashing', range: '5 ft.', properties: 'Versatile', notes: '1d8/1d10 slashing · versatile' },
   { name: 'Maul',          category: 'Weapon', weight: 10,   cost: '10 gp',  notes: '2d6 bludgeoning · heavy, two-handed' },
   { name: 'Morningstar',   category: 'Weapon', weight: 4,    cost: '15 gp',  notes: '1d8 piercing' },
   { name: 'Pike',          category: 'Weapon', weight: 18,   cost: '5 gp',   notes: '1d10 piercing · heavy, reach, two-handed' },
-  { name: 'Rapier',        category: 'Weapon', weight: 2,    cost: '25 gp',  notes: '1d8 piercing · finesse' },
+  { name: 'Rapier',        category: 'Weapon', weight: 2,    cost: '25 gp',  damage: '1d8 piercing', range: '5 ft.', properties: 'Finesse', notes: '1d8 piercing · finesse' },
   { name: 'Scimitar',      category: 'Weapon', weight: 3,    cost: '25 gp',  notes: '1d6 slashing · finesse, light' },
-  { name: 'Shortsword',    category: 'Weapon', weight: 2,    cost: '10 gp',  notes: '1d6 piercing · finesse, light' },
+  { name: 'Shortsword',    category: 'Weapon', weight: 2,    cost: '10 gp',  damage: '1d6 piercing', range: '5 ft.', properties: 'Finesse, Light', notes: '1d6 piercing · finesse, light' },
   { name: 'Trident',       category: 'Weapon', weight: 4,    cost: '5 gp',   notes: '1d6/1d8 piercing · thrown (20/60), versatile' },
   { name: 'War Pick',      category: 'Weapon', weight: 2,    cost: '5 gp',   notes: '1d8 piercing' },
   { name: 'Warhammer',     category: 'Weapon', weight: 2,    cost: '15 gp',  notes: '1d8/1d10 bludgeoning · versatile' },
@@ -67,7 +73,7 @@ export const CATALOGUE: CatalogueItem[] = [
   { name: 'Blowgun',         category: 'Weapon', weight: 1,  cost: '10 gp',  notes: '1 piercing · loading (25/100)' },
   { name: 'Crossbow, Hand',  category: 'Weapon', weight: 3,  cost: '75 gp',  notes: '1d6 piercing · light, loading (30/120)' },
   { name: 'Crossbow, Heavy', category: 'Weapon', weight: 18, cost: '50 gp',  notes: '1d10 piercing · heavy, loading, two-handed (100/400)' },
-  { name: 'Longbow',         category: 'Weapon', weight: 2,  cost: '50 gp',  notes: '1d8 piercing · heavy, two-handed (150/600)' },
+  { name: 'Longbow',         category: 'Weapon', weight: 2,  cost: '50 gp',  damage: '1d8 piercing', range: '150/600 ft.', properties: 'Heavy, Two-Handed', notes: '1d8 piercing · heavy, two-handed (150/600)' },
   { name: 'Net',             category: 'Weapon', weight: 3,  cost: '1 gp',   notes: 'Restrained · thrown (5/15)' },
 
   // ── Light Armor ──────────────────────────────────────────────────
@@ -92,8 +98,8 @@ export const CATALOGUE: CatalogueItem[] = [
   { name: 'Shield, +3',     category: 'Armor', weight: 6,  cost: '—',       armorType: 'shield', baseAC: 5,  notes: '+5 AC bonus (magic)' },
 
   // ── Potions ──────────────────────────────────────────────────────
-  { name: 'Potion of Healing',        category: 'Potion', weight: 0.5, cost: '50 gp',     rollExpression: '2d4+2', rollLabel: 'Healing',     notes: 'Restores 2d4+2 HP when you drink it' },
-  { name: 'Potion of Greater Healing', category: 'Potion', weight: 0.5, cost: '100 gp',   rollExpression: '4d4+4', rollLabel: 'Healing',     notes: 'Restores 4d4+4 HP' },
+  { name: 'Potion of Healing',        category: 'Potion', weight: 0.5, cost: '50 gp',     rollExpression: '2d4+2', rollLabel: 'Healing', damage: '2d4+2', range: 'Self', castingTime: '1 Action', notes: 'Restores 2d4+2 HP when you drink it' },
+  { name: 'Potion of Greater Healing', category: 'Potion', weight: 0.5, cost: '100 gp',   rollExpression: '4d4+4', rollLabel: 'Healing', damage: '4d4+4', range: 'Self', castingTime: '1 Action', notes: 'Restores 4d4+4 HP' },
   { name: 'Potion of Superior Healing',category: 'Potion', weight: 0.5, cost: '500 gp',   rollExpression: '8d4+8', rollLabel: 'Healing',     notes: 'Restores 8d4+8 HP' },
   { name: 'Potion of Supreme Healing', category: 'Potion', weight: 0.5, cost: '5,000 gp', rollExpression: '10d4+20', rollLabel: 'Healing',   notes: 'Restores 10d4+20 HP' },
   { name: 'Potion of Climbing',       category: 'Potion', weight: 0.5, cost: '180 gp',    notes: 'Climbing speed equal to walking speed, 1 hour' },
@@ -115,10 +121,10 @@ export const CATALOGUE: CatalogueItem[] = [
   { name: 'Spell Scroll (1st)',      category: 'Scroll', weight: 0, cost: '75 gp',      notes: 'Contains a 1st-level spell. Spell save DC 13, +5 to hit.' },
   { name: 'Spell Scroll (2nd)',      category: 'Scroll', weight: 0, cost: '150 gp',     notes: 'Contains a 2nd-level spell. DC 13, +5 to hit.' },
   { name: 'Spell Scroll (3rd)',      category: 'Scroll', weight: 0, cost: '300 gp',     notes: 'Contains a 3rd-level spell. DC 15, +7 to hit.' },
-  { name: 'Scroll of Fireball',      category: 'Scroll', weight: 0, cost: '300 gp',     rollExpression: '8d6', rollLabel: 'Fire', notes: '8d6 fire damage in 20ft radius, DEX save DC 15 for half' },
+  { name: 'Scroll of Fireball',      category: 'Scroll', weight: 0, cost: '300 gp',     rollExpression: '8d6', rollLabel: 'Fire', damage: '8d6 fire', range: '150 ft.', castingTime: '1 Action', saveOrHit: 'DC 15 DEX', notes: '8d6 fire damage in 20ft radius, DEX save DC 15 for half' },
   { name: 'Scroll of Lightning Bolt',category: 'Scroll', weight: 0, cost: '300 gp',     rollExpression: '8d6', rollLabel: 'Lightning', notes: '8d6 lightning in 100ft line, DEX save DC 15 for half' },
-  { name: 'Scroll of Magic Missile', category: 'Scroll', weight: 0, cost: '75 gp',      rollExpression: '3d4+3', rollLabel: 'Force', notes: 'Three darts, 1d4+1 each, auto-hit' },
-  { name: 'Scroll of Cure Wounds',   category: 'Scroll', weight: 0, cost: '75 gp',      rollExpression: '1d8+3', rollLabel: 'Healing', notes: 'Restores 1d8+3 HP on touch' },
+  { name: 'Scroll of Magic Missile', category: 'Scroll', weight: 0, cost: '75 gp',      rollExpression: '3d4+3', rollLabel: 'Force', damage: '3×(1d4+1) force', range: '120 ft.', castingTime: '1 Action', notes: 'Three darts, 1d4+1 each, auto-hit' },
+  { name: 'Scroll of Cure Wounds',   category: 'Scroll', weight: 0, cost: '75 gp',      rollExpression: '1d8+3', rollLabel: 'Healing', damage: '1d8+3', range: 'Touch', castingTime: '1 Action', notes: 'Restores 1d8+3 HP on touch' },
   { name: 'Scroll of Burning Hands', category: 'Scroll', weight: 0, cost: '75 gp',      rollExpression: '3d6', rollLabel: 'Fire', notes: '3d6 fire in 15ft cone, DEX save DC 13 for half' },
   { name: 'Scroll of Ice Storm',     category: 'Scroll', weight: 0, cost: '300 gp',     rollExpression: '2d8+4d6', rollLabel: 'Cold/Bludgeoning', notes: '2d8 bludgeoning + 4d6 cold in 20ft radius' },
   { name: 'Scroll of Healing Word',  category: 'Scroll', weight: 0, cost: '75 gp',      rollExpression: '1d4+3', rollLabel: 'Healing', notes: 'Restores 1d4+3 HP as bonus action' },

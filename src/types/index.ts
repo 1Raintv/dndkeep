@@ -97,6 +97,12 @@ export interface InventoryItem {
   rollExpression?: string;
   rollLabel?: string;
   cost?: string;
+  // Stat table display
+  damage?: string;
+  range?: string;
+  properties?: string;
+  castingTime?: string;
+  saveOrHit?: string;
 }
 
 export interface WeaponItem {

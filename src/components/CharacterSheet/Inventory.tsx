@@ -110,60 +110,53 @@ function ItemPickerModal({ onAdd, onClose }: {
               No items match "{search}"
             </div>
           ) : (
-            filtered.map(item => (
-              <div
-                key={item.name}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px', borderRadius: 8, marginBottom: 2,
-                  background: 'var(--c-raised)',
-                  transition: 'background 0.1s',
-                }}
-              >
-                {/* Category badge */}
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 99, flexShrink: 0,
-                  background: item.category === 'Weapon' ? 'rgba(239,68,68,0.15)' :
-                               item.category === 'Armor' ? 'rgba(59,130,246,0.15)' :
-                               item.category === 'Magic Item' ? 'rgba(167,139,250,0.15)' :
-                               'rgba(107,114,128,0.15)',
-                  color: item.category === 'Weapon' ? '#f87171' :
-                         item.category === 'Armor' ? '#60a5fa' :
-                         item.category === 'Magic Item' ? '#a78bfa' :
-                         'var(--t-3)',
-                }}>
-                  {item.category === 'Adventuring Gear' ? 'Gear' :
-                   item.category === 'Mount & Vehicle' ? 'Mount' :
-                   item.category === 'Trade Good' ? 'Trade' :
-                   item.category}
-                </span>
-
-                {/* Name + notes */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t-1)' }}>{item.name}</div>
-                  {item.notes && (
-                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.notes}
+            filtered.map(item => {
+              const chips = item.notes ? item.notes.split(/[·,]/).map((s: string) => s.trim()).filter(Boolean) : [];
+              const catColor = item.category === 'Weapon' ? '#f87171' : item.category === 'Armor' ? '#60a5fa' : item.category === 'Magic Item' || item.category === 'Wondrous Item' ? '#a78bfa' : item.category === 'Potion' ? '#4ade80' : item.category === 'Scroll' ? '#c084fc' : 'var(--t-3)';
+              const catBg = item.category === 'Weapon' ? 'rgba(239,68,68,0.1)' : item.category === 'Armor' ? 'rgba(59,130,246,0.1)' : item.category === 'Magic Item' || item.category === 'Wondrous Item' ? 'rgba(167,139,250,0.1)' : item.category === 'Potion' ? 'rgba(74,222,128,0.08)' : item.category === 'Scroll' ? 'rgba(192,132,252,0.08)' : 'rgba(107,114,128,0.1)';
+              const catLabel = item.category === 'Adventuring Gear' ? 'Gear' : item.category === 'Mount & Vehicle' ? 'Mount' : item.category === 'Trade Good' ? 'Trade' : item.category === 'Wondrous Item' ? 'Wondrous' : item.category;
+              return (
+                <div
+                  key={item.name}
+                  style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 3, background: 'var(--c-raised)', border: '1px solid var(--c-border)', transition: 'border-color 0.1s' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border-m)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border)'}
+                >
+                  {/* Row 1: name + add button */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: chips.length > 0 || item.armorType ? 4 : 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t-1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.name}
+                      {(item.category === 'Magic Item' || item.category === 'Wondrous Item') && <span style={{ fontSize: 9, color: '#a78bfa', marginLeft: 5 }}>✦</span>}
+                    </div>
+                    {item.rollExpression && (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: 99, padding: '1px 6px', flexShrink: 0 }}>
+                        🎲 {item.rollExpression}
+                      </span>
+                    )}
+                    {item.weight > 0 && <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>{item.weight} lb</span>}
+                    {item.cost && <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>{item.cost}</span>}
+                    <button
+                      onClick={() => addItem(item)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 7, cursor: 'pointer', border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)', flexShrink: 0 }}
+                    >Add</button>
+                  </div>
+                  {/* Row 2: tag strip */}
+                  {(chips.length > 0 || item.armorType) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: catColor, background: catBg, border: `1px solid ${catColor}33`, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{catLabel}</span>
+                      {item.armorType && item.baseAC && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: '#60a5fa', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                          {item.armorType === 'shield' ? `+${item.baseAC} AC` : item.addDexMod ? `AC ${item.baseAC}${item.maxDexBonus !== undefined ? ` +DEX(≤${item.maxDexBonus})` : ' +DEX'}` : `AC ${item.baseAC}`}
+                        </span>
+                      )}
+                      {chips.slice(0, 4).map((chip: string, i: number) => (
+                        <span key={i} style={{ fontSize: 9, fontWeight: 500, padding: '1px 6px', borderRadius: 4, color: 'var(--t-3)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--c-border)' }}>{chip}</span>
+                      ))}
                     </div>
                   )}
                 </div>
-
-                {/* Cost + weight */}
-                <div style={{ textAlign: 'right', flexShrink: 0, fontSize: 11, color: 'var(--t-3)' }}>
-                  {item.cost && <div>{item.cost}</div>}
-                  {item.weight > 0 && <div>{item.weight} lb</div>}
-                </div>
-
-                {/* Add button */}
-                <button
-                  onClick={() => addItem(item)}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, cursor: 'pointer',
-                    border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)', flexShrink: 0 }}
-                >
-                  Add
-                </button>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -293,6 +286,11 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
       rollExpression: catalogueItem.rollExpression,
       rollLabel: catalogueItem.rollLabel,
       cost: catalogueItem.cost,
+      damage: (catalogueItem as any).damage,
+      range: (catalogueItem as any).range,
+      properties: (catalogueItem as any).properties,
+      castingTime: (catalogueItem as any).castingTime,
+      saveOrHit: (catalogueItem as any).saveOrHit,
     };
     onUpdateInventory([...inventory, item]);
   }
@@ -497,62 +495,116 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
         </div>
 
         {/* Body */}
-        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Stats row */}
-          <div style={{ display: 'flex', gap: 16 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Qty</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button onClick={() => onUpdate(item.id, { quantity: Math.max(1, item.quantity - 1) })}
-                  style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)', cursor: 'pointer', fontSize: 14 }}>−</button>
-                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 28, textAlign: 'center' }}>{item.quantity}</span>
-                <button onClick={() => onUpdate(item.id, { quantity: item.quantity + 1 })}
-                  style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)', cursor: 'pointer', fontSize: 14 }}>+</button>
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* ── Stat Table (D&D Beyond style) ── */}
+          {(item.damage || item.range || item.saveOrHit || item.baseAC !== undefined || item.castingTime) && (
+            <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden' }}>
+              {/* Table header */}
+              <div style={{ display: 'grid', gridTemplateColumns: item.saveOrHit ? '2fr 1fr 1fr 1fr' : '2fr 1fr 1fr', background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid var(--c-border)' }}>
+                {['Name', item.saveOrHit ? 'Hit / DC' : item.range ? 'Range' : 'AC', item.damage ? 'Damage / Effect' : 'AC', ...(item.saveOrHit ? ['Range'] : [])].map((h, i) => (
+                  <div key={i} style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', borderRight: i < (item.saveOrHit ? 3 : 2) ? '1px solid var(--c-border)' : undefined }}>
+                    {h}
+                  </div>
+                ))}
+              </div>
+              {/* Table row */}
+              <div style={{ display: 'grid', gridTemplateColumns: item.saveOrHit ? '2fr 1fr 1fr 1fr' : '2fr 1fr 1fr' }}>
+                <div style={{ padding: '8px 10px', borderRight: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t-1)' }}>{item.name}</span>
+                  {item.quantity > 1 && <span style={{ fontSize: 11, color: 'var(--c-gold-l)', fontWeight: 700 }}>×{item.quantity}</span>}
+                </div>
+                <div style={{ padding: '8px 10px', borderRight: '1px solid var(--c-border)', fontSize: 13, color: '#60a5fa', fontWeight: 600 }}>
+                  {item.saveOrHit ? item.saveOrHit : item.range ? item.range : item.baseAC !== undefined ? (item.armorType === 'shield' ? `+${item.baseAC}` : String(item.baseAC)) : '—'}
+                </div>
+                <div style={{ padding: '8px 10px', borderRight: item.saveOrHit ? '1px solid var(--c-border)' : undefined, fontSize: 13, color: 'var(--c-gold-l)', fontWeight: 700 }}>
+                  {item.damage ?? (item.baseAC !== undefined ? `AC ${item.baseAC}` : '—')}
+                  {item.rollExpression && (
+                    <button onClick={() => onRoll(item)} title={`Roll ${item.rollExpression}`}
+                      style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 99, cursor: 'pointer',
+                        border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.1)', color: '#60a5fa' }}>
+                      🎲
+                    </button>
+                  )}
+                </div>
+                {item.saveOrHit && (
+                  <div style={{ padding: '8px 10px', fontSize: 13, color: 'var(--t-2)' }}>{item.range ?? '—'}</div>
+                )}
               </div>
             </div>
-            {item.weight > 0 && (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Weight</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t-2)' }}>{(item.weight * item.quantity).toFixed(1)} lb</div>
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Description */}
+          {/* ── Properties / casting time ── */}
+          {(item.properties || item.castingTime || item.cost || item.weight > 0) && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {item.castingTime && (
+                <span style={{ fontSize: 11, color: 'var(--t-2)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '3px 8px' }}>
+                  ⏱ {item.castingTime}
+                </span>
+              )}
+              {item.properties && (
+                <span style={{ fontSize: 11, color: 'var(--t-2)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '3px 8px' }}>
+                  {item.properties}
+                </span>
+              )}
+              {item.cost && (
+                <span style={{ fontSize: 11, color: 'var(--c-gold-l)', background: 'rgba(201,146,42,0.08)', border: '1px solid rgba(201,146,42,0.2)', borderRadius: 6, padding: '3px 8px' }}>
+                  {item.cost}
+                </span>
+              )}
+              {item.weight > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--t-3)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '3px 8px' }}>
+                  {(item.weight * item.quantity).toFixed(item.weight % 1 === 0 ? 0 : 1)} lb
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* ── Description / Notes ── */}
           <div>
-            <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Notes</div>
+            <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Description</div>
             {editingDesc ? (
               <textarea value={descDraft} onChange={e => setDescDraft(e.target.value)} autoFocus rows={3}
                 onBlur={() => { onUpdate(item.id, { description: descDraft }); setEditingDesc(false); }}
                 style={{ width: '100%', fontSize: 13, resize: 'vertical', fontFamily: 'var(--ff-body)' }} />
             ) : (
-              <div onClick={() => setEditingDesc(true)} title="Click to edit notes"
+              <div onClick={() => setEditingDesc(true)} title="Click to edit"
                 style={{ fontSize: 13, color: item.description ? 'var(--t-2)' : 'var(--t-3)', cursor: 'text',
-                  fontStyle: item.description ? 'normal' : 'italic', lineHeight: 1.5,
-                  padding: '6px 8px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', minHeight: 36 }}>
+                  fontStyle: item.description ? 'normal' : 'italic', lineHeight: 1.6,
+                  padding: '7px 10px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', minHeight: 36 }}>
                 {item.description || 'Click to add notes...'}
               </div>
             )}
           </div>
 
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 4, flexWrap: 'wrap' }}>
+          {/* ── Qty stepper ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginRight: 4 }}>Qty</span>
+            <button onClick={() => onUpdate(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)', cursor: 'pointer', fontSize: 16 }}>−</button>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-gold-l)', minWidth: 28, textAlign: 'center' }}>{item.quantity}</span>
+            <button onClick={() => onUpdate(item.id, { quantity: item.quantity + 1 })}
+              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)', cursor: 'pointer', fontSize: 16 }}>+</button>
+          </div>
+
+          {/* ── Actions ── */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {item.rollExpression && (
-              <button onClick={() => { onRoll(item); }}
-                style={{ flex: 2, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              <button onClick={() => onRoll(item)}
+                style={{ flex: 2, minWidth: 140, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
                   border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.1)', color: '#60a5fa' }}>
-                🎲 Roll {item.rollExpression}{item.rollLabel ? ` (${item.rollLabel})` : ''}
+                🎲 {item.rollExpression}{item.rollLabel ? ` ${item.rollLabel}` : ''}
               </button>
             )}
             <button onClick={() => { onToggle(item.id); onClose(); }}
-              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              style={{ flex: 1, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
                 border: item.equipped ? '1px solid var(--c-border-m)' : '1px solid var(--c-gold-bdr)',
                 background: item.equipped ? 'var(--c-raised)' : 'var(--c-gold-bg)',
                 color: item.equipped ? 'var(--t-2)' : 'var(--c-gold-l)' }}>
-              {item.armorType ? (item.equipped ? '🛡 Unequip' : '🛡 Equip Armor') : (item.equipped ? 'Unequip' : '⚔ Equip')}
+              {item.armorType ? (item.equipped ? '🛡 Unequip' : '🛡 Equip') : (item.equipped ? 'Unequip' : '⚔ Equip')}
             </button>
             <button onClick={() => { onRemove(item.id); onClose(); }}
-              style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              style={{ padding: '9px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
                 border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(220,38,38,0.08)', color: 'var(--c-red-l)' }}>
               Remove
             </button>
@@ -561,6 +613,39 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
       </div>
     </div>
   );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function itemTypeBadge(item: InventoryItem): string {
+  if (item.armorType === 'shield') return 'Shield';
+  if (item.armorType === 'light')  return 'Light Armor';
+  if (item.armorType === 'medium') return 'Medium Armor';
+  if (item.armorType === 'heavy')  return 'Heavy Armor';
+  if (item.category === 'Potion')  return 'Potion';
+  if (item.category === 'Scroll')  return 'Scroll';
+  if (item.category === 'Wondrous Item') return 'Wondrous';
+  if (item.category === 'Weapon')  return 'Weapon';
+  if (item.category === 'Magic Item') return 'Magic';
+  if (item.category === 'Adventuring Gear') return 'Gear';
+  if (item.category === 'Tools')   return 'Tool';
+  return item.category ?? '';
+}
+
+function itemACText(item: InventoryItem): string | null {
+  if (!item.baseAC) return null;
+  if (item.armorType === 'shield') return `+${item.baseAC} AC`;
+  if (item.addDexMod) {
+    const cap = item.maxDexBonus !== undefined ? ` (max +${item.maxDexBonus} DEX)` : ' + DEX';
+    return `AC ${item.baseAC}${cap}`;
+  }
+  return `AC ${item.baseAC}`;
+}
+
+// Parse the notes field to extract chips: damage dice, range, properties, etc.
+function parseNoteChips(notes: string): string[] {
+  if (!notes) return [];
+  // Split on · or comma
+  return notes.split(/[·,]/).map(s => s.trim()).filter(Boolean);
 }
 
 // ── Inventory Row ──────────────────────────────────────────────────
@@ -572,60 +657,134 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll }: {
   onRoll: (item: InventoryItem) => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
+  const typeBadge = itemTypeBadge(item);
+  const acText = itemACText(item);
+  const noteChips = parseNoteChips(item.description);
+  const isArmor = !!item.armorType;
+  const isEquippable = isArmor || item.category === 'Weapon' || item.magical;
 
   return (
     <>
       <div
         onClick={() => setShowDetail(true)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--sp-2)',
-          padding: '8px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+          padding: '9px 12px',
+          borderRadius: 'var(--r-sm)',
+          cursor: 'pointer',
           background: item.equipped ? 'rgba(201,146,42,0.06)' : 'var(--c-raised)',
           border: item.equipped ? '1px solid rgba(201,146,42,0.25)' : '1px solid var(--c-border)',
-          marginBottom: 4, transition: 'background 0.1s',
+          marginBottom: 3,
+          transition: 'border-color 0.1s, background 0.1s',
         }}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = item.equipped ? 'rgba(201,146,42,0.5)' : 'var(--c-border-m)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = item.equipped ? 'rgba(201,146,42,0.25)' : 'var(--c-border)'; }}
       >
-        {/* Equipped dot */}
-        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-          background: item.equipped ? 'var(--c-gold-l)' : 'var(--c-border-m)' }} />
+        {/* ── Row 1: name + right-side actions ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: noteChips.length > 0 || acText || item.rollExpression ? 4 : 0 }}>
+          {/* Equipped indicator */}
+          <div style={{
+            width: 7, height: 7, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+            background: item.equipped ? 'var(--c-gold-l)' : 'var(--c-border-m)',
+            boxShadow: item.equipped ? '0 0 4px var(--c-gold-l)' : 'none',
+          }} />
 
-        {/* Name */}
-        <span style={{ flex: 1, fontFamily: 'var(--ff-body)', fontSize: 13,
-          fontWeight: item.equipped ? 600 : 400,
-          color: item.equipped ? 'var(--t-1)' : 'var(--t-2)' }}>
-          {item.name}
-          {item.magical && <span style={{ fontSize: 9, color: '#a78bfa', marginLeft: 5 }}>✦</span>}
-        </span>
-
-        {/* Qty */}
-        {item.quantity > 1 && (
-          <span style={{ fontSize: 11, color: 'var(--c-gold-l)', fontWeight: 700, flexShrink: 0 }}>×{item.quantity}</span>
-        )}
-
-        {/* Weight */}
-        {item.weight > 0 && (
-          <span style={{ fontSize: 11, color: 'var(--t-3)', flexShrink: 0 }}>
-            {(item.weight * item.quantity).toFixed(item.weight % 1 === 0 ? 0 : 1)} lb
+          {/* Name */}
+          <span style={{
+            flex: 1, fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 600,
+            color: item.equipped ? 'var(--t-1)' : 'var(--t-2)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {item.name}
+            {item.magical && <span style={{ fontSize: 9, color: '#a78bfa', marginLeft: 6, fontWeight: 700 }}>✦</span>}
           </span>
-        )}
 
-        {item.rollExpression && (
-          <span
-            onClick={e => { e.stopPropagation(); onRoll(item); }}
-            title={`Roll ${item.rollExpression}`}
-            style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)',
-              border: '1px solid rgba(96,165,250,0.3)', borderRadius: 99, padding: '1px 7px',
-              cursor: 'pointer', flexShrink: 0 }}>
-            🎲
-          </span>
+          {/* Qty */}
+          {item.quantity > 1 && (
+            <span style={{ fontSize: 11, color: 'var(--c-gold-l)', fontWeight: 700, flexShrink: 0 }}>×{item.quantity}</span>
+          )}
+
+          {/* Roll button */}
+          {item.rollExpression && (
+            <span
+              onClick={e => { e.stopPropagation(); onRoll(item); }}
+              title={`Roll ${item.rollExpression}${item.rollLabel ? ' — ' + item.rollLabel : ''}`}
+              style={{
+                fontSize: 10, fontWeight: 700, color: '#60a5fa',
+                background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)',
+                borderRadius: 99, padding: '2px 8px', cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', gap: 3,
+              }}>
+              🎲 {item.rollExpression}
+            </span>
+          )}
+
+          {/* Weight */}
+          {item.weight > 0 && (
+            <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>
+              {(item.weight * item.quantity).toFixed(item.weight % 1 === 0 ? 0 : 1)} lb
+            </span>
+          )}
+
+          <span style={{ fontSize: 11, color: 'var(--t-3)', flexShrink: 0 }}>›</span>
+        </div>
+
+        {/* ── Row 2: tag strip ── */}
+        {(typeBadge || acText || noteChips.length > 0 || item.cost) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 13 }}>
+            {/* Category badge */}
+            {typeBadge && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+                padding: '1px 6px', borderRadius: 4,
+                color: isArmor ? 'var(--c-gold-l)' : item.category === 'Potion' ? '#4ade80' : item.category === 'Scroll' ? '#c084fc' : item.magical ? '#a78bfa' : 'var(--t-3)',
+                background: isArmor ? 'var(--c-gold-bg)' : item.category === 'Potion' ? 'rgba(74,222,128,0.08)' : item.category === 'Scroll' ? 'rgba(192,132,252,0.08)' : item.magical ? 'rgba(167,139,250,0.08)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isArmor ? 'var(--c-gold-bdr)' : item.category === 'Potion' ? 'rgba(74,222,128,0.25)' : item.category === 'Scroll' ? 'rgba(192,132,252,0.25)' : item.magical ? 'rgba(167,139,250,0.25)' : 'var(--c-border)'}`,
+              }}>
+                {typeBadge}
+              </span>
+            )}
+
+            {/* AC text for armor */}
+            {acText && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                color: '#60a5fa', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.25)',
+              }}>
+                {acText}
+              </span>
+            )}
+
+            {/* Equip status */}
+            {isEquippable && item.equipped && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)',
+              }}>
+                Equipped
+              </span>
+            )}
+
+            {/* Note chips — damage dice, properties, range, etc. */}
+            {noteChips.slice(0, 4).map((chip, i) => (
+              <span key={i} style={{
+                fontSize: 9, fontWeight: 500, padding: '1px 6px', borderRadius: 4,
+                color: 'var(--t-3)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--c-border)',
+              }}>
+                {chip}
+              </span>
+            ))}
+
+            {/* Cost */}
+            {item.cost && (
+              <span style={{
+                fontSize: 9, fontWeight: 500, padding: '1px 6px', borderRadius: 4,
+                color: 'var(--t-3)', marginLeft: 'auto',
+              }}>
+                {item.cost}
+              </span>
+            )}
+          </div>
         )}
-        {item.armorType && item.equipped && (
-          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)',
-            border: '1px solid var(--c-gold-bdr)', borderRadius: 99, padding: '1px 6px', flexShrink: 0 }}>
-            AC +{item.baseAC}
-          </span>
-        )}
-        <span style={{ fontSize: 11, color: 'var(--t-3)', flexShrink: 0 }}>›</span>
       </div>
 
       {showDetail && (
