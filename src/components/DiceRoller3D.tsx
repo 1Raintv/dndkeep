@@ -1,6 +1,6 @@
 /**
- * DiceRoller3D — Pure CSS 3D dice animation. No external dependencies.
- * Each die is a CSS polygon with perspective + keyframe animations.
+ * DiceRoller3D — Canvas 2D physics-based dice rolling simulation.
+ * Dice fly from the left, tumble, bounce off the table, and spin to a stop.
  */
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,241 +21,374 @@ interface Props {
   onDismiss: () => void;
 }
 
-const DIE_COLORS: Record<number, { bg: string; border: string; glow: string }> = {
-  4:   { bg: '#2d1a4a', border: '#a855f7', glow: 'rgba(168,85,247,0.6)' },
-  6:   { bg: '#2d2010', border: '#f59e0b', glow: 'rgba(245,158,11,0.6)' },
-  8:   { bg: '#0f2d1a', border: '#22c55e', glow: 'rgba(34,197,94,0.6)' },
-  10:  { bg: '#0f1f2d', border: '#60a5fa', glow: 'rgba(96,165,250,0.6)' },
-  12:  { bg: '#2d0f1f', border: '#ec4899', glow: 'rgba(236,72,153,0.6)' },
-  20:  { bg: '#2d2500', border: '#f0c040', glow: 'rgba(240,192,64,0.8)' },
-  100: { bg: '#2d1a0f', border: '#fb923c', glow: 'rgba(251,146,60,0.6)' },
+// Color per die type
+const DIE_COLORS: Record<number, { fill: string; stroke: string; text: string }> = {
+  4:   { fill: '#1e0a3c', stroke: '#a855f7', text: '#d8b4fe' },
+  6:   { fill: '#1c1000', stroke: '#f59e0b', text: '#fcd34d' },
+  8:   { fill: '#001c0a', stroke: '#22c55e', text: '#86efac' },
+  10:  { fill: '#001020', stroke: '#60a5fa', text: '#bfdbfe' },
+  12:  { fill: '#1c0010', stroke: '#ec4899', text: '#fbcfe8' },
+  20:  { fill: '#1c1600', stroke: '#f0c040', text: '#fef08a' },
+  100: { fill: '#1c0800', stroke: '#fb923c', text: '#fed7aa' },
 };
 
-// SVG polygon paths for each die face shape
-function DieFace({ sides, value, delay, isNat }: {
-  sides: number; value: number; delay: number; isNat: boolean;
-}) {
-  const col = DIE_COLORS[sides] ?? DIE_COLORS[20];
-  const size = 90;
-  const half = size / 2;
+function getColor(sides: number) {
+  return DIE_COLORS[sides] ?? DIE_COLORS[20];
+}
 
-  // Polygon shape per die type
-  const shapes: Record<number, string> = {
-    4:   `${half},4 ${size-4},${size-4} 4,${size-4}`,
-    6:   `4,4 ${size-4},4 ${size-4},${size-4} 4,${size-4}`,       // square
-    8:   `${half},4 ${size-4},${half} ${half},${size-4} 4,${half}`,
-    10:  `${half},4 ${size-4},${size*0.4} ${size*0.8},${size-4} ${size*0.2},${size-4} 4,${size*0.4}`,
-    12:  `${half},4 ${size-4},${size*0.3} ${size-4},${size*0.72} ${half},${size-4} 4,${size*0.72} 4,${size*0.3}`,
-    20:  `${half},4 ${size-4},${size*0.35} ${size*0.8},${size-4} ${size*0.2},${size-4} 4,${size*0.35}`,
-    100: `${half},4 ${size-4},${half} ${half},${size-4} 4,${half}`, // diamond
-  };
-  const pts = shapes[sides] ?? shapes[20];
-  const numFontSize = value >= 100 ? 22 : value >= 10 ? 30 : 36;
+// Returns polygon vertices for a die shape, centered at 0,0 with given radius
+function getDiePoints(sides: number, r: number): [number, number][] {
+  const pts: [number, number][] = [];
+  const shapes: Record<number, number> = { 4: 3, 6: 4, 8: 4, 10: 5, 12: 6, 20: 5, 100: 8 };
+  const n = shapes[sides] ?? 5;
+  const offset = sides === 6 ? Math.PI / 4 : sides === 4 ? -Math.PI / 2 : -Math.PI / 2;
+  for (let i = 0; i < n; i++) {
+    const a = offset + (i / n) * Math.PI * 2;
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return pts;
+}
 
-  return (
-    <div style={{
-      position: 'relative',
-      width: size,
-      height: size,
-      flexShrink: 0,
-      animation: `dieRoll ${0.55 + Math.random() * 0.1}s ${delay}s cubic-bezier(0.34,1.56,0.64,1) both`,
-      filter: isNat ? `drop-shadow(0 0 12px ${col.glow})` : `drop-shadow(0 4px 8px rgba(0,0,0,0.6))`,
-    }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: 'absolute', inset: 0 }}>
-        <polygon
-          points={pts}
-          fill={col.bg}
-          stroke={col.border}
-          strokeWidth={isNat ? 3 : 2}
-          strokeLinejoin="round"
-        />
-        {/* Subtle inner highlight */}
-        <polygon
-          points={pts}
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={1}
-          strokeLinejoin="round"
-          transform={`translate(1,1)`}
-        />
-      </svg>
-      {/* Die type label */}
-      <div style={{
-        position: 'absolute', top: 6, left: 0, right: 0,
-        textAlign: 'center',
-        fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
-        color: col.border, opacity: 0.7, letterSpacing: '0.05em',
-      }}>d{sides}</div>
-      {/* Value */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        paddingTop: 6,
-        fontFamily: 'var(--ff-stat)', fontWeight: 900,
-        fontSize: numFontSize,
-        color: isNat ? col.border : 'var(--t-1)',
-        lineHeight: 1,
-        textShadow: isNat ? `0 0 16px ${col.glow}` : 'none',
-        animation: `valuePop 0.35s ${delay + 0.35}s cubic-bezier(0.34,1.56,0.64,1) both`,
-      }}>
-        {value}
-      </div>
-      {/* Nat 20 / Nat 1 badge */}
-      {isNat && (
-        <div style={{
-          position: 'absolute', bottom: 8, left: 0, right: 0,
-          textAlign: 'center',
-          fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 900,
-          color: col.border, letterSpacing: '0.1em', textTransform: 'uppercase',
-          animation: `valuePop 0.3s ${delay + 0.5}s ease both`,
-        }}>
-          {value === 20 ? '★NAT 20' : '✕NAT 1'}
-        </div>
-      )}
-    </div>
-  );
+interface Die {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  angVel: number;        // radians/sec angular velocity
+  sides: number;
+  finalValue: number;
+  displayValue: number;
+  radius: number;
+  phase: 'air' | 'rolling' | 'done';
+  bounces: number;
+  startDelay: number;    // seconds before this die appears
+  settled: boolean;
+  settleTimer: number;
+}
+
+function drawDie(ctx: CanvasRenderingContext2D, die: Die) {
+  const col = getColor(die.sides);
+  const pts = getDiePoints(die.sides, die.radius);
+
+  ctx.save();
+  ctx.translate(die.x, die.y);
+  ctx.rotate(die.rotation);
+
+  // Shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
+
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = col.fill;
+  ctx.fill();
+
+  // Stroke
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = col.stroke;
+  ctx.lineWidth = die.phase === 'done' ? 2.5 : 2;
+  ctx.stroke();
+
+  // Glow when settled
+  if (die.phase === 'done') {
+    ctx.strokeStyle = col.stroke + '60';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+
+  // Number — reset rotation so it's always readable
+  ctx.rotate(-die.rotation);
+  const fontSize = die.radius * (die.displayValue >= 100 ? 0.55 : die.displayValue >= 10 ? 0.65 : 0.75);
+  ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = die.phase === 'done' ? col.stroke : col.text;
+
+  // While spinning fast, cycle numbers randomly
+  ctx.fillText(String(die.displayValue), 0, 2);
+
+  // Die type label
+  ctx.font = `700 ${die.radius * 0.28}px system-ui`;
+  ctx.fillStyle = col.stroke + '80';
+  ctx.fillText(`d${die.sides}`, 0, die.radius * 0.55);
+
+  ctx.restore();
 }
 
 export default function DiceRoller3D({ event, onDismiss }: Props) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
 
   useEffect(() => {
-    timerRef.current = setTimeout(onDismiss, 4200);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    canvas.width = W;
+    canvas.height = H;
+
+    const TABLE_Y = H * 0.62;   // "table surface" horizon line
+    const GRAVITY = 1800;        // px/s²
+    const FRICTION = 0.75;       // velocity multiplier on bounce
+    const ANG_FRICTION = 0.82;   // angular velocity multiplier on bounce/frame
+    const ROLL_FRICTION = 0.965; // rolling slowdown per frame
+
+    const diceInput = event.allDice?.length
+      ? event.allDice
+      : [{ die: event.dieType, value: event.result }];
+
+    // Build die states
+    const dice: Die[] = diceInput.map((d, i) => {
+      const r = Math.min(42, Math.max(32, 42 - diceInput.length * 2));
+      return {
+        x: -r - 20,
+        y: TABLE_Y - 60 - Math.random() * 80,
+        vx: 520 + Math.random() * 180,
+        vy: -120 - Math.random() * 180,
+        rotation: Math.random() * Math.PI * 2,
+        angVel: (Math.random() > 0.5 ? 1 : -1) * (12 + Math.random() * 18), // rad/s
+        sides: d.die,
+        finalValue: d.value,
+        displayValue: Math.ceil(Math.random() * d.die),
+        radius: r,
+        phase: 'air' as const,
+        bounces: 0,
+        startDelay: i * 0.14,
+        settled: false,
+        settleTimer: 0,
+      };
+    });
+
+    let t = 0;
+    let lastTime = performance.now();
+    let allDone = false;
+    let doneTimer = 0;
+    let raf = 0;
+    let dismissed = false;
+
+    function update(dt: number) {
+      for (const die of dice) {
+        if (die.startDelay > 0) { die.startDelay -= dt; continue; }
+
+        if (die.phase === 'air' || die.phase === 'rolling') {
+          // Apply gravity
+          die.vy += GRAVITY * dt;
+          die.x += die.vx * dt;
+          die.y += die.vy * dt;
+
+          // Rotate while moving
+          die.rotation += die.angVel * dt;
+
+          // Cycle display value while spinning fast
+          if (Math.abs(die.angVel) > 3) {
+            if (Math.random() < 0.15) {
+              die.displayValue = Math.ceil(Math.random() * die.sides);
+            }
+          }
+
+          // Bounce off table surface
+          if (die.y + die.radius > TABLE_Y && die.vy > 0) {
+            die.y = TABLE_Y - die.radius;
+            die.vy *= -FRICTION;
+            die.vx *= FRICTION;
+            die.angVel *= ANG_FRICTION;
+            die.phase = 'rolling';
+            die.bounces++;
+
+            // Small bounces die off quickly
+            if (Math.abs(die.vy) < 60) die.vy = 0;
+          }
+
+          // Rolling friction
+          if (die.phase === 'rolling') {
+            die.vx *= ROLL_FRICTION;
+            die.angVel *= ROLL_FRICTION;
+          }
+
+          // Settled when barely moving
+          const speed = Math.sqrt(die.vx * die.vx + die.vy * die.vy);
+          if (die.phase === 'rolling' && speed < 18 && Math.abs(die.angVel) < 1.5 && die.y + die.radius >= TABLE_Y - 5) {
+            die.phase = 'done';
+            die.vx = 0; die.vy = 0; die.angVel = 0;
+            die.y = TABLE_Y - die.radius;
+            die.displayValue = die.finalValue;  // lock to final value
+            die.rotation = 0;                    // snap to flat
+          }
+
+          // Keep on screen horizontally (bounce off right wall)
+          if (die.x - die.radius < 0) { die.x = die.radius; die.vx = Math.abs(die.vx) * 0.6; }
+          if (die.x + die.radius > W) { die.x = W - die.radius; die.vx = -Math.abs(die.vx) * 0.6; }
+        }
+      }
+    }
+
+    function drawTableLine(ctx: CanvasRenderingContext2D) {
+      // Subtle table surface line
+      ctx.save();
+      const grad = ctx.createLinearGradient(0, TABLE_Y, W, TABLE_Y);
+      grad.addColorStop(0, 'transparent');
+      grad.addColorStop(0.2, 'rgba(255,255,255,0.06)');
+      grad.addColorStop(0.8, 'rgba(255,255,255,0.06)');
+      grad.addColorStop(1, 'transparent');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, TABLE_Y);
+      ctx.lineTo(W, TABLE_Y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawTotal(ctx: CanvasRenderingContext2D) {
+      if (!allDone) return;
+      const finalTotal = event.total ?? (event.modifier !== undefined
+        ? event.result + event.modifier : event.result);
+      const isMulti = diceInput.length > 1;
+      const hasModifier = !isMulti && event.modifier !== undefined && event.modifier !== 0;
+
+      if (!isMulti && !hasModifier) return; // single die, no modifier — number on die is enough
+
+      const alpha = Math.min(1, (doneTimer - 0.3) / 0.4);
+      if (alpha <= 0) return;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Position below table
+      const ty = TABLE_Y + 60;
+
+      if (hasModifier) {
+        // Show: result + modifier = total
+        ctx.font = '600 20px system-ui';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${event.result} ${(event.modifier ?? 0) >= 0 ? '+' : ''}${event.modifier} =`, W / 2, ty);
+
+        ctx.font = '900 56px system-ui';
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(255,255,255,0.4)';
+        ctx.shadowBlur = 20;
+        ctx.fillText(String(finalTotal), W / 2, ty + 46);
+      } else if (isMulti) {
+        ctx.font = '600 18px system-ui';
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.textAlign = 'center';
+        ctx.fillText('TOTAL', W / 2, ty);
+
+        ctx.font = '900 72px system-ui';
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(255,255,255,0.3)';
+        ctx.shadowBlur = 24;
+        ctx.fillText(String(finalTotal), W / 2, ty + 56);
+      }
+
+      ctx.restore();
+    }
+
+    function frame(ts: number) {
+      if (dismissed) return;
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+      t += dt;
+
+      update(dt);
+
+      // Clear
+      ctx.clearRect(0, 0, W, H);
+
+      // Draw table line
+      drawTableLine(ctx);
+
+      // Draw each die
+      for (const die of dice) {
+        if (die.startDelay > 0) continue;
+        drawDie(ctx, die);
+      }
+
+      // Check if all done
+      const readyDice = dice.filter(d => d.startDelay <= 0);
+      if (readyDice.length > 0 && readyDice.every(d => d.phase === 'done')) {
+        if (!allDone) { allDone = true; doneTimer = 0; }
+        doneTimer += dt;
+        drawTotal(ctx);
+
+        if (doneTimer > 3.5) {
+          dismissed = true;
+          dismissRef.current();
+          return;
+        }
+      }
+
+      raf = requestAnimationFrame(frame);
+    }
+
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      dismissed = true;
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
-  const diceList = event.allDice?.length
-    ? event.allDice
-    : [{ die: event.dieType, value: event.result }];
-
-  const isMulti = diceList.length > 1;
   const finalTotal = event.total ?? (event.modifier !== undefined
     ? event.result + event.modifier : event.result);
-
-  const css = `
-    @keyframes dieRoll {
-      0%   { transform: translateX(-110vw) rotate(-540deg) scale(0.2); opacity: 0; }
-      55%  { transform: translateX(20px) rotate(15deg) scale(1.12); opacity: 1; }
-      72%  { transform: translateX(-8px) rotate(-5deg) scale(0.96); }
-      85%  { transform: translateX(4px) rotate(2deg) scale(1.03); }
-      100% { transform: translateX(0) rotate(0deg) scale(1); opacity: 1; }
-    }
-    @keyframes valuePop {
-      0%   { transform: scale(0) rotate(-15deg); opacity: 0; }
-      65%  { transform: scale(1.25) rotate(4deg); opacity: 1; }
-      82%  { transform: scale(0.93) rotate(-1deg); }
-      100% { transform: scale(1) rotate(0deg); opacity: 1; }
-    }
-    @keyframes totalSlide {
-      from { transform: translateY(20px); opacity: 0; }
-      to   { transform: translateY(0); opacity: 1; }
-    }
-    @keyframes labelFade {
-      from { opacity: 0; transform: translateY(-8px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes nat20Pulse {
-      0%, 100% { box-shadow: 0 0 20px rgba(240,192,64,0.4); }
-      50%       { box-shadow: 0 0 50px rgba(240,192,64,0.8); }
-    }
-  `;
-
-  const lastDelay = (diceList.length - 1) * 0.07;
 
   return createPortal(
     <div
       onClick={onDismiss}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(8, 10, 18, 0.82)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(6, 8, 16, 0.88)',
+        backdropFilter: 'blur(8px)',
         cursor: 'pointer',
-        gap: 20,
       }}
     >
-      <style>{css}</style>
-
       {/* Roll label */}
       {event.label && (
         <div style={{
-          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 16,
+          position: 'absolute', top: '8%', left: 0, right: 0,
+          textAlign: 'center', pointerEvents: 'none',
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 18,
           letterSpacing: '0.2em', textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.6)',
-          animation: 'labelFade 0.3s 0.1s ease both',
+          color: 'rgba(255,255,255,0.55)',
+          animation: 'labelFadeIn 0.4s ease both',
         }}>
           {event.label}
         </div>
       )}
 
-      {/* Dice row */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap',
-        gap: 16, justifyContent: 'center',
-        maxWidth: '80vw',
-      }}>
-        {diceList.map((d, i) => {
-          const isNat = d.die === 20 && (d.value === 20 || d.value === 1);
-          return (
-            <DieFace
-              key={i}
-              sides={d.die}
-              value={d.value}
-              delay={i * 0.07}
-              isNat={isNat}
-            />
-          );
-        })}
-      </div>
-
-      {/* Modifier + total for single die with modifier */}
-      {!isMulti && event.modifier !== undefined && event.modifier !== 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          animation: `totalSlide 0.4s ${lastDelay + 0.5}s ease both`,
-        }}>
-          <span style={{ color: 'var(--t-3)', fontSize: 14 }}>
-            {event.result} {event.modifier >= 0 ? '+' : ''}{event.modifier}
-          </span>
-          <span style={{ color: 'var(--t-3)' }}>=</span>
-          <span style={{
-            fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 52,
-            color: 'var(--t-1)', lineHeight: 1,
-          }}>
-            {finalTotal}
-          </span>
-        </div>
-      )}
-
-      {/* Multi-dice total */}
-      {isMulti && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          animation: `totalSlide 0.4s ${lastDelay + 0.5}s ease both`,
-        }}>
-          {event.expression && (
-            <span style={{ color: 'var(--t-3)', fontSize: 13, fontFamily: 'var(--ff-mono)' }}>
-              {event.expression} =
-            </span>
-          )}
-          <span style={{
-            fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 64,
-            color: 'var(--t-1)', lineHeight: 1,
-            textShadow: '0 0 30px rgba(255,255,255,0.2)',
-          }}>
-            {finalTotal}
-          </span>
-        </div>
-      )}
+      {/* Canvas layer */}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute', inset: 0,
+          pointerEvents: 'none',
+        }}
+      />
 
       <div style={{
-        position: 'absolute', bottom: 20,
+        position: 'absolute', bottom: 20, left: 0, right: 0,
+        textAlign: 'center', pointerEvents: 'none',
         fontFamily: 'var(--ff-body)', fontSize: 11,
-        color: 'rgba(255,255,255,0.25)',
+        color: 'rgba(255,255,255,0.22)',
       }}>
         Click anywhere to dismiss
       </div>
+
+      <style>{`
+        @keyframes labelFadeIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>,
     document.body
   );
