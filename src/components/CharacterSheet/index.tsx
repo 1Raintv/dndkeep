@@ -811,8 +811,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         ))}
       </div>
 
-      {/* Tab content + persistent roll log side by side */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 380px', gap: 'var(--sp-4)', alignItems: 'start' }}>
+      {/* Tab content */}
+      <div>
         <DamageEffect
         currentHP={character.current_hp}
         maxHP={character.max_hp}
@@ -1000,16 +1000,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       </div>
         </ErrorBoundary>
 
-        {/* Persistent Roll Log — second column of grid */}
-        <div style={{
-          background: 'var(--c-card)', border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-xl)', padding: 'var(--sp-4)',
-          display: 'flex', flexDirection: 'column', height: 'fit-content',
-          maxHeight: 'calc(100vh - 320px)', minHeight: 280,
-          position: 'sticky', top: 16,
-        }}>
-          <RollLog characterId={character.id} userId={userId} characterName={character.name} />
-        </div>
+
       </div>
 
       {/* Level Up Wizard */}

@@ -345,6 +345,7 @@ button:active:not(:disabled) { transform: scale(0.97); }
   top: 0;
   max-height: 100vh;
   overflow: hidden;
+  overflow-y: hidden;
 }
 .app-sidebar.collapsed {
   width: var(--sidebar-w-collapsed);
@@ -388,7 +389,7 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .sidebar-collapse-btn:hover { background: var(--c-raised); color: var(--t-2); }
 
 .sidebar-nav {
-  flex: 1;
+  flex: 0 0 auto;
   padding: var(--sp-3) var(--sp-2);
   display: flex;
   flex-direction: column;
