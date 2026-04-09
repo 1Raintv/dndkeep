@@ -812,7 +812,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       </div>
 
       {/* Tab content + persistent roll log side by side */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 260px', gap: 'var(--sp-4)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 380px', gap: 'var(--sp-4)', alignItems: 'start' }}>
         <DamageEffect
         currentHP={character.current_hp}
         maxHP={character.max_hp}

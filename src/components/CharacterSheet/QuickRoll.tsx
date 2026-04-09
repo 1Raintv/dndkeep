@@ -23,7 +23,7 @@ export async function logRoll(p: {
   campaignId?: string | null; characterId?: string | null;
   userId?: string | null;
   characterName?: string; label: string; expression: string;
-  results: number[]; total: number;
+  results: number[]; total: number; modifier?: number;
 }) {
   if (!p.characterId) return;
   // Write to roll_logs (character's personal history) 
@@ -35,6 +35,7 @@ export async function logRoll(p: {
     dice_expression: p.expression,
     individual_results: p.results,
     total: p.total,
+    modifier: p.modifier ?? 0,
   });
   // Also write to action_logs if in a campaign (shared roll log)
   if (p.campaignId) {

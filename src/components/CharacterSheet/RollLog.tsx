@@ -9,6 +9,7 @@ interface RollEntry {
   individual_results: number[];
   total: number;
   rolled_at: string;
+  modifier?: number;
 }
 
 interface Reaction {
@@ -65,7 +66,7 @@ export default function RollLog({ characterId, userId, characterName }: RollLogP
 
   async function loadRolls() {
     const { data } = await supabase.from('roll_logs')
-      .select('id, label, dice_expression, individual_results, total, rolled_at')
+      .select('id, label, dice_expression, individual_results, total, rolled_at, modifier')
       .eq('user_id', userId)
       .order('rolled_at', { ascending: false })
       .limit(100);
