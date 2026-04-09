@@ -7,7 +7,7 @@ import { DiceRollProvider } from './context/DiceRollContext';
 import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
 import QuickRoll from './components/CharacterSheet/QuickRoll';
-import RollLog from './components/CharacterSheet/RollLog';
+
 import './styles/globals.css';
 
 const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
@@ -154,28 +154,6 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      {/* Roll Log — lives above login, only when expanded */}
-      {!collapsed && user && (
-        <div style={{
-          margin: '0 8px 8px',
-          background: 'var(--c-card)',
-          border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-xl)',
-          padding: '10px 12px',
-          flex: '1 1 0',
-          minHeight: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <RollLog
-            characterId={location.pathname.match(/^\/character\/([\w-]+)/)?.[1] ?? ''}
-            userId={user.id}
-            characterName={profile?.display_name ?? 'You'}
-          />
-        </div>
-      )}
 
       {/* Bottom: settings + version */}
       <div className="sidebar-footer">

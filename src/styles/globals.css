@@ -389,7 +389,7 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .sidebar-collapse-btn:hover { background: var(--c-raised); color: var(--t-2); }
 
 .sidebar-nav {
-  flex: 0 0 auto;
+  flex: 1;
   padding: var(--sp-3) var(--sp-2);
   display: flex;
   flex-direction: column;

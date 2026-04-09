@@ -811,8 +811,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         ))}
       </div>
 
-      {/* Tab content */}
-      <div>
+      {/* Tab content + roll log left column */}
+      <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0,1fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
+        {/* Roll log — left column, sticky */}
+        <div style={{
+          background: 'var(--c-card)', border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-xl)', padding: 'var(--sp-3)',
+          display: 'flex', flexDirection: 'column',
+          maxHeight: 'calc(100vh - 200px)', minHeight: 300,
+          position: 'sticky', top: 16, overflow: 'hidden',
+        }}>
+          <RollLog characterId={character.id} userId={userId} characterName={character.name} />
+        </div>
+        <div>
         <DamageEffect
         currentHP={character.current_hp}
         maxHP={character.max_hp}
@@ -1001,6 +1012,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </ErrorBoundary>
 
 
+      </div>
       </div>
 
       {/* Level Up Wizard */}
