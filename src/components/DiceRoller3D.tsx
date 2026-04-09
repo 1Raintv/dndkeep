@@ -1,15 +1,18 @@
 /**
- * DiceRoller3D — 3D dice rolling animation via Three.js loaded from CDN.
- * No npm dependency required — Three.js is injected as a script tag on first use.
+ * DiceRoller3D — Pure CSS 3D dice animation. No external dependencies.
+ * Each die is a CSS polygon with perspective + keyframe animations.
  */
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
-interface DiceRollEvent {
+export interface DiceRollEvent {
   result: number;
   dieType: number;
+  modifier?: number;
   total?: number;
   label?: string;
   allDice?: { die: number; value: number }[];
+  expression?: string;
   flatBonus?: number;
 }
 
@@ -18,286 +21,242 @@ interface Props {
   onDismiss: () => void;
 }
 
-const DIE_COLOR: Record<number, number> = {
-  4:  0xa855f7,
-  6:  0xf59e0b,
-  8:  0x22c55e,
-  10: 0x60a5fa,
-  12: 0xec4899,
-  20: 0xf0c040,
-  100:0xfb923c,
+const DIE_COLORS: Record<number, { bg: string; border: string; glow: string }> = {
+  4:   { bg: '#2d1a4a', border: '#a855f7', glow: 'rgba(168,85,247,0.6)' },
+  6:   { bg: '#2d2010', border: '#f59e0b', glow: 'rgba(245,158,11,0.6)' },
+  8:   { bg: '#0f2d1a', border: '#22c55e', glow: 'rgba(34,197,94,0.6)' },
+  10:  { bg: '#0f1f2d', border: '#60a5fa', glow: 'rgba(96,165,250,0.6)' },
+  12:  { bg: '#2d0f1f', border: '#ec4899', glow: 'rgba(236,72,153,0.6)' },
+  20:  { bg: '#2d2500', border: '#f0c040', glow: 'rgba(240,192,64,0.8)' },
+  100: { bg: '#2d1a0f', border: '#fb923c', glow: 'rgba(251,146,60,0.6)' },
 };
 
-function getColor(sides: number): number {
-  return DIE_COLOR[sides] ?? 0xeef2f7;
-}
+// SVG polygon paths for each die face shape
+function DieFace({ sides, value, delay, isNat }: {
+  sides: number; value: number; delay: number; isNat: boolean;
+}) {
+  const col = DIE_COLORS[sides] ?? DIE_COLORS[20];
+  const size = 90;
+  const half = size / 2;
 
-// Load THREE from CDN once, cached in window
-let threePromise: Promise<typeof import('three')> | null = null;
-function loadThree(): Promise<typeof import('three')> {
-  if ((window as any).THREE) return Promise.resolve((window as any).THREE);
-  if (threePromise) return threePromise;
-  threePromise = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-    s.onload = () => resolve((window as any).THREE);
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-  return threePromise;
+  // Polygon shape per die type
+  const shapes: Record<number, string> = {
+    4:   `${half},4 ${size-4},${size-4} 4,${size-4}`,
+    6:   `4,4 ${size-4},4 ${size-4},${size-4} 4,${size-4}`,       // square
+    8:   `${half},4 ${size-4},${half} ${half},${size-4} 4,${half}`,
+    10:  `${half},4 ${size-4},${size*0.4} ${size*0.8},${size-4} ${size*0.2},${size-4} 4,${size*0.4}`,
+    12:  `${half},4 ${size-4},${size*0.3} ${size-4},${size*0.72} ${half},${size-4} 4,${size*0.72} 4,${size*0.3}`,
+    20:  `${half},4 ${size-4},${size*0.35} ${size*0.8},${size-4} ${size*0.2},${size-4} 4,${size*0.35}`,
+    100: `${half},4 ${size-4},${half} ${half},${size-4} 4,${half}`, // diamond
+  };
+  const pts = shapes[sides] ?? shapes[20];
+  const numFontSize = value >= 100 ? 22 : value >= 10 ? 30 : 36;
+
+  return (
+    <div style={{
+      position: 'relative',
+      width: size,
+      height: size,
+      flexShrink: 0,
+      animation: `dieRoll ${0.55 + Math.random() * 0.1}s ${delay}s cubic-bezier(0.34,1.56,0.64,1) both`,
+      filter: isNat ? `drop-shadow(0 0 12px ${col.glow})` : `drop-shadow(0 4px 8px rgba(0,0,0,0.6))`,
+    }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: 'absolute', inset: 0 }}>
+        <polygon
+          points={pts}
+          fill={col.bg}
+          stroke={col.border}
+          strokeWidth={isNat ? 3 : 2}
+          strokeLinejoin="round"
+        />
+        {/* Subtle inner highlight */}
+        <polygon
+          points={pts}
+          fill="none"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={1}
+          strokeLinejoin="round"
+          transform={`translate(1,1)`}
+        />
+      </svg>
+      {/* Die type label */}
+      <div style={{
+        position: 'absolute', top: 6, left: 0, right: 0,
+        textAlign: 'center',
+        fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+        color: col.border, opacity: 0.7, letterSpacing: '0.05em',
+      }}>d{sides}</div>
+      {/* Value */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        paddingTop: 6,
+        fontFamily: 'var(--ff-stat)', fontWeight: 900,
+        fontSize: numFontSize,
+        color: isNat ? col.border : 'var(--t-1)',
+        lineHeight: 1,
+        textShadow: isNat ? `0 0 16px ${col.glow}` : 'none',
+        animation: `valuePop 0.35s ${delay + 0.35}s cubic-bezier(0.34,1.56,0.64,1) both`,
+      }}>
+        {value}
+      </div>
+      {/* Nat 20 / Nat 1 badge */}
+      {isNat && (
+        <div style={{
+          position: 'absolute', bottom: 8, left: 0, right: 0,
+          textAlign: 'center',
+          fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 900,
+          color: col.border, letterSpacing: '0.1em', textTransform: 'uppercase',
+          animation: `valuePop 0.3s ${delay + 0.5}s ease both`,
+        }}>
+          {value === 20 ? '★NAT 20' : '✕NAT 1'}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DiceRoller3D({ event, onDismiss }: Props) {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const [ready, setReady] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let disposed = false;
-    let raf = 0;
-
-    loadThree().then((THREE: any) => {
-      if (disposed || !mountRef.current) return;
-      setReady(true);
-      const container = mountRef.current;
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setSize(W, H);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      // Position canvas absolutely so it fills the container correctly
-      renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;display:block;';
-      renderer.shadowMap.enabled = true;
-      container.appendChild(renderer.domElement);
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 200);
-      camera.position.set(0, 0, 22);
-
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      const dir = new THREE.DirectionalLight(0xffffff, 1.2);
-      dir.position.set(5, 10, 8);
-      dir.castShadow = true;
-      scene.add(dir);
-      const pt = new THREE.PointLight(0xffeedd, 0.8, 50);
-      pt.position.set(-4, 4, 12);
-      scene.add(pt);
-
-      const diceList = event.allDice
-        ? event.allDice.map(d => ({ sides: d.die, value: d.value }))
-        : [{ sides: event.dieType, value: event.result }];
-
-      const n = diceList.length;
-      const spacing = Math.min(4, 14 / Math.max(n, 1));
-      const startX = -spacing * (n - 1) / 2;
-
-      function makeGeo(sides: number) {
-        switch (sides) {
-          case 4:  return new THREE.TetrahedronGeometry(0.9);
-          case 6:  return new THREE.BoxGeometry(1.4, 1.4, 1.4);
-          case 8:  return new THREE.OctahedronGeometry(1.0);
-          case 10: return new THREE.ConeGeometry(0.8, 1.6, 10);
-          case 12: return new THREE.DodecahedronGeometry(0.9);
-          case 20: return new THREE.IcosahedronGeometry(1.0);
-          default: return new THREE.SphereGeometry(0.85, 12, 12);
-        }
-      }
-
-      interface DieState {
-        mesh: any;
-        vx: number; vy: number;
-        rx: number; ry: number; rz: number;
-        phase: 'fly' | 'tumble' | 'done';
-        landX: number; landY: number;
-        timer: number;
-        sides: number;
-        value: number;
-        landed: boolean;
-      }
-
-      const states: DieState[] = diceList.map((d, i) => {
-        const col = getColor(d.sides);
-        const mat = new THREE.MeshPhongMaterial({
-          color: col, emissive: col, emissiveIntensity: 0.15,
-          specular: 0xffffff, shininess: 80,
-          transparent: true, opacity: 0.92,
-        });
-        const mesh = new THREE.Mesh(makeGeo(d.sides), mat);
-        mesh.castShadow = true;
-        mesh.position.set(-W / 55 - 8, (Math.random() - 0.5) * 6, 0);
-        mesh.visible = false;
-        scene.add(mesh);
-        return {
-          mesh,
-          vx: 14 + Math.random() * 4,
-          vy: (Math.random() - 0.5) * 2,
-          rx: (Math.random() - 0.5) * 12,
-          ry: (Math.random() - 0.5) * 12,
-          rz: (Math.random() - 0.5) * 8,
-          phase: 'fly' as const,
-          landX: startX + i * spacing,
-          landY: n > 4 ? (i % 2 === 0 ? 1.5 : -1.5) : 0,
-          timer: -i * 0.12,
-          sides: d.sides,
-          value: d.value,
-          landed: false,
-        };
-      });
-
-      // Sprite labels
-      function makeLabel(text: string, color: number) {
-        const cv = document.createElement('canvas');
-        cv.width = 256; cv.height = 128;
-        const ctx = cv.getContext('2d')!;
-        ctx.font = 'bold 72px system-ui';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillText(text, 128, 68);
-        const mat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true });
-        const sp = new THREE.Sprite(mat);
-        sp.scale.set(2.2, 1.1, 1);
-        sp.visible = false;
-        scene.add(sp);
-        return sp;
-      }
-
-      const labels = states.map(s => makeLabel(String(s.value), getColor(s.sides)));
-      const totalLabel = (event.total !== undefined && n > 1)
-        ? makeLabel(`= ${event.total}`, 0xffffff) : null;
-
-      const DT = 1 / 60;
-      let allLanded = false;
-      let totalTimer = 0;
-      let dismissTimer = 0;
-
-      function animate() {
-        if (disposed) return;
-        raf = requestAnimationFrame(animate);
-
-        states.forEach((s, i) => {
-          s.timer += DT;
-          if (s.timer < 0) return;
-          s.mesh.visible = true;
-
-          if (s.phase === 'fly') {
-            s.mesh.position.x += s.vx * DT;
-            s.mesh.position.y += s.vy * DT;
-            s.vy -= 6 * DT;
-            s.vx *= 0.97;
-            s.mesh.rotation.x += s.rx * DT;
-            s.mesh.rotation.y += s.ry * DT;
-            s.mesh.rotation.z += s.rz * DT;
-            if (s.mesh.position.x > s.landX - 2) s.phase = 'tumble';
-          } else if (s.phase === 'tumble') {
-            s.mesh.position.x += (s.landX - s.mesh.position.x) * 0.12;
-            s.mesh.position.y += (s.landY - s.mesh.position.y) * 0.12;
-            s.rx *= 0.88; s.ry *= 0.88; s.rz *= 0.88;
-            s.mesh.rotation.x += s.rx * DT;
-            s.mesh.rotation.y += s.ry * DT;
-            s.mesh.rotation.z += s.rz * DT;
-            if (Math.abs(s.landX - s.mesh.position.x) < 0.05 && Math.abs(s.rx) < 0.3) {
-              s.phase = 'done';
-              s.mesh.position.set(s.landX, s.landY, 0);
-              if (!s.landed) {
-                s.landed = true;
-                labels[i].position.set(s.landX, s.landY + 2.2, 0);
-                labels[i].visible = true;
-              }
-            }
-          } else {
-            const sc = 1 + 0.12 * Math.exp(-s.timer * 5) * Math.sin(s.timer * 20);
-            s.mesh.scale.setScalar(sc);
-          }
-        });
-
-        if (!allLanded && states.every(s => s.landed)) allLanded = true;
-
-        if (allLanded) {
-          totalTimer += DT;
-          if (totalLabel && totalTimer > 0.3) {
-            totalLabel.visible = true;
-            totalLabel.position.set(0, -4.5, 0);
-          }
-          dismissTimer += DT;
-          if (dismissTimer > 3.5 && !disposed) {
-            disposed = true;
-            onDismiss();
-          }
-        }
-
-        renderer.render(scene, camera);
-      }
-
-      raf = requestAnimationFrame(animate);
-
-      function handleClick() {
-        if (!disposed) { disposed = true; onDismiss(); }
-      }
-      container.addEventListener('click', handleClick);
-
-      // Store cleanup
-      (container as any)._cleanup = () => {
-        disposed = true;
-        cancelAnimationFrame(raf);
-        container.removeEventListener('click', handleClick);
-        renderer.dispose();
-        if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
-        scene.clear();
-      };
-    }).catch(() => {
-      // Three.js failed to load — dismiss gracefully
-      if (!disposed) onDismiss();
-    });
-
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(raf);
-      const c = mountRef.current;
-      if (c && (c as any)._cleanup) (c as any)._cleanup();
-    };
+    timerRef.current = setTimeout(onDismiss, 4200);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
 
-  return (
+  const diceList = event.allDice?.length
+    ? event.allDice
+    : [{ die: event.dieType, value: event.result }];
+
+  const isMulti = diceList.length > 1;
+  const finalTotal = event.total ?? (event.modifier !== undefined
+    ? event.result + event.modifier : event.result);
+
+  const css = `
+    @keyframes dieRoll {
+      0%   { transform: translateX(-110vw) rotate(-540deg) scale(0.2); opacity: 0; }
+      55%  { transform: translateX(20px) rotate(15deg) scale(1.12); opacity: 1; }
+      72%  { transform: translateX(-8px) rotate(-5deg) scale(0.96); }
+      85%  { transform: translateX(4px) rotate(2deg) scale(1.03); }
+      100% { transform: translateX(0) rotate(0deg) scale(1); opacity: 1; }
+    }
+    @keyframes valuePop {
+      0%   { transform: scale(0) rotate(-15deg); opacity: 0; }
+      65%  { transform: scale(1.25) rotate(4deg); opacity: 1; }
+      82%  { transform: scale(0.93) rotate(-1deg); }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    @keyframes totalSlide {
+      from { transform: translateY(20px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes labelFade {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes nat20Pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(240,192,64,0.4); }
+      50%       { box-shadow: 0 0 50px rgba(240,192,64,0.8); }
+    }
+  `;
+
+  const lastDelay = (diceList.length - 1) * 0.07;
+
+  return createPortal(
     <div
-      ref={mountRef}
+      onClick={onDismiss}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(8, 10, 18, 0.82)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer',
-        background: 'rgba(0,0,0,0.65)',
-        backdropFilter: 'blur(4px)',
+        gap: 20,
       }}
     >
+      <style>{css}</style>
+
+      {/* Roll label */}
       {event.label && (
         <div style={{
-          position: 'absolute', top: '10%', left: 0, right: 0,
-          textAlign: 'center', pointerEvents: 'none',
-          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 20,
-          letterSpacing: '0.15em', textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.7)',
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 16,
+          letterSpacing: '0.2em', textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.6)',
+          animation: 'labelFade 0.3s 0.1s ease both',
         }}>
           {event.label}
         </div>
       )}
-      {!ready && (
+
+      {/* Dice row */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap',
+        gap: 16, justifyContent: 'center',
+        maxWidth: '80vw',
+      }}>
+        {diceList.map((d, i) => {
+          const isNat = d.die === 20 && (d.value === 20 || d.value === 1);
+          return (
+            <DieFace
+              key={i}
+              sides={d.die}
+              value={d.value}
+              delay={i * 0.07}
+              isNat={isNat}
+            />
+          );
+        })}
+      </div>
+
+      {/* Modifier + total for single die with modifier */}
+      {!isMulti && event.modifier !== undefined && event.modifier !== 0 && (
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          color: 'rgba(255,255,255,0.5)', fontSize: 14,
-          fontFamily: 'var(--ff-body)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          animation: `totalSlide 0.4s ${lastDelay + 0.5}s ease both`,
         }}>
-          Loading…
+          <span style={{ color: 'var(--t-3)', fontSize: 14 }}>
+            {event.result} {event.modifier >= 0 ? '+' : ''}{event.modifier}
+          </span>
+          <span style={{ color: 'var(--t-3)' }}>=</span>
+          <span style={{
+            fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 52,
+            color: 'var(--t-1)', lineHeight: 1,
+          }}>
+            {finalTotal}
+          </span>
         </div>
       )}
+
+      {/* Multi-dice total */}
+      {isMulti && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          animation: `totalSlide 0.4s ${lastDelay + 0.5}s ease both`,
+        }}>
+          {event.expression && (
+            <span style={{ color: 'var(--t-3)', fontSize: 13, fontFamily: 'var(--ff-mono)' }}>
+              {event.expression} =
+            </span>
+          )}
+          <span style={{
+            fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 64,
+            color: 'var(--t-1)', lineHeight: 1,
+            textShadow: '0 0 30px rgba(255,255,255,0.2)',
+          }}>
+            {finalTotal}
+          </span>
+        </div>
+      )}
+
       <div style={{
-        position: 'absolute', bottom: 20, left: 0, right: 0,
-        textAlign: 'center', pointerEvents: 'none',
-        fontFamily: 'var(--ff-body)', fontSize: 12,
-        color: 'rgba(255,255,255,0.35)',
+        position: 'absolute', bottom: 20,
+        fontFamily: 'var(--ff-body)', fontSize: 11,
+        color: 'rgba(255,255,255,0.25)',
       }}>
         Click anywhere to dismiss
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
