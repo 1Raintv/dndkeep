@@ -165,10 +165,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
             <div>
-              <h2 style={{ marginBottom: 2 }}>Character Settings</h2>
-              <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                {character.name} — Level {character.level} {character.class_name}
-              </p>
+              <h2>Character Settings</h2>
             </div>
             <button className="btn-ghost btn-sm" onClick={onClose}>Close</button>
           </div>
