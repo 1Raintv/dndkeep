@@ -65,6 +65,8 @@ export default function DiceRoller3D({ event, onDismiss }: Props) {
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(W, H);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      // Position canvas absolutely so it fills the container correctly
+      renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;display:block;';
       renderer.shadowMap.enabled = true;
       container.appendChild(renderer.domElement);
 

@@ -111,10 +111,6 @@ const Icons = {
 };
 
 const NAV_ITEMS = [
-  { to: '/lobby',     label: 'Home',       icon: Icons.characters },
-  { to: '/spells',    label: 'Spells',     icon: Icons.spells },
-  { to: '/combat',    label: 'Combat',     icon: Icons.combat },
-  { to: '/dice',      label: 'Dice',       icon: Icons.dice },
   { to: '/homebrew',  label: 'Homebrew',   icon: Icons.homebrew, pro: true },
 ];
 
@@ -122,6 +118,19 @@ function Sidebar() {
   const { user, profile, isPro } = useAuth();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [homeOpen, setHomeOpen] = useState(true);
+  const [characters, setCharacters] = useState<{id:string;name:string;class_name:string;level:number}[]>([]);
+  const [campaigns, setCampaigns] = useState<{id:string;name:string}[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    import('./lib/supabase').then(({ supabase }) => {
+      supabase.from('characters').select('id,name,class_name,level').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(8)
+        .then(({ data }) => { if (data) setCharacters(data as any); });
+      supabase.from('campaigns').select('id,name').eq('owner_id', user.id).order('created_at', { ascending: false }).limit(6)
+        .then(({ data }) => { if (data) setCampaigns(data as any); });
+    });
+  }, [user]);
 
   return (
     <aside className={`app-sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -138,6 +147,67 @@ function Sidebar() {
 
       {/* Nav items */}
       <nav className="sidebar-nav">
+        {/* Home with submenu */}
+        <div>
+          <button
+            onClick={() => !collapsed && setHomeOpen(o => !o)}
+            className={`sidebar-link ${location.pathname === '/lobby' || location.pathname.startsWith('/character') ? 'active' : ''}`}
+            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }}
+            title={collapsed ? 'Home' : undefined}
+          >
+            <span className="sidebar-link-icon">{Icons.characters}</span>
+            {!collapsed && (
+              <>
+                <span className="sidebar-link-label">Home</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)', transition: 'transform 0.2s',
+                  display: 'inline-block', transform: homeOpen ? 'rotate(90deg)' : 'none' }}>›</span>
+              </>
+            )}
+          </button>
+
+          {/* Submenu */}
+          {!collapsed && homeOpen && (
+            <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {/* Characters section */}
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: 'var(--t-3)', padding: '6px 8px 3px', fontFamily: 'var(--ff-body)' }}>Characters</div>
+              <NavLink to="/lobby/new" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                style={{ fontSize: 11, padding: '4px 8px', minHeight: 0, opacity: 0.7 }}>
+                <span style={{ fontSize: 12 }}>＋</span>
+                <span className="sidebar-link-label">New Character</span>
+              </NavLink>
+              {characters.map(c => (
+                <NavLink key={c.id} to={`/character/${c.id}`}
+                  className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                  style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}>
+                  <span className="sidebar-link-icon" style={{ fontSize: 12, width: 16 }}>⚔</span>
+                  <span className="sidebar-link-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.name}
+                    <span style={{ color: 'var(--t-3)', fontWeight: 400, marginLeft: 4 }}>{c.class_name} {c.level}</span>
+                  </span>
+                </NavLink>
+              ))}
+
+              {/* DM Campaigns section */}
+              {campaigns.length > 0 && (
+                <>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+                    color: 'var(--t-3)', padding: '6px 8px 3px', fontFamily: 'var(--ff-body)', marginTop: 4 }}>DM Campaigns</div>
+                  {campaigns.map(c => (
+                    <NavLink key={c.id} to={`/campaigns/${c.id}`}
+                      className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                      style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}>
+                      <span className="sidebar-link-icon" style={{ fontSize: 12, width: 16 }}>🗺</span>
+                      <span className="sidebar-link-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    </NavLink>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Remaining nav items (Homebrew) */}
         {NAV_ITEMS.map(({ to, label, icon, pro }) => (
           <NavLink
             key={to}

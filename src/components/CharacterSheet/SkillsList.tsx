@@ -13,14 +13,6 @@ interface SkillsListProps {
   onUpdate: (updates: Partial<Character>) => void;
 }
 
-interface RollResult {
-  skillName: string;
-  d20: number;
-  modifier: number;
-  total: number;
-  isCrit: boolean;
-  isFail: boolean;
-}
 
 const ABILITY_COLORS: Record<string, string> = {
   strength:     'var(--stat-str)',
@@ -38,7 +30,6 @@ const ABILITY_ABBREVS: Record<string, string> = {
 
 export default function SkillsList({ character, computed, onUpdate }: SkillsListProps) {
   const sortedSkills = [...SKILLS].sort((a, b) => a.name.localeCompare(b.name));
-  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
   const { triggerRoll } = useDiceRoll();
 
   function rollSkill(skillName: string, modifier: number) {
@@ -53,7 +44,6 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
     const blessRoll = buffs.blessActive ? rollDie(4) : 0;
     const total = d20 + modifier + blessRoll;
     const label = `${skillName} Check${hasDisadvantage ? ' (Disadv.)' : ''}${blessRoll ? ` +${blessRoll} Bless` : ''}`;
-    setLastRoll({ skillName, d20, modifier: modifier + blessRoll, total, isCrit: d20 === 20, isFail: d20 === 1 });
     triggerRoll({ result: d20, dieType: 20, modifier: modifier + blessRoll, total, label });
     supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label, dice_expression: '1d20', individual_results: [d20], total, modifier: modifier + blessRoll }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
   }
@@ -82,7 +72,6 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
   function SkillRow({ skill }: { skill: (typeof sortedSkills)[0] }) {
     const data = computed.skills[skill.name];
     if (!data) return null;
-    const isLastRolled = lastRoll?.skillName === skill.name;
     const abilityColor = ABILITY_COLORS[skill.ability] ?? 'var(--t-3)';
     const abilityAbbrev = ABILITY_ABBREVS[skill.ability] ?? '?';
 
@@ -96,11 +85,11 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '3px 4px', borderRadius: 'var(--r-sm)',
-          background: isLastRolled ? 'var(--c-raised)' : 'transparent',
+          background: 'transparent',
           transition: 'background var(--tr-fast)', cursor: 'pointer', userSelect: 'none',
         }}
         onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isLastRolled ? 'var(--c-raised)' : 'transparent'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
       >
         {/* Proficiency indicator — click to cycle */}
         <button
@@ -152,24 +141,6 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
       </div>
 
       {/* Roll result */}
-      {lastRoll && (() => {
-        const skill = SKILLS.find(s => s.name === lastRoll.skillName);
-        const col = lastRoll.isCrit ? 'var(--stat-dex)' : lastRoll.isFail ? 'var(--stat-str)' : (skill ? ABILITY_COLORS[skill.ability] : 'var(--c-gold-l)');
-        return (
-          <div style={{ marginBottom: 'var(--sp-3)', padding: '8px 12px', borderRadius: 'var(--r-md)', border: `1px solid ${col}40`, background: `${col}08`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: col }}>{lastRoll.skillName}</span>
-              <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: 'var(--t-3)' }}>
-                d20({lastRoll.d20}) {lastRoll.modifier >= 0 ? '+' : ''}{lastRoll.modifier}
-              </span>
-              {lastRoll.isCrit && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--stat-dex)' }}>Nat 20</span>}
-              {lastRoll.isFail && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--stat-str)' }}>Nat 1</span>}
-            </div>
-            <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 22, color: col, lineHeight: 1 }}>{lastRoll.total}</span>
-          </div>
-        );
-      })()}
-
       {/* Two-column skill grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 8px' }}>
         <div>{leftCol.map(s => <SkillRow key={s.name} skill={s} />)}</div>

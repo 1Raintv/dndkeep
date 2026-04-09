@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
@@ -24,17 +23,7 @@ const STAT_META: Record<AbilityKey, { color: string; bg: string; bdr: string; ab
   charisma:     { color: 'var(--stat-cha)', bg: 'var(--stat-cha-bg)', bdr: 'var(--stat-cha-bdr)', abbrev: 'CHA' },
 };
 
-interface AbilityRoll {
-  ability: AbilityKey;
-  d20: number;
-  modifier: number;
-  total: number;
-  isCrit: boolean;
-  isFail: boolean;
-}
-
 export default function AbilityScores({ character, computed }: AbilityScoresProps) {
-  const [lastRoll, setLastRoll] = useState<AbilityRoll | null>(null);
   const { triggerRoll } = useDiceRoll();
 
   function rollAbility(ability: AbilityKey) {
@@ -43,7 +32,6 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
 
     if (hasAutoFail) {
-      setLastRoll({ ability, d20: 1, modifier: mod, total: 1 + mod, isCrit: false, isFail: true });
       triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)` });
       supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod, modifier: mod });
       return;
@@ -53,7 +41,6 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     const roll2 = hasDisadvantage ? rollDie(20) : roll1;
     const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
     const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
-    setLastRoll({ ability, d20, modifier: mod, total: d20 + mod, isCrit: d20 === 20, isFail: d20 === 1 });
     triggerRoll({ result: d20, dieType: 20, modifier: mod, total: d20 + mod, label });
     supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [d20], total: d20 + mod, modifier: mod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
   }
@@ -61,34 +48,6 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
   return (
     <section>
       {/* Roll result flash banner */}
-      {lastRoll && (() => {
-        const lastMeta = STAT_META[lastRoll.ability as AbilityKey];
-        const col = lastRoll.isCrit ? 'var(--stat-dex)' : lastRoll.isFail ? 'var(--stat-str)' : lastMeta.color;
-        return (
-          <div style={{
-            marginBottom: 'var(--sp-4)', padding: 'var(--sp-3) var(--sp-4)',
-            borderRadius: 'var(--r-lg)', border: `1px solid ${col}40`,
-            background: `${col}0a`,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            transition: 'all var(--tr-normal)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: col, textTransform: 'capitalize' }}>
-                {lastRoll.ability} Check
-              </span>
-              <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
-                d20({lastRoll.d20}) {lastRoll.modifier >= 0 ? '+' : ''}{lastRoll.modifier}
-              </span>
-              {lastRoll.isCrit && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--stat-dex)' }}>Natural 20</span>}
-              {lastRoll.isFail && <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--stat-str)' }}>Natural 1</span>}
-            </div>
-            <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '1.8rem', lineHeight: 1, color: col }}>
-              {lastRoll.total}
-            </span>
-          </div>
-        );
-      })()}
-
       {/* 6-column ability score strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 'var(--sp-2)' }}>
         {ABILITY_ORDER.map(ability => {
@@ -96,7 +55,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
           const score = character[ability];
           const mod = computed.modifiers[ability];
           const save = computed.saving_throws[ability];
-          const isActive = lastRoll?.ability === ability;
+          const isActive = false;
 
           return (
             <div
