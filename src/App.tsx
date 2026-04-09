@@ -218,6 +218,12 @@ function AppRoutes() {
   const isAuth = location.pathname === '/auth';
   const showSidebar = !isLanding && !isShare && !isAuth && user;
 
+  // Extract characterId from /character/:id and campaignId from /campaigns/:id
+  const charMatch = location.pathname.match(/^\/character\/([\w-]+)/);
+  const campMatch = location.pathname.match(/^\/campaigns\/([\w-]+)/);
+  const activeCharId = charMatch?.[1];
+  const activeCampId = campMatch?.[1];
+
   return (
     <div className={showSidebar ? 'app-layout-sidebar' : 'app-layout-full'}>
       {showSidebar && <Sidebar />}
@@ -243,7 +249,7 @@ function AppRoutes() {
         </Suspense>
       </main>
       {/* Global floating dice roller — always visible when logged in */}
-      {user && <QuickRoll userId={user.id} />}
+      {user && <QuickRoll userId={user.id} characterId={activeCharId} campaignId={activeCampId} />}
     </div>
   );
 }

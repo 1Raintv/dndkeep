@@ -81,7 +81,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
       return ex.count <= 1 ? q.filter(d => d.die !== die) : q.map(d => d.die === die ? { ...d, count: d.count - 1 } : d);
     });
   }
-  function clearQueue() { setQueue([]); setLabel(''); setAdv('normal'); }
+  function clearQueue() { setQueue([]); setLabel(''); setAdv('normal'); setLastRoll(null); }
   function buildExpr(q: DiceInQueue[]) { return q.map(d => `${d.count}d${d.die}`).join(' + '); }
 
   async function rollAll() {
@@ -227,7 +227,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
               Dice Roller
             </span>
-            {queue.length > 0 && (
+            {(queue.length > 0 || lastRoll) && (
               <button onClick={clearQueue} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 clear all
               </button>
@@ -285,25 +285,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
               ))}
             </div>
 
-            {/* Adv/Dis — only when d20 queued */}
-            {has20 && (
-              <div style={{ display: 'flex', gap: 4 }}>
-                {(['normal', 'advantage', 'disadvantage'] as const).map(mode => {
-                  const active = adv === mode;
-                  const c = mode === 'advantage' ? 'var(--hp-full)' : mode === 'disadvantage' ? 'var(--c-red-l)' : 'var(--c-gold-l)';
-                  return (
-                    <button key={mode} onClick={() => setAdv(mode)} style={{
-                      flex: 1, fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
-                      letterSpacing: '0.04em', textTransform: 'uppercase',
-                      padding: '3px 2px', borderRadius: 4, cursor: 'pointer',
-                      border: active ? `1px solid ${c}` : '1px solid var(--c-border)',
-                      background: active ? `${c}20` : 'transparent',
-                      color: active ? c : 'var(--t-2)',
-                    }}>{mode === 'normal' ? 'Normal' : mode === 'advantage' ? 'Adv' : 'Dis'}</button>
-                  );
-                })}
-              </div>
-            )}
+
 
             {/* Shake animation during roll */}
             {rolling && (
