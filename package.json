@@ -17,8 +17,7 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
     "uuid": "^10.0.0",
-    "three": "^0.163.0",
-    "cannon-es": "^0.20.0"
+    "three": "^0.163.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
