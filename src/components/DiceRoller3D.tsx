@@ -110,6 +110,19 @@ function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number):number{
   return bestNum;
 }
 
+// Compute quaternion to rotate face faceN → +Y (straight up, unambiguous result)
+function faceUpQuat(def:GeoDef,targetNum:number,s:number):THREE.Quaternion|null{
+  const fi=def.nums.indexOf(targetNum);if(fi<0)return null;
+  const{normal:fN}=faceInfo(def,fi,s);
+  const cosA=Math.min(1,Math.max(-1,dot(fN,[0,1,0])));
+  const angle=Math.acos(cosA);
+  if(Math.abs(angle)<0.001)return new THREE.Quaternion();
+  const axis=Math.abs(angle-Math.PI)<0.001?[1,0,0]as V3:norm(cross(fN,[0,1,0]));
+  const q=new THREE.Quaternion();
+  q.setFromAxisAngle(new THREE.Vector3(axis[0],axis[1],axis[2]),angle);
+  return q;
+}
+
 const TC=new Map<string,THREE.CanvasTexture>();
 function numTex(label:string,ec:number):THREE.CanvasTexture{
   const key=`${label}-${ec}`;
@@ -222,7 +235,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(60,W/H,0.1,200);
-    camera.position.set(0,5.5,6);camera.lookAt(0,0,0.5);
+    camera.position.set(0,7.5,3.5);camera.lookAt(0,0,0);
     scene.add(new THREE.AmbientLight(0xffffff,1.8));
     const sun=new THREE.DirectionalLight(0xffffff,2.8);
     sun.position.set(3,10,4);sun.castShadow=true;
@@ -367,15 +380,36 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         d.group.position.set(d.body.position.x,d.body.position.y,d.body.position.z);
         d.group.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
 
+        // Face-align ease after physics settle (smooth 220ms snap to exact face-up)
+        if((d as any)._aligning){
+          (d as any)._alignT+=real;
+          const t=Math.min(1,(d as any)._alignT/0.22);
+          const ease=t<0.5?2*t*t:-1+(4-2*t)*t;
+          d.group.quaternion.copy((d as any)._alignFrom).slerp((d as any)._alignTo,ease);
+          if(t>=1){d.group.quaternion.copy((d as any)._alignTo);d.settled=true;(d as any)._aligning=false;}
+          return;
+        }
         // Check if settled (sleeping or barely moving)
         const vel=d.body.velocity.length();
         const angVel=d.body.angularVelocity.length();
         const onFloor=d.body.position.y<d.scale*1.1+0.3;
         const sleeping=d.body.sleepState===2; // 2 = SLEEPING in cannon-es
         if((sleeping||(vel<0.35&&angVel<0.6))&&onFloor){
-          d.settled=true;
+          // Stop the physics body
+          d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          d.val=detectTopFaceNum(d.def,tq,d.scale);
+          const topNum=detectTopFaceNum(d.def,tq,d.scale);
+          d.val=topNum;
+          // Smooth 220ms ease to align top face exactly with +Y — unambiguous result
+          const fq=faceUpQuat(d.def,topNum,d.scale);
+          if(fq){
+            (d as any)._alignFrom=tq.clone();
+            (d as any)._alignTo=fq;
+            (d as any)._alignT=0;
+            (d as any)._aligning=true;
+          } else {
+            d.settled=true;
+          }
         }
       });
 
