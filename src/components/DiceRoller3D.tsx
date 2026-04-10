@@ -160,7 +160,7 @@ function numTex(label:string,ec:number):THREE.CanvasTexture{
   // White fill for readability on any background
   ctx.fillStyle='#ffffff';ctx.fillText(label,96,102);
   // Subtle die-color tint so numbers feel integrated (not jarring white on colored die)
-  ctx.globalAlpha=0.28;ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillText(label,96,102);ctx.globalAlpha=1;
+  ctx.globalAlpha=0.28;ctx.fillStyle=`rgb(${_r},${_g},${_b})`;ctx.fillText(label,96,102);ctx.globalAlpha=1;
   // Draw underline beneath 6 to distinguish from 9 when die is inverted
   if(label==='6'){
     const m=ctx.measureText('6');const uw=m.width*0.8;
