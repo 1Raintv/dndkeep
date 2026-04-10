@@ -235,10 +235,11 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
     const mat = new THREE.MeshBasicMaterial({
       map: numTex(numLabel(def.nums[fi]), t.e),
       transparent:true, side:THREE.FrontSide,
-      depthTest:false, depthWrite:false, alphaTest:0.05,
+      depthTest:true, depthWrite:false, alphaTest:0.05,
+      polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(sz,sz), mat);
-    plane.renderOrder = 1; // always render after body mesh
+    plane.renderOrder = 1;
     plane.position.set(pos[0]+normal[0]*off, pos[1]+normal[1]*off, pos[2]+normal[2]*off);
     const q = new THREE.Quaternion();
     q.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(normal[0],normal[1],normal[2]));
@@ -252,7 +253,7 @@ interface PhysDie {
   group:THREE.Group; def:GeoDef; sides:number; val:number;
   x:number; y:number; z:number; vx:number; vy:number; vz:number;
   quat:THREE.Quaternion; arx:number; ary:number; arz:number;
-  phase:'fly'|'done'; delay:number; scale:number;
+  phase:'fly'|'done'|'snap'; delay:number; scale:number;
 }
 
 export default function DiceRoller3D({event,onDismiss}:Props) {
@@ -337,6 +338,15 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     function update(dt:number) {
       dice.forEach(d => {
         if (d.delay>0) { d.delay-=dt; return; }
+        if ((d.phase as any)==='snap') {
+          (d as any)._snapT += dt;
+          const t = Math.min(1, (d as any)._snapT / 0.25);
+          const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out
+          THREE.Quaternion.slerp((d as any)._snapFrom, (d as any)._snapTo, d.quat, ease);
+          d.group.quaternion.copy(d.quat);
+          if (t >= 1) d.phase = 'done';
+          return;
+        }
         if (d.phase==='done') return;
         d.vy -= GRAV*dt;
         d.x += d.vx*dt; d.y += d.vy*dt; d.z += d.vz*dt;
@@ -370,8 +380,17 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
         if ((spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) || forceSettle) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
-          // No snap — die stays wherever physics left it (natural roll feel)
-          // Pre-biased start orientation makes correct face statistically likely
+          // Smooth 0.25s slerp to correct face — looks like natural final settling
+          const fq = faceUpQuat(d.def, d.val, d.scale);
+          if (fq) {
+            const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
+            if (topNum !== d.val) {
+              (d as any)._snapFrom = d.quat.clone();
+              (d as any)._snapTo = fq;
+              (d as any)._snapT = 0;
+              d.phase = 'snap' as any;
+            }
+          }
         }
       });
     }
