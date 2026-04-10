@@ -261,7 +261,7 @@ interface PhysDie {
   group:THREE.Group; def:GeoDef; sides:number; val:number;
   x:number; y:number; z:number; vx:number; vy:number; vz:number;
   quat:THREE.Quaternion; arx:number; ary:number; arz:number;
-  phase:'fly'|'done'; delay:number; scale:number;
+  phase:'fly'|'done'|'ease'; delay:number; scale:number;
 }
 
 export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
@@ -292,7 +292,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
     const sFloor = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.ShadowMaterial({opacity:0.25}));
     sFloor.rotation.x=-Math.PI/2; sFloor.receiveShadow=true; scene.add(sFloor);
 
-    const FLOOR=0, GRAV=26, BOUNCE=0.22, WALL_B=0.4, BX=2.8, BZ=2.0;
+    const FLOOR=0, GRAV=30, BOUNCE=0.15, WALL_B=0.35, BX=2.8, BZ=2.0;
     const rawList = event.allDice?.length ? event.allDice : [{die:event.dieType,value:event.result}];
     const baseS = Math.max(0.9, 1.5 - Math.max(1,rawList.length)*0.06);
 
@@ -331,10 +331,10 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         vy: -(2+Math.random()*1.5),
         vz: (Math.random()-.5)*2,
         quat: startQ.clone(),
-        // Full 3D tumble — looks natural
-        arx: (Math.random()-.5)*16,
-        ary: (Math.random()-.5)*16,
-        arz: (Math.random()-.5)*12,
+        // Strong energetic throw
+        arx: (Math.random()-.5)*22,
+        ary: (Math.random()-.5)*22,
+        arz: (Math.random()-.5)*16,
         phase: 'fly' as const, delay: i*0.12,
       };
     });
@@ -342,6 +342,20 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
     function update(dt:number) {
       dice.forEach(d => {
         if (d.delay>0) { d.delay-=dt; return; }
+
+        // ── Micro-ease phase: 80ms blend to face-up at very end of motion ──
+        if ((d.phase as any)==='ease') {
+          (d as any)._easeT += dt;
+          const t = Math.min(1, (d as any)._easeT / 0.08);
+          d.quat.copy((d as any)._easeFrom).slerp((d as any)._easeTo, t*t); // ease-in
+          d.group.quaternion.copy(d.quat);
+          if (t >= 1) {
+            d.quat.copy((d as any)._easeTo);
+            d.group.quaternion.copy(d.quat);
+            d.phase = 'done';
+          }
+          return;
+        }
         if (d.phase==='done') return;
 
         d.vy -= GRAV*dt;
@@ -356,16 +370,11 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         d.group.quaternion.copy(d.quat);
         const r = d.scale*0.82;
 
-        // Floor collision — strong grip so dice stop rolling quickly
         if (d.y-r < FLOOR) {
           d.y=FLOOR+r; d.vy=Math.abs(d.vy)*BOUNCE;
-          d.vx*=0.68; d.vz*=0.68;
-          d.arx*=0.48; d.ary*=0.48; d.arz*=0.48;
-          // Tiny random impulse on each bounce — real dice can't balance on edges
-          // because of surface micro-imperfections. This replicates that effect.
-          d.arx += (Math.random()-0.5)*1.2;
-          d.arz += (Math.random()-0.5)*1.2;
-          if (d.vy<0.08) d.vy=0;
+          d.vx*=0.58; d.vz*=0.58;          // heavy grip on landing
+          d.arx*=0.42; d.ary*=0.42; d.arz*=0.42;
+          if (d.vy<0.06) d.vy=0;
         }
         if (d.x<-BX){d.x=-BX;d.vx=Math.abs(d.vx)*WALL_B;}
         if (d.x> BX){d.x= BX;d.vx=-Math.abs(d.vx)*WALL_B;}
@@ -376,33 +385,38 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         const spd = Math.sqrt(d.vx**2+d.vy**2+d.vz**2);
         const ang = Math.sqrt(d.arx**2+d.ary**2+d.arz**2);
 
-        // Heavy rolling friction — die slows like rolling on felt/cork
         if (onFloor) {
-          d.vx*=0.84; d.vz*=0.84;
-          d.arx*=0.83; d.ary*=0.83; d.arz*=0.83;
+          d.vx*=0.80; d.vz*=0.80;   // rolling friction — slows fast
+          d.arx*=0.78; d.ary*=0.78; d.arz*=0.78;
         }
 
-        // Settle only when naturally face-up and still — no artificial nudge
-        if (onFloor && spd < 0.15 && ang < 0.4) {
-          const topFi = d.def.nums.indexOf(detectTopFaceNum(d.def, d.quat, d.scale));
-          const {normal: topN} = faceInfo(d.def, topFi, d.scale);
-          const worldN = new THREE.Vector3(topN[0],topN[1],topN[2]).applyQuaternion(d.quat);
-          const alignment = worldN.y;
-          if (alignment > 0.92) {
-            d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
+        // When nearly stopped, trigger the 80ms micro-ease to nearest face.
+        // Happens while die is still barely moving so it blends invisibly.
+        if (onFloor && spd < 0.3 && ang < 0.8) {
+          const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
+          d.val = topNum;
+          const fq = faceUpQuat(d.def, topNum, d.scale);
+          if (fq) {
+            d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0; d.y=FLOOR+r;
             d.group.position.set(d.x,d.y,d.z);
-            d.val = detectTopFaceNum(d.def, d.quat, d.scale);
-            return;
+            (d as any)._easeFrom = d.quat.clone();
+            (d as any)._easeTo = fq;
+            (d as any)._easeT = 0;
+            d.phase = 'ease' as any;
+          } else {
+            d.phase='done';
           }
+          return;
         }
 
-        // Safety: after 6s just accept whatever face is most upward
+        // Safety fallback at 5s
         if ((d as any)._t === undefined) (d as any)._t = 0;
         (d as any)._t += dt;
-        if ((d as any)._t > 6.0 && spd < 2.0) {
+        if ((d as any)._t > 5.0) {
+          const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
+          d.val = topNum;
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
-          d.val = detectTopFaceNum(d.def, d.quat, d.scale);
         }
       });
     }
