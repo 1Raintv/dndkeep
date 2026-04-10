@@ -378,31 +378,32 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         }
 
         // ── Natural face-settling physics ────────────────────────────────
-        // When slow and on floor, check face alignment. If sitting on edge/corner,
-        // apply a gentle physics torque (like real center-of-mass instability)
-        // that nudges the die toward the nearest flat face. No artificial snap.
-        if (onFloor && spd < 1.5 && ang < 3.0) {
+        // When slow and on floor, apply physics torque toward nearest face.
+        // Strong enough to flow quickly into place, still looks organic.
+        if (onFloor && spd < 2.0 && ang < 4.0) {
           const topFi = d.def.nums.indexOf(detectTopFaceNum(d.def, d.quat, d.scale));
           const {normal: topN} = faceInfo(d.def, topFi, d.scale);
           const worldN = new THREE.Vector3(topN[0],topN[1],topN[2]).applyQuaternion(d.quat);
-          const alignment = worldN.y; // 1.0 = perfectly face-up, <1.0 = on edge
+          const alignment = worldN.y; // 1.0 = perfectly face-up
 
-          if (alignment < 0.998) {
-            // Torque axis: cross product of current face normal with target +Y
-            // This rotates the die so the face tips toward flat
-            const tx = worldN.z * 0;   // cross([wx,wy,wz],[0,1,0])
-            const ty = 0;               //   = [wy*0-wz*1, wz*0-wx*0, wx*1-wy*0]
-            const tz = worldN.x;        //   = [-wz, 0, wx] simplified for (0,1,0)
+          if (alignment < 0.999) {
             const torqueX = -worldN.z;
             const torqueZ =  worldN.x;
-            // Strength proportional to misalignment and inversely to angular speed
-            const str = (1.0 - alignment) * 12.0 * Math.max(0, 1 - ang/3.0);
+            // Stronger torque when closer to settled — flows in quickly
+            const misalign = 1.0 - alignment;
+            const str = misalign * 45.0 * Math.max(0.2, 1 - ang/4.0);
             d.arx += torqueX * str * dt;
             d.arz += torqueZ * str * dt;
+            // Extra damping when nearly face-up — kills residual wobble fast
+            if (alignment > 0.85) {
+              const damp = 0.72 + alignment * 0.25; // 0.97–0.995 range
+              d.arx *= damp; d.ary *= damp; d.arz *= damp;
+              d.vx  *= 0.90; d.vz  *= 0.90;
+            }
           }
 
-          // Settle only when a face is genuinely pointing up AND die is still
-          if (spd < 0.08 && ang < 0.25 && alignment > 0.97) {
+          // Settle once a face is genuinely pointing up and motion is minimal
+          if (spd < 0.12 && ang < 0.35 && alignment > 0.96) {
             d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
             d.group.position.set(d.x,d.y,d.z);
             d.val = detectTopFaceNum(d.def, d.quat, d.scale);
