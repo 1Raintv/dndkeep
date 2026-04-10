@@ -28,25 +28,13 @@ const sub=(a:V3,b:V3):V3=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 interface GeoDef{verts:V3[];faces:number[][];nums:number[]}
 
 function makeD10(nums: number[]): GeoDef {
-  // Pentagonal trapezohedron — the actual shape of a real d10.
-  // 10 kite-shaped (quadrilateral) faces. Rests cleanly with one kite flat.
-  // Much cleaner visually than a bipyramid — one face clearly shows the result.
-  const R=1.0, H=0.35, A=1.22;
+  // Pentagonal bipyramid — reliable rendering, physics-stable
   const verts: V3[] = [];
-  // 0-4: upper ring at y=+H, angles 0°,72°,144°,216°,288°
-  for (let i=0;i<5;i++){const a=i*2*Math.PI/5; verts.push([R*Math.cos(a),H,R*Math.sin(a)]);}
-  // 5-9: lower ring at y=-H, offset 36°
-  for (let i=0;i<5;i++){const a=i*2*Math.PI/5+Math.PI/5; verts.push([R*Math.cos(a),-H,R*Math.sin(a)]);}
-  // 10: top apex, 11: bottom apex
-  verts.push([0,A,0]); verts.push([0,-A,0]);
-  // 10 kite faces: 5 upper (top-apex + upper_i + lower_i + upper_{i+1})
-  //               5 lower (bot-apex + lower_i + upper_{i+1} + lower_{i+1})
+  const R = 0.82, T = 1.12;
+  for (let i = 0; i < 5; i++) { const a=i*Math.PI*2/5; verts.push([R*Math.cos(a),0,R*Math.sin(a)]); }
+  verts.push([0,T,0]); verts.push([0,-T,0]);
   const faces: number[][] = [];
-  for (let i=0;i<5;i++){
-    const u0=i, u1=(i+1)%5, l0=i+5, l1=(i+1)%5+5;
-    faces.push([10,u0,l0,u1]); // upper kite
-    faces.push([11,l1,u1,l0]); // lower kite
-  }
+  for (let i = 0; i < 5; i++) { const n=(i+1)%5; faces.push([5,n,i]); faces.push([6,i,n]); }
   return { verts, faces, nums };
 }
 
@@ -86,7 +74,7 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.80,6:0.62,8:0.80,10:0.82,12:0.84,20:0.86,100:0.80};
+const SM:Record<number,number> = {4:0.82,6:0.64,8:0.82,10:0.95,12:0.86,20:0.88,100:0.90};
 const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:1.15,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4:{f:0x5b21b6,e:0xddd6fe},6:{f:0xb91c1c,e:0xfca5a5},8:{f:0x15803d,e:0xbbf7d0},
@@ -222,32 +210,24 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.003),new THREE.LineBasicMaterial({color:t.e}));
   const group=new THREE.Group();group.add(mesh);group.add(edges);
-  // D4 point-build: number at each vertex — top vertex = result (standard physical d4 convention)
+  // Number planes. D4 faces are steep (54.7°), so tilt planes toward +Y so
+  // numbers face the overhead camera and are clearly readable.
   const isD4=(def.verts.length===4&&def.faces.length===4);
-  if(isD4){
-    def.verts.forEach((v,vi)=>{
-      const vn=norm(v);
-      const off=S*0.12, sz=S*0.55;
-      const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-      plane.renderOrder=2;
-      plane.position.set(v[0]*S+vn[0]*off, v[1]*S+vn[1]*off, v[2]*S+vn[2]*off);
-      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(vn[0],vn[1],vn[2]));
-      plane.quaternion.copy(q);group.add(plane);
-    });
-  } else {
-    const numOff=0.035*S;
-    def.faces.forEach((_,fi)=>{
-      const{pos,normal,insc}=faceInfo(def,fi,S);
-      const sz=insc*1.7*ff,off=numOff;
-      const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-      plane.renderOrder=1;
-      plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
-      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
-      plane.quaternion.copy(q);group.add(plane);
-    });
-  }
+  const numOff=isD4?0.09*S:0.035*S;
+  def.faces.forEach((_,fi)=>{
+    const{pos,normal,insc}=faceInfo(def,fi,S);
+    const sz=insc*(isD4?2.2:1.7)*ff, off=numOff;
+    // D4: blend face normal 40% toward straight up so numbers are readable overhead
+    const planeNorm:V3 = isD4
+      ? norm([normal[0]*0.4, normal[1]*0.4+0.65, normal[2]*0.4] as V3)
+      : normal;
+    const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+    plane.renderOrder=2;
+    plane.position.set(pos[0]+normal[0]*off, pos[1]+normal[1]*off, pos[2]+normal[2]*off);
+    const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(planeNorm[0],planeNorm[1],planeNorm[2]));
+    plane.quaternion.copy(q);group.add(plane);
+  });
   return group;
 }
 
@@ -279,6 +259,44 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
   useEffect(()=>{
     const el=mountRef.current;if(!el)return;
     const W=window.innerWidth,H=window.innerHeight;
+
+    // ── Web Audio — procedural dice sounds ───────────────────────────────────
+    let audioCtx:AudioContext|null=null;
+    const getAudio=()=>{
+      if(!audioCtx) audioCtx=new AudioContext();
+      if(audioCtx.state==='suspended') audioCtx.resume();
+      return audioCtx;
+    };
+    const playBounce=(vel:number)=>{
+      if(vel<0.8)return;
+      const ctx=getAudio();
+      const gain=ctx.createGain();
+      gain.gain.setValueAtTime(Math.min(0.18,vel*0.012),ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.15);
+      gain.connect(ctx.destination);
+      // White noise burst — sounds like plastic/resin hitting table
+      const buf=ctx.createBuffer(1,ctx.sampleRate*0.12,ctx.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(ctx.sampleRate*0.018));
+      const src=ctx.createBufferSource();src.buffer=buf;
+      const filt=ctx.createBiquadFilter();
+      filt.type='bandpass';filt.frequency.value=1800+Math.random()*600;filt.Q.value=1.2;
+      src.connect(filt);filt.connect(gain);src.start();
+    };
+    const playSettle=()=>{
+      const ctx=getAudio();
+      const gain=ctx.createGain();
+      gain.gain.setValueAtTime(0.06,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.08);
+      gain.connect(ctx.destination);
+      const buf=ctx.createBuffer(1,ctx.sampleRate*0.08,ctx.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(ctx.sampleRate*0.012));
+      const src=ctx.createBufferSource();src.buffer=buf;
+      const filt=ctx.createBiquadFilter();
+      filt.type='highpass';filt.frequency.value=2200;
+      src.connect(filt);filt.connect(gain);src.start();
+    };
 
     // ── Three.js scene ───────────────────────────────────────────────
     const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
@@ -352,7 +370,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
     // Scale dice to ~7% of window height so they're readable across the full window
-    const diceScreenPct=BZ*0.11;
+    const diceScreenPct=BZ*0.138; // 25% larger
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
     interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
@@ -414,7 +432,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       // Stagger: launch each die from a slightly different height
 
       world.addBody(body);
-      return{group,body,def,sides:sp.die,val:sp.val,scale:S,settled:false};
+      return{group,body,def,sides:sp.die,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean};
     });
 
     let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false,totalT=0;
@@ -430,11 +448,52 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       const hasMod=!multi&&event.modifier!==undefined&&event.modifier!==0;
       const firstResult=detectedDice[0]?.value??0;
       const lbl=event.label||(event.dieType===100?'d100':event.dieType?`d${event.dieType}`:'Roll');
+      const isNat20=!multi&&event.dieType===20&&firstResult===20;
+      const isNat1=!multi&&event.dieType===20&&firstResult===1;
+      // Dramatic Nat 20 / Nat 1 effects
+      if(isNat20){
+        const glow=document.createElement('div');
+        glow.style.cssText='position:absolute;inset:0;pointer-events:none;animation:nat20Pulse 0.6s ease-out both;background:radial-gradient(ellipse at center,rgba(255,200,50,0.35) 0%,transparent 70%);';
+        el.appendChild(glow);
+        // Play triumphant tone
+        try{
+          const ctx=getAudio();
+          [523,659,784,1047].forEach((f,i)=>{
+            const o=ctx.createOscillator(),g=ctx.createGain();
+            o.frequency.value=f;o.type='sine';
+            g.gain.setValueAtTime(0,ctx.currentTime+i*0.08);
+            g.gain.linearRampToValueAtTime(0.12,ctx.currentTime+i*0.08+0.02);
+            g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.08+0.3);
+            o.connect(g);g.connect(ctx.destination);
+            o.start(ctx.currentTime+i*0.08);o.stop(ctx.currentTime+i*0.08+0.3);
+          });
+        }catch(e){}
+      }
+      if(isNat1){
+        const flash=document.createElement('div');
+        flash.style.cssText='position:absolute;inset:0;pointer-events:none;animation:nat1Flash 0.5s ease-out both;background:rgba(220,30,30,0.25);';
+        el.appendChild(flash);
+        try{
+          const ctx=getAudio();
+          const o=ctx.createOscillator(),g=ctx.createGain();
+          o.frequency.setValueAtTime(220,ctx.currentTime);
+          o.frequency.exponentialRampToValueAtTime(80,ctx.currentTime+0.4);
+          o.type='sawtooth';
+          g.gain.setValueAtTime(0.1,ctx.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
+          o.connect(g);g.connect(ctx.destination);
+          o.start();o.stop(ctx.currentTime+0.4);
+        }catch(e){}
+      }
+      const numColor=isNat20?'#ffd700':isNat1?'#ff4444':'#fff';
+      const glow2=isNat20?`,0 0 60px rgba(255,200,0,0.8)`:isNat1?`,0 0 40px rgba(255,60,60,0.7)`:``;
       const div=document.createElement('div');
-      div.style.cssText='position:absolute;top:6%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;';
+      div.style.cssText=`position:absolute;top:6%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;`;
       div.innerHTML=
         `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.45);letter-spacing:.22em;text-transform:uppercase;margin-bottom:6px">${lbl}</div>`+
-        `<div style="font:900 ${multi?68:92}px system-ui;color:#fff;line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5),0 0 80px rgba(255,255,255,0.2)">${tot}</div>`+
+        `<div style="font:900 ${multi?68:92}px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
+        (isNat20?`<div style="font:700 14px system-ui;color:#ffd700;letter-spacing:.2em;margin-top:8px;animation:nat20Badge 0.4s 0.3s both">★ NATURAL 20 ★</div>`:'')  +
+        (isNat1 ?`<div style="font:700 14px system-ui;color:#ff4444;letter-spacing:.2em;margin-top:8px">✕ NATURAL 1 ✕</div>`:'') +
         (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
       el.appendChild(div);
     }
@@ -453,6 +512,12 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         // Copy body transform to Three.js group
         d.group.position.set(d.body.position.x,d.body.position.y,d.body.position.z);
         d.group.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
+        // Sound: detect floor bounce
+        const nowOnFloor=d.body.position.y<d.scale*1.2+0.6;
+        if(nowOnFloor&&!(d as any)._wasOnFloor){
+          playBounce(d.body.velocity.length());
+          (d as any)._wasOnFloor=true;
+        } else if(!nowOnFloor){(d as any)._wasOnFloor=false;}
 
         // No intervention — pure cannon-es. ConvexPolyhedron is physically
         // unstable on edges so dice naturally roll to flat faces.
@@ -481,7 +546,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         });
       }
       if(!allDone&&dice.every(d=>d.settled)){
-        allDone=true;doneT=0;showResult();
+        allDone=true;doneT=0;playSettle();showResult();
       }
       if(allDone){
         doneT+=real;
@@ -497,13 +562,14 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       renderer.dispose();
       if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
       scene.clear();TC.clear();
+      audioCtx?.close();
     };
   },[]);
 
   return createPortal(
     <div ref={mountRef} onClick={onDismiss} style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(2,5,14,0.88)',backdropFilter:'blur(12px)',cursor:'pointer',overflow:'hidden'}}>
       <div style={{position:'absolute',bottom:14,left:0,right:0,textAlign:'center',pointerEvents:'none',fontFamily:'var(--ff-body)',fontSize:11,color:'rgba(255,255,255,0.2)'}}>Click anywhere to dismiss</div>
-      <style>{`@keyframes rr{from{opacity:0;transform:translateX(-50%) scale(0.5)}to{opacity:1;transform:translateX(-50%) scale(1)}}`}</style>
+      <style>{`@keyframes rr{from{opacity:0;transform:translateX(-50%) scale(0.5)}to{opacity:1;transform:translateX(-50%) scale(1)}}@keyframes nat20Pulse{0%{opacity:0;transform:scale(0.5)}50%{opacity:1}100%{opacity:0;transform:scale(2)}}@keyframes nat1Flash{0%{opacity:0.8}100%{opacity:0}}@keyframes nat20Badge{from{opacity:0;transform:scale(0.5) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
     </div>,
     document.body
   );
