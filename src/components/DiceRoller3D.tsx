@@ -240,7 +240,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(60,W/H,0.1,200);
-    camera.position.set(0,7.5,3.5);camera.lookAt(0,0,0);
+    camera.position.set(0,9,5);camera.lookAt(0,0,0.5);
     scene.add(new THREE.AmbientLight(0xffffff,1.8));
     const sun=new THREE.DirectionalLight(0xffffff,2.8);
     sun.position.set(3,10,4);sun.castShadow=true;
@@ -252,7 +252,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     sFloor.rotation.x=-Math.PI/2;sFloor.receiveShadow=true;scene.add(sFloor);
 
     // ── Cannon-es world ──────────────────────────────────────────────
-    const world=new CANNON.World({ gravity: new CANNON.Vec3(0,-38,0) });
+    const world=new CANNON.World({ gravity: new CANNON.Vec3(0,-60,0) }); // stronger gravity = faster settle
     (world.broadphase as CANNON.NaiveBroadphase);
     world.allowSleep=true;
 
@@ -260,9 +260,9 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     const diceMat=new CANNON.Material('dice');
     const floorMat=new CANNON.Material('floor');
     const contact=new CANNON.ContactMaterial(diceMat,floorMat,{
-      friction: 0.95,          // very high — die grips and stops cleanly
-      restitution: 0.1,        // near-zero bounce — one thud and it stays down
-      contactEquationStiffness: 1e8,
+      friction: 0.01,          // LOW — lets faces slide to stable position naturally
+      restitution: 0.5,        // moderate bounce — dice tumble naturally
+      contactEquationStiffness: 1e7,
     });
     world.addContactMaterial(contact);
 
@@ -315,11 +315,11 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       const body=new CANNON.Body({
         mass:1,
         material:diceMat,
-        linearDamping:0.4,
-        angularDamping:0.5,
+        linearDamping:0.05,    // low — dice roll freely
+        angularDamping:0.1,    // low — dice tumble freely
         allowSleep:true,
-        sleepSpeedLimit:0.15,  // only sleep when genuinely still
-        sleepTimeLimit:0.8,
+        sleepSpeedLimit:1.6,   // sleep when mostly stopped
+        sleepTimeLimit:0.1,    // sleep quickly once stopped
       });
       body.addShape(shape);
 
@@ -349,7 +349,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       return{group,body,def,sides:sp.die,val:sp.val,scale:S,settled:false};
     });
 
-    let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false;
+    let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false,totalT=0;
     const FIXED_STEP=1/60,MAX_SUB=3;
 
     function showResult(){
@@ -386,24 +386,38 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         d.group.position.set(d.body.position.x,d.body.position.y,d.body.position.z);
         d.group.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
 
-        // Let cannon-es physics run completely — no intervention.
-        // ConvexPolyhedron shapes are physically unstable on edges, so dice
-        // naturally tip to flat faces when friction is high and bounce is low.
+        // No intervention — pure cannon-es. ConvexPolyhedron is physically
+        // unstable on edges so dice naturally roll to flat faces.
         const sleeping=d.body.sleepState===2;
+        const vel=d.body.velocity.length();
+        const angVel=d.body.angularVelocity.length();
         const onFloor=d.body.position.y<d.scale*1.1+0.3;
-        if(sleeping&&onFloor){
+        if((sleeping||(vel<0.08&&angVel<0.08))&&onFloor){
+          d.body.velocity.set(0,0,0);
+          d.body.angularVelocity.set(0,0,0);
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
           d.val=detectTopFaceNum(d.def,tq,d.scale);
           d.settled=true;
         }
       });
 
+      totalT+=real;
+      // Hard 5s timeout — force-settle any stuck dice, guarantee a result
+      if(!allDone&&totalT>5.0){
+        dice.forEach(d=>{
+          if(d.settled)return;
+          d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
+          const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
+          d.val=detectTopFaceNum(d.def,tq,d.scale);
+          d.settled=true;
+        });
+      }
       if(!allDone&&dice.every(d=>d.settled)){
         allDone=true;doneT=0;showResult();
       }
       if(allDone){
         doneT+=real;
-        if(doneT>4.5){dismissed=true;dismissRef.current();cancelAnimationFrame(raf);return;}
+        if(doneT>4.0){dismissed=true;dismissRef.current();cancelAnimationFrame(raf);return;}
       }
       renderer.render(scene,camera);
     }
