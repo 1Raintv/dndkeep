@@ -74,18 +74,18 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.85,6:0.72,8:0.86,10:0.96,12:0.88,20:0.90,100:0.90};
+const SM:Record<number,number> = {4:0.92,6:0.78,8:0.88,10:0.96,12:0.90,20:0.92,100:0.90};
 const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:1.15,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
-  4: {f:0x7c3aed,e:0xede9fe},   // vivid violet
-  6: {f:0xdc2626,e:0xfecaca},   // vivid red
-  8: {f:0x16a34a,e:0xd1fae5},   // vivid green
-  10:{f:0x2563eb,e:0xdbeafe},   // vivid blue
-  12:{f:0xdb2777,e:0xfce7f3},   // vivid pink
-  20:{f:0xd97706,e:0xfef3c7},   // vivid amber
-  100:{f:0xdc2626,e:0xfecaca},
-  1001:{f:0x334155,e:0xf1f5f9}, // d100 tens (dark slate)
-  1002:{f:0x991b1b,e:0xfca5a5}, // d100 units (dark red)
+  4: {f:0x8b5cf6,e:0xf3f0ff},   // bright violet
+  6: {f:0xef4444,e:0xffe4e4},   // bright red
+  8: {f:0x22c55e,e:0xdcfce7},   // bright green
+  10:{f:0x3b82f6,e:0xe0f2fe},   // bright blue
+  12:{f:0xec4899,e:0xfdf2f8},   // bright pink
+  20:{f:0xf59e0b,e:0xfffbeb},   // bright amber
+  100:{f:0xef4444,e:0xffe4e4},
+  1001:{f:0x475569,e:0xf8fafc}, // d100 tens
+  1002:{f:0xb91c1c,e:0xfee2e2}, // d100 units
 };
 const th = (s:number) => THEME[s] ?? THEME[20];
 
@@ -111,6 +111,7 @@ function faceInfo(def:GeoDef, fi:number, s:number) {
 // detectTopFaceNum: viewDir = normalized vector from die position toward camera
 function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number,viewDir?:THREE.Vector3):number{
   const up=viewDir??new THREE.Vector3(0,1,0);
+  // D4 point-build: result = vertex pointing most upward (top vertex = result number)
   if(def.verts.length===4&&def.faces.length===4) return detectD4TopVertex(def,quat,up);
   let best=-2,bestNum=def.nums[0];
   def.faces.forEach((_,fi)=>{
@@ -247,27 +248,39 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   // All 3 upward faces show the same number at their shared top vertex → result.
   // Other dice: one number per face centered.
   const isD4=(def.verts.length===4&&def.faces.length===4);
-  // D4 uses DoubleSide + large centered number: steep faces need both sides rendered
-  // and the number should be prominently visible on each face
+  // ── D4 point-build: 3 numbers per face (one at each vertex corner) ────────────
+  // All 3 upward faces share their top-vertex corner number → that number = result.
+  // E.g. when v0 (number 1) is the top vertex, all 3 upward faces show "1" at their
+  // v0 corner. The player reads whichever number is at the topmost point.
   if(isD4){
     def.faces.forEach((_,fi)=>{
-      const{pos,normal,insc}=faceInfo(def,fi,S);
-      const off=0.05*S;
-      // Large number fills most of the face
-      const sz=insc*1.6*ff;
-      // Tilt plane 50% toward +Y so number faces camera better from overhead
-      const pn:V3=norm([normal[0]*0.5,normal[1]*0.5+0.55,normal[2]*0.5] as V3);
-      const mat=new THREE.MeshBasicMaterial({
-        map:numTex(numLabel(def.nums[fi]),t.e),
-        transparent:true, side:THREE.DoubleSide,
-        depthTest:true, depthWrite:false, alphaTest:0.05,
-        polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
+      const{pos:fc,normal,insc}=faceInfo(def,fi,S);
+      const off=0.055*S;
+      // Size: fits in corner without overlapping adjacent corner numbers
+      const sz=insc*1.0;
+      // Orientation: blend face normal toward +Y for better overhead visibility
+      const pn:V3=norm([normal[0]*0.45,normal[1]*0.45+0.55,normal[2]*0.45] as V3);
+      const faceVerts=def.faces[fi];
+      faceVerts.forEach(vi=>{
+        const v=def.verts[vi];
+        // Position: 62% toward vertex from face centroid
+        const cx=fc[0]/S,cy=fc[1]/S,cz=fc[2]/S;
+        const px=(v[0]*0.62+cx*0.38)*S+normal[0]*off;
+        const py=(v[1]*0.62+cy*0.38)*S+normal[1]*off;
+        const pz=(v[2]*0.62+cz*0.38)*S+normal[2]*off;
+        const mat=new THREE.MeshBasicMaterial({
+          map:numTex(String(D4_VERT_NUMS[vi]),t.e),
+          transparent:true, side:THREE.DoubleSide,
+          depthTest:true, depthWrite:false, alphaTest:0.05,
+          polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
+        });
+        const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+        plane.renderOrder=2;
+        plane.position.set(px,py,pz);
+        const q=new THREE.Quaternion();
+        q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(pn[0],pn[1],pn[2]));
+        plane.quaternion.copy(q);group.add(plane);
       });
-      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-      plane.renderOrder=2;
-      plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
-      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(pn[0],pn[1],pn[2]));
-      plane.quaternion.copy(q);group.add(plane);
     });
   } else {
     const numOff=0.038*S;
@@ -365,6 +378,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+    renderer.shadowMap.enabled=false; // MeshBasicMat ignores shadows — disable for perf
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
     // Camera slightly overhead — dice are clearly readable from above
@@ -513,6 +527,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
 
     function showResult(){
       if(shown||!el)return;shown=true;
+      rollingDiv.style.display='none';
       const detectedDice=dice.map(d=>({die:d.sides,value:d.val}));
       // D100: tens die (geoKey 10090) contributes val×10, units die contributes val
       // If both are 0, result is 100 (not 0)
@@ -586,6 +601,12 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       el.appendChild(div);
     }
 
+    // "Rolling..." indicator shown until result
+    const rollingDiv=document.createElement('div');
+    rollingDiv.style.cssText='position:absolute;top:14px;left:50%;transform:translateX(-50%);font:600 12px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.18em;text-transform:uppercase;pointer-events:none;';
+    rollingDiv.textContent='Rolling...';
+    el.appendChild(rollingDiv);
+
     function frame(ts:number){
       if(dismissed)return;
       raf=requestAnimationFrame(frame);
@@ -640,7 +661,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       }
       if(allDone){
         doneT+=real;
-        if(doneT>4.0){dismissed=true;dismissRef.current();cancelAnimationFrame(raf);return;}
+        if(doneT>5.5){dismissed=true;dismissRef.current();cancelAnimationFrame(raf);return;}
       }
       renderer.render(scene,camera);
     }
