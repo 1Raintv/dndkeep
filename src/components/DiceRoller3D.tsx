@@ -75,7 +75,7 @@ GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
 const SM:Record<number,number> = {4:0.92,6:0.78,8:0.88,10:0.96,12:0.90,20:0.92,100:0.90};
-const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:1.15,100:1.0};
+const FF:Record<number,number> = {4:1.1,6:1.25,8:1.1,10:1.0,12:0.85,20:1.15,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4: {f:0x8b5cf6,e:0xf3f0ff},   // bright violet
   6: {f:0xef4444,e:0xffe4e4},   // bright red
@@ -255,9 +255,9 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   if(isD4){
     def.faces.forEach((_,fi)=>{
       const{pos:fc,normal,insc}=faceInfo(def,fi,S);
-      const off=0.055*S;
+      const off=0.018*S; // tight to face surface
       // Size: fits in corner without overlapping adjacent corner numbers
-      const sz=insc*1.0;
+      const sz=insc*1.1;
       // Orientation: blend face normal toward +Y for better overhead visibility
       const pn:V3=norm([normal[0]*0.45,normal[1]*0.45+0.55,normal[2]*0.45] as V3);
       const faceVerts=def.faces[fi];
@@ -287,7 +287,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
     def.faces.forEach((_,fi)=>{
       const{pos,normal,insc}=faceInfo(def,fi,S);
       // Fixed plane size relative to S ensures large readable numbers on every die
-      const sz=Math.min(insc*1.85, S*0.55)*ff, off=numOff;
+      const sz=Math.min(insc*1.9, S*0.62)*ff, off=numOff;
       const mat=new THREE.MeshBasicMaterial({
         map:numTex(numLabel(def.nums[fi]),t.e),
         transparent:true, side:THREE.FrontSide,
@@ -482,7 +482,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         mass:1,
         material:diceMat,
         linearDamping:0.05,
-        angularDamping:isD10?0.4:0.1,  // d10 gets extra spin damping
+        angularDamping:isD10?0.65:0.1,  // d10 needs strong damping — bipyramid apex tips
         allowSleep:true,
         sleepSpeedLimit:2.0,
         sleepTimeLimit:0.1,
@@ -678,7 +678,9 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
   },[]);
 
   return createPortal(
-    <div ref={mountRef} onClick={onDismiss} style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.08)',cursor:'pointer',overflow:'hidden'}}>
+    <div ref={mountRef} onClick={onDismiss}
+      onContextMenu={e=>{e.preventDefault();onDismiss();}}
+      style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.08)',cursor:'pointer',overflow:'hidden'}}>
       <div style={{position:'absolute',bottom:14,left:0,right:0,textAlign:'center',pointerEvents:'none',fontFamily:'var(--ff-body)',fontSize:11,color:'rgba(255,255,255,0.5)',textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>Click anywhere to dismiss</div>
       <style>{`@keyframes rr{from{opacity:0;transform:translateX(-50%) scale(0.5)}to{opacity:1;transform:translateX(-50%) scale(1)}}@keyframes nat20Pulse{0%{opacity:0;transform:scale(0.5)}50%{opacity:1}100%{opacity:0;transform:scale(2)}}@keyframes nat1Flash{0%{opacity:0.8}100%{opacity:0}}@keyframes nat20Badge{from{opacity:0;transform:scale(0.5) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
     </div>,

@@ -236,7 +236,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
               return (
                 <button key={d}
                   onClick={() => addDie(d)}
-                  onContextMenu={e => { e.preventDefault(); removeDie(d); }}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); removeDie(d); }}
                   title={`Click to add d${d} · right-click to remove`}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -281,7 +281,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             <button className="btn-gold" onClick={rollAll} disabled={rolling || queue.length === 0}
               style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700,
                 opacity: (rolling || queue.length === 0) ? 0.45 : 1 }}>
-              {rolling ? '🎲 Rolling…' : queue.length > 0 ? `🎲 Roll ${buildExpr(queue)}` : '🎲 Roll'}
+              {rolling ? '🎲 Rolling…' : '🎲 Roll'}
             </button>
           </div>
 
