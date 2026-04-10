@@ -185,13 +185,22 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   return group;
 }
 
-/** Build cannon-es ConvexPolyhedron from die geometry */
+/** Build cannon-es ConvexPolyhedron — faces must be CCW from outside */
 function buildCannonShape(def:GeoDef,S:number):CANNON.ConvexPolyhedron{
   const vertices=def.verts.map(v=>new CANNON.Vec3(v[0]*S,v[1]*S,v[2]*S));
-  // Triangulate each face for cannon-es
   const faces:number[][]=[];
   def.faces.forEach(face=>{
-    for(let i=1;i<face.length-1;i++) faces.push([face[0],face[i],face[i+1]]);
+    // Fan-triangulate and ensure CCW winding from outside (cannon-es requirement)
+    for(let i=1;i<face.length-1;i++){
+      const a=def.verts[face[0]],b=def.verts[face[i]],c=def.verts[face[i+1]];
+      const bx=b[0]-a[0],by=b[1]-a[1],bz=b[2]-a[2];
+      const cx=c[0]-a[0],cy=c[1]-a[1],cz=c[2]-a[2];
+      const nx=by*cz-bz*cy,ny=bz*cx-bx*cz,nz=bx*cy-by*cx;
+      const mx=(a[0]+b[0]+c[0])/3,my=(a[1]+b[1]+c[1])/3,mz=(a[2]+b[2]+c[2])/3;
+      // If normal points toward centroid (inward), reverse winding
+      if(nx*mx+ny*my+nz*mz>0) faces.push([face[0],face[i],face[i+1]]);
+      else faces.push([face[0],face[i+1],face[i]]);
+    }
   });
   return new CANNON.ConvexPolyhedron({vertices,faces});
 }
