@@ -151,23 +151,18 @@ function numTex(label:string,ec:number):THREE.CanvasTexture{
   if(TC.has(key))return TC.get(key)!;
   const cv=document.createElement('canvas');cv.width=192;cv.height=192;
   const ctx=cv.getContext('2d')!;
-  // White numbers with thick dark outline for maximum contrast on any die color
-  const _r=(ec>>16)&255,_g=(ec>>8)&255,_b=ec&255; void _r; void _g; void _b;
-  const fs=label.length>=3?68:label.length===2?86:106;
+  // White numbers with dark outline — sized to fit face cleanly
+  const fs=label.length>=3?42:label.length===2?54:66;
   ctx.font=`900 ${fs}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
-  // Thick dark outline for contrast
-  ctx.strokeStyle='rgba(0,0,0,0.95)';ctx.lineWidth=10;ctx.strokeText(label,96,102);
-  // White fill for readability on any background
+  ctx.strokeStyle='rgba(0,0,0,0.92)';ctx.lineWidth=6;ctx.strokeText(label,96,102);
   ctx.fillStyle='#ffffff';ctx.fillText(label,96,102);
-  // Subtle die-color tint so numbers feel integrated (not jarring white on colored die)
-  ctx.globalAlpha=0.28;ctx.fillStyle=`rgb(${_r},${_g},${_b})`;ctx.fillText(label,96,102);ctx.globalAlpha=1;
   // Draw underline beneath 6 to distinguish from 9 when die is inverted
   if(label==='6'){
     const m=ctx.measureText('6');const uw=m.width*0.8;
     const uy=102+fs*0.42;
     ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=6;
     ctx.beginPath();ctx.moveTo(96-uw/2,uy);ctx.lineTo(96+uw/2,uy);ctx.stroke();
-    ctx.strokeStyle='#ffffff';ctx.lineWidth=4;
+    ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=3;
     ctx.beginPath();ctx.moveTo(96-uw/2,uy);ctx.lineTo(96+uw/2,uy);ctx.stroke();
   }
   const t=new THREE.CanvasTexture(cv);TC.set(key,t);return t;
@@ -218,9 +213,9 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const fc=new THREE.Color(t.f);
   const geo=solidGeo(def,S);
   // MeshPhongMaterial gives proper 3D shading — lit faces bright, shadow side dark
-  // emissive ensures shadow sides still show die color (not pitch black)
+  // High emissive so die color is vivid regardless of shadow angle
   const mats=def.faces.map(()=>new THREE.MeshPhongMaterial({
-    color:fc, emissive:fc.clone().multiplyScalar(0.18),
+    color:fc, emissive:fc.clone().multiplyScalar(0.55),
     specular:new THREE.Color(t.e), shininess:65,
     side:THREE.FrontSide,
   }));
@@ -343,7 +338,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     const BZf=Math.max(fl.z,fr.z,tl2.z,tr2.z)*0.87;
     const BZ=Math.max(BZb,BZf);
     // 3-point lighting for MeshPhongMaterial — proper 3D shading
-    scene.add(new THREE.AmbientLight(0xffffff,0.85));
+    scene.add(new THREE.AmbientLight(0xffffff,2.2));
     const sun=new THREE.DirectionalLight(0xffffff,2.2);
     sun.position.set(BX*0.4,18,BZ*0.4);sun.castShadow=true;
     sun.shadow.camera.left=-BX*1.3;sun.shadow.camera.right=BX*1.3;
@@ -355,13 +350,9 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     // Warm fill from front-below
     const fillL=new THREE.DirectionalLight(0xffe8cc,0.45);
     fillL.position.set(0,3,BZ*0.7);scene.add(fillL);
-    // Subtle grid floor for depth/table feel
-    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(BX*4,BZ*4),new THREE.MeshBasicMaterial({color:0x0d1117}));
+    // Clean dark floor — subtle so dice stand out
+    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(BX*4,BZ*4),new THREE.MeshBasicMaterial({color:0x080c12}));
     sFloor.rotation.x=-Math.PI/2;scene.add(sFloor);
-    // Grid lines
-    const gridH=new THREE.GridHelper(Math.max(BX,BZ)*2.5,16,0x1e2d3d,0x1e2d3d);
-    gridH.material.transparent=true;(gridH.material as THREE.Material).opacity=0.5;
-    scene.add(gridH);
 
     // ── Cannon-es world ──────────────────────────────────────────────
     const world=new CANNON.World({ gravity: new CANNON.Vec3(0,-60,0) }); // stronger gravity = faster settle
@@ -521,10 +512,8 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       const glow2=isNat20?`,0 0 60px rgba(255,200,0,0.8)`:isNat1?`,0 0 40px rgba(255,60,60,0.7)`:``;
       const div=document.createElement('div');
       div.style.cssText=`position:absolute;top:6%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;`;
-      const dBadgeColor=isNat20?'#ffd700':isNat1?'#ff4444':dieColor(event.dieType);
       div.innerHTML=
-        `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.45);letter-spacing:.22em;text-transform:uppercase;margin-bottom:4px">${lbl}</div>`+
-        `<div style="font:600 12px system-ui;color:${dBadgeColor};letter-spacing:.15em;margin-bottom:8px;opacity:0.85">${event.dieType===100?'d100':event.dieType?'d'+event.dieType:''}</div>`+
+        `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.4);letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px">${lbl}</div>`+
         `<div style="font:900 ${multi?68:92}px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
         (isNat20?`<div style="font:700 14px system-ui;color:#ffd700;letter-spacing:.2em;margin-top:8px;animation:nat20Badge 0.4s 0.3s both">★ NATURAL 20 ★</div>`:'')  +
         (isNat1 ?`<div style="font:700 14px system-ui;color:#ff4444;letter-spacing:.2em;margin-top:8px">✕ NATURAL 1 ✕</div>`:'') +
