@@ -261,7 +261,7 @@ interface PhysDie {
   group:THREE.Group; def:GeoDef; sides:number; val:number;
   x:number; y:number; z:number; vx:number; vy:number; vz:number;
   quat:THREE.Quaternion; arx:number; ary:number; arz:number;
-  phase:'fly'|'done'|'snap'; delay:number; scale:number;
+  phase:'fly'|'done'; delay:number; scale:number;
 }
 
 export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
@@ -342,17 +342,8 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
     function update(dt:number) {
       dice.forEach(d => {
         if (d.delay>0) { d.delay-=dt; return; }
-
-        if ((d.phase as any)==='snap') {
-          (d as any)._snapT += dt;
-          const t = Math.min(1, (d as any)._snapT / 0.3);
-          const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out
-          d.quat.copy((d as any)._snapFrom).slerp((d as any)._snapTo, ease);
-          d.group.quaternion.copy(d.quat);
-          if (t >= 1) { d.quat.copy((d as any)._snapTo); d.group.quaternion.copy(d.quat); d.phase = 'done'; }
-          return;
-        }
         if (d.phase==='done') return;
+
         d.vy -= GRAV*dt;
         d.x += d.vx*dt; d.y += d.vy*dt; d.z += d.vz*dt;
         const aL = Math.sqrt(d.arx**2+d.ary**2+d.arz**2);
@@ -364,6 +355,8 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         d.group.position.set(d.x,d.y,d.z);
         d.group.quaternion.copy(d.quat);
         const r = d.scale*0.82;
+
+        // Floor collision
         if (d.y-r < FLOOR) {
           d.y=FLOOR+r; d.vy=Math.abs(d.vy)*BOUNCE;
           d.vx*=0.84; d.vz*=0.84;
@@ -374,35 +367,56 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         if (d.x> BX){d.x= BX;d.vx=-Math.abs(d.vx)*WALL_B;}
         if (d.z<-BZ){d.z=-BZ;d.vz=Math.abs(d.vz)*WALL_B;}
         if (d.z> BZ){d.z= BZ;d.vz=-Math.abs(d.vz)*WALL_B;}
-        if (Math.abs(d.y-r-FLOOR)<0.05) {
-          d.vx*=0.96; d.vz*=0.96; d.arx*=0.93; d.ary*=0.93; d.arz*=0.93;
-        }
+
+        const onFloor = Math.abs(d.y-r-FLOOR)<0.07;
         const spd = Math.sqrt(d.vx**2+d.vy**2+d.vz**2);
         const ang = Math.sqrt(d.arx**2+d.ary**2+d.arz**2);
-        // Force settle after 3.2s or when naturally stopped
-        const forceSettle = (d as any)._t !== undefined && ((d as any)._t += dt) > 3.2;
+
+        // Rolling friction on floor
+        if (onFloor) {
+          d.vx*=0.96; d.vz*=0.96; d.arx*=0.93; d.ary*=0.93; d.arz*=0.93;
+        }
+
+        // ── Natural face-settling physics ────────────────────────────────
+        // When slow and on floor, check face alignment. If sitting on edge/corner,
+        // apply a gentle physics torque (like real center-of-mass instability)
+        // that nudges the die toward the nearest flat face. No artificial snap.
+        if (onFloor && spd < 1.5 && ang < 3.0) {
+          const topFi = d.def.nums.indexOf(detectTopFaceNum(d.def, d.quat, d.scale));
+          const {normal: topN} = faceInfo(d.def, topFi, d.scale);
+          const worldN = new THREE.Vector3(topN[0],topN[1],topN[2]).applyQuaternion(d.quat);
+          const alignment = worldN.y; // 1.0 = perfectly face-up, <1.0 = on edge
+
+          if (alignment < 0.998) {
+            // Torque axis: cross product of current face normal with target +Y
+            // This rotates the die so the face tips toward flat
+            const tx = worldN.z * 0;   // cross([wx,wy,wz],[0,1,0])
+            const ty = 0;               //   = [wy*0-wz*1, wz*0-wx*0, wx*1-wy*0]
+            const tz = worldN.x;        //   = [-wz, 0, wx] simplified for (0,1,0)
+            const torqueX = -worldN.z;
+            const torqueZ =  worldN.x;
+            // Strength proportional to misalignment and inversely to angular speed
+            const str = (1.0 - alignment) * 12.0 * Math.max(0, 1 - ang/3.0);
+            d.arx += torqueX * str * dt;
+            d.arz += torqueZ * str * dt;
+          }
+
+          // Settle only when a face is genuinely pointing up AND die is still
+          if (spd < 0.08 && ang < 0.25 && alignment > 0.97) {
+            d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
+            d.group.position.set(d.x,d.y,d.z);
+            d.val = detectTopFaceNum(d.def, d.quat, d.scale);
+            return;
+          }
+        }
+
+        // Safety fallback: if die has been rolling more than 5s, force settle
         if ((d as any)._t === undefined) (d as any)._t = 0;
-        if ((spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) || forceSettle) {
+        (d as any)._t += dt;
+        if ((d as any)._t > 5.0 && spd < 2.0) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
-          // Physics determines which face is closest to up — that is the result
-          const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
-          d.val = topNum; // physics-chosen result
-          // Snap to exactly face-up so the number is clearly readable (not on an edge/corner)
-          const fq = faceUpQuat(d.def, topNum, d.scale);
-          if (fq) {
-            const dotProduct = new THREE.Vector3(0,1,0).dot(
-              new THREE.Vector3(...faceInfo(d.def, d.def.nums.indexOf(topNum), d.scale).normal).applyQuaternion(d.quat)
-            );
-            // Only snap if face isn't already closely aligned (avoids micro-jitter on clean landings)
-            if (dotProduct < 0.999) {
-              (d as any)._snapFrom = d.quat.clone();
-              (d as any)._snapTo = fq;
-              (d as any)._snapT = 0;
-              d.phase = 'snap' as any;
-              return; // will complete in snap phase, then call done
-            }
-          }
+          d.val = detectTopFaceNum(d.def, d.quat, d.scale);
         }
       });
     }
