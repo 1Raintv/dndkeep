@@ -179,6 +179,9 @@ function solidGeo(def:GeoDef,s:number):THREE.BufferGeometry{
     let fnx=fey*ffz-fez*ffy,fny=fez*ffx-fex*ffz,fnz=fex*ffy-fey*ffx;
     const fnl=Math.sqrt(fnx*fnx+fny*fny+fnz*fnz)||1;
     fnx/=fnl;fny/=fnl;fnz/=fnl;
+    // Always point outward: face centroid from origin gives outward direction on convex shapes
+    const fCx=(fa[0]+fb[0]+fc2[0])/3,fCy=(fa[1]+fb[1]+fc2[1])/3,fCz=(fa[2]+fb[2]+fc2[2])/3;
+    if(fnx*fCx+fny*fCy+fnz*fCz<0){fnx=-fnx;fny=-fny;fnz=-fnz;}
     const start=off;let tc=0;
     for(let i=1;i<face.length-1;i++){
       const a=def.verts[face[0]],b=def.verts[face[i]],c=def.verts[face[i+1]];
@@ -216,9 +219,13 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   // MeshPhongMaterial gives proper 3D shading — lit faces bright, shadow side dark
   // High emissive so die color is vivid regardless of shadow angle
   const mats=def.faces.map(()=>new THREE.MeshPhongMaterial({
-    color:fc, emissive:fc.clone().multiplyScalar(0.7),
-    specular:new THREE.Color(t.e), shininess:65,
-    side:THREE.DoubleSide,
+    color:fc,
+    emissive:fc.clone().multiplyScalar(0.7),
+    specular:new THREE.Color(t.e), shininess:45,
+    side:THREE.FrontSide,    // only outward-facing faces — die is solid
+    transparent:false,        // explicitly opaque
+    opacity:1.0,
+    depthWrite:true,
   }));
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
   // Brighter edge lines for definition
@@ -240,7 +247,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
         const px=(v[0]*0.60+cx*0.40)*S+normal[0]*off;
         const py=(v[1]*0.60+cy*0.40)*S+normal[1]*off;
         const pz=(v[2]*0.60+cz*0.40)*S+normal[2]*off;
-        const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+        const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:true,depthWrite:false,alphaTest:0.1,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-8});
         const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
         plane.renderOrder=2;
         plane.position.set(px,py,pz);
@@ -253,7 +260,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
     def.faces.forEach((_,fi)=>{
       const{pos,normal,insc}=faceInfo(def,fi,S);
       const sz=insc*1.7*ff, off=numOff;
-      const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+      const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:true,depthWrite:false,alphaTest:0.1,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-8});
       const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
       plane.renderOrder=2;
       plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
@@ -409,7 +416,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
     // Scale dice to ~7% of window height so they're readable across the full window
-    const diceScreenPct=BZ*0.138; // 25% larger
+    const diceScreenPct=BZ*0.173; // +25% from previous
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
     interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
