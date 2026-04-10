@@ -107,28 +107,28 @@ function faceInfo(def:GeoDef, fi:number, s:number) {
   return{pos:[cx,cy,cz]as V3,normal:outward,insc};
 }
 
-// Camera sits at (0, 7.5, 3.5) — detect the face most visible FROM the camera
-const CAM_DIR=new THREE.Vector3(0,7.5,3.5).normalize(); // die→camera direction
-function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number):number{
-  if(def.verts.length===4&&def.faces.length===4) return detectD4TopVertex(def,quat);
+// Per-die camera direction is passed at settle time — accurate across entire window
+// detectTopFaceNum: viewDir = normalized vector from die position toward camera
+function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number,viewDir?:THREE.Vector3):number{
+  const up=viewDir??new THREE.Vector3(0,1,0);
+  if(def.verts.length===4&&def.faces.length===4) return detectD4TopVertex(def,quat,up);
   let best=-2,bestNum=def.nums[0];
   def.faces.forEach((_,fi)=>{
     const{normal}=faceInfo(def,fi,s);
     const v=new THREE.Vector3(normal[0],normal[1],normal[2]).applyQuaternion(quat);
-    const score=v.dot(CAM_DIR); // face most pointing toward camera = result face
-    if(score>best){best=score;bestNum=def.nums[fi];}
+    if(v.dot(up)>best){best=v.dot(up);bestNum=def.nums[fi];}
   });
   return bestNum;
 }
 
-// D4 vertex numbers (point-build convention: top vertex = result)
+// D4 vertex numbers (point-build: vertex most pointing toward camera = result)
 const D4_VERT_NUMS = [1,2,3,4];
 
-function detectD4TopVertex(def:GeoDef,quat:THREE.Quaternion):number{
+function detectD4TopVertex(def:GeoDef,quat:THREE.Quaternion,up:THREE.Vector3):number{
   let best=-2,bestNum=1;
   def.verts.forEach((v,vi)=>{
     const w=new THREE.Vector3(v[0],v[1],v[2]).applyQuaternion(quat);
-    if(w.y>best){best=w.y;bestNum=D4_VERT_NUMS[vi];}
+    if(w.dot(up)>best){best=w.dot(up);bestNum=D4_VERT_NUMS[vi];}
   });
   return bestNum;
 }
@@ -570,7 +570,9 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           d.body.velocity.set(0,0,0);
           d.body.angularVelocity.set(0,0,0);
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          d.val=detectTopFaceNum(d.def,tq,d.scale);
+          // Per-die view direction: vector from die position toward camera
+          const vd1=camera.position.clone().sub(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)).normalize();
+          d.val=detectTopFaceNum(d.def,tq,d.scale,vd1);
           d.settled=true;
         }
       });
@@ -582,7 +584,8 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           if(d.settled)return;
           d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          d.val=detectTopFaceNum(d.def,tq,d.scale);
+          const vd2=camera.position.clone().sub(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)).normalize();
+          d.val=detectTopFaceNum(d.def,tq,d.scale,vd2);
           d.settled=true;
         });
       }
