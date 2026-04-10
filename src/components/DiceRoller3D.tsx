@@ -188,9 +188,11 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.003),new THREE.LineBasicMaterial({color:t.e}));
   const group=new THREE.Group();group.add(mesh);group.add(edges);
+  // d4 (tetrahedron) needs larger offset — faces at 54.7° need more clearance
+  const numOff=(def.faces.length===4&&def.faces[0].length===3)?0.07*S:0.035*S;
   def.faces.forEach((_,fi)=>{
     const{pos,normal,insc}=faceInfo(def,fi,S);
-    const sz=insc*1.7*ff,off=0.035*S;
+    const sz=insc*1.7*ff,off=numOff;
     const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
     const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
     plane.renderOrder=1;
@@ -321,10 +323,11 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       });
       body.addShape(shape);
 
-      // Start from the top, aimed toward center of the scene
-      const startX=sp.ox+(Math.random()-0.5)*(rawList.length>1?1.0:1.4);
-      const startY=5.0+i*0.6;
-      const startZ=(Math.random()-0.5)*0.8;
+      // Start from edge of scene — dice fly across the full table
+      const side = Math.random()>0.5 ? 1 : -1;
+      const startX = side*(2.0+Math.random()*0.6) + sp.ox;
+      const startY = 4.5+i*0.5+Math.random()*0.8;
+      const startZ = (Math.random()-0.5)*1.4;
       body.position.set(startX, startY, startZ);
 
       // Random starting orientation
@@ -332,13 +335,13 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       eq.setFromEuler(Math.random()*Math.PI*2,Math.random()*Math.PI*2,Math.random()*Math.PI*2);
       body.quaternion.copy(eq);
 
-      // Moderate velocity — aimed toward center so dice stay visible
+      // Strong throw across the table — dice travel most of the width
       body.velocity.set(
-        -startX*0.4 + (Math.random()-0.5)*1.5, // nudge toward center x
-        -(3.0+Math.random()*1.5),
-        -startZ*0.3 + (Math.random()-0.5)*1.0  // nudge toward center z
+        -side*(2.5+Math.random()*1.5),           // fly from side to side
+        -(2.5+Math.random()*1.5),
+        (Math.random()-0.5)*1.5
       );
-      body.angularVelocity.set((Math.random()-0.5)*18,(Math.random()-0.5)*18,(Math.random()-0.5)*12);
+      body.angularVelocity.set((Math.random()-0.5)*22,(Math.random()-0.5)*22,(Math.random()-0.5)*16);
 
       // Stagger: launch each die from a slightly different height
 
