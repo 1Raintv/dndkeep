@@ -261,7 +261,7 @@ interface PhysDie {
   group:THREE.Group; def:GeoDef; sides:number; val:number;
   x:number; y:number; z:number; vx:number; vy:number; vz:number;
   quat:THREE.Quaternion; arx:number; ary:number; arz:number;
-  phase:'fly'|'done'; delay:number; scale:number;
+  phase:'fly'|'done'|'snap'; delay:number; scale:number;
 }
 
 export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
@@ -343,6 +343,15 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
       dice.forEach(d => {
         if (d.delay>0) { d.delay-=dt; return; }
 
+        if ((d.phase as any)==='snap') {
+          (d as any)._snapT += dt;
+          const t = Math.min(1, (d as any)._snapT / 0.3);
+          const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out
+          d.quat.copy((d as any)._snapFrom).slerp((d as any)._snapTo, ease);
+          d.group.quaternion.copy(d.quat);
+          if (t >= 1) { d.quat.copy((d as any)._snapTo); d.group.quaternion.copy(d.quat); d.phase = 'done'; }
+          return;
+        }
         if (d.phase==='done') return;
         d.vy -= GRAV*dt;
         d.x += d.vx*dt; d.y += d.vy*dt; d.z += d.vz*dt;
@@ -376,8 +385,24 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         if ((spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) || forceSettle) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
-          // Physics determines the result — detect top face, store it
-          d.val = detectTopFaceNum(d.def, d.quat, d.scale);
+          // Physics determines which face is closest to up — that is the result
+          const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
+          d.val = topNum; // physics-chosen result
+          // Snap to exactly face-up so the number is clearly readable (not on an edge/corner)
+          const fq = faceUpQuat(d.def, topNum, d.scale);
+          if (fq) {
+            const dotProduct = new THREE.Vector3(0,1,0).dot(
+              new THREE.Vector3(...faceInfo(d.def, d.def.nums.indexOf(topNum), d.scale).normal).applyQuaternion(d.quat)
+            );
+            // Only snap if face isn't already closely aligned (avoids micro-jitter on clean landings)
+            if (dotProduct < 0.999) {
+              (d as any)._snapFrom = d.quat.clone();
+              (d as any)._snapTo = fq;
+              (d as any)._snapT = 0;
+              d.phase = 'snap' as any;
+              return; // will complete in snap phase, then call done
+            }
+          }
         }
       });
     }
