@@ -222,15 +222,15 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(60,W/H,0.1,200);
-    camera.position.set(0,7,3);camera.lookAt(0,0,0);
-    scene.add(new THREE.AmbientLight(0xffffff,1.4));
-    const sun=new THREE.DirectionalLight(0xffffff,2.2);
+    camera.position.set(0,5.5,6);camera.lookAt(0,0,0.5);
+    scene.add(new THREE.AmbientLight(0xffffff,1.8));
+    const sun=new THREE.DirectionalLight(0xffffff,2.8);
     sun.position.set(3,10,4);sun.castShadow=true;
     sun.shadow.camera.left=-8;sun.shadow.camera.right=8;
     sun.shadow.camera.top=8;sun.shadow.camera.bottom=-8;
     scene.add(sun);
     scene.add(new THREE.DirectionalLight(0x8899ff,0.4)).position.set(-3,-2,2);
-    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:0.25}));
+    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:0.35}));
     sFloor.rotation.x=-Math.PI/2;sFloor.receiveShadow=true;scene.add(sFloor);
 
     // ── Cannon-es world ──────────────────────────────────────────────
@@ -305,20 +305,24 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       });
       body.addShape(shape);
 
-      // Start position: above the floor, spread across the table
-      const startX=sp.ox+(Math.random()-0.5)*(rawList.length>1?1.2:1.8);
-      const startY=3.5+Math.random()*1.5;
-      const startZ=(Math.random()-0.5)*1.2;
-      body.position.set(startX, startY + i * 0.8, startZ); // natural stagger
+      // Start from the top, aimed toward center of the scene
+      const startX=sp.ox+(Math.random()-0.5)*(rawList.length>1?1.0:1.4);
+      const startY=5.0+i*0.6;
+      const startZ=(Math.random()-0.5)*0.8;
+      body.position.set(startX, startY, startZ);
 
       // Random starting orientation
       const eq=new CANNON.Quaternion();
       eq.setFromEuler(Math.random()*Math.PI*2,Math.random()*Math.PI*2,Math.random()*Math.PI*2);
       body.quaternion.copy(eq);
 
-      // Strong throw velocity — fly across the table
-      body.velocity.set((Math.random()-0.5)*3,-(2.5+Math.random()*1.5),(Math.random()-0.5)*2);
-      body.angularVelocity.set((Math.random()-0.5)*20,(Math.random()-0.5)*20,(Math.random()-0.5)*14);
+      // Moderate velocity — aimed toward center so dice stay visible
+      body.velocity.set(
+        -startX*0.4 + (Math.random()-0.5)*1.5, // nudge toward center x
+        -(3.0+Math.random()*1.5),
+        -startZ*0.3 + (Math.random()-0.5)*1.0  // nudge toward center z
+      );
+      body.angularVelocity.set((Math.random()-0.5)*18,(Math.random()-0.5)*18,(Math.random()-0.5)*12);
 
       // Stagger: launch each die from a slightly different height
 
@@ -340,11 +344,11 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       const firstResult=detectedDice[0]?.value??0;
       const lbl=event.label||(event.dieType===100?'d100':event.dieType?`d${event.dieType}`:'Roll');
       const div=document.createElement('div');
-      div.style.cssText='position:absolute;top:7%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.6s cubic-bezier(0.34,1.56,0.64,1) both;';
+      div.style.cssText='position:absolute;top:6%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;';
       div.innerHTML=
-        `<div style="font:700 13px system-ui;color:rgba(255,255,255,0.5);letter-spacing:.2em;text-transform:uppercase;margin-bottom:4px">${lbl}</div>`+
-        `<div style="font:900 ${multi?72:96}px system-ui;color:#fff;line-height:1;text-shadow:0 0 50px rgba(255,255,255,0.7)">${tot}</div>`+
-        (hasMod?`<div style="font:500 17px system-ui;color:rgba(255,255,255,0.5);margin-top:4px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier}</div>`:'');
+        `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.45);letter-spacing:.22em;text-transform:uppercase;margin-bottom:6px">${lbl}</div>`+
+        `<div style="font:900 ${multi?68:92}px system-ui;color:#fff;line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5),0 0 80px rgba(255,255,255,0.2)">${tot}</div>`+
+        (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
       el.appendChild(div);
     }
 
