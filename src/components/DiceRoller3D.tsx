@@ -258,8 +258,8 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     const diceMat=new CANNON.Material('dice');
     const floorMat=new CANNON.Material('floor');
     const contact=new CANNON.ContactMaterial(diceMat,floorMat,{
-      friction: 0.8,           // high friction — dice grip the floor
-      restitution: 0.25,       // modest bounce
+      friction: 0.95,          // very high — die grips and stops cleanly
+      restitution: 0.1,        // near-zero bounce — one thud and it stays down
       contactEquationStiffness: 1e8,
     });
     world.addContactMaterial(contact);
@@ -313,11 +313,11 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       const body=new CANNON.Body({
         mass:1,
         material:diceMat,
-        linearDamping:0.2,
-        angularDamping:0.25,
+        linearDamping:0.4,
+        angularDamping:0.5,
         allowSleep:true,
-        sleepSpeedLimit:0.4,
-        sleepTimeLimit:0.6,
+        sleepSpeedLimit:0.15,  // only sleep when genuinely still
+        sleepTimeLimit:0.8,
       });
       body.addShape(shape);
 
@@ -383,27 +383,15 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         d.group.position.set(d.body.position.x,d.body.position.y,d.body.position.z);
         d.group.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
 
-        // Settle: when nearly stopped and on floor, check face alignment
-        const vel=d.body.velocity.length();
-        const angVel=d.body.angularVelocity.length();
-        const onFloor=d.body.position.y<d.scale*1.1+0.3;
+        // Let cannon-es physics run completely — no intervention.
+        // ConvexPolyhedron shapes are physically unstable on edges, so dice
+        // naturally tip to flat faces when friction is high and bounce is low.
         const sleeping=d.body.sleepState===2;
-        if((sleeping||(vel<0.25&&angVel<0.4))&&onFloor){
+        const onFloor=d.body.position.y<d.scale*1.1+0.3;
+        if(sleeping&&onFloor){
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          const topFi=d.def.nums.indexOf(detectTopFaceNum(d.def,tq,d.scale));
-          const {normal:fN}=faceInfo(d.def,topFi,d.scale);
-          const worldN=new THREE.Vector3(fN[0],fN[1],fN[2]).applyQuaternion(tq);
-          if(worldN.y>0.97){
-            // Face is genuinely flat and pointing up — settle here naturally
-            d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
-            d.settled=true;
-            d.val=d.def.nums[topFi];
-          } else if(sleeping){
-            // Sleeping on an edge — tiny physics impulse tips it to nearest face, no visual snap
-            d.body.wakeUp();
-            d.body.velocity.set(0,0,0);
-            d.body.angularVelocity.set(-worldN.z*1.5, 0, worldN.x*1.5);
-          }
+          d.val=detectTopFaceNum(d.def,tq,d.scale);
+          d.settled=true;
         }
       });
 
