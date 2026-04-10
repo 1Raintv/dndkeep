@@ -100,12 +100,15 @@ function faceInfo(def:GeoDef, fi:number, s:number) {
   return{pos:[cx,cy,cz]as V3,normal:outward,insc};
 }
 
+// Camera sits at (0, 7.5, 3.5) — detect the face most visible FROM the camera
+const CAM_DIR=new THREE.Vector3(0,7.5,3.5).normalize(); // die→camera direction
 function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number):number{
   let best=-2,bestNum=def.nums[0];
   def.faces.forEach((_,fi)=>{
     const{normal}=faceInfo(def,fi,s);
     const v=new THREE.Vector3(normal[0],normal[1],normal[2]).applyQuaternion(quat);
-    if(v.y>best){best=v.y;bestNum=def.nums[fi];}
+    const score=v.dot(CAM_DIR); // face most pointing toward camera = result face
+    if(score>best){best=score;bestNum=def.nums[fi];}
   });
   return bestNum;
 }
@@ -380,35 +383,26 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         d.group.position.set(d.body.position.x,d.body.position.y,d.body.position.z);
         d.group.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
 
-        // Face-align ease after physics settle (smooth 220ms snap to exact face-up)
-        if((d as any)._aligning){
-          (d as any)._alignT+=real;
-          const t=Math.min(1,(d as any)._alignT/0.22);
-          const ease=t<0.5?2*t*t:-1+(4-2*t)*t;
-          d.group.quaternion.copy((d as any)._alignFrom).slerp((d as any)._alignTo,ease);
-          if(t>=1){d.group.quaternion.copy((d as any)._alignTo);d.settled=true;(d as any)._aligning=false;}
-          return;
-        }
-        // Check if settled (sleeping or barely moving)
+        // Settle: when nearly stopped and on floor, check face alignment
         const vel=d.body.velocity.length();
         const angVel=d.body.angularVelocity.length();
         const onFloor=d.body.position.y<d.scale*1.1+0.3;
-        const sleeping=d.body.sleepState===2; // 2 = SLEEPING in cannon-es
-        if((sleeping||(vel<0.35&&angVel<0.6))&&onFloor){
-          // Stop the physics body
-          d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
+        const sleeping=d.body.sleepState===2;
+        if((sleeping||(vel<0.25&&angVel<0.4))&&onFloor){
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          const topNum=detectTopFaceNum(d.def,tq,d.scale);
-          d.val=topNum;
-          // Smooth 220ms ease to align top face exactly with +Y — unambiguous result
-          const fq=faceUpQuat(d.def,topNum,d.scale);
-          if(fq){
-            (d as any)._alignFrom=tq.clone();
-            (d as any)._alignTo=fq;
-            (d as any)._alignT=0;
-            (d as any)._aligning=true;
-          } else {
+          const topFi=d.def.nums.indexOf(detectTopFaceNum(d.def,tq,d.scale));
+          const {normal:fN}=faceInfo(d.def,topFi,d.scale);
+          const worldN=new THREE.Vector3(fN[0],fN[1],fN[2]).applyQuaternion(tq);
+          if(worldN.y>0.97){
+            // Face is genuinely flat and pointing up — settle here naturally
+            d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
             d.settled=true;
+            d.val=d.def.nums[topFi];
+          } else if(sleeping){
+            // Sleeping on an edge — tiny physics impulse tips it to nearest face, no visual snap
+            d.body.wakeUp();
+            d.body.velocity.set(0,0,0);
+            d.body.angularVelocity.set(-worldN.z*1.5, 0, worldN.x*1.5);
           }
         }
       });
