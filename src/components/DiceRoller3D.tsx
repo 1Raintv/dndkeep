@@ -14,7 +14,7 @@ export interface DiceRollEvent {
   label?: string; allDice?: { die: number; value: number }[];
   expression?: string; flatBonus?: number;
 }
-interface Props { event: DiceRollEvent; onDismiss: () => void; }
+interface Props { event: DiceRollEvent; onDismiss: () => void; onResult?: (allDice: {die:number,value:number}[], total:number) => void; }
 
 const PHI = (1+Math.sqrt(5))/2;
 type V3 = [number,number,number];
@@ -261,10 +261,10 @@ interface PhysDie {
   group:THREE.Group; def:GeoDef; sides:number; val:number;
   x:number; y:number; z:number; vx:number; vy:number; vz:number;
   quat:THREE.Quaternion; arx:number; ary:number; arz:number;
-  phase:'fly'|'done'|'snap'; delay:number; scale:number;
+  phase:'fly'|'done'; delay:number; scale:number;
 }
 
-export default function DiceRoller3D({event,onDismiss}:Props) {
+export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
@@ -315,14 +315,10 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
       const S = baseS * (SM[sp.die]??1.0);
       const group = buildDie(def, S, th(sp.tk), FF[sp.die]??1.0, sp.label, sp.die);
       scene.add(group);
-      // Pre-bias: start with correct face roughly up + full random tumble
-      // This makes the die statistically likely to land correctly without any end-snap
-      const faceQ = faceUpQuat(def, sp.val, S) ?? new THREE.Quaternion();
-      const tumbleQ = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(Math.random()-.5, Math.random()-.5, Math.random()-.5).normalize(),
-        Math.PI * 2 * (3 + Math.random()*3) // 3-6 full rotations
+      // Truly random start — physics determines the result
+      const startQ = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(Math.random()*Math.PI*2, Math.random()*Math.PI*2, Math.random()*Math.PI*2)
       );
-      const startQ = tumbleQ.multiply(faceQ);
       group.quaternion.copy(startQ);
       const spread = Math.min(BX*0.4, specs.length*0.3);
       // Full tumbling angular velocity in all directions
@@ -346,15 +342,7 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     function update(dt:number) {
       dice.forEach(d => {
         if (d.delay>0) { d.delay-=dt; return; }
-        if ((d.phase as any)==='snap') {
-          (d as any)._snapT += dt;
-          const t = Math.min(1, (d as any)._snapT / 0.25);
-          const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out
-          d.quat.copy((d as any)._snapFrom).slerp((d as any)._snapTo, ease);
-          d.group.quaternion.copy(d.quat);
-          if (t >= 1) d.phase = 'done';
-          return;
-        }
+
         if (d.phase==='done') return;
         d.vy -= GRAV*dt;
         d.x += d.vx*dt; d.y += d.vy*dt; d.z += d.vz*dt;
@@ -388,17 +376,8 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
         if ((spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) || forceSettle) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
-          // Smooth 0.25s slerp to correct face — looks like natural final settling
-          const fq = faceUpQuat(d.def, d.val, d.scale);
-          if (fq) {
-            const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
-            if (topNum !== d.val) {
-              (d as any)._snapFrom = d.quat.clone();
-              (d as any)._snapTo = fq;
-              (d as any)._snapT = 0;
-              d.phase = 'snap' as any;
-            }
-          }
+          // Physics determines the result — detect top face, store it
+          d.val = detectTopFaceNum(d.def, d.quat, d.scale);
         }
       });
     }
@@ -406,9 +385,15 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
     let last=performance.now(), allDone=false, doneT=0, dismissed=false, raf=0, shown=false;
     function showResult() {
       if (shown||!el) return; shown=true;
-      const tot = event.total ?? (event.modifier!==undefined ? event.result+event.modifier : event.result);
-      const multi = rawList.length>1;
+      // Use physics-detected values from dice
+      const detectedDice = dice.map(d => ({die:d.sides, value:d.val}));
+      const detectedTotal = detectedDice.reduce((s,d)=>s+d.value,0) + (event.flatBonus??0) + (event.modifier??0);
+      // Notify parent with actual physics result (for DB logging)
+      if (onResult) onResult(detectedDice, detectedTotal);
+      const tot = detectedTotal;
+      const multi = detectedDice.length>1;
       const hasMod = !multi && event.modifier!==undefined && event.modifier!==0;
+      const firstResult = detectedDice[0]?.value ?? 0;
       const lbl = event.label || (event.dieType===100?'d100':event.dieType?`d${event.dieType}`:'Roll');
       const div = document.createElement('div');
       div.style.cssText='position:absolute;top:7%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.6s cubic-bezier(0.34,1.56,0.64,1) both;';

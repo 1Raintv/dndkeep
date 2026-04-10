@@ -44,8 +44,12 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
     const blessRoll = buffs.blessActive ? rollDie(4) : 0;
     const total = d20 + modifier + blessRoll;
     const label = `${skillName} Check${hasDisadvantage ? ' (Disadv.)' : ''}${blessRoll ? ` +${blessRoll} Bless` : ''}`;
-    triggerRoll({ result: d20, dieType: 20, modifier: modifier + blessRoll, total, label });
-    supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label, dice_expression: '1d20', individual_results: [d20], total, modifier: modifier + blessRoll }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+    triggerRoll({ result: 0, dieType: 20, modifier: modifier + blessRoll, label,
+      onResult: (_dice, physTotal) => {
+        const physRoll = physTotal - (modifier + blessRoll);
+        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: modifier + blessRoll }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+      },
+    });
   }
 
   function cycleSkill(e: React.MouseEvent, skillName: string) {

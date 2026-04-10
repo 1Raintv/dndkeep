@@ -58,7 +58,7 @@ export default function CombatStats({ character, computed, onUpdateHP }: CombatS
 
     setLastSave({ ability, d20, total });
     const suffix = hasDisadvantage ? ' (Disadv.)' : '';
-    triggerRoll({ result: d20, dieType: 20, modifier: mod, total, label: `${SAVE_ABBREV[ability]} Save${suffix}` });
+    triggerRoll({ result: 0, dieType: 20, modifier: mod, label: `${SAVE_ABBREV[ability]} Save${suffix}` });
   }
 
   const hitDiceRemaining = character.level - (character.hit_dice_spent ?? 0);

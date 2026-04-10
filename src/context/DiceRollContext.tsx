@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, type ReactNod
 import DiceRoller3D from '../components/DiceRoller3D';
 
 export interface DiceRollEvent {
-  result: number;      // the raw die result (primary die)
+  result: number;      // the raw die result (primary die) — used for display hint only
   dieType: number;     // 4, 6, 8, 10, 12, 20, 100
   modifier?: number;   // + or - modifier added
   total?: number;      // final sum including all dice + modifier
@@ -13,6 +13,8 @@ export interface DiceRollEvent {
   allDice?: { die: number; value: number }[];
   expression?: string; // e.g. "2d4+2"
   flatBonus?: number;  // the +2 part
+  // Physics callback — called with physics-detected result after dice settle
+  onResult?: (allDice: {die:number, value:number}[], total:number) => void;
 }
 
 interface DiceRollContextType {
@@ -42,7 +44,7 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   return (
     <DiceRollContext.Provider value={{ triggerRoll, current }}>
       {children}
-      {current && <DiceRoller3D event={current} onDismiss={() => setCurrent(null)} />}
+      {current && <DiceRoller3D event={current} onDismiss={() => setCurrent(null)} onResult={current.onResult} />}
     </DiceRollContext.Provider>
   );
 }

@@ -41,8 +41,12 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     const roll2 = hasDisadvantage ? rollDie(20) : roll1;
     const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
     const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
-    triggerRoll({ result: d20, dieType: 20, modifier: mod, total: d20 + mod, label });
-    supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [d20], total: d20 + mod, modifier: mod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+    triggerRoll({ result: 0, dieType: 20, modifier: mod, label,
+      onResult: (_dice, physTotal) => {
+        const physRoll = physTotal - mod;
+        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+      },
+    });
   }
 
   return (

@@ -137,31 +137,29 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
       setLastRoll(set);
       setRolling(false);
 
-      // Trigger visual dice animation
+      // Trigger visual dice animation — physics determines the result
       const primaryDie = queue[0];
       const keptDice = finalDice.filter(d => !d.dropped);
-      const primaryResult = keptDice.find(d => d.die === (primaryDie?.die ?? 20));
       const totalDiceCount = queue.reduce((s, d) => s + d.count, 0);
       triggerRoll({
-        result: primaryResult?.value ?? total,
+        result: 0, // placeholder — physics will detect actual result
         dieType: primaryDie?.die ?? 20,
-        total: totalDiceCount > 1 ? total : undefined,
         label: label || expression,
         advantage: adv === 'advantage',
         disadvantage: adv === 'disadvantage',
         allDice: totalDiceCount > 1 ? keptDice.map(d => ({ die: d.die, value: d.value })) : undefined,
         expression: totalDiceCount > 1 ? expression : undefined,
+        // DB write happens after physics detects the actual top faces
+        onResult: characterId ? async (physDice, physTotal) => {
+          await logRoll({
+            campaignId, characterId, characterName, userId,
+            label: label || expression,
+            expression,
+            results: physDice.map(d => d.value),
+            total: physTotal,
+          });
+        } : undefined,
       });
-
-      if (characterId) {
-        await logRoll({
-          campaignId, characterId, characterName, userId,
-          label: label || expression,
-          expression,
-          results: dice.map(d => d.value),
-          total,
-        });
-      }
     }, 900);
   }
 
