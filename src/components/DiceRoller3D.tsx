@@ -129,12 +129,15 @@ function solidGeo(def:GeoDef, s:number): THREE.BufferGeometry {
 }
 
 // Boundary edges only (no internal triangulation seams)
-function boundaryEdges(def:GeoDef, s:number): THREE.BufferGeometry {
+// skipRingEdges: for bipyramid d10, skip edges between equatorial ring verts (creates "two halves" seam)
+function boundaryEdges(def:GeoDef, s:number, skipRingEdges=false): THREE.BufferGeometry {
   const pos:number[] = [];
   const seen = new Set<string>();
   def.faces.forEach(face => {
     for (let i = 0; i < face.length; i++) {
       const a=face[i], b=face[(i+1)%face.length];
+      // For d10 bipyramid: skip edges between equatorial ring vertices (0-9)
+      if (skipRingEdges && a<10 && b<10) continue;
       const key = a<b ? `${a}-${b}` : `${b}-${a}`;
       if (!seen.has(key)) {
         seen.add(key);
@@ -222,7 +225,8 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
     : def.faces.map(()=>new THREE.MeshPhongMaterial({color:fc,emissive:fc.clone().multiplyScalar(0.1),specular:new THREE.Color(t.e),shininess:55,side:THREE.DoubleSide}));
   const mesh = new THREE.Mesh(bodyGeo, isD12 ? mats[0] : mats);
   mesh.castShadow=true; mesh.receiveShadow=true;
-  const edgeGeo = isD12 ? new THREE.EdgesGeometry(bodyGeo) : boundaryEdges(def, S*1.003);
+  const isD10 = dieType === 10 || dieType === 10090 || dieType === 10091;
+  const edgeGeo = isD12 ? new THREE.EdgesGeometry(bodyGeo) : boundaryEdges(def, S*1.003, isD10);
   const edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({color:t.e}));
   const group = new THREE.Group();
   group.add(mesh); group.add(edges);
@@ -233,10 +237,11 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
     const off = 0.03 * S;
     const mat = new THREE.MeshBasicMaterial({
       map: numTex(numLabel(def.nums[fi]), t.e),
-      transparent:true, side:THREE.DoubleSide,
-      depthTest:true, depthWrite:false, alphaTest:0.05,
+      transparent:true, side:THREE.FrontSide,
+      depthTest:false, depthWrite:false, alphaTest:0.05,
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(sz,sz), mat);
+    plane.renderOrder = 1; // always render after body mesh
     plane.position.set(pos[0]+normal[0]*off, pos[1]+normal[1]*off, pos[2]+normal[2]*off);
     const q = new THREE.Quaternion();
     q.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(normal[0],normal[1],normal[2]));
@@ -304,11 +309,14 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
       const S = baseS * (SM[sp.die]??1.0);
       const group = buildDie(def, S, th(sp.tk), FF[sp.die]??1.0, sp.label, sp.die);
       scene.add(group);
-      // Fully random starting orientation — natural roll
-      const startQ = new THREE.Quaternion();
-      startQ.setFromEuler(new THREE.Euler(
-        Math.random()*Math.PI*2, Math.random()*Math.PI*2, Math.random()*Math.PI*2
-      ));
+      // Pre-bias: start with correct face roughly up + full random tumble
+      // This makes the die statistically likely to land correctly without any end-snap
+      const faceQ = faceUpQuat(def, sp.val, S) ?? new THREE.Quaternion();
+      const tumbleQ = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(Math.random()-.5, Math.random()-.5, Math.random()-.5).normalize(),
+        Math.PI * 2 * (3 + Math.random()*3) // 3-6 full rotations
+      );
+      const startQ = tumbleQ.multiply(faceQ);
       group.quaternion.copy(startQ);
       const spread = Math.min(BX*0.4, specs.length*0.3);
       // Full tumbling angular velocity in all directions
@@ -365,13 +373,8 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
         if ((spd<0.1 && ang<0.3 && Math.abs(d.y-r-FLOOR)<0.06) || forceSettle) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
-          // Detect what face naturally landed on top
-          const topNum = detectTopFaceNum(d.def, d.quat, d.scale);
-          if (topNum !== d.val) {
-            // Die didn't land on correct face — instant correction (die is stopped)
-            const fq = faceUpQuat(d.def, d.val, d.scale);
-            if (fq) { d.quat.copy(fq); d.group.quaternion.copy(fq); }
-          }
+          // No snap — die stays wherever physics left it (natural roll feel)
+          // Pre-biased start orientation makes correct face statistically likely
         }
       });
     }
