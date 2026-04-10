@@ -292,7 +292,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
     const sFloor = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.ShadowMaterial({opacity:0.25}));
     sFloor.rotation.x=-Math.PI/2; sFloor.receiveShadow=true; scene.add(sFloor);
 
-    const FLOOR=0, GRAV=22, BOUNCE=0.45, WALL_B=0.5, BX=2.8, BZ=2.0;
+    const FLOOR=0, GRAV=26, BOUNCE=0.22, WALL_B=0.4, BX=2.8, BZ=2.0;
     const rawList = event.allDice?.length ? event.allDice : [{die:event.dieType,value:event.result}];
     const baseS = Math.max(0.9, 1.5 - Math.max(1,rawList.length)*0.06);
 
@@ -359,9 +359,10 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         // Floor collision
         if (d.y-r < FLOOR) {
           d.y=FLOOR+r; d.vy=Math.abs(d.vy)*BOUNCE;
-          d.vx*=0.84; d.vz*=0.84;
-          d.arx*=0.65; d.ary*=0.65; d.arz*=0.65;
-          if (d.vy<0.12) d.vy=0;
+          // Strong floor friction — die grips the surface on landing
+          d.vx*=0.72; d.vz*=0.72;
+          d.arx*=0.52; d.ary*=0.52; d.arz*=0.52;
+          if (d.vy<0.08) d.vy=0;
         }
         if (d.x<-BX){d.x=-BX;d.vx=Math.abs(d.vx)*WALL_B;}
         if (d.x> BX){d.x= BX;d.vx=-Math.abs(d.vx)*WALL_B;}
@@ -374,13 +375,15 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
 
         // Rolling friction on floor
         if (onFloor) {
-          d.vx*=0.96; d.vz*=0.96; d.arx*=0.93; d.ary*=0.93; d.arz*=0.93;
+          // Rolling friction — die slows quickly like rolling on a table
+          d.vx*=0.88; d.vz*=0.88;
+          d.arx*=0.86; d.ary*=0.86; d.arz*=0.86;
         }
 
         // ── Natural face-settling physics ────────────────────────────────
         // When slow and on floor, apply physics torque toward nearest face.
         // Strong enough to flow quickly into place, still looks organic.
-        if (onFloor && spd < 2.0 && ang < 4.0) {
+        if (onFloor && spd < 3.0) {
           const topFi = d.def.nums.indexOf(detectTopFaceNum(d.def, d.quat, d.scale));
           const {normal: topN} = faceInfo(d.def, topFi, d.scale);
           const worldN = new THREE.Vector3(topN[0],topN[1],topN[2]).applyQuaternion(d.quat);
@@ -391,7 +394,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
             const torqueZ =  worldN.x;
             // Stronger torque when closer to settled — flows in quickly
             const misalign = 1.0 - alignment;
-            const str = misalign * 45.0 * Math.max(0.2, 1 - ang/4.0);
+            const str = misalign * 60.0 * Math.max(0.15, 1 - ang/6.0);
             d.arx += torqueX * str * dt;
             d.arz += torqueZ * str * dt;
             // Extra damping when nearly face-up — kills residual wobble fast
@@ -403,7 +406,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
           }
 
           // Settle once a face is genuinely pointing up and motion is minimal
-          if (spd < 0.12 && ang < 0.35 && alignment > 0.96) {
+          if (spd < 0.15 && ang < 0.4 && alignment > 0.95) {
             d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
             d.group.position.set(d.x,d.y,d.z);
             d.val = detectTopFaceNum(d.def, d.quat, d.scale);
