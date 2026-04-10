@@ -110,6 +110,7 @@ function faceInfo(def:GeoDef, fi:number, s:number) {
 // Camera sits at (0, 7.5, 3.5) — detect the face most visible FROM the camera
 const CAM_DIR=new THREE.Vector3(0,7.5,3.5).normalize(); // die→camera direction
 function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number):number{
+  if(def.verts.length===4&&def.faces.length===4) return detectD4TopVertex(def,quat);
   let best=-2,bestNum=def.nums[0];
   def.faces.forEach((_,fi)=>{
     const{normal}=faceInfo(def,fi,s);
@@ -223,24 +224,43 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   // Brighter edge lines for definition
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.005),new THREE.LineBasicMaterial({color:t.e,linewidth:1}));
   const group=new THREE.Group();group.add(mesh);group.add(edges);
-  // Number planes. D4 faces are steep (54.7°), so tilt planes toward +Y so
-  // numbers face the overhead camera and are clearly readable.
+  // D4 point-build: 3 numbers per face (one at each vertex corner).
+  // All 3 upward faces show the same number at their shared top vertex → result.
+  // Other dice: one number per face centered.
   const isD4=(def.verts.length===4&&def.faces.length===4);
-  const numOff=isD4?0.09*S:0.035*S;
-  def.faces.forEach((_,fi)=>{
-    const{pos,normal,insc}=faceInfo(def,fi,S);
-    const sz=insc*(isD4?2.2:1.7)*ff, off=numOff;
-    // D4: blend face normal 40% toward straight up so numbers are readable overhead
-    const planeNorm:V3 = isD4
-      ? norm([normal[0]*0.4, normal[1]*0.4+0.65, normal[2]*0.4] as V3)
-      : normal;
-    const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-    const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-    plane.renderOrder=2;
-    plane.position.set(pos[0]+normal[0]*off, pos[1]+normal[1]*off, pos[2]+normal[2]*off);
-    const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(planeNorm[0],planeNorm[1],planeNorm[2]));
-    plane.quaternion.copy(q);group.add(plane);
-  });
+  if(isD4){
+    def.faces.forEach((_,fi)=>{
+      const{pos:facePos,normal,insc}=faceInfo(def,fi,S);
+      const off=0.04*S, sz=insc*0.85;
+      const pn:V3=norm([normal[0]*0.5,normal[1]*0.5+0.5,normal[2]*0.5] as V3);
+      const faceVerts=def.faces[fi];
+      faceVerts.forEach((vi)=>{
+        const v=def.verts[vi];
+        const cx=facePos[0]/S, cy=facePos[1]/S, cz=facePos[2]/S;
+        const px=(v[0]*0.60+cx*0.40)*S+normal[0]*off;
+        const py=(v[1]*0.60+cy*0.40)*S+normal[1]*off;
+        const pz=(v[2]*0.60+cz*0.40)*S+normal[2]*off;
+        const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+        const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+        plane.renderOrder=2;
+        plane.position.set(px,py,pz);
+        const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(pn[0],pn[1],pn[2]));
+        plane.quaternion.copy(q);group.add(plane);
+      });
+    });
+  } else {
+    const numOff=0.035*S;
+    def.faces.forEach((_,fi)=>{
+      const{pos,normal,insc}=faceInfo(def,fi,S);
+      const sz=insc*1.7*ff, off=numOff;
+      const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+      plane.renderOrder=2;
+      plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
+      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
+      plane.quaternion.copy(q);group.add(plane);
+    });
+  }
   return group;
 }
 
