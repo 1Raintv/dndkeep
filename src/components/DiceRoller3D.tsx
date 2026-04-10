@@ -26,27 +26,25 @@ const norm=(v:V3):V3=>{const l=Math.sqrt(dot(v,v))||1;return[v[0]/l,v[1]/l,v[2]/
 
 interface GeoDef{verts:V3[];faces:number[][];nums:number[]}
 
-// ── D10: Elongated pentagonal bipyramid — NOT normalized
-// Tall apices + narrow equatorial ring = clearly elongated shape, won't slide flat.
-// Aspect ratio ~2.3:1 (height vs width) makes it visually distinct from d20.
+// ── D10: Pentagonal bipyramid — CORRECT geometry with single equatorial ring
+// Two separate rings (y=+H and y=-H) leave an equatorial gap = "two halves" look.
+// Fix: ONE equatorial ring at y=0. Upper faces share equatorial verts with lower faces.
+// Result: solid die with no gap, 10 triangular faces, two pointed poles.
 function makeD10(nums: number[]): GeoDef {
   const verts: V3[] = [];
-  const R = 0.55, H = 0.18; // narrow equatorial ring
+  const R = 0.82, T = 1.12; // equatorial radius, apex height
+  // 5 equatorial vertices at y=0
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5;
-    verts.push([R * Math.cos(a), H, R * Math.sin(a)]);  // upper ring
+    verts.push([R * Math.cos(a), 0, R * Math.sin(a)]);
   }
-  for (let i = 0; i < 5; i++) {
-    const a = i * Math.PI * 2 / 5 + Math.PI / 5;
-    verts.push([R * Math.cos(a), -H, R * Math.sin(a)]); // lower ring offset 36deg
-  }
-  verts.push([0, 1.15, 0]);   // top apex — tall
-  verts.push([0, -1.15, 0]);  // bottom apex — tall
+  verts.push([0, T, 0]);   // top apex idx 5
+  verts.push([0,-T, 0]);   // bot apex idx 6
   const faces: number[][] = [];
   for (let i = 0; i < 5; i++) {
     const n = (i + 1) % 5;
-    faces.push([10, n, i]);          // upper triangles
-    faces.push([11, i+5, n+5]);      // lower triangles
+    faces.push([5, n, i]);  // upper triangles (top → eq_n → eq_i)
+    faces.push([6, i, n]);  // lower triangles (bot → eq_i → eq_n)
   }
   return { verts, faces, nums }; // no unit() — preserve elongated shape
 }
@@ -225,8 +223,7 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
     : def.faces.map(()=>new THREE.MeshPhongMaterial({color:fc,emissive:fc.clone().multiplyScalar(0.1),specular:new THREE.Color(t.e),shininess:55,side:THREE.DoubleSide}));
   const mesh = new THREE.Mesh(bodyGeo, isD12 ? mats[0] : mats);
   mesh.castShadow=true; mesh.receiveShadow=true;
-  const isD10 = dieType === 10 || dieType === 10090 || dieType === 10091;
-  const edgeGeo = isD12 ? new THREE.EdgesGeometry(bodyGeo) : boundaryEdges(def, S*1.003, isD10);
+  const edgeGeo = isD12 ? new THREE.EdgesGeometry(bodyGeo) : boundaryEdges(def, S*1.003);
   const edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({color:t.e}));
   const group = new THREE.Group();
   group.add(mesh); group.add(edges);
@@ -234,7 +231,7 @@ function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
   def.faces.forEach((_,fi) => {
     const {pos,normal,insc} = faceInfo(def,fi,S);
     const sz = insc * 1.7 * ff;
-    const off = 0.03 * S;
+    const off = isD12 ? 0.06 * S : 0.03 * S;
     const mat = new THREE.MeshBasicMaterial({
       map: numTex(numLabel(def.nums[fi]), t.e),
       transparent:true, side:THREE.FrontSide,
