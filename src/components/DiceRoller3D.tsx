@@ -74,8 +74,8 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.92,6:0.44,8:0.88,10:0.96,12:0.90,20:0.92,100:0.90};
-const FF:Record<number,number> = {4:1.1,6:1.25,8:1.1,10:1.0,12:0.85,20:1.15,100:1.0};
+const SM:Record<number,number> = {4:1.0,6:1.0,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
+const FF:Record<number,number> = {4:1.0,6:1.0,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4: {f:0x8b5cf6,e:0xf3f0ff},   // bright violet
   6: {f:0xef4444,e:0xffe4e4},   // bright red
@@ -287,7 +287,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
     def.faces.forEach((_,fi)=>{
       const{pos,normal,insc}=faceInfo(def,fi,S);
       // Fixed plane size relative to S ensures large readable numbers on every die
-      const sz=Math.min(insc*1.9, S*0.62)*ff, off=numOff;
+      const sz=S*0.58*ff, off=numOff; // fixed size — same number on every die
       const mat=new THREE.MeshBasicMaterial({
         map:numTex(numLabel(def.nums[fi]),t.e),
         transparent:true, side:THREE.FrontSide,
@@ -451,7 +451,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
     // Scale dice to ~7% of window height so they're readable across the full window
-    const diceScreenPct=BZ*0.18;
+    const diceScreenPct=BZ*0.155; // tuned for uniform SM=1.0
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
     interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
