@@ -356,12 +356,15 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         d.group.quaternion.copy(d.quat);
         const r = d.scale*0.82;
 
-        // Floor collision
+        // Floor collision — strong grip so dice stop rolling quickly
         if (d.y-r < FLOOR) {
           d.y=FLOOR+r; d.vy=Math.abs(d.vy)*BOUNCE;
-          // Strong floor friction — die grips the surface on landing
-          d.vx*=0.72; d.vz*=0.72;
-          d.arx*=0.52; d.ary*=0.52; d.arz*=0.52;
+          d.vx*=0.68; d.vz*=0.68;
+          d.arx*=0.48; d.ary*=0.48; d.arz*=0.48;
+          // Tiny random impulse on each bounce — real dice can't balance on edges
+          // because of surface micro-imperfections. This replicates that effect.
+          d.arx += (Math.random()-0.5)*1.2;
+          d.arz += (Math.random()-0.5)*1.2;
           if (d.vy<0.08) d.vy=0;
         }
         if (d.x<-BX){d.x=-BX;d.vx=Math.abs(d.vx)*WALL_B;}
@@ -373,40 +376,19 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
         const spd = Math.sqrt(d.vx**2+d.vy**2+d.vz**2);
         const ang = Math.sqrt(d.arx**2+d.ary**2+d.arz**2);
 
-        // Rolling friction on floor
+        // Heavy rolling friction — die slows like rolling on felt/cork
         if (onFloor) {
-          // Rolling friction — die slows quickly like rolling on a table
-          d.vx*=0.88; d.vz*=0.88;
-          d.arx*=0.86; d.ary*=0.86; d.arz*=0.86;
+          d.vx*=0.84; d.vz*=0.84;
+          d.arx*=0.83; d.ary*=0.83; d.arz*=0.83;
         }
 
-        // ── Natural face-settling physics ────────────────────────────────
-        // When slow and on floor, apply physics torque toward nearest face.
-        // Strong enough to flow quickly into place, still looks organic.
-        if (onFloor && spd < 3.0) {
+        // Settle only when naturally face-up and still — no artificial nudge
+        if (onFloor && spd < 0.15 && ang < 0.4) {
           const topFi = d.def.nums.indexOf(detectTopFaceNum(d.def, d.quat, d.scale));
           const {normal: topN} = faceInfo(d.def, topFi, d.scale);
           const worldN = new THREE.Vector3(topN[0],topN[1],topN[2]).applyQuaternion(d.quat);
-          const alignment = worldN.y; // 1.0 = perfectly face-up
-
-          if (alignment < 0.999) {
-            const torqueX = -worldN.z;
-            const torqueZ =  worldN.x;
-            // Stronger torque when closer to settled — flows in quickly
-            const misalign = 1.0 - alignment;
-            const str = misalign * 60.0 * Math.max(0.15, 1 - ang/6.0);
-            d.arx += torqueX * str * dt;
-            d.arz += torqueZ * str * dt;
-            // Extra damping when nearly face-up — kills residual wobble fast
-            if (alignment > 0.85) {
-              const damp = 0.72 + alignment * 0.25; // 0.97–0.995 range
-              d.arx *= damp; d.ary *= damp; d.arz *= damp;
-              d.vx  *= 0.90; d.vz  *= 0.90;
-            }
-          }
-
-          // Settle once a face is genuinely pointing up and motion is minimal
-          if (spd < 0.15 && ang < 0.4 && alignment > 0.95) {
+          const alignment = worldN.y;
+          if (alignment > 0.92) {
             d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
             d.group.position.set(d.x,d.y,d.z);
             d.val = detectTopFaceNum(d.def, d.quat, d.scale);
@@ -414,10 +396,10 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props) {
           }
         }
 
-        // Safety fallback: if die has been rolling more than 5s, force settle
+        // Safety: after 6s just accept whatever face is most upward
         if ((d as any)._t === undefined) (d as any)._t = 0;
         (d as any)._t += dt;
-        if ((d as any)._t > 5.0 && spd < 2.0) {
+        if ((d as any)._t > 6.0 && spd < 2.0) {
           d.phase='done'; d.y=FLOOR+r; d.vx=d.vy=d.vz=d.arx=d.ary=d.arz=0;
           d.group.position.set(d.x,d.y,d.z);
           d.val = detectTopFaceNum(d.def, d.quat, d.scale);
