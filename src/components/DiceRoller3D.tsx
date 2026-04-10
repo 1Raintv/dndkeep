@@ -176,18 +176,27 @@ function solidGeo(def:GeoDef,s:number):THREE.BufferGeometry{
   const pos:number[]=[],nor:number[]=[];
   const g=new THREE.BufferGeometry();let off=0;
   def.faces.forEach((face,fi)=>{
+    // Compute face normal from first triangle
     const fa=def.verts[face[0]],fb=def.verts[face[1]],fc2=def.verts[face[2]];
     const fex=fb[0]-fa[0],fey=fb[1]-fa[1],fez=fb[2]-fa[2];
     const ffx=fc2[0]-fa[0],ffy=fc2[1]-fa[1],ffz=fc2[2]-fa[2];
     let fnx=fey*ffz-fez*ffy,fny=fez*ffx-fex*ffz,fnz=fex*ffy-fey*ffx;
     const fnl=Math.sqrt(fnx*fnx+fny*fny+fnz*fnz)||1;
     fnx/=fnl;fny/=fnl;fnz/=fnl;
-    // Always point outward: face centroid from origin gives outward direction on convex shapes
-    const fCx=(fa[0]+fb[0]+fc2[0])/3,fCy=(fa[1]+fb[1]+fc2[1])/3,fCz=(fa[2]+fb[2]+fc2[2])/3;
-    if(fnx*fCx+fny*fCy+fnz*fCz<0){fnx=-fnx;fny=-fny;fnz=-fnz;}
+    // Use ALL face vertices for centroid (important for pentagons/other polys)
+    const fCx=face.reduce((s,vi)=>s+def.verts[vi][0],0)/face.length;
+    const fCy=face.reduce((s,vi)=>s+def.verts[vi][1],0)/face.length;
+    const fCz=face.reduce((s,vi)=>s+def.verts[vi][2],0)/face.length;
+    // Check if normal points inward — if so, flip BOTH normal AND vertex winding
+    // (Three.js FrontSide culling uses screen-space winding, not stored normals)
+    const needsFlip=fnx*fCx+fny*fCy+fnz*fCz<0;
+    if(needsFlip){fnx=-fnx;fny=-fny;fnz=-fnz;}
     const start=off;let tc=0;
     for(let i=1;i<face.length-1;i++){
-      const a=def.verts[face[0]],b=def.verts[face[i]],c=def.verts[face[i+1]];
+      const a=def.verts[face[0]];
+      // If winding was wrong, swap b/c to make triangle CCW from outside
+      const b=needsFlip?def.verts[face[i+1]]:def.verts[face[i]];
+      const c=needsFlip?def.verts[face[i]]:def.verts[face[i+1]];
       pos.push(a[0]*s,a[1]*s,a[2]*s,b[0]*s,b[1]*s,b[2]*s,c[0]*s,c[1]*s,c[2]*s);
       nor.push(fnx,fny,fnz,fnx,fny,fnz,fnx,fny,fnz);tc++;
     }
@@ -220,10 +229,13 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const fc=new THREE.Color(t.f);
   const geo=solidGeo(def,S);
   // MeshBasicMaterial: flat solid color, NO lighting dependency, ALWAYS fully opaque.
-  // This guarantees the die is never transparent regardless of camera angle or lighting.
-  // Edge lines provide all 3D depth — no shading tricks needed.
+  // D4 uses DoubleSide (only 4 faces — many will face away from camera at any angle).
+  // All others use FrontSide with winding-corrected solidGeo for proper culling.
+  const dieHasFewFaces=def.faces.length<=4;
   const baseMat=new THREE.MeshBasicMaterial({
-    color:fc, side:THREE.FrontSide, transparent:false, opacity:1.0, depthWrite:true,
+    color:fc,
+    side:dieHasFewFaces?THREE.DoubleSide:THREE.FrontSide,
+    transparent:false, opacity:1.0, depthWrite:true,
   });
   const mats=def.faces.map(()=>baseMat.clone());
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=false;mesh.receiveShadow=false;
@@ -235,25 +247,27 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   // All 3 upward faces show the same number at their shared top vertex → result.
   // Other dice: one number per face centered.
   const isD4=(def.verts.length===4&&def.faces.length===4);
+  // D4 uses DoubleSide + large centered number: steep faces need both sides rendered
+  // and the number should be prominently visible on each face
   if(isD4){
     def.faces.forEach((_,fi)=>{
-      const{pos:facePos,normal,insc}=faceInfo(def,fi,S);
-      const off=0.04*S, sz=insc*0.85;
-      const pn:V3=norm([normal[0]*0.5,normal[1]*0.5+0.5,normal[2]*0.5] as V3);
-      const faceVerts=def.faces[fi];
-      faceVerts.forEach((vi)=>{
-        const v=def.verts[vi];
-        const cx=facePos[0]/S, cy=facePos[1]/S, cz=facePos[2]/S;
-        const px=(v[0]*0.60+cx*0.40)*S+normal[0]*off;
-        const py=(v[1]*0.60+cy*0.40)*S+normal[1]*off;
-        const pz=(v[2]*0.60+cz*0.40)*S+normal[2]*off;
-        const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
-        const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-        plane.renderOrder=2;
-        plane.position.set(px,py,pz);
-        const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(pn[0],pn[1],pn[2]));
-        plane.quaternion.copy(q);group.add(plane);
+      const{pos,normal,insc}=faceInfo(def,fi,S);
+      const off=0.05*S;
+      // Large number fills most of the face
+      const sz=insc*1.6*ff;
+      // Tilt plane 50% toward +Y so number faces camera better from overhead
+      const pn:V3=norm([normal[0]*0.5,normal[1]*0.5+0.55,normal[2]*0.5] as V3);
+      const mat=new THREE.MeshBasicMaterial({
+        map:numTex(numLabel(def.nums[fi]),t.e),
+        transparent:true, side:THREE.DoubleSide,
+        depthTest:true, depthWrite:false, alphaTest:0.05,
+        polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
       });
+      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+      plane.renderOrder=2;
+      plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
+      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(pn[0],pn[1],pn[2]));
+      plane.quaternion.copy(q);group.add(plane);
     });
   } else {
     const numOff=0.038*S;
