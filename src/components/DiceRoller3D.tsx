@@ -28,12 +28,25 @@ const sub=(a:V3,b:V3):V3=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 interface GeoDef{verts:V3[];faces:number[][];nums:number[]}
 
 function makeD10(nums: number[]): GeoDef {
+  // Pentagonal trapezohedron — the actual shape of a real d10.
+  // 10 kite-shaped (quadrilateral) faces. Rests cleanly with one kite flat.
+  // Much cleaner visually than a bipyramid — one face clearly shows the result.
+  const R=1.0, H=0.35, A=1.22;
   const verts: V3[] = [];
-  const R = 0.82, T = 1.12;
-  for (let i = 0; i < 5; i++) { const a=i*Math.PI*2/5; verts.push([R*Math.cos(a),0,R*Math.sin(a)]); }
-  verts.push([0,T,0]); verts.push([0,-T,0]);
+  // 0-4: upper ring at y=+H, angles 0°,72°,144°,216°,288°
+  for (let i=0;i<5;i++){const a=i*2*Math.PI/5; verts.push([R*Math.cos(a),H,R*Math.sin(a)]);}
+  // 5-9: lower ring at y=-H, offset 36°
+  for (let i=0;i<5;i++){const a=i*2*Math.PI/5+Math.PI/5; verts.push([R*Math.cos(a),-H,R*Math.sin(a)]);}
+  // 10: top apex, 11: bottom apex
+  verts.push([0,A,0]); verts.push([0,-A,0]);
+  // 10 kite faces: 5 upper (top-apex + upper_i + lower_i + upper_{i+1})
+  //               5 lower (bot-apex + lower_i + upper_{i+1} + lower_{i+1})
   const faces: number[][] = [];
-  for (let i = 0; i < 5; i++) { const n=(i+1)%5; faces.push([5,n,i]); faces.push([6,i,n]); }
+  for (let i=0;i<5;i++){
+    const u0=i, u1=(i+1)%5, l0=i+5, l1=(i+1)%5+5;
+    faces.push([10,u0,l0,u1]); // upper kite
+    faces.push([11,l1,u1,l0]); // lower kite
+  }
   return { verts, faces, nums };
 }
 
@@ -73,7 +86,7 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.9,6:0.78,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
+const SM:Record<number,number> = {4:0.85,6:0.82,8:0.85,10:0.85,12:0.88,20:0.90,100:0.85};
 const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:0.80,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4:{f:0x5b21b6,e:0xddd6fe},6:{f:0xb91c1c,e:0xfca5a5},8:{f:0x15803d,e:0xbbf7d0},
@@ -137,6 +150,15 @@ function numTex(label:string,ec:number):THREE.CanvasTexture{
   ctx.font=`900 ${fs}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.strokeStyle='rgba(0,0,0,0.85)';ctx.lineWidth=5;ctx.strokeText(label,64,68);
   ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillText(label,64,68);
+  // Draw underline beneath 6 to distinguish from 9 when die is inverted
+  if(label==='6'){
+    const m=ctx.measureText('6');const uw=m.width*0.8;
+    const uy=68+fs*0.42;
+    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(64-uw/2,uy);ctx.lineTo(64+uw/2,uy);ctx.stroke();
+    ctx.strokeStyle=`rgb(${r},${g},${b})`;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(64-uw/2,uy);ctx.lineTo(64+uw/2,uy);ctx.stroke();
+  }
   const t=new THREE.CanvasTexture(cv);TC.set(key,t);return t;
 }
 
@@ -293,7 +315,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
     // Scale dice to ~7% of window height so they're readable across the full window
-    const diceScreenPct=BZ*0.14;
+    const diceScreenPct=BZ*0.11;
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
     interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
