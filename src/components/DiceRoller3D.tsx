@@ -74,7 +74,7 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.82,6:0.64,8:0.82,10:0.95,12:0.86,20:0.88,100:0.90};
+const SM:Record<number,number> = {4:0.85,6:0.72,8:0.86,10:0.96,12:0.88,20:0.90,100:0.90};
 const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:1.15,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4: {f:0x7c3aed,e:0xede9fe},   // vivid violet
@@ -150,21 +150,24 @@ const TC=new Map<string,THREE.CanvasTexture>();
 function numTex(label:string,ec:number):THREE.CanvasTexture{
   const key=`${label}-${ec}`;
   if(TC.has(key))return TC.get(key)!;
-  const cv=document.createElement('canvas');cv.width=192;cv.height=192;
+  const cv=document.createElement('canvas');cv.width=256;cv.height=256;
   const ctx=cv.getContext('2d')!;
-  // White numbers with dark outline — sized to fit face cleanly
-  const fs=label.length>=3?42:label.length===2?54:66;
+  // Large numbers — canvas is used as a texture so fill determines visibility
+  const fs=label.length>=3?90:label.length===2?112:136;
   ctx.font=`900 ${fs}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.strokeStyle='rgba(0,0,0,0.92)';ctx.lineWidth=6;ctx.strokeText(label,96,102);
-  ctx.fillStyle='#ffffff';ctx.fillText(label,96,102);
-  // Draw underline beneath 6 to distinguish from 9 when die is inverted
+  // Thick black outline first
+  ctx.strokeStyle='rgba(0,0,0,0.95)';ctx.lineWidth=12;
+  ctx.strokeText(label,128,134);
+  // White fill
+  ctx.fillStyle='#ffffff';ctx.fillText(label,128,134);
+  // Underline 6
   if(label==='6'){
-    const m=ctx.measureText('6');const uw=m.width*0.8;
-    const uy=102+fs*0.42;
-    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=6;
-    ctx.beginPath();ctx.moveTo(96-uw/2,uy);ctx.lineTo(96+uw/2,uy);ctx.stroke();
-    ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=3;
-    ctx.beginPath();ctx.moveTo(96-uw/2,uy);ctx.lineTo(96+uw/2,uy);ctx.stroke();
+    const m=ctx.measureText('6');const uw=m.width*0.85;
+    const uy=134+fs*0.44;
+    ctx.strokeStyle='rgba(0,0,0,0.8)';ctx.lineWidth=8;
+    ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,0.95)';ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
   }
   const t=new THREE.CanvasTexture(cv);TC.set(key,t);return t;
 }
@@ -216,20 +219,17 @@ function boundaryEdges(def:GeoDef,s:number):THREE.BufferGeometry{
 function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(n:number)=>string):THREE.Group{
   const fc=new THREE.Color(t.f);
   const geo=solidGeo(def,S);
-  // MeshPhongMaterial gives proper 3D shading — lit faces bright, shadow side dark
-  // High emissive so die color is vivid regardless of shadow angle
-  const mats=def.faces.map(()=>new THREE.MeshPhongMaterial({
-    color:fc,
-    emissive:fc.clone().multiplyScalar(0.7),
-    specular:new THREE.Color(t.e), shininess:45,
-    side:THREE.FrontSide,    // only outward-facing faces — die is solid
-    transparent:false,        // explicitly opaque
-    opacity:1.0,
-    depthWrite:true,
-  }));
-  const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
-  // Brighter edge lines for definition
-  const edges=new THREE.LineSegments(boundaryEdges(def,S*1.005),new THREE.LineBasicMaterial({color:t.e,linewidth:1}));
+  // MeshBasicMaterial: flat solid color, NO lighting dependency, ALWAYS fully opaque.
+  // This guarantees the die is never transparent regardless of camera angle or lighting.
+  // Edge lines provide all 3D depth — no shading tricks needed.
+  const baseMat=new THREE.MeshBasicMaterial({
+    color:fc, side:THREE.FrontSide, transparent:false, opacity:1.0, depthWrite:true,
+  });
+  const mats=def.faces.map(()=>baseMat.clone());
+  const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=false;mesh.receiveShadow=false;
+  // Bright edge lines for clear 3D definition
+  const edgeColor=new THREE.Color(t.e).multiplyScalar(1.4);
+  const edges=new THREE.LineSegments(boundaryEdges(def,S*1.004),new THREE.LineBasicMaterial({color:edgeColor}));
   const group=new THREE.Group();group.add(mesh);group.add(edges);
   // D4 point-build: 3 numbers per face (one at each vertex corner).
   // All 3 upward faces show the same number at their shared top vertex → result.
@@ -247,7 +247,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
         const px=(v[0]*0.60+cx*0.40)*S+normal[0]*off;
         const py=(v[1]*0.60+cy*0.40)*S+normal[1]*off;
         const pz=(v[2]*0.60+cz*0.40)*S+normal[2]*off;
-        const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:true,depthWrite:false,alphaTest:0.1,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-8});
+        const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
         const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
         plane.renderOrder=2;
         plane.position.set(px,py,pz);
@@ -256,11 +256,18 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
       });
     });
   } else {
-    const numOff=0.035*S;
+    const numOff=0.038*S;
     def.faces.forEach((_,fi)=>{
       const{pos,normal,insc}=faceInfo(def,fi,S);
-      const sz=insc*1.7*ff, off=numOff;
-      const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.DoubleSide,depthTest:true,depthWrite:false,alphaTest:0.1,polygonOffset:true,polygonOffsetFactor:-8,polygonOffsetUnits:-8});
+      // Fixed plane size relative to S ensures large readable numbers on every die
+      const sz=Math.min(insc*1.85, S*0.55)*ff, off=numOff;
+      const mat=new THREE.MeshBasicMaterial({
+        map:numTex(numLabel(def.nums[fi]),t.e),
+        transparent:true, side:THREE.FrontSide,
+        depthTest:true, depthWrite:false,
+        alphaTest:0.05,
+        polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
+      });
       const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
       plane.renderOrder=2;
       plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
@@ -364,8 +371,8 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     const BZb=Math.max(Math.abs(fl.z),Math.abs(fr.z),Math.abs(tl2.z),Math.abs(tr2.z))*0.87; // symmetric approx
     const BZf=Math.max(fl.z,fr.z,tl2.z,tr2.z)*0.87;
     const BZ=Math.max(BZb,BZf);
-    // 3-point lighting for MeshPhongMaterial — proper 3D shading
-    scene.add(new THREE.AmbientLight(0xffffff,2.8));
+    // Ambient light (used for shadows only, MeshBasicMat is self-lit)
+    scene.add(new THREE.AmbientLight(0xffffff,1.5));
     const sun=new THREE.DirectionalLight(0xffffff,2.2);
     sun.position.set(BX*0.4,18,BZ*0.4);sun.castShadow=true;
     sun.shadow.camera.left=-BX*1.3;sun.shadow.camera.right=BX*1.3;
@@ -416,7 +423,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
     // Scale dice to ~7% of window height so they're readable across the full window
-    const diceScreenPct=BZ*0.173; // +25% from previous
+    const diceScreenPct=BZ*0.18;
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
     interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
