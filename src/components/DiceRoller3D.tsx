@@ -248,23 +248,25 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     });
     world.addContactMaterial(contact);
 
-    // Floor plane
-    const floorBody=new CANNON.Body({mass:0,material:floorMat,type:CANNON.Body.STATIC});
+    // Floor plane — mass:0 makes it static in cannon-es (don't use CANNON.Body.STATIC constant)
+    const BX=2.8,BZ=2.0;
+    const floorBody=new CANNON.Body({mass:0,material:floorMat});
     floorBody.addShape(new CANNON.Plane());
-    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2);
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2); // rotate so normal faces +Y
     world.addBody(floorBody);
 
-    // Walls (4 planes bounding the scene)
-    const BX=2.8,BZ=2.0;
-    [[1,0,0,-BX,0,0,Math.PI/2,'y'],[1,0,0,BX,0,0,-Math.PI/2,'y'],
-     [0,0,1,0,0,-BZ,Math.PI/2,'x'],[0,0,1,0,0,BZ,-Math.PI/2,'x']
-    ].forEach(([nx,_ny,nz,px,_py,pz,angle,axis])=>{
-      const w=new CANNON.Body({mass:0,material:floorMat,type:CANNON.Body.STATIC});
+    // Walls — 4 planes, each rotated so normal faces inward
+    const addWall=(px:number,py:number,pz:number,ax:number,ay:number,az:number,angle:number)=>{
+      const w=new CANNON.Body({mass:0,material:floorMat});
       w.addShape(new CANNON.Plane());
-      w.position.set(px as number,0,pz as number);
-      w.quaternion.setFromAxisAngle(new CANNON.Vec3(axis==='y'?0:0,axis==='y'?1:0,axis==='y'?0:1),angle as number);
+      w.position.set(px,py,pz);
+      w.quaternion.setFromAxisAngle(new CANNON.Vec3(ax,ay,az),angle);
       world.addBody(w);
-    });
+    };
+    addWall(-BX,0,0, 0,1,0,  Math.PI/2);   // left wall,  normal +X
+    addWall( BX,0,0, 0,1,0, -Math.PI/2);   // right wall, normal -X
+    addWall(0,0,-BZ, 0,1,0,  0);           // back wall,  normal +Z (default plane direction)
+    addWall(0,0, BZ, 0,1,0,  Math.PI);     // front wall, normal -Z
 
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
@@ -307,7 +309,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       const startX=sp.ox+(Math.random()-0.5)*(rawList.length>1?1.2:1.8);
       const startY=3.5+Math.random()*1.5;
       const startZ=(Math.random()-0.5)*1.2;
-      body.position.set(startX,startY,startZ);
+      body.position.set(startX, startY + i * 0.8, startZ); // natural stagger
 
       // Random starting orientation
       const eq=new CANNON.Quaternion();
@@ -318,9 +320,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       body.velocity.set((Math.random()-0.5)*3,-(2.5+Math.random()*1.5),(Math.random()-0.5)*2);
       body.angularVelocity.set((Math.random()-0.5)*20,(Math.random()-0.5)*20,(Math.random()-0.5)*14);
 
-      // Stagger launches slightly so dice don't all hit at once
-      body.sleepState=CANNON.Body.SLEEPING; // start sleeping...
-      setTimeout(()=>{ body.wakeUp(); },i*130);
+      // Stagger: launch each die from a slightly different height
 
       world.addBody(body);
       return{group,body,def,sides:sp.die,val:sp.val,scale:S,settled:false};
@@ -364,11 +364,11 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         d.group.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
 
         // Check if settled (sleeping or barely moving)
-        const sleeping=d.body.sleepState===CANNON.Body.SLEEPING;
         const vel=d.body.velocity.length();
         const angVel=d.body.angularVelocity.length();
-        const onFloor=d.body.position.y<d.scale+0.3;
-        if((sleeping||(vel<0.3&&angVel<0.5))&&onFloor){
+        const onFloor=d.body.position.y<d.scale*1.1+0.3;
+        const sleeping=d.body.sleepState===2; // 2 = SLEEPING in cannon-es
+        if((sleeping||(vel<0.35&&angVel<0.6))&&onFloor){
           d.settled=true;
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
           d.val=detectTopFaceNum(d.def,tq,d.scale);
