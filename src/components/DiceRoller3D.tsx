@@ -86,8 +86,8 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.85,6:0.82,8:0.85,10:0.85,12:0.88,20:0.90,100:0.85};
-const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:0.80,100:1.0};
+const SM:Record<number,number> = {4:0.80,6:0.62,8:0.80,10:0.82,12:0.84,20:0.86,100:0.80};
+const FF:Record<number,number> = {4:1.1,6:0.95,8:1.1,10:1.0,12:0.82,20:1.15,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4:{f:0x5b21b6,e:0xddd6fe},6:{f:0xb91c1c,e:0xfca5a5},8:{f:0x15803d,e:0xbbf7d0},
   10:{f:0x0369a1,e:0xbae6fd},12:{f:0x9d174d,e:0xfbcfe8},20:{f:0x92400e,e:0xfde68a},
@@ -126,6 +126,18 @@ function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number):number{
   return bestNum;
 }
 
+// D4 vertex numbers (point-build convention: top vertex = result)
+const D4_VERT_NUMS = [1,2,3,4];
+
+function detectD4TopVertex(def:GeoDef,quat:THREE.Quaternion):number{
+  let best=-2,bestNum=1;
+  def.verts.forEach((v,vi)=>{
+    const w=new THREE.Vector3(v[0],v[1],v[2]).applyQuaternion(quat);
+    if(w.y>best){best=w.y;bestNum=D4_VERT_NUMS[vi];}
+  });
+  return bestNum;
+}
+
 // Compute quaternion to rotate face faceN → +Y (straight up, unambiguous result)
 function faceUpQuat(def:GeoDef,targetNum:number,s:number):THREE.Quaternion|null{
   const fi=def.nums.indexOf(targetNum);if(fi<0)return null;
@@ -143,21 +155,21 @@ const TC=new Map<string,THREE.CanvasTexture>();
 function numTex(label:string,ec:number):THREE.CanvasTexture{
   const key=`${label}-${ec}`;
   if(TC.has(key))return TC.get(key)!;
-  const cv=document.createElement('canvas');cv.width=128;cv.height=128;
+  const cv=document.createElement('canvas');cv.width=192;cv.height=192;
   const ctx=cv.getContext('2d')!;
   const r=(ec>>16)&255,g=(ec>>8)&255,b=ec&255;
-  const fs=label.length>=3?44:label.length===2?56:68;
+  const fs=label.length>=3?66:label.length===2?84:102;
   ctx.font=`900 ${fs}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.strokeStyle='rgba(0,0,0,0.85)';ctx.lineWidth=5;ctx.strokeText(label,64,68);
-  ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillText(label,64,68);
+  ctx.strokeStyle='rgba(0,0,0,0.9)';ctx.lineWidth=7;ctx.strokeText(label,96,102);
+  ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillText(label,96,102);
   // Draw underline beneath 6 to distinguish from 9 when die is inverted
   if(label==='6'){
     const m=ctx.measureText('6');const uw=m.width*0.8;
-    const uy=68+fs*0.42;
-    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=4;
-    ctx.beginPath();ctx.moveTo(64-uw/2,uy);ctx.lineTo(64+uw/2,uy);ctx.stroke();
-    ctx.strokeStyle=`rgb(${r},${g},${b})`;ctx.lineWidth=2.5;
-    ctx.beginPath();ctx.moveTo(64-uw/2,uy);ctx.lineTo(64+uw/2,uy);ctx.stroke();
+    const uy=102+fs*0.42;
+    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=6;
+    ctx.beginPath();ctx.moveTo(96-uw/2,uy);ctx.lineTo(96+uw/2,uy);ctx.stroke();
+    ctx.strokeStyle=`rgb(${r},${g},${b})`;ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(96-uw/2,uy);ctx.lineTo(96+uw/2,uy);ctx.stroke();
   }
   const t=new THREE.CanvasTexture(cv);TC.set(key,t);return t;
 }
@@ -210,18 +222,32 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.003),new THREE.LineBasicMaterial({color:t.e}));
   const group=new THREE.Group();group.add(mesh);group.add(edges);
-  // d4 (tetrahedron) needs larger offset — faces at 54.7° need more clearance
-  const numOff=(def.faces.length===4&&def.faces[0].length===3)?0.07*S:0.035*S;
-  def.faces.forEach((_,fi)=>{
-    const{pos,normal,insc}=faceInfo(def,fi,S);
-    const sz=insc*1.7*ff,off=numOff;
-    const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-    const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-    plane.renderOrder=1;
-    plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
-    const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
-    plane.quaternion.copy(q);group.add(plane);
-  });
+  // D4 point-build: number at each vertex — top vertex = result (standard physical d4 convention)
+  const isD4=(def.verts.length===4&&def.faces.length===4);
+  if(isD4){
+    def.verts.forEach((v,vi)=>{
+      const vn=norm(v);
+      const off=S*0.12, sz=S*0.55;
+      const mat=new THREE.MeshBasicMaterial({map:numTex(String(D4_VERT_NUMS[vi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:false,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+      plane.renderOrder=2;
+      plane.position.set(v[0]*S+vn[0]*off, v[1]*S+vn[1]*off, v[2]*S+vn[2]*off);
+      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(vn[0],vn[1],vn[2]));
+      plane.quaternion.copy(q);group.add(plane);
+    });
+  } else {
+    const numOff=0.035*S;
+    def.faces.forEach((_,fi)=>{
+      const{pos,normal,insc}=faceInfo(def,fi,S);
+      const sz=insc*1.7*ff,off=numOff;
+      const mat=new THREE.MeshBasicMaterial({map:numTex(numLabel(def.nums[fi]),t.e),transparent:true,side:THREE.FrontSide,depthTest:true,depthWrite:false,alphaTest:0.05,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+      plane.renderOrder=1;
+      plane.position.set(pos[0]+normal[0]*off,pos[1]+normal[1]*off,pos[2]+normal[2]*off);
+      const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
+      plane.quaternion.copy(q);group.add(plane);
+    });
+  }
   return group;
 }
 
@@ -261,13 +287,24 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
-    // Camera covers the FULL window — physics bounds calculated from FOV
+    // Camera slightly overhead — dice are clearly readable from above
     const FOV=62, aspect=W/H;
     const camera=new THREE.PerspectiveCamera(FOV,aspect,0.1,300);
-    camera.position.set(0,14,4);camera.lookAt(0,0,0);
-    // Visible floor half-extents at y=0 from this camera
-    const halfH=(14/Math.cos(Math.atan(4/14)))*Math.tan(FOV*Math.PI/360)*1.05;
-    const BX=halfH*aspect, BZ=halfH; // physics bounds = full window
+    camera.position.set(0,14,2.5);camera.lookAt(0,0,0);
+    camera.updateProjectionMatrix();camera.updateMatrixWorld();
+    // Exact floor bounds via frustum ray casting — walls always at real screen edges
+    const toFloor=(nx:number,ny:number)=>{
+      const v=new THREE.Vector3(nx,ny,0.5).unproject(camera);
+      const dir=v.clone().sub(camera.position).normalize();
+      if(Math.abs(dir.y)<0.001)return{x:0,z:0};
+      const t=-camera.position.y/dir.y;
+      return{x:camera.position.x+dir.x*t, z:camera.position.z+dir.z*t};
+    };
+    const [fl,fr,tl2,tr2]=[toFloor(-1,-1),toFloor(1,-1),toFloor(-1,1),toFloor(1,1)];
+    const BX=Math.max(Math.abs(fl.x),Math.abs(fr.x),Math.abs(tl2.x),Math.abs(tr2.x))*0.87;
+    const BZb=Math.max(Math.abs(fl.z),Math.abs(fr.z),Math.abs(tl2.z),Math.abs(tr2.z))*0.87; // symmetric approx
+    const BZf=Math.max(fl.z,fr.z,tl2.z,tr2.z)*0.87;
+    const BZ=Math.max(BZb,BZf);
     scene.add(new THREE.AmbientLight(0xffffff,1.8));
     const sun=new THREE.DirectionalLight(0xffffff,2.8);
     sun.position.set(BX*0.4,18,BZ*0.4);sun.castShadow=true;
@@ -307,10 +344,10 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       w.quaternion.setFromAxisAngle(new CANNON.Vec3(ax,ay,az),angle);
       world.addBody(w);
     };
-    addWall(-BX,0,0, 0,1,0,  Math.PI/2);   // left wall,  normal +X
-    addWall( BX,0,0, 0,1,0, -Math.PI/2);   // right wall, normal -X
-    addWall(0,0,-BZ, 0,1,0,  0);           // back wall,  normal +Z (default plane direction)
-    addWall(0,0, BZ, 0,1,0,  Math.PI);     // front wall, normal -Z
+    addWall(-BX, 0,  0,   0,1,0,  Math.PI/2);  // left wall
+    addWall( BX, 0,  0,   0,1,0, -Math.PI/2);  // right wall
+    addWall(  0, 0,-BZb,  0,1,0,  0);           // back wall
+    addWall(  0, 0, BZf,  0,1,0,  Math.PI);     // front wall
 
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
