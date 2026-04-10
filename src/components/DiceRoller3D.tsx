@@ -212,26 +212,23 @@ function faceUpQuat(def:GeoDef, targetNum:number, s:number): THREE.Quaternion|nu
 
 function buildDie(def:GeoDef, S:number, t:{f:number;e:number}, ff:number,
                   numLabel:(n:number)=>string, dieType=0): THREE.Group {
-  // d12: use Three.js built-in DodecahedronGeometry (correct winding)
-  const isD12 = dieType === 12;
+  // All dice use the same solidGeo approach - consistent rendering, no misalignment
   const fc = new THREE.Color(t.f);
-  const bodyGeo = isD12
-    ? new THREE.DodecahedronGeometry(S, 0)
-    : solidGeo(def, S);
-  const mats = isD12
-    ? [new THREE.MeshPhongMaterial({color:fc,emissive:fc.clone().multiplyScalar(0.1),specular:new THREE.Color(t.e),shininess:55,side:THREE.FrontSide})]
-    : def.faces.map(()=>new THREE.MeshPhongMaterial({color:fc,emissive:fc.clone().multiplyScalar(0.1),specular:new THREE.Color(t.e),shininess:55,side:THREE.DoubleSide}));
-  const mesh = new THREE.Mesh(bodyGeo, isD12 ? mats[0] : mats);
+  const bodyGeo = solidGeo(def, S);
+  const mats = def.faces.map(()=>new THREE.MeshPhongMaterial({
+    color:fc, emissive:fc.clone().multiplyScalar(0.1),
+    specular:new THREE.Color(t.e), shininess:55, side:THREE.DoubleSide,
+  }));
+  const mesh = new THREE.Mesh(bodyGeo, mats);
   mesh.castShadow=true; mesh.receiveShadow=true;
-  const edgeGeo = isD12 ? new THREE.EdgesGeometry(bodyGeo) : boundaryEdges(def, S*1.003);
-  const edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({color:t.e}));
+  const edges = new THREE.LineSegments(boundaryEdges(def,S*1.003), new THREE.LineBasicMaterial({color:t.e}));
   const group = new THREE.Group();
   group.add(mesh); group.add(edges);
 
   def.faces.forEach((_,fi) => {
     const {pos,normal,insc} = faceInfo(def,fi,S);
     const sz = insc * 1.7 * ff;
-    const off = isD12 ? 0.06 * S : 0.03 * S;
+    const off = 0.035 * S;
     const mat = new THREE.MeshBasicMaterial({
       map: numTex(numLabel(def.nums[fi]), t.e),
       transparent:true, side:THREE.FrontSide,
