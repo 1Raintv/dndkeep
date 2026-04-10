@@ -239,16 +239,21 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
-    const camera=new THREE.PerspectiveCamera(60,W/H,0.1,200);
-    camera.position.set(0,9,5);camera.lookAt(0,0,0.5);
+    // Camera covers the FULL window — physics bounds calculated from FOV
+    const FOV=62, aspect=W/H;
+    const camera=new THREE.PerspectiveCamera(FOV,aspect,0.1,300);
+    camera.position.set(0,14,4);camera.lookAt(0,0,0);
+    // Visible floor half-extents at y=0 from this camera
+    const halfH=(14/Math.cos(Math.atan(4/14)))*Math.tan(FOV*Math.PI/360)*1.05;
+    const BX=halfH*aspect, BZ=halfH; // physics bounds = full window
     scene.add(new THREE.AmbientLight(0xffffff,1.8));
     const sun=new THREE.DirectionalLight(0xffffff,2.8);
-    sun.position.set(3,10,4);sun.castShadow=true;
-    sun.shadow.camera.left=-8;sun.shadow.camera.right=8;
-    sun.shadow.camera.top=8;sun.shadow.camera.bottom=-8;
+    sun.position.set(BX*0.4,18,BZ*0.4);sun.castShadow=true;
+    sun.shadow.camera.left=-BX*1.2;sun.shadow.camera.right=BX*1.2;
+    sun.shadow.camera.top=BZ*1.2;sun.shadow.camera.bottom=-BZ*1.2;
     scene.add(sun);
-    scene.add(new THREE.DirectionalLight(0x8899ff,0.4)).position.set(-3,-2,2);
-    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:0.35}));
+    scene.add(new THREE.DirectionalLight(0x8899ff,0.4)).position.set(-BX*0.3,-2,BZ*0.3);
+    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(BX*4,BZ*4),new THREE.ShadowMaterial({opacity:0.3}));
     sFloor.rotation.x=-Math.PI/2;sFloor.receiveShadow=true;scene.add(sFloor);
 
     // ── Cannon-es world ──────────────────────────────────────────────
@@ -267,7 +272,6 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
     world.addContactMaterial(contact);
 
     // Floor plane — mass:0 makes it static in cannon-es (don't use CANNON.Body.STATIC constant)
-    const BX=2.8,BZ=2.0;
     const floorBody=new CANNON.Body({mass:0,material:floorMat});
     floorBody.addShape(new CANNON.Plane());
     floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2); // rotate so normal faces +Y
@@ -288,7 +292,9 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
 
     // ── Dice ─────────────────────────────────────────────────────────
     const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
-    const baseS=Math.max(0.9,1.5-Math.max(1,rawList.length)*0.06);
+    // Scale dice to ~7% of window height so they're readable across the full window
+    const diceScreenPct=BZ*0.14;
+    const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
     interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
     const specs:Spec[]=[];
@@ -312,22 +318,24 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
 
       // Cannon body with ConvexPolyhedron
       const shape=buildCannonShape(def,S);
+      // D10 (bipyramid) spins on its apex with no rotational friction — needs more angular damping
+      const isD10=sp.die===10||sp.die===100;
       const body=new CANNON.Body({
         mass:1,
         material:diceMat,
-        linearDamping:0.05,    // low — dice roll freely
-        angularDamping:0.1,    // low — dice tumble freely
+        linearDamping:0.05,
+        angularDamping:isD10?0.4:0.1,  // d10 gets extra spin damping
         allowSleep:true,
-        sleepSpeedLimit:1.6,   // sleep when mostly stopped
-        sleepTimeLimit:0.1,    // sleep quickly once stopped
+        sleepSpeedLimit:1.6,
+        sleepTimeLimit:0.1,
       });
       body.addShape(shape);
 
-      // Start from edge of scene — dice fly across the full table
+      // Spawn from random edge of visible window, throw toward opposite side
       const side = Math.random()>0.5 ? 1 : -1;
-      const startX = side*(2.0+Math.random()*0.6) + sp.ox;
-      const startY = 4.5+i*0.5+Math.random()*0.8;
-      const startZ = (Math.random()-0.5)*1.4;
+      const startX = side*(BX*0.65+Math.random()*BX*0.2) + sp.ox*0.5;
+      const startY = BZ*1.1+i*0.4+Math.random()*0.6;
+      const startZ = (Math.random()-0.5)*BZ*0.7;
       body.position.set(startX, startY, startZ);
 
       // Random starting orientation
@@ -335,11 +343,12 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
       eq.setFromEuler(Math.random()*Math.PI*2,Math.random()*Math.PI*2,Math.random()*Math.PI*2);
       body.quaternion.copy(eq);
 
-      // Strong throw across the table — dice travel most of the width
+      // Velocity: throw across full window, bounce off opposite wall
+      const speed=BX*0.35+Math.random()*BX*0.15;
       body.velocity.set(
-        -side*(2.5+Math.random()*1.5),           // fly from side to side
-        -(2.5+Math.random()*1.5),
-        (Math.random()-0.5)*1.5
+        -side*speed,
+        -(BZ*0.4+Math.random()*BZ*0.2),
+        (Math.random()-0.5)*BZ*0.3
       );
       body.angularVelocity.set((Math.random()-0.5)*22,(Math.random()-0.5)*22,(Math.random()-0.5)*16);
 
@@ -391,7 +400,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
         const sleeping=d.body.sleepState===2;
         const vel=d.body.velocity.length();
         const angVel=d.body.angularVelocity.length();
-        const onFloor=d.body.position.y<d.scale*1.1+0.3;
+        const onFloor=d.body.position.y<d.scale*1.2+0.5;
         if((sleeping||(vel<0.08&&angVel<0.08))&&onFloor){
           d.body.velocity.set(0,0,0);
           d.body.angularVelocity.set(0,0,0);
