@@ -74,7 +74,7 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.92,6:0.78,8:0.88,10:0.96,12:0.90,20:0.92,100:0.90};
+const SM:Record<number,number> = {4:0.92,6:0.44,8:0.88,10:0.96,12:0.90,20:0.92,100:0.90};
 const FF:Record<number,number> = {4:1.1,6:1.25,8:1.1,10:1.0,12:0.85,20:1.15,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4: {f:0x8b5cf6,e:0xf3f0ff},   // bright violet
@@ -255,7 +255,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   if(isD4){
     def.faces.forEach((_,fi)=>{
       const{pos:fc,normal,insc}=faceInfo(def,fi,S);
-      const off=0.018*S; // tight to face surface
+      const off=0.003*S; // flush with face, polygonOffset handles z-fighting
       // Size: fits in corner without overlapping adjacent corner numbers
       const sz=insc*1.1;
       // Orientation: blend face normal toward +Y for better overhead visibility
