@@ -215,9 +215,9 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   // MeshPhongMaterial gives proper 3D shading — lit faces bright, shadow side dark
   // High emissive so die color is vivid regardless of shadow angle
   const mats=def.faces.map(()=>new THREE.MeshPhongMaterial({
-    color:fc, emissive:fc.clone().multiplyScalar(0.55),
+    color:fc, emissive:fc.clone().multiplyScalar(0.7),
     specular:new THREE.Color(t.e), shininess:65,
-    side:THREE.FrontSide,
+    side:THREE.DoubleSide,
   }));
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
   // Brighter edge lines for definition
@@ -313,7 +313,7 @@ export default function DiceRoller3D({event,onDismiss,onResult}:Props){
 
     // ── Three.js scene ───────────────────────────────────────────────
     const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-    renderer.setSize(W,H);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(W,H);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
@@ -338,7 +338,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     const BZf=Math.max(fl.z,fr.z,tl2.z,tr2.z)*0.87;
     const BZ=Math.max(BZb,BZf);
     // 3-point lighting for MeshPhongMaterial — proper 3D shading
-    scene.add(new THREE.AmbientLight(0xffffff,2.2));
+    scene.add(new THREE.AmbientLight(0xffffff,2.8));
     const sun=new THREE.DirectionalLight(0xffffff,2.2);
     sun.position.set(BX*0.4,18,BZ*0.4);sun.castShadow=true;
     sun.shadow.camera.left=-BX*1.3;sun.shadow.camera.right=BX*1.3;
@@ -350,9 +350,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     // Warm fill from front-below
     const fillL=new THREE.DirectionalLight(0xffe8cc,0.45);
     fillL.position.set(0,3,BZ*0.7);scene.add(fillL);
-    // Clean dark floor — subtle so dice stand out
-    const sFloor=new THREE.Mesh(new THREE.PlaneGeometry(BX*4,BZ*4),new THREE.MeshBasicMaterial({color:0x080c12}));
-    sFloor.rotation.x=-Math.PI/2;scene.add(sFloor);
+    // No floor mesh — dice roll over the character sheet (the page IS the background)
 
     // ── Cannon-es world ──────────────────────────────────────────────
     const world=new CANNON.World({ gravity: new CANNON.Vec3(0,-60,0) }); // stronger gravity = faster settle
@@ -511,7 +509,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       const numColor=isNat20?'#ffd700':isNat1?'#ff4444':dieColor(event.dieType);
       const glow2=isNat20?`,0 0 60px rgba(255,200,0,0.8)`:isNat1?`,0 0 40px rgba(255,60,60,0.7)`:``;
       const div=document.createElement('div');
-      div.style.cssText=`position:absolute;top:6%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;`;
+      div.style.cssText=`position:absolute;top:4%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;background:rgba(0,0,0,0.72);padding:12px 28px;border-radius:16px;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);`;
       div.innerHTML=
         `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.4);letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px">${lbl}</div>`+
         `<div style="font:900 ${multi?68:92}px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
@@ -590,8 +588,8 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
   },[]);
 
   return createPortal(
-    <div ref={mountRef} onClick={onDismiss} style={{position:'fixed',inset:0,zIndex:9999,background:'radial-gradient(ellipse at center, rgba(5,10,20,0.82) 0%, rgba(1,3,8,0.96) 100%)',backdropFilter:'blur(8px)',cursor:'pointer',overflow:'hidden'}}>
-      <div style={{position:'absolute',bottom:14,left:0,right:0,textAlign:'center',pointerEvents:'none',fontFamily:'var(--ff-body)',fontSize:11,color:'rgba(255,255,255,0.2)'}}>Click anywhere to dismiss</div>
+    <div ref={mountRef} onClick={onDismiss} style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.08)',cursor:'pointer',overflow:'hidden'}}>
+      <div style={{position:'absolute',bottom:14,left:0,right:0,textAlign:'center',pointerEvents:'none',fontFamily:'var(--ff-body)',fontSize:11,color:'rgba(255,255,255,0.5)',textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>Click anywhere to dismiss</div>
       <style>{`@keyframes rr{from{opacity:0;transform:translateX(-50%) scale(0.5)}to{opacity:1;transform:translateX(-50%) scale(1)}}@keyframes nat20Pulse{0%{opacity:0;transform:scale(0.5)}50%{opacity:1}100%{opacity:0;transform:scale(2)}}@keyframes nat1Flash{0%{opacity:0.8}100%{opacity:0}}@keyframes nat20Badge{from{opacity:0;transform:scale(0.5) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
     </div>,
     document.body
