@@ -50,19 +50,30 @@ function makeD10(nums: number[]): GeoDef {
 }
 
 // ── D12: Dodecahedron (12 regular pentagonal faces) ──────────────────
+// Face connectivity derived by tracing all pentagon 5-cycles in the
+// adjacency graph. Each face verified coplanar; 20 verts × 3 faces each;
+// 30 unique edges × 2 face-incidences = 60 = 12×5.
 function makeD12(): GeoDef {
   const verts = unit([
-    [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],
-    [-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],
-    [0,-1/PHI,-PHI],[0,1/PHI,-PHI],[0,-1/PHI,PHI],[0,1/PHI,PHI],
-    [-1/PHI,-PHI,0],[1/PHI,-PHI,0],[1/PHI,PHI,0],[-1/PHI,PHI,0],
-    [-PHI,0,-1/PHI],[-PHI,0,1/PHI],[PHI,0,-1/PHI],[PHI,0,1/PHI],
+    [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],    // 0-3
+    [-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],          // 4-7
+    [0,-1/PHI,-PHI],[0,1/PHI,-PHI],[0,-1/PHI,PHI],[0,1/PHI,PHI], // 8-11
+    [-1/PHI,-PHI,0],[1/PHI,-PHI,0],[1/PHI,PHI,0],[-1/PHI,PHI,0], // 12-15
+    [-PHI,0,-1/PHI],[-PHI,0,1/PHI],[PHI,0,-1/PHI],[PHI,0,1/PHI], // 16-19
   ]);
-  // Each face is a regular pentagon. Correct CCW winding from outside.
   const faces = [
-    [0,8,13,12,16],[1,18,13,8,9],[2,9,8,0,3],[3,0,16,17,15],[4,17,16,12,10],
-    [5,19,18,1,6],[6,1,2,14,19],[7,11,14,2,3],[7,15,17,4,11],[5,10,12,13,18],
-    [4,10,5,6,7],[11,4,19,14,15],
+    [0,8,1,13,12],  // 1
+    [0,8,9,3,16],   // 2
+    [0,12,4,17,16], // 3
+    [8,1,18,2,9],   // 4
+    [1,13,5,19,18], // 5
+    [13,12,4,10,5], // 6
+    [9,3,15,14,2],  // 7
+    [3,16,17,7,15], // 8
+    [4,17,7,11,10], // 9
+    [6,11,10,5,19], // 10
+    [6,14,2,18,19], // 11
+    [6,11,7,15,14], // 12
   ];
   return { verts, faces, nums:[1,2,3,4,5,6,7,8,9,10,11,12] };
 }
@@ -339,7 +350,7 @@ export default function DiceRoller3D({event,onDismiss}:Props) {
           (d as any)._snapT += dt;
           const t = Math.min(1, (d as any)._snapT / 0.25);
           const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out
-          THREE.Quaternion.slerp((d as any)._snapFrom, (d as any)._snapTo, d.quat, ease);
+          d.quat.copy((d as any)._snapFrom).slerp((d as any)._snapTo, ease);
           d.group.quaternion.copy(d.quat);
           if (t >= 1) d.phase = 'done';
           return;
