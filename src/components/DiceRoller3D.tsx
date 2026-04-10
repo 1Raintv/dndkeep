@@ -453,7 +453,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       }
     });
 
-    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;val:number;scale:number;settled:boolean}
+    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean}
     const dice:PhysDie[]=specs.map((sp,i)=>{
       const def=gd(sp.gk);
       const S=baseS*(SM[sp.die]??1.0);
@@ -470,36 +470,42 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         linearDamping:0.05,
         angularDamping:isD10?0.4:0.1,  // d10 gets extra spin damping
         allowSleep:true,
-        sleepSpeedLimit:1.6,
+        sleepSpeedLimit:2.0,
         sleepTimeLimit:0.1,
       });
       body.addShape(shape);
 
-      // Spawn from random edge of visible window, throw toward opposite side
-      const side = Math.random()>0.5 ? 1 : -1;
-      const startX = side*(BX*0.65+Math.random()*BX*0.2) + sp.ox*0.5;
-      const startY = BZ*1.1+i*0.4+Math.random()*0.6;
-      const startZ = (Math.random()-0.5)*BZ*0.7;
-      body.position.set(startX, startY, startZ);
+      // Varied launch: alternate from left/right, top/bottom edges
+      const edgeChoice=Math.random();
+      let startX:number, startZ:number, vx:number, vz:number;
+      if(edgeChoice<0.5){
+        // Left or right edge
+        const side=Math.random()>0.5?1:-1;
+        startX=side*(BX*0.7+Math.random()*BX*0.15);
+        startZ=(Math.random()-0.5)*BZ*0.6;
+        vx=-side*(BX*0.32+Math.random()*BX*0.12);
+        vz=(Math.random()-0.5)*BZ*0.2;
+      } else {
+        // Back or front edge
+        const side=Math.random()>0.5?1:-1;
+        startX=(Math.random()-0.5)*BX*0.6;
+        startZ=side*(BZb*0.7+Math.random()*BZb*0.15)*(side>0?-1:1);
+        vx=(Math.random()-0.5)*BX*0.2;
+        vz=-side*(BZ*0.28+Math.random()*BZ*0.10);
+      }
+      const startY=BZ*0.9+i*0.5+Math.random()*0.8;
+      body.position.set(startX+sp.ox*0.4, startY, startZ);
 
-      // Random starting orientation
       const eq=new CANNON.Quaternion();
       eq.setFromEuler(Math.random()*Math.PI*2,Math.random()*Math.PI*2,Math.random()*Math.PI*2);
       body.quaternion.copy(eq);
-
-      // Velocity: throw across full window, bounce off opposite wall
-      const speed=BX*0.35+Math.random()*BX*0.15;
-      body.velocity.set(
-        -side*speed,
-        -(BZ*0.4+Math.random()*BZ*0.2),
-        (Math.random()-0.5)*BZ*0.3
-      );
+      body.velocity.set(vx, -(BZ*0.38+Math.random()*BZ*0.18), vz);
       body.angularVelocity.set((Math.random()-0.5)*22,(Math.random()-0.5)*22,(Math.random()-0.5)*16);
 
       // Stagger: launch each die from a slightly different height
 
       world.addBody(body);
-      return{group,body,def,sides:sp.die,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean};
+      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean};
     });
 
     let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false,totalT=0;
@@ -508,13 +514,25 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     function showResult(){
       if(shown||!el)return;shown=true;
       const detectedDice=dice.map(d=>({die:d.sides,value:d.val}));
-      const detectedTotal=detectedDice.reduce((s,d)=>s+d.value,0)+(event.flatBonus??0)+(event.modifier??0);
+      // D100: tens die (geoKey 10090) contributes val×10, units die contributes val
+      // If both are 0, result is 100 (not 0)
+      let detectedTotal:number;
+      if(event.dieType===100){
+        const tensDie=dice.find(d=>d.geoKey===10090);
+        const unitsDie=dice.find(d=>d.geoKey===10091);
+        const t=tensDie?.val??0, u=unitsDie?.val??0;
+        detectedTotal=(t===0&&u===0)?100:t*10+u;
+      } else {
+        detectedTotal=detectedDice.reduce((s,d)=>s+d.value,0)+(event.flatBonus??0)+(event.modifier??0);
+      }
       if(onResult)onResult(detectedDice,detectedTotal);
       const tot=detectedTotal;
       const multi=detectedDice.length>1;
       const hasMod=!multi&&event.modifier!==undefined&&event.modifier!==0;
       const firstResult=detectedDice[0]?.value??0;
       const lbl=event.label||(event.dieType===100?'d100':event.dieType?`d${event.dieType}`:'Roll');
+      const d100Breakdown=event.dieType===100?
+        (()=>{const t=dice.find(d=>d.geoKey===10090)?.val??0,u=dice.find(d=>d.geoKey===10091)?.val??0;return`${t===0?'00':t*10} + ${u}`;})():null;
       const isNat20=!multi&&event.dieType===20&&firstResult===20;
       const isNat1=!multi&&event.dieType===20&&firstResult===1;
       // Dramatic Nat 20 / Nat 1 effects
@@ -563,6 +581,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         `<div style="font:900 ${multi?68:92}px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
         (isNat20?`<div style="font:700 14px system-ui;color:#ffd700;letter-spacing:.2em;margin-top:8px;animation:nat20Badge 0.4s 0.3s both">★ NATURAL 20 ★</div>`:'')  +
         (isNat1 ?`<div style="font:700 14px system-ui;color:#ff4444;letter-spacing:.2em;margin-top:8px">✕ NATURAL 1 ✕</div>`:'') +
+        (d100Breakdown?`<div style="font:500 15px system-ui;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:.05em">${d100Breakdown} = ${tot}</div>`:'') +
         (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
       el.appendChild(div);
     }
@@ -598,9 +617,9 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           d.body.velocity.set(0,0,0);
           d.body.angularVelocity.set(0,0,0);
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          // Per-die view direction: vector from die position toward camera
-          const vd1=camera.position.clone().sub(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)).normalize();
-          d.val=detectTopFaceNum(d.def,tq,d.scale,vd1);
+          // Use +Y (straight up) — physically correct "face on top" convention
+          // Works correctly for dice anywhere on screen; camera is nearly overhead
+          d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
         }
       });
@@ -612,8 +631,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           if(d.settled)return;
           d.body.velocity.set(0,0,0); d.body.angularVelocity.set(0,0,0);
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
-          const vd2=camera.position.clone().sub(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)).normalize();
-          d.val=detectTopFaceNum(d.def,tq,d.scale,vd2);
+          d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
         });
       }
