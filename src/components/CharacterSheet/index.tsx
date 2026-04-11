@@ -281,7 +281,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
   // Short rest: roll hit dice to recover HP
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
-  const [combatFilter, setCombatFilter] = useState<'all'|'attack'|'action'|'bonus'|'reaction'|'saves'>('all');
+  const [combatFilter, setCombatFilter] = useState<'all'|'attack'|'action'|'bonus'|'reaction'>('all');
   const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {

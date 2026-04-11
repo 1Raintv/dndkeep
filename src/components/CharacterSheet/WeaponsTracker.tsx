@@ -116,7 +116,7 @@ export default function WeaponsTracker({
       hitVsAC,
     }));
 
-    triggerRoll({ result: nat, dieType: 20, modifier: weapon.attackBonus, total: hit, label: `${weapon.name} — To Hit` });
+    triggerRoll({ result: nat, dieType: 20, modifier: weapon.attackBonus, total: hit, label: `${weapon.name} — d20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus}` });
 
     if (characterId) {
       await logAction({
@@ -149,7 +149,10 @@ export default function WeaponsTracker({
       crit: false, miss: false, hitVsAC: 'unknown',
     });
 
-    triggerRoll({ result: 0, dieType: 0, modifier: 0, total: damage, label: `${weapon.name} — Damage` });
+    // Extract the die type so the 3D roller shows the correct physical die
+    const dmgDieMatch = weapon.damageDice.match(/\d+d(\d+)/);
+    const dmgDieType = dmgDieMatch ? parseInt(dmgDieMatch[1]) : 4;
+    triggerRoll({ result: 0, dieType: dmgDieType, modifier: weapon.damageBonus, total: damage, label: `${weapon.name} — ${weapon.damageDice} damage` });
 
     if (characterId) {
       await logAction({
@@ -328,16 +331,7 @@ export default function WeaponsTracker({
         </div>
       )}
 
-      {/* Add custom weapon (hidden by default, no prominent button) */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          className="btn-ghost btn-sm"
-          onClick={() => { setForm({ name: '', attackBonus: 0, damageDice: '1d8', damageBonus: 0, damageType: 'slashing', range: 'Melee', properties: '', notes: '' }); setEditId(null); setShowAdd(true); }}
-          style={{ fontSize: 11, color: 'var(--t-3)' }}
-        >
-          + Add custom attack
-        </button>
-      </div>
+
 
       {/* Add/Edit form modal */}
       {showAdd && (
