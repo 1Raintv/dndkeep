@@ -235,32 +235,51 @@ function numTex(label:string,ec:number,numCol='#ffffff',outlineCol='rgba(0,0,0,0
   if(TC.has(key))return TC.get(key)!;
   const cv=document.createElement('canvas');cv.width=256;cv.height=256;
   const ctx=cv.getContext('2d')!;
-  const fs=label.length>=3?90:label.length===2?112:136;
-  // ─ Engraved look: deep shadow ring → outer outline → inner fill → top highlight ─
-  ctx.font=`900 ${fs}px Georgia, 'Times New Roman', serif`;
+  const fs=label.length>=3?94:label.length===2?118:142;
+  // ── Bold sans-serif with colored glow — matches the nat 20 result display style ──
+  ctx.font=`900 ${fs}px system-ui,-apple-system,sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  // Deep shadow (creates engraved depth)
-  ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=8;ctx.shadowOffsetX=2;ctx.shadowOffsetY=3;
-  ctx.strokeStyle=outlineCol;ctx.lineWidth=16;
+
+  // Step 1: radial color glow behind the number (like nat 20's text-shadow)
+  // Draw the glow by painting the number blurred in the fill color
+  ctx.save();
+  ctx.shadowColor=numCol;
+  ctx.shadowBlur=28;
+  ctx.globalAlpha=0.65;
+  ctx.fillStyle=numCol;
+  ctx.fillText(label,128,134);
+  ctx.fillText(label,128,134); // double for intensity
+  ctx.restore();
+
+  // Step 2: thick dark outline for crisp edge separation
+  ctx.save();
+  ctx.strokeStyle=outlineCol;
+  ctx.lineWidth=14;
+  ctx.lineJoin='round';
   ctx.strokeText(label,128,134);
-  ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
-  // Clean outer outline
-  ctx.strokeStyle=outlineCol;ctx.lineWidth=10;
-  ctx.strokeText(label,128,134);
-  // Number fill
-  ctx.fillStyle=numCol;ctx.fillText(label,128,134);
-  // Subtle top-left highlight for 3D engraved look
-  ctx.globalAlpha=0.18;
-  ctx.fillStyle='#ffffff';
-  ctx.fillText(label,126,132);
-  ctx.globalAlpha=1;
-  // Underline 6
+  ctx.restore();
+
+  // Step 3: bright fill
+  ctx.fillStyle=numCol;
+  ctx.fillText(label,128,134);
+
+  // Step 4: subtle white sheen on top half — adds the glossy premium feel
+  ctx.save();
+  const grad=ctx.createLinearGradient(128,90,128,150);
+  grad.addColorStop(0,'rgba(255,255,255,0.35)');
+  grad.addColorStop(0.5,'rgba(255,255,255,0.08)');
+  grad.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=grad;
+  ctx.fillText(label,128,134);
+  ctx.restore();
+
+  // Underline 6 to distinguish from 9
   if(label==='6'){
-    const m=ctx.measureText('6');const uw=m.width*0.85;
-    const uy=134+fs*0.44;
-    ctx.strokeStyle=outlineCol;ctx.lineWidth=8;
+    const m=ctx.measureText('6');const uw=m.width*0.78;
+    const uy=134+fs*0.43;
+    ctx.strokeStyle=outlineCol;ctx.lineWidth=7;
     ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
-    ctx.strokeStyle=numCol;ctx.lineWidth=5;
+    ctx.strokeStyle=numCol;ctx.lineWidth=4;
     ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
   }
   const t=new THREE.CanvasTexture(cv);TC.set(key,t);return t;
@@ -377,7 +396,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
         const py=(v[1]*0.62+cy*0.38)*S+normal[1]*off;
         const pz=(v[2]*0.62+cz*0.38)*S+normal[2]*off;
         const mat=new THREE.MeshBasicMaterial({
-          map:numTex(String(D4_VERT_NUMS[vi]),t.e,skin.numColor,skin.numOutline),
+          map:numTex(String(D4_VERT_NUMS[vi]),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline),
           transparent:true, side:THREE.DoubleSide,
           depthTest:true, depthWrite:false, alphaTest:0.05,
           polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
@@ -395,9 +414,9 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
     def.faces.forEach((_,fi)=>{
       const{pos,normal,insc}=faceInfo(def,fi,S);
       // Fixed plane size relative to S ensures large readable numbers on every die
-      const sz=S*0.58*ff, off=numOff; // fixed size — same number on every die
+      const sz=S*0.56*ff, off=numOff; // fixed size — same number on every die
       const mat=new THREE.MeshBasicMaterial({
-        map:numTex(numLabel(def.nums[fi]),t.e,skin.numColor,skin.numOutline),
+        map:numTex(numLabel(def.nums[fi]),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline),
         transparent:true, side:THREE.FrontSide,
         depthTest:true, depthWrite:false,
         alphaTest:0.05,
