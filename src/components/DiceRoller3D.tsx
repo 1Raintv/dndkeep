@@ -74,7 +74,7 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:1.0,6:1.0,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
+const SM:Record<number,number> = {4:0.95,6:0.72,8:0.95,10:0.95,12:0.95,20:0.95,100:0.95};
 const FF:Record<number,number> = {4:1.0,6:1.0,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
 const THEME:Record<number,{f:number;e:number}> = {
   4: {f:0x8b5cf6,e:0xf3f0ff},   // bright violet

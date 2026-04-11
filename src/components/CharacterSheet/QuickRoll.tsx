@@ -64,7 +64,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
   const [open, setOpen] = useState(false);
   const [queue, setQueue] = useState<DiceInQueue[]>([]);
   const [label, setLabel] = useState('');
-  const [lastRoll, setLastRoll] = useState<RollSet | null>(null);
+
   const [rolling, setRolling] = useState(false);
   const { triggerRoll } = useDiceRoll();
   const [adv, setAdv] = useState<'normal'|'advantage'|'disadvantage'>('normal');
@@ -83,7 +83,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
       return ex.count <= 1 ? q.filter(d => d.die !== die) : q.map(d => d.die === die ? { ...d, count: d.count - 1 } : d);
     });
   }
-  function clearQueue() { setQueue([]); setLabel(''); setAdv('normal'); setLastRoll(null); }
+  function clearQueue() { setQueue([]); setLabel(''); setAdv('normal'); }
   function buildExpr(q: DiceInQueue[]) { return q.map(d => `${d.count}d${d.die}`).join(' + '); }
 
   async function rollAll() {
@@ -134,7 +134,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
 
       const expression = buildExpr(queue);
       const set: RollSet = { id: Date.now(), dice: finalDice, total, label: label || expression };
-      setLastRoll(set);
+
       setRolling(false);
 
       // Trigger visual dice animation — physics determines the result
@@ -285,53 +285,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
             </button>
           </div>
 
-          {/* Last roll results — card per die showing label + big result */}
-          {lastRoll && !rolling && (
-            <div style={{
-              borderTop: '1px solid var(--c-border)',
-              padding: 'var(--sp-2) var(--sp-3) var(--sp-3)',
-              display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
-              {/* One card per individual die roll */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {lastRoll.dice.map((d, i) => {
-                  const c = dieColor(d.die);
-                  return (
-                    <div key={i} style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      gap: 2, padding: '6px 10px',
-                      background: d.dropped ? 'transparent' : `${c}14`,
-                      border: `1.5px solid ${d.dropped ? 'var(--c-border)' : c + '60'}`,
-                      borderRadius: 8, minWidth: 44, opacity: d.dropped ? 0.4 : 1,
-                    }}>
-                      {/* Die label */}
-                      <span style={{
-                        fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9,
-                        color: d.dropped ? 'var(--t-3)' : c,
-                        letterSpacing: '0.06em', textTransform: 'uppercase',
-                      }}>d{d.die}</span>
-                      {/* Result */}
-                      <span style={{
-                        fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 22,
-                        color: d.dropped ? 'var(--t-3)' : c,
-                        lineHeight: 1, textDecoration: d.dropped ? 'line-through' : 'none',
-                      }}>{d.value}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Total */}
-              <div style={{
-                display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
-                gap: 6, paddingTop: 4, borderTop: '1px solid var(--c-border)',
-              }}>
-                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', letterSpacing: '0.08em' }}>TOTAL</span>
-                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 22, color: 'var(--t-1)' }}>
-                  {lastRoll.total}
-                </span>
-              </div>
-            </div>
-          )}
+
 
         </div>
       )}
