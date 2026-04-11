@@ -14,18 +14,15 @@ import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
 import HPStatsPanel from './HPStatsPanel';
 import CampaignBar from './CampaignBar';
-import CombatStats from './CombatStats';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
 import SpellCastButton from './SpellCastButton';
 import ConditionsPanel from './ConditionsPanel';
 import Inventory from './Inventory';
 import Notes from './Notes';
-import DeathSaves from './DeathSaves';
 import ActionEconomy from './ActionEconomy';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
-import SessionTab from './SessionTab';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
@@ -1094,8 +1091,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             </div>
           </div>
         )}
-
-        {/* ── SESSION ── */}
 
       </div>
         </ErrorBoundary>
