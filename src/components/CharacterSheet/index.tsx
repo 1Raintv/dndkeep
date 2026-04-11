@@ -877,18 +877,47 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           const inventoryWeapons = (character.inventory ?? []).filter((item: any) =>
             item.equipped && (item.damage || item.category?.toLowerCase() === 'weapon' || item.category?.toLowerCase() === 'weapons')
           );
-          const inventoryAsWeapons = inventoryWeapons.map((item: any) => ({
-            id: `inv_${item.id}`,
-            name: item.name,
-            attackBonus: computed.modifiers.strength ?? 0,
-            damageDice: (item.damage?.match(/\d+d\d+/) || ['1d4'])[0],
-            damageBonus: 0,
-            damageType: item.damage?.replace(/\d+d\d+/,'')?.replace(/[^a-zA-Z]/g,'')?.trim() || 'bludgeoning',
-            range: item.range ?? 'Melee',
-            properties: item.properties ?? '',
-            notes: 'From inventory: ' + item.name,
-          }));
-          const allWeapons = [...(character.weapons ?? []), ...inventoryAsWeapons];
+          const inventoryAsWeapons = inventoryWeapons.map((item: any) => {
+            // Parse damage string like "1d6 piercing", "1d4+1 slashing", "2d6 fire"
+            const dmgStr: string = item.damage ?? '';
+            const diceMatch = dmgStr.match(/(\d+d\d+)/);
+            const bonusMatch = dmgStr.match(/[+\-]\d+/);
+            const typeMatch = dmgStr.match(/(slashing|piercing|bludgeoning|fire|cold|lightning|poison|acid|necrotic|radiant|psychic|thunder|force)/i);
+            const strMod = computed.modifiers.strength ?? 0;
+            const dexMod = computed.modifiers.dexterity ?? 0;
+            // Use higher of STR/DEX for finesse weapons
+            const isFinesse = item.properties?.toLowerCase().includes('finesse');
+            const atkMod = isFinesse ? Math.max(strMod, dexMod) : strMod;
+            const pb = computed.proficiency_bonus ?? 2;
+            return {
+              id: `inv_${item.id}`,
+              name: item.name,
+              attackBonus: atkMod + pb,
+              damageDice: diceMatch ? diceMatch[1] : '1d4',
+              damageBonus: bonusMatch ? parseInt(bonusMatch[0]) : atkMod,
+              damageType: typeMatch ? typeMatch[1].toLowerCase() : 'bludgeoning',
+              range: item.range ?? 'Melee',
+              properties: item.properties ?? '',
+              notes: '',
+            };
+          });
+
+          // Unarmed Strike — always available per 2024 PHB
+          const strMod = computed.modifiers.strength ?? 0;
+          const pb = computed.proficiency_bonus ?? 2;
+          const unarmedDmg = 1 + strMod; // 2024 rule: 1 + STR mod, minimum 1
+          const unarmedStrike: any = {
+            id: 'unarmed',
+            name: 'Unarmed Strike',
+            attackBonus: strMod + pb,
+            damageDice: 'flat',
+            damageBonus: Math.max(1, unarmedDmg),
+            damageType: 'bludgeoning',
+            range: 'Melee',
+            properties: 'Light',
+            notes: '',
+          };
+          const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons];
 
           // Defenses
           const buffs: any[] = (character as any).active_buffs ?? [];
@@ -930,8 +959,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                     { id: 'action',   label: '🔵 Action' },
                     { id: 'bonus',    label: '⚡ Bonus' },
                     { id: 'reaction', label: '🛡 Reaction' },
-                    { id: 'saves',    label: '🎯 Saves' },
-                  ] as const).map(f => (
+                    ] as const).map(f => (
                     <button key={f.id} onClick={() => setCombatFilter(f.id)}
                       style={{
                         fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
@@ -963,18 +991,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                     activeConditions={character.active_conditions}
                     activeBufss={(character as any).active_buffs ?? []}
                   />
-                )}
-
-                {/* Saving throws */}
-                {(combatFilter === 'all' || combatFilter === 'saves') && (
-                  <div style={{ marginTop: combatFilter === 'all' ? 'var(--sp-4)' : 0 }}>
-                    <CombatStats character={character} computed={computed} onUpdateHP={(hp, temp) => applyUpdate({ current_hp: hp, temp_hp: temp }, true)} />
-                  </div>
-                )}
-                {(combatFilter === 'all' || combatFilter === 'saves') && (
-                  <div style={{ marginTop: 'var(--sp-3)' }}>
-                    <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
-                  </div>
                 )}
 
                 {/* Action / Bonus / Reaction features */}

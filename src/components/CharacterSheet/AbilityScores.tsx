@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
-import { abilityAbbrev, formatModifier, rollDie } from '../../lib/gameUtils';
+import { formatModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
@@ -30,21 +30,18 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     const mod = computed.modifiers[ability];
     const hasDisadvantage = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.abilityCheckDisadvantage);
     const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
-
     if (hasAutoFail) {
       triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)` });
       supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod, modifier: mod });
       return;
     }
-
     const roll1 = rollDie(20);
-    const roll2 = hasDisadvantage ? rollDie(20) : roll1;
-    const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
+    const d20 = hasDisadvantage ? Math.min(roll1, rollDie(20)) : roll1;
     const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
     triggerRoll({ result: 0, dieType: 20, modifier: mod, label,
       onResult: (_dice, physTotal) => {
         const physRoll = physTotal - mod;
-        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }).then(({error}) => { if (error) console.error(error); });
       },
     });
   }
@@ -62,72 +59,77 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label,
       onResult: (_dice, physTotal) => {
         const physRoll = physTotal - saveMod;
-        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }).then(({error}) => { if (error) console.error(error); });
       },
     });
   }
 
   return (
     <section className="ability-scores-section">
-      {/* 6-column ability score strip — 3-col by default, 2-col inside vitals column */}
-      <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 'var(--sp-2)' }}>
-        {ABILITY_ORDER.map(ability => {
-          const meta = STAT_META[ability];
-          const score = character[ability];
-          const mod = computed.modifiers[ability];
-          const save = computed.saving_throws[ability];
-          const isActive = false;
 
-          return (
-            <div
-              key={ability}
-              className="stat-box stagger-item"
-              role="button"
-              tabIndex={0}
-              onClick={() => rollAbility(ability)}
-              onKeyDown={e => e.key === 'Enter' && rollAbility(ability)}
-              title={`Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
-              style={{
-                borderTopColor: meta.color,
-                background: isActive ? meta.bg : undefined,
-                boxShadow: isActive ? `0 0 0 1px ${meta.bdr}, 0 4px 16px ${meta.color}20` : undefined,
-              }}
-            >
-              {/* Abbrev label in stat color */}
-              <div className="stat-box-label" style={{ color: meta.color }}>
-                {meta.abbrev}
+      {/* ── Ability Checks — compact strip ── */}
+      <div style={{ marginBottom: 4 }}>
+        <div style={{
+          fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+          letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+          color: 'var(--t-3)', marginBottom: 5,
+        }}>
+          Ability Checks
+        </div>
+        <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+          {ABILITY_ORDER.map(ability => {
+            const meta = STAT_META[ability];
+            const score = character[ability as keyof Character] as number;
+            const mod = computed.modifiers[ability];
+            return (
+              <div
+                key={ability}
+                className="stagger-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => rollAbility(ability)}
+                onKeyDown={e => e.key === 'Enter' && rollAbility(ability)}
+                title={`Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
+                style={{
+                  background: 'var(--c-card)',
+                  border: `1px solid var(--c-border)`,
+                  borderTop: `2px solid ${meta.color}`,
+                  borderRadius: 'var(--r-md)',
+                  padding: '5px 4px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all var(--tr-fast)',
+                  display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1,
+                }}
+              >
+                {/* Abbrev */}
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color, lineHeight: 1 }}>
+                  {meta.abbrev}
+                </div>
+                {/* Modifier — compact */}
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.1rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
+                  {formatModifier(mod)}
+                </div>
+                {/* Raw score */}
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 9, color: 'var(--t-3)', lineHeight: 1 }}>{score}</div>
               </div>
-
-              {/* Modifier — DDB-style: huge, dominant number */}
-              <div className="stat-box-modifier" style={{ color: 'var(--t-1)', fontSize: '1.85rem', fontWeight: 900, lineHeight: 1 }}>
-                {formatModifier(mod)}
-              </div>
-
-              {/* Score — small pill below modifier */}
-              <div style={{ marginTop: 2, background: 'rgba(255,255,255,0.07)', borderRadius: 10, padding: '1px 8px', display: 'inline-block' }}>
-                <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{score}</span>
-              </div>
-
-              {/* Save indicator */}
-              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                <div style={{
-                  width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-                  background: save.proficient ? meta.color : 'transparent',
-                  border: `1px solid ${save.proficient ? meta.color : 'var(--c-border-m)'}`,
-                }} />
-                <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 9, color: save.proficient ? meta.color : 'var(--t-3)' }}>
-                  {formatModifier(save.total)}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* ── Saving Throws compact strip — same columns as ability scores ── */}
-      <div style={{ marginTop: 'var(--sp-2)' }}>
-        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 5 }}>
-          Saving Throws
+      {/* ── Section divider ── */}
+      <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
+
+      {/* ── Saving Throws — prominent, full-size cards ── */}
+      <div>
+        <div style={{
+          fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+          letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+          color: 'var(--c-gold-l)', marginBottom: 5,
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+          <span style={{ fontSize: 10 }}>🎯</span> Saving Throws
         </div>
         <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
           {ABILITY_ORDER.map(ability => {
@@ -135,39 +137,48 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
             const isProficient = character.saving_throw_proficiencies?.includes(ability);
             const saveMod = computed.modifiers[ability] + (isProficient ? computed.proficiency_bonus : 0);
             return (
-              <button
+              <div
                 key={ability}
-                onClick={e => { e.stopPropagation(); rollSave(ability); }}
+                className="stat-box stagger-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => rollSave(ability)}
+                onKeyDown={e => e.key === 'Enter' && rollSave(ability)}
                 title={`Roll ${ability} saving throw (d20${saveMod >= 0 ? '+' : ''}${saveMod})${isProficient ? ' — Proficient' : ''}`}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '4px 6px',
-                  borderRadius: 'var(--r-sm)',
-                  border: `1px solid ${isProficient ? meta.color + '40' : 'var(--c-border)'}`,
-                  background: isProficient ? meta.color + '10' : 'transparent',
-                  cursor: 'pointer', transition: 'all var(--tr-fast)',
-                  minHeight: 0,
+                  borderTopColor: meta.color,
+                  background: isProficient ? meta.color + '0A' : undefined,
+                  padding: '8px 6px',
+                  cursor: 'pointer',
                 }}
               >
-                <div style={{
-                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                  background: isProficient ? meta.color : 'transparent',
-                  border: `1px solid ${isProficient ? meta.color : 'var(--c-border-m)'}`,
-                }} />
-                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, color: meta.color, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
-                  {meta.abbrev}
-                </span>
-                <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 700, color: saveMod >= 0 ? 'var(--c-green-l)' : 'var(--c-red-l)', marginLeft: 'auto' }}>
+                {/* Prof dot + abbrev inline */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, marginBottom: 3 }}>
+                  <div style={{
+                    width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+                    background: isProficient ? meta.color : 'transparent',
+                    border: `1px solid ${isProficient ? meta.color : 'var(--c-border-m)'}`,
+                  }} />
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color }}>
+                    {meta.abbrev}
+                  </span>
+                </div>
+                {/* Modifier — big, same weight as DDB */}
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.5rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
                   {formatModifier(saveMod)}
-                </span>
-              </button>
+                </div>
+                {/* Save label */}
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 600, color: isProficient ? meta.color : 'var(--t-3)', letterSpacing: '0.06em', marginTop: 2 }}>
+                  {isProficient ? 'PROF' : 'SAVE'}
+                </div>
+              </div>
             );
           })}
         </div>
       </div>
 
-      <p style={{ fontSize: 10, color: 'var(--t-3)', fontFamily: 'var(--ff-body)', letterSpacing: '0.03em', marginBottom: 0 }}>
-        Click score to roll check · click save to roll save · filled dot = proficient
+      <p style={{ fontSize: 9, color: 'var(--t-3)', fontFamily: 'var(--ff-body)', letterSpacing: '0.03em', marginBottom: 0, marginTop: 6 }}>
+        Top = ability check · Bottom = saving throw · filled dot = proficient
       </p>
     </section>
   );
