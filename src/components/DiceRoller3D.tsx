@@ -82,12 +82,16 @@ export interface DiceSkin {
   id: string;
   name: string;
   free: boolean;
-  // Per die-type colors
   faces: Record<number,{f:number;e:number}>;
-  // PBR material properties
-  metalness: number;   // 0=matte, 1=full metal
-  roughness: number;   // 0=mirror, 1=chalk
-  emissiveMult: number; // how much the face color glows
+  metalness: number;
+  roughness: number;
+  emissiveMult: number;
+  clearcoat?: number;       // 0-1 lacquer gloss layer
+  clearcoatRoughness?: number;
+  transmission?: number;    // 0-1 for gem/glass see-through
+  ior?: number;             // index of refraction (glass=1.5, diamond=2.4)
+  numColor?: string;        // number fill color (default: white)
+  numOutline?: string;      // number outline color (default: black)
 }
 
 export const DICE_SKINS: DiceSkin[] = [
@@ -96,60 +100,72 @@ export const DICE_SKINS: DiceSkin[] = [
     name: 'Classic',
     free: true,
     faces: {
-      4:{f:0x8b5cf6,e:0xf3f0ff}, 6:{f:0xef4444,e:0xffe4e4},
-      8:{f:0x22c55e,e:0xdcfce7}, 10:{f:0x3b82f6,e:0xe0f2fe},
-      12:{f:0xec4899,e:0xfdf2f8}, 20:{f:0xf59e0b,e:0xfffbeb},
-      100:{f:0xef4444,e:0xffe4e4},1001:{f:0x475569,e:0xf8fafc},1002:{f:0xb91c1c,e:0xfee2e2},
+      4:{f:0x7c3aed,e:0xede9fe}, 6:{f:0xdc2626,e:0xfee2e2},
+      8:{f:0x16a34a,e:0xdcfce7}, 10:{f:0x1d4ed8,e:0xdbeafe},
+      12:{f:0xbe185d,e:0xfce7f3}, 20:{f:0xb45309,e:0xfef3c7},
+      100:{f:0xdc2626,e:0xfee2e2},
+      1001:{f:0x334155,e:0xf8fafc},1002:{f:0x991b1b,e:0xfee2e2},
     },
-    metalness:0.0, roughness:0.55, emissiveMult:0.18,
+    metalness:0.0, roughness:0.5, emissiveMult:0.15,
+    clearcoat:0.5, clearcoatRoughness:0.2,
+    numColor:'#ffffff', numOutline:'rgba(0,0,0,0.92)',
   },
   {
     id: 'obsidian',
     name: 'Obsidian',
     free: false,
     faces: {
-      4:{f:0x2d1b69,e:0xa78bfa}, 6:{f:0x1a0a0a,e:0xf87171},
-      8:{f:0x052e16,e:0x4ade80}, 10:{f:0x0c1a3a,e:0x60a5fa},
-      12:{f:0x3b0764,e:0xe879f9}, 20:{f:0x1c1917,e:0xe2e8f0},
-      100:{f:0x1a0a0a,e:0xf87171},1001:{f:0x0f172a,e:0x94a3b8},1002:{f:0x3b0000,e:0xfca5a5},
+      4:{f:0x0c0612,e:0xa78bfa}, 6:{f:0x080808,e:0xf87171},
+      8:{f:0x030e08,e:0x4ade80}, 10:{f:0x030a14,e:0x60a5fa},
+      12:{f:0x100224,e:0xe879f9}, 20:{f:0x0a0a0a,e:0xf1f5f9},
+      100:{f:0x080808,e:0xf87171},1001:{f:0x0a0a0a,e:0x94a3b8},1002:{f:0x120000,e:0xfca5a5},
     },
-    metalness:0.05, roughness:0.8, emissiveMult:0.35,
+    metalness:0.0, roughness:0.75, emissiveMult:0.6,
+    clearcoat:0.0,
+    numColor:'#e0e0e0', numOutline:'rgba(0,0,0,0.98)',
   },
   {
     id: 'gold',
     name: 'Dragon Gold',
     free: false,
     faces: {
-      4:{f:0x92400e,e:0xfef3c7}, 6:{f:0x78350f,e:0xfde68a},
-      8:{f:0x854d0e,e:0xfef08a}, 10:{f:0x713f12,e:0xfef9c3},
-      12:{f:0x7c2d12,e:0xffedd5}, 20:{f:0x451a03,e:0xfed7aa},
-      100:{f:0x78350f,e:0xfde68a},1001:{f:0x57534e,e:0xfef3c7},1002:{f:0x7c2d12,e:0xffedd5},
+      4:{f:0xe07b00,e:0xfef3c7}, 6:{f:0xc26a00,e:0xfde68a},
+      8:{f:0xe07b00,e:0xfef08a}, 10:{f:0xa85c00,e:0xfef9c3},
+      12:{f:0xe07b00,e:0xffedd5}, 20:{f:0xf59e0b,e:0xfed7aa},
+      100:{f:0xc26a00,e:0xfde68a},1001:{f:0x6b6460,e:0xfef3c7},1002:{f:0xcc2000,e:0xffedd5},
     },
-    metalness:0.85, roughness:0.2, emissiveMult:0.12,
+    metalness:0.95, roughness:0.08, emissiveMult:0.04,
+    clearcoat:1.0, clearcoatRoughness:0.02,
+    numColor:'#1a0800', numOutline:'rgba(60,20,0,0.6)',
   },
   {
     id: 'ice',
     name: 'Glacial Ice',
     free: false,
     faces: {
-      4:{f:0x0ea5e9,e:0xe0f2fe}, 6:{f:0x0284c7,e:0xf0f9ff},
-      8:{f:0x075985,e:0xbae6fd}, 10:{f:0x0c4a6e,e:0xe0f2fe},
-      12:{f:0x164e63,e:0xcffafe}, 20:{f:0xf0f9ff,e:0x0ea5e9},
-      100:{f:0x0284c7,e:0xf0f9ff},1001:{f:0x155e75,e:0xe0f2fe},1002:{f:0x0c4a6e,e:0xbae6fd},
+      4:{f:0x7dd3fc,e:0xe0f2fe}, 6:{f:0x38bdf8,e:0xf0f9ff},
+      8:{f:0x0ea5e9,e:0xbae6fd}, 10:{f:0x0284c7,e:0xe0f2fe},
+      12:{f:0x0369a1,e:0xcffafe}, 20:{f:0xbae6fd,e:0x0ea5e9},
+      100:{f:0x38bdf8,e:0xf0f9ff},1001:{f:0x0c4a6e,e:0xe0f2fe},1002:{f:0x0284c7,e:0xbae6fd},
     },
-    metalness:0.1, roughness:0.15, emissiveMult:0.25,
+    metalness:0.0, roughness:0.0, emissiveMult:0.35,
+    clearcoat:1.0, clearcoatRoughness:0.0,
+    transmission:0.65, ior:1.45,
+    numColor:'#ffffff', numOutline:'rgba(0,60,120,0.85)',
   },
   {
     id: 'blood',
     name: 'Blood Moon',
     free: false,
     faces: {
-      4:{f:0x7f1d1d,e:0xfca5a5}, 6:{f:0x450a0a,e:0xfecaca},
-      8:{f:0x991b1b,e:0xfee2e2}, 10:{f:0x7f1d1d,e:0xfca5a5},
-      12:{f:0x3f0000,e:0xef4444}, 20:{f:0xdc2626,e:0xffe4e4},
-      100:{f:0x450a0a,e:0xfecaca},1001:{f:0x292524,e:0xfca5a5},1002:{f:0x7f1d1d,e:0xef4444},
+      4:{f:0x6b0000,e:0xfca5a5}, 6:{f:0x3d0000,e:0xfecaca},
+      8:{f:0x850000,e:0xfee2e2}, 10:{f:0x6b0000,e:0xfca5a5},
+      12:{f:0x350000,e:0xef4444}, 20:{f:0xcc1a1a,e:0xffe4e4},
+      100:{f:0x3d0000,e:0xfecaca},1001:{f:0x1a1412,e:0xfca5a5},1002:{f:0x6b0000,e:0xef4444},
     },
-    metalness:0.3, roughness:0.45, emissiveMult:0.4,
+    metalness:0.4, roughness:0.35, emissiveMult:0.6,
+    clearcoat:0.7, clearcoatRoughness:0.25,
+    numColor:'#ffffff', numOutline:'rgba(0,0,0,0.95)',
   },
 ];
 
@@ -214,26 +230,37 @@ function faceUpQuat(def:GeoDef,targetNum:number,s:number):THREE.Quaternion|null{
 }
 
 const TC=new Map<string,THREE.CanvasTexture>();
-function numTex(label:string,ec:number):THREE.CanvasTexture{
-  const key=`${label}-${ec}`;
+function numTex(label:string,ec:number,numCol='#ffffff',outlineCol='rgba(0,0,0,0.95)'):THREE.CanvasTexture{
+  const key=`${label}-${ec}-${numCol}`;
   if(TC.has(key))return TC.get(key)!;
   const cv=document.createElement('canvas');cv.width=256;cv.height=256;
   const ctx=cv.getContext('2d')!;
-  // Large numbers — canvas is used as a texture so fill determines visibility
   const fs=label.length>=3?90:label.length===2?112:136;
-  ctx.font=`900 ${fs}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
-  // Thick black outline first
-  ctx.strokeStyle='rgba(0,0,0,0.95)';ctx.lineWidth=12;
+  // ─ Engraved look: deep shadow ring → outer outline → inner fill → top highlight ─
+  ctx.font=`900 ${fs}px Georgia, 'Times New Roman', serif`;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  // Deep shadow (creates engraved depth)
+  ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=8;ctx.shadowOffsetX=2;ctx.shadowOffsetY=3;
+  ctx.strokeStyle=outlineCol;ctx.lineWidth=16;
   ctx.strokeText(label,128,134);
-  // White fill
-  ctx.fillStyle='#ffffff';ctx.fillText(label,128,134);
+  ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
+  // Clean outer outline
+  ctx.strokeStyle=outlineCol;ctx.lineWidth=10;
+  ctx.strokeText(label,128,134);
+  // Number fill
+  ctx.fillStyle=numCol;ctx.fillText(label,128,134);
+  // Subtle top-left highlight for 3D engraved look
+  ctx.globalAlpha=0.18;
+  ctx.fillStyle='#ffffff';
+  ctx.fillText(label,126,132);
+  ctx.globalAlpha=1;
   // Underline 6
   if(label==='6'){
     const m=ctx.measureText('6');const uw=m.width*0.85;
     const uy=134+fs*0.44;
-    ctx.strokeStyle='rgba(0,0,0,0.8)';ctx.lineWidth=8;
+    ctx.strokeStyle=outlineCol;ctx.lineWidth=8;
     ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
-    ctx.strokeStyle='rgba(255,255,255,0.95)';ctx.lineWidth=5;
+    ctx.strokeStyle=numCol;ctx.lineWidth=5;
     ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
   }
   const t=new THREE.CanvasTexture(cv);TC.set(key,t);return t;
@@ -295,16 +322,24 @@ function boundaryEdges(def:GeoDef,s:number):THREE.BufferGeometry{
 function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(n:number)=>string,skin:DiceSkin):THREE.Group{
   const fc=new THREE.Color(t.f);
   const geo=solidGeo(def,S);
-  // MeshStandardMaterial: PBR rendering — metalness/roughness gives real depth.
-  // Skin drives metalness, roughness, and emissive so dice look premium.
+  // MeshPhysicalMaterial: full PBR with clearcoat, transmission, and sheen.
+  // Each skin drives material properties for unique premium feel.
   const dieHasFewFaces=def.faces.length<=4;
-  const baseMat=new THREE.MeshStandardMaterial({
+  const isGlass=(skin.transmission??0)>0;
+  const baseMat=new THREE.MeshPhysicalMaterial({
     color:fc,
     emissive:fc.clone().multiplyScalar(skin.emissiveMult),
     metalness:skin.metalness,
     roughness:skin.roughness,
+    clearcoat:skin.clearcoat??0,
+    clearcoatRoughness:skin.clearcoatRoughness??0.3,
+    transmission:skin.transmission??0,
+    ior:skin.ior??1.5,
+    thickness: isGlass ? 0.8 : 0,   // glass thickness for refraction
     side:dieHasFewFaces?THREE.DoubleSide:THREE.FrontSide,
-    transparent:false, opacity:1.0,
+    transparent: isGlass,
+    opacity: isGlass ? 0.9 : 1.0,
+    depthWrite: !isGlass,
   });
   const mats=def.faces.map(()=>baseMat.clone());
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
@@ -342,7 +377,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
         const py=(v[1]*0.62+cy*0.38)*S+normal[1]*off;
         const pz=(v[2]*0.62+cz*0.38)*S+normal[2]*off;
         const mat=new THREE.MeshBasicMaterial({
-          map:numTex(String(D4_VERT_NUMS[vi]),t.e),
+          map:numTex(String(D4_VERT_NUMS[vi]),t.e,skin.numColor,skin.numOutline),
           transparent:true, side:THREE.DoubleSide,
           depthTest:true, depthWrite:false, alphaTest:0.05,
           polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
@@ -362,7 +397,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
       // Fixed plane size relative to S ensures large readable numbers on every die
       const sz=S*0.58*ff, off=numOff; // fixed size — same number on every die
       const mat=new THREE.MeshBasicMaterial({
-        map:numTex(numLabel(def.nums[fi]),t.e),
+        map:numTex(numLabel(def.nums[fi]),t.e,skin.numColor,skin.numOutline),
         transparent:true, side:THREE.FrontSide,
         depthTest:true, depthWrite:false,
         alphaTest:0.05,
@@ -448,13 +483,30 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
 
     // ── Three.js scene ───────────────────────────────────────────────
     const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-    renderer.setSize(W,H);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);
+    renderer.setSize(W,H);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setClearColor(0x000000,0);
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-    renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
-    renderer.shadowMap.enabled=false; // MeshBasicMat ignores shadows — disable for perf
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure=1.2;
+    renderer.outputColorSpace=THREE.SRGBColorSpace;
+    renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
     el.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
+    // IBL: procedural warm studio environment for realistic reflections
+    const pmrem=new THREE.PMREMGenerator(renderer);
+    const envScene2=new THREE.Scene();
+    // Gradient dome: warm top (cream/gold), cool dark sides/bottom
+    const envSphere=new THREE.Mesh(new THREE.SphereGeometry(50,16,8),new THREE.ShaderMaterial({
+      side:THREE.BackSide,
+      uniforms:{},
+      vertexShader:`varying vec3 vPos;void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`varying vec3 vPos;void main(){float t=clamp(normalize(vPos).y*0.5+0.5,0.0,1.0);vec3 top=vec3(1.0,0.95,0.82);vec3 mid=vec3(0.18,0.20,0.28);vec3 bot=vec3(0.05,0.06,0.09);gl_FragColor=vec4(mix(mix(bot,mid,t*1.4),top,max(0.0,t*2.0-1.0)),1.0);}`,
+    }));
+    envScene2.add(envSphere);
+    const envMap=pmrem.fromScene(envScene2,0.0).texture;
+    scene.environment=envMap;
+    scene.environmentIntensity=0.9;
+    pmrem.dispose();envScene2.clear();
     // Camera slightly overhead — dice are clearly readable from above
     const FOV=62, aspect=W/H;
     const camera=new THREE.PerspectiveCamera(FOV,aspect,0.1,300);
@@ -488,6 +540,22 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     const fillL=new THREE.DirectionalLight(0xffe0cc,0.55);
     fillL.position.set(BX*0.3,2,BZ*0.5);scene.add(fillL);
     // No floor mesh — dice roll over the character sheet (the page IS the background)
+
+    // ── Particle sparks system ───────────────────────────────────────────
+    interface Spark{mesh:THREE.Mesh;vx:number;vy:number;vz:number;life:number;maxLife:number}
+    const sparks:Spark[]=[];
+    const sparkGeo=new THREE.SphereGeometry(0.035,4,4);
+    function spawnSparks(x:number,y:number,z:number,color:number,count=10,speed=1.0){
+      for(let i=0;i<count;i++){
+        const mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:1});
+        const m=new THREE.Mesh(sparkGeo,mat);
+        m.position.set(x,y,z);scene.add(m);
+        const angle=Math.random()*Math.PI*2;
+        const elev=(Math.random()-0.3)*Math.PI*0.6;
+        const spd=(0.08+Math.random()*0.12)*speed;
+        sparks.push({mesh:m,vx:Math.cos(angle)*Math.cos(elev)*spd,vy:Math.sin(elev)*spd+0.04,vz:Math.sin(angle)*Math.cos(elev)*spd,life:0,maxLife:0.6+Math.random()*0.4});
+      }
+    }
 
     // ── Cannon-es world ──────────────────────────────────────────────
     const world=new CANNON.World({ gravity: new CANNON.Vec3(0,-60,0) }); // stronger gravity = faster settle
@@ -631,6 +699,12 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         const glow=document.createElement('div');
         glow.style.cssText='position:absolute;inset:0;pointer-events:none;animation:nat20Pulse 0.6s ease-out both;background:radial-gradient(ellipse at center,rgba(255,200,50,0.35) 0%,transparent 70%);';
         el.appendChild(glow);
+        // 3D gold particle burst from the nat 20 die
+        const nat20Die=dice.find(d=>d.sides===20);
+        if(nat20Die){
+          spawnSparks(nat20Die.body.position.x,nat20Die.body.position.y,nat20Die.body.position.z,0xffd700,28,1.8);
+          spawnSparks(nat20Die.body.position.x,nat20Die.body.position.y,nat20Die.body.position.z,0xffffff,12,1.2);
+        }
         // Play triumphant tone
         try{
           const ctx=getAudio();
@@ -690,6 +764,16 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
 
       // Step cannon-es physics
       world.step(FIXED_STEP,real,MAX_SUB);
+      // Update particle sparks
+      for(let i=sparks.length-1;i>=0;i--){
+        const s=sparks[i];
+        s.life+=real;s.vy-=real*0.25; // gravity
+        s.mesh.position.x+=s.vx;s.mesh.position.y+=s.vy;s.mesh.position.z+=s.vz;
+        const t=s.life/s.maxLife;
+        (s.mesh.material as THREE.MeshBasicMaterial).opacity=1-t*t;
+        s.mesh.scale.setScalar(1-t*0.7);
+        if(s.life>=s.maxLife){scene.remove(s.mesh);s.mesh.geometry.dispose();(s.mesh.material as THREE.Material).dispose();sparks.splice(i,1);}
+      }
 
       // Sync Three.js groups to cannon bodies
       dice.forEach(d=>{
@@ -700,7 +784,13 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         // Sound: detect floor bounce
         const nowOnFloor=d.body.position.y<d.scale*1.2+0.6;
         if(nowOnFloor&&!(d as any)._wasOnFloor){
-          playBounce(d.body.velocity.length());
+          const vel=d.body.velocity.length();
+          playBounce(vel);
+          // Spawn sparks on hard bounces (velocity>4)
+          if(vel>4){
+            const faceHex=activeSkin.faces[d.sides]?.e??0xffffff;
+            spawnSparks(d.body.position.x,d.body.position.y,d.body.position.z,faceHex,vel>8?14:8,vel*0.06);
+          }
           (d as any)._wasOnFloor=true;
         } else if(!nowOnFloor){(d as any)._wasOnFloor=false;}
 
@@ -756,6 +846,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       dice.forEach(d=>world.removeBody(d.body));
       renderer.dispose();
       if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
+      sparks.forEach(s=>{scene.remove(s.mesh);});
       scene.clear();TC.clear();
       audioCtx?.close();
     };
