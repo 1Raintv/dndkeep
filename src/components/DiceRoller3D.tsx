@@ -386,34 +386,28 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   // D4 face-down: one centered number per face, matching detectD4BottomFace detection.
   const isD4=(def.verts.length===4&&def.faces.length===4);
   if(isD4){
-    // D4 face convention: number centered on each upward face, FrontSide only.
-    // FrontSide prevents mirrored ghost numbers visible through the opposite face.
-    // Face-down detection: the face touching the table = result (matches detectD4BottomFace).
-    const numOff=0.04*S;
+    // D4: one number centered on each face. FrontSide only (no apex-corner clustering).
+    // The face on the table = result (detectD4BottomFace). The 3 visible faces show
+    // the other 3 numbers clearly in the middle of each face.
+    // NO faceUpInPlane shift — that was causing all numbers to stack at the apex vertex.
+    const numOff=0.045*S;
     def.faces.forEach((_,fi)=>{
       const{pos,normal,insc}=faceInfo(def,fi,S);
-      // Compute "down" direction within this face — shift number toward the base edge
-      // so it reads like a physical D4 (number near bottom of face, not floating in middle)
-      const faceUp=new THREE.Vector3(normal[0],normal[1],normal[2]).normalize();
-      const worldUp=new THREE.Vector3(0,1,0);
-      // Project world up onto face plane to get "face-up" direction
-      const proj=worldUp.clone().sub(faceUp.clone().multiplyScalar(worldUp.dot(faceUp)));
-      const faceUpInPlane=proj.length()>0.01?proj.normalize():new THREE.Vector3(1,0,0);
-      // Shift number slightly toward face-up direction (away from bottom edge)
-      const shift=S*0.06;
-      const sz=insc*1.9; // larger — fills the triangular face better
+      // Use same fixed-size formula as other dice so numbers fill the face well
+      const sz=S*0.52*ff;
       const mat=new THREE.MeshBasicMaterial({
         map:numTex(String(def.nums[fi]),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline),
-        transparent:true, side:THREE.FrontSide,  // no mirroring through opposite face
+        transparent:true, side:THREE.FrontSide,
         depthTest:true, depthWrite:false, alphaTest:0.05,
         polygonOffset:true, polygonOffsetFactor:-8, polygonOffsetUnits:-8,
       });
       const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
       plane.renderOrder=2;
-      const cx=pos[0]+normal[0]*numOff+faceUpInPlane.x*shift;
-      const cy=pos[1]+normal[1]*numOff+faceUpInPlane.y*shift;
-      const cz=pos[2]+normal[2]*numOff+faceUpInPlane.z*shift;
-      plane.position.set(cx,cy,cz);
+      plane.position.set(
+        pos[0]+normal[0]*numOff,
+        pos[1]+normal[1]*numOff,
+        pos[2]+normal[2]*numOff
+      );
       const q=new THREE.Quaternion();
       q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
       plane.quaternion.copy(q);group.add(plane);
