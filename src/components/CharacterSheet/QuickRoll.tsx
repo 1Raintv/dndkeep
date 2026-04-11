@@ -8,7 +8,6 @@ import { DICE_SKINS } from '../DiceRoller3D';
 
 interface DiceInQueue { die: number; count: number; }
 interface RollResultDie { die: number; value: number; index: number; dropped?: boolean; }
-interface RollSet { id: number; dice: RollResultDie[]; total: number; label: string; }
 
 const DICE = [4, 6, 8, 10, 12, 20, 100] as const;
 const DIE_COLORS: Record<number, string> = {
@@ -148,7 +147,6 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
   }
   const { triggerRoll } = useDiceRoll();
   const [adv, setAdv] = useState<'normal'|'advantage'|'disadvantage'>('normal');
-  const [animValues, setAnimValues] = useState<Record<number, number>>({}); // die index → displayed value during animation
 
   function addDie(die: number) {
     setQueue(q => {
@@ -170,77 +168,60 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
     if (!queue.length) return;
     setRolling(true);
 
-    // Animate random values cycling for each die slot
-    const dieSlots = queue.flatMap(({ die, count }) => Array.from({ length: count }, () => die));
-    let tick = 0;
-    const interval = setInterval(() => {
-      tick++;
-      const fakeVals: Record<number, number> = {};
-      dieSlots.forEach((die, i) => { fakeVals[i] = Math.ceil(Math.random() * die); });
-      setAnimValues(fakeVals);
-    }, 80);
+    // Compute results synchronously — no delay, dice appear instantly
+    const effectiveQueue = queue.map(d =>
+      d.die === 20 && adv !== 'normal' ? { ...d, count: Math.max(2, d.count) } : d
+    );
 
-    setTimeout(async () => {
-      clearInterval(interval);
-      setAnimValues({});
-      // For advantage/disadvantage, always roll 2d20
-      const effectiveQueue = queue.map(d =>
-        d.die === 20 && adv !== 'normal' ? { ...d, count: Math.max(2, d.count) } : d
-      );
+    const dice: RollResultDie[] = [];
+    let idx = 0;
+    for (const { die, count } of effectiveQueue) {
+      for (let i = 0; i < count; i++) dice.push({ die, value: rollDie(die), index: idx++ });
+    }
 
-      const dice: RollResultDie[] = [];
-      let idx = 0;
-      for (const { die, count } of effectiveQueue) {
-        for (let i = 0; i < count; i++) dice.push({ die, value: rollDie(die), index: idx++ });
-      }
+    // Handle advantage/disadvantage on d20s
+    const has20 = queue.some(d => d.die === 20);
+    let finalDice = dice;
+    let total = 0;
 
-      // Handle advantage/disadvantage on d20s
-      const has20 = queue.some(d => d.die === 20);
-      let finalDice = dice;
-      let total = 0;
+    if (adv !== 'normal' && has20) {
+      const origCount = queue.find(d => d.die === 20)?.count ?? 1;
+      const d20s = dice.filter(d => d.die === 20);
+      const others = dice.filter(d => d.die !== 20);
+      const sorted = [...d20s].sort((a, b) => adv === 'advantage' ? b.value - a.value : a.value - b.value);
+      const kept = sorted.slice(0, origCount);
+      const dropped = sorted.slice(origCount).map(d => ({ ...d, dropped: true }));
+      finalDice = [...kept, ...dropped, ...others];
+      total = [...kept, ...others].reduce((s, d) => s + d.value, 0);
+    } else {
+      total = dice.reduce((s, d) => s + d.value, 0);
+    }
 
-      if (adv !== 'normal' && has20) {
-        const origCount = queue.find(d => d.die === 20)?.count ?? 1;
-        const d20s = dice.filter(d => d.die === 20);
-        const others = dice.filter(d => d.die !== 20);
-        const sorted = [...d20s].sort((a, b) => adv === 'advantage' ? b.value - a.value : a.value - b.value);
-        const kept = sorted.slice(0, origCount);
-        const dropped = sorted.slice(origCount).map(d => ({ ...d, dropped: true }));
-        finalDice = [...kept, ...dropped, ...others];
-        total = [...kept, ...others].reduce((s, d) => s + d.value, 0);
-      } else {
-        total = dice.reduce((s, d) => s + d.value, 0);
-      }
+    const expression = buildExpr(queue);
+    setRolling(false);
 
-      const expression = buildExpr(queue);
-      const set: RollSet = { id: Date.now(), dice: finalDice, total, label: label || expression };
-
-      setRolling(false);
-
-      // Trigger visual dice animation — physics determines the result
-      const primaryDie = queue[0];
-      const keptDice = finalDice.filter(d => !d.dropped);
-      const totalDiceCount = queue.reduce((s, d) => s + d.count, 0);
-      triggerRoll({
-        result: 0, // placeholder — physics will detect actual result
-        dieType: primaryDie?.die ?? 20,
-        label: label || expression,
-        advantage: adv === 'advantage',
-        disadvantage: adv === 'disadvantage',
-        allDice: totalDiceCount > 1 ? keptDice.map(d => ({ die: d.die, value: d.value })) : undefined,
-        expression: totalDiceCount > 1 ? expression : undefined,
-        // DB write happens after physics detects the actual top faces
-        onResult: characterId ? async (physDice, physTotal) => {
-          await logRoll({
-            campaignId, characterId, characterName, userId,
-            label: label || expression,
-            expression,
-            results: physDice.map(d => d.value),
-            total: physTotal,
-          });
-        } : undefined,
-      });
-    }, 900);
+    // Fire 3D dice immediately — physics IS the animation
+    const primaryDie = queue[0];
+    const keptDice = finalDice.filter(d => !d.dropped);
+    const totalDiceCount = queue.reduce((s, d) => s + d.count, 0);
+    triggerRoll({
+      result: 0,
+      dieType: primaryDie?.die ?? 20,
+      label: label || expression,
+      advantage: adv === 'advantage',
+      disadvantage: adv === 'disadvantage',
+      allDice: totalDiceCount > 1 ? keptDice.map(d => ({ die: d.die, value: d.value })) : undefined,
+      expression: totalDiceCount > 1 ? expression : undefined,
+      onResult: characterId ? async (physDice, physTotal) => {
+        await logRoll({
+          campaignId, characterId, characterName, userId,
+          label: label || expression,
+          expression,
+          results: physDice.map(d => d.value),
+          total: physTotal,
+        });
+      } : undefined,
+    });
   }
 
   const totalDice = queue.reduce((s, d) => s + d.count, 0);
