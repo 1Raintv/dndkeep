@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { rollDie } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { useEffect, useRef } from 'react';
 import { DICE_SKINS } from '../DiceRoller3D';
 
 interface DiceInQueue { die: number; count: number; }
@@ -67,12 +68,83 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
   const [label, setLabel] = useState('');
 
   const [rolling, setRolling] = useState(false);
+  const lastShakeRef = useRef(0);
+  const shakeCountRef = useRef(0);
+
+  // Shake-to-roll on mobile
+  useEffect(() => {
+    const handler = (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const total = Math.sqrt((acc.x??0)**2 + (acc.y??0)**2 + (acc.z??0)**2);
+      const now = Date.now();
+      if (total > 22) { // threshold
+        if (now - lastShakeRef.current > 300) {
+          shakeCountRef.current++;
+          lastShakeRef.current = now;
+          if (shakeCountRef.current >= 2) {
+            shakeCountRef.current = 0;
+            if (queue.length > 0 && !rolling) rollAll();
+          }
+        }
+      }
+    };
+    if (typeof DeviceMotionEvent !== 'undefined') {
+      window.addEventListener('devicemotion', handler);
+      return () => window.removeEventListener('devicemotion', handler);
+    }
+  }, [queue, rolling]);
   const [activeSkin, setActiveSkin] = useState(() =>
     typeof window!=='undefined'?localStorage.getItem('dndkeep_dice_skin')||'classic':'classic'
   );
+  const [previewSkin, setPreviewSkin] = useState<string|null>(null);
+  const [unlockedSkins, setUnlockedSkins] = useState<string[]>(['classic']);
+  const [buyLoading, setBuyLoading] = useState(false);
+
+  // Check unlocked skins on mount
+  useEffect(()=>{
+    async function loadUnlocked(){
+      const { data } = await supabase.from('dice_skin_unlocks').select('skin_id');
+      if(data) setUnlockedSkins(['classic',...data.map((r:any)=>r.skin_id)]);
+    }
+    loadUnlocked();
+    // Handle return from Stripe
+    const params=new URLSearchParams(window.location.search);
+    const unlocked=params.get('skin_unlocked');
+    if(unlocked){
+      setUnlockedSkins(prev=>[...new Set([...prev,unlocked])]);
+      setActiveSkin(unlocked);
+      localStorage.setItem('dndkeep_dice_skin',unlocked);
+      window.history.replaceState({},'',window.location.pathname);
+    }
+  },[]);
+
+  async function buySkin(skinId:string){
+    setBuyLoading(true);
+    try{
+      const { data:{ session } }=await supabase.auth.getSession();
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buy-dice-skin`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
+        body:JSON.stringify({skinId,origin:window.location.origin}),
+      });
+      const json=await res.json();
+      if(json.url) window.location.href=json.url;
+      else alert(json.error||'Something went wrong');
+    }catch(e){alert(String(e));}
+    finally{setBuyLoading(false);}
+  }
+
   function chooseSkin(id:string){
+    const skin=DICE_SKINS.find(s=>s.id===id);
+    if(!skin) return;
+    if(!skin.free && !unlockedSkins.includes(id)){
+      setPreviewSkin(id); // show buy prompt
+      return;
+    }
     setActiveSkin(id);
     localStorage.setItem('dndkeep_dice_skin',id);
+    setPreviewSkin(null);
   }
   const { triggerRoll } = useDiceRoll();
   const [adv, setAdv] = useState<'normal'|'advantage'|'disadvantage'>('normal');
@@ -287,24 +359,58 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
               ))}
             </div>
             {/* Skin picker */}
-            <div style={{ display:'flex', gap:4, alignItems:'center', marginBottom:2 }}>
-              <span style={{ fontFamily:'var(--ff-body)', fontSize:9, color:'var(--t-3)', letterSpacing:'.1em', textTransform:'uppercase', marginRight:2 }}>Skin</span>
-              {DICE_SKINS.map(s=>(
-                <button key={s.id} onClick={()=>chooseSkin(s.id)}
-                  title={s.name+(s.free?'':' (Premium)')}
-                  style={{
-                    width:20, height:20, borderRadius:4,
-                    border:activeSkin===s.id?'2px solid var(--c-gold)':'2px solid var(--c-border)',
-                    background:s.id==='classic'?'#8b5cf6':s.id==='obsidian'?'#1a0a0a':s.id==='gold'?'#d97706':s.id==='ice'?'#0ea5e9':'#991b1b',
-                    cursor:'pointer', padding:0, position:'relative', flexShrink:0,
-                    outline:activeSkin===s.id?'1px solid rgba(255,200,50,0.5)':'none',
-                    outlineOffset:1,
-                    opacity: s.free?1:1,
-                  }}>
-                  {!s.free&&<span style={{position:'absolute',top:-4,right:-4,fontSize:7,lineHeight:1}}>💎</span>}
-                </button>
-              ))}
+            <div style={{ marginBottom:4 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <span style={{ fontFamily:'var(--ff-body)', fontSize:9, color:'var(--t-3)', letterSpacing:'.1em', textTransform:'uppercase' }}>Dice Skin</span>
+                <span style={{ fontFamily:'var(--ff-body)', fontSize:9, color:'var(--c-gold-l)' }}>
+                  {DICE_SKINS.find(s=>s.id===activeSkin)?.name}
+                </span>
+              </div>
+              <div style={{ display:'flex', gap:5 }}>
+                {DICE_SKINS.map(s=>{
+                  const locked=!s.free&&!unlockedSkins.includes(s.id);
+                  const active=activeSkin===s.id;
+                  const bg:Record<string,string>={classic:'#8b5cf6',obsidian:'#1a1a2e',gold:'#d97706',ice:'#0ea5e9',blood:'#991b1b'};
+                  return (
+                    <button key={s.id} onClick={()=>chooseSkin(s.id)}
+                      title={s.name+(locked?' — Premium (tap to preview)':'')}
+                      style={{
+                        flex:1, height:28, borderRadius:5, padding:0, cursor:'pointer',
+                        border:active?'2px solid var(--c-gold)':'2px solid var(--c-border)',
+                        background:bg[s.id]??'#333',
+                        position:'relative',
+                        boxShadow:active?'0 0 8px rgba(245,158,11,0.4)':'none',
+                        transition:'all .15s',
+                      }}>
+                      {locked&&<span style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'rgba(0,0,0,0.55)',borderRadius:3}}>🔒</span>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+            {/* Skin preview/buy modal */}
+            {previewSkin && (()=>{
+              const s=DICE_SKINS.find(sk=>sk.id===previewSkin);
+              if(!s)return null;
+              const bg:Record<string,string>={classic:'#8b5cf6',obsidian:'#1a1a2e',gold:'#d97706',ice:'#0ea5e9',blood:'#991b1b'};
+              return (
+                <div style={{ position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)' }}
+                  onClick={()=>setPreviewSkin(null)}>
+                  <div onClick={e=>e.stopPropagation()} style={{ background:'var(--c-surface)',border:'1px solid var(--c-border)',borderRadius:16,padding:24,maxWidth:300,width:'90%',textAlign:'center' }}>
+                    <div style={{ width:64,height:64,borderRadius:12,background:bg[s.id],margin:'0 auto 12px',boxShadow:'0 4px 20px rgba(0,0,0,0.5)' }} />
+                    <div style={{ fontFamily:'var(--ff-body)',fontWeight:900,fontSize:18,color:'var(--t-1)',marginBottom:4 }}>{s.name}</div>
+                    <div style={{ fontFamily:'var(--ff-body)',fontSize:12,color:'var(--t-3)',marginBottom:16 }}>Premium dice skin</div>
+                    <button className="btn-gold" style={{ width:'100%',justifyContent:'center',marginBottom:8 }}
+                      onClick={()=>buySkin(s.id)} disabled={buyLoading}>
+                      💎 Unlock for $2.99
+                    </button>
+                    <button className="btn-ghost btn-sm" style={{ width:'100%',justifyContent:'center' }} onClick={()=>setPreviewSkin(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
             <button className="btn-gold" onClick={rollAll} disabled={rolling || queue.length === 0}
               style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--fs-sm)', fontWeight: 700,
                 opacity: (rolling || queue.length === 0) ? 0.45 : 1 }}>

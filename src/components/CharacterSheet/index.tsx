@@ -22,6 +22,7 @@ import ConditionsPanel from './ConditionsPanel';
 import Inventory from './Inventory';
 import Notes from './Notes';
 import DeathSaves from './DeathSaves';
+import ActionEconomy from './ActionEconomy';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
 import SessionTab from './SessionTab';
@@ -827,6 +828,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             {(character.active_conditions?.length > 0) && (
               <ConditionMechanics conditions={character.active_conditions} />
             )}
+            <ActionEconomy speedFeet={character.speed ?? 30} />
             <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
             {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
             <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />

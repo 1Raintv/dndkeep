@@ -308,9 +308,15 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   });
   const mats=def.faces.map(()=>baseMat.clone());
   const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
-  const edgeColor=new THREE.Color(t.e).multiplyScalar(1.2);
-  const edges=new THREE.LineSegments(boundaryEdges(def,S*1.004),new THREE.LineBasicMaterial({color:edgeColor}));
-  const group=new THREE.Group();group.add(mesh);group.add(edges);
+  // Soft edge highlight: two overlapping edge passes create a subtle glow effect
+  const edgeColor=new THREE.Color(t.e);
+  // Outer soft halo
+  const edgesOuter=new THREE.LineSegments(boundaryEdges(def,S*1.008),
+    new THREE.LineBasicMaterial({color:edgeColor.clone().multiplyScalar(0.6),transparent:true,opacity:0.4}));
+  // Inner sharp highlight
+  const edges=new THREE.LineSegments(boundaryEdges(def,S*1.003),
+    new THREE.LineBasicMaterial({color:edgeColor.clone().multiplyScalar(1.4)}));
+  const group=new THREE.Group();group.add(mesh);group.add(edgesOuter);group.add(edges);
   // D4 point-build: 3 numbers per face (one at each vertex corner).
   // All 3 upward faces show the same number at their shared top vertex → result.
   // Other dice: one number per face centered.
@@ -523,7 +529,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     const diceScreenPct=BZ*0.155; // tuned for uniform SM=1.0
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
 
-    interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number}
+    interface Spec{die:number;gk:number;val:number;tk:number;label:(n:number)=>string;ox:number;dropped?:boolean}
     const specs:Spec[]=[];
     rawList.forEach((d,i)=>{
       if(d.die===100){
@@ -532,11 +538,12 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         specs.push({die:10,gk:10091,val:units,tk:1002,label:(n)=>String(n),ox:1.6});
       } else {
         const ox=rawList.length>1?(i-(rawList.length-1)/2)*1.8:0;
-        specs.push({die:d.die,gk:d.die,val:d.value,tk:d.die,label:(n)=>String(n),ox});
+        const dropped=(d as any).dropped===true;
+        specs.push({die:d.die,gk:d.die,val:d.value,tk:d.die,label:(n)=>String(n),ox,dropped});
       }
     });
 
-    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean}
+    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean;dropped:boolean}
     const dice:PhysDie[]=specs.map((sp,i)=>{
       const def=gd(sp.gk);
       const S=baseS*(SM[sp.die]??1.0);
@@ -588,7 +595,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       // Stagger: launch each die from a slightly different height
 
       world.addBody(body);
-      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean};
+      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,dropped:sp.dropped??false,_wasOnFloor:false as boolean};
     });
 
     let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false,totalT=0;
@@ -711,6 +718,14 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           // Works correctly for dice anywhere on screen; camera is nearly overhead
           d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
+          // Dim dropped dice (advantage/disadvantage) after settling
+          if(d.dropped){
+            d.group.traverse(obj=>{
+              const m=(obj as THREE.Mesh).material;
+              if(m&&!Array.isArray(m)){(m as THREE.MeshStandardMaterial).opacity=0.28;(m as THREE.MeshStandardMaterial).transparent=true;}
+              if(m&&Array.isArray(m)){m.forEach(mat=>{(mat as THREE.MeshStandardMaterial).opacity=0.28;(mat as THREE.MeshStandardMaterial).transparent=true;});}
+            });
+          }
         }
       });
 

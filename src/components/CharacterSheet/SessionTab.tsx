@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Character } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -26,6 +26,56 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
   const [newDesc, setNewDesc] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rollFeed, setRollFeed] = useState<{id:string;char:string;label:string;total:number;dice:string;ts:number}[]>([]);
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to campaign roll feed for first active campaign
+  useEffect(() => {
+    if (!isPro || campaigns.length === 0) return;
+    const activeCampaign = campaigns.find(c => c.is_active) ?? campaigns[0];
+    if (!activeCampaign) return;
+    // Load recent rolls
+    supabase.from('roll_logs')
+      .select('id, character_id, label, total, results, created_at, characters(name)')
+      .eq('campaign_id', activeCampaign.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        if (!data) return;
+        const feed = data.reverse().map(r => ({
+          id: r.id,
+          char: (r.characters as any)?.name ?? 'Unknown',
+          label: r.label ?? 'Roll',
+          total: r.total,
+          dice: Array.isArray(r.results) ? r.results.join(', ') : '',
+          ts: new Date(r.created_at).getTime(),
+        }));
+        setRollFeed(feed);
+      });
+    // Real-time subscription
+    const ch = supabase.channel(`roll-feed-${activeCampaign.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'roll_logs',
+        filter: `campaign_id=eq.${activeCampaign.id}`,
+      }, async payload => {
+        const r = payload.new as any;
+        // Fetch character name
+        const { data: char } = await supabase.from('characters').select('name').eq('id', r.character_id).single();
+        setRollFeed(f => [...f.slice(-29), {
+          id: r.id, char: char?.name ?? 'Unknown',
+          label: r.label ?? 'Roll', total: r.total,
+          dice: Array.isArray(r.results) ? r.results.join(', ') : '',
+          ts: new Date(r.created_at).getTime(),
+        }]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [isPro, campaigns]);
+
+  // Auto-scroll feed
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [rollFeed]);
 
   useEffect(() => {
     if (!isPro) { setLoading(false); return; }
@@ -227,6 +277,43 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
             >
               {creating ? 'Creating...' : 'Create & Enter Session'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign Roll Feed */}
+      {isPro && rollFeed.length > 0 && (
+        <div style={{ border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--c-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
+              🎲 Live Roll Feed
+            </span>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>party-wide · real-time</span>
+          </div>
+          <div ref={feedRef} style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {rollFeed.map((r, i) => {
+              const isMe = r.char === character.name;
+              const dieColors: Record<string,string> = {4:'#a78bfa',6:'#f87171',8:'#4ade80',10:'#60a5fa',12:'#f472b6',20:'#fbbf24'};
+              return (
+                <div key={r.id} style={{
+                  padding: '6px 12px',
+                  borderBottom: i < rollFeed.length - 1 ? '1px solid var(--c-border)' : 'none',
+                  background: isMe ? 'rgba(245,158,11,0.06)' : 'transparent',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: isMe ? 'var(--c-gold)' : 'var(--c-border)', flexShrink: 0 }} />
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, color: isMe ? 'var(--c-gold-l)' : 'var(--t-2)', minWidth: 70, flexShrink: 0 }}>
+                    {r.char}
+                  </span>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.label}
+                  </span>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 16, color: 'var(--t-1)', lineHeight: 1 }}>
+                    {r.total}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
