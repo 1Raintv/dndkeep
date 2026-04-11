@@ -106,9 +106,12 @@ export const DICE_SKINS: DiceSkin[] = [
       100:{f:0xdc2626,e:0xfee2e2},
       1001:{f:0x334155,e:0xf8fafc},1002:{f:0x991b1b,e:0xfee2e2},
     },
-    metalness:0.0, roughness:0.5, emissiveMult:0.15,
-    clearcoat:0.5, clearcoatRoughness:0.2,
-    numColor:'#ffffff', numOutline:'rgba(0,0,0,0.92)',
+    // Glossy lacquer: like real injection-moulded polyhedral dice
+    // High clearcoat + low roughness = visible specular highlights per face
+    // Zero emissive = PBR shading does all the depth work
+    metalness:0.0, roughness:0.12, emissiveMult:0.0,
+    clearcoat:1.0, clearcoatRoughness:0.04,
+    numColor:'#ffffff', numOutline:'rgba(0,0,0,0.95)',
   },
   {
     id: 'obsidian',
@@ -120,7 +123,7 @@ export const DICE_SKINS: DiceSkin[] = [
       12:{f:0x100224,e:0xe879f9}, 20:{f:0x0a0a0a,e:0xf1f5f9},
       100:{f:0x080808,e:0xf87171},1001:{f:0x0a0a0a,e:0x94a3b8},1002:{f:0x120000,e:0xfca5a5},
     },
-    metalness:0.0, roughness:0.75, emissiveMult:0.6,
+    metalness:0.0, roughness:0.9, emissiveMult:0.0,
     clearcoat:0.0,
     numColor:'#e0e0e0', numOutline:'rgba(0,0,0,0.98)',
   },
@@ -134,7 +137,7 @@ export const DICE_SKINS: DiceSkin[] = [
       12:{f:0xe07b00,e:0xffedd5}, 20:{f:0xf59e0b,e:0xfed7aa},
       100:{f:0xc26a00,e:0xfde68a},1001:{f:0x6b6460,e:0xfef3c7},1002:{f:0xcc2000,e:0xffedd5},
     },
-    metalness:0.95, roughness:0.08, emissiveMult:0.04,
+    metalness:0.98, roughness:0.04, emissiveMult:0.0,
     clearcoat:1.0, clearcoatRoughness:0.02,
     numColor:'#1a0800', numOutline:'rgba(60,20,0,0.6)',
   },
@@ -148,7 +151,7 @@ export const DICE_SKINS: DiceSkin[] = [
       12:{f:0x0369a1,e:0xcffafe}, 20:{f:0xbae6fd,e:0x0ea5e9},
       100:{f:0x38bdf8,e:0xf0f9ff},1001:{f:0x0c4a6e,e:0xe0f2fe},1002:{f:0x0284c7,e:0xbae6fd},
     },
-    metalness:0.0, roughness:0.0, emissiveMult:0.35,
+    metalness:0.0, roughness:0.02, emissiveMult:0.0,
     clearcoat:1.0, clearcoatRoughness:0.0,
     transmission:0.65, ior:1.45,
     numColor:'#ffffff', numOutline:'rgba(0,60,120,0.85)',
@@ -163,7 +166,7 @@ export const DICE_SKINS: DiceSkin[] = [
       12:{f:0x350000,e:0xef4444}, 20:{f:0xcc1a1a,e:0xffe4e4},
       100:{f:0x3d0000,e:0xfecaca},1001:{f:0x1a1412,e:0xfca5a5},1002:{f:0x6b0000,e:0xef4444},
     },
-    metalness:0.4, roughness:0.35, emissiveMult:0.6,
+    metalness:0.45, roughness:0.28, emissiveMult:0.2,
     clearcoat:0.7, clearcoatRoughness:0.25,
     numColor:'#ffffff', numOutline:'rgba(0,0,0,0.95)',
   },
@@ -372,9 +375,14 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const edgesOuter=new THREE.LineSegments(boundaryEdges(def,S*1.008),
     new THREE.LineBasicMaterial({color:edgeColor.clone().multiplyScalar(0.6),transparent:true,opacity:0.4}));
   // Inner sharp highlight
+  // Chamfer-simulation: bright sharp inner line
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.003),
-    new THREE.LineBasicMaterial({color:edgeColor.clone().multiplyScalar(1.4)}));
+    new THREE.LineBasicMaterial({color:edgeColor.clone().multiplyScalar(2.2)}));
   const group=new THREE.Group();group.add(mesh);group.add(edgesOuter);group.add(edges);
+  // Per-die interior light — moves with die, creates dynamic face shading as it tumbles
+  const dieLight=new THREE.PointLight(new THREE.Color(t.e).multiplyScalar(0.6),0.9,S*2.8);
+  dieLight.position.set(0,S*0.3,0); // slightly above die center
+  group.add(dieLight);
   // D4 face-down: one centered number per face, matching detectD4BottomFace detection.
   const isD4=(def.verts.length===4&&def.faces.length===4);
   if(isD4){
@@ -496,7 +504,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     renderer.setClearColor(0x000000,0);
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure=1.2;
+    renderer.toneMappingExposure=1.35;
     renderer.outputColorSpace=THREE.SRGBColorSpace;
     renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
     el.appendChild(renderer.domElement);
@@ -509,12 +517,12 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       side:THREE.BackSide,
       uniforms:{},
       vertexShader:`varying vec3 vPos;void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-      fragmentShader:`varying vec3 vPos;void main(){float t=clamp(normalize(vPos).y*0.5+0.5,0.0,1.0);vec3 top=vec3(1.0,0.95,0.82);vec3 mid=vec3(0.18,0.20,0.28);vec3 bot=vec3(0.05,0.06,0.09);gl_FragColor=vec4(mix(mix(bot,mid,t*1.4),top,max(0.0,t*2.0-1.0)),1.0);}`,
+      fragmentShader:`varying vec3 vPos;void main(){float t=clamp(normalize(vPos).y*0.5+0.5,0.0,1.0);float t2=t*t;vec3 top=vec3(1.2,1.1,0.95);vec3 mid=vec3(0.08,0.09,0.14);vec3 bot=vec3(0.02,0.02,0.04);gl_FragColor=vec4(mix(mix(bot,mid,t*1.6),top,max(0.0,t2*2.5-1.0)),1.0);}`,
     }));
     envScene2.add(envSphere);
     const envMap=pmrem.fromScene(envScene2,0.0).texture;
     scene.environment=envMap;
-    scene.environmentIntensity=0.5;
+    scene.environmentIntensity=0.7;
     pmrem.dispose();envScene2.clear();
     // Camera slightly overhead — dice are clearly readable from above
     const FOV=62, aspect=W/H;
