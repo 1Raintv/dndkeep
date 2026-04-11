@@ -415,9 +415,16 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
         const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
         plane.renderOrder=2;
         plane.position.set(px,py,pz);
-        const q=new THREE.Quaternion();
-        q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
-        plane.quaternion.copy(q);
+        // Full orientation: face normal = +Z, number "up" = toward face centroid from vertex.
+        // This locks the spin around the normal so numbers read upright on every face.
+        const faceNorm=new THREE.Vector3(normal[0],normal[1],normal[2]).normalize();
+        // "Up" for this number = direction from vertex toward face centroid (already in-plane)
+        const toCenter=new THREE.Vector3(cx-vx,cy-vy,cz-vz).normalize();
+        // Build orthonormal basis: right = toCenter × faceNorm, then reorthogonalize up
+        const planeRight=new THREE.Vector3().crossVectors(toCenter,faceNorm).normalize();
+        const planeUp=new THREE.Vector3().crossVectors(faceNorm,planeRight).normalize();
+        const m=new THREE.Matrix4().makeBasis(planeRight,planeUp,faceNorm);
+        plane.quaternion.setFromRotationMatrix(m);
         group.add(plane);
       });
     });
