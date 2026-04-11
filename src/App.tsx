@@ -28,7 +28,7 @@ const CampaignsPage  = lazy(() => import('./components/pages/CampaignsPage'));
 function PageLoader() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 'var(--space-3)' }}>
-      <div className="spinner" /><span className="loading-text">Loading...</span>
+      <div className="spinner" /><span className="loading-text">Loading…</span>
     </div>
   );
 }
