@@ -467,7 +467,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       }
     });
 
-    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean}
+    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean;labelEl:HTMLDivElement}
     const dice:PhysDie[]=specs.map((sp,i)=>{
       const def=gd(sp.gk);
       const S=baseS*(SM[sp.die]??1.0);
@@ -519,7 +519,11 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       // Stagger: launch each die from a slightly different height
 
       world.addBody(body);
-      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean};
+      // Per-die floating result label — hidden until settled
+      const labelEl=document.createElement('div');
+      labelEl.style.cssText='position:absolute;pointer-events:none;display:none;text-align:center;transform:translate(-50%,0);';
+      el.appendChild(labelEl);
+      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean,labelEl};
     });
 
     let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false,totalT=0;
@@ -642,6 +646,12 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           // Works correctly for dice anywhere on screen; camera is nearly overhead
           d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
+          // Show floating label beneath die
+          const dieCol=(s:number)=>({4:'#a78bfa',6:'#f87171',8:'#4ade80',10:'#60a5fa',12:'#f472b6',20:'#fbbf24',100:'#f87171'})[s]??'#fff';
+          const col=dieCol(d.sides);
+          const dispVal=d.geoKey===10090?(d.val===0?'00':String(d.val*10)):String(d.val);
+          d.labelEl.innerHTML=`<div style="font:900 22px system-ui;color:${col};text-shadow:0 1px 6px rgba(0,0,0,0.9),0 0 12px ${col}80;line-height:1">${dispVal}</div><div style="font:700 9px system-ui;color:${col}80;letter-spacing:.12em;margin-top:2px">d${d.sides===100?10:d.sides}</div>`;
+          d.labelEl.style.display='block';
         }
       });
 
@@ -654,6 +664,11 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
           d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
+          const dieCol2=(s:number)=>({4:'#a78bfa',6:'#f87171',8:'#4ade80',10:'#60a5fa',12:'#f472b6',20:'#fbbf24',100:'#f87171'})[s]??'#fff';
+          const col2=dieCol2(d.sides);
+          const dispVal2=d.geoKey===10090?(d.val===0?'00':String(d.val*10)):String(d.val);
+          d.labelEl.innerHTML=`<div style="font:900 22px system-ui;color:${col2};text-shadow:0 1px 6px rgba(0,0,0,0.9),0 0 12px ${col2}80;line-height:1">${dispVal2}</div><div style="font:700 9px system-ui;color:${col2}80;letter-spacing:.12em;margin-top:2px">d${d.sides===100?10:d.sides}</div>`;
+          d.labelEl.style.display='block';
         });
       }
       if(!allDone&&dice.every(d=>d.settled)){
@@ -663,6 +678,17 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         doneT+=real;
         if(doneT>5.5){dismissed=true;dismissRef.current();cancelAnimationFrame(raf);return;}
       }
+      // Project each settled die's world position to screen space for label
+      dice.forEach(d=>{
+        if(!d.settled||d.labelEl.style.display==='none')return;
+        // Project die center (slightly below die body) to screen
+        const wp=new THREE.Vector3(d.body.position.x,d.body.position.y-d.scale*0.6,d.body.position.z);
+        wp.project(camera);
+        const sx=(wp.x*0.5+0.5)*W;
+        const sy=(-wp.y*0.5+0.5)*H;
+        d.labelEl.style.left=sx+'px';
+        d.labelEl.style.top=sy+'px';
+      });
       renderer.render(scene,camera);
     }
     raf=requestAnimationFrame(frame);
@@ -674,6 +700,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
       scene.clear();TC.clear();
       audioCtx?.close();
+      dice.forEach(d=>{if(el.contains(d.labelEl))el.removeChild(d.labelEl);});
     };
   },[]);
 
