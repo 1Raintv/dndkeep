@@ -902,19 +902,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             };
           });
 
-          // Unarmed Strike — always available per 2024 PHB
+          // Unarmed Strike — always available per 2024 PHB (p.377)
+          // Attack: d20 + STR mod + Proficiency Bonus
+          // Damage: flat 1 + STR modifier bludgeoning (no dice roll)
           const strMod = computed.modifiers.strength ?? 0;
           const pb = computed.proficiency_bonus ?? 2;
-          const unarmedDmg = 1 + strMod; // 2024 rule: 1 + STR mod, minimum 1
           const unarmedStrike: any = {
             id: 'unarmed',
             name: 'Unarmed Strike',
             attackBonus: strMod + pb,
             damageDice: 'flat',
-            damageBonus: Math.max(1, unarmedDmg),
+            damageBonus: 1 + strMod,   // 1 + STR mod per 2024 PHB; can be 0 if STR is very low
             damageType: 'bludgeoning',
             range: 'Melee',
-            properties: 'Light',
+            properties: '',
             notes: '',
           };
           const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons];

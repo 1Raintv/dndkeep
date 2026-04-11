@@ -267,30 +267,9 @@ export default function WeaponsTracker({
                     </div>
                   </>
                 ) : (
-                  /* Normal weapon — separate Hit + Dmg buttons */
+                  /* Normal weapon — stat boxes ARE the roll buttons */
                   <>
-                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                      <button
-                        className="btn-gold btn-sm"
-                        onClick={() => handleHit(w)}
-                        title={`Roll to hit with ${w.name}`}
-                        style={{ minWidth: 36, justifyContent: 'center', padding: '4px 8px', fontSize: 11, fontWeight: 800 }}
-                      >
-                        HIT
-                      </button>
-                      <button
-                        className="btn-sm"
-                        onClick={() => handleDamage(w)}
-                        title={`Roll damage with ${w.name}`}
-                        style={{
-                          minWidth: 36, justifyContent: 'center', padding: '4px 8px', fontSize: 11, fontWeight: 800,
-                          background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.3)', color: 'var(--c-red-l)', borderRadius: 6,
-                        }}
-                      >
-                        DMG
-                      </button>
-                    </div>
-
+                    {/* Weapon name + meta */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                         <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{w.name}</span>
@@ -301,22 +280,51 @@ export default function WeaponsTracker({
                       </div>
                     </div>
 
-                    {/* Stats: To Hit + Damage — two separate columns */}
-                    <div style={{ display: 'flex', gap: 10, flexShrink: 0, alignItems: 'center' }}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 15, color: 'var(--c-gold-l)', lineHeight: 1 }}>{modStr(w.attackBonus)}</div>
-                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>d20</div>
+                    {/* HIT BUTTON = the entire to-hit stat block */}
+                    <button
+                      onClick={() => handleHit(w)}
+                      title={`Roll to hit: d20${w.attackBonus >= 0 ? '+' : ''}${w.attackBonus}`}
+                      style={{
+                        flexShrink: 0, textAlign: 'center', padding: '6px 10px',
+                        borderRadius: 'var(--r-md)',
+                        border: '1px solid rgba(200,146,42,0.3)',
+                        background: 'rgba(200,146,42,0.08)',
+                        cursor: 'pointer', transition: 'all var(--tr-fast)',
+                        minHeight: 0,
+                      }}
+                    >
+                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 18, color: 'var(--c-gold-l)', lineHeight: 1 }}>
+                        {modStr(w.attackBonus)}
                       </div>
-                      <div style={{ width: 1, height: 24, background: 'var(--c-border)' }} />
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 15, color: 'var(--c-red-l)', lineHeight: 1 }}>
-                          {w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}{w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}
-                        </div>
-                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>dmg</div>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(200,146,42,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginTop: 2 }}>
+                        TO HIT
                       </div>
-                    </div>
+                    </button>
 
-                    {/* Edit/delete — only for custom weapons, not inventory projections */}
+                    {/* DMG BUTTON = the entire damage stat block */}
+                    <button
+                      onClick={() => handleDamage(w)}
+                      title={`Roll damage: ${w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}${w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
+                      style={{
+                        flexShrink: 0, textAlign: 'center', padding: '6px 10px',
+                        borderRadius: 'var(--r-md)',
+                        border: '1px solid rgba(248,113,113,0.3)',
+                        background: 'rgba(248,113,113,0.08)',
+                        cursor: 'pointer', transition: 'all var(--tr-fast)',
+                        minHeight: 0,
+                      }}
+                    >
+                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 18, color: 'var(--c-red-l)', lineHeight: 1 }}>
+                        {w.damageDice === 'flat'
+                          ? modStr(w.damageBonus)
+                          : `${w.damageDice}${w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
+                      </div>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(248,113,113,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginTop: 2 }}>
+                        DAMAGE
+                      </div>
+                    </button>
+
+                    {/* Edit/delete — only for custom (non-inventory) weapons */}
                     {!isInv && (
                       <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                         <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '3px 7px', fontSize: 11 }}>✏️</button>
