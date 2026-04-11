@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { rollDie } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { DICE_SKINS } from '../DiceRoller3D';
 
 interface DiceInQueue { die: number; count: number; }
 interface RollResultDie { die: number; value: number; index: number; dropped?: boolean; }
@@ -66,6 +67,13 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
   const [label, setLabel] = useState('');
 
   const [rolling, setRolling] = useState(false);
+  const [activeSkin, setActiveSkin] = useState(() =>
+    typeof window!=='undefined'?localStorage.getItem('dndkeep_dice_skin')||'classic':'classic'
+  );
+  function chooseSkin(id:string){
+    setActiveSkin(id);
+    localStorage.setItem('dndkeep_dice_skin',id);
+  }
   const { triggerRoll } = useDiceRoll();
   const [adv, setAdv] = useState<'normal'|'advantage'|'disadvantage'>('normal');
   const [animValues, setAnimValues] = useState<Record<number, number>>({}); // die index → displayed value during animation
@@ -276,6 +284,25 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
                   border: `1px solid ${dieColor(die)}50`,
                   borderRadius: 4, padding: '2px 8px',
                 }}>{count}d{die}</span>
+              ))}
+            </div>
+            {/* Skin picker */}
+            <div style={{ display:'flex', gap:4, alignItems:'center', marginBottom:2 }}>
+              <span style={{ fontFamily:'var(--ff-body)', fontSize:9, color:'var(--t-3)', letterSpacing:'.1em', textTransform:'uppercase', marginRight:2 }}>Skin</span>
+              {DICE_SKINS.map(s=>(
+                <button key={s.id} onClick={()=>chooseSkin(s.id)}
+                  title={s.name+(s.free?'':' (Premium)')}
+                  style={{
+                    width:20, height:20, borderRadius:4,
+                    border:activeSkin===s.id?'2px solid var(--c-gold)':'2px solid var(--c-border)',
+                    background:s.id==='classic'?'#8b5cf6':s.id==='obsidian'?'#1a0a0a':s.id==='gold'?'#d97706':s.id==='ice'?'#0ea5e9':'#991b1b',
+                    cursor:'pointer', padding:0, position:'relative', flexShrink:0,
+                    outline:activeSkin===s.id?'1px solid rgba(255,200,50,0.5)':'none',
+                    outlineOffset:1,
+                    opacity: s.free?1:1,
+                  }}>
+                  {!s.free&&<span style={{position:'absolute',top:-4,right:-4,fontSize:7,lineHeight:1}}>💎</span>}
+                </button>
               ))}
             </div>
             <button className="btn-gold" onClick={rollAll} disabled={rolling || queue.length === 0}

@@ -15,7 +15,7 @@ export interface DiceRollEvent {
   expression?: string; flatBonus?: number; advantage?: boolean; disadvantage?: boolean;
   onResult?: (allDice: {die:number,value:number}[], total:number) => void;
 }
-interface Props { event: DiceRollEvent; onDismiss: () => void; onResult?: (allDice: {die:number,value:number}[], total:number) => void; }
+interface Props { event: DiceRollEvent; onDismiss: () => void; onResult?: (allDice: {die:number,value:number}[], total:number) => void; skinId?: string; }
 
 const PHI = (1+Math.sqrt(5))/2;
 type V3 = [number,number,number];
@@ -76,18 +76,84 @@ const gd = (s:number) => GD[s] ?? GD[20];
 
 const SM:Record<number,number> = {4:0.95,6:0.72,8:0.95,10:0.95,12:0.95,20:0.95,100:0.95};
 const FF:Record<number,number> = {4:1.0,6:1.0,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
-const THEME:Record<number,{f:number;e:number}> = {
-  4: {f:0x8b5cf6,e:0xf3f0ff},   // bright violet
-  6: {f:0xef4444,e:0xffe4e4},   // bright red
-  8: {f:0x22c55e,e:0xdcfce7},   // bright green
-  10:{f:0x3b82f6,e:0xe0f2fe},   // bright blue
-  12:{f:0xec4899,e:0xfdf2f8},   // bright pink
-  20:{f:0xf59e0b,e:0xfffbeb},   // bright amber
-  100:{f:0xef4444,e:0xffe4e4},
-  1001:{f:0x475569,e:0xf8fafc}, // d100 tens
-  1002:{f:0xb91c1c,e:0xfee2e2}, // d100 units
-};
-const th = (s:number) => THEME[s] ?? THEME[20];
+
+// ── Dice Skin System ──────────────────────────────────────────────────────────
+export interface DiceSkin {
+  id: string;
+  name: string;
+  free: boolean;
+  // Per die-type colors
+  faces: Record<number,{f:number;e:number}>;
+  // PBR material properties
+  metalness: number;   // 0=matte, 1=full metal
+  roughness: number;   // 0=mirror, 1=chalk
+  emissiveMult: number; // how much the face color glows
+}
+
+export const DICE_SKINS: DiceSkin[] = [
+  {
+    id: 'classic',
+    name: 'Classic',
+    free: true,
+    faces: {
+      4:{f:0x8b5cf6,e:0xf3f0ff}, 6:{f:0xef4444,e:0xffe4e4},
+      8:{f:0x22c55e,e:0xdcfce7}, 10:{f:0x3b82f6,e:0xe0f2fe},
+      12:{f:0xec4899,e:0xfdf2f8}, 20:{f:0xf59e0b,e:0xfffbeb},
+      100:{f:0xef4444,e:0xffe4e4},1001:{f:0x475569,e:0xf8fafc},1002:{f:0xb91c1c,e:0xfee2e2},
+    },
+    metalness:0.0, roughness:0.55, emissiveMult:0.18,
+  },
+  {
+    id: 'obsidian',
+    name: 'Obsidian',
+    free: false,
+    faces: {
+      4:{f:0x2d1b69,e:0xa78bfa}, 6:{f:0x1a0a0a,e:0xf87171},
+      8:{f:0x052e16,e:0x4ade80}, 10:{f:0x0c1a3a,e:0x60a5fa},
+      12:{f:0x3b0764,e:0xe879f9}, 20:{f:0x1c1917,e:0xe2e8f0},
+      100:{f:0x1a0a0a,e:0xf87171},1001:{f:0x0f172a,e:0x94a3b8},1002:{f:0x3b0000,e:0xfca5a5},
+    },
+    metalness:0.05, roughness:0.8, emissiveMult:0.35,
+  },
+  {
+    id: 'gold',
+    name: 'Dragon Gold',
+    free: false,
+    faces: {
+      4:{f:0x92400e,e:0xfef3c7}, 6:{f:0x78350f,e:0xfde68a},
+      8:{f:0x854d0e,e:0xfef08a}, 10:{f:0x713f12,e:0xfef9c3},
+      12:{f:0x7c2d12,e:0xffedd5}, 20:{f:0x451a03,e:0xfed7aa},
+      100:{f:0x78350f,e:0xfde68a},1001:{f:0x57534e,e:0xfef3c7},1002:{f:0x7c2d12,e:0xffedd5},
+    },
+    metalness:0.85, roughness:0.2, emissiveMult:0.12,
+  },
+  {
+    id: 'ice',
+    name: 'Glacial Ice',
+    free: false,
+    faces: {
+      4:{f:0x0ea5e9,e:0xe0f2fe}, 6:{f:0x0284c7,e:0xf0f9ff},
+      8:{f:0x075985,e:0xbae6fd}, 10:{f:0x0c4a6e,e:0xe0f2fe},
+      12:{f:0x164e63,e:0xcffafe}, 20:{f:0xf0f9ff,e:0x0ea5e9},
+      100:{f:0x0284c7,e:0xf0f9ff},1001:{f:0x155e75,e:0xe0f2fe},1002:{f:0x0c4a6e,e:0xbae6fd},
+    },
+    metalness:0.1, roughness:0.15, emissiveMult:0.25,
+  },
+  {
+    id: 'blood',
+    name: 'Blood Moon',
+    free: false,
+    faces: {
+      4:{f:0x7f1d1d,e:0xfca5a5}, 6:{f:0x450a0a,e:0xfecaca},
+      8:{f:0x991b1b,e:0xfee2e2}, 10:{f:0x7f1d1d,e:0xfca5a5},
+      12:{f:0x3f0000,e:0xef4444}, 20:{f:0xdc2626,e:0xffe4e4},
+      100:{f:0x450a0a,e:0xfecaca},1001:{f:0x292524,e:0xfca5a5},1002:{f:0x7f1d1d,e:0xef4444},
+    },
+    metalness:0.3, roughness:0.45, emissiveMult:0.4,
+  },
+];
+
+const th = (s:number, skin:DiceSkin) => skin.faces[s] ?? skin.faces[20];
 
 function faceInfo(def:GeoDef, fi:number, s:number) {
   const face=def.faces[fi];
@@ -226,22 +292,23 @@ function boundaryEdges(def:GeoDef,s:number):THREE.BufferGeometry{
   return g;
 }
 
-function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(n:number)=>string):THREE.Group{
+function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(n:number)=>string,skin:DiceSkin):THREE.Group{
   const fc=new THREE.Color(t.f);
   const geo=solidGeo(def,S);
-  // MeshBasicMaterial: flat solid color, NO lighting dependency, ALWAYS fully opaque.
-  // D4 uses DoubleSide (only 4 faces — many will face away from camera at any angle).
-  // All others use FrontSide with winding-corrected solidGeo for proper culling.
+  // MeshStandardMaterial: PBR rendering — metalness/roughness gives real depth.
+  // Skin drives metalness, roughness, and emissive so dice look premium.
   const dieHasFewFaces=def.faces.length<=4;
-  const baseMat=new THREE.MeshBasicMaterial({
+  const baseMat=new THREE.MeshStandardMaterial({
     color:fc,
+    emissive:fc.clone().multiplyScalar(skin.emissiveMult),
+    metalness:skin.metalness,
+    roughness:skin.roughness,
     side:dieHasFewFaces?THREE.DoubleSide:THREE.FrontSide,
-    transparent:false, opacity:1.0, depthWrite:true,
+    transparent:false, opacity:1.0,
   });
   const mats=def.faces.map(()=>baseMat.clone());
-  const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=false;mesh.receiveShadow=false;
-  // Bright edge lines for clear 3D definition
-  const edgeColor=new THREE.Color(t.e).multiplyScalar(1.4);
+  const mesh=new THREE.Mesh(geo,mats);mesh.castShadow=true;mesh.receiveShadow=true;
+  const edgeColor=new THREE.Color(t.e).multiplyScalar(1.2);
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.004),new THREE.LineBasicMaterial({color:edgeColor}));
   const group=new THREE.Group();group.add(mesh);group.add(edges);
   // D4 point-build: 3 numbers per face (one at each vertex corner).
@@ -325,11 +392,12 @@ function buildCannonShape(def:GeoDef,S:number):CANNON.ConvexPolyhedron{
   return new CANNON.ConvexPolyhedron({vertices,faces});
 }
 
-export default function DiceRoller3D({event,onDismiss,onResult}:Props){
+export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
   const mountRef=useRef<HTMLDivElement>(null);
   const dismissRef=useRef(onDismiss);
   dismissRef.current=onDismiss;
 
+  const activeSkin=DICE_SKINS.find(s=>s.id===skinId)??DICE_SKINS[0];
   useEffect(()=>{
     const el=mountRef.current;if(!el)return;
     const W=window.innerWidth,H=window.innerHeight;
@@ -399,19 +467,20 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
     const BZb=Math.max(Math.abs(fl.z),Math.abs(fr.z),Math.abs(tl2.z),Math.abs(tr2.z))*0.87; // symmetric approx
     const BZf=Math.max(fl.z,fr.z,tl2.z,tr2.z)*0.87;
     const BZ=Math.max(BZb,BZf);
-    // Ambient light (used for shadows only, MeshBasicMat is self-lit)
-    scene.add(new THREE.AmbientLight(0xffffff,1.5));
-    const sun=new THREE.DirectionalLight(0xffffff,2.2);
-    sun.position.set(BX*0.4,18,BZ*0.4);sun.castShadow=true;
+    // Premium 3-point PBR lighting — works with MeshStandardMaterial
+    scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.2)); // sky/ground ambient
+    const sun=new THREE.DirectionalLight(0xfff5e0,2.6); // warm key light
+    sun.position.set(BX*0.5,16,BZ*0.3);sun.castShadow=true;
     sun.shadow.camera.left=-BX*1.3;sun.shadow.camera.right=BX*1.3;
     sun.shadow.camera.top=BZ*1.3;sun.shadow.camera.bottom=-BZ*1.3;
-    sun.shadow.mapSize.setScalar(1024);scene.add(sun);
-    // Blue rim light from opposite side for edge separation
-    const rimL=new THREE.DirectionalLight(0x6688cc,1.0);
-    rimL.position.set(-BX*0.5,8,-BZ*0.4);scene.add(rimL);
-    // Warm fill from front-below
-    const fillL=new THREE.DirectionalLight(0xffe8cc,0.45);
-    fillL.position.set(0,3,BZ*0.7);scene.add(fillL);
+    sun.shadow.radius=6;sun.shadow.mapSize.width=1024;sun.shadow.mapSize.height=1024;
+    sun.shadow.bias=-0.001;scene.add(sun);
+    // Cool rim/back light for edge separation
+    const rimL=new THREE.DirectionalLight(0x88aaff,1.3);
+    rimL.position.set(-BX*0.5,4,-BZ*0.5);scene.add(rimL);
+    // Warm fill from below-front
+    const fillL=new THREE.DirectionalLight(0xffe0cc,0.55);
+    fillL.position.set(BX*0.3,2,BZ*0.5);scene.add(fillL);
     // No floor mesh — dice roll over the character sheet (the page IS the background)
 
     // ── Cannon-es world ──────────────────────────────────────────────
@@ -467,11 +536,11 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       }
     });
 
-    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean;labelEl:HTMLDivElement}
+    interface PhysDie{group:THREE.Group;body:CANNON.Body;def:GeoDef;sides:number;geoKey:number;val:number;scale:number;settled:boolean}
     const dice:PhysDie[]=specs.map((sp,i)=>{
       const def=gd(sp.gk);
       const S=baseS*(SM[sp.die]??1.0);
-      const group=buildDie(def,S,th(sp.tk),FF[sp.die]??1.0,sp.label);
+      const group=buildDie(def,S,th(sp.tk,activeSkin),FF[sp.die]??1.0,sp.label,activeSkin);
       scene.add(group);
 
       // Cannon body with ConvexPolyhedron
@@ -519,11 +588,7 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       // Stagger: launch each die from a slightly different height
 
       world.addBody(body);
-      // Per-die floating result label — hidden until settled
-      const labelEl=document.createElement('div');
-      labelEl.style.cssText='position:absolute;pointer-events:none;display:none;text-align:center;transform:translate(-50%,0);';
-      el.appendChild(labelEl);
-      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean,labelEl};
+      return{group,body,def,sides:sp.die,geoKey:sp.gk,val:sp.val,scale:S,settled:false,_wasOnFloor:false as boolean};
     });
 
     let last=performance.now(),allDone=false,doneT=0,dismissed=false,raf=0,shown=false,totalT=0;
@@ -646,12 +711,6 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           // Works correctly for dice anywhere on screen; camera is nearly overhead
           d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
-          // Show floating label beneath die
-          const dieCol=(s:number)=>({4:'#a78bfa',6:'#f87171',8:'#4ade80',10:'#60a5fa',12:'#f472b6',20:'#fbbf24',100:'#f87171'})[s]??'#fff';
-          const col=dieCol(d.sides);
-          const dispVal=d.geoKey===10090?(d.val===0?'00':String(d.val*10)):String(d.val);
-          d.labelEl.innerHTML=`<div style="font:900 22px system-ui;color:${col};text-shadow:0 1px 6px rgba(0,0,0,0.9),0 0 12px ${col}80;line-height:1">${dispVal}</div><div style="font:700 9px system-ui;color:${col}80;letter-spacing:.12em;margin-top:2px">d${d.sides===100?10:d.sides}</div>`;
-          d.labelEl.style.display='block';
         }
       });
 
@@ -664,11 +723,6 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
           const tq=new THREE.Quaternion(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w);
           d.val=detectTopFaceNum(d.def,tq,d.scale,new THREE.Vector3(0,1,0));
           d.settled=true;
-          const dieCol2=(s:number)=>({4:'#a78bfa',6:'#f87171',8:'#4ade80',10:'#60a5fa',12:'#f472b6',20:'#fbbf24',100:'#f87171'})[s]??'#fff';
-          const col2=dieCol2(d.sides);
-          const dispVal2=d.geoKey===10090?(d.val===0?'00':String(d.val*10)):String(d.val);
-          d.labelEl.innerHTML=`<div style="font:900 22px system-ui;color:${col2};text-shadow:0 1px 6px rgba(0,0,0,0.9),0 0 12px ${col2}80;line-height:1">${dispVal2}</div><div style="font:700 9px system-ui;color:${col2}80;letter-spacing:.12em;margin-top:2px">d${d.sides===100?10:d.sides}</div>`;
-          d.labelEl.style.display='block';
         });
       }
       if(!allDone&&dice.every(d=>d.settled)){
@@ -678,17 +732,6 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
         doneT+=real;
         if(doneT>5.5){dismissed=true;dismissRef.current();cancelAnimationFrame(raf);return;}
       }
-      // Project each settled die's world position to screen space for label
-      dice.forEach(d=>{
-        if(!d.settled||d.labelEl.style.display==='none')return;
-        // Project die center (slightly below die body) to screen
-        const wp=new THREE.Vector3(d.body.position.x,d.body.position.y-d.scale*0.6,d.body.position.z);
-        wp.project(camera);
-        const sx=(wp.x*0.5+0.5)*W;
-        const sy=(-wp.y*0.5+0.5)*H;
-        d.labelEl.style.left=sx+'px';
-        d.labelEl.style.top=sy+'px';
-      });
       renderer.render(scene,camera);
     }
     raf=requestAnimationFrame(frame);
@@ -700,7 +743,6 @@ renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;hei
       if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
       scene.clear();TC.clear();
       audioCtx?.close();
-      dice.forEach(d=>{if(el.contains(d.labelEl))el.removeChild(d.labelEl);});
     };
   },[]);
 

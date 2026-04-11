@@ -44,7 +44,12 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   return (
     <DiceRollContext.Provider value={{ triggerRoll, current }}>
       {children}
-      {current && <DiceRoller3D event={current} onDismiss={() => setCurrent(null)} onResult={current.onResult} />}
+      {current && <DiceRoller3D
+        event={current}
+        onDismiss={() => setCurrent(null)}
+        onResult={current.onResult}
+        skinId={typeof window!=='undefined'?localStorage.getItem('dndkeep_dice_skin')||'classic':'classic'}
+      />}
     </DiceRollContext.Provider>
   );
 }
