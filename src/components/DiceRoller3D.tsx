@@ -419,7 +419,7 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
         // This locks the spin around the normal so numbers read upright on every face.
         const faceNorm=new THREE.Vector3(normal[0],normal[1],normal[2]).normalize();
         // "Up" for this number = direction from vertex toward face centroid (already in-plane)
-        const toCenter=new THREE.Vector3(cx-vx,cy-vy,cz-vz).normalize();
+        const toCenter=new THREE.Vector3(vx-cx,vy-cy,vz-cz).normalize(); // toward vertex = right-side up
         // Build orthonormal basis: right = toCenter × faceNorm, then reorthogonalize up
         const planeRight=new THREE.Vector3().crossVectors(toCenter,faceNorm).normalize();
         const planeUp=new THREE.Vector3().crossVectors(faceNorm,planeRight).normalize();
