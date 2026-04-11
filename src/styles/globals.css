@@ -873,3 +873,226 @@ button:active:not(:disabled) { transform: scale(0.96); }
 /* Backwards compat */
 .app-nav { display: none; }
 .app-logo { font-family: var(--ff-brand); color: var(--c-gold-l); font-size: var(--fs-lg); font-weight: 700; }
+
+/* ================================================================
+   CHARACTER SHEET — HUD LAYOUT  (v2.6.0)
+   Two-column on desktop: sticky vitals left, scrollable content right
+   Single column on mobile/tablet
+   ================================================================ */
+
+.cs-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* The HUD grid wrapper — contains vitals col + content col */
+.cs-hud-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+/* LEFT: sticky vitals sidebar */
+.cs-vitals-col {
+  position: sticky;
+  top: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  max-height: calc(100vh - var(--sp-8));
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  /* Subtle glass card */
+  background: rgba(26,26,38,0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xl);
+  padding: var(--sp-4);
+}
+.cs-vitals-col::-webkit-scrollbar { display: none; }
+
+/* Ability scores nested in vitals col — 2x3 grid */
+.cs-vitals-ability-scores {
+  margin-top: var(--sp-2);
+}
+.cs-vitals-ability-scores > section > div:first-child {
+  /* Override the 3-col grid to 2-col when in narrow vitals column */
+  grid-template-columns: repeat(2, 1fr) !important;
+}
+
+/* RIGHT: scrollable content area */
+.cs-content-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+/* ── Tablet: collapse to single column at 900px ── */
+@media (max-width: 900px) {
+  .cs-hud-layout {
+    grid-template-columns: 1fr;
+  }
+  .cs-vitals-col {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    padding: 0;
+  }
+  .cs-vitals-ability-scores > section > div:first-child {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* ── Phone: stack everything ── */
+@media (max-width: 480px) {
+  .cs-shell { gap: var(--sp-3); }
+  .cs-hud-layout { gap: var(--sp-3); }
+}
+
+/* ================================================================
+   MICRO-INTERACTIONS (v2.6.0)
+   Spring physics on interactive elements
+   ================================================================ */
+
+/* Spring-lift on all interactive cards */
+.card-interactive,
+.character-card,
+.stat-box {
+  will-change: transform;
+}
+
+/* Tab content fade + slide up on switch */
+.animate-fade-in {
+  animation: fadeIn 200ms ease both;
+}
+
+/* Enhanced tab active indicator with spring */
+.tab {
+  transition: color 100ms ease, background 100ms ease, transform 80ms ease;
+}
+.tab:active { transform: scale(0.96); }
+
+/* Button spring press */
+button:not(:disabled):active {
+  transform: scale(0.96) !important;
+  transition: transform 80ms ease !important;
+}
+
+/* Skill row hover lift */
+.skill-row {
+  transition: background var(--tr-fast), transform var(--tr-fast);
+}
+.skill-row:hover {
+  transform: translateX(2px);
+}
+
+/* Stat box hover with spring */
+.stat-box {
+  transition: border-color var(--tr-normal), transform var(--tr-spring), box-shadow var(--tr-normal) !important;
+}
+.stat-box:active {
+  transform: scale(0.94) !important;
+}
+
+/* ================================================================
+   LANDING PAGE (v2.6.0)
+   ================================================================ */
+
+/* Hero gradient text */
+.landing-hero-title {
+  font-family: var(--ff-brand);
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--c-gold-xl) 0%, var(--c-gold-l) 40%, #fff8e0 70%, var(--c-gold-l) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Feature card hover */
+.landing-feature-card {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xl);
+  padding: var(--sp-5);
+  transition: all var(--tr-normal);
+  position: relative;
+  overflow: hidden;
+}
+.landing-feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--c-gold), transparent);
+  opacity: 0;
+  transition: opacity var(--tr-normal);
+}
+.landing-feature-card:hover {
+  border-color: var(--c-gold-bdr);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-gold);
+}
+.landing-feature-card:hover::before { opacity: 1; }
+
+/* Pricing card */
+.pricing-card {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-2xl);
+  padding: var(--sp-8);
+  position: relative;
+  overflow: hidden;
+}
+.pricing-card.pro {
+  background: linear-gradient(160deg, rgba(200,146,42,0.08) 0%, var(--c-card) 60%);
+  border-color: var(--c-gold-bdr);
+  box-shadow: var(--shadow-gold);
+}
+
+/* Step number badge */
+.step-badge {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--c-gold-bg);
+  border: 1px solid var(--c-gold-bdr);
+  color: var(--c-gold-l);
+  font-family: var(--ff-brand);
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Stat pill for "N,000+ adventurers" */
+.landing-stat-pill {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  background: var(--c-gold-bg);
+  border: 1px solid var(--c-gold-bdr);
+  border-radius: 999px;
+  padding: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-gold-l);
+}
+
+@keyframes heroFloat {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+.landing-hero-dice {
+  animation: heroFloat 4s ease-in-out infinite;
+  font-size: 64px;
+  filter: drop-shadow(0 8px 24px rgba(200,146,42,0.4));
+  user-select: none;
+}

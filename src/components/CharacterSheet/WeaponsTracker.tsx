@@ -234,7 +234,7 @@ export default function WeaponsTracker({ weapons, onUpdate, characterId, charact
       {/* Weapon list */}
       {weapons.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
-          No weapons added yet. Add your weapons to roll attacks directly from your sheet.
+          
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>

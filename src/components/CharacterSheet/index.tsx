@@ -370,7 +370,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // Render
   // ------------------------------------------------------------------
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
+    <div className="animate-fade-in cs-shell">
 
       <CharacterHeader
         character={character}
@@ -681,26 +681,32 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         );
       })()}
 
-      {/* ── PERSISTENT STATS PANEL — always visible above tabs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.7fr)', gap: 'var(--sp-4)', alignItems: 'start' }}>
-        {/* LEFT: HP + damage/heal controls + stat chips */}
-        <HPStatsPanel
-          character={character}
-          computed={computed}
-          onUpdateHP={(delta, tempHP) => {
-            if (tempHP !== undefined) {
-              handleUpdateHP(character.current_hp, tempHP);
-            } else {
-              const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
-              handleUpdateHP(newHP, character.temp_hp);
-            }
-          }}
-          onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
-          onUpdateSpeed={speed => applyUpdate({ speed }, true)}
-        />
-        {/* RIGHT: 6 ability score boxes */}
-        <AbilityScores character={character} computed={computed} />
-      </div>
+      {/* ── HUD TWO-COLUMN LAYOUT ── */}
+      <div className="cs-hud-layout">
+        {/* ── LEFT VITALS COLUMN — sticky on desktop ── */}
+        <aside className="cs-vitals-col">
+          <HPStatsPanel
+            character={character}
+            computed={computed}
+            onUpdateHP={(delta, tempHP) => {
+              if (tempHP !== undefined) {
+                handleUpdateHP(character.current_hp, tempHP);
+              } else {
+                const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
+                handleUpdateHP(newHP, character.temp_hp);
+              }
+            }}
+            onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
+            onUpdateSpeed={speed => applyUpdate({ speed }, true)}
+          />
+          {/* Ability scores in the vitals column on desktop */}
+          <div className="cs-vitals-ability-scores">
+            <AbilityScores character={character} computed={computed} />
+          </div>
+        </aside>
+
+        {/* ── RIGHT CONTENT COLUMN — scrollable ── */}
+        <div className="cs-content-col">
 
       {/* ── DM Announcement banner ── */}
       {dmAnnouncement && (
@@ -1128,6 +1134,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         />
       )}
       {userId && <CampaignBar userId={userId} />}
+
+        </div>{/* end cs-content-col */}
+      </div>{/* end cs-hud-layout */}
     </div>
   );
 }

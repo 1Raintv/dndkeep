@@ -1,293 +1,163 @@
 import { useNavigate } from 'react-router-dom';
 
 const FEATURES = [
-  {
-    label: 'Conditions auto-apply',
-    desc: 'Poisoned? You get disadvantage automatically. Stunned? Concentration drops. No more looking up rules mid-combat.',
-  },
-  {
-    label: 'Rolls with real results',
-    desc: 'Every skill check, saving throw, and attack roll triggers an animated dice result. Critical hits glow gold. The result is shown instantly.',
-  },
-  {
-    label: 'Buffs that actually work',
-    desc: 'Toggle Bless and your next roll includes the d4. Toggle Rage and your damage increases. It happens automatically, every time.',
-  },
-  {
-    label: 'HIT or MISS on every attack',
-    desc: 'Enter the enemy\'s AC and every weapon attack tells you instantly whether it connects — in green or red, no math required.',
-  },
-  {
-    label: 'DM combat dashboard',
-    desc: 'Real-time HP for every player in the party. Apply damage directly. Roll NPC attacks. Track initiative. No spreadsheet needed.',
-  },
-  {
-    label: 'Built for 2024 rules',
-    desc: 'The new PHB exhaustion system, updated conditions, concentration mechanics, and all 48 subclasses. Not a retrofit — built from scratch.',
-  },
+  { icon: '⚡', label: 'Instant dice rolls', desc: 'Click any skill, ability, or weapon to roll instantly. Nat 20s glow gold. Nat 1s flash red. Full modifier breakdown every time.' },
+  { icon: '🧠', label: 'Conditions that think', desc: 'Toggle Poisoned and every check gets disadvantage automatically. Stunned drops concentration. The rules apply themselves.' },
+  { icon: '🎯', label: 'HIT or MISS instantly', desc: "Enter the enemy's AC and every weapon attack tells you immediately whether it connects — no math required." },
+  { icon: '✨', label: 'Buffs that actually work', desc: 'Toggle Bless and your next roll includes the d4. Toggle Rage and your damage increases. Automatically, every time.' },
+  { icon: '⚔️', label: 'DM combat dashboard', desc: 'Real-time HP for every party member. Apply damage directly. Roll NPC attacks. Track initiative. No spreadsheet needed.' },
+  { icon: '📖', label: 'Built for 2024 rules', desc: 'New PHB exhaustion, updated conditions, concentration mechanics, and all subclasses. Not a retrofit — built from scratch.' },
 ];
 
 const STEPS = [
-  {
-    n: '1',
-    title: 'Build your character',
-    desc: 'A guided creator walks you through species, class, background, ability scores, and build choices — level by level, with the rules explained in context.',
-  },
-  {
-    n: '2',
-    title: 'Play at the table',
-    desc: 'Click ability scores and skills to roll dice. Track HP, spell slots, and conditions. Everything syncs automatically. Nothing needs to be manually calculated.',
-  },
-  {
-    n: '3',
-    title: 'Run a campaign',
-    desc: 'The DM creates a campaign and shares a code. Players join and the whole party syncs in real time. The DM can apply damage and track initiative from their own screen.',
-  },
+  { n: '1', title: 'Build your character', desc: 'A guided 6-step creator walks you through species, class, background, ability scores, and build choices — with the rules explained in context.' },
+  { n: '2', title: 'Play at the table', desc: 'Tap ability scores and skills to roll. Track HP, spell slots, and conditions. Everything calculates automatically. Nothing needs manual math.' },
+  { n: '3', title: 'Run your campaign', desc: 'The DM creates a campaign and shares a code. Players join and the whole party syncs live. DMs manage initiative and apply damage from their screen.' },
 ];
 
-const FREE_FEATURES = [
-  '1 character',
-  'Full character sheet',
-  'Dice rolling with animations',
-  'Spell browser (402 spells)',
-  'Condition tracking',
-  'Combat tools',
-  'Join campaigns with a code',
-];
-
-const PRO_FEATURES = [
-  'Everything in Free',
-  'Unlimited characters',
-  'Create and run campaigns',
-  'Real-time party sync',
-  'DM combat dashboard',
-  'Homebrew Workshop',
-  'Initiative tracker',
-];
+const FREE_FEATURES = ['1 full character', 'Complete character sheet', 'Animated dice roller', '402 spells to browse', 'Condition tracking', 'Combat tools & weapons', 'Join campaigns'];
+const PRO_FEATURES = ['Everything in Free', 'Unlimited characters', 'Create & run campaigns', 'Real-time party sync', 'DM combat dashboard', 'Initiative tracker', 'Homebrew Workshop'];
 
 export default function LandingPage() {
   const navigate = useNavigate();
-
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--t-1)', fontFamily: 'var(--ff-body)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--c-void)', color: 'var(--t-1)', fontFamily: 'var(--ff-body)', position: 'relative', overflowX: 'hidden' }}>
 
-      {/* Nav */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '18px 48px', borderBottom: '1px solid var(--c-border)',
-        position: 'sticky', top: 0, background: 'var(--c-bg)', zIndex: 50,
-      }}>
-        <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 20, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.1em' }}>
-          DNDKEEP
-        </span>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button className="btn-ghost btn-sm" onClick={() => navigate('/auth')}>Sign in</button>
-          <button className="btn-gold btn-sm" onClick={() => navigate('/auth')}>Get started free</button>
+      {/* Ambient orbs */}
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: '-10%', left: '-5%', width: 700, height: 700, background: 'radial-gradient(ellipse, rgba(123,94,167,0.06) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+        <div style={{ position: 'absolute', bottom: '20%', right: '-5%', width: 600, height: 600, background: 'radial-gradient(ellipse, rgba(200,146,42,0.05) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+      </div>
+
+      {/* NAV */}
+      <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 48px', borderBottom: '1px solid var(--c-border)', position: 'sticky', top: 0, background: 'rgba(13,13,21,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', zIndex: 50 }}>
+        <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 20, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.12em' }}>DNDKEEP</span>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button onClick={() => navigate('/auth')} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', fontSize: 14, padding: '8px 16px', minHeight: 0, borderRadius: 8 }}>Sign in</button>
+          <button className="btn-gold" onClick={() => navigate('/auth')} style={{ fontSize: 14 }}>Get started free →</button>
         </div>
       </nav>
 
-      {/* Hero */}
-      <div style={{ textAlign: 'center', padding: '100px 48px 72px', maxWidth: 820, margin: '0 auto' }}>
-        <div style={{
-          display: 'inline-block', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em',
-          textTransform: 'uppercase', color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)',
-          border: '1px solid var(--c-gold-bdr)', padding: '4px 16px', borderRadius: 999, marginBottom: 32,
-        }}>
-          Compatible with 5th Edition · 2024 PHB rules · Free to start
+      <div style={{ position: 'relative', zIndex: 1 }}>
+
+        {/* HERO */}
+        <section style={{ textAlign: 'center', padding: 'clamp(64px, 10vw, 120px) 24px 80px', maxWidth: 860, margin: '0 auto' }}>
+          <div className="landing-hero-dice" style={{ marginBottom: 24 }}>🎲</div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '5px 16px', fontSize: 12, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 28 }}>
+            ✦ 2024 PHB rules · Free to start
+          </div>
+          <h1 className="landing-hero-title" style={{ marginBottom: 24 }}>
+            Your D&D companion<br />that does the math
+          </h1>
+          <p style={{ fontSize: 'clamp(1rem, 2vw, 1.2rem)', color: 'var(--t-2)', lineHeight: 1.7, maxWidth: 640, margin: '0 auto 40px' }}>
+            Build characters. Roll dice. Track conditions, spells, and HP. Run campaigns with real-time party sync.{' '}
+            <strong style={{ color: 'var(--t-1)' }}>Everything calculates automatically</strong> so you can focus on playing.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' as const, marginBottom: 16 }}>
+            <button className="btn-gold btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16, paddingLeft: 32, paddingRight: 32 }}>Create a free character →</button>
+            <button className="btn-secondary btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16 }}>Sign in</button>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--t-3)' }}>Free forever for 1 character. No credit card required.</p>
+        </section>
+
+        {/* STATS BAR */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(16px, 4vw, 48px)', flexWrap: 'wrap' as const, padding: '32px 24px', borderTop: '1px solid var(--c-border)', borderBottom: '1px solid var(--c-border)', background: 'rgba(26,26,38,0.5)' }}>
+          {[{ n: '13', label: 'Character classes' }, { n: '402', label: 'Spells in the browser' }, { n: '2024', label: 'PHB rules supported' }, { n: '∞', label: 'Dice rolls awaiting' }].map(s => (
+            <div key={s.label} style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 900, color: 'var(--c-gold-l)' }}>{s.n}</div>
+              <div style={{ fontSize: 12, color: 'var(--t-3)', fontWeight: 500, marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
         </div>
 
-        <h1 style={{
-          fontSize: 'clamp(2.2rem, 5vw, 3.8rem)', fontWeight: 900, lineHeight: 1.08,
-          letterSpacing: '-0.03em', marginBottom: 28, color: 'var(--t-1)',
-        }}>
-          The D&D companion that<br />
-          <span style={{ color: 'var(--c-gold-l)' }}>automates the rules</span>
-        </h1>
-
-        <p style={{
-          fontSize: 18, color: 'var(--t-2)', lineHeight: 1.75, maxWidth: 580,
-          margin: '0 auto 44px',
-        }}>
-          Character sheets, dice rolls, conditions, buffs, spell slots, and initiative tracking — all connected.
-          When you apply a condition, the rules change automatically. When you roll, the math is already done.
-        </p>
-
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
-            className="btn-gold"
-            style={{ fontSize: 16, padding: '13px 36px', minHeight: 50 }}
-            onClick={() => navigate('/auth')}
-          >
-            Create a free account
-          </button>
-          <button
-            className="btn-secondary"
-            style={{ fontSize: 16, padding: '13px 36px', minHeight: 50 }}
-            onClick={() => navigate('/auth')}
-          >
-            Sign in
-          </button>
-        </div>
-        <p style={{ marginTop: 16, fontSize: 13, color: 'var(--t-3)' }}>
-          Free forever for one character. No credit card required.
-        </p>
-      </div>
-
-      {/* Feature grid */}
-      <div style={{ padding: '72px 48px', borderTop: '1px solid var(--c-border)', background: 'var(--c-surface)' }}>
-        <div style={{ maxWidth: 960, margin: '0 auto' }}>
+        {/* FEATURES */}
+        <section style={{ maxWidth: 1100, margin: '0 auto', padding: '80px 24px' }}>
           <div style={{ textAlign: 'center', marginBottom: 56 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 14 }}>
-              What D&D Beyond doesn't do
-            </div>
-            <h2 style={{ fontSize: 32, fontWeight: 800, color: 'var(--t-1)', margin: 0, letterSpacing: '-0.02em' }}>
-              Rules that apply themselves
-            </h2>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 12 }}>What it does</div>
+            <h2 style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: 700, color: 'var(--t-1)' }}>Designed for the table</h2>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
             {FEATURES.map(f => (
-              <div key={f.label} style={{
-                background: 'var(--c-card)', border: '1px solid var(--c-border)',
-                borderRadius: 'var(--r-xl)', padding: '24px 28px',
-              }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--t-1)', marginBottom: 10 }}>{f.label}</div>
-                <div style={{ fontSize: 14, color: 'var(--t-2)', lineHeight: 1.65 }}>{f.desc}</div>
+              <div key={f.label} className="landing-feature-card">
+                <div style={{ fontSize: 28, marginBottom: 12 }}>{f.icon}</div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--t-1)', marginBottom: 8 }}>{f.label}</h3>
+                <p style={{ fontSize: 14, color: 'var(--t-2)', lineHeight: 1.6, margin: 0 }}>{f.desc}</p>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* How it works */}
-      <div style={{ padding: '72px 48px' }}>
-        <div style={{ maxWidth: 680, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 52 }}>
-            <h2 style={{ fontSize: 32, fontWeight: 800, color: 'var(--t-1)', margin: 0, letterSpacing: '-0.02em' }}>How it works</h2>
+        {/* HOW IT WORKS */}
+        <section style={{ maxWidth: 860, margin: '0 auto', padding: '0 24px 80px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 12 }}>How it works</div>
+            <h2 style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: 700, color: 'var(--t-1)' }}>Three steps to the table</h2>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {STEPS.map((s, i) => (
-              <div key={s.n} style={{
-                display: 'flex', gap: 24, padding: '32px 0',
-                borderBottom: i < STEPS.length - 1 ? '1px solid var(--c-border)' : 'none',
-              }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: '50%',
-                  background: 'var(--c-gold-bg)', border: '2px solid var(--c-gold-bdr)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 900, fontSize: 18, color: 'var(--c-gold-l)', flexShrink: 0, marginTop: 2,
-                }}>
-                  {s.n}
-                </div>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+            {STEPS.map((step, i) => (
+              <div key={step.n} style={{ display: 'flex', gap: 24, alignItems: 'flex-start', padding: '28px 0', borderBottom: i < STEPS.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                <div className="step-badge">{step.n}</div>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--t-1)', marginBottom: 8 }}>{s.title}</div>
-                  <div style={{ fontSize: 15, color: 'var(--t-2)', lineHeight: 1.7 }}>{s.desc}</div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--t-1)', marginBottom: 8 }}>{step.title}</h3>
+                  <p style={{ fontSize: 14, color: 'var(--t-2)', lineHeight: 1.7, margin: 0, maxWidth: 560 }}>{step.desc}</p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Pricing */}
-      <div style={{ padding: '72px 48px', borderTop: '1px solid var(--c-border)', background: 'var(--c-surface)' }}>
-        <div style={{ maxWidth: 820, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 52 }}>
-            <h2 style={{ fontSize: 32, fontWeight: 800, color: 'var(--t-1)', margin: 0, letterSpacing: '-0.02em' }}>Simple pricing</h2>
-            <p style={{ color: 'var(--t-2)', marginTop: 12, fontSize: 16 }}>Start free. Upgrade when your party is ready.</p>
+        {/* PRICING */}
+        <section style={{ maxWidth: 800, margin: '0 auto', padding: '0 24px 100px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 12 }}>Pricing</div>
+            <h2 style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: 700, color: 'var(--t-1)' }}>Start free. Upgrade when ready.</h2>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, maxWidth: 700, margin: '0 auto' }}>
-            {/* Free tier */}
-            <div style={{
-              background: 'var(--c-card)', border: '1px solid var(--c-border)',
-              borderRadius: 'var(--r-2xl)', padding: '36px 32px',
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 12 }}>Free</div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: 'var(--t-1)', lineHeight: 1, marginBottom: 6 }}>$0</div>
-              <div style={{ fontSize: 14, color: 'var(--t-3)', marginBottom: 28 }}>forever</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+            <div className="pricing-card">
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t-2)', marginBottom: 8 }}>Free</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 40, fontWeight: 900, color: 'var(--t-1)' }}>$0</span>
+                  <span style={{ color: 'var(--t-3)', fontSize: 14 }}>forever</span>
+                </div>
+              </div>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column' as const, gap: 10, marginBottom: 28 }}>
                 {FREE_FEATURES.map(f => (
-                  <div key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-green-l)' }} />
-                    </div>
-                    <span style={{ fontSize: 14, color: 'var(--t-2)' }}>{f}</span>
-                  </div>
+                  <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--t-2)' }}>
+                    <span style={{ color: 'var(--c-green-l)', fontSize: 16, flexShrink: 0 }}>✓</span>{f}
+                  </li>
                 ))}
-              </div>
-              <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate('/auth')}>
-                Get started
-              </button>
+              </ul>
+              <button className="btn-secondary" onClick={() => navigate('/auth')} style={{ width: '100%', justifyContent: 'center' }}>Get started free</button>
             </div>
-
-            {/* Pro tier */}
-            <div style={{
-              background: 'var(--c-card)', border: '2px solid var(--c-gold-bdr)',
-              borderRadius: 'var(--r-2xl)', padding: '36px 32px', position: 'relative',
-              boxShadow: '0 0 40px rgba(212,160,23,0.08)',
-            }}>
-              <div style={{
-                position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)',
-                fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)',
-                border: '1px solid var(--c-gold-bdr)', padding: '3px 14px', borderRadius: 999, whiteSpace: 'nowrap',
-              }}>
-                Most popular
+            <div className="pricing-card pro" style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 16, right: 16, background: 'var(--c-gold)', color: '#150C00', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '3px 10px', borderRadius: 999 }}>Most popular</div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-gold-l)', marginBottom: 8 }}>Pro</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 40, fontWeight: 900, color: 'var(--t-1)' }}>$4.99</span>
+                  <span style={{ color: 'var(--t-3)', fontSize: 14 }}>/month</span>
+                </div>
               </div>
-              <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)', marginBottom: 12 }}>Pro</div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: 'var(--t-1)', lineHeight: 1, marginBottom: 6 }}>$4.99</div>
-              <div style={{ fontSize: 14, color: 'var(--t-3)', marginBottom: 28 }}>per month</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 }}>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column' as const, gap: 10, marginBottom: 28 }}>
                 {PRO_FEATURES.map(f => (
-                  <div key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold-l)' }} />
-                    </div>
-                    <span style={{ fontSize: 14, color: f === 'Everything in Free' ? 'var(--t-3)' : 'var(--t-2)' }}>{f}</span>
-                  </div>
+                  <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--t-2)' }}>
+                    <span style={{ color: 'var(--c-gold-l)', fontSize: 16, flexShrink: 0 }}>✦</span>{f}
+                  </li>
                 ))}
-              </div>
-              <button className="btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate('/auth')}>
-                Start free trial
-              </button>
+              </ul>
+              <button className="btn-gold" onClick={() => navigate('/auth')} style={{ width: '100%', justifyContent: 'center' }}>Start Pro free trial →</button>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Final CTA */}
-      <div style={{ padding: '72px 48px', textAlign: 'center' }}>
-        <h2 style={{ fontSize: 32, fontWeight: 800, color: 'var(--t-1)', marginBottom: 16, letterSpacing: '-0.02em' }}>
-          Ready to play smarter?
-        </h2>
-        <p style={{ fontSize: 16, color: 'var(--t-2)', marginBottom: 36, maxWidth: 440, margin: '0 auto 36px' }}>
-          Free for one character. No credit card. Takes about five minutes to build your first character.
-        </p>
-        <button
-          className="btn-gold"
-          style={{ fontSize: 16, padding: '14px 44px', minHeight: 52 }}
-          onClick={() => navigate('/auth')}
-        >
-          Create your first character
-        </button>
-      </div>
-
-      {/* Footer */}
-      <div style={{
-        padding: '24px 48px', borderTop: '1px solid var(--c-border)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        flexWrap: 'wrap', gap: 12,
-      }}>
-        <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 14, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.1em' }}>
-          DNDKEEP
-        </span>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--t-3)' }}>
-            Compatible with 5th Edition. Not affiliated with Wizards of the Coast.
-          </span>
-          <button onClick={() => navigate('/srd')} style={{ fontSize: 12, color: 'var(--t-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-            SRD Attribution (CC-BY-4.0)
-          </button>
-        </div>
+        {/* FOOTER CTA */}
+        <section style={{ textAlign: 'center', padding: '72px 24px', borderTop: '1px solid var(--c-border)', background: 'rgba(26,26,38,0.4)' }}>
+          <h2 style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 16 }}>Ready to roll?</h2>
+          <p style={{ fontSize: 16, color: 'var(--t-2)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' }}>Build your first character in under 5 minutes. No credit card required.</p>
+          <button className="btn-gold btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16, paddingLeft: 40, paddingRight: 40 }}>Create a free character →</button>
+          <p style={{ marginTop: 16, fontSize: 12, color: 'var(--t-3)' }}>Compatible with D&D 5e · 2024 PHB rules · Not affiliated with Wizards of the Coast</p>
+        </section>
       </div>
     </div>
   );

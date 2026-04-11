@@ -64,7 +64,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
           return (
             <div
               key={ability}
-              className="stat-box"
+              className="stat-box stagger-item"
               role="button"
               tabIndex={0}
               onClick={() => rollAbility(ability)}

@@ -116,7 +116,7 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
         {rolls.length === 0 ? (
           <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', padding: 'var(--sp-2)', textAlign: 'center' }}>
-            No rolls yet this session
+            No rolls yet — tap any stat to roll!
           </div>
         ) : rolls.map(r => (
           <div key={r.id} style={{ padding: '4px var(--sp-2)', borderBottom: '1px solid var(--c-border)' }}>
@@ -173,7 +173,7 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
 
       {rolls.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
-          No rolls recorded yet. Roll dice from your sheet and they'll appear here.
+          The dice await your command. Roll from any skill, ability, or weapon and every result will be recorded here.
         </div>
       ) : (
         Object.entries(grouped).map(([date, entries]) => (
