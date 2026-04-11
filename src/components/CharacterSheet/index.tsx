@@ -277,7 +277,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
   // Short rest: roll hit dice to recover HP
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
-  const [combatFilter, setCombatFilter] = useState<'all'|'attack'|'action'|'bonus'|'reaction'>('all');
+  const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'>('all');
   const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {
@@ -930,7 +930,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               <ActionEconomy
                 speedFeet={character.speed ?? 30}
                 onActionUsed={(action: string, used: boolean) => {
-                  if (action === 'action' && used && combatFilter === 'all') setCombatFilter('bonus');
+                  if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
                   if (action === 'action' && !used) setCombatFilter('all');
                 }}
               />
@@ -952,7 +952,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
                   {([
                     { id: 'all',      label: 'All' },
-                    { id: 'attack',   label: '⚔️ Attack' },
                     { id: 'action',   label: '🔵 Action' },
                     { id: 'bonus',    label: '⚡ Bonus' },
                     { id: 'reaction', label: '🛡 Reaction' },
@@ -978,7 +977,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 </div>
 
                 {/* Weapons — merged from weapons list + equipped inventory */}
-                {(combatFilter === 'all' || combatFilter === 'attack') && (
+                {combatFilter === 'all' && (
                   <WeaponsTracker
                     weapons={allWeapons}
                     onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
@@ -989,6 +988,36 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                     activeBufss={(character as any).active_buffs ?? []}
                   />
                 )}
+
+                {/* Health Potions — consumables that are actions on your turn */}
+                {(combatFilter === 'all' || combatFilter === 'action') && (() => {
+                  const potions = (character.inventory ?? []).filter((item: any) =>
+                    item.category === 'Potion' && item.quantity > 0
+                  );
+                  if (potions.length === 0) return null;
+                  return (
+                    <div style={{ marginTop: 'var(--sp-3)' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: 'var(--c-green-l)', marginBottom: 6 }}>
+                        🧪 Potions & Consumables
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
+                        {potions.map((item: any) => (
+                          <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 'var(--r-md)', border: '1px solid rgba(52,211,153,0.2)', background: 'rgba(52,211,153,0.03)' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{item.name}</div>
+                              {item.description && (
+                                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>{item.description}</div>
+                              )}
+                            </div>
+                            <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, color: 'var(--c-green-l)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)', padding: '2px 8px', borderRadius: 999 }}>
+                              ×{item.quantity}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Action / Bonus / Reaction features */}
                 {(combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') && (() => {

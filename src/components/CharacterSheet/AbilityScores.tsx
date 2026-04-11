@@ -107,7 +107,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
                   {meta.abbrev}
                 </div>
                 {/* Modifier — compact */}
-                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.1rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.3rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
                   {formatModifier(mod)}
                 </div>
                 {/* Raw score */}
@@ -129,7 +129,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
           color: 'var(--c-gold-l)', marginBottom: 5,
           display: 'flex', alignItems: 'center', gap: 5,
         }}>
-          <span style={{ fontSize: 10 }}>🎯</span> Saving Throws
+          Saving Throws
         </div>
         <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
           {ABILITY_ORDER.map(ability => {
@@ -164,13 +164,11 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
                   </span>
                 </div>
                 {/* Modifier — big, same weight as DDB */}
-                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.5rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.3rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
                   {formatModifier(saveMod)}
                 </div>
                 {/* Save label */}
-                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 600, color: isProficient ? meta.color : 'var(--t-3)', letterSpacing: '0.06em', marginTop: 2 }}>
-                  {isProficient ? 'PROF' : 'SAVE'}
-                </div>
+
               </div>
             );
           })}

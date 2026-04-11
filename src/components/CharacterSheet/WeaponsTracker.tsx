@@ -5,6 +5,7 @@ import { rollDie, computeActiveBonuses } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logAction } from '../shared/ActionLog';
+import { supabase } from '../../lib/supabase';
 
 interface WeaponsTrackerProps {
   weapons: WeaponItem[];
@@ -118,6 +119,19 @@ export default function WeaponsTracker({
 
     triggerRoll({ result: nat, dieType: 20, modifier: weapon.attackBonus, total: hit, label: `${weapon.name} — d20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus}` });
 
+    // Write to roll_logs so it appears in Roll History
+    if (characterId) {
+      supabase.from('roll_logs').insert({
+        character_id: characterId,
+        campaign_id: campaignId ?? null,
+        label: `${weapon.name} — To Hit`,
+        dice_expression: `1d20+${weapon.attackBonus}`,
+        individual_results: [nat],
+        total: hit,
+        modifier: weapon.attackBonus,
+      });
+    }
+
     if (characterId) {
       await logAction({
         campaignId, characterId, characterName: characterName ?? '',
@@ -153,6 +167,19 @@ export default function WeaponsTracker({
     const dmgDieMatch = weapon.damageDice.match(/\d+d(\d+)/);
     const dmgDieType = dmgDieMatch ? parseInt(dmgDieMatch[1]) : 4;
     triggerRoll({ result: 0, dieType: dmgDieType, modifier: weapon.damageBonus, total: damage, label: `${weapon.name} — ${weapon.damageDice} damage` });
+
+    // Write to roll_logs so it appears in Roll History
+    if (characterId) {
+      supabase.from('roll_logs').insert({
+        character_id: characterId,
+        campaign_id: campaignId ?? null,
+        label: `${weapon.name} — Damage`,
+        dice_expression: `${weapon.damageDice}${weapon.damageBonus !== 0 ? modStr(weapon.damageBonus) : ''}`,
+        individual_results: [baseDmg],
+        total: damage,
+        modifier: weapon.damageBonus,
+      });
+    }
 
     if (characterId) {
       await logAction({
