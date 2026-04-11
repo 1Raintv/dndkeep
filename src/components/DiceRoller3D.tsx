@@ -197,7 +197,7 @@ function faceInfo(def:GeoDef, fi:number, s:number) {
 function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number,viewDir?:THREE.Vector3):number{
   const up=viewDir??new THREE.Vector3(0,1,0);
   // D4 point-build: result = vertex pointing most upward (top vertex = result number)
-  if(def.verts.length===4&&def.faces.length===4) return detectD4BottomFace(def,quat,up);
+  if(def.verts.length===4&&def.faces.length===4) return detectD4TopVertex(def,quat,up);
   let best=-2,bestNum=def.nums[0];
   def.faces.forEach((_,fi)=>{
     const{normal}=faceInfo(def,fi,s);
@@ -207,20 +207,17 @@ function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number,viewDir?:THR
   return bestNum;
 }
 
-// D4 vertex numbers (point-build: vertex most pointing toward camera = result)
-function detectD4BottomFace(def:GeoDef,quat:THREE.Quaternion,up:THREE.Vector3):number{
-  // Face-down convention: face with normal pointing most DOWNWARD = touching table = result
-  let mostDown=Infinity,result=1;
-  def.faces.forEach((face,fi)=>{
-    const a=new THREE.Vector3(...def.verts[face[0]] as [number,number,number]);
-    const b=new THREE.Vector3(...def.verts[face[1]] as [number,number,number]);
-    const c=new THREE.Vector3(...def.verts[face[2]] as [number,number,number]);
-    const n=new THREE.Vector3().crossVectors(b.clone().sub(a),c.clone().sub(a)).normalize();
-    n.applyQuaternion(quat);
-    const yComp=n.dot(up);
-    if(yComp<mostDown){mostDown=yComp;result=def.nums[fi];}
+// D4 vertex convention: the vertex pointing most UPWARD = result
+// Matches physical dice where you read the number at the top point.
+// D4_VERT_NUMS maps vertex index → number (vertex 0=1, 1=2, 2=3, 3=4)
+const D4_VERT_NUMS=[1,2,3,4];
+function detectD4TopVertex(def:GeoDef,quat:THREE.Quaternion,up:THREE.Vector3):number{
+  let best=-2,bestNum=1;
+  def.verts.forEach((v,vi)=>{
+    const w=new THREE.Vector3(v[0],v[1],v[2]).applyQuaternion(quat);
+    if(w.dot(up)>best){best=w.dot(up);bestNum=D4_VERT_NUMS[vi];}
   });
-  return result;
+  return bestNum;
 }
 
 // Compute quaternion to rotate face faceN → +Y (straight up, unambiguous result)
@@ -383,34 +380,46 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const dieLight=new THREE.PointLight(new THREE.Color(t.e).multiplyScalar(0.6),0.9,S*2.8);
   dieLight.position.set(0,S*0.3,0); // slightly above die center
   group.add(dieLight);
-  // D4 face-down: one centered number per face, matching detectD4BottomFace detection.
   const isD4=(def.verts.length===4&&def.faces.length===4);
   if(isD4){
-    // D4: one number centered on each face. FrontSide only (no apex-corner clustering).
-    // The face on the table = result (detectD4BottomFace). The 3 visible faces show
-    // the other 3 numbers clearly in the middle of each face.
-    // NO faceUpInPlane shift — that was causing all numbers to stack at the apex vertex.
-    const numOff=0.045*S;
+    // Vertex-corner D4: 3 numbers per face (one at each vertex corner).
+    // This matches real physical D4 dice — all 3 visible faces show the SAME number
+    // near the top vertex, and that number = the result (detectD4TopVertex).
+    //
+    // Layout per face: small number planes at 68% toward each vertex from centroid.
+    // Size is small (~insc*0.75) so 3 numbers fit without overlapping on a triangular face.
+    const numOff=0.035*S;
+    // Build a reusable texture per number to avoid duplicates
+    const numTexCache:Record<number,THREE.CanvasTexture>={};
+    D4_VERT_NUMS.forEach(n=>{
+      if(!numTexCache[n]) numTexCache[n]=numTex(String(n),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline);
+    });
     def.faces.forEach((_,fi)=>{
-      const{pos,normal,insc}=faceInfo(def,fi,S);
-      // Use same fixed-size formula as other dice so numbers fill the face well
-      const sz=S*0.52*ff;
-      const mat=new THREE.MeshBasicMaterial({
-        map:numTex(String(def.nums[fi]),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline),
-        transparent:true, side:THREE.FrontSide,
-        depthTest:true, depthWrite:false, alphaTest:0.05,
-        polygonOffset:true, polygonOffsetFactor:-8, polygonOffsetUnits:-8,
+      const{pos,normal}=faceInfo(def,fi,S);
+      const faceVerts=def.faces[fi];
+      const sz=S*0.28; // small — 3 must fit on one triangular face
+      // Place one number at each vertex corner
+      faceVerts.forEach((vi)=>{
+        const vx=def.verts[vi][0]*S, vy=def.verts[vi][1]*S, vz=def.verts[vi][2]*S;
+        const cx=pos[0], cy=pos[1], cz=pos[2];
+        // 68% toward vertex from centroid
+        const px=cx+(vx-cx)*0.68+normal[0]*numOff;
+        const py=cy+(vy-cy)*0.68+normal[1]*numOff;
+        const pz=cz+(vz-cz)*0.68+normal[2]*numOff;
+        const mat=new THREE.MeshBasicMaterial({
+          map:numTexCache[D4_VERT_NUMS[vi]],
+          transparent:true, side:THREE.FrontSide,
+          depthTest:true, depthWrite:false, alphaTest:0.05,
+          polygonOffset:true, polygonOffsetFactor:-8, polygonOffsetUnits:-8,
+        });
+        const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+        plane.renderOrder=2;
+        plane.position.set(px,py,pz);
+        const q=new THREE.Quaternion();
+        q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
+        plane.quaternion.copy(q);
+        group.add(plane);
       });
-      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-      plane.renderOrder=2;
-      plane.position.set(
-        pos[0]+normal[0]*numOff,
-        pos[1]+normal[1]*numOff,
-        pos[2]+normal[2]*numOff
-      );
-      const q=new THREE.Quaternion();
-      q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
-      plane.quaternion.copy(q);group.add(plane);
     });
   } else {
     const numOff=0.038*S;
