@@ -50,10 +50,9 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
   }
 
   return (
-    <section>
-      {/* Roll result flash banner */}
-      {/* 6-column ability score strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 'var(--sp-2)' }}>
+    <section className="ability-scores-section">
+      {/* 6-column ability score strip — 3-col by default, 2-col inside vitals column */}
+      <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 'var(--sp-2)' }}>
         {ABILITY_ORDER.map(ability => {
           const meta = STAT_META[ability];
           const score = character[ability];

@@ -919,9 +919,10 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .cs-vitals-ability-scores {
   margin-top: var(--sp-2);
 }
-.cs-vitals-ability-scores > section > div:first-child {
-  /* Override the 3-col grid to 2-col when in narrow vitals column */
+.cs-vitals-ability-scores .ability-scores-grid {
+  /* 2-col grid inside the narrow vitals column */
   grid-template-columns: repeat(2, 1fr) !important;
+  gap: 5px !important;
 }
 
 /* RIGHT: scrollable content area */
@@ -946,7 +947,7 @@ button:active:not(:disabled) { transform: scale(0.96); }
     border: none;
     padding: 0;
   }
-  .cs-vitals-ability-scores > section > div:first-child {
+  .cs-vitals-ability-scores .ability-scores-grid {
     grid-template-columns: repeat(3, 1fr) !important;
   }
 }

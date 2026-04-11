@@ -42,6 +42,7 @@ export default function SpellsTab({
   const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
   const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
   const [filterPrepared, setFilterPrepared] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const isPreparer = PREPARER_CLASSES.includes(character.class_name);
   const prepareMax = isPreparer
@@ -77,9 +78,19 @@ export default function SpellsTab({
     return knownSpellData.filter(s => {
       if (activeLevel !== 'all' && s.level !== activeLevel) return false;
       if (filterPrepared && isPreparer && s.level > 0 && !character.prepared_spells.includes(s.id)) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          s.name.toLowerCase().includes(q) ||
+          (s.school ?? '').toLowerCase().includes(q) ||
+          (s.casting_time ?? '').toLowerCase().includes(q) ||
+          (s.damage_type ?? '').toLowerCase().includes(q) ||
+          (s.description ?? '').toLowerCase().includes(q)
+        );
+      }
       return true;
     });
-  }, [knownSpellData, activeLevel, filterPrepared, character.prepared_spells, isPreparer]);
+  }, [knownSpellData, activeLevel, filterPrepared, searchQuery, character.prepared_spells, isPreparer]);
 
   // Group visible spells by level
   const byLevel = useMemo(() => {
@@ -149,6 +160,56 @@ export default function SpellsTab({
 
       </div>
 
+      {/* ── Spell stats header (DDB-style) — modifier / attack / save DC ── */}
+      {computed.proficiency_bonus > 0 && (() => {
+        const spellAbility = ({ Bard:'charisma', Cleric:'wisdom', Druid:'wisdom', Paladin:'charisma', Ranger:'wisdom', Sorcerer:'charisma', Warlock:'charisma', Wizard:'intelligence', Artificer:'intelligence' } as Record<string,string>)[character.class_name];
+        if (!spellAbility) return null;
+        const score = (character as any)[spellAbility] ?? 10;
+        const mod = Math.floor((score - 10) / 2);
+        const atk = mod + computed.proficiency_bonus;
+        const dc = 8 + atk;
+        return (
+          <div style={{ display: 'flex', gap: 24, padding: '10px 16px', background: 'var(--c-surface)', border: '1px solid rgba(192,132,252,0.2)', borderRadius: 'var(--r-lg)', alignItems: 'center', flexWrap: 'wrap' as const }}>
+            {[
+              { label: 'MODIFIER', value: mod >= 0 ? `+${mod}` : String(mod) },
+              { label: 'SPELL ATTACK', value: atk >= 0 ? `+${atk}` : String(atk) },
+              { label: 'SAVE DC', value: String(dc) },
+            ].map(s => (
+              <div key={s.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: '1.5rem', color: '#c084fc', lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'rgba(192,132,252,0.6)', marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* ── Search bar ── */}
+      <div style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--t-3)', pointerEvents: 'none' }}>🔍</span>
+        <input
+          type="text"
+          placeholder="Search spells by name, school, or casting time…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{
+            paddingLeft: 34,
+            paddingRight: searchQuery ? 34 : 12,
+            background: 'var(--c-surface)',
+            border: '1px solid var(--c-border-m)',
+            borderRadius: 'var(--r-lg)',
+            fontSize: 13,
+          }}
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery('')} style={{
+            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t-3)',
+            fontSize: 16, padding: '2px 4px', minHeight: 0, lineHeight: 1,
+          }}>✕</button>
+        )}
+      </div>
+
       {/* ── Level tabs ── */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         <LevelTab label="All" count={knownSpellData.length} active={activeLevel === 'all'} onClick={() => setActiveLevel('all')} />
@@ -176,8 +237,14 @@ export default function SpellsTab({
           <p style={{ fontSize: 12, color: 'var(--t-3)', margin: 0 }}>Use the "Add Spells" button above to add {character.class_name} spells to your sheet.</p>
         </div>
       ) : visibleSpells.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--t-3)', fontSize: 13 }}>
-          No spells match your current filters.
+        <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 12 }}>
+          <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}>🔮</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-2)', marginBottom: 4 }}>
+            {searchQuery ? `No spells matching "${searchQuery}"` : 'No spells match your filters'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--t-3)' }}>
+            {searchQuery ? 'Try a different search term' : 'Clear your filters to see all spells'}
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

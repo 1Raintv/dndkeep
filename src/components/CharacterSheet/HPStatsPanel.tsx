@@ -79,7 +79,8 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
       }}>
         {/* HP numbers */}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 8 }}>
-          <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '2.8rem', color: hpCol, lineHeight: 1 }}>
+          <span className={hpPct < 0.25 && character.current_hp > 0 ? 'hp-critical' : ''}
+            style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '2.8rem', color: hpCol, lineHeight: 1 }}>
             {character.current_hp}
           </span>
           <span style={{ fontSize: 14, color: 'var(--t-3)', fontWeight: 500, paddingBottom: 4 }}>/ {character.max_hp}</span>
