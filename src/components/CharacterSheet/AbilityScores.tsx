@@ -49,6 +49,24 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
     });
   }
 
+  function rollSave(ability: AbilityKey) {
+    const isProficient = character.saving_throw_proficiencies?.includes(ability);
+    const abilityMod = computed.modifiers[ability];
+    const saveMod = abilityMod + (isProficient ? computed.proficiency_bonus : 0);
+    const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
+    if (hasAutoFail) {
+      triggerRoll({ result: 1, dieType: 20, modifier: saveMod, total: 1 + saveMod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save (Auto-Fail)` });
+      return;
+    }
+    const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save`;
+    triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label,
+      onResult: (_dice, physTotal) => {
+        const physRoll = physTotal - saveMod;
+        supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
+      },
+    });
+  }
+
   return (
     <section className="ability-scores-section">
       {/* 6-column ability score strip — 3-col by default, 2-col inside vitals column */}
@@ -106,8 +124,50 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
         })}
       </div>
 
+      {/* ── Saving Throws compact strip — same columns as ability scores ── */}
+      <div style={{ marginTop: 'var(--sp-2)' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 5 }}>
+          Saving Throws
+        </div>
+        <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+          {ABILITY_ORDER.map(ability => {
+            const meta = STAT_META[ability];
+            const isProficient = character.saving_throw_proficiencies?.includes(ability);
+            const saveMod = computed.modifiers[ability] + (isProficient ? computed.proficiency_bonus : 0);
+            return (
+              <button
+                key={ability}
+                onClick={e => { e.stopPropagation(); rollSave(ability); }}
+                title={`Roll ${ability} saving throw (d20${saveMod >= 0 ? '+' : ''}${saveMod})${isProficient ? ' — Proficient' : ''}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '4px 6px',
+                  borderRadius: 'var(--r-sm)',
+                  border: `1px solid ${isProficient ? meta.color + '40' : 'var(--c-border)'}`,
+                  background: isProficient ? meta.color + '10' : 'transparent',
+                  cursor: 'pointer', transition: 'all var(--tr-fast)',
+                  minHeight: 0,
+                }}
+              >
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                  background: isProficient ? meta.color : 'transparent',
+                  border: `1px solid ${isProficient ? meta.color : 'var(--c-border-m)'}`,
+                }} />
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, color: meta.color, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
+                  {meta.abbrev}
+                </span>
+                <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 700, color: saveMod >= 0 ? 'var(--c-green-l)' : 'var(--c-red-l)', marginLeft: 'auto' }}>
+                  {formatModifier(saveMod)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <p style={{ fontSize: 10, color: 'var(--t-3)', fontFamily: 'var(--ff-body)', letterSpacing: '0.03em', marginBottom: 0 }}>
-        Click any score to roll · bottom dot = save proficiency · edit scores in Settings
+        Click score to roll check · click save to roll save · filled dot = proficient
       </p>
     </section>
   );

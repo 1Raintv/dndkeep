@@ -74,8 +74,8 @@ GD[10090] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 GD[10091] = makeD10([0,1,2,3,4,5,6,7,8,9]);
 const gd = (s:number) => GD[s] ?? GD[20];
 
-const SM:Record<number,number> = {4:0.95,6:0.72,8:0.95,10:0.95,12:0.95,20:0.95,100:0.95};
-const FF:Record<number,number> = {4:1.0,6:1.0,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
+const SM:Record<number,number> = {4:1.05,6:0.82,8:0.95,10:0.95,12:0.95,20:0.95,100:0.95};
+const FF:Record<number,number> = {4:1.2,6:1.15,8:1.0,10:1.0,12:1.0,20:1.0,100:1.0};
 
 // ── Dice Skin System ──────────────────────────────────────────────────────────
 export interface DiceSkin {
@@ -277,9 +277,9 @@ function numTex(label:string,ec:number,numCol='#ffffff',outlineCol='rgba(0,0,0,0
   ctx.fillText(label,128,134);
   ctx.restore();
 
-  // Underline 6 to distinguish from 9
-  if(label==='6'){
-    const m=ctx.measureText('6');const uw=m.width*0.78;
+  // Underline 9 to distinguish from 6 (physical dice convention: 9 gets the mark)
+  if(label==='9'){
+    const m=ctx.measureText('9');const uw=m.width*0.78;
     const uy=134+fs*0.43;
     ctx.strokeStyle=outlineCol;ctx.lineWidth=7;
     ctx.beginPath();ctx.moveTo(128-uw/2,uy);ctx.lineTo(128+uw/2,uy);ctx.stroke();
