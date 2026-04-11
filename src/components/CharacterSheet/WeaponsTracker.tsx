@@ -324,8 +324,8 @@ export default function WeaponsTracker({
                       </div>
                     </button>
 
-                    {/* Edit/delete — only for custom (non-inventory) weapons */}
-                    {!isInv && (
+                    {/* Edit/delete — only for custom, non-inventory, non-unarmed weapons */}
+                    {!isInv && w.id !== 'unarmed' && (
                       <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                         <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '3px 7px', fontSize: 11 }}>✏️</button>
                         <button className="btn-ghost btn-sm" onClick={() => removeWeapon(w.id)} style={{ padding: '3px 7px', fontSize: 11 }}>🗑️</button>

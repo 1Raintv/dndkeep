@@ -42,7 +42,7 @@ import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 
-type Tab = 'actions' | 'abilities' | 'spells' | 'inventory' | 'bio' | 'history' | 'session';
+type Tab = 'actions' | 'abilities' | 'spells' | 'inventory' | 'bio' | 'history';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'actions',    label: '⚔️ Actions' },
@@ -51,7 +51,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'inventory',  label: 'Inventory' },
   { id: 'bio',        label: 'Bio' },
   { id: 'history',    label: 'History' },
-  { id: 'session',    label: 'Session' },
 ];
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -1097,52 +1096,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         )}
 
         {/* ── SESSION ── */}
-        {activeTab === 'session' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
-            {/* Active Buffs & Debuffs */}
-            <ActiveBuffsPanel
-              buffs={(character as any).active_buffs ?? []}
-              onAddBuff={buff => {
-                const current = (character as any).active_buffs ?? [];
-                applyUpdate({ active_buffs: [...current, buff] } as any, true);
-              }}
-              onRemoveBuff={id => {
-                const current = (character as any).active_buffs ?? [];
-                applyUpdate({ active_buffs: current.filter((b: ActiveBuff) => b.id !== id) } as any, true);
-              }}
-              onTickDown={() => {
-                const current = (character as any).active_buffs ?? [];
-                const updated = current
-                  .map((b: ActiveBuff) => b.duration < 0 ? b : { ...b, duration: b.duration - 1 })
-                  .filter((b: ActiveBuff) => b.duration < 0 || b.duration > 0);
-                applyUpdate({ active_buffs: updated } as any, true);
-              }}
-            />
-
-            {/* Class resources */}
-            <div>
-              <div className="section-header">Class Resources — {character.class_name}</div>
-              <ClassResourcesPanel
-                character={character}
-                onUpdate={resources => applyUpdate({ class_resources: resources }, true)}
-              />
-            </div>
-
-            {character.class_name === 'Druid' && (
-              <div>
-                <div className="section-header">Wildshape</div>
-                <WildshapeTracker
-                  character={character}
-                  onUpdate={u => applyUpdate(u, true)}
-                />
-              </div>
-            )}
-
-
-
-            <SessionTab character={character} isPro={isPro} userId={userId} isDM={isDM} />
-          </div>
-        )}
 
       </div>
         </ErrorBoundary>
