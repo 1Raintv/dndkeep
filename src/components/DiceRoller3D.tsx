@@ -778,14 +778,47 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       const numColor=isNat20?'#ffd700':isNat1?'#ff4444':dieColor(event.dieType);
       const glow2=isNat20?`,0 0 60px rgba(255,200,0,0.8)`:isNat1?`,0 0 40px rgba(255,60,60,0.7)`:``;
       const div=document.createElement('div');
-      div.style.cssText=`position:absolute;top:4%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;white-space:nowrap;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;background:rgba(0,0,0,0.72);padding:12px 28px;border-radius:16px;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);`;
-      div.innerHTML=
-        `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.4);letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px">${lbl}</div>`+
-        `<div style="font:900 ${multi?68:92}px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
-        (isNat20?`<div style="font:700 14px system-ui;color:#ffd700;letter-spacing:.2em;margin-top:8px;animation:nat20Badge 0.4s 0.3s both">★ NATURAL 20 ★</div>`:'')  +
-        (isNat1 ?`<div style="font:700 14px system-ui;color:#ff4444;letter-spacing:.2em;margin-top:8px">✕ NATURAL 1 ✕</div>`:'') +
-        (d100Breakdown?`<div style="font:500 15px system-ui;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:.05em">${d100Breakdown} = ${tot}</div>`:'') +
-        (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
+      div.style.cssText=`position:absolute;top:4%;left:50%;transform:translateX(-50%) scale(0.5);text-align:center;pointer-events:none;animation:rr 0.5s cubic-bezier(0.34,1.56,0.64,1) both;background:rgba(0,0,0,0.78);padding:14px 24px;border-radius:18px;backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.12);min-width:160px;`;
+
+      if(multi){
+        // Multi-dice: label + per-die breakdown + total
+        // Group by die type for display: d12=8, d20=15  →  8 + 15 = 23
+        const dieParts=detectedDice.map(d=>{
+          const c=dieColor(d.die);
+          return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin:0 6px">` +
+            `<span style="font:900 46px system-ui;color:${c};line-height:1;text-shadow:0 0 20px ${c}60">${d.value}</span>` +
+            `<span style="font:700 9px system-ui;color:${c}99;letter-spacing:.12em;text-transform:uppercase">d${d.die}</span>` +
+          `</span>`;
+        });
+        // Build expression with + signs between dice
+        const exprParts:string[]=[];
+        detectedDice.forEach((d,i)=>{
+          exprParts.push(dieParts[i]);
+          if(i<detectedDice.length-1) exprParts.push(`<span style="font:700 28px system-ui;color:rgba(255,255,255,0.3);margin:0 2px;align-self:center;display:inline-block;transform:translateY(-8px)">+</span>`);
+        });
+        const bonusPart=(event.flatBonus&&event.flatBonus!==0)?
+          `<span style="font:700 28px system-ui;color:rgba(255,255,255,0.3);margin:0 2px;align-self:center;display:inline-block;transform:translateY(-8px)">${event.flatBonus>0?'+':''}</span>`+
+          `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin:0 6px">` +
+            `<span style="font:900 46px system-ui;color:rgba(255,255,255,0.5);line-height:1">${event.flatBonus}</span>` +
+            `<span style="font:700 9px system-ui;color:rgba(255,255,255,0.3);letter-spacing:.12em">BONUS</span>` +
+          `</span>`:'';
+        div.innerHTML=
+          `<div style="font:700 10px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px">${lbl}</div>`+
+          `<div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:0;margin-bottom:10px">${exprParts.join('')}${bonusPart}</div>`+
+          `<div style="border-top:1px solid rgba(255,255,255,0.12);padding-top:8px;margin-top:2px">`+
+            `<div style="font:500 11px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px">Total</div>`+
+            `<div style="font:900 52px system-ui;color:#eef2f7;line-height:1;text-shadow:0 2px 30px rgba(255,255,255,0.3)">${tot}</div>`+
+          `</div>`;
+      } else {
+        // Single die: big number with nat20/nat1 effects
+        div.innerHTML=
+          `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.4);letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px">${lbl}</div>`+
+          `<div style="font:900 92px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
+          (isNat20?`<div style="font:700 14px system-ui;color:#ffd700;letter-spacing:.2em;margin-top:8px;animation:nat20Badge 0.4s 0.3s both">★ NATURAL 20 ★</div>`:'')  +
+          (isNat1 ?`<div style="font:700 14px system-ui;color:#ff4444;letter-spacing:.2em;margin-top:8px">✕ NATURAL 1 ✕</div>`:'') +
+          (d100Breakdown?`<div style="font:500 15px system-ui;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:.05em">${d100Breakdown} = ${tot}</div>`:'') +
+          (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
+      }
       el.appendChild(div);
     }
 
