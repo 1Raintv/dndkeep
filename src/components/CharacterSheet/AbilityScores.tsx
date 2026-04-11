@@ -81,13 +81,15 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
                 {meta.abbrev}
               </div>
 
-              {/* Modifier — large, prominent */}
-              <div className="stat-box-modifier" style={{ color: 'var(--t-1)', fontSize: '1.3rem' }}>
+              {/* Modifier — DDB-style: huge, dominant number */}
+              <div className="stat-box-modifier" style={{ color: 'var(--t-1)', fontSize: '1.85rem', fontWeight: 900, lineHeight: 1 }}>
                 {formatModifier(mod)}
               </div>
 
-              {/* Score — small, secondary */}
-              <div className="stat-box-value">{score}</div>
+              {/* Score — small pill below modifier */}
+              <div style={{ marginTop: 2, background: 'rgba(255,255,255,0.07)', borderRadius: 10, padding: '1px 8px', display: 'inline-block' }}>
+                <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, color: 'var(--t-3)', fontWeight: 600 }}>{score}</span>
+              </div>
 
               {/* Save indicator */}
               <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>

@@ -55,8 +55,8 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
 
   const stats = [
     { label: 'INSP', value: character.inspiration ? '✦' : '○', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
-    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: true,   onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: acTooltip ?? '10 + DEX (Unarmored)' },
-    { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
+    { label: 'AC 🛡',     value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: true,   onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: acTooltip ?? '10 + DEX (Unarmored)' },
+    { label: 'INIT ⚡',   value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: true,   onEdit: () => { setSpeedInput(String(character.speed)); setEditingSpeed(true); } },
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
     { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0),                color: 'var(--t-2)' },

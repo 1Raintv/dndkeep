@@ -335,7 +335,8 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
                       border: '1.5px solid var(--c-bg)',
                     }}>{count}</div>
                   )}
-                  <span style={{ fontSize: 18, lineHeight: 1, color: count > 0 ? dieColor(d) : 'var(--t-2)' }}>⬡</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" style={{ color: count > 0 ? dieColor(d) : 'var(--t-2)', display:'block' }}
+                    dangerouslySetInnerHTML={{__html:({4:'<polygon points="12,2 22,20 2,20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>',6:'<rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8"/>',8:'<polygon points="12,2 22,12 12,22 2,12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>',10:'<polygon points="12,2 20,8 18,20 6,20 4,8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>',12:'<polygon points="12,2 20,6 22,15 16,22 8,22 2,15 4,6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>',20:'<polygon points="12,2 22,8 22,16 12,22 2,16 2,8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>',100:'<polygon points="12,2 20,8 18,20 6,20 4,8" fill="none" stroke="currentColor" strokeWidth="1.8"/>'})[d]??''}} />
                   <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, color: count > 0 ? dieColor(d) : 'var(--t-2)' }}>d{d}</span>
                 </button>
               );

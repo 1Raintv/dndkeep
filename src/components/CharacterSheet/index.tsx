@@ -281,6 +281,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
   // Short rest: roll hit dice to recover HP
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
+  const [combatFilter, setCombatFilter] = useState<'all'|'attack'|'action'|'bonus'|'reaction'|'saves'>('all');
   const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {
@@ -833,10 +834,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             {(character.active_conditions?.length > 0) && (
               <ConditionMechanics conditions={character.active_conditions} />
             )}
-            <ActionEconomy speedFeet={character.speed ?? 30} />
             <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
             {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
-            <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
           </div>
         )}
 
@@ -869,15 +868,105 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {/* ── COMBAT: Weapons & Attacks only ── */}
         {activeTab === 'combat' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 800 }}>
-            <div className="section-header">Weapons & Attacks</div>
-            {(!character.weapons || character.weapons.length === 0) && (
-              <div style={{ padding: 'var(--sp-4)', background: 'var(--c-card)', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-lg)', textAlign: 'center' }}>
-                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
-                  No weapons added yet. Add your weapons to roll attacks directly from your sheet.
-                </p>
+
+            {/* Action Economy — top of combat */}
+            <ActionEconomy speedFeet={character.speed ?? 30} />
+
+            {/* Defenses strip — resistances / immunities */}
+            {(() => {
+              const buffs: any[] = (character as any).active_buffs ?? [];
+              const res: string[] = [];
+              buffs.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!res.includes(r)) res.push(r); }); });
+              if (character.species?.toLowerCase().includes('tiefling') && !res.includes('Fire')) res.push('Fire');
+              if (character.class_name?.toLowerCase().includes('barbarian') && !res.includes('Non-magical B/P/S')) res.push('Non-magical B/P/S (while raging)');
+              if (res.length === 0) return null;
+              return (
+                <div style={{ background: 'var(--c-surface)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)' }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4ade80', marginBottom: 8 }}>
+                    🛡 Defenses
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {res.map((r, i) => (
+                      <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 20, padding: '2px 10px' }}>
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Action-type filter chips — like D&D Beyond */}
+            <div>
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12 }}>
+                {([
+                  { id: 'all',      label: 'All' },
+                  { id: 'attack',   label: '⚔️ Attack' },
+                  { id: 'action',   label: '🔵 Action' },
+                  { id: 'bonus',    label: '⚡ Bonus' },
+                  { id: 'reaction', label: '🛡 Reaction' },
+                  { id: 'saves',    label: '🎯 Saves' },
+                ] as const).map(f => (
+                  <button key={f.id} onClick={() => setCombatFilter(f.id)}
+                    style={{
+                      fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+                      letterSpacing: '.06em', textTransform: 'uppercase',
+                      padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+                      border: `1px solid ${combatFilter === f.id ? 'var(--c-gold)' : 'var(--c-border)'}`,
+                      background: combatFilter === f.id ? 'rgba(245,158,11,0.15)' : 'transparent',
+                      color: combatFilter === f.id ? 'var(--c-gold-l)' : 'var(--t-3)',
+                      transition: 'all .15s',
+                    }}>
+                    {f.label}
+                  </button>
+                ))}
               </div>
-            )}
-            <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} activeBufss={(character as any).active_buffs ?? []} />
+
+              {/* Weapons — shown for all / attack */}
+              {(combatFilter === 'all' || combatFilter === 'attack') && (
+                <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} activeBufss={(character as any).active_buffs ?? []} />
+              )}
+
+              {/* Saving throws — shown for all / saves */}
+              {(combatFilter === 'all' || combatFilter === 'saves') && (
+                <div style={{ marginTop: combatFilter === 'all' ? 'var(--sp-4)' : 0 }}>
+                  <CombatStats character={character} computed={computed} onUpdateHP={(hp, temp) => applyUpdate({ current_hp: hp, temp_hp: temp }, true)} />
+                </div>
+              )}
+
+              {/* Death saves — shown for all / saves */}
+              {(combatFilter === 'all' || combatFilter === 'saves') && (
+                <div style={{ marginTop: 'var(--sp-3)' }}>
+                  <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
+                </div>
+              )}
+
+              {/* Action / Bonus / Reaction — show features from features_and_traits */}
+              {(combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') && (() => {
+                const text = (character.features_text ?? '') + ' ' + (character.features_and_traits ?? '');
+                const keywordMap: Record<string, RegExp> = {
+                  action:   /(1 action|as an action|you can take an action)/i,
+                  bonus:    /bonus action/i,
+                  reaction: /reaction/i,
+                };
+                const pattern = keywordMap[combatFilter];
+                const lines = text.split(/[\n;.]/).filter(l => l.trim().length > 10 && pattern.test(l));
+                if (lines.length === 0) return (
+                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--t-3)', fontSize: 13, fontFamily: 'var(--ff-body)', border: '1px dashed var(--c-border)', borderRadius: 'var(--r-lg)' }}>
+                    No {combatFilter} features found — add them in the Bio tab
+                  </div>
+                );
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {lines.map((line, i) => (
+                      <div key={i} style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3) var(--sp-4)', fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                        {line.trim()}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
 
