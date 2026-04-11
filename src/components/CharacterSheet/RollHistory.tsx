@@ -55,6 +55,29 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
     setRolls([]);
   }
 
+  /** Parse "1d4+2d6+1d20" → [4, 6, 6, 20] */
+  function parseDiceTypes(expr: string): number[] {
+    const types: number[] = [];
+    // Split on + but not inside numbers, handle expressions like "1d4+1d10+1d100"
+    expr.split('+').forEach(part => {
+      const m = part.trim().match(/^(\d+)?d(\d+)$/i);
+      if (m) {
+        const count = parseInt(m[1] || '1');
+        const sides = parseInt(m[2]);
+        for (let i = 0; i < count; i++) types.push(sides);
+      }
+    });
+    return types;
+  }
+
+  function dieColor(sides: number): string {
+    const map: Record<number, string> = {
+      4: '#a78bfa', 6: '#f87171', 8: '#4ade80',
+      10: '#60a5fa', 12: '#f472b6', 20: '#fbbf24', 100: '#f87171'
+    };
+    return map[sides] ?? 'var(--t-2)';
+  }
+
   function formatTime(iso: string) {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -96,14 +119,30 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
             No rolls yet this session
           </div>
         ) : rolls.map(r => (
-          <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px var(--sp-2)' }}>
-            <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', minWidth: 0 }}>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', flexShrink: 0 }}>{formatTime(r.rolled_at)}</span>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+          <div key={r.id} style={{ padding: '4px var(--sp-2)', borderBottom: '1px solid var(--c-border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', flexShrink: 0 }}>{formatTime(r.rolled_at)}</span>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 600, color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+              </div>
+              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 14, color: rollColor(r), flexShrink: 0, marginLeft: 8 }}>{r.total}</span>
             </div>
-            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: rollColor(r), flexShrink: 0, marginLeft: 8 }}>
-              {r.total}
-            </span>
+            {(() => {
+              const types = parseDiceTypes(r.dice_expression);
+              const results = r.individual_results ?? [];
+              if (types.length > 1 && types.length === results.length) {
+                return (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                    {types.map((die, i) => (
+                      <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: dieColor(die) }}>
+                        d{die}:<b>{results[i]}</b>
+                      </span>
+                    ))}
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
         ))}
       </div>
@@ -159,10 +198,31 @@ export default function RollHistory({ characterId, userId, compact = false }: Ro
                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {r.label}
                       </div>
-                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
-                        {r.dice_expression}
-                        {r.individual_results.length > 1 && ` [${r.individual_results.join(', ')}]`}
-                      </div>
+                      {/* Per-die breakdown: d4: 3 · d10: 7 · d100: 40 */}
+                      {(() => {
+                        const types = parseDiceTypes(r.dice_expression);
+                        const results = r.individual_results ?? [];
+                        // If we can match types to results, show labeled breakdown
+                        if (types.length > 0 && types.length === results.length) {
+                          return (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: 2, alignItems: 'center' }}>
+                              {types.map((die, i) => (
+                                <span key={i} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 13, color: dieColor(die), lineHeight: 1 }}>{results[i]}</span>
+                                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: dieColor(die) + '99', letterSpacing: '.06em', lineHeight: 1 }}>d{die}</span>
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        }
+                        // Fallback: show raw expression + results
+                        return (
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
+                            {r.dice_expression}
+                            {results.length > 1 && ` [${results.join(', ')}]`}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div style={{ flexShrink: 0, marginLeft: 'var(--sp-3)', textAlign: 'right' }}>
