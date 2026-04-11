@@ -42,12 +42,12 @@ import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 
-type Tab = 'abilities' | 'spells' | 'combat' | 'inventory' | 'bio' | 'history' | 'session';
+type Tab = 'actions' | 'abilities' | 'spells' | 'inventory' | 'bio' | 'history' | 'session';
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'actions',    label: '⚔️ Actions' },
   { id: 'abilities',  label: 'Abilities' },
   { id: 'spells',     label: 'Spells' },
-  { id: 'combat',     label: 'Combat' },
   { id: 'inventory',  label: 'Inventory' },
   { id: 'bio',        label: 'Bio' },
   { id: 'history',    label: 'History' },
@@ -68,7 +68,7 @@ interface CharacterSheetProps {
 
 export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '' }: CharacterSheetProps) {
   const [character, setCharacter] = useState<Character>(initialCharacter);
-  const [activeTab, setActiveTab] = useState<Tab>('abilities');
+  const [activeTab, setActiveTab] = useState<Tab>('actions');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -872,110 +872,139 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         )}
 
         {/* ── COMBAT: Weapons & Attacks only ── */}
-        {activeTab === 'combat' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 800 }}>
+        {activeTab === 'actions' && (() => {
+          // Inventory weapons: items with damage or weapon category that are equipped
+          const inventoryWeapons = (character.inventory ?? []).filter((item: any) =>
+            item.equipped && (item.damage || item.category?.toLowerCase() === 'weapon' || item.category?.toLowerCase() === 'weapons')
+          );
+          const inventoryAsWeapons = inventoryWeapons.map((item: any) => ({
+            id: `inv_${item.id}`,
+            name: item.name,
+            attackBonus: computed.modifiers.strength ?? 0,
+            damageDice: (item.damage?.match(/\d+d\d+/) || ['1d4'])[0],
+            damageBonus: 0,
+            damageType: item.damage?.replace(/\d+d\d+/,'')?.replace(/[^a-zA-Z]/g,'')?.trim() || 'bludgeoning',
+            range: item.range ?? 'Melee',
+            properties: item.properties ?? '',
+            notes: 'From inventory: ' + item.name,
+          }));
+          const allWeapons = [...(character.weapons ?? []), ...inventoryAsWeapons];
 
-            {/* Action Economy — top of combat */}
-            <ActionEconomy speedFeet={character.speed ?? 30} />
+          // Defenses
+          const buffs: any[] = (character as any).active_buffs ?? [];
+          const res: string[] = [];
+          buffs.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!res.includes(r)) res.push(r); }); });
+          if (character.species?.toLowerCase().includes('tiefling') && !res.includes('Fire')) res.push('Fire');
+          if (character.class_name?.toLowerCase().includes('barbarian') && !res.includes('Non-magical B/P/S')) res.push('Non-magical B/P/S (while raging)');
 
-            {/* Defenses strip — resistances / immunities */}
-            {(() => {
-              const buffs: any[] = (character as any).active_buffs ?? [];
-              const res: string[] = [];
-              buffs.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!res.includes(r)) res.push(r); }); });
-              if (character.species?.toLowerCase().includes('tiefling') && !res.includes('Fire')) res.push('Fire');
-              if (character.class_name?.toLowerCase().includes('barbarian') && !res.includes('Non-magical B/P/S')) res.push('Non-magical B/P/S (while raging)');
-              if (res.length === 0) return null;
-              return (
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 800 }}>
+
+              {/* Turn Economy */}
+              <ActionEconomy
+                speedFeet={character.speed ?? 30}
+                onActionUsed={(action: string, used: boolean) => {
+                  if (action === 'action' && used && combatFilter === 'all') setCombatFilter('bonus');
+                  if (action === 'action' && !used) setCombatFilter('all');
+                }}
+              />
+
+              {/* Defenses strip */}
+              {res.length > 0 && (
                 <div style={{ background: 'var(--c-surface)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)' }}>
-                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4ade80', marginBottom: 8 }}>
-                    🛡 Defenses
-                  </div>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4ade80', marginBottom: 8 }}>🛡 Defenses</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {res.map((r, i) => (
-                      <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 20, padding: '2px 10px' }}>
-                        {r}
-                      </span>
+                    {res.map((r: string, i: number) => (
+                      <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 20, padding: '2px 10px' }}>{r}</span>
                     ))}
                   </div>
                 </div>
-              );
-            })()}
+              )}
 
-            {/* Action-type filter chips — like D&D Beyond */}
-            <div>
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12 }}>
-                {([
-                  { id: 'all',      label: 'All' },
-                  { id: 'attack',   label: '⚔️ Attack' },
-                  { id: 'action',   label: '🔵 Action' },
-                  { id: 'bonus',    label: '⚡ Bonus' },
-                  { id: 'reaction', label: '🛡 Reaction' },
-                  { id: 'saves',    label: '🎯 Saves' },
-                ] as const).map(f => (
-                  <button key={f.id} onClick={() => setCombatFilter(f.id)}
-                    style={{
-                      fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
-                      letterSpacing: '.06em', textTransform: 'uppercase',
-                      padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
-                      border: `1px solid ${combatFilter === f.id ? 'var(--c-gold)' : 'var(--c-border)'}`,
-                      background: combatFilter === f.id ? 'rgba(245,158,11,0.15)' : 'transparent',
-                      color: combatFilter === f.id ? 'var(--c-gold-l)' : 'var(--t-3)',
-                      transition: 'all .15s',
-                    }}>
-                    {f.label}
-                  </button>
-                ))}
+              {/* Filter chips */}
+              <div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+                  {([
+                    { id: 'all',      label: 'All' },
+                    { id: 'attack',   label: '⚔️ Attack' },
+                    { id: 'action',   label: '🔵 Action' },
+                    { id: 'bonus',    label: '⚡ Bonus' },
+                    { id: 'reaction', label: '🛡 Reaction' },
+                    { id: 'saves',    label: '🎯 Saves' },
+                  ] as const).map(f => (
+                    <button key={f.id} onClick={() => setCombatFilter(f.id)}
+                      style={{
+                        fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+                        letterSpacing: '.06em', textTransform: 'uppercase',
+                        padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+                        border: combatFilter === f.id ? '1px solid var(--c-gold)' : '1px solid var(--c-border)',
+                        background: combatFilter === f.id ? 'rgba(245,158,11,0.15)' : 'transparent',
+                        color: combatFilter === f.id ? 'var(--c-gold-l)' : 'var(--t-3)',
+                        transition: 'all .15s',
+                      }}>
+                      {f.label}
+                    </button>
+                  ))}
+                  {inventoryWeapons.length > 0 && (
+                    <span style={{ marginLeft: 'auto', fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '2px 8px' }}>
+                      +{inventoryWeapons.length} from inventory
+                    </span>
+                  )}
+                </div>
+
+                {/* Weapons — merged from weapons list + equipped inventory */}
+                {(combatFilter === 'all' || combatFilter === 'attack') && (
+                  <WeaponsTracker
+                    weapons={allWeapons}
+                    onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
+                    characterId={userId}
+                    characterName={character.name}
+                    campaignId={character.campaign_id}
+                    activeConditions={character.active_conditions}
+                    activeBufss={(character as any).active_buffs ?? []}
+                  />
+                )}
+
+                {/* Saving throws */}
+                {(combatFilter === 'all' || combatFilter === 'saves') && (
+                  <div style={{ marginTop: combatFilter === 'all' ? 'var(--sp-4)' : 0 }}>
+                    <CombatStats character={character} computed={computed} onUpdateHP={(hp, temp) => applyUpdate({ current_hp: hp, temp_hp: temp }, true)} />
+                  </div>
+                )}
+                {(combatFilter === 'all' || combatFilter === 'saves') && (
+                  <div style={{ marginTop: 'var(--sp-3)' }}>
+                    <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
+                  </div>
+                )}
+
+                {/* Action / Bonus / Reaction features */}
+                {(combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') && (() => {
+                  const text = (character.features_text ?? '') + ' ' + (character.features_and_traits ?? '');
+                  const pattern = combatFilter === 'action'
+                    ? /(1 action|as an action)/i
+                    : combatFilter === 'bonus'
+                    ? /bonus action/i
+                    : /reaction/i;
+                  const lines = text.split(/[\n;.]/).filter((l: string) => l.trim().length > 10 && pattern.test(l));
+                  if (lines.length === 0) return (
+                    <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--t-3)', fontSize: 13, fontFamily: 'var(--ff-body)', border: '1px dashed var(--c-border)', borderRadius: 'var(--r-lg)' }}>
+                      No {combatFilter} features found — add them in the Bio tab
+                    </div>
+                  );
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {lines.map((line: string, i: number) => (
+                        <div key={i} style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3) var(--sp-4)', fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                          {line.trim()}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
-
-              {/* Weapons — shown for all / attack */}
-              {(combatFilter === 'all' || combatFilter === 'attack') && (
-                <WeaponsTracker weapons={character.weapons ?? []} onUpdate={weapons => applyUpdate({ weapons })} characterId={userId} characterName={character.name} campaignId={character.campaign_id} activeConditions={character.active_conditions} activeBufss={(character as any).active_buffs ?? []} />
-              )}
-
-              {/* Saving throws — shown for all / saves */}
-              {(combatFilter === 'all' || combatFilter === 'saves') && (
-                <div style={{ marginTop: combatFilter === 'all' ? 'var(--sp-4)' : 0 }}>
-                  <CombatStats character={character} computed={computed} onUpdateHP={(hp, temp) => applyUpdate({ current_hp: hp, temp_hp: temp }, true)} />
-                </div>
-              )}
-
-              {/* Death saves — shown for all / saves */}
-              {(combatFilter === 'all' || combatFilter === 'saves') && (
-                <div style={{ marginTop: 'var(--sp-3)' }}>
-                  <DeathSaves character={character} onUpdate={u => applyUpdate(u, true)} />
-                </div>
-              )}
-
-              {/* Action / Bonus / Reaction — show features from features_and_traits */}
-              {(combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') && (() => {
-                const text = (character.features_text ?? '') + ' ' + (character.features_and_traits ?? '');
-                const keywordMap: Record<string, RegExp> = {
-                  action:   /(1 action|as an action|you can take an action)/i,
-                  bonus:    /bonus action/i,
-                  reaction: /reaction/i,
-                };
-                const pattern = keywordMap[combatFilter];
-                const lines = text.split(/[\n;.]/).filter(l => l.trim().length > 10 && pattern.test(l));
-                if (lines.length === 0) return (
-                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--t-3)', fontSize: 13, fontFamily: 'var(--ff-body)', border: '1px dashed var(--c-border)', borderRadius: 'var(--r-lg)' }}>
-                    No {combatFilter} features found — add them in the Bio tab
-                  </div>
-                );
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {lines.map((line, i) => (
-                      <div key={i} style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3) var(--sp-4)', fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.5 }}>
-                        {line.trim()}
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
             </div>
-          </div>
-        )}
-
+          );
+        })()}
         {/* ── INVENTORY ── */}
         {activeTab === 'inventory' && (
           <div style={{ maxWidth: 900 }}>

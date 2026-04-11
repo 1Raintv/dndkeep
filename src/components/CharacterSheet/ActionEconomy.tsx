@@ -9,7 +9,8 @@ interface ActionState {
 }
 
 interface ActionEconomyProps {
-  speedFeet: number; // from character stats
+  speedFeet: number;
+  onActionUsed?: (action: string, used: boolean) => void;
 }
 
 const TOKEN = {
@@ -18,13 +19,17 @@ const TOKEN = {
   reaction:    { label: 'Reaction',     key: 'reaction',    icon: '🛡️',  color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ speedFeet }: ActionEconomyProps) {
+export default function ActionEconomy({ speedFeet, onActionUsed }: ActionEconomyProps) {
   const [state, setState] = useState<ActionState>({
     action: false, bonusAction: false, reaction: false, movedFeet: 0,
   });
 
   function toggle(key: keyof Omit<ActionState,'movedFeet'>) {
-    setState(s => ({ ...s, [key]: !s[key] }));
+    setState(s => {
+      const newVal = !s[key];
+      onActionUsed?.(key, newVal);
+      return { ...s, [key]: newVal };
+    });
   }
 
   function addMove(feet: number) {
