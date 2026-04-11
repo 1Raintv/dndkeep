@@ -883,6 +883,23 @@ button:active:not(:disabled) { transform: scale(0.97); }
   .app-sidebar { display: none; }
   .app-main { padding: var(--sp-2); }
 
+  /* Bottom nav bar replaces sidebar on phones */
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 56px;
+    background: var(--c-surface);
+    border-top: 1px solid var(--c-border);
+    z-index: 80;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 var(--sp-2);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Offset content above bottom nav */
+  .app-content { padding-bottom: 72px !important; }
+
   /* Header — tighter on phones */
   .char-header-inner {
     flex-wrap: wrap;
@@ -908,9 +925,50 @@ button:active:not(:disabled) { transform: scale(0.97); }
   /* Skills list — bigger tap targets */
   .skill-row {
     padding: 6px var(--sp-3) !important;
-    min-height: 40px;
+    min-height: 44px;
+  }
+
+  /* Stat boxes — 2x3 grid on phone */
+  .ability-scores-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: var(--sp-2) !important;
+  }
+
+  /* Dice roller — larger tap targets */
+  .dice-btn {
+    min-height: 52px !important;
+  }
+
+  /* Tabs — touch-friendly height */
+  .tab {
+    min-height: 48px !important;
+    font-size: 11px !important;
+    padding: var(--sp-2) var(--sp-2) !important;
+  }
+
+  /* Card padding tighter */
+  .card { padding: var(--sp-3) !important; }
+
+  /* Section headers smaller */
+  .section-header { font-size: 9px !important; }
+
+  /* Spell list row — full width cards */
+  .spell-row { flex-wrap: wrap; }
+
+  /* Inventory items — stack */
+  .inventory-item { flex-direction: column; align-items: flex-start !important; }
+
+  /* Dice roller panel position */
+  .quickroll-panel {
+    right: var(--sp-2) !important;
+    bottom: 64px !important;
+    width: calc(100vw - var(--sp-4)) !important;
+    max-width: 360px !important;
   }
 }
+
+/* Show bottom nav only on mobile */
+.mobile-bottom-nav { display: none; }
 
 /* ── Print ───────────────────────────────────────────────── */
 @media print {

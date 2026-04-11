@@ -220,7 +220,8 @@ export default function CharacterCreator() {
 
     if (err) {
       const msg = err.message.includes('FREE_TIER_LIMIT')
-        ? 'Free accounts are limited to 1 character. Upgrade to Pro for unlimited characters.'
+        ? 'Free accounts are limited to 1 character. Upgrade to Pro for up to 6 characters.'
+        : err.message.includes('PRO_TIER_LIMIT') ? 'You have reached 6 characters. Purchase additional slots (5 for $5) in Settings.'
         : err.message;
       setError(msg);
     } else if (data) {

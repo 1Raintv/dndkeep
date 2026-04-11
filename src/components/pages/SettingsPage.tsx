@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { signOut, getCharacters, deleteCharacter } from '../../lib/supabase';
+import { signOut, getCharacters, deleteCharacter, supabase } from '../../lib/supabase';
 import { redirectToCheckout, redirectToCustomerPortal, STRIPE_PRICES } from '../../lib/stripe';
 import { usePushNotifications } from '../../lib/usePushNotifications';
 
@@ -21,6 +21,16 @@ export default function SettingsPage() {
   refreshProfileRef.current = refreshProfile;
 
   useEffect(() => {
+    // Handle extra character slots purchase return
+    const slotsBought = parseInt(searchParams.get('slots_purchased') ?? '0');
+    if (slotsBought > 0) {
+      (async () => {
+        await supabase.from('profiles').update({ extra_character_slots: (profile?.extra_character_slots ?? 0) + slotsBought }).eq('id', user!.id);
+        await refreshProfileRef.current();
+        setSearchParams({}, { replace: true });
+      })();
+      return;
+    }
     if (searchParams.get('upgraded') !== 'true') return;
     setUpgradeSuccess(true);
     setSearchParams({}, { replace: true });
@@ -40,6 +50,23 @@ export default function SettingsPage() {
 
   if (!profile) {
     return <div style={{ display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-8)', alignItems: 'center' }}><div className="spinner" /><span className="loading-text">Loading...</span></div>;
+  }
+
+  async function buySlots() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buy-character-slots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ origin: window.location.origin }),
+      });
+      const json = await res.json();
+      if (json.url) window.location.href = json.url;
+      else setError(json.error || 'Something went wrong');
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
   }
 
   async function handleUpgrade() {
@@ -196,7 +223,7 @@ export default function SettingsPage() {
           <div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-6)' }}>
               {[
-                'Unlimited characters',
+                'Up to 6 characters (+ buy more slots for $1/slot)',
                 'Campaign management — create and run campaigns as DM',
                 'DM and player roles',
                 'Real-time multiplayer combat sync',
@@ -224,6 +251,22 @@ export default function SettingsPage() {
                 <span style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>Status</span>
                 <span style={{ color: 'var(--hp-full)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>{profile.subscription_status}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>Character Slots</span>
+                <span style={{ color: 'var(--t-1)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>
+                  {characters.length} / {6 + (profile.extra_character_slots ?? 0)} used
+                </span>
+              </div>
+            </div>
+            {/* Buy extra slots */}
+            <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, padding: '12px', marginBottom: 'var(--sp-3)' }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--c-gold-l)', marginBottom: 4 }}>Need more characters?</div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)', marginBottom: 10 }}>
+                Add 5 more character slots for $5 (one-time purchase). You currently have {6 + (profile.extra_character_slots ?? 0)} slots.
+              </div>
+              <button className="btn-gold btn-sm" onClick={buySlots} disabled={loading} style={{ justifyContent: 'center' }}>
+                {loading ? 'Redirecting...' : '+ 5 Slots — $5'}
+              </button>
             </div>
             <button className="btn-secondary btn-sm" onClick={handleManageBilling} disabled={loading}>
               {loading ? 'Redirecting...' : 'Manage Billing'}
@@ -243,6 +286,7 @@ export default function SettingsPage() {
           <div className="section-header">Free Tier</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
             <LimitRow label="Characters" used={characters.length} max={1} />
+            <LimitRow label="Initiative Tracker" used={0} max={0} locked />
             <LimitRow label="Create campaigns (DM)" used={0} max={0} locked />
             <LimitRow label="Real-time sync" used={0} max={0} locked />
           </div>

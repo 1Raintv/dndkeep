@@ -1,10 +1,8 @@
 // DNDKeep Service Worker v1.0
-const CACHE_NAME = 'dndkeep-v3';
+const CACHE_NAME = 'dndkeep-v4';
 const STATIC_ASSETS = [
   '/',
-  '/lobby',
-  '/dice',
-  '/spells',
+  '/manifest.json',
 ];
 
 // Install — cache static assets
@@ -61,7 +59,8 @@ self.addEventListener('fetch', (event) => {
         return caches.match(event.request).then((cached) => {
           if (cached) return cached;
           if (event.request.mode === 'navigate') {
-            return caches.match('/');
+            // Return cached shell for any app route when offline
+            return caches.match('/') || caches.match(event.request);
           }
         });
       })

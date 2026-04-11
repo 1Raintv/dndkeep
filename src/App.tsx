@@ -125,7 +125,7 @@ function Sidebar() {
   useEffect(() => {
     if (!user) return;
     import('./lib/supabase').then(({ supabase }) => {
-      supabase.from('characters').select('id,name,class_name,level').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(8)
+      supabase.from('characters').select('id,name,class_name,level').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(20)  // up to 6 base + extra slots
         .then(({ data }) => { if (data) setCharacters(data as any); });
       supabase.from('campaigns').select('id,name').eq('owner_id', user.id).order('created_at', { ascending: false }).limit(6)
         .then(({ data }) => { if (data) setCampaigns(data as any); });
@@ -315,6 +315,24 @@ function AppRoutes() {
     <div className={showSidebar ? 'app-layout-sidebar' : 'app-layout-full'}>
       {showSidebar && <Sidebar />}
       <main className={showSidebar ? 'app-main' : 'app-main-full'}>
+        {/* Mobile bottom nav — phones only */}
+        <nav className="mobile-bottom-nav">
+          <NavLink to="/lobby" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
+            <span style={{fontSize:20}}>🏠</span>Home
+          </NavLink>
+          <NavLink to="/lobby/new" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
+            <span style={{fontSize:20}}>✚</span>New
+          </NavLink>
+          <NavLink to="/spells" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
+            <span style={{fontSize:20}}>✨</span>Spells
+          </NavLink>
+          <NavLink to="/homebrew" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
+            <span style={{fontSize:20}}>📖</span>Brew
+          </NavLink>
+          <NavLink to="/settings" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
+            <span style={{fontSize:20}}>⚙️</span>Settings
+          </NavLink>
+        </nav>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/share/:token"   element={<SharePage />} />

@@ -167,6 +167,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   useEffect(() => {
     if (!character.campaign_id) return;
 
+    // Check if current user is DM of this campaign
+    supabase.from('campaigns').select('owner_id').eq('id', character.campaign_id).single()
+      .then(({ data }) => { if (data && userId) setIsDM(data.owner_id === userId); });
+
     // Fetch initial state
     supabase
       .from('session_states')
@@ -277,6 +281,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
   // Short rest: roll hit dice to recover HP
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
+  const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {
     const cls = CLASS_MAP[character.class_name];
@@ -994,7 +999,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
 
 
-            <SessionTab character={character} isPro={isPro} userId={userId} />
+            <SessionTab character={character} isPro={isPro} userId={userId} isDM={isDM} />
           </div>
         )}
 

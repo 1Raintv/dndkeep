@@ -2,11 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Character } from '../../types';
 import { supabase } from '../../lib/supabase';
+import InitiativeTracker from '../shared/InitiativeTracker';
+import PartyHPPanel from '../shared/PartyHPPanel';
+import SessionChat from '../shared/SessionChat';
 
 interface SessionTabProps {
   character: Character;
   isPro: boolean;
   userId: string;
+  isDM?: boolean;
 }
 
 interface CampaignSummary {
@@ -17,7 +21,7 @@ interface CampaignSummary {
   join_code: string;
 }
 
-export default function SessionTab({ character, isPro, userId }: SessionTabProps) {
+export default function SessionTab({ character, isPro, userId, isDM=false }: SessionTabProps) {
   const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +30,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
   const [newDesc, setNewDesc] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionTab, setSessionTab] = useState<'campaign'|'initiative'|'party'|'chat'>('campaign');
   const [rollFeed, setRollFeed] = useState<{id:string;char:string;label:string;total:number;dice:string;ts:number}[]>([]);
   const feedRef = useRef<HTMLDivElement>(null);
 
@@ -36,7 +41,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
     if (!activeCampaign) return;
     // Load recent rolls
     supabase.from('roll_logs')
-      .select('id, character_id, label, total, results, created_at, characters(name)')
+      .select('id, character_id, label, total, individual_results, created_at, character_name')
       .eq('campaign_id', activeCampaign.id)
       .order('created_at', { ascending: false })
       .limit(20)
@@ -44,10 +49,10 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
         if (!data) return;
         const feed = data.reverse().map(r => ({
           id: r.id,
-          char: (r.characters as any)?.name ?? 'Unknown',
+          char: r.character_name ?? 'Unknown',
           label: r.label ?? 'Roll',
           total: r.total,
-          dice: Array.isArray(r.results) ? r.results.join(', ') : '',
+          dice: Array.isArray(r.individual_results) ? r.individual_results.join(', ') : '',
           ts: new Date(r.created_at).getTime(),
         }));
         setRollFeed(feed);
@@ -64,7 +69,7 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
         setRollFeed(f => [...f.slice(-29), {
           id: r.id, char: char?.name ?? 'Unknown',
           label: r.label ?? 'Roll', total: r.total,
-          dice: Array.isArray(r.results) ? r.results.join(', ') : '',
+          dice: Array.isArray(r.individual_results) ? r.individual_results.join(', ') : '',
           ts: new Date(r.created_at).getTime(),
         }]);
       })
@@ -281,7 +286,26 @@ export default function SessionTab({ character, isPro, userId }: SessionTabProps
         </div>
       )}
 
-      {/* Campaign Roll Feed */}
+      {/* Session sub-tabs when in a campaign */}
+      {isPro && campaigns.length > 0 && (() => {
+        const camp = campaigns.find(c=>c.is_active) ?? campaigns[0];
+        return (
+          <>
+            <div style={{ display:'flex', gap:4, padding:'0 0 4px' }}>
+              {(['campaign','initiative','party','chat'] as const).map(t=>(
+                <button key={t} onClick={()=>setSessionTab(t)}
+                  style={{ flex:1, padding:'5px 4px', borderRadius:6, border:`1px solid ${sessionTab===t?'var(--c-gold)':'var(--c-border)'}`, background:sessionTab===t?'rgba(245,158,11,0.10)':'transparent', color:sessionTab===t?'var(--c-gold-l)':'var(--t-3)', cursor:'pointer', fontFamily:'var(--ff-body)', fontWeight:700, fontSize:9, textTransform:'uppercase', letterSpacing:'.08em' }}>
+                  {t==='initiative'?'⚔️':t==='party'?'❤️':t==='chat'?'💬':'📋'} {t}
+                </button>
+              ))}
+            </div>
+            {sessionTab==='initiative' && <InitiativeTracker campaignId={camp.id} isDM={isDM} characterName={character.name} characterId={character.id} />}
+            {sessionTab==='party' && <PartyHPPanel campaignId={camp.id} isDM={isDM} userId={userId} myCharacterId={character.id} />}
+            {sessionTab==='chat' && <div style={{height:300}}><SessionChat campaignId={camp.id} characterName={character.name} characterId={character.id} userId={userId} avatarUrl={character.avatar_url??undefined} /></div>}
+          </>
+        );
+      })()}
+            {/* Campaign Roll Feed */}
       {isPro && rollFeed.length > 0 && (
         <div style={{ border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--c-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
