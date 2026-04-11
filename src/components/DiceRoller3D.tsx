@@ -194,7 +194,7 @@ function faceInfo(def:GeoDef, fi:number, s:number) {
 function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number,viewDir?:THREE.Vector3):number{
   const up=viewDir??new THREE.Vector3(0,1,0);
   // D4 point-build: result = vertex pointing most upward (top vertex = result number)
-  if(def.verts.length===4&&def.faces.length===4) return detectD4TopVertex(def,quat,up);
+  if(def.verts.length===4&&def.faces.length===4) return detectD4BottomFace(def,quat,up);
   let best=-2,bestNum=def.nums[0];
   def.faces.forEach((_,fi)=>{
     const{normal}=faceInfo(def,fi,s);
@@ -205,15 +205,19 @@ function detectTopFaceNum(def:GeoDef,quat:THREE.Quaternion,s:number,viewDir?:THR
 }
 
 // D4 vertex numbers (point-build: vertex most pointing toward camera = result)
-const D4_VERT_NUMS = [1,2,3,4];
-
-function detectD4TopVertex(def:GeoDef,quat:THREE.Quaternion,up:THREE.Vector3):number{
-  let best=-2,bestNum=1;
-  def.verts.forEach((v,vi)=>{
-    const w=new THREE.Vector3(v[0],v[1],v[2]).applyQuaternion(quat);
-    if(w.dot(up)>best){best=w.dot(up);bestNum=D4_VERT_NUMS[vi];}
+function detectD4BottomFace(def:GeoDef,quat:THREE.Quaternion,up:THREE.Vector3):number{
+  // Face-down convention: face with normal pointing most DOWNWARD = touching table = result
+  let mostDown=Infinity,result=1;
+  def.faces.forEach((face,fi)=>{
+    const a=new THREE.Vector3(...def.verts[face[0]] as [number,number,number]);
+    const b=new THREE.Vector3(...def.verts[face[1]] as [number,number,number]);
+    const c=new THREE.Vector3(...def.verts[face[2]] as [number,number,number]);
+    const n=new THREE.Vector3().crossVectors(b.clone().sub(a),c.clone().sub(a)).normalize();
+    n.applyQuaternion(quat);
+    const yComp=n.dot(up);
+    if(yComp<mostDown){mostDown=yComp;result=def.nums[fi];}
   });
-  return bestNum;
+  return result;
 }
 
 // Compute quaternion to rotate face faceN → +Y (straight up, unambiguous result)
@@ -371,43 +375,29 @@ function buildDie(def:GeoDef,S:number,t:{f:number;e:number},ff:number,numLabel:(
   const edges=new THREE.LineSegments(boundaryEdges(def,S*1.003),
     new THREE.LineBasicMaterial({color:edgeColor.clone().multiplyScalar(1.4)}));
   const group=new THREE.Group();group.add(mesh);group.add(edgesOuter);group.add(edges);
-  // D4 point-build: 3 numbers per face (one at each vertex corner).
-  // All 3 upward faces show the same number at their shared top vertex → result.
-  // Other dice: one number per face centered.
+  // D4 face-down: one centered number per face, matching detectD4BottomFace detection.
   const isD4=(def.verts.length===4&&def.faces.length===4);
-  // ── D4 point-build: 3 numbers per face (one at each vertex corner) ────────────
-  // All 3 upward faces share their top-vertex corner number → that number = result.
-  // E.g. when v0 (number 1) is the top vertex, all 3 upward faces show "1" at their
-  // v0 corner. The player reads whichever number is at the topmost point.
   if(isD4){
+    // Face-down convention: one centered number per face (matches detection).
+    // Numbers visible on all 3 upward-slanting sides — player reads any of them,
+    // but the face on the table is the actual result.
+    const numOff=0.032*S;
     def.faces.forEach((_,fi)=>{
-      const{pos:fc,normal,insc}=faceInfo(def,fi,S);
-      const off=0.003*S; // flush with face, polygonOffset handles z-fighting
-      // Size: fits in corner without overlapping adjacent corner numbers
-      const sz=insc*1.1;
-      // Orientation: blend face normal toward +Y for better overhead visibility
-      const pn:V3=norm([normal[0]*0.45,normal[1]*0.45+0.55,normal[2]*0.45] as V3);
-      const faceVerts=def.faces[fi];
-      faceVerts.forEach(vi=>{
-        const v=def.verts[vi];
-        // Position: 62% toward vertex from face centroid
-        const cx=fc[0]/S,cy=fc[1]/S,cz=fc[2]/S;
-        const px=(v[0]*0.62+cx*0.38)*S+normal[0]*off;
-        const py=(v[1]*0.62+cy*0.38)*S+normal[1]*off;
-        const pz=(v[2]*0.62+cz*0.38)*S+normal[2]*off;
-        const mat=new THREE.MeshBasicMaterial({
-          map:numTex(String(D4_VERT_NUMS[vi]),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline),
-          transparent:true, side:THREE.DoubleSide,
-          depthTest:true, depthWrite:false, alphaTest:0.05,
-          polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
-        });
-        const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
-        plane.renderOrder=2;
-        plane.position.set(px,py,pz);
-        const q=new THREE.Quaternion();
-        q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(pn[0],pn[1],pn[2]));
-        plane.quaternion.copy(q);group.add(plane);
+      const{pos,normal,insc}=faceInfo(def,fi,S);
+      // Scale larger than insc since triangular faces have small inscribed circles
+      const sz=insc*1.6;
+      const mat=new THREE.MeshBasicMaterial({
+        map:numTex(String(def.nums[fi]),t.e,'#'+t.e.toString(16).padStart(6,'0'),skin.numOutline),
+        transparent:true, side:THREE.DoubleSide,
+        depthTest:true, depthWrite:false, alphaTest:0.05,
+        polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6,
       });
+      const plane=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat);
+      plane.renderOrder=2;
+      plane.position.set(pos[0]+normal[0]*numOff,pos[1]+normal[1]*numOff,pos[2]+normal[2]*numOff);
+      const q=new THREE.Quaternion();
+      q.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(normal[0],normal[1],normal[2]));
+      plane.quaternion.copy(q);group.add(plane);
     });
   } else {
     const numOff=0.038*S;
@@ -524,7 +514,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     envScene2.add(envSphere);
     const envMap=pmrem.fromScene(envScene2,0.0).texture;
     scene.environment=envMap;
-    scene.environmentIntensity=0.9;
+    scene.environmentIntensity=0.5;
     pmrem.dispose();envScene2.clear();
     // Camera slightly overhead — dice are clearly readable from above
     const FOV=62, aspect=W/H;
@@ -544,20 +534,20 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     const BZb=Math.max(Math.abs(fl.z),Math.abs(fr.z),Math.abs(tl2.z),Math.abs(tr2.z))*0.87; // symmetric approx
     const BZf=Math.max(fl.z,fr.z,tl2.z,tr2.z)*0.87;
     const BZ=Math.max(BZb,BZf);
-    // Premium 3-point PBR lighting — works with MeshStandardMaterial
-    scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.2)); // sky/ground ambient
-    const sun=new THREE.DirectionalLight(0xfff5e0,2.6); // warm key light
+    // Contrast-first 3-point lighting: low ambient = deep shadow sides, strong key = lit faces
+    scene.add(new THREE.HemisphereLight(0xffeedd,0x112233,0.4)); // minimal ambient — preserves shadow depth
+    const sun=new THREE.DirectionalLight(0xfff5e0,3.8); // strong warm key light
     sun.position.set(BX*0.5,16,BZ*0.3);sun.castShadow=true;
     sun.shadow.camera.left=-BX*1.3;sun.shadow.camera.right=BX*1.3;
     sun.shadow.camera.top=BZ*1.3;sun.shadow.camera.bottom=-BZ*1.3;
     sun.shadow.radius=6;sun.shadow.mapSize.width=1024;sun.shadow.mapSize.height=1024;
     sun.shadow.bias=-0.001;scene.add(sun);
-    // Cool rim/back light for edge separation
-    const rimL=new THREE.DirectionalLight(0x88aaff,1.3);
-    rimL.position.set(-BX*0.5,4,-BZ*0.5);scene.add(rimL);
-    // Warm fill from below-front
-    const fillL=new THREE.DirectionalLight(0xffe0cc,0.55);
-    fillL.position.set(BX*0.3,2,BZ*0.5);scene.add(fillL);
+    // Strong cool rim — clear 3D silhouette separation from the background
+    const rimL=new THREE.DirectionalLight(0x6699ff,1.8);
+    rimL.position.set(-BX*0.6,6,-BZ*0.6);scene.add(rimL);
+    // Soft warm under-fill — prevents pitch-black undersides, keeps perceived depth
+    const fillL=new THREE.DirectionalLight(0xffcc99,0.35);
+    fillL.position.set(BX*0.2,0,BZ*0.6);scene.add(fillL);
     // No floor mesh — dice roll over the character sheet (the page IS the background)
 
     // ── Particle sparks system ───────────────────────────────────────────
