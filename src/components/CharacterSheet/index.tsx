@@ -1118,6 +1118,78 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   return null;
                 })()}
 
+                {/* ── PREPARED SPELLS ── */}
+                {(() => {
+                  const isSpellcaster = character.is_spellcaster ||
+                    Object.values(character.spell_slots).some((s: any) => s.total > 0);
+                  if (!isSpellcaster) return null;
+
+                  // Cantrips + prepared spells to show
+                  const PREPARER_CLASSES_ACT = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
+                  const isPreparer = PREPARER_CLASSES_ACT.includes(character.class_name);
+                  const readySpells = knownSpellData.filter(s => {
+                    if (s.level === 0) return true; // cantrips always ready
+                    return !isPreparer || character.prepared_spells.includes(s.id);
+                  });
+                  if (readySpells.length === 0) return null;
+
+                  const cantrips = readySpells.filter(s => s.level === 0);
+                  const leveled = readySpells.filter(s => s.level > 0);
+
+                  return (
+                    <div style={{ marginTop: 'var(--sp-3)' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa', marginBottom: 8 }}>
+                        ✨ Spells
+                        {isPreparer && <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--t-3)' }}>({character.prepared_spells.length} prepared)</span>}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
+                        {[...cantrips, ...leveled].map(spell => {
+                          const schoolColor: Record<string, string> = {
+                            Abjuration: '#60a5fa', Conjuration: '#a78bfa', Divination: '#34d399',
+                            Enchantment: '#f472b6', Evocation: '#fb923c', Illusion: '#c084fc',
+                            Necromancy: '#94a3b8', Transmutation: '#4ade80',
+                          };
+                          const sc = schoolColor[spell.school] ?? '#a78bfa';
+                          return (
+                            <div key={spell.id} style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              padding: '8px 12px', borderRadius: 'var(--r-md)',
+                              border: '1px solid rgba(167,139,250,0.18)',
+                              background: 'rgba(167,139,250,0.04)',
+                            }}>
+                              <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: 0.7, flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+                                    {spell.name}
+                                  </span>
+                                  <span style={{ fontSize: 9, color: sc, background: sc + '12', border: `1px solid ${sc}25`, borderRadius: 4, padding: '1px 4px', fontWeight: 600 }}>
+                                    {spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`}
+                                  </span>
+                                  {spell.concentration && (
+                                    <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 4, padding: '1px 4px', fontWeight: 700 }}>C</span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 2 }}>
+                                  {spell.casting_time} · {spell.school}
+                                </div>
+                              </div>
+                              <SpellCastButton
+                                spell={spell}
+                                character={character}
+                                userId={userId ?? ''}
+                                campaignId={character.campaign_id}
+                                onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
+                                compact={true}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             </div>
           );
