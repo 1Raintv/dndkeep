@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Character } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility } from '../../data/classAbilities';
 import { logAction } from '../shared/ActionLog';
+import { rollDice } from '../../lib/spellParser';
 
 interface Props {
   character: Character;
@@ -102,8 +103,24 @@ function getMaxUses(ability: ClassAbility, character: Character): number | undef
 }
 
 // Resolve dynamic values in descriptions
-function resolveDesc(desc: string, character: Character): string {
-  return desc.replace('{{sneak_dice}}', String(Math.ceil(character.level / 2)));
+function getPsionicDieSize(level: number): string {
+  if (level >= 17) return 'd12';
+  if (level >= 11) return 'd10';
+  if (level >= 5) return 'd8';
+  return 'd6';
+}
+
+function getPsionicDieCount(level: number): number {
+  if (level >= 17) return 12;
+  if (level >= 13) return 10;
+  if (level >= 9) return 8;
+  if (level >= 5) return 6;
+  return 4;
+}
+
+function resolveDesc(desc: string | ((c: Character) => string), character: Character): string {
+  const raw = typeof desc === 'function' ? desc(character) : desc;
+  return raw.replace('{{sneak_dice}}', String(Math.ceil(character.level / 2)));
 }
 
 export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId }: Props) {
@@ -118,24 +135,40 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
       });
     }
     // Deduct from class_resources if pool-based
-    if (ability.id === 'psionic-energy-dice' || ability.isPool) {
+    if (ability.id === 'psionic-energy-dice' || (ability as any).isPool) {
       const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
-      const poolId = ability.id;
-      if (resources[poolId] !== undefined) {
-        resources[poolId] = Math.max(0, (resources[poolId] as number) - 1);
+      if (resources['psionic-energy-dice'] !== undefined) {
+        resources['psionic-energy-dice'] = Math.max(0, (resources['psionic-energy-dice'] as number) - 1);
         onUpdate({ class_resources: resources });
       }
     }
+    // For psionic energy dice — roll the die and show in action log
+    let diceExpr: string | undefined;
+    let rollResult: { total: number; rolls: number[] } | undefined;
+    if ((ability as any).psionicDie) {
+      const dieSize = getPsionicDieSize(character.level);
+      diceExpr = `1${dieSize}`;
+      rollResult = rollDice(diceExpr);
+    }
+    // Resolve description (may be a function)
+    const desc = resolveDesc((ability as any).description ?? '', character);
     // Log to action log
     await logAction({
       campaignId: campaignId ?? null,
       characterId: character.id,
       characterName: character.name,
-      actionType: ability.actionType === 'action' ? 'spell' :
+      actionType: (ability as any).psionicDie ? 'roll' : ability.actionType === 'action' ? 'spell' :
         ability.actionType === 'bonus' ? 'spell' :
         ability.actionType === 'reaction' ? 'save' : 'roll',
-      actionName: `Used ${ability.name}`,
-      notes: ability.description.slice(0, 100) + (ability.description.length > 100 ? '…' : ''),
+      actionName: (ability as any).psionicDie
+        ? `Spent Psionic Energy Die (1${getPsionicDieSize(character.level)})`
+        : `Used ${ability.name}`,
+      diceExpression: diceExpr,
+      individualResults: rollResult?.rolls,
+      total: rollResult?.total ?? 0,
+      notes: (ability as any).psionicDie
+        ? `Rolled 1${getPsionicDieSize(character.level)} = ${rollResult?.total} · ${getPsionicDieCount(character.level) - 1} dice remaining`
+        : desc.slice(0, 100) + (desc.length > 100 ? '…' : ''),
     });
     // Brief flash feedback
     setJustUsed(ability.name);
@@ -238,7 +271,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
                     {justUsed === ability.name ? '✓ Used!' :
                       ability.actionType === 'reaction' ? '🛡 Trigger' :
                       ability.actionType === 'bonus' ? '⚡ Use' :
-                      ability.isPool ? '🎲 Spend Die' : '🔵 Use'}
+                      (ability as any).psionicDie ? `🎲 Spend Die (1${getPsionicDieSize(character.level)})` : (ability as any).isPool ? '🎲 Spend Die' : '🔵 Use'}
                   </button>
                 )}
               </div>

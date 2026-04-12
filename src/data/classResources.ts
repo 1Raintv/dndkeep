@@ -425,12 +425,14 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       id: 'psionic-energy-dice',
       name: 'Psionic Energy Dice',
       emoji: '🧠',
-      description: 'Pool of psionic energy dice. Spend to power Telekinetic Propel, Telepathic Connection, and other psionic abilities. Regain all on Long Rest; regain 1 on Short Rest.',
+      description: (level: number) => {
+        const die = level >= 17 ? 'd12' : level >= 11 ? 'd10' : level >= 5 ? 'd8' : 'd6';
+        const count = level >= 17 ? 12 : level >= 13 ? 10 : level >= 9 ? 8 : level >= 5 ? 6 : 4;
+        return `${count}${die} — Spend to power psionic abilities. Short Rest: +1 die. Long Rest: full refill.`;
+      },
       recovery: 'long',
       minLevel: 1,
-      getMax: (level) => {
-        // Scales: 4d6 at 1, up to 12d12 at 17+
-        // Pool count: 2×prof bonus
+      getMax: (level: number) => {
         if (level >= 17) return 12;
         if (level >= 13) return 10;
         if (level >= 9) return 8;

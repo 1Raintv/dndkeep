@@ -134,9 +134,24 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
         {mechanics.damageDice && (
           <button onClick={async e => {
             e.stopPropagation();
-            const r = rollDice(mechanics.damageDice!);
-            setLastRoll({ ...r, type: mechanics.damageType ?? 'damage' });
-            await logAction({ campaignId, characterId: character.id, characterName: character.name, actionType: 'damage', actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`, diceExpression: mechanics.damageDice!, individualResults: r.rolls, total: r.total });
+            // Clicking damage dice = cast the spell (deduct slot + roll + log)
+            if (!isCantrip && availableSlots.length > 1) {
+              // Multiple slot levels available — open picker
+              setShowModal(true);
+            } else {
+              // Auto-cast: use lowest available slot
+              const slotLevel = isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level);
+              const r = rollDice(mechanics.damageDice!);
+              setLastRoll({ ...r, type: mechanics.damageType ?? 'damage' });
+              if (!isCantrip && availableSlots.length > 0) {
+                const slotKey = String(slotLevel);
+                const currentSlot = character.spell_slots[slotKey];
+                if (currentSlot) {
+                  onUpdateSlots({ ...character.spell_slots, [slotKey]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 } });
+                }
+              }
+              await logAction({ campaignId, characterId: character.id, characterName: character.name, actionType: 'damage', actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`, diceExpression: mechanics.damageDice!, individualResults: r.rolls, total: r.total, notes: isCantrip ? 'cantrip' : `Level ${slotLevel} slot` });
+            }
           }} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999, cursor: 'pointer', background: dmgColor + '18', border: `1px solid ${dmgColor}50`, color: dmgColor }}>
             🎲 {mechanics.damageDice} {mechanics.damageType}
           </button>
@@ -144,8 +159,15 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
         {mechanics.healDice && (
           <button onClick={async e => {
             e.stopPropagation();
+            const slotLevel = isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level);
             const r = rollDice(mechanics.healDice!);
             setLastRoll({ ...r, type: 'healing' });
+            if (!isCantrip && availableSlots.length > 0) {
+              const currentSlot = character.spell_slots[String(slotLevel)];
+              if (currentSlot) {
+                onUpdateSlots({ ...character.spell_slots, [String(slotLevel)]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 } });
+              }
+            }
             await logAction({ campaignId, characterId: character.id, characterName: character.name, actionType: 'heal', actionName: spell.name, diceExpression: mechanics.healDice!, individualResults: r.rolls, total: r.total });
           }} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999, cursor: 'pointer', background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.4)', color: '#34d399' }}>
             💚 {mechanics.healDice}
@@ -156,10 +178,13 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
             = {lastRoll.total} {lastRoll.type}
           </span>
         )}
-        <button onClick={() => isCantrip ? performCast(0) : setShowModal(true)}
-          style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.12)', color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>
-          {mechanics.isUtility ? '✨ Cast' : '✨ Slot'}
-        </button>
+        {/* Only show Cast/Slot button for utility spells (no damage/heal dice) or multi-slot picker */}
+        {(mechanics.isUtility || (!mechanics.damageDice && !mechanics.healDice)) && (
+          <button onClick={() => isCantrip ? performCast(0) : setShowModal(true)}
+            style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.12)', color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>
+            ✨ Cast
+          </button>
+        )}
 
         {showModal && (
           <div className="modal-overlay" onClick={() => setShowModal(false)}>

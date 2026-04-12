@@ -5,12 +5,13 @@ export type ActionType = 'action' | 'bonus' | 'reaction' | 'special' | 'free';
 export interface ClassAbility {
   name: string;
   actionType: ActionType;
-  description: string;
+  description: string | ((character: any) => string);
   minLevel: number;
   maxUsesFn?: (c: Character) => number;
   rest?: 'short' | 'long';
   /** If true, it's a resource pool (uses cost, not limited total uses) */
   isPool?: boolean;
+  psionicDie?: boolean;  // rolls correct die size on spend
 }
 
 function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
@@ -419,11 +420,17 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Psionic Energy Dice',
       actionType: 'special',
-      description: 'Pool of psionic energy dice. Spend to power psionic disciplines. Regain 1 die on Short Rest, all on Long Rest.',
+      description: (c: any) => {
+        const level = c?.level ?? 1;
+        const die = level >= 17 ? 'd12' : level >= 11 ? 'd10' : level >= 5 ? 'd8' : 'd6';
+        const count = level >= 17 ? 12 : level >= 13 ? 10 : level >= 9 ? 8 : level >= 5 ? 6 : 4;
+        return `You have ${count} Psionic Energy Dice (${die} at level ${level}). Die size: d6 (lv 1–4) → d8 (lv 5–10) → d10 (lv 11–16) → d12 (lv 17+). Regain 1 die on Short Rest, all ${count} on Long Rest.`;
+      },
       minLevel: 1,
       rest: 'short',
-      maxUsesFn: c => Math.max(2, prof(c) * 2),
+      maxUsesFn: (c: any) => c?.level >= 17 ? 12 : c?.level >= 13 ? 10 : c?.level >= 9 ? 8 : c?.level >= 5 ? 6 : 4,
       isPool: true,
+      psionicDie: true,
     },
     {
       name: 'Telekinesis',
