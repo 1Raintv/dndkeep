@@ -1,9 +1,9 @@
 import { useState, useMemo, type ReactNode } from 'react';
 import type { Character, ComputedStats, SpellData } from '../../types';
-import SpellSlotsPanel from './SpellSlots';
 import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { SPELLS } from '../../data/spells';
+import { getGrantedSpellIds } from '../../lib/grantedSpells';
 
 // Max cantrips per class at each level (index = level-1)
 const CANTRIP_MAX: Record<string, number[]> = {
@@ -74,11 +74,18 @@ export default function SpellsTab({
     SPELLS.filter(s => s.classes.includes(character.class_name) && s.level === 0),
     [character.class_name]
   );
+  // Granted spells that don't count toward limits
+  const { grantedCantrips, grantedPrepared } = useMemo(
+    () => getGrantedSpellIds(character),
+    [character.class_name, character.subclass] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const currentCantripCount = useMemo(() => {
-    let count = character.known_spells.filter(id => classCantrips.find(s => s.id === id)).length;
-    if (character.class_name === 'Psion' && character.known_spells.includes('mage-hand')) count--;
+    let count = character.known_spells.filter(id =>
+      classCantrips.find(s => s.id === id) && !grantedCantrips.includes(id)
+    ).length;
     return Math.max(0, count);
-  }, [character.known_spells, classCantrips, character.class_name]);
+  }, [character.known_spells, classCantrips, grantedCantrips]);
 
   // Slots per level for limit display in picker
   const slotsPerLevel = useMemo(() => {
@@ -157,9 +164,6 @@ export default function SpellsTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* ── Spell slots ── */}
-      <SpellSlotsPanel character={character} onUpdateSlots={onUpdateSlots} />
-
       {/* ── Top bar: prepared count + Add Spells button ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {isPreparer && (
@@ -194,8 +198,9 @@ export default function SpellsTab({
             onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
             cantripMax={cantripMax}
             prepareMax={isPreparer ? prepareMax : undefined}
-            prepareCount={isPreparer ? knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id)).length : undefined}
+            prepareCount={isPreparer ? knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id) && !grantedPrepared.includes(s.id)).length : undefined}
             slotsPerLevel={slotsPerLevel}
+            grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
           />
         </div>
 
@@ -225,31 +230,6 @@ export default function SpellsTab({
         );
       })()}
 
-      {/* ── Search bar ── */}
-      <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--t-3)', pointerEvents: 'none' }}>🔍</span>
-        <input
-          type="text"
-          placeholder="Search spells by name, school, or casting time…"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          style={{
-            paddingLeft: 34,
-            paddingRight: searchQuery ? 34 : 12,
-            background: 'var(--c-surface)',
-            border: '1px solid var(--c-border-m)',
-            borderRadius: 'var(--r-lg)',
-            fontSize: 13,
-          }}
-        />
-        {searchQuery && (
-          <button onClick={() => setSearchQuery('')} style={{
-            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-            background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t-3)',
-            fontSize: 16, padding: '2px 4px', minHeight: 0, lineHeight: 1,
-          }}>✕</button>
-        )}
-      </div>
 
       {/* ── Level tabs ── */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

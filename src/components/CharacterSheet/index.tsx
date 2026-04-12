@@ -1124,51 +1124,99 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                     Object.values(character.spell_slots).some((s: any) => s.total > 0);
                   if (!isSpellcaster) return null;
 
-                  // Cantrips + prepared spells to show
                   const PREPARER_CLASSES_ACT = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
                   const isPreparer = PREPARER_CLASSES_ACT.includes(character.class_name);
                   const readySpells = knownSpellData.filter(s => {
-                    if (s.level === 0) return true; // cantrips always ready
+                    if (s.level === 0) return true;
                     return !isPreparer || character.prepared_spells.includes(s.id);
                   });
                   if (readySpells.length === 0) return null;
 
+                  // Slot usage per level — to gray spells when exhausted
+                  const slotsByLevel: Record<number, { total: number; used: number; remaining: number }> = {};
+                  Object.entries(character.spell_slots).forEach(([k, v]: [string, any]) => {
+                    const lvl = parseInt(k);
+                    if (!isNaN(lvl) && v?.total) slotsByLevel[lvl] = { total: v.total, used: v.used ?? 0, remaining: v.total - (v.used ?? 0) };
+                  });
+
                   const cantrips = readySpells.filter(s => s.level === 0);
                   const leveled = readySpells.filter(s => s.level > 0);
 
+                  // Check if any leveled spells have slots remaining
+                  const hasAnySlots = leveled.some(s => {
+                    for (let lvl = s.level; lvl <= 9; lvl++) {
+                      if ((slotsByLevel[lvl]?.remaining ?? 0) > 0) return true;
+                    }
+                    return false;
+                  });
+
+                  const schoolColor: Record<string, string> = {
+                    Abjuration: '#60a5fa', Conjuration: '#a78bfa', Divination: '#34d399',
+                    Enchantment: '#f472b6', Evocation: '#fb923c', Illusion: '#c084fc',
+                    Necromancy: '#94a3b8', Transmutation: '#4ade80',
+                  };
+
                   return (
                     <div style={{ marginTop: 'var(--sp-3)' }}>
-                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa', marginBottom: 8 }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         ✨ Spells
-                        {isPreparer && <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--t-3)' }}>({character.prepared_spells.length} prepared)</span>}
+                        {isPreparer && <span style={{ fontWeight: 400, color: 'var(--t-3)' }}>({character.prepared_spells.length} prepared)</span>}
                       </div>
+
+                      {/* Mini slot tracker */}
+                      {Object.keys(slotsByLevel).length > 0 && (
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+                          {Object.entries(slotsByLevel).map(([lvl, slot]) => {
+                            const level = parseInt(lvl);
+                            const levelLabels = ['','1st','2nd','3rd','4th','5th','6th','7th','8th','9th'];
+                            const full = slot.remaining === 0;
+                            return (
+                              <div key={lvl} style={{
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                padding: '3px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700,
+                                background: full ? 'rgba(239,68,68,0.08)' : 'rgba(167,139,250,0.1)',
+                                border: `1px solid ${full ? 'rgba(239,68,68,0.3)' : 'rgba(167,139,250,0.3)'}`,
+                                color: full ? '#ef4444' : '#a78bfa',
+                              }}>
+                                {levelLabels[level]}
+                                <span style={{ fontFamily: 'var(--ff-stat)' }}>{slot.remaining}/{slot.total}</span>
+                                {full && <span>🔒</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
                         {[...cantrips, ...leveled].map(spell => {
-                          const schoolColor: Record<string, string> = {
-                            Abjuration: '#60a5fa', Conjuration: '#a78bfa', Divination: '#34d399',
-                            Enchantment: '#f472b6', Evocation: '#fb923c', Illusion: '#c084fc',
-                            Necromancy: '#94a3b8', Transmutation: '#4ade80',
-                          };
                           const sc = schoolColor[spell.school] ?? '#a78bfa';
+                          // Gray out if no slots available for this spell level
+                          const slotsExhausted = spell.level > 0 && (() => {
+                            for (let lvl = spell.level; lvl <= 9; lvl++) {
+                              if ((slotsByLevel[lvl]?.remaining ?? 0) > 0) return false;
+                            }
+                            return true;
+                          })();
+
                           return (
                             <div key={spell.id} style={{
                               display: 'flex', alignItems: 'center', gap: 10,
                               padding: '8px 12px', borderRadius: 'var(--r-md)',
-                              border: '1px solid rgba(167,139,250,0.18)',
-                              background: 'rgba(167,139,250,0.04)',
+                              border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.15)' : 'rgba(167,139,250,0.18)'}`,
+                              background: slotsExhausted ? 'rgba(239,68,68,0.03)' : 'rgba(167,139,250,0.04)',
+                              opacity: slotsExhausted ? 0.55 : 1,
                             }}>
-                              <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: 0.7, flexShrink: 0 }} />
+                              <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.7, flexShrink: 0 }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+                                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)' }}>
                                     {spell.name}
                                   </span>
-                                  <span style={{ fontSize: 9, color: sc, background: sc + '12', border: `1px solid ${sc}25`, borderRadius: 4, padding: '1px 4px', fontWeight: 600 }}>
-                                    {spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`}
+                                  <span style={{ fontSize: 9, color: slotsExhausted ? '#ef4444' : sc, background: slotsExhausted ? 'rgba(239,68,68,0.08)' : sc + '12', border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.25)' : sc + '25'}`, borderRadius: 4, padding: '1px 4px', fontWeight: 600 }}>
+                                    {spell.level === 0 ? 'Cantrip' : `Lv ${spell.level}`}
+                                    {slotsExhausted && ' 🔒'}
                                   </span>
-                                  {spell.concentration && (
-                                    <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 4, padding: '1px 4px', fontWeight: 700 }}>C</span>
-                                  )}
+                                  {spell.concentration && <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 4, padding: '1px 4px', fontWeight: 700 }}>C</span>}
                                 </div>
                                 <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 2 }}>
                                   {spell.casting_time} · {spell.school}

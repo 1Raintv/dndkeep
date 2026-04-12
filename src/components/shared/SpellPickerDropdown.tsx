@@ -14,6 +14,7 @@ interface SpellPickerDropdownProps {
   prepareMax?: number;         // max total prepared/known spells (non-cantrips)
   prepareCount?: number;       // current prepared/known count
   slotsPerLevel?: Record<number, number>; // how many slots at each spell level
+  grantedSpellIds?: string[];  // auto-granted spells excluded from limit counts
 }
 
 const SCHOOL_COLORS: Record<string, string> = {
@@ -26,7 +27,7 @@ const LEVEL_LABELS = ['Cantrips', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th
 
 export default function SpellPickerDropdown({
   label, isCantrip, className, maxLevel, selected, onToggle,
-  cantripMax, prepareMax, prepareCount, slotsPerLevel,
+  cantripMax, prepareMax, prepareCount, slotsPerLevel, grantedSpellIds = [],
 }: SpellPickerDropdownProps) {
   const [open, setOpen] = useState(false);
   const [activeLevel, setActiveLevel] = useState(0);
@@ -73,11 +74,12 @@ export default function SpellPickerDropdown({
   // Count selected spells by level for limit display
   const selectedByLevel = useMemo(() => {
     const counts: Record<number, number> = {};
-    SPELLS.filter(s => selected.includes(s.id)).forEach(s => {
+    // Exclude auto-granted spells from limit counts
+    SPELLS.filter(s => selected.includes(s.id) && !grantedSpellIds.includes(s.id)).forEach(s => {
       counts[s.level] = (counts[s.level] ?? 0) + 1;
     });
     return counts;
-  }, [selected]);
+  }, [selected, grantedSpellIds]);
 
   // Is adding a spell at this level at the cap?
   function isAtLimit(level: number): boolean {
