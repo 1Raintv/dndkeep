@@ -3,6 +3,19 @@ import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellSlotsPanel from './SpellSlots';
 import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
+import { SPELLS } from '../../data/spells';
+
+// Max cantrips per class at each level (index = level-1)
+const CANTRIP_MAX: Record<string, number[]> = {
+  Psion:     [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
+  Wizard:    [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5],
+  Sorcerer:  [4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6],
+  Warlock:   [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
+  Druid:     [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
+  Cleric:    [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5],
+  Bard:      [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
+  Artificer: [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
+};
 
 interface SpellsTabProps {
   character: Character;
@@ -32,7 +45,7 @@ const LEVEL_LABELS: Record<number, string> = {
   4: '4th', 5: '5th', 6: '6th', 7: '7th', 8: '8th', 9: '9th',
 };
 
-const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer'];
+const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
 
 export default function SpellsTab({
   character, computed, knownSpellData, availableSpells, maxSpellLevel,
@@ -52,6 +65,30 @@ export default function SpellsTab({
           : character.class_name === 'Paladin' ? character.charisma : character.wisdom
       ) - 10) / 2))
     : 0;
+
+  // Cantrip limit for this class/level
+  const cantripMax = CANTRIP_MAX[character.class_name]?.[Math.min(character.level - 1, 19)];
+
+  // Current cantrip count (exclude auto-granted Mage Hand for Psion)
+  const classCantrips = useMemo(() =>
+    SPELLS.filter(s => s.classes.includes(character.class_name) && s.level === 0),
+    [character.class_name]
+  );
+  const currentCantripCount = useMemo(() => {
+    let count = character.known_spells.filter(id => classCantrips.find(s => s.id === id)).length;
+    if (character.class_name === 'Psion' && character.known_spells.includes('mage-hand')) count--;
+    return Math.max(0, count);
+  }, [character.known_spells, classCantrips, character.class_name]);
+
+  // Slots per level for limit display in picker
+  const slotsPerLevel = useMemo(() => {
+    const map: Record<number, number> = {};
+    Object.entries(character.spell_slots).forEach(([k, v]) => {
+      const lvl = parseInt(k);
+      if (!isNaN(lvl) && (v as any)?.total) map[lvl] = (v as any).total;
+    });
+    return map;
+  }, [character.spell_slots]);
 
   const slotInfo = useMemo(() => {
     const info: Record<number, { max: number; remaining: number }> = {};
@@ -155,6 +192,10 @@ export default function SpellsTab({
             maxLevel={maxSpellLevel}
             selected={character.known_spells}
             onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
+            cantripMax={cantripMax}
+            prepareMax={isPreparer ? prepareMax : undefined}
+            prepareCount={isPreparer ? knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id)).length : undefined}
+            slotsPerLevel={slotsPerLevel}
           />
         </div>
 

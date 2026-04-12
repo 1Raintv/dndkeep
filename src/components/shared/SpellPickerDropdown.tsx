@@ -9,6 +9,11 @@ interface SpellPickerDropdownProps {
   maxLevel: number;
   selected: string[];
   onToggle: (id: string) => void;
+  // Limits — when provided, enforce caps and gray out options at the limit
+  cantripMax?: number;         // max cantrips for this class/level
+  prepareMax?: number;         // max total prepared/known spells (non-cantrips)
+  prepareCount?: number;       // current prepared/known count
+  slotsPerLevel?: Record<number, number>; // how many slots at each spell level
 }
 
 const SCHOOL_COLORS: Record<string, string> = {
@@ -21,6 +26,7 @@ const LEVEL_LABELS = ['Cantrips', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th
 
 export default function SpellPickerDropdown({
   label, isCantrip, className, maxLevel, selected, onToggle,
+  cantripMax, prepareMax, prepareCount, slotsPerLevel,
 }: SpellPickerDropdownProps) {
   const [open, setOpen] = useState(false);
   const [activeLevel, setActiveLevel] = useState(0);
@@ -63,6 +69,26 @@ export default function SpellPickerDropdown({
     window.addEventListener('resize', reposition);
     return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); };
   }, [open]);
+
+  // Count selected spells by level for limit display
+  const selectedByLevel = useMemo(() => {
+    const counts: Record<number, number> = {};
+    SPELLS.filter(s => selected.includes(s.id)).forEach(s => {
+      counts[s.level] = (counts[s.level] ?? 0) + 1;
+    });
+    return counts;
+  }, [selected]);
+
+  // Is adding a spell at this level at the cap?
+  function isAtLimit(level: number): boolean {
+    if (level === 0 && cantripMax !== undefined) {
+      return (selectedByLevel[0] ?? 0) >= cantripMax;
+    }
+    if (level > 0 && prepareMax !== undefined && prepareCount !== undefined) {
+      return prepareCount >= prepareMax;
+    }
+    return false;
+  }
 
   const levelOptions: number[] = isCantrip ? [0] : [0, ...Array.from({ length: maxLevel }, (_, i) => i + 1)];
 
@@ -121,6 +147,10 @@ export default function SpellPickerDropdown({
           {levelOptions.map(lvl => {
             const selAtLvl = (allByLevel[lvl] ?? []).filter(s => selected.includes(s.id)).length;
             const isActive = activeLevel === lvl;
+            const atCap = isAtLimit(lvl) && selAtLvl === 0;
+            const limitForLevel = lvl === 0
+              ? cantripMax
+              : (slotsPerLevel ? slotsPerLevel[lvl] : undefined);
             return (
               <button
                 key={lvl}
@@ -131,12 +161,14 @@ export default function SpellPickerDropdown({
                   border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
                   background: isActive ? 'var(--c-gold-bg)' : 'var(--c-raised)',
                   color: isActive ? 'var(--c-gold-l)' : 'var(--t-2)',
+                  opacity: atCap ? 0.5 : 1,
                 }}
               >
                 {LEVEL_LABELS[lvl]}
                 {selAtLvl > 0 && (
                   <span style={{ marginLeft: 5, fontSize: 9, fontWeight: 800, color: 'var(--c-gold-l)', background: 'rgba(212,160,23,0.25)', padding: '0 5px', borderRadius: 999 }}>
                     {selAtLvl}
+                    {limitForLevel !== undefined ? `/${limitForLevel}` : ''}
                   </span>
                 )}
               </button>
@@ -145,10 +177,35 @@ export default function SpellPickerDropdown({
         </div>
       )}
 
-      {/* Spell count */}
-      <div style={{ padding: '5px 14px 3px', fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>
-        {spellsAtLevel.length} {activeLevel === 0 ? 'cantrip' : `${LEVEL_LABELS[activeLevel]}-level spell`}{spellsAtLevel.length !== 1 ? 's' : ''} available
-        {search && ` matching "${search}"`}
+      {/* Spell count + limit indicator */}
+      <div style={{ padding: '5px 14px 3px', fontSize: 10, color: 'var(--t-3)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span>
+          {spellsAtLevel.length} {activeLevel === 0 ? 'cantrip' : `${LEVEL_LABELS[activeLevel]}-level spell`}{spellsAtLevel.length !== 1 ? 's' : ''} available
+          {search && ` matching "${search}"`}
+        </span>
+        {/* Limit badge */}
+        {activeLevel === 0 && cantripMax !== undefined && (
+          <span style={{
+            fontWeight: 700, padding: '1px 7px', borderRadius: 999, fontSize: 10,
+            background: isAtLimit(0) ? 'rgba(239,68,68,0.15)' : 'rgba(212,160,23,0.1)',
+            border: `1px solid ${isAtLimit(0) ? 'rgba(239,68,68,0.4)' : 'rgba(212,160,23,0.3)'}`,
+            color: isAtLimit(0) ? '#ef4444' : 'var(--c-gold-l)',
+          }}>
+            {selectedByLevel[0] ?? 0}/{cantripMax} cantrips
+            {isAtLimit(0) ? ' — FULL' : ''}
+          </span>
+        )}
+        {activeLevel > 0 && prepareMax !== undefined && prepareCount !== undefined && (
+          <span style={{
+            fontWeight: 700, padding: '1px 7px', borderRadius: 999, fontSize: 10,
+            background: isAtLimit(activeLevel) ? 'rgba(239,68,68,0.15)' : 'rgba(212,160,23,0.1)',
+            border: `1px solid ${isAtLimit(activeLevel) ? 'rgba(239,68,68,0.4)' : 'rgba(212,160,23,0.3)'}`,
+            color: isAtLimit(activeLevel) ? '#ef4444' : 'var(--c-gold-l)',
+          }}>
+            {prepareCount}/{prepareMax} prepared
+            {isAtLimit(activeLevel) ? ' — FULL' : ''}
+          </span>
+        )}
       </div>
 
       {/* Spell list */}
@@ -161,25 +218,28 @@ export default function SpellPickerDropdown({
           const sel = selected.includes(spell.id);
           const isExp = expanded === spell.id;
           const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
+          // Gray out: at limit AND this spell isn't already selected
+          const blocked = !sel && isAtLimit(spell.level);
           return (
             <div key={spell.id} style={{
               borderBottom: '1px solid var(--c-border)',
-              background: sel ? 'rgba(212,160,23,0.05)' : 'transparent',
+              background: sel ? 'rgba(212,160,23,0.05)' : blocked ? 'rgba(0,0,0,0.15)' : 'transparent',
+              opacity: blocked ? 0.5 : 1,
             }}>
               {/* Main row */}
               <div
-                onClick={() => setExpanded(isExp ? null : spell.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', minHeight: 48 }}
-                onMouseEnter={e => { if (!sel) (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
+                onClick={() => !blocked && setExpanded(isExp ? null : spell.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: blocked ? 'not-allowed' : 'pointer', minHeight: 48 }}
+                onMouseEnter={e => { if (!sel && !blocked) (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
               >
                 {/* School color bar */}
-                <div style={{ width: 3, height: 32, borderRadius: 2, background: schoolColor, opacity: 0.8, flexShrink: 0 }} />
+                <div style={{ width: 3, height: 32, borderRadius: 2, background: schoolColor, opacity: blocked ? 0.3 : 0.8, flexShrink: 0 }} />
 
                 {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: sel ? 700 : 500, fontSize: 14, color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+                    <span style={{ fontWeight: sel ? 700 : 500, fontSize: 14, color: sel ? 'var(--c-gold-l)' : blocked ? 'var(--t-3)' : 'var(--t-1)' }}>
                       {spell.name}
                     </span>
                     <span style={{ fontSize: 10, fontWeight: 600, color: schoolColor, background: `${schoolColor}15`, border: `1px solid ${schoolColor}30`, padding: '1px 5px', borderRadius: 4 }}>
@@ -203,17 +263,28 @@ export default function SpellPickerDropdown({
 
                 {/* Add/Remove button */}
                 <button
-                  onClick={e => { e.stopPropagation(); onToggle(spell.id); }}
+                  onClick={e => { e.stopPropagation(); if (!blocked) onToggle(spell.id); }}
+                  disabled={blocked}
+                  title={blocked ? `${activeLevel === 0 ? 'Cantrip' : 'Spell'} limit reached — remove one first` : undefined}
                   style={{
                     fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8,
-                    cursor: 'pointer', minHeight: 0, flexShrink: 0, whiteSpace: 'nowrap',
-                    border: sel ? '1px solid rgba(248,113,113,0.35)' : '1px solid var(--c-gold-bdr)',
-                    background: sel ? 'rgba(248,113,113,0.08)' : 'var(--c-gold-bg)',
-                    color: sel ? '#f87171' : 'var(--c-gold-l)',
+                    cursor: blocked ? 'not-allowed' : 'pointer',
+                    minHeight: 0, flexShrink: 0, whiteSpace: 'nowrap',
+                    border: sel
+                      ? '1px solid rgba(248,113,113,0.35)'
+                      : blocked
+                        ? '1px solid var(--c-border)'
+                        : '1px solid var(--c-gold-bdr)',
+                    background: sel
+                      ? 'rgba(248,113,113,0.08)'
+                      : blocked
+                        ? 'var(--c-surface)'
+                        : 'var(--c-gold-bg)',
+                    color: sel ? '#f87171' : blocked ? 'var(--t-3)' : 'var(--c-gold-l)',
                     transition: 'all 0.15s',
                   }}
                 >
-                  {sel ? '− Remove' : '+ Add'}
+                  {sel ? '− Remove' : blocked ? '🔒 Full' : '+ Add'}
                 </button>
 
                 <span style={{ fontSize: 9, color: 'var(--t-3)', flexShrink: 0, transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
