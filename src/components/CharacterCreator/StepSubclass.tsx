@@ -172,18 +172,49 @@ function LevelRow({ level, features, choices, newSpellLevel, subclassFeature, is
 }
 
 function SubclassCard({ subclass, selected, onSelect }: { subclass: SubclassData; selected: boolean; onSelect: (name: string) => void }) {
+  // Group features by level for display
+  const featuresByLevel: Record<number, string[]> = {};
+  for (const f of subclass.features ?? []) {
+    if (!featuresByLevel[f.level]) featuresByLevel[f.level] = [];
+    featuresByLevel[f.level].push(f.name);
+  }
+  const featureLevels = Object.keys(featuresByLevel).map(Number).sort((a, b) => a - b);
+
   return (
     <button onClick={() => onSelect(subclass.name)} style={{
-      display: 'flex', flexDirection: 'column', gap: 4, padding: 'var(--sp-3) var(--sp-4)',
+      display: 'flex', flexDirection: 'column', gap: 6, padding: 'var(--sp-3) var(--sp-4)',
       borderRadius: 'var(--r-lg)', textAlign: 'left',
       border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
       background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
       cursor: 'pointer', transition: 'all var(--tr-fast)',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: selected ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
-        {selected ? '✓ ' : ''}{subclass.name}
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: selected ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
+          {selected ? '✓ ' : ''}{subclass.name}
+        </div>
+        {subclass.source === 'ua' && (
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: '#c084fc', background: 'rgba(192,132,252,0.12)', border: '1px solid rgba(192,132,252,0.3)', borderRadius: 999, padding: '1px 6px' }}>UA</span>
+        )}
       </div>
-      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{subclass.description}</div>
+      {/* Description */}
+      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>{subclass.description}</div>
+      {/* Feature milestones */}
+      {featureLevels.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 2 }}>
+          {featureLevels.map(lvl => (
+            <span key={lvl} title={featuresByLevel[lvl].join(', ')} style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+              color: selected ? 'var(--c-gold-l)' : 'var(--t-3)',
+              background: selected ? 'rgba(212,160,23,0.12)' : 'var(--c-surface)',
+              border: `1px solid ${selected ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
+              borderRadius: 4, padding: '2px 5px',
+            }}>
+              Lv{lvl}: {featuresByLevel[lvl].join(', ')}
+            </span>
+          ))}
+        </div>
+      )}
     </button>
   );
 }

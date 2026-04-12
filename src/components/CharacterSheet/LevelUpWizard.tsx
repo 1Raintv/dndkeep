@@ -4,6 +4,7 @@ import { CLASSES } from '../../data/classes';
 import { FEATS } from '../../data/feats';
 import FeatPicker from '../shared/FeatPicker';
 import { xpForNextLevel, abilityModifier } from '../../lib/gameUtils';
+import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 
 interface LevelUpWizardProps {
   character: Character;
@@ -223,32 +224,45 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 // ── Step components ─────────────────────────────────────────────────
 
 function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, profBonusIncreased, newProfBonus, needsSubclass, needsASI }: any) {
+  // Pull real features from the level progression table
+  const progression = CLASS_LEVEL_PROGRESSION[character.class_name] ?? [];
+  const milestone = progression.find(m => m.level === newLevel);
+  const features: string[] = milestone?.features ?? [];
+  const hasSubclassFeature = milestone?.subclassFeature && character.subclass;
+  const newSpellLevel = milestone?.newSpellLevel;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
         <Gain icon="❤️" label="Max HP" before={character.max_hp} after={newMaxHP} color="var(--hp-full)" />
         <Gain icon="📖" label="Level" before={character.level} after={newLevel} color="var(--c-gold-l)" />
-        {profBonusIncreased && <Gain icon="✦" label="Proficiency Bonus" before={newProfBonus - 1} after={newProfBonus} color="#a78bfa" />}
+        {profBonusIncreased && <Gain icon="✦" label="Prof Bonus" before={newProfBonus - 1} after={newProfBonus} color="#a78bfa" />}
+        {newSpellLevel && <Gain icon="✨" label="New Spell Level" before={newSpellLevel - 1} after={newSpellLevel} color="#c084fc" />}
       </div>
 
-      {/* What you get at this level */}
+      {/* Features from level progression table */}
       <div>
         <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
-          Features gained at level {newLevel}:
+          Features gained at {character.class_name} level {newLevel}:
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Feature text={`+${avgHPGain} HP (average d${classData?.hit_die ?? 8}/2+1 + Con)`} icon="❤️" />
-          {needsSubclass && <Feature text="Choose your subclass" icon="⭐" highlight />}
+          <Feature text={`+${avgHPGain} HP (d${classData?.hit_die ?? 8} average + Con mod)`} icon="❤️" />
+          {needsSubclass && <Feature text="Choose your subclass — see next step" icon="⭐" highlight />}
           {needsASI && <Feature text="Ability Score Improvement or Feat" icon="📈" highlight />}
-          {newLevel === 5 && <Feature text="Extra Attack (most martial classes)" icon="⚔️" />}
-          {newLevel === 5 && character.class_name === 'Rogue' && <Feature text="Uncanny Dodge" icon="🏃" />}
-          {newLevel === 5 && character.class_name === 'Monk' && <Feature text="Stunning Strike" icon="👊" />}
-          {newLevel === 20 && <Feature text="Capstone feature — check your class!" icon="🌟" highlight />}
+          {hasSubclassFeature && character.subclass && (
+            <Feature text={`${character.subclass} subclass feature`} icon="✦" highlight />
+          )}
+          {features.map((f, i) => (
+            <Feature key={i} text={f} icon="🔹" />
+          ))}
+          {features.length === 0 && !needsSubclass && !needsASI && !hasSubclassFeature && (
+            <Feature text="No new class features — check your subclass" icon="📋" />
+          )}
         </div>
       </div>
 
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic' }}>
-        HP gain uses average formula. You can edit your max HP manually in Character Settings.
+        HP uses average formula. Adjust in Character Settings if needed.
       </div>
     </div>
   );
@@ -261,26 +275,52 @@ function SubclassStep({ classData, selected, onSelect }: any) {
         Choose your {classData.name} subclass
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-        {classData.subclasses.map((sub: any) => (
-          <button
-            key={sub.name}
-            onClick={() => onSelect(sub.name)}
-            style={{
+        {classData.subclasses.map((sub: any) => {
+          const featuresByLevel: Record<number, string[]> = {};
+          for (const f of sub.features ?? []) {
+            if (!featuresByLevel[f.level]) featuresByLevel[f.level] = [];
+            featuresByLevel[f.level].push(f.name);
+          }
+          const featureLevels = Object.keys(featuresByLevel).map(Number).sort((a, b) => a - b);
+          const isSel = selected === sub.name;
+          return (
+            <button key={sub.name} onClick={() => onSelect(sub.name)} style={{
               textAlign: 'left', padding: 'var(--sp-3) var(--sp-4)',
-              border: selected === sub.name ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+              border: isSel ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
               borderRadius: 'var(--r-lg)',
-              background: selected === sub.name ? 'rgba(212,160,23,0.08)' : '#080d14',
+              background: isSel ? 'rgba(212,160,23,0.08)' : '#080d14',
               cursor: 'pointer', transition: 'all var(--tr-fast)',
-            }}
-          >
-            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: selected === sub.name ? 'var(--c-gold-l)' : 'var(--t-1)', marginBottom: 3 }}>
-              {selected === sub.name ? '✓ ' : ''}{sub.name}
-            </div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
-              {sub.description}
-            </div>
-          </button>
-        ))}
+              display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: isSel ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
+                  {isSel ? '✓ ' : ''}{sub.name}
+                </span>
+                {sub.source === 'ua' && (
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: '#c084fc', background: 'rgba(192,132,252,0.12)', border: '1px solid rgba(192,132,252,0.3)', borderRadius: 999, padding: '1px 6px' }}>UA</span>
+                )}
+              </div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
+                {sub.description}
+              </div>
+              {featureLevels.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                  {featureLevels.map((lvl: number) => (
+                    <span key={lvl} title={featuresByLevel[lvl].join(', ')} style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                      color: isSel ? 'var(--c-gold-l)' : 'var(--t-3)',
+                      background: isSel ? 'rgba(212,160,23,0.12)' : 'var(--c-surface)',
+                      border: `1px solid ${isSel ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
+                      borderRadius: 4, padding: '2px 5px',
+                    }}>
+                      Lv{lvl}: {featuresByLevel[lvl].join(', ')}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

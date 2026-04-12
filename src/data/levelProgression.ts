@@ -358,38 +358,49 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
     { level: 19, features: [], choices: [ASI, EPIC] },
     { level: 20, features: ['Eldritch Master (recover all Pact slots, 1/Long Rest)'] } ],
 
-  // ── WIZARD ──────────────────────────────────────────────────────────────────
+  // ── PSION (UA 2025 v2) ─────────────────────────────────────────────────────
+  // Source: UA 2025 Psion v1 + v2 playtest documents
   Psion: [
-    { level: 1,  features: ['Psionic Talent (INT-based spellcasting, 4 prepared spells)', 'Telepathic Sense (detect surface thoughts 30 ft, 1 min, INT mod uses/LR)'] },
-    { level: 2,  features: ['Psionic Focus: concentration spells cost no material components', 'Psychic Defense: add INT mod to Wisdom saves'] },
-    { level: 3,  features: ['Mind Link: telepathic communication 120 ft (always active)'],
+    { level: 1,  features: [
+        'Spellcasting (INT, no V/M components, prepared — start with 2 cantrips + 4 spells)',
+        'Psionic Power: 4d6 Psionic Energy Dice — Telekinetic Propel (BA: push/pull creature 5 ft or roll die × 5 ft) + Telepathic Connection (BA: telepathy 30 ft, roll die to extend range by die × 10 ft for 1 hr)',
+        'Subtle Telekinesis: Mage Hand cantrip (invisible, no somatic components)',
+      ] },
+    { level: 2,  features: ['Psionic Discipline (choose 2 disciplines)'],
                  choices: [
-                   { type: 'subclass', label: 'Choose Psionic Discipline (Metamorph / Psi Warper / Psykinetic / Telepath)' } ], newSpellLevel: 2 },
-    { level: 4,  features: ['Psionic Augmentation: add INT mod to one concentration spell\'s save DC'],
+                   { type: 'other', label: 'Choose 2 Psionic Disciplines (Biofeedback, Bolstering Precognition, Destructive Thoughts, Devilish Tongue, Expanded Awareness, Id Insinuation, Inerrant Aim, Observant Mind, Psionic Backlash, Psionic Guards, Sharpened Mind)' },
+                 ] },
+    { level: 3,  features: ['Subclass: Metamorph / Psi Warper / Psykinetic / Telepath'],
+                 choices: [
+                   { type: 'subclass', label: 'Choose Psionic Archetype (Metamorph, Psi Warper, Psykinetic, Telepath)' },
+                 ], newSpellLevel: 2 },
+    { level: 4,  features: ['3rd cantrip'],
                  choices: [ASI] },
-    { level: 5,  features: ['Psionic Blast: when you cast a spell, one creature must make a WIS save or be frightened until end of next turn (INT mod uses/LR)'], newSpellLevel: 3 },
-    { level: 6,  features: ['Mental Fortitude: resistance to Psychic damage', 'Subclass feature'], subclassFeature: true },
-    { level: 7,  features: ['Psionic Ward: use Reaction to impose Disadvantage on one attack roll against you (INT mod uses/LR)'], newSpellLevel: 4 },
-    { level: 8,  features: [],
-                 choices: [ASI] },
-    { level: 9,  features: ['Psionic Resilience: advantage on Concentration saves'], newSpellLevel: 5 },
-    { level: 10, features: ['Subclass feature', 'Astral Sight: cast Detect Thoughts without spell slot once per Long Rest'], subclassFeature: true },
-    { level: 11, features: ['Psionic Surge: once per turn when you deal Psychic damage, add your INT modifier to the damage'], newSpellLevel: 6 },
-    { level: 12, features: [],
-                 choices: [ASI] },
-    { level: 13, features: ['Mind Vault: store one prepared spell in your mind. It is always prepared and doesn\'t count against your limit'], newSpellLevel: 7 },
+    { level: 5,  features: [
+        'Psionic Discipline: +1 option (now 3 total)',
+        'Psionic Restoration (1 min meditation to regain Psionic Energy Dice, 1/LR)',
+      ], newSpellLevel: 3 },
+    { level: 6,  features: ['Subclass feature'], subclassFeature: true },
+    { level: 7,  features: ['Psionic Surge: after rolling Psionic Energy Dice, spend Hit Die to treat any 1–3 as 4'], newSpellLevel: 4 },
+    { level: 8,  features: [], choices: [ASI] },
+    { level: 9,  features: [], newSpellLevel: 5 },
+    { level: 10, features: [
+        'Psionic Discipline: +1 option (now 4 total)',
+        '4th cantrip',
+      ], subclassFeature: true },
+    { level: 11, features: ['Subclass feature'], newSpellLevel: 6, subclassFeature: true },
+    { level: 12, features: [], choices: [ASI] },
+    { level: 13, features: ['Psionic Discipline: +1 option (now 5 total)'], newSpellLevel: 7 },
     { level: 14, features: ['Subclass feature'], subclassFeature: true },
-    { level: 15, features: ['Psionic Dominance: cast Dominate Person once per Long Rest without a spell slot'], newSpellLevel: 8 },
-    { level: 16, features: [],
-                 choices: [ASI] },
-    { level: 17, features: ['Absolute Focus: while concentrating, you cannot be Surprised and have advantage on Initiative'], newSpellLevel: 9 },
-    { level: 18, features: ['Psionic Mastery: cast two concentration spells simultaneously (the second doesn\'t require concentration)'],
-                 choices: [
-                   { type: 'other', label: 'Psionic Mastery: choose a 2nd-level or lower spell — it can be maintained alongside a concentration spell' } ], subclassFeature: true },
-    { level: 19, features: [],
-                 choices: [ASI, EPIC] },
-    { level: 20, features: ['Psionic Transcendence: your INT score increases by 4 (max 25). Immune to Psychic damage. Cast Telepathy and Foresight once per Long Rest without slot']  } ],
+    { level: 15, features: [], newSpellLevel: 8 },
+    { level: 16, features: [], choices: [ASI] },
+    { level: 17, features: ['Psionic Discipline: +1 option (now 6 total)'], newSpellLevel: 9 },
+    { level: 18, features: ['Psionic Reserves: on Initiative roll, regain Psionic Energy Dice until you have at least 4'] },
+    { level: 19, features: [], choices: [ASI, EPIC] },
+    { level: 20, features: ['Enkindled Life Force: once per turn when you roll Psionic Energy Dice, expend 1–2 Hit Dice to roll extra Psionic Energy Dice (they are not expended)'] },
+  ],
 
+  // ── WIZARD ──────────────────────────────────────────────────────────────────
   Wizard: [
     { level: 1,  features: ['Arcane Recovery (Short Rest: recover slots = ½ level)', 'Spellbook (6 spells)', 'Spellcasting (3 cantrips)'] },
     { level: 2,  features: ['Scholar (1 extra language or tool proficiency)'] },
