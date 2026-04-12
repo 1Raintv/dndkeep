@@ -19,6 +19,7 @@ const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
 const SpellsPage     = lazy(() => import('./components/pages/SpellsPage'));
 const CombatPage     = lazy(() => import('./components/pages/CombatPage'));
 const HomebrewPage   = lazy(() => import('./components/pages/HomebrewPage'));
+const ClassCompendiumPage = lazy(() => import('./components/pages/ClassCompendiumPage'));
 const DicePage       = lazy(() => import('./components/pages/DicePage'));
 const SettingsPage   = lazy(() => import('./components/pages/SettingsPage'));
 const AuthPage       = lazy(() => import('./components/pages/AuthPage'));
@@ -112,6 +113,7 @@ const Icons = {
 
 const NAV_ITEMS = [
   { to: '/homebrew',  label: 'Homebrew',   icon: Icons.homebrew, pro: true },
+  { to: '/compendium', label: 'Classes & Subclasses', icon: '📖' },
 ];
 
 function Sidebar() {
@@ -345,6 +347,8 @@ function AppRoutes() {
             <Route path="/campaigns"      element={<Navigate to="/lobby" replace />} />
             <Route path="/campaigns/:id"  element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
             <Route path="/homebrew"       element={<ProtectedRoute><HomebrewPage /></ProtectedRoute>} />
+            <Route path="/compendium"            element={<ProtectedRoute><Suspense fallback={<div style={{padding:32,color:'var(--t-3)'}}>Loading...</div>}><ClassCompendiumPage /></Suspense></ProtectedRoute>} />
+            <Route path="/compendium/:className" element={<ProtectedRoute><Suspense fallback={<div style={{padding:32,color:'var(--t-3)'}}>Loading...</div>}><ClassCompendiumPage /></Suspense></ProtectedRoute>} />
             <Route path="/spells"         element={<ProtectedRoute><SpellsPage /></ProtectedRoute>} />
             <Route path="/combat"         element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
             <Route path="/dice"           element={<ProtectedRoute><DicePage /></ProtectedRoute>} />
