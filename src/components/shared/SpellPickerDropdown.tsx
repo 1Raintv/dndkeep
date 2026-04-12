@@ -295,13 +295,44 @@ export default function SpellPickerDropdown({
               {/* Expanded description */}
               {isExp && (
                 <div style={{ padding: '0 14px 12px 27px', borderTop: '1px solid var(--c-border)', background: 'rgba(255,255,255,0.02)' }}>
-                  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '10px 0 6px' }}>
+                  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '10px 0 8px' }}>
                     {spell.description}
                   </p>
-                  <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--t-3)', flexWrap: 'wrap' }}>
-                    {spell.components && <span><strong style={{ color: 'var(--t-2)' }}>Components:</strong> {spell.components}</span>}
-                    <span><strong style={{ color: 'var(--t-2)' }}>Duration:</strong> {spell.duration}</span>
-                    <span><strong style={{ color: 'var(--t-2)' }}>Range:</strong> {spell.range}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
+                    <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--t-3)', flexWrap: 'wrap', flex: 1 }}>
+                      {spell.components && <span><strong style={{ color: 'var(--t-2)' }}>Components:</strong> {spell.components}</span>}
+                      <span><strong style={{ color: 'var(--t-2)' }}>Duration:</strong> {spell.duration}</span>
+                      <span><strong style={{ color: 'var(--t-2)' }}>Range:</strong> {spell.range}</span>
+                    </div>
+                    {/* Remove button — only shown when spell is already added */}
+                    {sel && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onToggle(spell.id); }}
+                        style={{
+                          fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6,
+                          cursor: 'pointer', flexShrink: 0,
+                          border: '1px solid rgba(248,113,113,0.4)',
+                          background: 'rgba(248,113,113,0.1)',
+                          color: '#f87171',
+                        }}
+                      >
+                        − Remove Spell
+                      </button>
+                    )}
+                    {!sel && !blocked && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onToggle(spell.id); }}
+                        style={{
+                          fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6,
+                          cursor: 'pointer', flexShrink: 0,
+                          border: '1px solid var(--c-gold-bdr)',
+                          background: 'var(--c-gold-bg)',
+                          color: 'var(--c-gold-l)',
+                        }}
+                      >
+                        + Add Spell
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -310,22 +341,7 @@ export default function SpellPickerDropdown({
         })}
       </div>
 
-      {/* Footer — selected spells summary */}
-      {selected.length > 0 && (
-        <div style={{ padding: '8px 14px', borderTop: '1px solid var(--c-border)', flexShrink: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 5 }}>
-            Selected ({selected.length})
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {selectedSpells.map(s => (
-              <span key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '2px 6px 2px 8px', borderRadius: 999, background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', color: 'var(--c-gold-l)' }}>
-                {s.name}
-                <button onClick={() => onToggle(s.id)} style={{ fontSize: 10, color: 'var(--c-gold-l)', opacity: 0.6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   ) : null;
 
