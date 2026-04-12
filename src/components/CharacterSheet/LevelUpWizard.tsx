@@ -226,13 +226,23 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, profBonusIncreased, newProfBonus, needsSubclass, needsASI }: any) {
   // Pull real features from the level progression table
   const progression = CLASS_LEVEL_PROGRESSION[character.class_name] ?? [];
-  const milestone = progression.find(m => m.level === newLevel);
-  const features: string[] = milestone?.features ?? [];
-  const hasSubclassFeature = milestone?.subclassFeature && character.subclass;
+  const milestone = progression.find((m: any) => m.level === newLevel);
+  const classFeatures: string[] = milestone?.features ?? [];
   const newSpellLevel = milestone?.newSpellLevel;
+
+  // Pull subclass features for this level (with full descriptions)
+  const subclassFeatures: any[] = [];
+  if (character.subclass && classData) {
+    const subcls = classData.subclasses?.find((s: any) => s.name === character.subclass);
+    if (subcls?.features) {
+      subclassFeatures.push(...subcls.features.filter((f: any) => f.level === newLevel));
+    }
+  }
+  const hasSubclassFeature = (milestone?.subclassFeature && character.subclass) || subclassFeatures.length > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      {/* Stat gains row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
         <Gain icon="❤️" label="Max HP" before={character.max_hp} after={newMaxHP} color="var(--hp-full)" />
         <Gain icon="📖" label="Level" before={character.level} after={newLevel} color="var(--c-gold-l)" />
@@ -240,26 +250,51 @@ function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, pro
         {newSpellLevel && <Gain icon="✨" label="New Spell Level" before={newSpellLevel - 1} after={newSpellLevel} color="#c084fc" />}
       </div>
 
-      {/* Features from level progression table */}
-      <div>
-        <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
-          Features gained at {character.class_name} level {newLevel}:
+      {/* HP note */}
+      <Feature text={`+${avgHPGain} HP (d${classData?.hit_die ?? 8} average + Con mod)`} icon="❤️" />
+
+      {/* Subclass choice prompt */}
+      {needsSubclass && <Feature text="Choose your subclass — see next step" icon="⭐" highlight />}
+
+      {/* ASI prompt */}
+      {needsASI && <Feature text="Ability Score Improvement or Feat — see next step" icon="📈" highlight />}
+
+      {/* Subclass features with full descriptions */}
+      {subclassFeatures.length > 0 && (
+        <div>
+          <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+            {character.subclass} — Level {newLevel} Features
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {subclassFeatures.map((f: any, i: number) => (
+              <FeatureCard key={i} name={f.name} description={f.description} isChoice={f.isChoice} level={newLevel} />
+            ))}
+          </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Feature text={`+${avgHPGain} HP (d${classData?.hit_die ?? 8} average + Con mod)`} icon="❤️" />
-          {needsSubclass && <Feature text="Choose your subclass — see next step" icon="⭐" highlight />}
-          {needsASI && <Feature text="Ability Score Improvement or Feat" icon="📈" highlight />}
-          {hasSubclassFeature && character.subclass && (
-            <Feature text={`${character.subclass} subclass feature`} icon="✦" highlight />
-          )}
-          {features.map((f, i) => (
-            <Feature key={i} text={f} icon="🔹" />
-          ))}
-          {features.length === 0 && !needsSubclass && !needsASI && !hasSubclassFeature && (
-            <Feature text="No new class features — check your subclass" icon="📋" />
-          )}
+      )}
+
+      {/* Subclass feature gained but no data available */}
+      {milestone?.subclassFeature && subclassFeatures.length === 0 && character.subclass && (
+        <Feature text={`${character.subclass} subclass feature gained — check your class description`} icon="✦" highlight />
+      )}
+
+      {/* Class features for this level */}
+      {classFeatures.length > 0 && (
+        <div>
+          <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--t-2)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+            {character.class_name} Class Features
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {classFeatures.map((f: string, i: number) => (
+              <Feature key={i} text={f} icon="🔹" />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {classFeatures.length === 0 && !needsSubclass && !needsASI && !hasSubclassFeature && (
+        <Feature text="No new class features this level — your subclass may have features" icon="📋" />
+      )}
 
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic' }}>
         HP uses average formula. Adjust in Character Settings if needed.
@@ -481,6 +516,29 @@ function Gain({ icon, label, before, after, color }: any) {
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-2)' }}>{icon} {label}</div>
       <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-lg)', color, marginTop: 2 }}>
         {before} → {after}
+      </div>
+    </div>
+  );
+}
+
+function FeatureCard({ name, description, isChoice, level }: { name: string; description: string; isChoice?: boolean; level?: number }) {
+  return (
+    <div style={{
+      padding: '10px 14px',
+      background: isChoice ? 'rgba(212,160,23,0.06)' : 'rgba(124,58,237,0.05)',
+      border: `1px solid ${isChoice ? 'rgba(212,160,23,0.25)' : 'rgba(124,58,237,0.2)'}`,
+      borderRadius: 'var(--r-md)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: isChoice ? 'var(--c-gold-l)' : '#c084fc' }}>
+          {isChoice ? '⬡ ' : '✦ '}{name}
+        </span>
+        {isChoice && (
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-gold-l)', background: 'rgba(212,160,23,0.12)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '1px 6px' }}>CHOICE</span>
+        )}
+      </div>
+      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.6 }}>
+        {description}
       </div>
     </div>
   );
