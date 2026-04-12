@@ -840,13 +840,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             )}
             <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
             {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
-            {/* Feats section */}
-            {((character.gained_feats?.length ?? 0) > 0 || character.features_and_traits?.includes('[')) && (
-              <div>
-                <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>🏅 Feats</div>
-                <FeatsPanel character={character} />
-              </div>
-            )}
+            {/* Feats section — always visible so players can add feats */}
+            <div>
+              <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>🏅 Feats</div>
+              <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
+            </div>
           </div>
         )}
 
@@ -1045,7 +1043,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#fbbf24', marginBottom: 6 }}>
                           ⚡ Feat Abilities
                         </div>
-                        <FeatsPanel character={character} />
+                        <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
                       </div>
                     );
                   }
