@@ -6,7 +6,7 @@ import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { SPELL_MAP, SPELLS } from '../../data/spells';
 import { FEATS } from '../../data/feats';
-import { CLASS_MAP } from '../../data/classes';
+import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 import { acBreakdown } from '../../data/equipment';
@@ -139,6 +139,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // Uses a ref to avoid stale closure — always reads current character value
   const characterRef = useRef(character);
   useEffect(() => { characterRef.current = character; });
+
+  // Auto-add subclass always-prepared spells when a character already has a subclass
+  useEffect(() => {
+    if (!character.subclass || !character.class_name) return;
+    const subSpellIds = getSubclassSpellIds(character.subclass, character.class_name);
+    if (subSpellIds.length === 0) return;
+    const missing = subSpellIds.filter(id => !character.known_spells.includes(id));
+    if (missing.length > 0) {
+      applyUpdate({ known_spells: [...character.known_spells, ...missing] }, true);
+    }
+  }, [character.subclass, character.class_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!character.id) return;
@@ -1220,7 +1231,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           }}
         />
       )}
-      {userId && <CampaignBar userId={userId} />}
+      {userId && character.campaign_id && false && <CampaignBar userId={userId} />}
 
         </div>{/* end cs-content-col */}
       </div>{/* end cs-hud-layout */}

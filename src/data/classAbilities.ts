@@ -432,13 +432,6 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       minLevel: 1,
       isPool: true,
     },
-    {
-      name: 'Psionic Shield',
-      actionType: 'reaction',
-      description: 'Spend 1 Psionic Energy Die when you take damage. Reduce damage by the rolled amount + INT modifier.',
-      minLevel: 1,
-      isPool: true,
-    },
   ],
 };
 

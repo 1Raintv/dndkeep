@@ -95,30 +95,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
     type: 'passive',
     description: 'Your psionic focus enhances your mental capabilities. Your Intelligence score increases by 2, to a maximum of 22. Additionally, you gain proficiency in one of the following skills of your choice: Arcana, History, Nature, or Religion.',
   },
-  {
-    id: 'forced-empathy',
-    name: 'Forced Empathy',
-    type: 'active',
-    actionType: 'action',
-    dieCost: '1 die',
-    description: 'You can use your action and expend 1 Psionic Energy Die to reach out psionically and share an emotion with a creature you can see within 60 feet. You choose one of the following emotions to project: Fear (target is Frightened of you until end of its next turn, Wis save negates), Calm (removes one condition of Charmed or Frightened, no save), or Rage (target makes one melee attack against a creature of your choice within its reach as a Reaction, Wis save negates). The DC is your Psion spell save DC.',
-  },
-  {
-    id: 'psionic-speed',
-    name: 'Psionic Speed',
-    type: 'active',
-    actionType: 'bonus',
-    dieCost: '1 die',
-    description: 'You can use a Bonus Action and expend 1 Psionic Energy Die to propel yourself with telekinetic force. Until the end of your turn, your Speed doubles and you can move through occupied spaces (you must end your movement in an unoccupied space). The die is not expended until the end of the turn.',
-  },
-  {
-    id: 'mental-fortress',
-    name: 'Mental Fortress',
-    type: 'active',
-    actionType: 'reaction',
-    dieCost: '2 dice',
-    description: 'When you fail a saving throw against a spell or magical effect, you can use your Reaction and expend 2 Psionic Energy Dice to reroll the saving throw. You must use the new roll. Additionally, you have Resistance to Psychic damage.',
-  },
+
 ];
 
 /** Get disciplines available at a given Psion level */

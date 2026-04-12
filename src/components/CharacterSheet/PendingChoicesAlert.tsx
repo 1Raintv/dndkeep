@@ -8,114 +8,246 @@ interface Props {
   onUpdate: (u: Partial<Character>) => void;
 }
 
-interface PendingChoice {
-  id: string;
-  title: string;
-  description: string;
-  type: 'discipline' | 'cantrip' | 'spell' | 'feat' | 'info';
-  urgent: boolean;
-}
+export default function PendingChoicesAlert({ character, onUpdate }: Props) {
+  const [showDisciplinePicker, setShowDisciplinePicker] = useState(false);
+  const [discSearch, setDiscSearch] = useState('');
+  const [expandedDisc, setExpandedDisc] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
-function getPendingChoices(character: Character): PendingChoice[] {
-  const choices: PendingChoice[] = [];
+  if (dismissed) return null;
+
   const level = character.level;
   const className = character.class_name;
 
-  // ── PSION SPECIFIC ────────────────────────────────────────────────
-  if (className === 'Psion') {
-    // Disciplines
-    const expectedDisciplines = getDisciplineCount(level);
-    const currentDisciplines = (character.class_resources?.['psion-disciplines'] as string[] ?? []);
-    const disciplineCount = Array.isArray(currentDisciplines) ? currentDisciplines.length : 0;
-    if (disciplineCount < expectedDisciplines && level >= 2) {
-      choices.push({
-        id: 'psion-disciplines',
-        title: `Choose Psionic Disciplines (${disciplineCount}/${expectedDisciplines})`,
-        description: `You need to choose ${expectedDisciplines - disciplineCount} more Psionic Discipline${expectedDisciplines - disciplineCount > 1 ? 's' : ''}. Go to the Features tab to make your selection.`,
-        type: 'discipline',
-        urgent: disciplineCount === 0,
-      });
-    }
+  // ── PSION DISCIPLINE TRACKING ─────────────────────────────────────────────
+  const currentDisciplines: string[] = Array.isArray(
+    (character.class_resources as Record<string, unknown>)?.['psion-disciplines']
+  )
+    ? ((character.class_resources as Record<string, string[]>)['psion-disciplines'])
+    : [];
 
-    // Cantrips check
-    const cantripsExpected = level >= 10 ? 4 : level >= 4 ? 3 : 2;
-    const classCantrips = SPELLS.filter(s => s.classes.includes('Psion') && s.level === 0);
-    const currentCantrips = character.known_spells.filter(id => classCantrips.find(s => s.id === id)).length;
-    // Don't count Mage Hand in the 2/3/4 limit (it's auto-granted)
-    const mageHandGranted = character.known_spells.includes('mage-hand');
-    const effectiveCantrips = mageHandGranted ? currentCantrips - 1 : currentCantrips;
-    if (effectiveCantrips < cantripsExpected) {
-      choices.push({
-        id: 'psion-cantrips',
-        title: `Choose Psion Cantrips (${effectiveCantrips}/${cantripsExpected})`,
-        description: `You need ${cantripsExpected - effectiveCantrips} more cantrip${cantripsExpected - effectiveCantrips > 1 ? 's' : ''} from the Psion spell list. Go to the Spells tab and add cantrips (level 0 spells).`,
-        type: 'cantrip',
-        urgent: effectiveCantrips === 0,
-      });
-    }
+  const expectedDisciplines = className === 'Psion' && level >= 2
+    ? getDisciplineCount(level)
+    : 0;
+  const missingDisciplines = Math.max(0, expectedDisciplines - currentDisciplines.length);
+
+  // ── PSION CANTRIP TRACKING ─────────────────────────────────────────────────
+  const expectedCantrips = className === 'Psion'
+    ? (level >= 10 ? 4 : level >= 4 ? 3 : 2)
+    : 0;
+  const classCantrips = SPELLS.filter(s => s.classes.includes('Psion') && s.level === 0);
+  const currentCantrips = character.known_spells.filter(id =>
+    classCantrips.find(s => s.id === id) && id !== 'mage-hand'
+  ).length;
+  const missingCantrips = Math.max(0, expectedCantrips - currentCantrips);
+
+  const hasAlerts = missingDisciplines > 0 || missingCantrips > 0;
+  if (!hasAlerts) return null;
+
+  // Discipline picker helpers
+  const filteredDiscs = PSION_DISCIPLINES.filter(d =>
+    discSearch === '' ||
+    d.name.toLowerCase().includes(discSearch.toLowerCase()) ||
+    d.description.toLowerCase().includes(discSearch.toLowerCase())
+  ).filter(d => !currentDisciplines.includes(d.name));
+
+  function selectDiscipline(name: string) {
+    const next = [...currentDisciplines, name];
+    onUpdate({
+      class_resources: {
+        ...((character.class_resources as Record<string, unknown>) ?? {}),
+        'psion-disciplines': next,
+      },
+    });
   }
-
-  return choices;
-}
-
-export default function PendingChoicesAlert({ character, onUpdate }: Props) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-
-  const allChoices = getPendingChoices(character).filter(c => !dismissed.has(c.id));
-  const urgent = allChoices.filter(c => c.urgent);
-  const normal = allChoices.filter(c => !c.urgent);
-
-  if (allChoices.length === 0) return null;
 
   return (
     <div style={{
-      margin: '0 0 16px 0',
-      borderRadius: 'var(--r-lg)',
-      border: '1px solid rgba(251,191,36,0.4)',
-      background: 'rgba(251,191,36,0.05)',
-      padding: '12px 16px',
+      marginBottom: 16, borderRadius: 'var(--r-lg)',
+      border: '1px solid rgba(251,191,36,0.35)',
+      background: 'rgba(251,191,36,0.04)',
+      overflow: 'hidden',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: allChoices.length > 0 ? 10 : 0 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
         <span style={{ fontSize: 15 }}>📋</span>
-        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: '#fbbf24' }}>
-          {allChoices.length} pending choice{allChoices.length > 1 ? 's' : ''} for your character
+        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: '#fbbf24', flex: 1 }}>
+          Choices needed for your character
         </span>
         <button
-          onClick={() => setDismissed(new Set(allChoices.map(c => c.id)))}
-          style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 'var(--r-sm)', background: 'transparent', border: '1px solid var(--c-border)', color: 'var(--t-3)', cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 10 }}
+          onClick={() => setDismissed(true)}
+          style={{ background: 'transparent', border: 'none', color: 'var(--t-3)', cursor: 'pointer', fontSize: 11, padding: '2px 6px' }}
         >
-          Dismiss all
+          Dismiss
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {allChoices.map(choice => (
-          <div
-            key={choice.id}
-            style={{
-              padding: '8px 12px',
-              background: choice.urgent ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.07)',
-              border: `1px solid ${choice.urgent ? 'rgba(239,68,68,0.3)' : 'rgba(251,191,36,0.25)'}`,
-              borderRadius: 'var(--r-md)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: choice.urgent ? '#ef4444' : '#fbbf24', flex: 1 }}>
-                {choice.urgent ? '🔴 ' : '🟡 '}{choice.title}
+      <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* Discipline choice */}
+        {missingDisciplines > 0 && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{
+                fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 12,
+                color: '#ef4444', background: 'rgba(239,68,68,0.12)',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: 999, padding: '1px 8px',
+              }}>
+                {currentDisciplines.length}/{expectedDisciplines}
+              </span>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', flex: 1 }}>
+                Psionic Disciplines — choose {missingDisciplines} more
               </span>
               <button
-                onClick={() => setDismissed(d => new Set([...d, choice.id]))}
-                style={{ background: 'transparent', border: 'none', color: 'var(--t-3)', cursor: 'pointer', fontSize: 11, padding: '0 4px' }}
+                onClick={() => setShowDisciplinePicker(p => !p)}
+                style={{
+                  padding: '3px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                  background: '#e879f9', border: 'none', color: '#000',
+                  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                }}
               >
-                ✕
+                {showDisciplinePicker ? 'Close' : 'Choose →'}
               </button>
             </div>
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', marginTop: 3, lineHeight: 1.5 }}>
-              {choice.description}
-            </div>
+
+            {/* Current selections */}
+            {currentDisciplines.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+                {currentDisciplines.map(name => (
+                  <span key={name} style={{
+                    padding: '2px 9px', borderRadius: 999,
+                    background: 'rgba(232,121,249,0.12)', border: '1px solid rgba(232,121,249,0.35)',
+                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: '#e879f9',
+                  }}>
+                    ✓ {name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Inline discipline picker */}
+            {showDisciplinePicker && (
+              <div style={{ border: '1px solid rgba(232,121,249,0.25)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
+                <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--c-border)', background: 'var(--c-raised)' }}>
+                  <input
+                    type="text"
+                    placeholder="Search disciplines..."
+                    value={discSearch}
+                    onChange={e => setDiscSearch(e.target.value)}
+                    autoFocus
+                    style={{
+                      width: '100%', padding: '5px 8px', borderRadius: 'var(--r-sm)',
+                      border: '1px solid var(--c-border)', background: 'var(--c-card)',
+                      color: 'var(--t-1)', fontFamily: 'var(--ff-body)', fontSize: 12,
+                      outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                  {filteredDiscs.map(disc => {
+                    const isExpanded = expandedDisc === disc.id;
+                    const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
+                    return (
+                      <div key={disc.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>
+                                {disc.name}
+                              </span>
+                              <span style={{
+                                fontSize: 9, fontWeight: 700, color: typeColor,
+                                background: typeColor + '15', border: `1px solid ${typeColor}40`,
+                                borderRadius: 999, padding: '1px 5px',
+                              }}>
+                                {disc.type === 'passive' ? '✓ PASSIVE' : disc.type === 'active' ? '⚡ ACTIVE' : '◈ BOTH'}
+                              </span>
+                              {disc.dieCost && (
+                                <span style={{ fontSize: 9, color: '#e879f9', background: 'rgba(232,121,249,0.1)', border: '1px solid rgba(232,121,249,0.3)', borderRadius: 999, padding: '1px 5px' }}>
+                                  {disc.dieCost}
+                                </span>
+                              )}
+                            </div>
+                            {!isExpanded && (
+                              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
+                                {disc.description.slice(0, 85)}{disc.description.length > 85 ? '…' : ''}
+                              </div>
+                            )}
+                            {isExpanded && (
+                              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.55, marginTop: 3 }}>
+                                {disc.description}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                            <button
+                              onClick={() => selectDiscipline(disc.name)}
+                              style={{
+                                padding: '3px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                                background: 'rgba(232,121,249,0.15)', border: '1px solid rgba(232,121,249,0.4)',
+                                color: '#e879f9', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                              }}
+                            >
+                              Choose
+                            </button>
+                            <button
+                              onClick={() => setExpandedDisc(isExpanded ? null : disc.id)}
+                              style={{
+                                padding: '2px 6px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                                background: 'transparent', border: '1px solid var(--c-border)',
+                                color: 'var(--t-3)', fontFamily: 'var(--ff-body)', fontSize: 10,
+                              }}
+                            >
+                              {isExpanded ? 'Less' : 'More'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {filteredDiscs.length === 0 && (
+                    <div style={{ padding: 12, textAlign: 'center', fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)' }}>
+                      All disciplines already chosen or no results
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        ))}
+        )}
+
+        {/* Cantrip reminder */}
+        {missingCantrips > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 12,
+              color: '#ef4444', background: 'rgba(239,68,68,0.12)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 999, padding: '1px 8px',
+            }}>
+              {currentCantrips}/{expectedCantrips}
+            </span>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', flex: 1 }}>
+              Psion cantrips — {missingCantrips} still needed
+            </span>
+            <button
+              onClick={() => {
+                const evt = new CustomEvent('dndkeep:gototab', { detail: 'spells' });
+                window.dispatchEvent(evt);
+              }}
+              style={{
+                padding: '3px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                background: '#ef4444', border: 'none', color: '#fff',
+                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+              }}
+            >
+              Go to Spells
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
