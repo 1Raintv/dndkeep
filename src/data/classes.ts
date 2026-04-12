@@ -744,7 +744,7 @@ export const CLASSES: ClassData[] = [
       },
     ],
   },
-    {
+  {
     name: 'Psion', hit_die: 6,
     source: 'ua',
     description: "INT-based spellcaster fueled by Psionic Energy Dice. Casts without Verbal or Material components. Uses Psionic Energy Dice to power telekinesis, telepathy, and psionic disciplines. (UA 2025)",
@@ -822,7 +822,7 @@ export const CLASSES: ClassData[] = [
         ],
       },
     ],
-  },,
+  },
 ];
 
 export const CLASS_MAP: Record<string, ClassData> = Object.fromEntries(CLASSES.map(c => [c.name, c]));
