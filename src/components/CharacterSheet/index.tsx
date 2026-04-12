@@ -26,6 +26,7 @@ import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
 import FeatsPanel from './FeatsPanel';
 import FeaturesAndTraitsPanel from './FeaturesAndTraitsPanel';
+import ClassAbilitiesSection from './ClassAbilitiesSection';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
@@ -1006,6 +1007,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   />
                 )}
 
+                {/* Class Abilities — automatic from class/level */}
+                <ClassAbilitiesSection
+                  character={character}
+                  combatFilter={combatFilter}
+                  onUpdate={u => applyUpdate(u, true)}
+                />
+
                 {/* Health Potions — consumables that are actions on your turn */}
                 {(combatFilter === 'all' || combatFilter === 'action') && (() => {
                   const potions = (character.inventory ?? []).filter((item: any) =>
@@ -1060,30 +1068,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   return null;
                 })()}
 
-                {/* Action / Bonus / Reaction features */}
-                {(combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') && (() => {
-                  const text = (character.features_text ?? '') + ' ' + (character.features_and_traits ?? '');
-                  const pattern = combatFilter === 'action'
-                    ? /(1 action|as an action)/i
-                    : combatFilter === 'bonus'
-                    ? /bonus action/i
-                    : /reaction/i;
-                  const lines = text.split(/[\n;.]/).filter((l: string) => l.trim().length > 10 && pattern.test(l));
-                  if (lines.length === 0) return (
-                    <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--t-3)', fontSize: 13, fontFamily: 'var(--ff-body)', border: '1px dashed var(--c-border)', borderRadius: 'var(--r-lg)' }}>
-                      No {combatFilter} features found — add them in the Bio tab
-                    </div>
-                  );
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {lines.map((line: string, i: number) => (
-                        <div key={i} style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3) var(--sp-4)', fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.5 }}>
-                          {line.trim()}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
               </div>
             </div>
           );

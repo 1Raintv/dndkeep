@@ -6,6 +6,7 @@ import { createCharacter } from '../../lib/supabase';
 import { CLASS_MAP } from '../../data/classes';
 import { BACKGROUND_MAP } from '../../data/backgrounds';
 import { SPECIES_MAP } from '../../data/species';
+import { SPECIES_AUTO_SKILLS } from '../../data/classAbilities';
 import { slotRowToSpellSlots, getSpellSlotRow } from '../../data/spellSlots';
 import { abilityModifier } from '../../lib/gameUtils';
 import { calcMaxHP } from '../../data/levelProgression';
@@ -132,7 +133,8 @@ export default function CharacterCreator() {
     const spellSlots = slotRowToSpellSlots(slotRow);
 
     const bgSkills = bg?.skill_proficiencies ?? [];
-    const allSkills = [...bgSkills, ...selectedSkills];
+    const speciesAutoSkills = SPECIES_AUTO_SKILLS[species] ?? [];
+    const allSkills = [...new Set([...bgSkills, ...selectedSkills, ...speciesAutoSkills])];
 
     const insert: Omit<Character, 'id' | 'created_at' | 'updated_at'> = {
       user_id: user.id,

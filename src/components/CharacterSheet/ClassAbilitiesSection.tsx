@@ -1,0 +1,191 @@
+import type { Character } from '../../types';
+import { CLASS_COMBAT_ABILITIES, type ClassAbility } from '../../data/classAbilities';
+
+interface Props {
+  character: Character;
+  combatFilter: 'all' | 'action' | 'bonus' | 'reaction';
+  onUpdate: (u: Partial<Character>) => void;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  action:   '🔵 Action',
+  bonus:    '⚡ Bonus',
+  reaction: '🛡 Reaction',
+  special:  '⬡ Special',
+  free:     'Free',
+};
+
+const ACTION_COLORS: Record<string, string> = {
+  action:   '#60a5fa',
+  bonus:    '#fbbf24',
+  reaction: '#34d399',
+  special:  '#c084fc',
+  free:     'var(--t-3)',
+};
+
+function UseTracker({ abilityName, max, rest, character, onUpdate }: {
+  abilityName: string; max: number; rest: 'short' | 'long';
+  character: Character; onUpdate: (u: Partial<Character>) => void;
+}) {
+  const uses = ((character.feature_uses as Record<string, number>) ?? {})[abilityName] ?? 0;
+  const remaining = max - uses;
+
+  function toggle(targetUsed: number) {
+    const clamped = Math.min(max, Math.max(0, targetUsed));
+    onUpdate({
+      feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [abilityName]: clamped }
+    });
+  }
+
+  // Pool display (> 8 uses or isPool)
+  if (max > 8) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button onClick={() => toggle(uses + 1)} style={trackBtnStyle}>−1</button>
+        <span style={{
+          fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 700,
+          color: remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)',
+          minWidth: 52, textAlign: 'center' as const,
+        }}>
+          {remaining}/{max}
+        </span>
+        <button onClick={() => toggle(uses - 1)} style={trackBtnStyle}>+1</button>
+        <button onClick={() => toggle(0)} style={{ ...trackBtnStyle, color: 'var(--t-3)', fontSize: 9 }}>↺</button>
+        <span style={{ fontSize: 9, color: rest === 'short' ? '#60a5fa' : '#a78bfa', fontFamily: 'var(--ff-body)' }}>
+          {rest === 'short' ? 'Short/LR' : 'Long Rest'}
+        </span>
+      </div>
+    );
+  }
+
+  // Checkbox display
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {Array.from({ length: max }).map((_, i) => (
+        <button
+          key={i}
+          onClick={() => toggle(i < uses ? i : i + 1)}
+          title={i < uses ? 'Restore use' : 'Use'}
+          style={{
+            width: 16, height: 16, borderRadius: 3, cursor: 'pointer', padding: 0,
+            background: i < uses ? 'transparent' : 'var(--c-gold-l)',
+            border: `2px solid ${i < uses ? 'var(--c-border-m)' : 'var(--c-gold-l)'}`,
+            transition: 'all 0.15s', flexShrink: 0,
+          }}
+        />
+      ))}
+      <span style={{ fontSize: 9, color: rest === 'short' ? '#60a5fa' : '#a78bfa', fontFamily: 'var(--ff-body)', marginLeft: 2 }}>
+        / {rest === 'short' ? 'Short Rest' : 'Long Rest'}
+      </span>
+    </div>
+  );
+}
+
+const trackBtnStyle: React.CSSProperties = {
+  width: 24, height: 24, borderRadius: 'var(--r-sm)',
+  background: 'var(--c-raised)', border: '1px solid var(--c-border)',
+  color: 'var(--t-2)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--ff-body)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+function getMaxUses(ability: ClassAbility, character: Character): number | undefined {
+  if (ability.maxUsesFn) {
+    const val = ability.maxUsesFn(character);
+    if (val === 999) return undefined; // unlimited
+    return val;
+  }
+  return undefined;
+}
+
+// Resolve dynamic values in descriptions
+function resolveDesc(desc: string, character: Character): string {
+  return desc.replace('{{sneak_dice}}', String(Math.ceil(character.level / 2)));
+}
+
+export default function ClassAbilitiesSection({ character, combatFilter, onUpdate }: Props) {
+  const abilities = CLASS_COMBAT_ABILITIES[character.class_name] ?? [];
+
+  // Filter by level and action type
+  const filtered = abilities.filter(a => {
+    if (a.minLevel > character.level) return false;
+    if (combatFilter === 'all') return true;
+    if (combatFilter === 'action') return a.actionType === 'action';
+    if (combatFilter === 'bonus') return a.actionType === 'bonus';
+    if (combatFilter === 'reaction') return a.actionType === 'reaction';
+    return true;
+  });
+
+  if (filtered.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 'var(--sp-3)' }}>
+      <div style={{
+        fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+        letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+        color: '#a78bfa', marginBottom: 8,
+      }}>
+        ✦ {character.class_name} Abilities
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {filtered.map(ability => {
+          const maxUses = getMaxUses(ability, character);
+          const acColor = ACTION_COLORS[ability.actionType] ?? 'var(--t-3)';
+          const actionLabel = ACTION_LABELS[ability.actionType] ?? '';
+          const desc = resolveDesc(ability.description, character);
+
+          return (
+            <div
+              key={ability.name}
+              style={{
+                padding: '10px 14px',
+                background: 'var(--c-surface)',
+                border: `1px solid ${acColor}25`,
+                borderLeft: `3px solid ${acColor}`,
+                borderRadius: 'var(--r-md)',
+              }}
+            >
+              {/* Header row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' as const }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: 1 }}>
+                  {ability.name}
+                </span>
+                {ability.actionType !== 'free' && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                    color: acColor, background: acColor + '15',
+                    border: `1px solid ${acColor}40`,
+                    borderRadius: 999, padding: '2px 7px', flexShrink: 0,
+                  }}>
+                    {actionLabel}
+                  </span>
+                )}
+                {ability.isPool && (
+                  <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '2px 6px' }}>
+                    RESOURCE
+                  </span>
+                )}
+              </div>
+
+              {/* Description */}
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, marginBottom: maxUses !== undefined && ability.rest ? 8 : 0 }}>
+                {desc}
+              </div>
+
+              {/* Use tracker */}
+              {maxUses !== undefined && ability.rest && (
+                <UseTracker
+                  abilityName={ability.name}
+                  max={maxUses}
+                  rest={ability.rest}
+                  character={character}
+                  onUpdate={onUpdate}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
