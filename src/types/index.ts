@@ -211,6 +211,7 @@ export interface Character {
   flaws: string;
   features_and_traits: string;
   gained_feats: string[];        // structured feat names e.g. ['Alert', 'Lucky']
+  feature_uses: Record<string, number>; // e.g. { 'Rage': 2, 'Second Wind': 1 }
 
   // Creation meta
   ability_score_improvements: ASIRecord[];

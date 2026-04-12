@@ -25,6 +25,7 @@ import ActionEconomy from './ActionEconomy';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
 import FeatsPanel from './FeatsPanel';
+import FeaturesAndTraitsPanel from './FeaturesAndTraitsPanel';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
@@ -41,11 +42,12 @@ import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 
-type Tab = 'actions' | 'abilities' | 'spells' | 'inventory' | 'bio' | 'history';
+type Tab = 'actions' | 'abilities' | 'features' | 'spells' | 'inventory' | 'bio' | 'history';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'actions',    label: '⚔️ Actions' },
   { id: 'abilities',  label: 'Abilities' },
+  { id: 'features',   label: 'Features' },
   { id: 'spells',     label: 'Spells' },
   { id: 'inventory',  label: 'Inventory' },
   { id: 'bio',        label: 'Bio' },
@@ -846,6 +848,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
             </div>
           </div>
+        )}
+
+        {/* ── FEATURES & TRAITS ── */}
+        {activeTab === 'features' && (
+          <FeaturesAndTraitsPanel
+            character={character}
+            onUpdate={u => applyUpdate(u, true)}
+          />
         )}
 
         {/* ── SPELLS ── */}
