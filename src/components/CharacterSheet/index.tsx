@@ -5,6 +5,7 @@ import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { SPELL_MAP, SPELLS } from '../../data/spells';
+import { FEATS } from '../../data/feats';
 import { CLASS_MAP } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
@@ -23,6 +24,7 @@ import Notes from './Notes';
 import ActionEconomy from './ActionEconomy';
 import CharacterSettings from './CharacterSettings';
 import FeaturesPanel from './FeaturesPanel';
+import FeatsPanel from './FeatsPanel';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
@@ -838,6 +840,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             )}
             <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
             {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
+            {/* Feats section */}
+            {((character.gained_feats?.length ?? 0) > 0 || character.features_and_traits?.includes('[')) && (
+              <div>
+                <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>🏅 Feats</div>
+                <FeatsPanel character={character} />
+              </div>
+            )}
           </div>
         )}
 
@@ -1017,6 +1026,30 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                       </div>
                     </div>
                   );
+                })()}
+
+                {/* Action / Bonus / Reaction features */}
+                {/* Active Feats — feats with usable abilities */}
+                {(() => {
+                  const featNames = character.gained_feats ?? [];
+                  const ACTIVE_KW = ['magic action', 'bonus action', 'reaction', 'once per', 'luck point', 'spend', 'expend', 'per long rest', 'per short rest'];
+                  const activeFeats = featNames.filter(name => {
+                    const f = FEATS.find(ft => ft.name === name);
+                    return f && f.benefits.some(b => ACTIVE_KW.some(kw => b.toLowerCase().includes(kw)));
+                  });
+                  if (activeFeats.length === 0) return null;
+                  // Only show on All or Action/Bonus/Reaction filters
+                  if (combatFilter === 'all' || combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') {
+                    return (
+                      <div style={{ marginTop: 'var(--sp-3)' }}>
+                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#fbbf24', marginBottom: 6 }}>
+                          ⚡ Feat Abilities
+                        </div>
+                        <FeatsPanel character={character} />
+                      </div>
+                    );
+                  }
+                  return null;
                 })()}
 
                 {/* Action / Bonus / Reaction features */}

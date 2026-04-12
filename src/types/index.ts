@@ -210,6 +210,7 @@ export interface Character {
   bonds: string;
   flaws: string;
   features_and_traits: string;
+  gained_feats: string[];        // structured feat names e.g. ['Alert', 'Lucky']
 
   // Creation meta
   ability_score_improvements: ASIRecord[];

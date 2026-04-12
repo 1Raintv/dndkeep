@@ -72,14 +72,18 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
         if (featData?.asi) {
           for (const asiGrant of featData.asi) {
             const ability = asiGrant.ability.toLowerCase();
-            // Handle "Any", "Strength or Dexterity", etc — skip auto-apply for choice ASIs
             const exactMatch = ABILITY_NAMES.find(a => ability === a);
             if (exactMatch) {
               updates[exactMatch] = Math.min(20, (character[exactMatch] as number) + asiGrant.amount);
             }
           }
         }
-        // Store feat in features_and_traits note
+        // Save feat to structured gained_feats array
+        const currentFeats = character.gained_feats ?? [];
+        if (!currentFeats.includes(selectedFeat)) {
+          updates.gained_feats = [...currentFeats, selectedFeat];
+        }
+        // Also store in features_and_traits for legacy display
         const existing = character.features_and_traits ?? '';
         const featNote = `\n[Feat — Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}`;
         updates.features_and_traits = existing + featNote;

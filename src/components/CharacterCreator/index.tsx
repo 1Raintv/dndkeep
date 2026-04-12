@@ -202,6 +202,10 @@ export default function CharacterCreator() {
         + (buildChoices.divineOrder ? `\n\n[Divine Order]\n${buildChoices.divineOrder}` : '')
         + (buildChoices.primalOrder ? `\n\n[Primal Order]\n${buildChoices.primalOrder}` : '')
         + (Object.keys(buildChoices.feats).length ? `\n\n[Feats from ASI]\n${Object.entries(buildChoices.feats).map(([lvl, feat]) => `Level ${lvl}: ${feat}`).join('\n')}` : ''),
+      gained_feats: [
+        ...(originFeat ? [originFeat] : []),
+        ...Object.values(buildChoices.feats as Record<string, string>).filter(Boolean),
+      ],
       ability_score_improvements: [
         ...(bg ? [
           { ability: bg.asi_primary,   amount: 2, source: 'background' },
