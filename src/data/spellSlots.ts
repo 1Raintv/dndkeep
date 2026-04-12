@@ -85,7 +85,7 @@ export const WARLOCK_SLOTS: SpellSlotTable = {
 
 /** Given a class name and character level, return their spell slot array. */
 export function getSpellSlotRow(className: string, level: number): number[] {
-  const fullCasters = ['Bard', 'Cleric', 'Druid', 'Sorcerer', 'Wizard'];
+  const fullCasters = ['Bard', 'Cleric', 'Druid', 'Sorcerer', 'Wizard', 'Psion'];
   const halfCasters = ['Paladin', 'Ranger'];
 
   if (fullCasters.includes(className)) return FULL_CASTER_SLOTS[level] ?? [];

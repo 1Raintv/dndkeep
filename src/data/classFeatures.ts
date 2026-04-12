@@ -312,6 +312,33 @@ export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
     { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
     { level: 20, name: 'Signature Spells', description: 'Choose two 3rd-level spells. They\'re always prepared and can each be cast once per short rest without a slot.' },
   ],
+  // ─── PSION (Unearthed Arcana 2025) ────────────────────────────────────────
+  Psion: [
+    { level: 1,  name: 'Spellcasting', description: 'Full INT-based spellcaster. Uniquely, all Psion spells require no Verbal or Material components — only Somatic. Start with 2 cantrips and 4 prepared spells from the Psion list.' },
+    { level: 1,  name: 'Psionic Power', description: 'Gain Psionic Energy Dice (4d6 at level 1, scaling up to 12d12 at level 17). Spend dice to power Telekinetic Propel (Bonus Action: push/pull a creature 5 ft, or spend a die to move them die × 5 ft) and Telepathic Connection (Bonus Action: establish telepathy within 30 ft; spend a die to extend range by die × 10 ft for 1 hr). Regain all dice on Long Rest; regain 1 die per Short Rest.' },
+    { level: 1,  name: 'Subtle Telekinesis', description: 'You always know the Mage Hand cantrip. Your Mage Hand is invisible and requires no somatic components to cast or control.' },
+    { level: 2,  name: 'Psionic Disciplines', description: 'Choose 2 Psionic Disciplines that grant passive or active benefits. Options include: Biofeedback, Bolstering Precognition, Destructive Thoughts, Devilish Tongue, Expanded Awareness, Id Insinuation, Inerrant Aim, Observant Mind, Psionic Backlash, Psionic Guards, Sharpened Mind. Gain one more at levels 5, 10, 13, and 17.', isChoice: true } as any,
+    { level: 3,  name: 'Psionic Archetype', description: 'Choose your Psionic Archetype: Metamorph (biological reshaping), Psi Warper (space-time distortion), Psykinetic (force and telekinesis), or Telepath (minds and emotions). Grants features at levels 3, 6, 10, and 14.', isSubclassFeature: true },
+    { level: 4,  name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 4,  name: '3rd Cantrip', description: 'Learn a third cantrip from the Psion spell list.' },
+    { level: 5,  name: 'Psionic Restoration', description: 'Once per Long Rest, you can spend 1 minute in focused meditation to regain expended Psionic Energy Dice. Regain a number of dice equal to half your Psion level (rounded up).' },
+    { level: 5,  name: 'Psionic Disciplines: 3rd Choice', description: 'Choose a third Psionic Discipline to add to your repertoire.' },
+    { level: 6,  name: 'Psionic Archetype Feature', description: 'Your Psionic Archetype grants its second feature.', isSubclassFeature: true },
+    { level: 7,  name: 'Psionic Surge', description: 'When you roll a Psionic Energy Die and the result is 1, 2, or 3, you can expend one Hit Die to reroll it. You can do this after seeing the roll but must use the new result.' },
+    { level: 8,  name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 10, name: '4th Cantrip', description: 'Learn a fourth cantrip from the Psion spell list.' },
+    { level: 10, name: 'Psionic Disciplines: 4th Choice', description: 'Choose a fourth Psionic Discipline.' },
+    { level: 10, name: 'Psionic Archetype Feature', description: 'Your Psionic Archetype grants its third feature.', isSubclassFeature: true },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 13, name: 'Psionic Disciplines: 5th Choice', description: 'Choose a fifth Psionic Discipline.' },
+    { level: 14, name: 'Psionic Archetype Feature', description: 'Your Psionic Archetype grants its fourth and final feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 17, name: 'Psionic Disciplines: 6th Choice', description: 'Choose a sixth Psionic Discipline.' },
+    { level: 18, name: 'Psionic Reserves', description: 'When you roll Initiative, if you have fewer than 4 Psionic Energy Dice remaining, regain dice until you have 4. This happens automatically before your first turn.' },
+    { level: 19, name: 'Ability Score Improvement / Epic Boon', description: 'Increase one ability score by 2 (or two by 1), or take an Epic Boon feat.', isASI: true },
+    { level: 20, name: 'Enkindled Life Force', description: 'Once per turn when you roll Psionic Energy Dice to power an ability, you can expend 1 or 2 Hit Dice. For each Hit Die spent, roll an additional Psionic Energy Die (these extra dice are not expended from your pool).' },
+  ],
+
 };
 
 /** Returns all class features for a given class up to and including the given level */
