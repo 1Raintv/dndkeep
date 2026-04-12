@@ -312,6 +312,31 @@ export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
     { level: 19, name: 'Epic Boon', description: 'Gain an Epic Boon feat.' },
     { level: 20, name: 'Signature Spells', description: 'Choose two 3rd-level spells. They\'re always prepared and can each be cast once per short rest without a slot.' },
   ],
+
+  // ─── ARTIFICER ────────────────────────────────────────────────────────────
+  Artificer: [
+    { level: 1,  name: 'Magical Tinkering', description: 'Use your Tinker\'s Tools to imbue a Tiny nonmagical object with a minor magical effect (light, recorded message, faint odor, or a visual indicator). Up to your Intelligence modifier objects can be active at once.' },
+    { level: 1,  name: 'Spellcasting', description: 'Half caster (Intelligence). Prepare spells from the Artificer list equal to your INT modifier + half your Artificer level (rounded up). Tools serve as your spellcasting focus — you must have a relevant artisan\'s tool in hand to cast spells.' },
+    { level: 2,  name: 'Infuse Item', description: 'At the end of a Long Rest, infuse mundane items with magical properties (Artificer Infusions). Number of infusions known and active slots scale with level: 2 infusions at level 2 (4 known), scaling to 12 active infusions at level 20 (40+ known). Infusion ends when you die, reinfuse, or reach your limit.' },
+    { level: 3,  name: 'Artificer Specialist', description: 'Choose your Artificer Specialist: Alchemist (elixirs and healing), Armorer (powered battle armor), Artillerist (magical cannons), or Battle Smith (construct companion + weapon intelligence). Grants features at levels 3, 5, 9, and 15.', isSubclassFeature: true },
+    { level: 3,  name: 'The Right Tool for the Job', description: 'Using your Tinker\'s Tools, you can spend 1 hour creating a set of Artisan\'s Tools in an unoccupied space within 5 feet. The tools are nonmagical and vanish when you create another set.' },
+    { level: 4,  name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 5,  name: 'Arcane Jolt (Specialist Feature)', description: 'Your Specialist subclass grants its level-5 feature.', isSubclassFeature: true },
+    { level: 6,  name: 'Tool Expertise', description: 'Your proficiency bonus is doubled for any ability check you make using a tool proficiency.' },
+    { level: 7,  name: 'Flash of Genius', description: 'When you or another creature you can see within 30 feet makes an ability check or saving throw, use your Reaction to add your Intelligence modifier to the roll. Usable a number of times equal to your Intelligence modifier per Long Rest.' },
+    { level: 8,  name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 9,  name: 'Specialist Feature', description: 'Your Artificer Specialist grants its level-9 feature.', isSubclassFeature: true },
+    { level: 10, name: 'Magic Item Adept', description: 'You can attune to up to 4 magic items at once (instead of 3). If an item requires attunement by an Artificer, its attunement time is halved for you. You can craft common and uncommon magic items in half the normal time with half the gold.' },
+    { level: 11, name: 'Spell-Storing Item', description: 'When you finish a Long Rest, touch a Simple or Martial Weapon or a Spellcasting Focus. Store a 1st or 2nd-level Artificer spell with a casting time of 1 action in it. The stored spell can be cast by whoever holds the item, using your spell save DC. The spell can be cast a number of times equal to twice your Intelligence modifier per Long Rest.' },
+    { level: 12, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 14, name: 'Magic Item Savant', description: 'You can attune to up to 5 magic items at once. You can ignore all class, race, spell, and level requirements on attuning to or using a magic item.' },
+    { level: 15, name: 'Specialist Feature', description: 'Your Artificer Specialist grants its level-15 feature.', isSubclassFeature: true },
+    { level: 16, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 18, name: 'Magic Item Master', description: 'You can attune to up to 6 magic items at once.' },
+    { level: 19, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
+    { level: 20, name: 'Soul of Artifice', description: 'You develop a mystical connection to your magic items. Gain a +1 bonus to all saving throws per magic item you are attuned to. Also, when you are reduced to 0 HP but not killed outright, you can use your Reaction to end one of your artificer infusions and drop to 1 HP instead. Once per Long Rest.' },
+  ],
+
   // ─── PSION (Unearthed Arcana 2025) ────────────────────────────────────────
   Psion: [
     { level: 1,  name: 'Spellcasting', description: 'Full INT-based spellcaster. Uniquely, all Psion spells require no Verbal or Material components — only Somatic. Start with 2 cantrips and 4 prepared spells from the Psion list.' },
