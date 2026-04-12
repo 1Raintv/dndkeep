@@ -419,9 +419,36 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       getMax: (level, scores) => Math.max(1, abilityMod(scores.intelligence ?? 10)),
     },
   ],
-};
 
-/** Get all resources applicable to a character's class and level */
+  Psion: [
+    {
+      id: 'psionic-energy-dice',
+      name: 'Psionic Energy Dice',
+      emoji: '🧠',
+      description: 'Pool of psionic energy dice. Spend to power Telekinetic Propel, Telepathic Connection, and other psionic abilities. Regain all on Long Rest; regain 1 on Short Rest.',
+      recovery: 'long',
+      minLevel: 1,
+      getMax: (level) => {
+        // Scales: 4d6 at 1, up to 12d12 at 17+
+        // Pool count: 2×prof bonus
+        if (level >= 17) return 12;
+        if (level >= 13) return 10;
+        if (level >= 9) return 8;
+        if (level >= 5) return 6;
+        return 4;
+      },
+    },
+    {
+      id: 'psionic-restoration',
+      name: 'Psionic Restoration',
+      emoji: '🔄',
+      description: 'Once per Long Rest: 1-minute meditation to regain Psionic Energy Dice equal to half your Psion level (rounded up).',
+      recovery: 'long',
+      minLevel: 5,
+      getMax: () => 1,
+    },
+  ],
+};
 export function getCharacterResources(
   className: string,
   level: number,

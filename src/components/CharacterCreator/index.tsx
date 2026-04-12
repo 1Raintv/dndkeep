@@ -184,7 +184,12 @@ export default function CharacterCreator() {
       skill_expertises: [],
       spell_slots: spellSlots,
       prepared_spells: [],
-      known_spells: [...buildChoices.spells, ...buildChoices.cantrips],
+      known_spells: [
+        ...buildChoices.spells,
+        ...buildChoices.cantrips,
+        // Psion gets Mage Hand automatically (invisible, no components)
+        ...(className === 'Psion' && !buildChoices.cantrips.includes('mage-hand') ? ['mage-hand'] : []),
+      ],
       inventory: [],
       currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
       active_conditions: [],

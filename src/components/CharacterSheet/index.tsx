@@ -27,6 +27,8 @@ import FeaturesPanel from './FeaturesPanel';
 import FeatsPanel from './FeatsPanel';
 import FeaturesAndTraitsPanel from './FeaturesAndTraitsPanel';
 import ClassAbilitiesSection from './ClassAbilitiesSection';
+import SpellCompletionBanner from './SpellCompletionBanner';
+import PendingChoicesAlert from './PendingChoicesAlert';
 import AvatarPicker from '../shared/AvatarPicker';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
@@ -70,6 +72,13 @@ interface CharacterSheetProps {
 export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '' }: CharacterSheetProps) {
   const [character, setCharacter] = useState<Character>(initialCharacter);
   const [activeTab, setActiveTab] = useState<Tab>('actions');
+
+  // Listen for tab-switch events from banners/alerts
+  useEffect(() => {
+    const handler = (e: Event) => setActiveTab((e as CustomEvent).detail as Tab);
+    window.addEventListener('dndkeep:gototab', handler);
+    return () => window.removeEventListener('dndkeep:gototab', handler);
+  }, []);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -313,7 +322,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       if (def) newResources[id] = def.getMax(character.level, abilityScores);
     }
 
-    applyUpdate({ spell_slots: newSlots, class_resources: newResources }, true);
+    // Psion: regain 1 Psionic Energy Die on Short Rest
+    if (character.class_name === 'Psion') {
+      const maxDice = allResources.find(r => r.id === 'psionic-energy-dice')?.getMax(character.level, abilityScores) ?? 4;
+      const current = (newResources['psionic-energy-dice'] as number) ?? maxDice;
+      newResources['psionic-energy-dice'] = Math.min(maxDice, current + 1);
+    }
+
+    // Reset short-rest feature_uses
+    const shortRestFeatures = ['Second Wind', 'Action Surge', 'Wild Shape', 'Channel Divinity', 'Bardic Inspiration'];
+    const newFeatureUses = { ...(character.feature_uses as Record<string, number> ?? {}) };
+    for (const name of shortRestFeatures) {
+      if (newFeatureUses[name] !== undefined) delete newFeatureUses[name];
+    }
+
+    applyUpdate({ spell_slots: newSlots, class_resources: newResources, feature_uses: newFeatureUses }, true);
     setShortRestHpGained(0);
     setShowRest(false);
   }
@@ -329,6 +352,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     const abilityScores = { strength: character.strength, dexterity: character.dexterity, constitution: character.constitution, intelligence: character.intelligence, wisdom: character.wisdom, charisma: character.charisma };
     const newResources = buildDefaultResources(character.class_name, character.level, abilityScores);
 
+    // Reset ALL feature_uses on long rest
     applyUpdate({
       current_hp: character.max_hp,
       temp_hp: 0,
@@ -338,6 +362,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       death_saves_failures: 0,
       hit_dice_spent: newSpent,
       class_resources: newResources,
+      feature_uses: {},
     }, true);
     setConcentrationSpellId(null);
     setShortRestHpGained(0);
@@ -834,6 +859,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     <ErrorBoundary section={activeTab}>
         <div key={activeTab} className="animate-fade-in">
 
+          {/* ── GLOBAL ALERTS — spell assignment + pending choices ── */}
+          <PendingChoicesAlert character={character} onUpdate={u => applyUpdate(u, true)} />
+          {(character.is_spellcaster || Object.values(character.spell_slots).some((s: any) => s.total > 0)) && (activeTab === 'spells' || activeTab === 'actions') && (
+            <SpellCompletionBanner
+              character={character}
+              onGoToSpells={() => {
+                const evt = new CustomEvent('dndkeep:gototab', { detail: 'spells' });
+                window.dispatchEvent(evt);
+              }}
+            />
+          )}
+
         {/* ── ABILITIES: Skills + Conditions ── */}
         {activeTab === 'abilities' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
@@ -1012,6 +1049,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   character={character}
                   combatFilter={combatFilter}
                   onUpdate={u => applyUpdate(u, true)}
+                  userId={userId}
+                  campaignId={character.campaign_id}
                 />
 
                 {/* Health Potions — consumables that are actions on your turn */}

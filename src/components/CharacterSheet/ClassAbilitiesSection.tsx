@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import type { Character } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility } from '../../data/classAbilities';
+import { logAction } from '../shared/ActionLog';
 
 interface Props {
   character: Character;
   combatFilter: 'all' | 'action' | 'bonus' | 'reaction';
   onUpdate: (u: Partial<Character>) => void;
+  userId?: string;
+  campaignId?: string | null;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -102,7 +106,41 @@ function resolveDesc(desc: string, character: Character): string {
   return desc.replace('{{sneak_dice}}', String(Math.ceil(character.level / 2)));
 }
 
-export default function ClassAbilitiesSection({ character, combatFilter, onUpdate }: Props) {
+export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId }: Props) {
+  const [justUsed, setJustUsed] = useState<string | null>(null);
+
+  async function handleUseAbility(ability: ClassAbility, cost?: number) {
+    // Mark as used if it has limited uses
+    if (cost !== undefined) {
+      const current = ((character.feature_uses as Record<string, number>) ?? {})[ability.name] ?? 0;
+      onUpdate({
+        feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [ability.name]: current + 1 }
+      });
+    }
+    // Deduct from class_resources if pool-based
+    if (ability.id === 'psionic-energy-dice' || ability.isPool) {
+      const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
+      const poolId = ability.id;
+      if (resources[poolId] !== undefined) {
+        resources[poolId] = Math.max(0, (resources[poolId] as number) - 1);
+        onUpdate({ class_resources: resources });
+      }
+    }
+    // Log to action log
+    await logAction({
+      campaignId: campaignId ?? null,
+      characterId: character.id,
+      characterName: character.name,
+      actionType: ability.actionType === 'action' ? 'spell' :
+        ability.actionType === 'bonus' ? 'spell' :
+        ability.actionType === 'reaction' ? 'save' : 'roll',
+      actionName: `Used ${ability.name}`,
+      notes: ability.description.slice(0, 100) + (ability.description.length > 100 ? '…' : ''),
+    });
+    // Brief flash feedback
+    setJustUsed(ability.name);
+    setTimeout(() => setJustUsed(null), 2000);
+  }
   const abilities = CLASS_COMBAT_ABILITIES[character.class_name] ?? [];
 
   // Filter by level and action type
@@ -168,20 +206,42 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
               </div>
 
               {/* Description */}
-              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, marginBottom: maxUses !== undefined && ability.rest ? 8 : 0 }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, marginBottom: 8 }}>
                 {desc}
               </div>
 
-              {/* Use tracker */}
-              {maxUses !== undefined && ability.rest && (
-                <UseTracker
-                  abilityName={ability.name}
-                  max={maxUses}
-                  rest={ability.rest}
-                  character={character}
-                  onUpdate={onUpdate}
-                />
-              )}
+              {/* Use tracker + Use button row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as 'wrap' }}>
+                {maxUses !== undefined && ability.rest && (
+                  <UseTracker
+                    abilityName={ability.name}
+                    max={maxUses}
+                    rest={ability.rest}
+                    character={character}
+                    onUpdate={onUpdate}
+                  />
+                )}
+                {/* Use / Cast button */}
+                {ability.actionType !== 'free' && (
+                  <button
+                    onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
+                    style={{
+                      marginLeft: maxUses !== undefined ? 0 : 'auto',
+                      padding: '4px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                      background: justUsed === ability.name ? '#34d399' : acColor + '20',
+                      border: `1px solid ${justUsed === ability.name ? '#34d399' : acColor + '60'}`,
+                      color: justUsed === ability.name ? '#000' : acColor,
+                      fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                      transition: 'all 0.2s', flexShrink: 0,
+                    }}
+                  >
+                    {justUsed === ability.name ? '✓ Used!' :
+                      ability.actionType === 'reaction' ? '🛡 Trigger' :
+                      ability.actionType === 'bonus' ? '⚡ Use' :
+                      ability.isPool ? '🎲 Spend Die' : '🔵 Use'}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

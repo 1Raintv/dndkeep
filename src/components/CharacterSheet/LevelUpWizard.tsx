@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
-import { CLASSES } from '../../data/classes';
+import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { FEATS } from '../../data/feats';
+import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
 import FeatPicker from '../shared/FeatPicker';
 import { xpForNextLevel, abilityModifier } from '../../lib/gameUtils';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
@@ -24,8 +25,17 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
   const needsSubclass = newLevel === subclassUnlockLevel && !character.subclass;
   const needsASI = ASI_LEVELS.has(newLevel);
 
-  const [step, setStep] = useState<'overview' | 'subclass' | 'asi' | 'confirm'>('overview');
+  // Psion discipline needs
+  const DISCIPLINE_LEVELS = new Set([2, 5, 10, 13, 17]);
+  const needsDiscipline = character.class_name === 'Psion' && DISCIPLINE_LEVELS.has(newLevel);
+  const currentDisciplines: string[] = Array.isArray(character.class_resources?.['psion-disciplines'])
+    ? character.class_resources['psion-disciplines'] as string[]
+    : [];
+
+  const [step, setStep] = useState<'overview' | 'subclass' | 'discipline' | 'asi' | 'confirm'>('overview');
   const [selectedSubclass, setSelectedSubclass] = useState(character.subclass ?? '');
+  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([...currentDisciplines]);
+  const [disciplineSearch, setDisciplineSearch] = useState('');
   const [asiChoice, setAsiChoice] = useState<'asi' | 'feat'>('asi');
   const [abiBoosts, setAbiBoosts] = useState<Partial<Record<AbilityKey, number>>>({});
   const [selectedFeat, setSelectedFeat] = useState('');
@@ -55,10 +65,29 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
       max_hp: newMaxHP,
       current_hp: Math.min(character.current_hp + avgHPGain, newMaxHP),
     };
-    if (selectedSubclass && needsSubclass) updates.subclass = selectedSubclass;
+
+    // Auto-add subclass always-prepared spells when subclass is chosen
+    const subclassToApply = needsSubclass ? selectedSubclass : (character.subclass ?? '');
+    if (needsSubclass && selectedSubclass) {
+      updates.subclass = selectedSubclass;
+      // Auto-add subclass always-prepared spells
+      const subSpellIds = getSubclassSpellIds(selectedSubclass, character.class_name);
+      if (subSpellIds.length > 0) {
+        const existing = [...new Set([...character.known_spells, ...subSpellIds])];
+        updates.known_spells = existing;
+      }
+    }
+
+    // Save selected disciplines
+    if (needsDiscipline && selectedDisciplines.length > currentDisciplines.length) {
+      updates.class_resources = {
+        ...(character.class_resources as Record<string, unknown> ?? {}),
+        'psion-disciplines': selectedDisciplines,
+      };
+    }
+
     if (needsASI) {
       if (asiChoice === 'asi') {
-        // Apply ability score boosts (cap at 20)
         for (const [key, val] of Object.entries(abiBoosts)) {
           const numVal = val as number;
           if (numVal) {
@@ -67,7 +96,6 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
           }
         }
       } else if (asiChoice === 'feat' && selectedFeat) {
-        // Apply ASI from feat if any
         const featData = FEATS.find(f => f.name === selectedFeat);
         if (featData?.asi) {
           for (const asiGrant of featData.asi) {
@@ -78,12 +106,10 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
             }
           }
         }
-        // Save feat to structured gained_feats array
         const currentFeats = character.gained_feats ?? [];
         if (!currentFeats.includes(selectedFeat)) {
           updates.gained_feats = [...currentFeats, selectedFeat];
         }
-        // Also store in features_and_traits for legacy display
         const existing = character.features_and_traits ?? '';
         const featNote = `\n[Feat — Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}`;
         updates.features_and_traits = existing + featNote;
@@ -98,14 +124,18 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
   }
 
   // Steps flow
-  const steps: ('overview' | 'subclass' | 'asi' | 'confirm')[] = ['overview'];
+  const steps: ('overview' | 'subclass' | 'discipline' | 'asi' | 'confirm')[] = ['overview'];
   if (needsSubclass) steps.push('subclass');
+  if (needsDiscipline) steps.push('discipline');
   if (needsASI) steps.push('asi');
   steps.push('confirm');
 
   const currentIdx = steps.indexOf(step);
+  const expectedDisciplinesAtLevel = getDisciplineCount(newLevel);
+  const newDisciplinesNeeded = expectedDisciplinesAtLevel - currentDisciplines.length;
   const canNext = step === 'overview' ||
     (step === 'subclass' && selectedSubclass) ||
+    (step === 'discipline' && selectedDisciplines.length >= expectedDisciplinesAtLevel) ||
     (step === 'asi' && (asiChoice === 'feat' ? selectedFeat : totalBoosts === 2)) ||
     step === 'confirm';
 
@@ -164,6 +194,23 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
               classData={classData}
               selected={selectedSubclass}
               onSelect={setSelectedSubclass}
+            />
+          )}
+
+          {step === 'discipline' && (
+            <DisciplineStep
+              currentDisciplines={selectedDisciplines}
+              needed={newDisciplinesNeeded}
+              expectedTotal={expectedDisciplinesAtLevel}
+              search={disciplineSearch}
+              onSearch={setDisciplineSearch}
+              onToggle={(name: string) => {
+                if (selectedDisciplines.includes(name)) {
+                  setSelectedDisciplines(prev => prev.filter(d => d !== name));
+                } else if (selectedDisciplines.length < expectedDisciplinesAtLevel) {
+                  setSelectedDisciplines(prev => [...prev, name]);
+                }
+              }}
             />
           )}
 
@@ -302,6 +349,115 @@ function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, pro
 
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic' }}>
         HP uses average formula. Adjust in Character Settings if needed.
+      </div>
+    </div>
+  );
+}
+
+function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onSearch, onToggle }: any) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const filtered = PSION_DISCIPLINES.filter(d =>
+    search === '' ||
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    d.description.toLowerCase().includes(search.toLowerCase())
+  );
+  const canAdd = currentDisciplines.length < expectedTotal;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+      <div>
+        <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)', marginBottom: 4 }}>
+          Choose {needed} Psionic Discipline{needed > 1 ? 's' : ''}
+        </div>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)' }}>
+          {currentDisciplines.length}/{expectedTotal} chosen
+          {' '}— each discipline is permanent and grants passive or active psionic benefits.
+        </div>
+      </div>
+
+      {/* Current selections */}
+      {currentDisciplines.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {currentDisciplines.map((name: string) => (
+            <span key={name} style={{
+              padding: '3px 10px', borderRadius: 999,
+              background: 'rgba(212,160,23,0.15)', border: '1px solid var(--c-gold-bdr)',
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: 'var(--c-gold-l)',
+            }}>
+              ✓ {name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <input
+        type="text" placeholder="Search disciplines..."
+        value={search} onChange={e => onSearch(e.target.value)}
+        style={{
+          padding: '6px 10px', borderRadius: 'var(--r-md)', background: 'var(--c-raised)',
+          border: '1px solid var(--c-border)', color: 'var(--t-1)',
+          fontFamily: 'var(--ff-body)', fontSize: 12, outline: 'none',
+        }}
+      />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+        {filtered.map(disc => {
+          const isSelected = currentDisciplines.includes(disc.name);
+          const isExpanded = expandedId === disc.id;
+          const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
+          return (
+            <div key={disc.id} style={{
+              border: isSelected ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+              borderRadius: 'var(--r-lg)',
+              background: isSelected ? 'rgba(212,160,23,0.06)' : 'var(--c-raised)',
+              overflow: 'hidden',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
+                <button
+                  onClick={() => {
+                    if (isSelected || canAdd) onToggle(disc.name);
+                  }}
+                  disabled={!isSelected && !canAdd}
+                  style={{
+                    flex: 1, textAlign: 'left', background: 'transparent', border: 'none',
+                    cursor: isSelected || canAdd ? 'pointer' : 'not-allowed', padding: 0,
+                    display: 'flex', flexDirection: 'column', gap: 3,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: isSelected ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+                      {isSelected && '✓ '}{disc.name}
+                    </span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: typeColor, background: typeColor + '15', border: `1px solid ${typeColor}40`, borderRadius: 999, padding: '1px 6px' }}>
+                      {disc.type === 'passive' ? '✓ PASSIVE' : disc.type === 'active' ? '⚡ ACTIVE' : '◈ BOTH'}
+                    </span>
+                    {disc.dieCost && (
+                      <span style={{ fontSize: 9, color: '#e879f9', background: 'rgba(232,121,249,0.1)', border: '1px solid rgba(232,121,249,0.3)', borderRadius: 999, padding: '1px 5px' }}>
+                        {disc.dieCost}
+                      </span>
+                    )}
+                  </div>
+                  {!isExpanded && (
+                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
+                      {disc.description.slice(0, 90)}{disc.description.length > 90 ? '…' : ''}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : disc.id)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--t-3)', cursor: 'pointer', fontSize: 11, padding: '0 4px', flexShrink: 0 }}
+                >
+                  {isExpanded ? '▲' : '▼'}
+                </button>
+              </div>
+              {isExpanded && (
+                <div style={{ padding: '0 14px 12px', fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65, borderTop: '1px solid var(--c-border)' }}>
+                  {disc.description}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -830,3 +830,55 @@ export const CLASS_MAP: Record<string, ClassData> = Object.fromEntries(CLASSES.m
 export function buildClassMap(classList: typeof CLASSES): Record<string, typeof CLASSES[0]> {
   return Object.fromEntries(classList.map(c => [c.name, c]));
 }
+
+// ─── Subclass always-prepared spell name → ID lookup ─────────────────────────
+const SPELL_NAME_TO_ID: Record<string, string> = {
+  'Expeditious Retreat': 'expeditious-retreat',
+  'Feather Fall': 'feather-fall',
+  'Misty Step': 'misty-step',
+  'Shatter': 'shatter',
+  'Blink': 'blink',
+  'Haste': 'haste',
+  'Banishment': 'banishment',
+  'Dimension Door': 'dimension-door',
+  'Steel Wind Strike': 'steel-wind-strike',
+  'Teleportation Circle': 'teleportation-circle',
+  'Cloud of Daggers': 'cloud-of-daggers',
+  'Levitate': 'levitate',
+  'Shield': 'shield',
+  'Thunderwave': 'thunderwave',
+  'Slow': 'slow',
+  'Telekinetic Crush': 'telekinetic-crush',
+  "Otiluke's Resilient Sphere": 'otilukes-resilient-sphere',
+  'Stone Shape': 'stone-shape',
+  'Telekinesis': 'telekinesis',
+  'Wall of Force': 'wall-of-force',
+  'Bane': 'bane',
+  'Command': 'command',
+  'Detect Thoughts': 'detect-thoughts',
+  'Mind Spike': 'mind-spike',
+  'Counterspell': 'counterspell',
+  'Compulsion': 'compulsion',
+  'Confusion': 'confusion',
+  'Modify Memory': 'modify-memory',
+  "Yolande's Regal Presence": 'dominate-person', // closest equivalent
+  'Alter Self': 'alter-self',
+  'Cure Wounds': 'cure-wounds',
+  'Inflict Wounds': 'inflict-wounds',
+  'Lesser Restoration': 'lesser-restoration',
+  'Aura of Vitality': 'aura-of-vitality',
+  'Mass Healing Word': 'mass-healing-word',
+  'Greater Restoration': 'greater-restoration',
+  'Mass Cure Wounds': 'mass-cure-wounds',
+};
+
+/** Get spell IDs for a subclass's always-prepared spell list */
+export function getSubclassSpellIds(subclassName: string, className: string): string[] {
+  const cls = CLASS_MAP[className];
+  if (!cls) return [];
+  const sub = cls.subclasses?.find(s => s.name === subclassName);
+  if (!sub?.spell_list) return [];
+  return sub.spell_list
+    .map((name: string) => SPELL_NAME_TO_ID[name])
+    .filter(Boolean) as string[];
+}

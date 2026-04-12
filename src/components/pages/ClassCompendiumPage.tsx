@@ -4,6 +4,8 @@ import { CLASSES, CLASS_MAP } from '../../data/classes';
 import { CLASS_FEATURES } from '../../data/classFeatures';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 import { getSpellSlotRow } from '../../data/spellSlots';
+import { ARTIFICER_INFUSIONS, getActiveInfusionCount } from '../../data/artificerInfusions';
+import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
 
 // Class color accents
 const CLASS_COLORS: Record<string, string> = {
@@ -478,6 +480,84 @@ export default function ClassCompendiumPage() {
                 </div>
               )}
             </div>
+
+            {/* ── ARTIFICER INFUSIONS ── */}
+            {selectedClass === 'Artificer' && (
+              <div style={{ marginTop: 32 }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: accentColor, marginBottom: 16 }}>
+                  ⚙️ Artificer Infusions
+                  <span style={{ fontWeight: 400, color: 'var(--t-3)', marginLeft: 8, fontSize: 11 }}>— Choose {getActiveInfusionCount(20)} active at level 20 (2 at level 2, scaling every 4 levels)</span>
+                </div>
+                {[2, 6, 10, 14].map(minLvl => {
+                  const infusions = ARTIFICER_INFUSIONS.filter(i => i.minLevel === minLvl);
+                  if (infusions.length === 0) return null;
+                  return (
+                    <div key={minLvl} style={{ marginBottom: 16 }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 8, paddingLeft: 4 }}>
+                        Available at Level {minLvl}
+                      </div>
+                      {infusions.map(inf => (
+                        <div key={inf.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--c-border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' as const }}>
+                            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{inf.name}</span>
+                            {inf.requiresAttunement && (
+                              <span style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '1px 6px' }}>ATTUNEMENT</span>
+                            )}
+                          </div>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: accentColor, marginBottom: 4, fontStyle: 'italic' }}>
+                            Item: {inf.item}
+                          </div>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65 }}>
+                            {inf.description}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── PSION DISCIPLINES ── */}
+            {selectedClass === 'Psion' && (
+              <div style={{ marginTop: 32 }}>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: accentColor, marginBottom: 16 }}>
+                  🧠 Psionic Disciplines
+                  <span style={{ fontWeight: 400, color: 'var(--t-3)', marginLeft: 8, fontSize: 11 }}>— Choose 2 at level 2, gaining 1 more at levels 5, 10, 13, and 17 (6 total at level 17+)</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+                  {PSION_DISCIPLINES.map(disc => (
+                    <div key={disc.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--c-border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' as const }}>
+                        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{disc.name}</span>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                          color: disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa',
+                          background: disc.type === 'passive' ? 'rgba(52,211,153,0.1)' : disc.type === 'active' ? 'rgba(251,191,36,0.1)' : 'rgba(96,165,250,0.1)',
+                          border: `1px solid ${disc.type === 'passive' ? 'rgba(52,211,153,0.3)' : disc.type === 'active' ? 'rgba(251,191,36,0.3)' : 'rgba(96,165,250,0.3)'}`,
+                          borderRadius: 999, padding: '1px 6px',
+                        }}>
+                          {disc.type === 'passive' ? '✓ PASSIVE' : disc.type === 'active' ? '⚡ ACTIVE' : '◈ BOTH'}
+                        </span>
+                        {disc.dieCost && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: accentColor, background: accentColor + '15', border: `1px solid ${accentColor}40`, borderRadius: 999, padding: '1px 6px' }}>
+                            Cost: {disc.dieCost}
+                          </span>
+                        )}
+                        {disc.actionType && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '1px 6px' }}>
+                            {disc.actionType === 'action' ? 'Action' : disc.actionType === 'bonus' ? 'Bonus Action' : disc.actionType === 'reaction' ? 'Reaction' : 'Free'}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65 }}>
+                        {disc.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           </div>
         )}
