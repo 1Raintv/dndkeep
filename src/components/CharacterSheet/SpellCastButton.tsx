@@ -173,11 +173,7 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
             💚 {mechanics.healDice}
           </button>
         )}
-        {lastRoll && (
-          <span style={{ fontSize: 10, fontWeight: 900, padding: '1px 7px', borderRadius: 999, background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.5)', color: '#a78bfa' }}>
-            = {lastRoll.total} {lastRoll.type}
-          </span>
-        )}
+
         {/* Only show Cast/Slot button for utility spells (no damage/heal dice) or multi-slot picker */}
         {(mechanics.isUtility || (!mechanics.damageDice && !mechanics.healDice)) && (
           <button onClick={() => isCantrip ? performCast(0) : setShowModal(true)}

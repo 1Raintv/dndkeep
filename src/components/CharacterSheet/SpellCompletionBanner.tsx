@@ -132,7 +132,7 @@ export default function SpellCompletionBanner({ character, onGoToSpells }: Props
                   {currentPrepared}/{expectedPrepared}
                 </span>
                 <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
-                  prepared spells — {missingSpells} still needed ({preparedNote})
+                  prepared spells — {missingSpells} still needed
                 </span>
               </div>
             )}

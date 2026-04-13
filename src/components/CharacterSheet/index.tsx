@@ -452,6 +452,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           }}
       />
 
+      {/* Active conditions — shown near HP/name */}
+      {character.active_conditions.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)',
+          padding: '6px 12px', background: 'rgba(155,28,28,0.08)',
+          border: '1px solid rgba(155,28,28,0.3)', borderRadius: 'var(--r-md)',
+          marginTop: -8,
+        }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fca5a5', alignSelf: 'center' }}>
+            Conditions:
+          </span>
+          {character.active_conditions.map(c => (
+            <span key={c} className="condition-pill">{c}</span>
+          ))}
+        </div>
+      )}
+
       {/* Avatar picker */}
       {showAvatarPicker && (
         <AvatarPicker
@@ -672,21 +689,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         </div>
       )}
 
-      {/* Active conditions banner */}
-      {character.active_conditions.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)',
-          padding: 'var(--sp-3)', background: 'rgba(155,28,28,0.08)',
-          border: '1px solid rgba(155,28,28,0.3)', borderRadius: 'var(--r-md)',
-        }}>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fca5a5', alignSelf: 'center' }}>
-            Conditions:
-          </span>
-          {character.active_conditions.map(c => (
-            <span key={c} className="condition-pill">{c}</span>
-          ))}
-        </div>
-      )}
+
 
       {/* Concentration banner */}
       {concentrationSpellId && (
@@ -905,25 +908,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {activeTab === 'abilities' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
             <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
-            {(character.active_conditions?.length > 0) && (
-              <ConditionMechanics conditions={character.active_conditions} />
-            )}
             <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
-            {hasSpellSlots && <SpellSlotsPanel character={character} onUpdateSlots={handleUpdateSlots} />}
-            {/* Feats section — always visible so players can add feats */}
-            <div>
-              <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>🏅 Feats</div>
-              <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
-            </div>
           </div>
         )}
 
         {/* ── FEATURES & TRAITS ── */}
         {activeTab === 'features' && (
-          <FeaturesAndTraitsPanel
-            character={character}
-            onUpdate={u => applyUpdate(u, true)}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+            <FeaturesAndTraitsPanel
+              character={character}
+              onUpdate={u => applyUpdate(u, true)}
+            />
+            <div>
+              <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>🏅 Feats</div>
+              <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
+            </div>
+          </div>
         )}
 
         {/* ── SPELLS ── */}
@@ -944,7 +944,32 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             }}
             onTogglePrepared={id => {
               const is = character.prepared_spells.includes(id);
-              applyUpdate({ prepared_spells: is ? character.prepared_spells.filter(x => x !== id) : [...character.prepared_spells, id] }, true);
+              if (is) {
+                // Always allow unpreparing
+                applyUpdate({ prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
+              } else {
+                // Enforce prepare limit for prepared casters
+                const PREPARER_CLS = ['Cleric','Druid','Paladin','Wizard','Artificer','Psion'];
+                if (PREPARER_CLS.includes(character.class_name)) {
+                  const spellAbilityMap: Record<string,keyof typeof character> = { Wizard:'intelligence', Artificer:'intelligence', Psion:'intelligence', Cleric:'wisdom', Druid:'wisdom', Paladin:'charisma', Ranger:'wisdom' };
+                  const key = spellAbilityMap[character.class_name] ?? 'intelligence';
+                  const score = (character[key] as number) ?? 10;
+                  const mod = Math.floor((score - 10) / 2);
+                  const cap = character.class_name === 'Paladin'
+                    ? mod + Math.floor(character.level / 2)
+                    : character.class_name === 'Artificer'
+                      ? mod + Math.ceil(character.level / 2)
+                      : mod + character.level;
+                  // Count current prepared (exclude granted spells)
+                  const grantedIds = character.subclass ? (character.class_resources?.['subclass-spells'] as string[] ?? []) : [];
+                  const count = character.prepared_spells.filter(x => {
+                    const sp = SPELLS.find(s => s.id === x);
+                    return sp && sp.level > 0 && !grantedIds.includes(x);
+                  }).length;
+                  if (count >= cap) return; // at limit, don't add
+                }
+                applyUpdate({ prepared_spells: [...character.prepared_spells, id] }, true);
+              }
             }}
             onConcentrate={id => setConcentrationSpellId(concentrationSpellId === id ? null : id)}
             userId={userId}
