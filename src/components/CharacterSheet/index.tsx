@@ -321,7 +321,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
   // Short rest: roll hit dice to recover HP
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
-  const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'>('all');
+  const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'|'limited'>('all');
   const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {
@@ -1056,6 +1056,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
                   {([
                     { id: 'all',      label: 'All' },
+                    { id: 'limited',  label: '⏳ Limited Use' },
                     { id: 'action',   label: '🔵 Action' },
                     { id: 'bonus',    label: '⚡ Bonus' },
                     { id: 'reaction', label: '🛡 Reaction' },

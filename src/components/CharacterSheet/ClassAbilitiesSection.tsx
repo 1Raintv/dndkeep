@@ -6,7 +6,7 @@ import { rollDice } from '../../lib/spellParser';
 
 interface Props {
   character: Character;
-  combatFilter: 'all' | 'action' | 'bonus' | 'reaction';
+  combatFilter: 'all' | 'action' | 'bonus' | 'reaction' | 'limited';
   onUpdate: (u: Partial<Character>) => void;
   userId?: string;
   campaignId?: string | null;
@@ -185,6 +185,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
   // Filter by level and action type
   const filtered = abilities.filter(a => {
     if (a.minLevel > character.level) return false;
+    if (combatFilter === 'limited') return a.maxUsesFn !== undefined || (a as any).isPool === true || (a as any).psionicDie === true;
     if (combatFilter === 'all') return true;
     if (combatFilter === 'action') return a.actionType === 'action';
     if (combatFilter === 'bonus') return a.actionType === 'bonus';

@@ -228,6 +228,8 @@ export interface ComputedStats {
   saving_throws: Record<AbilityKey, { total: number; proficient: boolean }>;
   skills: Record<string, { total: number; proficient: boolean; expert: boolean }>;
   passive_perception: number;
+  passive_investigation: number;
+  passive_insight: number;
   initiative: number;
   spell_save_dc: number | null;
   spell_attack_bonus: number | null;

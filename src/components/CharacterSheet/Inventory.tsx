@@ -201,12 +201,12 @@ function CurrencyDisplay({ currency, onUpdate }: {
   const [editing, setEditing] = useState<keyof Character['currency'] | null>(null);
   const [draft, setDraft] = useState('');
 
-  const coins: { key: keyof Character['currency']; label: string; color: string }[] = [
-    { key: 'pp', label: 'PP', color: '#e0e0e0' },
-    { key: 'gp', label: 'GP', color: 'var(--c-gold-l)' },
-    { key: 'ep', label: 'EP', color: '#60a5fa' },
-    { key: 'sp', label: 'SP', color: '#9ca3af' },
-    { key: 'cp', label: 'CP', color: '#b45309' },
+  const coins: { key: keyof Character['currency']; label: string; color: string; icon: string; title: string }[] = [
+    { key: 'pp', label: 'PP', color: '#e2e8f0', icon: '🪙', title: 'Platinum Pieces (1 PP = 10 GP)' },
+    { key: 'gp', label: 'GP', color: 'var(--c-gold-l)', icon: '🟡', title: 'Gold Pieces' },
+    { key: 'ep', label: 'EP', color: '#60a5fa', icon: '🔵', title: 'Electrum Pieces (1 EP = 5 SP)' },
+    { key: 'sp', label: 'SP', color: '#9ca3af', icon: '⚪', title: 'Silver Pieces (1 SP = 10 CP)' },
+    { key: 'cp', label: 'CP', color: '#b45309', icon: '🟤', title: 'Copper Pieces' },
   ];
 
   function open(key: keyof Character['currency']) {
@@ -229,7 +229,8 @@ function CurrencyDisplay({ currency, onUpdate }: {
     }}>
       {coins.map(({ key, label, color }) => (
         <div key={key} style={{ textAlign: 'center', flex: 1, cursor: 'pointer' }}
-          onClick={() => editing !== key && open(key)} title={`Click to edit ${label}`}>
+          onClick={() => editing !== key && open(key)} title={title}>
+          <div style={{ fontSize: 14, marginBottom: 2 }}>{icon}</div>
           {editing === key ? (
             <input type="number" value={draft} min={0} autoFocus
               onChange={e => setDraft(e.target.value)}
@@ -238,9 +239,9 @@ function CurrencyDisplay({ currency, onUpdate }: {
               onClick={e => e.stopPropagation()}
               style={{ width: '100%', textAlign: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color, background: 'var(--c-raised)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-sm)', padding: '1px 2px' }} />
           ) : (
-            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color }}>{currency[key]}</div>
+            <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 15, color, lineHeight: 1 }}>{currency[key]}</div>
           )}
-          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', letterSpacing: '0.08em' }}>{label}</div>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.1em', fontWeight: 700, textTransform: 'uppercase' as const, marginTop: 2 }}>{label}</div>
         </div>
       ))}
     </div>
@@ -380,9 +381,22 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
           Inventory
         </div>
         <div style={{ display: 'flex', gap: 'var(--sp-2)', marginBottom: 'var(--sp-2)', alignItems: 'center' }}>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
-            {totalWeight.toFixed(totalWeight % 1 === 0 ? 0 : 1)} lb
-          </span>
+          {(() => {
+            const str = character.strength;
+            const unencumbered = str * 5;
+            const encumbered = str * 10;
+            const heavyEncumbered = str * 15;
+            const isEncumbered = totalWeight > unencumbered;
+            const isHeavy = totalWeight > encumbered;
+            const encColor = isHeavy ? '#ef4444' : isEncumbered ? '#fbbf24' : 'var(--t-2)';
+            const encLabel = isHeavy ? ' (Heavy)' : isEncumbered ? ' (Encumbered)' : '';
+            return (
+              <span title={`Carry capacity: ${heavyEncumbered} lb max (STR ${str} × 15)`}
+                style={{ fontSize: 'var(--fs-xs)', color: encColor, fontFamily: 'var(--ff-body)', fontWeight: isEncumbered ? 700 : 400 }}>
+                {totalWeight.toFixed(totalWeight % 1 === 0 ? 0 : 1)} / {heavyEncumbered} lb{encLabel}
+              </span>
+            );
+          })()}
           <button className="btn-gold btn-sm" onClick={() => setShowPicker(true)}>
             + Add Item
           </button>
@@ -424,6 +438,36 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
               ))}
             </div>
           )}
+          {/* Attunement — magic items that are equipped */}
+          {(() => {
+            const attuned = filtered.filter(i => i.magical && i.equipped);
+            const attunementMax = 3;
+            if (attuned.length === 0) return null;
+            return (
+              <div style={{ marginBottom: 'var(--sp-2)', padding: '8px 12px', borderRadius: 'var(--r-md)', background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--ff-body)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#a78bfa' }}>
+                    ✦ Attunement
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--ff-stat)', color: attuned.length >= attunementMax ? '#ef4444' : '#a78bfa', background: attuned.length >= attunementMax ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)', border: `1px solid ${attuned.length >= attunementMax ? 'rgba(239,68,68,0.4)' : 'rgba(167,139,250,0.4)'}`, borderRadius: 999, padding: '1px 7px' }}>
+                    {attuned.length}/{attunementMax}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {attuned.map(item => (
+                    <span key={item.id} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', color: '#c084fc' }}>
+                      ✦ {item.name}
+                    </span>
+                  ))}
+                </div>
+                {attuned.length >= attunementMax && (
+                  <div style={{ fontSize: 10, color: '#ef4444', marginTop: 5, fontFamily: 'var(--ff-body)' }}>
+                    ⚠ Maximum attunement reached — remove an item before attuning another
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {carried.length > 0 && (
             <div>
               {equipped.length > 0 && (

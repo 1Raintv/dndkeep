@@ -76,6 +76,8 @@ export function computeStats(character: Character): ComputedStats {
   }
 
   const passive_perception = 10 + (skills['Perception']?.total ?? modifiers.wisdom);
+  const passive_investigation = 10 + (skills['Investigation']?.total ?? modifiers.intelligence);
+  const passive_insight = 10 + (skills['Insight']?.total ?? modifiers.wisdom);
   const initiative = modifiers.dexterity + character.initiative_bonus;
 
   // Spellcasting ability (if any)
@@ -94,6 +96,8 @@ export function computeStats(character: Character): ComputedStats {
     saving_throws,
     skills,
     passive_perception,
+    passive_investigation,
+    passive_insight,
     initiative,
     spell_save_dc,
     spell_attack_bonus,
