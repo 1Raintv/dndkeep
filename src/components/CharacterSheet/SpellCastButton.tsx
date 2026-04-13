@@ -265,17 +265,7 @@ export default function SpellCastButton({
                 🎲 {mechanics.damageDice} {mechanics.damageType}
               </button>
             )}
-            {/* Also need slot usage — little button for non-cantrips */}
-            {!isCantrip && availableSlots.length > 0 && (
-              <button
-                onClick={() => availableSlots.length > 1 ? setShowModal(true) : spendSlot(availableSlots[0].level)}
-                style={{ ...btnBase, background: 'rgba(167,139,250,0.08)',
-                  border: '1px solid rgba(167,139,250,0.3)', color: '#a78bfa' }}
-                title="Use a spell slot without rolling"
-              >
-                Use Slot
-              </button>
-            )}
+
           </>
         )}
 
