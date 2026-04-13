@@ -145,54 +145,78 @@ const ACTION_COLORS: Record<string, string> = {
   free:     'var(--t-3)',
 };
 
-// Use tracker component
-function UseTracker({ featureKey, max, rest, character, onUpdate }: {
-  featureKey: string; max: number; rest: 'short' | 'long';
+// ── DDB-style sub-feature row with inline checkboxes ────────────────
+// Matches DDB pattern: [colored bar] [Name: Label]  [■■] / Long Rest
+export function SubFeatureRow({ label, featureKey, rest, max, character, onUpdate, accentColor = '#a78bfa', subLabel }: {
+  label: string; featureKey: string; rest: 'short' | 'long'; max: number;
   character: Character; onUpdate: (u: Partial<Character>) => void;
+  accentColor?: string; subLabel?: string;
 }) {
   const uses = ((character.feature_uses as Record<string, number>) ?? {})[featureKey] ?? 0;
-  const remaining = max - uses;
 
   function toggle(targetUsed: number) {
     const clamped = Math.min(max, Math.max(0, targetUsed));
     onUpdate({ feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [featureKey]: clamped } });
   }
 
-  if (max > 8) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-        <button onClick={() => toggle(uses + 1)} style={poolBtnStyle}>Use</button>
-        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)', minWidth: 60, textAlign: 'center' as const }}>
-          {remaining} / {max} remaining
-        </span>
-        <button onClick={() => toggle(0)} style={poolBtnStyle}>Reset</button>
-        <span style={{ fontSize: 10, color: rest === 'short' ? '#60a5fa' : '#a78bfa', fontFamily: 'var(--ff-body)' }}>
-          {rest === 'short' ? 'Short/Long Rest' : 'Long Rest'}
-        </span>
-      </div>
-    );
-  }
+  const restColor = rest === 'short' ? '#60a5fa' : '#a78bfa';
+  const restLabel = rest === 'short' ? 'Short Rest' : 'Long Rest';
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6 }}>
-      {Array.from({ length: max }).map((_, i) => (
-        <button
-          key={i}
-          onClick={() => toggle(i < uses ? i : i + 1)}
-          title={i < uses ? 'Restore use' : 'Mark as used'}
-          style={{
-            width: 16, height: 16, borderRadius: 3, cursor: 'pointer', padding: 0,
-            background: i < uses ? 'transparent' : 'var(--c-gold-l)',
-            border: `2px solid ${i < uses ? 'var(--c-border-m)' : 'var(--c-gold-l)'}`,
-            transition: 'all 0.15s',
-          }}
-        />
-      ))}
-      <span style={{ fontSize: 10, color: rest === 'short' ? '#60a5fa' : '#a78bfa', fontFamily: 'var(--ff-body)', marginLeft: 3 }}>
-        / {rest === 'short' ? 'Short Rest' : 'Long Rest'}
-      </span>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 0,
+      marginTop: 6, borderRadius: 'var(--r-sm)',
+      border: `1px solid ${accentColor}22`,
+      background: accentColor + '06',
+      overflow: 'hidden',
+    }}>
+      {/* Left accent bar */}
+      <div style={{ width: 3, alignSelf: 'stretch', background: accentColor, flexShrink: 0 }} />
+      {/* Content */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', flexWrap: 'wrap' as const }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{label}</span>
+          {subLabel && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', marginLeft: 5 }}>{subLabel}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {max <= 10 ? (
+            Array.from({ length: max }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => toggle(i < uses ? i : i + 1)}
+                title={i < uses ? `Restore use ${i + 1}` : `Mark use ${i + 1} as spent`}
+                style={{
+                  width: 16, height: 16, borderRadius: 2, cursor: 'pointer', padding: 0,
+                  background: i >= uses ? accentColor : 'transparent',
+                  border: `2px solid ${i >= uses ? accentColor : 'var(--c-border-m)'}`,
+                  transition: 'all 0.15s', flexShrink: 0,
+                }}
+              />
+            ))
+          ) : (
+            <>
+              <button onClick={() => toggle(Math.min(max, uses + 1))}
+                style={{ padding: '1px 8px', borderRadius: 3, background: accentColor + '20', border: `1px solid ${accentColor}40`, color: accentColor, cursor: 'pointer', fontSize: 10, fontFamily: 'var(--ff-body)', fontWeight: 700 }}>Use</button>
+              <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800, color: uses < max ? accentColor : 'var(--t-3)', minWidth: 42, textAlign: 'center' as const }}>{max - uses}/{max}</span>
+              <button onClick={() => toggle(0)}
+                style={{ padding: '1px 6px', borderRadius: 3, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-3)', cursor: 'pointer', fontSize: 10, fontFamily: 'var(--ff-body)' }}>↺</button>
+            </>
+          )}
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: restColor, marginLeft: 2, whiteSpace: 'nowrap' as const }}>
+            / {restLabel}
+          </span>
+        </div>
+      </div>
     </div>
   );
+}
+
+// Legacy alias kept for back-compat (no longer rendered but export kept)
+function UseTracker({ featureKey, max, rest, character, onUpdate }: {
+  featureKey: string; max: number; rest: 'short' | 'long';
+  character: Character; onUpdate: (u: Partial<Character>) => void;
+}) {
+  return <SubFeatureRow label={featureKey} featureKey={featureKey} rest={rest} max={max} character={character} onUpdate={onUpdate} />;
 }
 
 const poolBtnStyle: React.CSSProperties = {
@@ -428,14 +452,21 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
                     </div>
                   )}
 
-                  {/* Use tracker */}
+                  {/* DDB-style sub-feature row with checkboxes */}
                   {trackerCfg && (
-                    <UseTracker
+                    <SubFeatureRow
+                      label={`${feature.isSubclassFeature && subclassFeats.length > 0 ? subclassFeats.map(f => f.name).join(' & ') : feature.name}`}
+                      subLabel={combatAbility ? (
+                        combatAbility.actionType === 'action' ? 'Action' :
+                        combatAbility.actionType === 'bonus' ? 'Bonus Action' :
+                        combatAbility.actionType === 'reaction' ? 'Reaction' : 'Special'
+                      ) : 'Special'}
                       featureKey={feature.name}
                       max={trackerCfg.max}
                       rest={trackerCfg.rest}
                       character={character}
                       onUpdate={onUpdate}
+                      accentColor={feature.isSubclassFeature ? '#c084fc' : '#a78bfa'}
                     />
                   )}
                 </div>
@@ -461,23 +492,50 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
                 {section.title}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {section.traits.map((trait, ti) => (
-                  <div key={ti} style={{ padding: '8px 0', borderBottom: '1px solid var(--c-border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' as const }}>
-                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
-                        {trait.name}
-                      </span>
-                      {trait.isActive && (
-                        <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                          ✓ ACTIVE
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' as const }}>
-                      {trait.desc}
-                    </div>
-                  </div>
-                ))}
+                {section.traits.map((trait, ti) => {
+                  return (() => {
+                    // Detect per-rest limited uses in species trait description
+                    const desc = trait.desc;
+                    const perLong = /once per long rest|per long rest|long rest.*once/i.test(desc);
+                    const perShort = /once per short rest|per short rest|short or long rest/i.test(desc);
+                    const hasUse = perLong || perShort;
+                    const speciesTraitKey = `species_${section.title}_${trait.name}`;
+                    return (
+                      <div key={ti} style={{ padding: '8px 0', borderBottom: '1px solid var(--c-border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' as const }}>
+                          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+                            {trait.name}
+                          </span>
+                          {trait.isActive && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 999, padding: '1px 6px' }}>
+                              ✓ ACTIVE
+                            </span>
+                          )}
+                          {hasUse && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: perShort ? '#60a5fa' : '#a78bfa', background: perShort ? 'rgba(96,165,250,0.1)' : 'rgba(167,139,250,0.1)', border: `1px solid ${perShort ? 'rgba(96,165,250,0.3)' : 'rgba(167,139,250,0.3)'}`, borderRadius: 999, padding: '1px 6px' }}>
+                              ⏳ {perShort ? '1/Short Rest' : '1/Long Rest'}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' as const }}>
+                          {desc}
+                        </div>
+                        {hasUse && (
+                          <SubFeatureRow
+                            label={trait.name}
+                            subLabel="Special"
+                            featureKey={speciesTraitKey}
+                            rest={perShort ? 'short' : 'long'}
+                            max={1}
+                            character={character}
+                            onUpdate={onUpdate}
+                            accentColor="#34d399"
+                          />
+                        )}
+                      </div>
+                    );
+                  })();
+                })}
               </div>
             </div>
           ))}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { FEATS } from '../../data/feats';
+import { SubFeatureRow } from './FeaturesAndTraitsPanel';
 
 interface FeatsPanelProps {
   character: Character;
@@ -14,6 +15,21 @@ const ACTIVE_KW = [
 
 function isActiveFeat(benefits: string[]): boolean {
   return benefits.some(b => ACTIVE_KW.some(kw => b.toLowerCase().includes(kw)));
+}
+
+/** Detect if a benefit text is a per-rest limited-use ability. */
+function detectBenefitUse(benefit: string): { label: string; rest: 'short' | 'long'; max: number } | null {
+  const lower = benefit.toLowerCase();
+  const isLong = lower.includes('per long rest') || lower.includes('once per long');
+  const isShort = lower.includes('per short rest') || lower.includes('once per short') || lower.includes('short or long rest');
+  if (!isLong && !isShort) return null;
+  const learnMatch = benefit.match(/^Learn (?:the )?([A-Z][^.]+?) spell/);
+  const castMatch = benefit.match(/^Cast ([A-Z][^,.(]+)/);
+  let label = '';
+  if (learnMatch) label = learnMatch[1];
+  else if (castMatch) label = castMatch[1];
+  else label = benefit.split(/[.,]/)[0].slice(0, 50);
+  return { label: label.trim(), rest: isShort ? 'short' : 'long', max: 1 };
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -137,19 +153,38 @@ export default function FeatsPanel({ character, onUpdate }: FeatsPanelProps) {
                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5, marginBottom: 10, fontStyle: 'italic' }}>
                   {data.description}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {data.benefits.map((benefit, i) => {
+                    const useInfo = detectBenefitUse(benefit);
                     const ba = ACTIVE_KW.some(kw => benefit.toLowerCase().includes(kw));
+                    const featKey = `feat_${name}_${i}`;
                     return (
-                      <div key={i} style={{
-                        padding: '8px 12px',
-                        background: ba ? 'rgba(251,191,36,0.06)' : 'var(--c-raised)',
-                        border: `1px solid ${ba ? 'rgba(251,191,36,0.2)' : 'var(--c-border)'}`,
-                        borderRadius: 'var(--r-md)',
-                        fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6,
-                      }}>
-                        {ba && <span style={{ color: '#fbbf24', fontWeight: 700, marginRight: 5 }}>⚡</span>}
-                        {benefit}
+                      <div key={i}>
+                        <div style={{
+                          padding: '7px 12px',
+                          background: ba ? 'rgba(251,191,36,0.04)' : 'var(--c-raised)',
+                          border: `1px solid ${ba ? 'rgba(251,191,36,0.15)' : 'var(--c-border)'}`,
+                          borderRadius: useInfo ? 'var(--r-sm) var(--r-sm) 0 0' : 'var(--r-md)',
+                          fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6,
+                          borderBottom: useInfo ? 'none' : undefined,
+                        }}>
+                          {ba && !useInfo && <span style={{ color: '#fbbf24', fontWeight: 700, marginRight: 5 }}>⚡</span>}
+                          {benefit}
+                        </div>
+                        {useInfo && (
+                          <div style={{ borderRadius: '0 0 var(--r-sm) var(--r-sm)', overflow: 'hidden', border: `1px solid rgba(167,139,250,0.2)`, borderTop: 'none' }}>
+                            <SubFeatureRow
+                              label={useInfo.label}
+                              subLabel="Special"
+                              featureKey={featKey}
+                              rest={useInfo.rest}
+                              max={useInfo.max}
+                              character={character}
+                              onUpdate={onUpdate}
+                              accentColor={catColor}
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
