@@ -78,6 +78,7 @@ export default function SpellsTab({
   const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
   const [filterPrepared, setFilterPrepared] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterSchool, setFilterSchool] = useState<string | null>(null);
 
   const isPreparer = PREPARER_CLASSES.includes(character.class_name);
   const prepareMax = isPreparer
@@ -150,6 +151,7 @@ export default function SpellsTab({
     return knownSpellData.filter(s => {
       if (activeLevel !== 'all' && s.level !== activeLevel) return false;
       if (filterPrepared && isPreparer && s.level > 0 && !character.prepared_spells.includes(s.id)) return false;
+      if (filterSchool && s.school !== filterSchool) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
@@ -162,7 +164,7 @@ export default function SpellsTab({
       }
       return true;
     });
-  }, [knownSpellData, activeLevel, filterPrepared, searchQuery, character.prepared_spells, isPreparer]);
+  }, [knownSpellData, activeLevel, filterPrepared, searchQuery, filterSchool, character.prepared_spells, isPreparer]);
 
   // Group visible spells by level
   const byLevel = useMemo(() => {
@@ -277,6 +279,29 @@ export default function SpellsTab({
           );
         })}
       </div>
+
+      {/* ── School filter chips ── */}
+      {(() => {
+        const presentSchools = [...new Set(knownSpellData.map(s => s.school))].sort();
+        if (presentSchools.length <= 1) return null;
+        return (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
+            {presentSchools.map(school => {
+              const sc = SCHOOL_COLORS[school] ?? '#94a3b8';
+              const active = filterSchool === school;
+              return (
+                <button key={school} onClick={() => setFilterSchool(active ? null : school)}
+                  style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 999, cursor: 'pointer',
+                    border: `1px solid ${active ? sc : sc + '40'}`,
+                    background: active ? sc + '25' : 'transparent',
+                    color: active ? sc : sc + 'aa', transition: 'all 0.15s' }}>
+                  {school}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Spellbook ── */}
       {knownSpellData.length === 0 ? (

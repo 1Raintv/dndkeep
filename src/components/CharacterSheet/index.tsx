@@ -14,6 +14,7 @@ import { acBreakdown } from '../../data/equipment';
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
 import HPStatsPanel from './HPStatsPanel';
+import DeathSaves from './DeathSaves';
 import CampaignBar from './CampaignBar';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
@@ -53,7 +54,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'features',   label: 'Features' },
   { id: 'spells',     label: 'Spells' },
   { id: 'inventory',  label: 'Inventory' },
-  { id: 'bio',        label: 'Bio' },
+  { id: 'bio',        label: 'Notes' },
   { id: 'history',    label: 'History' },
 ];
 
@@ -244,6 +245,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     setIsMyTurn(current.character_id === character.id || current.name === character.name);
   }
   const [concentrationSpellId, setConcentrationSpellId] = useState<string | null>(null);
+  const [concentrationSaveDC, setConcentrationSaveDC] = useState<number | null>(null);
 
   // Keyboard shortcuts: R = rest, I = inspiration
   useKeyboardShortcuts({
@@ -294,6 +296,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // Handlers
   // ------------------------------------------------------------------
   function handleUpdateHP(current_hp: number, temp_hp: number) {
+    // Concentration save check — if taking damage while concentrating
+    const damageTaken = current_hp < character.current_hp;
+    if (damageTaken && concentrationSpellId) {
+      const damage = character.current_hp - current_hp;
+      const dc = Math.max(10, Math.floor(damage / 2));
+      setConcentrationSaveDC(dc);
+    }
     applyUpdate({ current_hp, temp_hp }, true);
   }
   function handleUpdateSlots(spell_slots: SpellSlots) {
@@ -393,7 +402,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       death_saves_failures: 0,
       hit_dice_spent: newSpent,
       class_resources: newResources,
-      feature_uses: {},
+      feature_uses: {}, // All per-rest feature uses reset on long rest
     }, true);
     setConcentrationSpellId(null);
     setShortRestHpGained(0);
@@ -469,6 +478,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         onUpdateSpeed={speed => applyUpdate({ speed }, true)}
       />
 
+      {/* Death Saves — shown when HP = 0 */}
+      {character.current_hp <= 0 && !character.wildshape_active && (
+        <DeathSaves
+          character={character}
+          onUpdate={u => applyUpdate(u, true)}
+        />
+      )}
+
       {/* Active conditions — shown near HP/name */}
       {character.active_conditions.length > 0 && (
         <div style={{
@@ -506,6 +523,56 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       )}
 
       {/* Concentration banner */}
+      {/* Concentration Save Prompt — shown when taking damage while concentrating */}
+      {concentrationSaveDC !== null && concentrationSpellId && (() => {
+        const conScore = character.constitution ?? 10;
+        const conMod = Math.floor((conScore - 10) / 2);
+        const pb = Math.ceil(character.level / 4) + 1;
+        const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
+        const saveBonus = conMod + (hasSaveProf ? pb : 0);
+        const spellName = SPELL_MAP[concentrationSpellId]?.name ?? 'Concentration';
+        return (
+          <div style={{
+            padding: '12px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.4)',
+            animation: 'pulse-gold 1s ease-out 1',
+          }}>
+            <span style={{ fontSize: 18 }}>🎯</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 2 }}>
+                Concentration Check Required
+              </div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
+                {spellName} — CON save DC {concentrationSaveDC} (you need a {concentrationSaveDC} or higher)
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const d20 = Math.floor(Math.random() * 20) + 1;
+                const total = d20 + saveBonus;
+                const passed = total >= concentrationSaveDC!;
+                if (!passed) setConcentrationSpellId(null);
+                setConcentrationSaveDC(null);
+                import('../shared/ActionLog').then(({ logAction }) => {
+                  logAction({ campaignId: character.campaign_id, characterId: userId ?? '', characterName: character.name,
+                    actionType: 'save', actionName: 'Concentration Check',
+                    diceExpression: '1d20', individualResults: [d20], total,
+                    notes: `DC ${concentrationSaveDC} · ${passed ? '✓ Maintained' : '✗ Concentration broken'}` });
+                });
+              }}
+              style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.5)', color: '#a78bfa' }}
+            >
+              🎲 Roll CON Save (+{saveBonus >= 0 ? saveBonus : saveBonus})
+            </button>
+            <button onClick={() => setConcentrationSaveDC(null)}
+              style={{ fontFamily: 'var(--ff-body)', fontSize: 11, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: 'transparent', border: '1px solid var(--c-border)', color: 'var(--t-3)' }}>
+              Dismiss
+            </button>
+          </div>
+        );
+      })()}
+
       {concentrationSpellId && (() => {
         const spell = SPELL_MAP[concentrationSpellId];
         return spell ? (
@@ -912,6 +979,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
             <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
             <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
+            {character.active_conditions.length > 0 && (
+              <ConditionMechanics conditions={character.active_conditions} />
+            )}
           </div>
         )}
 
@@ -1161,7 +1231,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#fbbf24', marginBottom: 6 }}>
                           ⚡ Feat Abilities
                         </div>
-                        <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} readOnly={true} />
+                        <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
                       </div>
                     );
                   }
@@ -1304,6 +1374,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             </div>
           );
         })()}
+        {/* ── COMPACT ROLL LOG — pinned at bottom of Actions tab ── */}
+        {activeTab === 'actions' && character.campaign_id && (
+          <div style={{ marginTop: 8, padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 8 }}>Recent Rolls</div>
+            <ActionLog campaignId={character.campaign_id} characterId={character.id} mode="character" maxHeight={120} compact />
+          </div>
+        )}
+
         {/* ── INVENTORY ── */}
         {activeTab === 'inventory' && (
           <div style={{ maxWidth: 900 }}>

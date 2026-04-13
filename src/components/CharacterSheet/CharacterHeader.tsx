@@ -61,11 +61,20 @@ export default function CharacterHeader({
           <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--t-1)', letterSpacing: '0.01em' }}>
             {character.name}
           </span>
-          {character.inspiration && (
-            <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 6px', borderRadius: 999, letterSpacing: '0.08em' }}>
-              INSPIRED
-            </span>
-          )}
+          <button
+            onClick={onToggleInspiration}
+            title={character.inspiration ? 'Click to use Inspiration' : 'Click to gain Inspiration'}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, padding: '2px 8px',
+              borderRadius: 999, cursor: 'pointer', letterSpacing: '0.08em',
+              border: `1px solid ${character.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+              background: character.inspiration ? 'var(--c-gold-bg)' : 'transparent',
+              color: character.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)',
+              transition: 'all 0.2s',
+            }}
+          >
+            ✦ {character.inspiration ? 'INSPIRED' : 'Inspiration'}
+          </button>
         </div>
         <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 1 }}>
           {classDisplay}{character.subclass ? ` — ${character.subclass}` : ''} · {character.species}{character.background ? ` · ${character.background}` : ''}

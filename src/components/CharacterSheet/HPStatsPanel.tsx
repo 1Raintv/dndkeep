@@ -100,17 +100,21 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
         {/* Single input + 3 action buttons */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={value}
-            onChange={e => setValue(e.target.value)}
+            onChange={e => {
+              const raw = e.target.value.replace(/[^0-9]/g, '');
+              setValue(raw);
+            }}
             onKeyDown={handleKey}
-            placeholder="Amount"
-            min={0}
+            placeholder=""
             style={{
               flex: 1, fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 600,
               textAlign: 'center', padding: '6px 8px', borderRadius: 8,
               border: '1px solid var(--c-border-m)', background: 'var(--c-raised)',
               color: 'var(--t-1)', minWidth: 0,
+              MozAppearance: 'textfield',
             }}
           />
           <button

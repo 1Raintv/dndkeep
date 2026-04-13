@@ -6,7 +6,6 @@ import { SubFeatureRow } from './FeaturesAndTraitsPanel';
 interface FeatsPanelProps {
   character: Character;
   onUpdate: (updates: Partial<Character>) => void;
-  readOnly?: boolean;
 }
 
 const ACTIVE_KW = [
@@ -47,9 +46,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   'epic-boon': 'Epic Boon',
 };
 
-export default function FeatsPanel({ character, onUpdate, readOnly = false }: FeatsPanelProps) {
+export default function FeatsPanel({ character, onUpdate }: FeatsPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState('');
 
   const featNames: string[] = character.gained_feats ?? [];
@@ -206,84 +204,7 @@ export default function FeatsPanel({ character, onUpdate, readOnly = false }: Fe
         );
       })}
 
-      {/* Add Feat UI — hidden in read-only contexts */}
-      {!readOnly && (adding ? (
-        <div style={{
-          borderRadius: 'var(--r-lg)', border: '1px solid var(--c-gold-bdr)',
-          background: 'var(--c-gold-bg)', padding: 'var(--sp-3)',
-        }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <input
-              type="text"
-              placeholder="Search feats by name or benefit..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              autoFocus
-              style={{
-                flex: 1, padding: '6px 10px', borderRadius: 'var(--r-md)',
-                border: '1px solid var(--c-gold-bdr)', background: 'var(--c-card)',
-                color: 'var(--t-1)', fontFamily: 'var(--ff-body)', fontSize: 13, outline: 'none',
-              }}
-            />
-            <button onClick={() => { setAdding(false); setSearch(''); }} className="btn-ghost btn-sm">
-              Cancel
-            </button>
-          </div>
-          <div style={{ maxHeight: 340, overflowY: 'auto' as const, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {available.length === 0 && (
-              <div style={{ color: 'var(--t-3)', fontSize: 12, fontFamily: 'var(--ff-body)', textAlign: 'center', padding: 8 }}>
-                No matching feats
-              </div>
-            )}
-            {available.map(feat => {
-              const catColor = CATEGORY_COLORS[feat.category] ?? '#a78bfa';
-              const catLabel = CATEGORY_LABELS[feat.category] ?? feat.category;
-              const active = isActiveFeat(feat.benefits);
-              return (
-                <button
-                  key={feat.name}
-                  onClick={() => addFeat(feat.name)}
-                  style={{
-                    textAlign: 'left', padding: '8px 12px', cursor: 'pointer',
-                    borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)',
-                    background: 'var(--c-card)', transition: 'all var(--tr-fast)',
-                    display: 'flex', flexDirection: 'column', gap: 3,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
-                      {feat.name}
-                    </span>
-                    {active && (
-                      <span style={{ fontSize: 9, color: '#fbbf24', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '1px 5px', fontWeight: 700 }}>
-                        ⚡ ACTIVE
-                      </span>
-                    )}
-                    <span style={{ marginLeft: 'auto', fontSize: 9, color: catColor, background: catColor + '15', border: `1px solid ${catColor}40`, borderRadius: 999, padding: '1px 5px', fontWeight: 700 }}>
-                      {catLabel.toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
-                    {feat.description}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          style={{
-            padding: '8px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
-            border: '1px dashed var(--c-gold-bdr)', background: 'transparent',
-            color: 'var(--c-gold-l)', fontFamily: 'var(--ff-body)', fontWeight: 600,
-            fontSize: 12, letterSpacing: '0.04em', transition: 'all var(--tr-fast)',
-          }}
-        >
-          + Add Feat
-        </button>
-      ))}
+
     </div>
   );
 }

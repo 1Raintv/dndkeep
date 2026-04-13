@@ -227,6 +227,8 @@ const poolBtnStyle: React.CSSProperties = {
 
 export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
+  const [featAddOpen, setFeatAddOpen] = useState(false);
+  const [featSearch, setFeatSearch] = useState('');
 
   const choices = useMemo(
     () => parseChoices(character.features_and_traits ?? ''),
@@ -543,18 +545,67 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
       )}
 
       {/* FEATS */}
-      {(filter === 'all' || filter === 'feats') && (
-        <div style={{ marginTop: filter === 'all' ? 16 : 0 }}>
-          <div style={{
-            fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
-            letterSpacing: '0.12em', textTransform: 'uppercase' as const,
-            color: 'var(--c-gold-l)', marginBottom: 12,
-          }}>
-            🏅 Feats
+      {(filter === 'all' || filter === 'feats') && (() => {
+        const [addingFeat, setAddingFeat] = [featAddOpen, setFeatAddOpen];
+        return (
+          <div style={{ marginTop: filter === 'all' ? 16 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{
+                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+                letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                color: 'var(--c-gold-l)',
+              }}>
+                🏅 Feats
+              </div>
+              <button
+                onClick={() => setFeatAddOpen(v => !v)}
+                style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, padding: '3px 10px',
+                  borderRadius: 999, cursor: 'pointer', border: '1px solid var(--c-gold-bdr)',
+                  background: featAddOpen ? 'var(--c-gold-bg)' : 'transparent', color: 'var(--c-gold-l)' }}
+              >
+                {featAddOpen ? '✕ Cancel' : '+ Add Feat'}
+              </button>
+            </div>
+
+            {featAddOpen && (
+              <div style={{ marginBottom: 12, borderRadius: 'var(--r-lg)', border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', padding: 'var(--sp-3)' }}>
+                <input
+                  value={featSearch}
+                  onChange={e => setFeatSearch(e.target.value)}
+                  placeholder="Search feats by name..."
+                  autoFocus
+                  style={{ width: '100%', marginBottom: 8, fontSize: 13 }}
+                />
+                <div style={{ maxHeight: 200, overflowY: 'auto' as const, display: 'flex', flexDirection: 'column' as const, gap: 3 }}>
+                  {FEATS.filter(f =>
+                    !character.gained_feats?.includes(f.name) &&
+                    (featSearch.trim() === '' || f.name.toLowerCase().includes(featSearch.toLowerCase()))
+                  ).slice(0, 20).map(feat => {
+                    const catColor = ({ combat: '#f87171', skill: '#34d399', magic: '#a78bfa', origin: '#fbbf24', fighting_style: '#60a5fa', epic_boon: '#e879f9' } as Record<string,string>)[feat.category] ?? '#94a3b8';
+                    return (
+                      <button key={feat.name}
+                        onClick={() => {
+                          onUpdate({ gained_feats: [...(character.gained_feats ?? []), feat.name] });
+                          setFeatAddOpen(false); setFeatSearch('');
+                        }}
+                        style={{ textAlign: 'left', padding: '7px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                          border: '1px solid var(--c-border)', background: 'var(--c-raised)',
+                          fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-1)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: catColor, background: catColor + '15', border: `1px solid ${catColor}40`, borderRadius: 999, padding: '1px 6px' }}>
+                          {feat.category}
+                        </span>
+                        {feat.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <FeatsPanel character={character} onUpdate={onUpdate} />
           </div>
-          <FeatsPanel character={character} onUpdate={onUpdate} />
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
