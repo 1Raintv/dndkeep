@@ -100,7 +100,7 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
         {/* Single input + 3 action buttons */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
-            type="text"
+            type="text" // text prevents browser spinner arrows
             inputMode="numeric"
             value={value}
             onChange={e => {

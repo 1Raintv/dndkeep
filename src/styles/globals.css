@@ -1103,3 +1103,8 @@ button:not(:disabled):active {
   filter: drop-shadow(0 8px 24px rgba(200,146,42,0.4));
   user-select: none;
 }
+
+/* Remove number input spinners */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
