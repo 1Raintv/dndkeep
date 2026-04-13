@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
-import { parseSpellMechanics, rollDice } from '../../lib/spellParser';
+import { parseSpellMechanics } from '../../lib/spellParser';
+import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface SpellCastButtonProps {
   spell: SpellData;
@@ -25,16 +26,30 @@ const DAMAGE_COLORS: Record<string, string> = {
   Force: '#c084fc',
 };
 
-export default function SpellCastButton({ spell, character, userId, campaignId, onUpdateSlots, compact = false }: SpellCastButtonProps) {
+/** Parse "2d6" -> { count:2, sides:6 } */
+function parseDice(expr: string): { count: number; sides: number } | null {
+  const m = expr.match(/^(\d+)d(\d+)$/);
+  if (!m) return null;
+  return { count: parseInt(m[1]), sides: parseInt(m[2]) };
+}
+
+/** Roll N dice of S sides, return individual values */
+function rollNdS(count: number, sides: number): number[] {
+  return Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
+}
+
+export default function SpellCastButton({
+  spell, character, userId, campaignId, onUpdateSlots, compact = false,
+}: SpellCastButtonProps) {
   const [showModal, setShowModal] = useState(false);
-  const [target, setTarget] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<number>(spell.level);
-  const [casting, setCasting] = useState(false);
-  const [lastRoll, setLastRoll] = useState<{ total: number; rolls: number[]; type: string } | null>(null);
+  const [target, setTarget] = useState('');
+  const { triggerRoll } = useDiceRoll();
 
   const isCantrip = spell.level === 0;
   const mechanics = parseSpellMechanics(spell.description);
 
+  // Available slots at spell.level or higher
   const availableSlots: { level: number; remaining: number }[] = [];
   if (!isCantrip) {
     for (let lvl = spell.level; lvl <= 9; lvl++) {
@@ -47,202 +62,303 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
   }
   const canCast = isCantrip || availableSlots.length > 0;
 
+  // Spell modifier
   const spellAbilityMap: Record<string, keyof Character> = {
     Wizard: 'intelligence', Artificer: 'intelligence', Psion: 'intelligence',
-    Cleric: 'wisdom', Druid: 'wisdom', Ranger: 'wisdom', Paladin: 'charisma',
-    Bard: 'charisma', Sorcerer: 'charisma', Warlock: 'charisma',
+    Cleric: 'wisdom', Druid: 'wisdom', Ranger: 'wisdom',
+    Paladin: 'charisma', Bard: 'charisma', Sorcerer: 'charisma', Warlock: 'charisma',
   };
-  const spellAbilityKey = spellAbilityMap[character.class_name] ?? 'intelligence';
-  const spellAbilityScore = (character[spellAbilityKey] as number) ?? 10;
-  const spellMod = Math.floor((spellAbilityScore - 10) / 2);
+  const key = spellAbilityMap[character.class_name] ?? 'intelligence';
+  const score = (character[key] as number) ?? 10;
+  const spellMod = Math.floor((score - 10) / 2);
   const profBonus = Math.ceil(character.level / 4) + 1;
   const spellAttack = spellMod + profBonus;
   const saveDC = 8 + spellAttack;
 
-  async function performCast(slotLevel: number, targetName?: string) {
-    if (!canCast) return;
-    setCasting(true);
-
-    if (!isCantrip) {
-      const slotKey = String(slotLevel);
-      const currentSlot = character.spell_slots[slotKey];
-      if (currentSlot) {
-        onUpdateSlots({
-          ...character.spell_slots,
-          [slotKey]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 },
-        });
-      }
-    }
-
-    let rollResult = null;
-    if (mechanics.damageDice) {
-      rollResult = rollDice(mechanics.damageDice);
-      setLastRoll({ ...rollResult, type: mechanics.damageType ?? 'damage' });
-    } else if (mechanics.healDice) {
-      rollResult = rollDice(mechanics.healDice);
-      setLastRoll({ ...rollResult, type: 'healing' });
-    }
-
-    const slotNote = isCantrip ? 'cantrip' : slotLevel === spell.level
-      ? `Level ${slotLevel} slot` : `Upcast — Level ${slotLevel} slot`;
-
-    await logAction({
-      campaignId,
-      characterId: userId,
-      characterName: character.name,
-      actionType: 'spell',
-      actionName: spell.name,
-      targetName: targetName || undefined,
-      diceExpression: mechanics.damageDice ?? mechanics.healDice ?? undefined,
-      individualResults: rollResult?.rolls,
-      total: rollResult?.total ?? 0,
-      notes: `${slotNote}${mechanics.saveType ? ` · ${mechanics.saveType} Save DC ${saveDC}` : ''}${mechanics.damageDice ? ` · ${mechanics.damageType ?? ''} dmg` : ''}`,
-    });
-
-    setCasting(false);
+  /** Deduct one slot of the given level */
+  function spendSlot(slotLevel: number) {
+    const slotKey = String(slotLevel);
+    const s = character.spell_slots[slotKey];
+    if (s) onUpdateSlots({ ...character.spell_slots, [slotKey]: { ...s, used: (s.used ?? 0) + 1 } });
   }
 
+  /** Roll damage dice → 3D roller + action log */
+  async function rollDamage(slotLevel?: number) {
+    if (!mechanics.damageDice) return;
+    const parsed = parseDice(mechanics.damageDice);
+    if (!parsed) return;
+    const { count, sides } = parsed;
+    const rolls = rollNdS(count, sides);
+    const total = rolls.reduce((a, b) => a + b, 0);
+
+    // Spend slot if leveled spell
+    if (!isCantrip && slotLevel !== undefined) {
+      spendSlot(slotLevel);
+    } else if (!isCantrip && availableSlots.length === 1) {
+      spendSlot(availableSlots[0].level);
+    }
+
+    // Fire 3D roller
+    if (count === 1) {
+      triggerRoll({
+        result: rolls[0], dieType: sides, modifier: 0, total,
+        label: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
+      });
+    } else {
+      triggerRoll({
+        allDice: rolls.map(v => ({ die: sides, value: v })),
+        expression: mechanics.damageDice,
+        flatBonus: 0, total,
+        label: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
+      });
+    }
+
+    await logAction({
+      campaignId, characterId: userId, characterName: character.name,
+      actionType: 'damage',
+      actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
+      diceExpression: mechanics.damageDice,
+      individualResults: rolls, total,
+      notes: isCantrip ? 'cantrip' : `Level ${slotLevel ?? availableSlots[0]?.level ?? spell.level} slot`,
+    });
+  }
+
+  /** Roll heal dice → 3D roller + action log */
+  async function rollHeal() {
+    if (!mechanics.healDice) return;
+    const parsed = parseDice(mechanics.healDice);
+    if (!parsed) return;
+    const { count, sides } = parsed;
+    const rolls = rollNdS(count, sides);
+    const total = rolls.reduce((a, b) => a + b, 0);
+    if (!isCantrip && availableSlots.length === 1) spendSlot(availableSlots[0].level);
+    triggerRoll({
+      allDice: count > 1 ? rolls.map(v => ({ die: sides, value: v })) : undefined,
+      result: count === 1 ? rolls[0] : undefined,
+      dieType: count === 1 ? sides : undefined,
+      expression: mechanics.healDice, flatBonus: 0, total,
+      label: `${spell.name} — healing`,
+    } as any);
+    await logAction({ campaignId, characterId: userId, characterName: character.name,
+      actionType: 'heal', actionName: spell.name,
+      diceExpression: mechanics.healDice, individualResults: rolls, total });
+  }
+
+  /** Roll spell attack (d20 + spellAttack) */
+  async function rollAttack() {
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const total = d20 + spellAttack;
+    const hitResult = d20 === 20 ? 'crit' : d20 === 1 ? 'fumble' : total >= 10 ? 'hit' : 'miss';
+    triggerRoll({
+      result: d20, dieType: 20, modifier: spellAttack, total,
+      label: `${spell.name} — Spell Attack`,
+    });
+    await logAction({ campaignId, characterId: userId, characterName: character.name,
+      actionType: 'attack', actionName: `${spell.name} — Spell Attack`,
+      diceExpression: '1d20', individualResults: [d20], total,
+      hitResult: hitResult as any,
+      notes: `+${spellAttack} spell attack (${key.slice(0,3).toUpperCase()} ${spellMod >= 0 ? '+' : ''}${spellMod} + Prof +${profBonus})` });
+  }
+
+  /** Cast utility spell (no dice) */
+  async function castUtility(slotLevel: number, targetName?: string) {
+    if (!isCantrip && slotLevel > 0) spendSlot(slotLevel);
+    await logAction({ campaignId, characterId: userId, characterName: character.name,
+      actionType: 'spell', actionName: spell.name, targetName,
+      notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
+  }
+
+  /** Log save DC to party */
+  async function logSaveDC() {
+    const saveColor = SAVE_COLORS[mechanics.saveType ?? ''];
+    await logAction({ campaignId, characterId: userId, characterName: character.name,
+      actionType: 'save', actionName: `${spell.name} — ${mechanics.saveType} Save`,
+      total: saveDC,
+      notes: `Targets must beat DC ${saveDC} ${mechanics.saveType} save${mechanics.damageDice ? ` or take ${mechanics.damageDice} ${mechanics.damageType} damage` : ''}` });
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // No slots available for leveled spell
   if (!canCast && !isCantrip) {
     return (
-      <button disabled style={{
-        fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9,
-        padding: '2px 8px', borderRadius: 4, border: '1px solid var(--c-border)',
-        background: 'transparent', color: 'var(--t-2)', cursor: 'not-allowed', opacity: 0.4,
-      }}>No Slots</button>
+      <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', opacity: 0.5,
+        border: '1px solid var(--c-border)', borderRadius: 4, padding: '2px 6px' }}>
+        No Slots
+      </span>
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // COMPACT MODE (Actions tab)
   if (compact) {
     const dmgColor = DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8';
     const saveColor = SAVE_COLORS[mechanics.saveType ?? ''] ?? '#94a3b8';
+    const btnBase: React.CSSProperties = {
+      fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
+      cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
+      fontFamily: 'var(--ff-body)',
+    };
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 999, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--c-border)', color: 'var(--t-3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        {/* Range chip — always shown */}
+        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 999,
+          background: 'rgba(255,255,255,0.05)', border: '1px solid var(--c-border)', color: 'var(--t-3)' }}>
           📍 {spell.range}
         </span>
-        {mechanics.saveType && (
-          <button
-            onClick={async e => {
-              e.stopPropagation();
-              await logAction({
-                campaignId, characterId: userId, characterName: character.name,
-                actionType: 'save', actionName: `${spell.name} — ${mechanics.saveType} Save`,
-                notes: `DC ${saveDC} — targets must make a ${mechanics.saveType} saving throw`,
-                total: saveDC,
-              });
-            }}
-            style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, cursor: 'pointer',
-              background: saveColor + '18', border: `1px solid ${saveColor}50`, color: saveColor }}
-            title="Click to log save request to party"
-          >
-            🎲 {mechanics.saveType} DC {saveDC}
-          </button>
-        )}
-        {mechanics.isAttack && (
-          <button
-            onClick={async e => {
-              e.stopPropagation();
-              const roll = Math.floor(Math.random() * 20) + 1;
-              const total = roll + spellAttack;
-              const hitResult = roll === 20 ? 'crit' : roll === 1 ? 'fumble' : total >= 10 ? 'hit' : 'miss';
-              await logAction({
-                campaignId, characterId: userId, characterName: character.name,
-                actionType: 'attack', actionName: `${spell.name} — Spell Attack`,
-                diceExpression: '1d20', individualResults: [roll], total,
-                hitResult: hitResult as any,
-                notes: `+${spellAttack} spell attack`,
-              });
-            }}
-            style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, cursor: 'pointer',
-              background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }}
-            title="Click to roll spell attack"
-          >
-            🎲 +{spellAttack}
-          </button>
-        )}
-        {mechanics.damageDice && (
-          <button onClick={async e => {
-            e.stopPropagation();
-            // Clicking damage dice = cast the spell (deduct slot + roll + log)
-            if (!isCantrip && availableSlots.length > 1) {
-              // Multiple slot levels available — open picker
-              setShowModal(true);
-            } else {
-              // Auto-cast: use lowest available slot
-              const slotLevel = isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level);
-              const r = rollDice(mechanics.damageDice!);
-              setLastRoll({ ...r, type: mechanics.damageType ?? 'damage' });
-              if (!isCantrip && availableSlots.length > 0) {
-                const slotKey = String(slotLevel);
-                const currentSlot = character.spell_slots[slotKey];
-                if (currentSlot) {
-                  onUpdateSlots({ ...character.spell_slots, [slotKey]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 } });
-                }
-              }
-              await logAction({ campaignId, characterId: userId, characterName: character.name, actionType: 'damage', actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`, diceExpression: mechanics.damageDice!, individualResults: r.rolls, total: r.total, notes: isCantrip ? 'cantrip' : `Level ${slotLevel} slot` });
-            }
-          }} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999, cursor: 'pointer', background: dmgColor + '18', border: `1px solid ${dmgColor}50`, color: dmgColor }}>
-            🎲 {mechanics.damageDice} {mechanics.damageType}
-          </button>
-        )}
-        {mechanics.healDice && (
-          <button onClick={async e => {
-            e.stopPropagation();
-            const slotLevel = isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level);
-            const r = rollDice(mechanics.healDice!);
-            setLastRoll({ ...r, type: 'healing' });
-            if (!isCantrip && availableSlots.length > 0) {
-              const currentSlot = character.spell_slots[String(slotLevel)];
-              if (currentSlot) {
-                onUpdateSlots({ ...character.spell_slots, [String(slotLevel)]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 } });
-              }
-            }
-            await logAction({ campaignId, characterId: userId, characterName: character.name, actionType: 'heal', actionName: spell.name, diceExpression: mechanics.healDice!, individualResults: r.rolls, total: r.total });
-          }} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999, cursor: 'pointer', background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.4)', color: '#34d399' }}>
-            💚 {mechanics.healDice}
-          </button>
-        )}
 
-        {/* Only show Cast/Slot button for utility spells (no damage/heal dice) or multi-slot picker */}
-        {(mechanics.isUtility || (!mechanics.damageDice && !mechanics.healDice)) && (
-          <button onClick={() => isCantrip ? performCast(0) : setShowModal(true)}
-            style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.12)', color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>
+        {/* ── CATEGORY 1: UTILITY — cast button only ── */}
+        {mechanics.isUtility && (
+          <button
+            onClick={() => isCantrip || availableSlots.length <= 1
+              ? castUtility(isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level))
+              : setShowModal(true)}
+            style={{ ...btnBase, background: 'rgba(167,139,250,0.15)',
+              border: '1px solid rgba(167,139,250,0.4)', color: '#a78bfa' }}
+          >
             ✨ Cast
           </button>
         )}
 
+        {/* ── CATEGORY 2: ATTACK SPELL — two independent buttons ── */}
+        {mechanics.isAttack && (
+          <>
+            <button
+              onClick={rollAttack}
+              style={{ ...btnBase, background: 'rgba(251,191,36,0.12)',
+                border: '1px solid rgba(251,191,36,0.4)', color: '#fbbf24' }}
+              title={`Roll d20 + ${spellAttack} spell attack`}
+            >
+              🎲 Attack +{spellAttack}
+            </button>
+            {mechanics.damageDice && (
+              <button
+                onClick={() => rollDamage()}
+                style={{ ...btnBase, background: dmgColor + '18',
+                  border: `1px solid ${dmgColor}50`, color: dmgColor }}
+                title="Roll damage (independent of attack roll)"
+              >
+                🎲 {mechanics.damageDice} {mechanics.damageType}
+              </button>
+            )}
+          </>
+        )}
+
+        {/* ── CATEGORY 3: SAVE SPELL — DC button + damage button ── */}
+        {mechanics.saveType && !mechanics.isAttack && (
+          <>
+            <button
+              onClick={logSaveDC}
+              style={{ ...btnBase, background: saveColor + '18',
+                border: `1px solid ${saveColor}50`, color: saveColor }}
+              title="Click to relay save DC to the party/DM"
+            >
+              🛡 {mechanics.saveType} DC {saveDC}
+            </button>
+            {mechanics.damageDice && (
+              <button
+                onClick={() => rollDamage()}
+                style={{ ...btnBase, background: dmgColor + '18',
+                  border: `1px solid ${dmgColor}50`, color: dmgColor }}
+                title="Roll damage independently"
+              >
+                🎲 {mechanics.damageDice} {mechanics.damageType}
+              </button>
+            )}
+            {/* Also need slot usage — little button for non-cantrips */}
+            {!isCantrip && availableSlots.length > 0 && (
+              <button
+                onClick={() => availableSlots.length > 1 ? setShowModal(true) : spendSlot(availableSlots[0].level)}
+                style={{ ...btnBase, background: 'rgba(167,139,250,0.08)',
+                  border: '1px solid rgba(167,139,250,0.3)', color: '#a78bfa' }}
+                title="Use a spell slot without rolling"
+              >
+                Use Slot
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Heal dice */}
+        {mechanics.healDice && (
+          <button onClick={rollHeal}
+            style={{ ...btnBase, background: 'rgba(52,211,153,0.12)',
+              border: '1px solid rgba(52,211,153,0.4)', color: '#34d399' }}>
+            💚 {mechanics.healDice}
+          </button>
+        )}
+
+        {/* Slot picker modal */}
         {showModal && (
           <div className="modal-overlay" onClick={() => setShowModal(false)}>
-            <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ marginBottom: 4 }}>{spell.name}</h3>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>📍 {spell.range}</span>
-                {mechanics.saveType && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: saveColor + '15', border: `1px solid ${saveColor}40`, color: saveColor }}>{mechanics.saveType} Save — DC {saveDC}</span>}
-                {mechanics.damageDice && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: dmgColor + '15', border: `1px solid ${dmgColor}40`, color: dmgColor }}>{mechanics.damageDice} {mechanics.damageType}</span>}
+            <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ marginBottom: 8 }}>{spell.name}</h3>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
+                  border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
+                  📍 {spell.range}
+                </span>
+                {mechanics.saveType && (
+                  <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+                    background: (SAVE_COLORS[mechanics.saveType] ?? '#94a3b8') + '15',
+                    border: `1px solid ${SAVE_COLORS[mechanics.saveType] ?? '#94a3b8'}40`,
+                    color: SAVE_COLORS[mechanics.saveType] ?? '#94a3b8' }}>
+                    {mechanics.saveType} Save DC {saveDC}
+                  </span>
+                )}
+                {mechanics.damageDice && (
+                  <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+                    background: (DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8') + '15',
+                    border: `1px solid ${DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8'}40`,
+                    color: DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8' }}>
+                    {mechanics.damageDice} {mechanics.damageType}
+                  </span>
+                )}
               </div>
-              {availableSlots.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 5 }}>Spell Slot</div>
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                    {availableSlots.map(({ level, remaining }) => (
-                      <button key={level} onClick={() => setSelectedSlot(level)} style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, padding: '5px 10px', borderRadius: 'var(--r-md)', border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)', background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14', color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)', cursor: 'pointer' }}>
-                        Level {level} <span style={{ display: 'block', fontSize: 9, fontWeight: 400 }}>{remaining} left</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>
+                Choose Spell Slot
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                {availableSlots.map(({ level, remaining }) => (
+                  <button key={level} onClick={() => { setSelectedSlot(level); }}
+                    style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                      padding: '5px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                      border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
+                      background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
+                      color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)' }}>
+                    Level {level}
+                    <span style={{ display: 'block', fontSize: 9, fontWeight: 400 }}>{remaining} left</span>
+                  </button>
+                ))}
+              </div>
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 4 }}>Target (optional)</div>
-                <input value={target} onChange={e => setTarget(e.target.value)} onKeyDown={e => e.key === 'Enter' && (performCast(selectedSlot, target), setShowModal(false), setTarget(''))} placeholder='e.g. "Goblin King"' autoFocus style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                  textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 4 }}>
+                  Target (optional)
+                </div>
+                <input value={target} onChange={e => setTarget(e.target.value)}
+                  placeholder='e.g. "Goblin King"' autoFocus
+                  style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
               </div>
-              <div style={{ padding: 8, background: '#080d14', borderRadius: 'var(--r-md)', marginBottom: 12, fontSize: 10, color: 'var(--t-2)', lineHeight: 1.4, maxHeight: 60, overflowY: 'auto' }}>{spell.description}</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
-                <button onClick={async () => { await performCast(selectedSlot, target); setShowModal(false); setTarget(''); }} disabled={casting} style={{ flex: 2, justifyContent: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)', color: '#a78bfa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {casting ? 'Casting…' : `✨ Cast${selectedSlot > spell.level ? ` (Lvl ${selectedSlot})` : ''}`}
-                  {mechanics.damageDice && !casting && <span style={{ fontSize: 10, opacity: 0.7 }}>→ {mechanics.damageDice} {mechanics.damageType}</span>}
+                <button className="btn-secondary" onClick={() => setShowModal(false)}
+                  style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
+                {mechanics.damageDice && (
+                  <button onClick={() => { rollDamage(selectedSlot); setShowModal(false); setTarget(''); }}
+                    style={{ flex: 1, justifyContent: 'center', fontFamily: 'var(--ff-body)',
+                      fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                      border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.1)',
+                      color: '#fbbf24', fontSize: 12 }}>
+                    🎲 Roll Damage
+                  </button>
+                )}
+                <button onClick={() => { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}
+                  style={{ flex: 1, justifyContent: 'center', fontFamily: 'var(--ff-body)',
+                    fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                    border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)',
+                    color: '#a78bfa', fontSize: 12 }}>
+                  ✨ Cast
                 </button>
               </div>
             </div>
@@ -252,51 +368,119 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
     );
   }
 
-  // Full button (Spells tab)
+  // ──────────────────────────────────────────────────────────────────
+  // FULL MODE (Spells tab — existing behavior, just with 3D roller)
   return (
     <>
-      <button onClick={() => isCantrip ? performCast(0) : setShowModal(true)}
-        style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9, letterSpacing: '0.04em', textTransform: 'uppercase' as const, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.12)', color: '#a78bfa', transition: 'all var(--tr-fast)' }}
+      <button
+        onClick={() => isCantrip ? castUtility(0) : setShowModal(true)}
+        style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9,
+          letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+          padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+          border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.25)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}>
-        ✨ {mechanics.damageDice ? `Cast (${mechanics.damageDice} ${mechanics.damageType ?? ''})` : 'Cast'}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
+      >
+        ✨ {mechanics.damageDice ? `Cast (${mechanics.damageDice})` : 'Cast'}
       </button>
+
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <h3 style={{ marginBottom: 4 }}>{spell.name}</h3>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-              <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>📍 {spell.range}</span>
-              <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>⏱ {spell.casting_time}</span>
-              {mechanics.saveType && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: (SAVE_COLORS[mechanics.saveType] ?? '#94a3b8') + '15', border: `1px solid ${SAVE_COLORS[mechanics.saveType] ?? '#94a3b8'}40`, color: SAVE_COLORS[mechanics.saveType] ?? '#94a3b8' }}>{mechanics.saveType} Save — DC {saveDC}</span>}
-              {mechanics.damageDice && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: (DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8') + '15', border: `1px solid ${DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8'}40`, color: DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8' }}>{mechanics.damageDice} {mechanics.damageType}</span>}
-              {mechanics.isAttack && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }}>Spell Attack +{spellAttack}</span>}
-              {spell.concentration && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.3)', color: 'var(--c-amber-l)' }}>Concentration</span>}
+              <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
+                border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
+                📍 {spell.range}
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
+                border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
+                ⏱ {spell.casting_time}
+              </span>
+              {mechanics.saveType && (
+                <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+                  background: (SAVE_COLORS[mechanics.saveType] ?? '#94a3b8') + '15',
+                  border: `1px solid ${SAVE_COLORS[mechanics.saveType] ?? '#94a3b8'}40`,
+                  color: SAVE_COLORS[mechanics.saveType] ?? '#94a3b8' }}>
+                  {mechanics.saveType} Save — DC {saveDC}
+                </span>
+              )}
+              {mechanics.damageDice && (
+                <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+                  background: (DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8') + '15',
+                  border: `1px solid ${DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8'}40`,
+                  color: DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8' }}>
+                  {mechanics.damageDice} {mechanics.damageType}
+                </span>
+              )}
+              {mechanics.isAttack && (
+                <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
+                  background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)',
+                  color: '#fbbf24' }}>Spell Attack +{spellAttack}</span>
+              )}
             </div>
-            {availableSlots.length > 0 && (
+            {availableSlots.length > 1 && (
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>Spell Slot</div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                  textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>Spell Slot</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {availableSlots.map(({ level, remaining }) => (
-                    <button key={level} onClick={() => setSelectedSlot(level)} style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 'var(--r-md)', border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)', background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14', color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)', cursor: 'pointer' }}>
-                      Level {level}<span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--t-2)' }}>{remaining} left</span>
+                    <button key={level} onClick={() => setSelectedSlot(level)}
+                      style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                        padding: '5px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                        border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
+                        background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
+                        color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)' }}>
+                      Level {level}
+                      <span style={{ display: 'block', fontSize: 9, fontWeight: 400 }}>{remaining} left</span>
                     </button>
                   ))}
                 </div>
-                {selectedSlot > spell.level && spell.higher_levels && <p style={{ fontSize: 11, color: '#a78bfa', marginTop: 5, fontStyle: 'italic' }}>⬆ Upcast: {spell.higher_levels}</p>}
               </div>
             )}
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 4 }}>Target (optional)</div>
-              <input value={target} onChange={e => setTarget(e.target.value)} onKeyDown={e => e.key === 'Enter' && (performCast(selectedSlot, target), setShowModal(false), setTarget(''))} placeholder='e.g. "Goblin King"' autoFocus style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 4 }}>
+                Target (optional)
+              </div>
+              <input value={target} onChange={e => setTarget(e.target.value)}
+                placeholder='e.g. "Goblin King"' autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}}
+                style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
             </div>
-            <div style={{ padding: 10, background: '#080d14', borderRadius: 'var(--r-md)', marginBottom: 14, fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5, maxHeight: 72, overflowY: 'auto' }}>{spell.description}</div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
-              <button onClick={async () => { await performCast(selectedSlot, target); setShowModal(false); setTarget(''); }} disabled={casting} style={{ flex: 2, justifyContent: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '8px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)', color: '#a78bfa', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {casting ? 'Casting…' : `✨ Cast${selectedSlot > spell.level ? ` (Level ${selectedSlot})` : ''}`}
-                {mechanics.damageDice && !casting && <span style={{ fontSize: 11, opacity: 0.75 }}>→ {mechanics.damageDice} {mechanics.damageType}</span>}
-              </button>
+            <div style={{ padding: 8, background: '#080d14', borderRadius: 'var(--r-md)',
+              marginBottom: 12, fontSize: 10, color: 'var(--t-2)', lineHeight: 1.4,
+              maxHeight: 60, overflowY: 'auto' }}>{spell.description}</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-secondary" onClick={() => setShowModal(false)}
+                style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
+              {mechanics.isAttack && (
+                <button onClick={() => { rollAttack(); }}
+                  style={{ flex: 1, fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 12px',
+                    borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid rgba(251,191,36,0.4)',
+                    background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 11,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  🎲 Attack +{spellAttack}
+                </button>
+              )}
+              {mechanics.damageDice && (
+                <button onClick={() => { rollDamage(selectedSlot); setShowModal(false); setTarget(''); }}
+                  style={{ flex: 1, fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 12px',
+                    borderRadius: 'var(--r-md)', cursor: 'pointer',
+                    border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)',
+                    color: '#a78bfa', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  🎲 {mechanics.damageDice} Dmg
+                </button>
+              )}
+              {mechanics.isUtility && (
+                <button onClick={() => { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}
+                  style={{ flex: 2, fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 14px',
+                    borderRadius: 'var(--r-md)', cursor: 'pointer',
+                    border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)',
+                    color: '#a78bfa', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  ✨ Cast{selectedSlot > spell.level ? ` (Lvl ${selectedSlot})` : ''}
+                </button>
+              )}
             </div>
           </div>
         </div>
