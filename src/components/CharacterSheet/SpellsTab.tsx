@@ -3,6 +3,7 @@ import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { SPELLS } from '../../data/spells';
+import { parseSpellMechanics } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
 
 // Max cantrips per class at each level (index = level-1)
@@ -34,6 +35,11 @@ interface SpellsTabProps {
   campaignId: string | null;
 }
 
+const SAVE_COLORS: Record<string, string> = {
+  STR: '#f97316', DEX: '#84cc16', CON: '#ef4444',
+  INT: '#3b82f6', WIS: '#22c55e', CHA: '#a855f7',
+};
+
 const SCHOOL_COLORS: Record<string, string> = {
   Abjuration: '#60a5fa', Conjuration: '#34d399', Divination: '#fbbf24',
   Enchantment: '#f472b6', Evocation: '#f87171', Illusion: '#a78bfa',
@@ -46,6 +52,22 @@ const LEVEL_LABELS: Record<number, string> = {
 };
 
 const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
+
+/** Derive a DDB-style effect category from spell mechanics + description */
+function getEffectCategory(spell: SpellData): { label: string; color: string } {
+  const m = parseSpellMechanics(spell.description);
+  const d = spell.description.toLowerCase();
+  if (m.healDice) return { label: 'Healing', color: '#34d399' };
+  if (d.includes('teleport') || d.includes('misty step')) return { label: 'Teleportation', color: '#60a5fa' };
+  if (d.includes('invisible') || d.includes('invisibility')) return { label: 'Invisible', color: '#a78bfa' };
+  if (d.includes('charm') || d.includes('frightened') || d.includes('incapacitated') || d.includes('paralyzed') || d.includes('stunned')) return { label: 'Debuff', color: '#f472b6' };
+  if (d.includes('difficult terrain') || d.includes('restrained') || d.includes('no reaction') || d.includes('grappled') || d.includes('prone')) return { label: 'Control', color: '#fbbf24' };
+  if (d.includes('advantage') || d.includes('bonus to attack') || d.includes('temp hp')) return { label: 'Buff', color: '#4ade80' };
+  if (d.includes('movement') || d.includes('fly speed') || d.includes('swim speed')) return { label: 'Movement', color: '#22d3ee' };
+  if (m.damageDice) return { label: 'Damage', color: '#f87171' };
+  if (m.saveType) return { label: 'Save', color: '#fb923c' };
+  return { label: 'Utility', color: '#94a3b8' };
+}
 
 export default function SpellsTab({
   character, computed, knownSpellData, availableSpells, maxSpellLevel,
@@ -300,8 +322,16 @@ export default function SpellsTab({
                     )}
                   </div>
 
+                  {/* Column headers — show once for cantrips, once for leveled */}
+                  {lvl === 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '24px 3px 1fr 46px 70px 74px 80px auto 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+                      {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', 'EFFECT', '', ''].map((h, i) => (
+                        <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
+                      ))}
+                    </div>
+                  )}
                   {/* Spell cards */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {spells.map(spell => (
                       <SpellCard
                         key={spell.id}
@@ -311,6 +341,8 @@ export default function SpellsTab({
                         isConcentrating={concentrationSpellId === spell.id}
                         isPreparer={isPreparer}
                         grantedReason={grantedReasonMap[spell.id]}
+                        spellAttack={computed.spell_attack_bonus ?? undefined}
+                        saveDC={computed.spell_save_dc ?? undefined}
                         castButton={
                           <SpellCastButton
                             spell={spell}
@@ -358,8 +390,15 @@ function LevelTab({ label, count, slots, active, onClick }: {
         {count}
       </span>
       {slots && (
-        <span style={{ fontSize: 9, color: slots.remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
-          {slots.remaining}/{slots.max}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {Array.from({ length: Math.min(slots.max, 5) }).map((_, i) => (
+            <span key={i} style={{
+              display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
+              background: i < slots.remaining ? (active ? 'var(--c-gold)' : 'var(--c-gold-l)') : 'transparent',
+              border: `1.5px solid ${i < slots.remaining ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+            }} />
+          ))}
+          {slots.max > 5 && <span style={{ fontSize: 8, color: active ? 'var(--c-gold-l)' : 'var(--t-3)' }}>+{slots.max - 5}</span>}
         </span>
       )}
     </button>
@@ -367,85 +406,124 @@ function LevelTab({ label, count, slots, active, onClick }: {
 }
 
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason }: {
+function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
   spell: SpellData; isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
   isPreparer: boolean; castButton: ReactNode; grantedReason?: string;
+  spellAttack?: number; saveDC?: number;
   onExpand: () => void; onTogglePrepared: () => void;
   onConcentrate: () => void; onRemove: () => void;
 }) {
   const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
   const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason;
+  const effect = getEffectCategory(spell);
+  const mechanics = parseSpellMechanics(spell.description);
+  // Abbreviate casting time for table display
+  const timeAbbr = spell.casting_time
+    .replace('1 action', '1A').replace('1 Action', '1A')
+    .replace('1 bonus action', '1BA').replace('Bonus Action', '1BA').replace('bonus action', '1BA')
+    .replace('1 reaction', '1R').replace('Reaction', '1R')
+    .replace('1 minute', '1 min').replace('10 minutes', '10 min')
+    .replace('1 hour', '1 hr').replace('8 hours', '8 hr');
+  // HIT/DC column value
+  const hitDC = mechanics.isAttack && spellAttack !== undefined
+    ? `+${spellAttack}`
+    : mechanics.saveType && saveDC !== undefined
+      ? `${mechanics.saveType} ${saveDC}`
+      : '—';
 
   return (
     <div style={{
-      borderRadius: 10,
+      borderRadius: 8,
       border: `1px solid ${isConcentrating ? 'rgba(167,139,250,0.4)' : isExpanded ? `${schoolColor}35` : 'var(--c-border)'}`,
-      background: isConcentrating ? 'rgba(167,139,250,0.04)' : isExpanded ? `${schoolColor}04` : 'var(--c-card)',
-      overflow: 'hidden', opacity: dimmed ? 0.55 : 1,
+      background: isConcentrating ? 'rgba(167,139,250,0.06)' : isExpanded ? `${schoolColor}04` : 'var(--c-card)',
+      overflow: 'hidden', opacity: dimmed ? 0.5 : 1,
       transition: 'all 0.15s',
     }}>
-      {/* Main row */}
+      {/* ── DDB-style compact table row ── */}
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', minHeight: 52 }}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '24px 3px 1fr 46px 70px 74px 80px auto 16px',
+          alignItems: 'center', gap: '0 8px',
+          padding: '7px 10px', cursor: 'pointer', minHeight: 44,
+        }}
         onClick={onExpand}
       >
-        {/* School color bar */}
-        <div style={{ width: 3, height: 36, borderRadius: 2, background: schoolColor, flexShrink: 0, opacity: 0.75 }} />
+        {/* Col 0: AT WILL / prepare dot / level badge */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+          {spell.level === 0 ? (
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, textAlign: 'center', lineHeight: 1.2 }}>AT<br/>WILL</div>
+          ) : isPreparer && !grantedReason ? (
+            <div
+              onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
+              title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
+              style={{
+                width: 12, height: 12, borderRadius: '50%', cursor: 'pointer',
+                border: `2px solid ${isPrepared ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+                background: isPrepared ? 'var(--c-gold)' : 'transparent',
+                transition: 'all 0.15s',
+              }}
+            />
+          ) : grantedReason ? (
+            <span title={grantedReason} style={{ fontSize: 8, fontWeight: 800, color: '#34d399', cursor: 'help' }}>✦</span>
+          ) : (
+            <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800, color: schoolColor }}>{spell.level}</span>
+          )}
+        </div>
 
-        {/* Prepare dot — preparers only, hidden for granted spells */}
-        {isPreparer && spell.level > 0 && !grantedReason && (
-          <div
-            onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
-            title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
-            style={{
-              width: 14, height: 14, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-              border: `2px solid ${isPrepared ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
-              background: isPrepared ? 'var(--c-gold)' : 'transparent',
-              transition: 'all 0.15s',
-            }}
-          />
-        )}
+        {/* Col 1: School color bar */}
+        <div style={{ width: 3, height: 30, borderRadius: 2, background: schoolColor, opacity: 0.75 }} />
 
-        {/* Spell name + badges */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--t-1)' }}>{spell.name}</span>
-            <span style={{ fontSize: 9, fontWeight: 600, color: schoolColor, background: `${schoolColor}15`, border: `1px solid ${schoolColor}30`, padding: '1px 6px', borderRadius: 4 }}>
-              {spell.school}
+        {/* Col 2: NAME + source */}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {spell.name}
             </span>
-            {spell.concentration && (
-              <span style={{ fontSize: 9, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 5px', borderRadius: 4 }}>
-                Conc.
-              </span>
-            )}
-            {grantedReason && (
-              <span title={grantedReason} style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', padding: '1px 6px', borderRadius: 4, cursor: 'help' }}>
-                ✦ Free
-              </span>
-            )}
-            {spell.ritual && (
-              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 4 }}>
-                Ritual
-              </span>
-            )}
-            {isConcentrating && (
-              <span style={{ fontSize: 9, fontWeight: 800, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                ● Active
-              </span>
-            )}
+            {isConcentrating && <span style={{ fontSize: 8, fontWeight: 800, color: '#a78bfa', flexShrink: 0 }}>● CONC</span>}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
-            {spell.casting_time} · {spell.range} · {spell.duration}
+          <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
+            {spell.school}{spell.ritual ? ' · Ritual' : ''}
           </div>
         </div>
 
-        {/* Cast button */}
+        {/* Col 3: TIME */}
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
+
+        {/* Col 4: RANGE */}
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+
+        {/* Col 5: HIT / DC */}
+        <div style={{ textAlign: 'center' }}>
+          {hitDC !== '—' ? (
+            <span style={{
+              fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
+              color: mechanics.isAttack ? '#fbbf24' : (SAVE_COLORS as any)[mechanics.saveType ?? ''] ?? '#94a3b8',
+              background: mechanics.isAttack ? 'rgba(251,191,36,0.1)' : 'rgba(148,163,184,0.1)',
+              border: `1px solid ${mechanics.isAttack ? 'rgba(251,191,36,0.3)' : 'rgba(148,163,184,0.25)'}`,
+              borderRadius: 999, padding: '1px 6px', display: 'inline-block',
+            }}>{hitDC}</span>
+          ) : (
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>—</span>
+          )}
+        </div>
+
+        {/* Col 6: EFFECT */}
+        <div style={{ textAlign: 'center' }}>
+          <span style={{
+            fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.04em',
+            color: effect.color, background: effect.color + '12',
+            border: `1px solid ${effect.color}30`, borderRadius: 4, padding: '1px 5px',
+          }}>{effect.label}</span>
+        </div>
+
+        {/* Col 7: Cast button(s) */}
         <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
           {castButton}
         </div>
 
-        {/* Expand chevron */}
-        <span style={{ fontSize: 10, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
+        {/* Col 8: Expand chevron */}
+        <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
       </div>
 
       {/* Expanded detail panel */}

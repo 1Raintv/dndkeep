@@ -1094,7 +1094,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   />
                 )}
 
-                {/* Class Abilities — automatic from class/level */}
+                {/* Class Abilities — with DDB-style section labels */}
+                {combatFilter === 'all' && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 5, marginTop: 4 }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+                      ABILITIES &amp; RESOURCES
+                    </span>
+                  </div>
+                )}
                 <ClassAbilitiesSection
                   character={character}
                   combatFilter={combatFilter}
@@ -1197,9 +1204,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
                   return (
                     <div style={{ marginTop: 'var(--sp-3)' }}>
-                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        ✨ Spells
-                        {isPreparer && <span style={{ fontWeight: 400, color: 'var(--t-3)' }}>({character.prepared_spells.length} prepared)</span>}
+                      {/* SPELLS section header — DDB style */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(167,139,250,0.2)', paddingBottom: 5, marginBottom: 8 }}>
+                        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa' }}>
+                          SPELLS
+                        </span>
+                        {isPreparer && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>{character.prepared_spells.length} prepared</span>}
                       </div>
 
                       {/* Mini slot tracker */}
@@ -1245,20 +1255,27 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                               background: slotsExhausted ? 'rgba(239,68,68,0.03)' : 'rgba(167,139,250,0.04)',
                               opacity: slotsExhausted ? 0.55 : 1,
                             }}>
+                              {/* Slot level / AT WILL badge — left side */}
+                              <div style={{ flexShrink: 0, width: 30, textAlign: 'center' }}>
+                                {spell.level === 0 ? (
+                                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.06em', textTransform: 'uppercase' as const, lineHeight: 1.2 }}>AT<br/>WILL</div>
+                                ) : (
+                                  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13, color: slotsExhausted ? '#ef4444' : '#a78bfa', lineHeight: 1 }}>
+                                    {spell.level}
+                                    {spell.concentration && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 7, display: 'block', color: '#fbbf24', fontWeight: 700 }}>CONC</span>}
+                                  </div>
+                                )}
+                              </div>
                               <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.7, flexShrink: 0 }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                                   <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)' }}>
                                     {spell.name}
                                   </span>
-                                  <span style={{ fontSize: 9, color: slotsExhausted ? '#ef4444' : sc, background: slotsExhausted ? 'rgba(239,68,68,0.08)' : sc + '12', border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.25)' : sc + '25'}`, borderRadius: 4, padding: '1px 4px', fontWeight: 600 }}>
-                                    {spell.level === 0 ? 'Cantrip' : `Lv ${spell.level}`}
-                                    {slotsExhausted && ' 🔒'}
-                                  </span>
-                                  {spell.concentration && <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 4, padding: '1px 4px', fontWeight: 700 }}>C</span>}
+                                  {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444' }}>🔒 No Slots</span>}
                                 </div>
-                                <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 2 }}>
-                                  {spell.casting_time} · {spell.school}
+                                <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1 }}>
+                                  {spell.casting_time} · {spell.range} · {spell.school}
                                 </div>
                               </div>
                               <SpellCastButton

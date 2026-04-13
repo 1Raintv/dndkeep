@@ -251,6 +251,23 @@ export default function WeaponsTracker({
       })()}
 
       {/* Weapon rows */}
+      {/* ACTIONS section header — DDB style */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 6 }}>
+        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+          ATTACKS
+        </span>
+        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
+          Attacks per Action: 1
+        </span>
+      </div>
+      {/* Table column headers */}
+      {weapons.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 64px 100px auto', gap: '0 10px', padding: '0 4px', marginBottom: -2 }}>
+          {['ATTACK', 'RANGE', 'HIT / DC', 'DAMAGE', ''].map(h => (
+            <span key={h} style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
+          ))}
+        </div>
+      )}
       {weapons.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 'var(--sp-6) 0' }}>
           <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.25 }}>⚔️</div>
@@ -260,7 +277,7 @@ export default function WeaponsTracker({
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {weapons.map(w => {
             const isInv = String(w.id).startsWith('inv_');
             const isSaveSpell = w.notes?.startsWith('save:');
@@ -268,8 +285,11 @@ export default function WeaponsTracker({
 
             return (
               <div key={w.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px',
+                display: isSaveSpell ? 'flex' : 'grid',
+                gridTemplateColumns: isSaveSpell ? undefined : '1fr 70px 64px 100px auto',
+                alignItems: 'center',
+                gap: isSaveSpell ? 10 : '0 10px',
+                padding: '8px 12px',
                 borderRadius: 'var(--r-md)',
                 border: `1px solid ${isInv ? 'rgba(200,146,42,0.2)' : 'var(--c-border)'}`,
                 background: isInv ? 'rgba(200,146,42,0.03)' : '#080d14',
@@ -294,70 +314,79 @@ export default function WeaponsTracker({
                     </div>
                   </>
                 ) : (
-                  /* Normal weapon — stat boxes ARE the roll buttons */
+                  /* Normal weapon — DDB-style grid row */
                   <>
-                    {/* Weapon name + meta */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    {/* ATTACK name + source */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                         <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{w.name}</span>
-                        {isInv && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>Inventory</span>}
+                        {isInv && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>Inventory</span>}
                       </div>
-                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)' }}>
-                        {w.range}{w.damageType ? ` · ${w.damageType}` : ''}{w.properties ? ` · ${w.properties}` : ''}
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', marginTop: 1 }}>
+                        {w.damageType ? w.damageType.charAt(0).toUpperCase() + w.damageType.slice(1) : ''}
+                        {w.properties ? ` · ${w.properties}` : ''}
                       </div>
                     </div>
 
-                    {/* HIT BUTTON = the entire to-hit stat block */}
+                    {/* RANGE */}
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center' }}>
+                      {w.range || 'Melee'}
+                    </div>
+
+                    {/* HIT BUTTON */}
                     <button
                       onClick={() => handleHit(w)}
                       title={`Roll to hit: d20${w.attackBonus >= 0 ? '+' : ''}${w.attackBonus}`}
                       style={{
-                        flexShrink: 0, textAlign: 'center', padding: '6px 10px',
+                        textAlign: 'center', padding: '5px 8px',
                         borderRadius: 'var(--r-md)',
                         border: '1px solid rgba(200,146,42,0.3)',
                         background: 'rgba(200,146,42,0.08)',
                         cursor: 'pointer', transition: 'all var(--tr-fast)',
-                        minHeight: 0,
+                        minHeight: 0, alignSelf: 'center',
                       }}
                     >
-                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 18, color: 'var(--c-gold-l)', lineHeight: 1 }}>
+                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 16, color: 'var(--c-gold-l)', lineHeight: 1 }}>
                         {modStr(w.attackBonus)}
                       </div>
-                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(200,146,42,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginTop: 2 }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(200,146,42,0.5)', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
                         TO HIT
                       </div>
                     </button>
 
-                    {/* DMG BUTTON = the entire damage stat block */}
+                    {/* DMG BUTTON */}
                     <button
                       onClick={() => handleDamage(w)}
                       title={`Roll damage: ${w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}${w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
                       style={{
-                        flexShrink: 0, textAlign: 'center', padding: '6px 10px',
+                        textAlign: 'center', padding: '5px 8px',
                         borderRadius: 'var(--r-md)',
                         border: '1px solid rgba(248,113,113,0.3)',
                         background: 'rgba(248,113,113,0.08)',
                         cursor: 'pointer', transition: 'all var(--tr-fast)',
-                        minHeight: 0,
+                        minHeight: 0, alignSelf: 'center',
                       }}
                     >
-                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 18, color: 'var(--c-red-l)', lineHeight: 1 }}>
-                        {w.damageDice === 'flat'
-                          ? modStr(w.damageBonus)
-                          : `${w.damageDice}${w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
+                      <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 14, color: 'var(--c-red-l)', lineHeight: 1 }}>
+                        {w.damageDice === 'flat' ? modStr(w.damageBonus) : `${w.damageDice}${w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
                       </div>
-                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(248,113,113,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginTop: 2 }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(248,113,113,0.5)', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
                         DAMAGE
                       </div>
                     </button>
 
-                    {/* Edit/delete — only for custom, non-inventory, non-unarmed weapons */}
-                    {!isInv && w.id !== 'unarmed' && (
-                      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                        <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '3px 7px', fontSize: 11 }}>✏️</button>
-                        <button className="btn-ghost btn-sm" onClick={() => removeWeapon(w.id)} style={{ padding: '3px 7px', fontSize: 11 }}>🗑️</button>
-                      </div>
-                    )}
+                    {/* NOTES + edit/delete */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', minWidth: 0 }}>
+                      {w.notes && !w.notes.startsWith('save:') && (
+                        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{w.notes}</span>
+                      )}
+                      {!isInv && w.id !== 'unarmed' && (
+                        <div style={{ display: 'flex', gap: 2, flexShrink: 0, marginLeft: 'auto' }}>
+                          <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '2px 6px', fontSize: 10 }}>✏️</button>
+                          <button className="btn-ghost btn-sm" onClick={() => removeWeapon(w.id)} style={{ padding: '2px 6px', fontSize: 10 }}>🗑️</button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
