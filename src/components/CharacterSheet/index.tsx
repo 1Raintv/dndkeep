@@ -453,6 +453,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           }}
       />
 
+      {/* HP Stats — shown directly below character name */}
+      <HPStatsPanel
+        character={character}
+        computed={computed}
+        onUpdateHP={(delta, tempHP) => {
+          if (tempHP !== undefined) {
+            handleUpdateHP(character.current_hp, tempHP);
+          } else {
+            const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
+            handleUpdateHP(newHP, character.temp_hp);
+          }
+        }}
+        onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
+        onUpdateSpeed={speed => applyUpdate({ speed }, true)}
+      />
+
       {/* Active conditions — shown near HP/name */}
       {character.active_conditions.length > 0 && (
         <div style={{
@@ -745,20 +761,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       <div className="cs-hud-layout">
         {/* ── LEFT VITALS COLUMN — sticky on desktop ── */}
         <aside className="cs-vitals-col">
-          <HPStatsPanel
-            character={character}
-            computed={computed}
-            onUpdateHP={(delta, tempHP) => {
-              if (tempHP !== undefined) {
-                handleUpdateHP(character.current_hp, tempHP);
-              } else {
-                const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
-                handleUpdateHP(newHP, character.temp_hp);
-              }
-            }}
-            onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
-            onUpdateSpeed={speed => applyUpdate({ speed }, true)}
-          />
           {/* Ability scores in the vitals column on desktop */}
           <div className="cs-vitals-ability-scores">
             <AbilityScores character={character} computed={computed} />

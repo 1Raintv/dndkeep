@@ -6,6 +6,7 @@ import { SubFeatureRow } from './FeaturesAndTraitsPanel';
 interface FeatsPanelProps {
   character: Character;
   onUpdate: (updates: Partial<Character>) => void;
+  readOnly?: boolean;
 }
 
 const ACTIVE_KW = [
@@ -46,7 +47,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   'epic-boon': 'Epic Boon',
 };
 
-export default function FeatsPanel({ character, onUpdate }: FeatsPanelProps) {
+export default function FeatsPanel({ character, onUpdate, readOnly = false }: FeatsPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState('');
