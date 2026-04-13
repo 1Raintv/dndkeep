@@ -914,16 +914,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── FEATURES & TRAITS ── */}
         {activeTab === 'features' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
-            <FeaturesAndTraitsPanel
-              character={character}
-              onUpdate={u => applyUpdate(u, true)}
-            />
-            <div>
-              <div className="section-header" style={{ marginBottom: 'var(--sp-3)' }}>🏅 Feats</div>
-              <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
-            </div>
-          </div>
+          <FeaturesAndTraitsPanel
+            character={character}
+            onUpdate={u => applyUpdate(u, true)}
+          />
         )}
 
         {/* ── SPELLS ── */}

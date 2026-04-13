@@ -88,7 +88,7 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
 
     await logAction({
       campaignId,
-      characterId: character.id,
+      characterId: userId,
       characterName: character.name,
       actionType: 'spell',
       actionName: spell.name,
@@ -122,14 +122,44 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
           📍 {spell.range}
         </span>
         {mechanics.saveType && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: saveColor + '18', border: `1px solid ${saveColor}50`, color: saveColor }}>
-            {mechanics.saveType} DC {saveDC}
-          </span>
+          <button
+            onClick={async e => {
+              e.stopPropagation();
+              await logAction({
+                campaignId, characterId: userId, characterName: character.name,
+                actionType: 'save', actionName: `${spell.name} — ${mechanics.saveType} Save`,
+                notes: `DC ${saveDC} — targets must make a ${mechanics.saveType} saving throw`,
+                total: saveDC,
+              });
+            }}
+            style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, cursor: 'pointer',
+              background: saveColor + '18', border: `1px solid ${saveColor}50`, color: saveColor }}
+            title="Click to log save request to party"
+          >
+            🎲 {mechanics.saveType} DC {saveDC}
+          </button>
         )}
         {mechanics.isAttack && (
-          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }}>
+          <button
+            onClick={async e => {
+              e.stopPropagation();
+              const roll = Math.floor(Math.random() * 20) + 1;
+              const total = roll + spellAttack;
+              const hitResult = roll === 20 ? 'crit' : roll === 1 ? 'fumble' : total >= 10 ? 'hit' : 'miss';
+              await logAction({
+                campaignId, characterId: userId, characterName: character.name,
+                actionType: 'attack', actionName: `${spell.name} — Spell Attack`,
+                diceExpression: '1d20', individualResults: [roll], total,
+                hitResult: hitResult as any,
+                notes: `+${spellAttack} spell attack`,
+              });
+            }}
+            style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, cursor: 'pointer',
+              background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }}
+            title="Click to roll spell attack"
+          >
             🎲 +{spellAttack}
-          </span>
+          </button>
         )}
         {mechanics.damageDice && (
           <button onClick={async e => {
@@ -150,7 +180,7 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
                   onUpdateSlots({ ...character.spell_slots, [slotKey]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 } });
                 }
               }
-              await logAction({ campaignId, characterId: character.id, characterName: character.name, actionType: 'damage', actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`, diceExpression: mechanics.damageDice!, individualResults: r.rolls, total: r.total, notes: isCantrip ? 'cantrip' : `Level ${slotLevel} slot` });
+              await logAction({ campaignId, characterId: userId, characterName: character.name, actionType: 'damage', actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`, diceExpression: mechanics.damageDice!, individualResults: r.rolls, total: r.total, notes: isCantrip ? 'cantrip' : `Level ${slotLevel} slot` });
             }
           }} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999, cursor: 'pointer', background: dmgColor + '18', border: `1px solid ${dmgColor}50`, color: dmgColor }}>
             🎲 {mechanics.damageDice} {mechanics.damageType}
@@ -168,7 +198,7 @@ export default function SpellCastButton({ spell, character, userId, campaignId, 
                 onUpdateSlots({ ...character.spell_slots, [String(slotLevel)]: { ...currentSlot, used: (currentSlot.used ?? 0) + 1 } });
               }
             }
-            await logAction({ campaignId, characterId: character.id, characterName: character.name, actionType: 'heal', actionName: spell.name, diceExpression: mechanics.healDice!, individualResults: r.rolls, total: r.total });
+            await logAction({ campaignId, characterId: userId, characterName: character.name, actionType: 'heal', actionName: spell.name, diceExpression: mechanics.healDice!, individualResults: r.rolls, total: r.total });
           }} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999, cursor: 'pointer', background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.4)', color: '#34d399' }}>
             💚 {mechanics.healDice}
           </button>
