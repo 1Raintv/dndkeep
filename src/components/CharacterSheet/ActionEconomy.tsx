@@ -11,6 +11,7 @@ interface ActionState {
 interface ActionEconomyProps {
   speedFeet: number;
   onActionUsed?: (action: string, used: boolean) => void;
+  onNewTurn?: () => void;
 }
 
 const TOKEN = {
@@ -19,7 +20,7 @@ const TOKEN = {
   reaction:    { label: 'Reaction',     key: 'reaction',    icon: '🛡️',  color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ speedFeet, onActionUsed }: ActionEconomyProps) {
+export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn }: ActionEconomyProps) {
   const [state, setState] = useState<ActionState>({
     action: false, bonusAction: false, reaction: false, movedFeet: 0,
   });
@@ -38,6 +39,7 @@ export default function ActionEconomy({ speedFeet, onActionUsed }: ActionEconomy
 
   function reset() {
     setState({ action: false, bonusAction: false, reaction: false, movedFeet: 0 });
+    onNewTurn?.();
   }
 
   const movePct = speedFeet > 0 ? (state.movedFeet / speedFeet) * 100 : 0;

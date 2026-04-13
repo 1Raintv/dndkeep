@@ -322,6 +322,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // Short rest: roll hit dice to recover HP
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
   const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'|'limited'>('all');
+  const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
   const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {
@@ -1037,6 +1038,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
                   if (action === 'action' && !used) setCombatFilter('all');
                 }}
+                onNewTurn={() => setSpellCastThisTurn(false)}
               />
 
               {/* Defenses strip */}
@@ -1157,7 +1159,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as 'uppercase', color: '#fbbf24', marginBottom: 6 }}>
                           ⚡ Feat Abilities
                         </div>
-                        <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} />
+                        <FeatsPanel character={character} onUpdate={u => applyUpdate(u, true)} readOnly={true} />
                       </div>
                     );
                   }
@@ -1285,6 +1287,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                                 campaignId={character.campaign_id}
                                 onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
                                 compact={true}
+                                spellLockedOut={spellCastThisTurn && spell.level > 0}
+                                onLeveledSpellCast={() => setSpellCastThisTurn(true)}
                               />
                             </div>
                           );

@@ -205,8 +205,8 @@ export default function FeatsPanel({ character, onUpdate }: FeatsPanelProps) {
         );
       })}
 
-      {/* Add Feat UI */}
-      {adding ? (
+      {/* Add Feat UI — hidden in read-only contexts */}
+      {!readOnly && (adding ? (
         <div style={{
           borderRadius: 'var(--r-lg)', border: '1px solid var(--c-gold-bdr)',
           background: 'var(--c-gold-bg)', padding: 'var(--sp-3)',
@@ -282,7 +282,7 @@ export default function FeatsPanel({ character, onUpdate }: FeatsPanelProps) {
         >
           + Add Feat
         </button>
-      )}
+      ))}
     </div>
   );
 }

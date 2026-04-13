@@ -69,60 +69,6 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
   return (
     <section className="ability-scores-section">
 
-      {/* ── Ability Checks — compact strip ── */}
-      <div style={{ marginBottom: 4 }}>
-        <div style={{
-          fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
-          letterSpacing: '0.14em', textTransform: 'uppercase' as const,
-          color: 'var(--t-3)', marginBottom: 5,
-        }}>
-          Ability Checks
-        </div>
-        <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-          {ABILITY_ORDER.map(ability => {
-            const meta = STAT_META[ability];
-            const score = character[ability as keyof Character] as number;
-            const mod = computed.modifiers[ability];
-            return (
-              <div
-                key={ability}
-                className="stagger-item"
-                role="button"
-                tabIndex={0}
-                onClick={() => rollAbility(ability)}
-                onKeyDown={e => e.key === 'Enter' && rollAbility(ability)}
-                title={`Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
-                style={{
-                  background: 'var(--c-card)',
-                  border: `1px solid var(--c-border)`,
-                  borderTop: `2px solid ${meta.color}`,
-                  borderRadius: 'var(--r-md)',
-                  padding: '5px 4px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all var(--tr-fast)',
-                  display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1,
-                }}
-              >
-                {/* Abbrev */}
-                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color, lineHeight: 1 }}>
-                  {meta.abbrev}
-                </div>
-                {/* Modifier — compact */}
-                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.3rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
-                  {formatModifier(mod)}
-                </div>
-                {/* Raw score */}
-                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 9, color: 'var(--t-3)', lineHeight: 1 }}>{score}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Section divider ── */}
-      <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
-
       {/* ── Saving Throws — prominent, full-size cards ── */}
       <div>
         <div style={{
@@ -310,6 +256,61 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
           </>
         );
       })()}
+      {/* ── Section divider ── */}
+      <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
+
+      {/* ── Ability Checks — compact strip ── */}
+      <div style={{ marginBottom: 4 }}>
+        <div style={{
+          fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+          letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+          color: 'var(--c-gold-l)', marginBottom: 5,
+        }}>
+          Ability Checks
+        </div>
+        <div className="ability-scores-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+          {ABILITY_ORDER.map(ability => {
+            const meta = STAT_META[ability];
+            const score = character[ability as keyof Character] as number;
+            const mod = computed.modifiers[ability];
+            return (
+              <div
+                key={ability}
+                className="stagger-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => rollAbility(ability)}
+                onKeyDown={e => e.key === 'Enter' && rollAbility(ability)}
+                title={`Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
+                style={{
+                  background: 'var(--c-card)',
+                  border: `1px solid var(--c-border)`,
+                  borderTop: `2px solid ${meta.color}`,
+                  borderRadius: 'var(--r-md)',
+                  padding: '5px 4px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all var(--tr-fast)',
+                  display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1,
+                }}
+              >
+                {/* Abbrev */}
+                <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color, lineHeight: 1 }}>
+                  {meta.abbrev}
+                </div>
+                {/* Modifier — compact */}
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.3rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
+                  {formatModifier(mod)}
+                </div>
+                {/* Raw score */}
+                <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 9, color: 'var(--t-3)', lineHeight: 1 }}>{score}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+
     </section>
   );
 }

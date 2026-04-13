@@ -12,6 +12,8 @@ interface SpellCastButtonProps {
   campaignId?: string | null;
   onUpdateSlots: (slots: SpellSlots) => void;
   compact?: boolean;
+  spellLockedOut?: boolean;    // true when a leveled spell was already cast this turn
+  onLeveledSpellCast?: () => void; // called when a leveled spell is successfully cast
 }
 
 const SAVE_COLORS: Record<string, string> = {
@@ -40,6 +42,7 @@ function rollNdS(count: number, sides: number): number[] {
 
 export default function SpellCastButton({
   spell, character, userId, campaignId, onUpdateSlots, compact = false,
+  spellLockedOut = false, onLeveledSpellCast,
 }: SpellCastButtonProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<number>(spell.level);
@@ -91,11 +94,13 @@ export default function SpellCastButton({
     const rolls = rollNdS(count, sides);
     const total = rolls.reduce((a, b) => a + b, 0);
 
-    // Spend slot if leveled spell
+    // Spend slot if leveled spell + mark spell as cast this turn
     if (!isCantrip && slotLevel !== undefined) {
       spendSlot(slotLevel);
+      onLeveledSpellCast?.();
     } else if (!isCantrip && availableSlots.length === 1) {
       spendSlot(availableSlots[0].level);
+      onLeveledSpellCast?.();
     }
 
     // Fire 3D roller
@@ -144,7 +149,7 @@ export default function SpellCastButton({
       diceExpression: mechanics.healDice, individualResults: rolls, total });
   }
 
-  /** Roll spell attack (d20 + spellAttack) */
+  /** Roll spell attack (d20 + spellAttack) — marks leveled spell as cast */
   async function rollAttack() {
     const d20 = Math.floor(Math.random() * 20) + 1;
     const total = d20 + spellAttack;
@@ -158,11 +163,15 @@ export default function SpellCastButton({
       diceExpression: '1d20', individualResults: [d20], total,
       hitResult: hitResult as any,
       notes: `+${spellAttack} spell attack (${key.slice(0,3).toUpperCase()} ${spellMod >= 0 ? '+' : ''}${spellMod} + Prof +${profBonus})` });
+    if (!isCantrip) onLeveledSpellCast?.();
   }
 
   /** Cast utility spell (no dice) */
   async function castUtility(slotLevel: number, targetName?: string) {
-    if (!isCantrip && slotLevel > 0) spendSlot(slotLevel);
+    if (!isCantrip && slotLevel > 0) {
+      spendSlot(slotLevel);
+      onLeveledSpellCast?.();
+    }
     await logAction({ campaignId, characterId: userId, characterName: character.name,
       actionType: 'spell', actionName: spell.name, targetName,
       notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
@@ -191,6 +200,18 @@ export default function SpellCastButton({
   // ──────────────────────────────────────────────────────────────────
   // COMPACT MODE (Actions tab)
   if (compact) {
+    // If a leveled spell was already cast this turn, lock this spell out
+    if (spellLockedOut) {
+      return (
+        <span title="You already cast a spell this turn. Only one leveled spell per turn (cantrips are free)."
+          style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', opacity: 0.5,
+            border: '1px solid var(--c-border)', borderRadius: 4, padding: '2px 7px',
+            cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          🔒 1 spell/turn
+        </span>
+      );
+    }
+
     const dmgColor = DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8';
     const saveColor = SAVE_COLORS[mechanics.saveType ?? ''] ?? '#94a3b8';
     const btnBase: React.CSSProperties = {
