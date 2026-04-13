@@ -3,7 +3,7 @@ import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { SPELLS } from '../../data/spells';
-import { getGrantedSpellIds } from '../../lib/grantedSpells';
+import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
 
 // Max cantrips per class at each level (index = level-1)
 const CANTRIP_MAX: Record<string, number[]> = {
@@ -75,10 +75,16 @@ export default function SpellsTab({
     [character.class_name]
   );
   // Granted spells that don't count toward limits
-  const { grantedCantrips, grantedPrepared } = useMemo(
+  const { grantedCantrips, grantedPrepared, entries: grantedEntries } = useMemo(
     () => getGrantedSpellIds(character),
     [character.class_name, character.subclass] // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // Map id -> reason for badge display
+  const grantedReasonMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    grantedEntries.forEach((e: GrantedSpellEntry) => { map[e.id] = e.reason; });
+    return map;
+  }, [grantedEntries]);
 
   const currentCantripCount = useMemo(() => {
     let count = character.known_spells.filter(id =>
@@ -304,6 +310,7 @@ export default function SpellsTab({
                         isPrepared={character.prepared_spells.includes(spell.id)}
                         isConcentrating={concentrationSpellId === spell.id}
                         isPreparer={isPreparer}
+                        grantedReason={grantedReasonMap[spell.id]}
                         castButton={
                           <SpellCastButton
                             spell={spell}
@@ -360,14 +367,14 @@ function LevelTab({ label, count, slots, active, onClick }: {
 }
 
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove }: {
+function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason }: {
   spell: SpellData; isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
-  isPreparer: boolean; castButton: ReactNode;
+  isPreparer: boolean; castButton: ReactNode; grantedReason?: string;
   onExpand: () => void; onTogglePrepared: () => void;
   onConcentrate: () => void; onRemove: () => void;
 }) {
   const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
-  const dimmed = isPreparer && spell.level > 0 && !isPrepared;
+  const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason;
 
   return (
     <div style={{
@@ -385,8 +392,8 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
         {/* School color bar */}
         <div style={{ width: 3, height: 36, borderRadius: 2, background: schoolColor, flexShrink: 0, opacity: 0.75 }} />
 
-        {/* Prepare dot — preparers only */}
-        {isPreparer && spell.level > 0 && (
+        {/* Prepare dot — preparers only, hidden for granted spells */}
+        {isPreparer && spell.level > 0 && !grantedReason && (
           <div
             onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
             title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
@@ -409,6 +416,11 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
             {spell.concentration && (
               <span style={{ fontSize: 9, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 5px', borderRadius: 4 }}>
                 Conc.
+              </span>
+            )}
+            {grantedReason && (
+              <span title={grantedReason} style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', padding: '1px 6px', borderRadius: 4, cursor: 'help' }}>
+                ✦ Free
               </span>
             )}
             {spell.ritual && (
@@ -468,17 +480,27 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
               </button>
             )}
             {isPreparer && spell.level > 0 && (
-              <button
-                onClick={onTogglePrepared}
-                style={{
-                  fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                  border: isPrepared ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
-                  background: isPrepared ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                  color: isPrepared ? 'var(--c-gold-l)' : 'var(--t-2)',
-                }}
-              >
-                {isPrepared ? '✓ Prepared' : 'Prepare'}
-              </button>
+              grantedReason ? (
+                <span style={{
+                  fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 7,
+                  background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.3)',
+                  color: '#34d399',
+                }}>
+                  ✦ {grantedReason}
+                </span>
+              ) : (
+                <button
+                  onClick={onTogglePrepared}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                    border: isPrepared ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+                    background: isPrepared ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                    color: isPrepared ? 'var(--c-gold-l)' : 'var(--t-2)',
+                  }}
+                >
+                  {isPrepared ? '✓ Prepared' : 'Prepare'}
+                </button>
+              )
             )}
             <button
               onClick={onRemove}

@@ -140,14 +140,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const characterRef = useRef(character);
   useEffect(() => { characterRef.current = character; });
 
-  // Auto-add subclass always-prepared spells when a character already has a subclass
+  // Auto-add AND auto-prepare subclass always-prepared spells + class granted spells
   useEffect(() => {
-    if (!character.subclass || !character.class_name) return;
-    const subSpellIds = getSubclassSpellIds(character.subclass, character.class_name);
-    if (subSpellIds.length === 0) return;
-    const missing = subSpellIds.filter(id => !character.known_spells.includes(id));
-    if (missing.length > 0) {
-      applyUpdate({ known_spells: [...character.known_spells, ...missing] }, true);
+    if (!character.class_name) return;
+    const updates: Partial<typeof character> = {};
+
+    // Subclass always-prepared spells
+    const subSpellIds = character.subclass
+      ? getSubclassSpellIds(character.subclass, character.class_name)
+      : [];
+
+    // Class auto-granted cantrips (e.g. Psion Mage Hand)
+    const classGranted = character.class_name === 'Psion' ? ['mage-hand'] : [];
+    const allGranted = [...new Set([...subSpellIds, ...classGranted])];
+
+    const missingKnown = allGranted.filter(id => !character.known_spells.includes(id));
+    if (missingKnown.length > 0) {
+      updates.known_spells = [...character.known_spells, ...missingKnown];
+    }
+
+    // Auto-prepare all granted prepared spells (subclass spells always prepared)
+    const missingPrepared = subSpellIds.filter(id => !character.prepared_spells.includes(id));
+    if (missingPrepared.length > 0) {
+      updates.prepared_spells = [...character.prepared_spells, ...missingPrepared];
+    }
+
+    if (Object.keys(updates).length > 0) {
+      applyUpdate(updates, true);
     }
   }, [character.subclass, character.class_name]); // eslint-disable-line react-hooks/exhaustive-deps
 

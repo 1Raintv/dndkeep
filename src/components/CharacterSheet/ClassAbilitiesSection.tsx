@@ -125,6 +125,7 @@ function resolveDesc(desc: string | ((c: Character) => string), character: Chara
 
 export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId }: Props) {
   const [justUsed, setJustUsed] = useState<string | null>(null);
+  const [psionicRollHistory, setPsionicRollHistory] = useState<{ value: number; die: string }[]>([]);
 
   async function handleUseAbility(ability: ClassAbility, cost?: number) {
     // Mark as used if it has limited uses
@@ -170,6 +171,11 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
         ? `Rolled 1${getPsionicDieSize(character.level)} = ${rollResult?.total} · ${getPsionicDieCount(character.level) - 1} dice remaining`
         : desc.slice(0, 100) + (desc.length > 100 ? '…' : ''),
     });
+    // Store psionic roll for inline display
+    if ((ability as any).psionicDie && rollResult) {
+      const dieSize = getPsionicDieSize(character.level);
+      setPsionicRollHistory(prev => [{ value: rollResult!.total, die: dieSize }, ...prev].slice(0, 5));
+    }
     // Brief flash feedback
     setJustUsed(ability.name);
     setTimeout(() => setJustUsed(null), 2000);
@@ -273,6 +279,26 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
                       ability.actionType === 'bonus' ? '⚡ Use' :
                       (ability as any).psionicDie ? `🎲 Spend Die (1${getPsionicDieSize(character.level)})` : (ability as any).isPool ? '🎲 Spend Die' : '🔵 Use'}
                   </button>
+                )}
+
+                {/* Psionic roll history — inline mini log to the right */}
+                {(ability as any).psionicDie && psionicRollHistory.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Rolls:</span>
+                    {psionicRollHistory.map((r, i) => (
+                      <span key={i} style={{
+                        fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: i === 0 ? 13 : 10,
+                        padding: '1px 6px', borderRadius: 999,
+                        background: i === 0 ? 'rgba(232,121,249,0.2)' : 'rgba(232,121,249,0.07)',
+                        border: `1px solid rgba(232,121,249,${i === 0 ? '0.5' : '0.2'})`,
+                        color: '#e879f9',
+                        transition: 'all 0.3s',
+                        flexShrink: 0,
+                      }}>
+                        {r.value}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
