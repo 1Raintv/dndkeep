@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { formatModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
-import { SPECIES_DATA } from '../../data/species';
+import { SPECIES } from '../../data/species';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
@@ -201,7 +201,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
 
       {/* ── Senses ── */}
       {(() => {
-        const speciesData = SPECIES_DATA.find(s => s.name === character.species);
+        const speciesData = SPECIES.find(s => s.name === character.species);
         const dv = character.darkvision ?? speciesData?.darkvision ?? 0;
         if (dv === 0) return null;
         return (
@@ -222,7 +222,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
 
       {/* ── Defenses ── */}
       {(() => {
-        const speciesData = SPECIES_DATA.find(s => s.name === character.species);
+        const speciesData = SPECIES.find(s => s.name === character.species);
         const resistances: string[] = [];
         const immunities: string[] = [];
         // Species resistances (e.g. Tiefling fire resistance)
@@ -281,7 +281,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
       {(() => {
         const bgData = BACKGROUNDS.find((b: any) => b.name === character.background);
         const toolProf = bgData?.tool_proficiency ?? null;
-        const speciesData = SPECIES_DATA.find(s => s.name === character.species);
+        const speciesData = SPECIES.find(s => s.name === character.species);
         const langs = speciesData?.languages ?? [];
         const extraLangs = bgData?.languages ?? 0;
         if (!toolProf && langs.length === 0 && extraLangs === 0) return null;
