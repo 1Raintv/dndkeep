@@ -83,7 +83,7 @@ export function parseSpellMechanics(description: string): SpellMechanics {
 
   // Buff detection — spells that add bonuses, no damage, no save (Bless, Haste, Hex, etc.)
   const isBuff = !damageDice && !healDice && !saveType && !isAttack &&
-    /\b(advantage|bonus|add a d|add 1d|increase your|+\d+ to|proficiency bonus)\b/i.test(description);
+    /\b(advantage|bonus|add a d|add 1d|increase your|\+\d+ to|proficiency bonus)\b/i.test(description);
 
   // Summon/control detection
   const isSummon = !damageDice && !healDice &&
