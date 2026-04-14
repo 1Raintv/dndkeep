@@ -332,6 +332,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   const [shortRestHpGained, setShortRestHpGained] = useState(0);
   const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'|'limited'>('all');
   const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
+  // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
+  const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
   const [isDM, setIsDM] = useState(false);
 
   function rollHitDie() {
@@ -1048,7 +1050,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         {activeTab === 'actions' && (() => {
           // Inventory weapons: items with damage or weapon category that are equipped
           const inventoryWeapons = (character.inventory ?? []).filter((item: any) =>
-            item.equipped && (item.damage || item.category?.toLowerCase() === 'weapon' || item.category?.toLowerCase() === 'weapons')
+            item.equipped && (item.damage || item.is_weapon || item.category?.toLowerCase() === 'weapon' || item.category?.toLowerCase() === 'weapons')
           );
           const inventoryAsWeapons = inventoryWeapons.map((item: any) => {
             // Parse damage string like "1d6 piercing", "1d4+1 slashing", "2d6 fire"
@@ -1110,7 +1112,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                   if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
                   if (action === 'action' && !used) setCombatFilter('all');
                 }}
-                onNewTurn={() => setSpellCastThisTurn(false)}
+                onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
               />
 
               {/* Defenses strip */}
@@ -1359,8 +1361,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                                 campaignId={character.campaign_id}
                                 onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
                                 compact={true}
-                                spellLockedOut={spellCastThisTurn && spell.level > 0}
-                                onLeveledSpellCast={() => setSpellCastThisTurn(true)}
+                                spellLockedOut={
+                                  // Locked if: already cast leveled spell this turn
+                                  (spellCastThisTurn && spell.level > 0) ||
+                                  // OR: bonus action spell cast → main action cantrip only (but lockout doesn't apply to cantrips)
+                                  (bonusActionSpellCast && spell.level > 0)
+                                }
+                                onLeveledSpellCast={(isBonusAction?: boolean) => {
+                                  setSpellCastThisTurn(true);
+                                  if (isBonusAction) setBonusActionSpellCast(true);
+                                }}
                               />
                             </div>
                           );
@@ -1444,15 +1454,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
         {/* ── HISTORY: Roll log + Action log merged ── */}
         {activeTab === 'history' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 'var(--sp-6)', maxWidth: 1100 }}>
-            <div>
-              <div className="section-header">Roll History</div>
-              <RollHistory characterId={character.id} userId={userId} compact />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', maxWidth: 900 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+                📜 Roll &amp; Action History
+              </div>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
+                {character.campaign_id ? 'Showing campaign rolls + solo rolls • newest first' : 'Showing solo rolls • newest first'}
+              </span>
             </div>
-            <div>
-              <div className="section-header">Action Log</div>
-              <ActionLog campaignId={character.campaign_id} characterId={character.id} mode={character.campaign_id ? 'campaign' : 'character'} maxHeight={560} />
-            </div>
+            {/* Unified timeline: in campaign use ActionLog (richer), solo use RollHistory */}
+            {character.campaign_id ? (
+              <ActionLog campaignId={character.campaign_id} characterId={character.id} mode="character" maxHeight={620} />
+            ) : (
+              <RollHistory characterId={character.id} userId={userId} />
+            )}
           </div>
         )}
 

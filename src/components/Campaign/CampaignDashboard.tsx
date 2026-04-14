@@ -20,6 +20,7 @@ import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
 import PlayerBattleMap from './PlayerBattleMap';
 import ErrorBoundary from '../ErrorBoundary';
+import CampaignSettings from './CampaignSettings';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -49,6 +50,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOwner = campaign.owner_id === user?.id;
+  const [showCampaignSettings, setShowCampaignSettings] = useState(false);
+  const [localCampaign, setLocalCampaign] = useState(campaign);
 
   useEffect(() => {
     loadMembers();
@@ -225,6 +228,15 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               onClick={toggleCombat}
             >
               {sessionState?.combat_active ? 'End Combat' : 'Start Combat'}
+            </button>
+          )}
+          {isOwner && (
+            <button
+              className="btn-secondary btn-sm"
+              onClick={() => setShowCampaignSettings(true)}
+              title="Campaign Settings"
+            >
+              ⚙️ Settings
             </button>
           )}
         </div>
@@ -628,6 +640,16 @@ function CharactersTab({ campaignId, userId, characters, onRefresh }: {
           </>
         )}
       </div>
+
+      {/* Campaign Settings Modal */}
+      {showCampaignSettings && isOwner && (
+        <CampaignSettings
+          campaign={localCampaign}
+          onClose={() => setShowCampaignSettings(false)}
+          onDeleted={() => { setShowCampaignSettings(false); onBack(); }}
+          onUpdated={updates => setLocalCampaign(c => ({ ...c, ...updates }))}
+        />
+      )}
     </div>
   );
 }

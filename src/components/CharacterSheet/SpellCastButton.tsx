@@ -13,7 +13,7 @@ interface SpellCastButtonProps {
   onUpdateSlots: (slots: SpellSlots) => void;
   compact?: boolean;
   spellLockedOut?: boolean;    // true when a leveled spell was already cast this turn
-  onLeveledSpellCast?: () => void; // called when a leveled spell is successfully cast
+  onLeveledSpellCast?: (isBonusAction?: boolean) => void; // called when a leveled spell is successfully cast
 }
 
 const SAVE_COLORS: Record<string, string> = {
@@ -44,6 +44,7 @@ export default function SpellCastButton({
   spell, character, userId, campaignId, onUpdateSlots, compact = false,
   spellLockedOut = false, onLeveledSpellCast,
 }: SpellCastButtonProps) {
+  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
   const [showModal, setShowModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<number>(spell.level);
   const [target, setTarget] = useState('');
@@ -88,19 +89,34 @@ export default function SpellCastButton({
   /** Roll damage dice → 3D roller + action log */
   async function rollDamage(slotLevel?: number) {
     if (!mechanics.damageDice) return;
-    const parsed = parseDice(mechanics.damageDice);
+    // Compute actual dice to roll considering upcast scaling
+    const effectiveSlot = slotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+    const effectiveDice = upcast.extraDice
+      ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, effectiveSlot)
+      : mechanics.damageDice;
+    const parsed = parseDice(effectiveDice.includes('+')
+      ? effectiveDice.split('+')[0]  // parse first component only for now
+      : effectiveDice);
     if (!parsed) return;
     const { count, sides } = parsed;
     const rolls = rollNdS(count, sides);
-    const total = rolls.reduce((a, b) => a + b, 0);
+    // Handle compound dice e.g. "3d6+2d8" — add second component
+    let extraRolls: number[] = [];
+    if (effectiveDice.includes('+')) {
+      const secondPart = effectiveDice.split('+')[1];
+      const p2 = parseDice(secondPart);
+      if (p2) extraRolls = rollNdS(p2.count, p2.sides);
+    }
+    const allRolls = [...rolls, ...extraRolls];
+    const total = allRolls.reduce((a, b) => a + b, 0);
 
     // Spend slot if leveled spell + mark spell as cast this turn
     if (!isCantrip && slotLevel !== undefined) {
       spendSlot(slotLevel);
-      onLeveledSpellCast?.();
+      onLeveledSpellCast?.(isBonusActionCast);
     } else if (!isCantrip && availableSlots.length === 1) {
       spendSlot(availableSlots[0].level);
-      onLeveledSpellCast?.();
+      onLeveledSpellCast?.(isBonusActionCast);
     }
 
     // Fire 3D roller
@@ -123,7 +139,7 @@ export default function SpellCastButton({
       actionType: 'damage',
       actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
       diceExpression: mechanics.damageDice,
-      individualResults: rolls, total,
+      individualResults: allRolls.length ? allRolls : rolls, total,
       notes: isCantrip ? 'cantrip' : `Level ${slotLevel ?? availableSlots[0]?.level ?? spell.level} slot`,
     });
   }
@@ -163,7 +179,7 @@ export default function SpellCastButton({
       diceExpression: '1d20', individualResults: [d20], total,
       hitResult: hitResult as any,
       notes: `+${spellAttack} spell attack (${key.slice(0,3).toUpperCase()} ${spellMod >= 0 ? '+' : ''}${spellMod} + Prof +${profBonus})` });
-    if (!isCantrip) onLeveledSpellCast?.();
+    if (!isCantrip) onLeveledSpellCast?.(isBonusActionCast);
   }
 
   /** Cast utility spell (no dice) */
@@ -435,17 +451,30 @@ export default function SpellCastButton({
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
                   textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>Spell Slot</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {availableSlots.map(({ level, remaining }) => (
-                    <button key={level} onClick={() => setSelectedSlot(level)}
-                      style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
-                        padding: '5px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
-                        border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
-                        background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
-                        color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)' }}>
-                      Level {level}
-                      <span style={{ display: 'block', fontSize: 9, fontWeight: 400 }}>{remaining} left</span>
-                    </button>
-                  ))}
+                  {availableSlots.map(({ level, remaining }) => {
+                    // Show upcast damage for this slot level
+                    const upcastDice = upcast.extraDice && mechanics.damageDice
+                      ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, level)
+                      : mechanics.damageDice;
+                    const isUpcast = level > spell.level;
+                    return (
+                      <button key={level} onClick={() => setSelectedSlot(level)}
+                        style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                          padding: '5px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                          border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
+                          background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
+                          color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)' }}>
+                        Level {level}
+                        {upcastDice && (
+                          <span style={{ display: 'block', fontSize: 9, fontWeight: 700,
+                            color: isUpcast ? '#f87171' : 'var(--t-3)' }}>
+                            {upcastDice}{isUpcast ? ' ⬆' : ''}
+                          </span>
+                        )}
+                        <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--t-3)' }}>{remaining} left</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -480,7 +509,12 @@ export default function SpellCastButton({
                     borderRadius: 'var(--r-md)', cursor: 'pointer',
                     border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)',
                     color: '#a78bfa', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  🎲 {mechanics.damageDice} Dmg
+                  {(() => {
+                    const dice = upcast.extraDice && mechanics.damageDice
+                      ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, selectedSlot)
+                      : mechanics.damageDice;
+                    return <>🎲 {dice} Dmg{selectedSlot > spell.level ? ' ⬆' : ''}</>;
+                  })()}
                 </button>
               )}
               {mechanics.isUtility && (

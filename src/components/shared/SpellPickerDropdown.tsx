@@ -99,11 +99,13 @@ export default function SpellPickerDropdown({
     SPELLS.forEach(s => {
       if (!s.classes.includes(className)) return;
       if (isCantrip ? s.level !== 0 : s.level > maxLevel) return;
+      // Hide spells already owned (granted spells are auto-added so keep showing them)
+      if (selected.includes(s.id) && !grantedSpellIds.includes(s.id)) return;
       if (!map[s.level]) map[s.level] = [];
       map[s.level].push(s);
     });
     return map;
-  }, [className, isCantrip, maxLevel]);
+  }, [className, isCantrip, maxLevel, selected, grantedSpellIds]);
 
   const spellsAtLevel = useMemo(() => {
     const base = allByLevel[activeLevel] ?? [];

@@ -9,6 +9,11 @@ export interface MagicItem {
   requiresAttunement: boolean;
   description: string;
   weight?: number;
+  // Mechanical bonuses — applied automatically when attuned + equipped
+  acBonus?: number;
+  saveBonus?: number;
+  attackBonus?: number;
+  damageBonus?: number;
 }
 
 export const MAGIC_ITEMS: MagicItem[] = [
@@ -35,7 +40,7 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'potion-water-breathing', name: 'Potion of Water Breathing', type: 'potion', rarity: 'uncommon', requiresAttunement: false, description: 'For 1 hour, breathe underwater.', weight: 0.5 },
 
   // Rings
-  { id: 'ring-protection', name: 'Ring of Protection', type: 'ring', rarity: 'rare', requiresAttunement: true, description: '+1 bonus to AC and saving throws while attuned.', weight: 0 },
+  { id: 'ring-protection', name: 'Ring of Protection', type: 'ring', rarity: 'rare', requiresAttunement: true, description: '+1 bonus to AC and saving throws while attuned.', weight: 0, acBonus: 1, saveBonus: 1 },
   { id: 'ring-resistance', name: 'Ring of Resistance', type: 'ring', rarity: 'rare', requiresAttunement: true, description: 'Resistance to one damage type (determined by gem in setting).', weight: 0 },
   { id: 'ring-spell-storing', name: 'Ring of Spell Storing', type: 'ring', rarity: 'rare', requiresAttunement: true, description: 'Store up to 5 levels of spells. Any creature wearing it can cast stored spells.', weight: 0 },
   { id: 'ring-swimming', name: 'Ring of Swimming', type: 'ring', rarity: 'uncommon', requiresAttunement: false, description: 'Gain a swimming speed of 40 ft.', weight: 0 },
@@ -81,11 +86,11 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'boots-of-striding', name: 'Boots of Striding and Springing', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Speed 30 ft minimum. Jump distance tripled.', weight: 1 },
   { id: 'boots-of-flying', name: 'Winged Boots', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Fly at 30 ft speed. 4 hours max, charges recharge at dawn.', weight: 1 },
   { id: 'bracers-of-archery', name: 'Bracers of Archery', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: '+2 to damage rolls with longbows and shortbows.', weight: 1 },
-  { id: 'bracers-of-defense', name: 'Bracers of Defense', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: '+2 AC while not wearing armor or using a shield.', weight: 1 },
+  { id: 'bracers-of-defense', name: 'Bracers of Defense', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: '+2 AC while not wearing armor or using a shield.', weight: 1, acBonus: 2 },
   { id: 'cape-of-mountebank', name: 'Cape of the Mountebank', type: 'wondrous', rarity: 'rare', requiresAttunement: false, description: 'Cast Dimension Door as an action (regains at dawn).', weight: 1 },
   { id: 'cloak-of-displacement', name: 'Cloak of Displacement', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: 'Attackers have disadvantage on attack rolls against you. Stops if you take damage until start of next turn.', weight: 1 },
   { id: 'cloak-of-elvenkind', name: 'Cloak of Elvenkind', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Advantage on Stealth checks. Disadvantage on Perception checks to see you.', weight: 1 },
-  { id: 'cloak-of-protection', name: 'Cloak of Protection', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: '+1 AC and +1 to saving throws.', weight: 1 },
+  { id: 'cloak-of-protection', name: 'Cloak of Protection', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: '+1 AC and +1 to saving throws.', weight: 1, acBonus: 1, saveBonus: 1 },
   { id: 'cloak-of-invisibility', name: 'Cloak of Invisibility', type: 'wondrous', rarity: 'legendary', requiresAttunement: true, description: 'Become invisible while wearing and hood is up. Seeing through requires True Sight. 2 hours per day.', weight: 1 },
   { id: 'crystal-ball', name: 'Crystal Ball', type: 'wondrous', rarity: 'very rare', requiresAttunement: true, description: 'Cast Scrying (DC 17) once per day.', weight: 5 },
   { id: 'dimensional-shackles', name: 'Dimensional Shackles', type: 'wondrous', rarity: 'rare', requiresAttunement: false, description: 'Restrain a creature. While restrained, it can\'t use teleportation or planar travel.', weight: 6 },

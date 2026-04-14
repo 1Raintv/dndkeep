@@ -87,6 +87,7 @@ export interface InventoryItem {
   description: string;
   equipped: boolean;
   magical: boolean;
+  is_weapon?: boolean;  // marks item as a weapon for Actions tab
   // Armor properties (for AC auto-calc)
   category?: string;
   armorType?: 'light' | 'medium' | 'heavy' | 'shield';
@@ -353,6 +354,13 @@ export interface SkillData {
 
 // --- Campaign ---
 
+export interface AutomationSettings {
+  auto_hit_dice: boolean;
+  auto_damage_dice: boolean;
+  auto_damage_done: boolean;
+  auto_condition_tracker: boolean;
+}
+
 export interface Campaign {
   id: string;
   owner_id: string;
@@ -363,6 +371,7 @@ export interface Campaign {
   join_code: string;
   created_at: string;
   updated_at: string;
+  automation_settings?: AutomationSettings;
 }
 
 export interface CampaignMember {

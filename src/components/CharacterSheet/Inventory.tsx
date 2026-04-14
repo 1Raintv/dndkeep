@@ -652,6 +652,18 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
                 color: item.equipped ? 'var(--t-2)' : 'var(--c-gold-l)' }}>
               {item.armorType ? (item.equipped ? '🛡 Unequip' : '🛡 Equip') : (item.equipped ? 'Unequip' : '⚔ Equip')}
             </button>
+            {/* Mark as weapon — shows in Actions tab attack list */}
+            {!item.armorType && (
+              <button
+                onClick={() => onUpdate(item.id, { is_weapon: !item.is_weapon })}
+                title={item.is_weapon ? 'Remove from Actions attack list' : 'Show this item as an attack in the Actions tab'}
+                style={{ padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  border: item.is_weapon ? '1px solid rgba(167,139,250,0.4)' : '1px solid var(--c-border)',
+                  background: item.is_weapon ? 'rgba(167,139,250,0.12)' : 'var(--c-raised)',
+                  color: item.is_weapon ? '#a78bfa' : 'var(--t-3)' }}>
+                {item.is_weapon ? '⚔️ In Actions' : '⚔️ Use as Attack'}
+              </button>
+            )}
             <button onClick={() => { onRemove(item.id); onClose(); }}
               style={{ padding: '9px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
                 border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(220,38,38,0.08)', color: 'var(--c-red-l)' }}>

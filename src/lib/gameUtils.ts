@@ -238,7 +238,7 @@ export function rollDiceExpression(expr: string): { rolls: number[]; total: numb
 }
 
 /** Compute net bonuses from active buffs on a character */
-export function computeActiveBonuses(activeBufss: any[]): {
+export function computeActiveBonuses(activeBufss: any[], inventory?: any[]): {
   attackBonus: number; damageBonus: number; acBonus: number;
   saveBonus: number; blessActive: boolean; rageActive: boolean;
   huntersMarkActive: boolean; hexActive: boolean; divineFavorActive: boolean;
@@ -258,6 +258,26 @@ export function computeActiveBonuses(activeBufss: any[]): {
     if (b.name === "Hunter's Mark") huntersMarkActive = true;
     if (b.name === 'Hex') hexActive = true;
     if (b.name === 'Divine Favor') divineFavorActive = true;
+  }
+  // Also apply bonuses from attuned magic items in inventory
+  if (inventory) {
+    const MAGIC_ITEM_BONUSES: Record<string, { ac?: number; save?: number; atk?: number; dmg?: number }> = {
+      'Ring of Protection':   { ac: 1, save: 1 },
+      'Cloak of Protection':  { ac: 1, save: 1 },
+      'Bracers of Defense':   { ac: 2 },
+      'Gauntlets of Ogre Power': {},
+      'Sword of Sharpness':   { dmg: 0 }, // handled separately
+    };
+    for (const item of inventory) {
+      if (!item.equipped || !item.magical) continue;
+      const bonus = MAGIC_ITEM_BONUSES[item.name];
+      if (bonus) {
+        acBonus     += bonus.ac   ?? 0;
+        saveBonus   += bonus.save ?? 0;
+        attackBonus += bonus.atk  ?? 0;
+        damageBonus += bonus.dmg  ?? 0;
+      }
+    }
   }
   return { attackBonus, damageBonus, acBonus, saveBonus, blessActive, rageActive, huntersMarkActive, hexActive, divineFavorActive };
 }
