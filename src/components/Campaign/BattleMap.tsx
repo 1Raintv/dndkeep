@@ -37,6 +37,13 @@ interface BattleMapData {
   map_active_for_players: boolean; background_color: string;
 }
 
+interface DrawShape {
+  id: string;
+  type: 'freehand' | 'line' | 'rect' | 'ellipse';
+  points: number[][];
+  color: string;
+}
+
 interface TokenNote {
   id: string; campaign_id: string; token_key: string;
   author_id: string; author_name: string; note: string; created_at: string;
@@ -390,13 +397,176 @@ function TokenDetailPanel({ token, isDM, notes, userId, userName, campaignId, on
             </div>
           ))}
           <div style={{display:'flex',gap:5,marginTop:4}}>
-            <input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Add a note for the party…"
+            <input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Add a note for the party..."
               style={{flex:1,fontSize:12}} onKeyDown={e=>e.key==='Enter'&&submitNote()}/>
             <button onClick={submitNote} disabled={!newNote.trim()}
               style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,cursor:'pointer',
                 border:'1px solid var(--c-gold-bdr)',background:'var(--c-gold-bg)',color:'var(--c-gold-l)'}}>Add</button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── MapInnerCanvas: extracted to avoid deep-nesting TS parse issues ──────────
+interface MapInnerCanvasProps {
+  map: BattleMapData;
+  zoom: number; panX: number; panY: number;
+  gridSize: number; shapes: DrawShape[]; drawColor: string;
+  activeTool: string; currentPath: number[][]; drawStart: {x:number;y:number}|null;
+  drawEnd: {x:number;y:number}|null; measureStart: {col:number;row:number;x:number;y:number}|null;
+  measureEnd: {col:number;row:number;x:number;y:number}|null; pingPos: {x:number;y:number}|null;
+  draggingTokenId: string|null; selectedTokenId: string|null; visibleTokens: MapToken[];
+  isDM: boolean; playerBlocked: boolean;
+  isPanning: boolean; isDrawingRef: React.MutableRefObject<boolean>;
+  mapContainerRef: React.RefObject<HTMLDivElement>;
+  onWheel: (e:React.WheelEvent)=>void;
+  onMouseDown: (e:React.MouseEvent)=>void;
+  onMouseMove: (e:React.MouseEvent)=>void;
+  onMouseUp: (e:React.MouseEvent)=>void;
+  onMouseLeave: ()=>void;
+  onTokenClick: (id:string)=>void;
+  onTokenDragStart: (e:React.DragEvent,id:string)=>void;
+  onCellDrop: (e:React.DragEvent,col:number,row:number)=>void;
+}
+
+function MapInnerCanvas({
+  map, zoom, panX, panY, gridSize, shapes, drawColor, activeTool,
+  currentPath, drawStart, drawEnd, measureStart, measureEnd, pingPos,
+  draggingTokenId, selectedTokenId, visibleTokens, isDM, playerBlocked,
+  isPanning, isDrawingRef, mapContainerRef,
+  onWheel, onMouseDown, onMouseMove, onMouseUp, onMouseLeave,
+  onTokenClick, onTokenDragStart, onCellDrop,
+}: MapInnerCanvasProps) {
+  return (
+    <div
+      ref={mapContainerRef}
+      style={{width:'100%',height:'72vh',overflow:'hidden',position:'relative'}}
+      onWheel={onWheel}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
+    >
+      <div style={{
+        position:'absolute',transformOrigin:'top left',
+        transform:`translate(${panX}px,${panY}px) scale(${zoom})`,
+        width:map.grid_cols*gridSize, height:map.grid_rows*gridSize,
+        backgroundImage:map.image_url?`url(${map.image_url})`:'none',
+        backgroundSize:'cover',backgroundPosition:'center',
+        background:map.image_url?undefined:(map.background_color||'#0d1117'),
+        filter:playerBlocked?'grayscale(100%) brightness(0.4)':'none',
+        transition:isPanning||isDrawingRef.current?'none':'filter .3s',
+      }}>
+        {/* Grid */}
+        <svg style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none'}}>
+          {Array.from({length:map.grid_cols+1},(_,i)=>(
+            <line key={'v'+i} x1={i*gridSize} y1={0} x2={i*gridSize} y2={map.grid_rows*gridSize} stroke="rgba(255,255,255,0.07)" strokeWidth={1}/>
+          ))}
+          {Array.from({length:map.grid_rows+1},(_,i)=>(
+            <line key={'h'+i} x1={0} y1={i*gridSize} x2={map.grid_cols*gridSize} y2={i*gridSize} stroke="rgba(255,255,255,0.07)" strokeWidth={1}/>
+          ))}
+        </svg>
+        {/* Drawing layer */}
+        <DrawingLayer shapes={shapes} drawColor={drawColor} activeTool={activeTool}
+          currentPath={currentPath} drawStart={drawStart} drawEnd={drawEnd}
+          measureStart={measureStart} measureEnd={measureEnd} pingPos={pingPos}
+          mapW={map.grid_cols*gridSize} mapH={map.grid_rows*gridSize}/>
+        {/* Drop zones */}
+        {draggingTokenId&&Array.from({length:map.grid_rows},(_,r)=>
+          Array.from({length:map.grid_cols},(_,c)=>(
+            <div key={'cell-'+c+'-'+r}
+              onDragOver={e=>e.preventDefault()}
+              onDrop={e=>onCellDrop(e,c+1,r+1)}
+              style={{position:'absolute',left:c*gridSize,top:r*gridSize,width:gridSize,height:gridSize}}/>
+          ))
+        )}
+        {/* Tokens */}
+        {visibleTokens.map(token=>(
+          <TokenWrapper key={token.id} token={token} gridSize={gridSize}
+            isSelected={selectedTokenId===token.id}
+            isDragging={draggingTokenId===token.id}
+            isDM={isDM}
+            onClick={()=>onTokenClick(token.id)}
+            onDragStart={e=>onTokenDragStart(e,token.id)}/>
+        ))}
+        {/* Player blocked overlay */}
+        {playerBlocked&&(
+          <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:10,zIndex:5,pointerEvents:'none'}}>
+            <div style={{background:'rgba(0,0,0,0.8)',borderRadius:12,padding:'20px 32px',textAlign:'center',border:'1px solid var(--c-border)'}}>
+              <div style={{fontSize:28,marginBottom:8}}>🗺</div>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--t-1)',marginBottom:4}}>Battle Map</div>
+              <div style={{fontSize:11,color:'var(--t-3)'}}>Waiting for DM to activate the map...</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── DrawingLayer: SVG annotation overlay ─────────────────────────────────────
+interface DrawingLayerProps {
+  shapes:DrawShape[]; drawColor:string; activeTool:string;
+  currentPath:number[][]; drawStart:{x:number;y:number}|null; drawEnd:{x:number;y:number}|null;
+  measureStart:{x:number;y:number}|null; measureEnd:{x:number;y:number}|null;
+  pingPos:{x:number;y:number}|null; mapW:number; mapH:number;
+}
+function DrawingLayer({shapes,drawColor,activeTool,currentPath,drawStart,drawEnd,measureStart,measureEnd,pingPos,mapW,mapH}:DrawingLayerProps) {
+  return (
+    <svg style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:8}}>
+      {shapes.map(s=>
+        s.type==='freehand'&&s.points.length>1
+          ? <path key={s.id} d={'M'+s.points.map((p:number[])=>p[0]+','+p[1]).join(' L')} stroke={s.color} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85}/>
+        : s.type==='line'&&s.points.length===2
+          ? <line key={s.id} x1={s.points[0][0]} y1={s.points[0][1]} x2={s.points[1][0]} y2={s.points[1][1]} stroke={s.color} strokeWidth={3} strokeLinecap="round" opacity={0.85}/>
+        : s.type==='rect'&&s.points.length===2
+          ? <rect key={s.id} x={Math.min(s.points[0][0],s.points[1][0])} y={Math.min(s.points[0][1],s.points[1][1])} width={Math.abs(s.points[1][0]-s.points[0][0])} height={Math.abs(s.points[1][1]-s.points[0][1])} stroke={s.color} strokeWidth={2} fill={s.color+'25'} opacity={0.85}/>
+        : s.type==='ellipse'&&s.points.length===2
+          ? <ellipse key={s.id} cx={(s.points[0][0]+s.points[1][0])/2} cy={(s.points[0][1]+s.points[1][1])/2} rx={Math.abs(s.points[1][0]-s.points[0][0])/2} ry={Math.abs(s.points[1][1]-s.points[0][1])/2} stroke={s.color} strokeWidth={2} fill={s.color+'25'} opacity={0.85}/>
+        : null
+      )}
+      {activeTool==='draw-freehand'&&currentPath.length>1&&<path d={'M'+currentPath.map(p=>p[0]+','+p[1]).join(' L')} stroke={drawColor} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85}/>}
+      {activeTool==='draw-line'&&drawStart&&drawEnd&&<line x1={drawStart.x} y1={drawStart.y} x2={drawEnd.x} y2={drawEnd.y} stroke={drawColor} strokeWidth={3} strokeLinecap="round" opacity={0.85}/>}
+      {activeTool==='draw-rect'&&drawStart&&drawEnd&&<rect x={Math.min(drawStart.x,drawEnd.x)} y={Math.min(drawStart.y,drawEnd.y)} width={Math.abs(drawEnd.x-drawStart.x)} height={Math.abs(drawEnd.y-drawStart.y)} stroke={drawColor} strokeWidth={2} fill={drawColor+'25'} opacity={0.85}/>}
+      {activeTool==='draw-ellipse'&&drawStart&&drawEnd&&<ellipse cx={(drawStart.x+drawEnd.x)/2} cy={(drawStart.y+drawEnd.y)/2} rx={Math.abs(drawEnd.x-drawStart.x)/2} ry={Math.abs(drawEnd.y-drawStart.y)/2} stroke={drawColor} strokeWidth={2} fill={drawColor+'25'} opacity={0.85}/>}
+      {activeTool==='measure'&&measureStart&&measureEnd&&(
+        <>
+          <line x1={measureStart.x} y1={measureStart.y} x2={measureEnd.x} y2={measureEnd.y} stroke="#fbbf24" strokeWidth={2} strokeDasharray="6,4" opacity={0.9}/>
+          <circle cx={measureStart.x} cy={measureStart.y} r={4} fill="#fbbf24"/>
+          <circle cx={measureEnd.x} cy={measureEnd.y} r={4} fill="#fbbf24"/>
+        </>
+      )}
+      {pingPos&&(
+        <circle cx={pingPos.x} cy={pingPos.y} r={20} stroke="#f59e0b" strokeWidth={3} fill="rgba(245,158,11,0.2)">
+          <animate attributeName="r" values="10;30;10" dur="1s" repeatCount="3"/>
+          <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="3"/>
+        </circle>
+      )}
+    </svg>
+  );
+}
+
+// ── TokenWrapper: token + HP bubbles ─────────────────────────────────────────
+function TokenWrapper({token,gridSize,isSelected,isDragging,isDM,onClick,onDragStart}:{
+  token:MapToken; gridSize:number; isSelected:boolean; isDragging:boolean; isDM:boolean;
+  onClick:()=>void; onDragStart:(e:React.DragEvent)=>void;
+}) {
+  const hpPct = token.max_hp>0 ? token.hp/token.max_hp : 1;
+  return (
+    <div style={{position:'absolute',left:(token.col-1)*gridSize,top:(token.row-1)*gridSize,width:gridSize,height:gridSize,zIndex:isSelected?10:5,transition:isDragging?'none':'left .2s,top .2s'}}>
+      <TokenDot token={token} selected={isSelected} dragging={isDragging} isDM={isDM} onClick={onClick} onDragStart={onDragStart}/>
+      {isSelected&&(isDM||token.revealed.hp)&&(
+        <div style={{position:'absolute',top:-26,left:'50%',transform:'translateX(-50%)',display:'flex',gap:5,alignItems:'center',pointerEvents:'none',zIndex:20}}>
+          <div title={'HP: '+token.hp+'/'+token.max_hp} style={{width:20,height:20,borderRadius:'50%',background:'radial-gradient(circle at 35% 35%, '+(hpPct>0.5?'#ef4444':hpPct>0.25?'#f97316':'#7f1d1d')+', #7f1d1d)',border:'2px solid #ef4444',boxShadow:'0 1px 4px rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:800,color:'#fff',fontFamily:'var(--ff-stat)'}}>{token.hp}</div>
+          {(isDM||token.revealed.ac)&&<div title={'AC: '+token.ac} style={{width:20,height:20,borderRadius:'50%',background:'radial-gradient(circle at 35% 35%, #374151, #111827)',border:'2px solid #6b7280',boxShadow:'0 1px 4px rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:800,color:'#fff',fontFamily:'var(--ff-stat)'}}>{token.ac}</div>}
+          {(isDM||token.revealed.max_hp)&&<div title={'Max: '+token.max_hp} style={{width:20,height:20,borderRadius:'50%',background:'radial-gradient(circle at 35% 35%, #3b82f6, #1e3a8a)',border:'2px solid #3b82f6',boxShadow:'0 1px 4px rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:800,color:'#fff',fontFamily:'var(--ff-stat)'}}>{token.max_hp}</div>}
+        </div>
+      )}
+      <div style={{position:'absolute',bottom:-15,left:'50%',transform:'translateX(-50%)',fontSize:9,fontWeight:700,color:'#fff',whiteSpace:'nowrap',textShadow:'0 1px 3px rgba(0,0,0,0.9)',pointerEvents:'none'}}>
+        {(!isDM&&token.is_hidden)?'???':token.name.length>8?token.name.slice(0,8)+'...':token.name}
       </div>
     </div>
   );
@@ -467,7 +637,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
 
       {/* Search */}
       <div style={{padding:'8px 12px',borderBottom:'1px solid var(--c-border)'}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search NPCs & monsters…" style={{width:'100%',fontSize:12}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search NPCs & monsters..." style={{width:'100%',fontSize:12}}/>
       </div>
 
       {/* Tabs */}
@@ -482,7 +652,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
       </div>
 
       <div style={{flex:1,overflowY:'auto',padding:'6px 8px',display:'flex',flexDirection:'column',gap:4}}>
-        {loading&&tab==='mine'&&<div style={{textAlign:'center',padding:'20px 0',color:'var(--t-3)',fontSize:12}}>Loading…</div>}
+        {loading&&tab==='mine'&&<div style={{textAlign:'center',padding:'20px 0',color:'var(--t-3)',fontSize:12}}>Loading...</div>}
 
         {tab==='mine'&&!loading&&filteredRoster.map(npc=>(
           <div key={npc.id} style={{background:'rgba(255,255,255,0.04)',borderRadius:8,padding:'8px 10px',border:'1px solid var(--c-border)'}}>
@@ -649,6 +819,28 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   const [showAddPlayer,setShowAddPlayer]=useState(false);
   const [saving,setSaving]=useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+
+  // ── Roll20-inspired map controls ──────────────────────────────────
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{x:number;y:number;px:number;py:number}|null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  type Tool = 'select' | 'pan' | 'draw-freehand' | 'draw-line' | 'draw-rect' | 'draw-ellipse' | 'measure' | 'ping';
+  const [activeTool, setActiveTool] = useState<Tool>('select');
+  const [drawColor, setDrawColor] = useState('#ef4444');
+  // Drawing layer shapes (DrawShape declared at module level)
+  const [shapes, setShapes] = useState<DrawShape[]>([]);
+  const [currentPath, setCurrentPath] = useState<number[][]>([]);
+  const [drawStart, setDrawStart] = useState<{x:number;y:number}|null>(null);
+  const [drawEnd, setDrawEnd] = useState<{x:number;y:number}|null>(null);
+  const isDrawing = useRef(false);
+  // Measure tool
+  const [measureStart, setMeasureStart] = useState<{x:number;y:number;col:number;row:number}|null>(null);
+  const [measureEnd, setMeasureEnd] = useState<{x:number;y:number;col:number;row:number}|null>(null);
+  // Ping (pointer) — DM only, broadcasts to players
+  const [pingPos, setPingPos] = useState<{x:number;y:number}|null>(null);
 
   // user display name
   const [userName,setUserName]=useState('Player');
@@ -895,6 +1087,78 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     setDraggingTokenId(null);
   }
 
+  // ── Zoom & Pan handlers ──────────────────────────────────────────
+  function handleWheel(e:React.WheelEvent) {
+    if (!mapContainerRef.current) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoom(z => Math.min(3, Math.max(0.3, z * factor)));
+  }
+
+  function getMapCoords(e:React.MouseEvent): {x:number;y:number;col:number;row:number} {
+    const gs = activeMap?.grid_size ?? 48;
+    const rect = mapContainerRef.current?.getBoundingClientRect();
+    if (!rect) return {x:0,y:0,col:1,row:1};
+    const x = (e.clientX - rect.left - panX) / zoom;
+    const y = (e.clientY - rect.top - panY) / zoom;
+    return { x, y, col: Math.max(1,Math.ceil(x/gs)), row: Math.max(1,Math.ceil(y/gs)) };
+  }
+
+  function handleMapMouseDown(e:React.MouseEvent) {
+    if (activeTool === 'pan') {
+      setIsPanning(true);
+      panStartRef.current = { x: e.clientX, y: e.clientY, px: panX, py: panY };
+      return;
+    }
+    const coords = getMapCoords(e);
+    if (activeTool === 'measure') {
+      setMeasureStart(coords); setMeasureEnd(null);
+      return;
+    }
+    if (activeTool.startsWith('draw-')) {
+      isDrawing.current = true;
+      if (activeTool === 'draw-freehand') { setCurrentPath([[coords.x, coords.y]]); }
+      else { setDrawStart({x:coords.x,y:coords.y}); setDrawEnd({x:coords.x,y:coords.y}); }
+    }
+    if (activeTool === 'ping') {
+      setPingPos({x:coords.x, y:coords.y});
+      setTimeout(()=>setPingPos(null), 2000);
+    }
+  }
+
+  function handleMapMouseMove(e:React.MouseEvent) {
+    if (activeTool === 'pan' && isPanning && panStartRef.current) {
+      setPanX(panStartRef.current.px + e.clientX - panStartRef.current.x);
+      setPanY(panStartRef.current.py + e.clientY - panStartRef.current.y);
+      return;
+    }
+    const coords = getMapCoords(e);
+    if (activeTool === 'measure' && measureStart) { setMeasureEnd(coords); return; }
+    if (!isDrawing.current) return;
+    if (activeTool === 'draw-freehand') { setCurrentPath(p=>[...p,[coords.x,coords.y]]); }
+    else if (activeTool === 'draw-line'||activeTool === 'draw-rect'||activeTool === 'draw-ellipse') {
+      setDrawEnd({x:coords.x,y:coords.y});
+    }
+  }
+
+  function handleMapMouseUp(e:React.MouseEvent) {
+    setIsPanning(false);
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+    const coords = getMapCoords(e);
+    if (activeTool === 'draw-freehand' && currentPath.length > 1) {
+      setShapes(s=>[...s,{id:Date.now().toString(),type:'freehand',points:currentPath,color:drawColor}]);
+      setCurrentPath([]);
+    } else if (activeTool === 'draw-line' && drawStart) {
+      setShapes(s=>[...s,{id:Date.now().toString(),type:'line',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}]);
+    } else if (activeTool === 'draw-rect' && drawStart) {
+      setShapes(s=>[...s,{id:Date.now().toString(),type:'rect',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}]);
+    } else if (activeTool === 'draw-ellipse' && drawStart) {
+      setShapes(s=>[...s,{id:Date.now().toString(),type:'ellipse',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}]);
+    }
+    setDrawStart(null); setDrawEnd(null);
+  }
+
   const selectedToken=activeMap?.tokens.find(t=>t.id===selectedTokenId)??null;
   const visibleTokens=(activeMap?.tokens??[]).filter(t=>isDM||!t.is_hidden);
   const mapIsLive=activeMap?.map_active_for_players??false;
@@ -909,9 +1173,26 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   const [newCols,setNewCols]=useState('20');
   const [newRows,setNewRows]=useState('15');
 
+  // ── Tool palette ─────────────────────────────────────────────────
+  const TOOLS: {id:string;icon:string;tip:string;group?:string}[] = [
+    {id:'select',icon:'▶',tip:'Select & Move (S)'},
+    {id:'pan',icon:'✋',tip:'Pan (H)'},
+    {id:'draw-freehand',icon:'✏️',tip:'Freehand (F)',group:'draw'},
+    {id:'draw-line',icon:'╱',tip:'Line (L)',group:'draw'},
+    {id:'draw-rect',icon:'▭',tip:'Rectangle (R)',group:'draw'},
+    {id:'draw-ellipse',icon:'◯',tip:'Ellipse (E)',group:'draw'},
+    {id:'measure',icon:'📏',tip:'Measure Distance (M)'},
+    {id:'ping',icon:'📍',tip:'Pointer / Ping (P)'},
+  ];
+  const DRAW_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#a855f7','#ffffff','#000000'];
+
+  const measureDistFt = measureStart && measureEnd
+    ? Math.round(Math.sqrt(Math.pow(measureEnd.col-measureStart.col,2)+Math.pow(measureEnd.row-measureStart.row,2))*5)
+    : 0;
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%'}}>
-      {/* Toolbar */}
+      {/* ── Top toolbar row ── */}
       <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
         {maps.length>0&&maps.map(m=>(
           <button key={m.id} onClick={()=>setActiveMap(m)} style={{
@@ -936,12 +1217,12 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             background:mapIsLive?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.08)',
             color:mapIsLive?'#22c55e':'#ef4444',
           }} disabled={!activeMap}>{mapIsLive?'🟢 Live for Players':'🔴 Hidden from Players'}</button>
-          {saving&&<span style={{fontSize:11,color:'var(--t-3)',fontStyle:'italic'}}>Saving…</span>}
+          {saving&&<span style={{fontSize:11,color:'var(--t-3)',fontStyle:'italic'}}>Saving...</span>}
         </>}
         {!isDM&&(
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <div style={{width:8,height:8,borderRadius:'50%',background:mapIsLive?'#22c55e':'#6b7280'}}/>
-            <span style={{fontSize:11,color:mapIsLive?'#22c55e':'var(--t-3)'}}>{mapIsLive?'Map Active':'Waiting for DM…'}</span>
+            <span style={{fontSize:11,color:mapIsLive?'#22c55e':'var(--t-3)'}}>{mapIsLive?'Map Active':'Waiting for DM...'}</span>
           </div>
         )}
       </div>
@@ -958,10 +1239,54 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
         </div>
       )}
 
-      {/* Main layout: Detail | Map | Roster */}
-      <div style={{display:'flex',gap:12,alignItems:'flex-start',width:'100%'}}>
-        {/* LEFT: Token detail */}
+      {/* ── Main canvas area: Left toolbar | Map canvas | Right panel ── */}
+      <div style={{display:'flex',gap:0,alignItems:'stretch',width:'100%',position:'relative'}}>
+
+        {/* ── LEFT VERTICAL TOOLBAR (Roll20-style) ── */}
+        {activeMap && isDM && (
+          <div style={{
+            width:44,flexShrink:0,background:'#0d1117',border:'1px solid var(--c-border)',
+            borderRadius:'10px 0 0 10px',display:'flex',flexDirection:'column',alignItems:'center',
+            paddingTop:8,paddingBottom:8,gap:2,zIndex:20,
+          }}>
+            {TOOLS.map(t=>(
+              <button key={t.id} title={t.tip} onClick={()=>setActiveTool(t.id as any)}
+                style={{
+                  width:34,height:34,borderRadius:6,border:'none',cursor:'pointer',
+                  fontSize:t.icon.length>1?14:16,
+                  background:activeTool===t.id?'rgba(212,160,23,0.25)':'transparent',
+                  color:activeTool===t.id?'var(--c-gold-l)':'var(--t-2)',
+                  outline:activeTool===t.id?'1px solid var(--c-gold-bdr)':'none',
+                  transition:'all .15s',display:'flex',alignItems:'center',justifyContent:'center',
+                }}>
+                {t.icon}
+              </button>
+            ))}
+            {/* Separator */}
+            <div style={{width:28,height:1,background:'var(--c-border)',margin:'6px 0'}}/>
+            {/* Color picker row */}
+            {activeTool.startsWith('draw-') && (
+              <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                {DRAW_COLORS.map(c=>(
+                  <button key={c} onClick={()=>setDrawColor(c)}
+                    style={{width:22,height:22,borderRadius:'50%',border:drawColor===c?'2px solid #fff':'2px solid transparent',
+                      background:c,cursor:'pointer',padding:0,outline:'none'}}/>
+                ))}
+              </div>
+            )}
+            {/* Clear drawings */}
+            {shapes.length>0&&(
+              <button title="Clear all drawings" onClick={()=>setShapes([])}
+                style={{width:34,height:28,borderRadius:6,border:'none',cursor:'pointer',fontSize:12,background:'transparent',color:'var(--c-red-l)',marginTop:4}}>
+                🗑
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Token detail panel overlaid on left */}
         {selectedToken&&(
+          <div style={{position:'absolute',left:activeMap&&isDM?50:0,top:0,zIndex:50}}>
           <TokenDetailPanel
             token={selectedToken} isDM={isDM} notes={tokenNotes}
             userId={userId} userName={userName} campaignId={campaignId}
@@ -984,85 +1309,82 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             onReveal={(field,val)=>updateToken(selectedToken.id,{revealed:{...selectedToken.revealed,[field]:val}})}
             onClose={()=>setSelectedTokenId(null)}
           />
+          </div>
         )}
 
-        {/* CENTER: Grid */}
-        <div style={{flex:1,minWidth:0,position:'relative'}}>
+        {/* ── CENTER: Full-canvas map viewport ── */}
+        <div style={{flex:1,minWidth:0,position:'relative',background:'#0a0d12',
+          borderRadius:activeMap&&isDM?'0 10px 10px 0':'10px',
+          border:'1px solid var(--c-border)',overflow:'hidden',
+          cursor: activeTool==='pan'?isPanning?'grabbing':'grab':activeTool.startsWith('draw-')?'crosshair':activeTool==='measure'?'crosshair':activeTool==='ping'?'cell':'default',
+        }}>
           {activeMap ? (
-            <div style={{position:'relative'}}>
-              <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'72vh',border:'1px solid var(--c-border)',borderRadius:10,
-                background:activeMap.background_color||'#0d1117',
-                filter:playerBlocked?'grayscale(100%) brightness(0.4)':'none',
-                pointerEvents:playerBlocked?'none':'auto',transition:'filter .3s'}}>
-                <div style={{position:'relative',width:activeMap.grid_cols*gridSize,height:activeMap.grid_rows*gridSize,
-                  backgroundImage:activeMap.image_url?`url(${activeMap.image_url})`:'none',backgroundSize:'cover',backgroundPosition:'center'}}>
-                  {/* Grid SVG */}
-                  <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>
-                    {Array.from({length:activeMap.grid_cols+1},(_,i)=>(
-                      <line key={`v${i}`} x1={i*gridSize} y1={0} x2={i*gridSize} y2={activeMap.grid_rows*gridSize} stroke="rgba(255,255,255,0.07)" strokeWidth={1}/>
-                    ))}
-                    {Array.from({length:activeMap.grid_rows+1},(_,i)=>(
-                      <line key={`h${i}`} x1={0} y1={i*gridSize} x2={activeMap.grid_cols*gridSize} y2={i*gridSize} stroke="rgba(255,255,255,0.07)" strokeWidth={1}/>
-                    ))}
-                  </svg>
-                  {/* Drop zones */}
-                  {draggingTokenId&&Array.from({length:activeMap.grid_rows},(_,r)=>
-                    Array.from({length:activeMap.grid_cols},(_,c)=>(
-                      <div key={`cell-${c}-${r}`}
-                        onDragOver={e=>e.preventDefault()}
-                        onDrop={e=>handleCellDrop(e,c+1,r+1)}
-                        style={{position:'absolute',left:c*gridSize,top:r*gridSize,width:gridSize,height:gridSize}}/>
-                    ))
-                  )}
-                  {/* Tokens */}
-                  {visibleTokens.map(token=>(
-                    <div key={token.id} style={{
-                      position:'absolute',
-                      left:(token.col-1)*gridSize,top:(token.row-1)*gridSize,
-                      width:gridSize,height:gridSize,zIndex:selectedTokenId===token.id?10:5,
-                      transition:draggingTokenId===token.id?'none':'left .2s,top .2s',
-                    }}>
-                      <TokenDot
-                        token={token} selected={selectedTokenId===token.id}
-                        dragging={draggingTokenId===token.id} isDM={isDM}
-                        onClick={()=>setSelectedTokenId(prev=>prev===token.id?null:token.id)}
-                        onDragStart={e=>handleDragStart(e,token.id)}
-                      />
-                      <div style={{position:'absolute',bottom:-15,left:'50%',transform:'translateX(-50%)',
-                        fontSize:9,fontWeight:700,color:'#fff',whiteSpace:'nowrap',
-                        textShadow:'0 1px 3px rgba(0,0,0,0.9)',pointerEvents:'none'}}>
-                        {(!isDM&&token.is_hidden)?'???':token.name.length>8?token.name.slice(0,8)+'…':token.name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div style={{position:'relative',width:'100%',height:'72vh'}}>
+            {/* Zoom controls — top right corner */}
+            <div style={{position:'absolute',top:10,right:10,zIndex:30,display:'flex',flexDirection:'column',gap:3}}>
+              <button onClick={()=>setZoom(z=>Math.min(3,z*1.2))}
+                style={{width:30,height:30,borderRadius:6,border:'1px solid var(--c-border)',background:'rgba(13,17,23,0.9)',
+                  color:'var(--t-1)',cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>+</button>
+              <div style={{textAlign:'center',fontSize:10,fontWeight:700,color:'var(--t-3)',fontFamily:'var(--ff-stat)',padding:'2px 0',
+                background:'rgba(13,17,23,0.9)',borderRadius:4,border:'1px solid var(--c-border)'}}>
+                {Math.round(zoom*100)}%
               </div>
-              {/* Player blocked overlay */}
-              {playerBlocked&&(
-                <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
-                  borderRadius:10,zIndex:5,pointerEvents:'none'}}>
-                  <div style={{background:'rgba(0,0,0,0.8)',borderRadius:12,padding:'20px 32px',textAlign:'center',
-                    border:'1px solid var(--c-border)'}}>
-                    <div style={{fontSize:28,marginBottom:8}}>🗺️</div>
-                    <div style={{fontSize:13,fontWeight:700,color:'var(--t-1)',marginBottom:4}}>Battle Map</div>
-                    <div style={{fontSize:11,color:'var(--t-3)'}}>Waiting for DM to activate the map…</div>
-                  </div>
-                </div>
-              )}
+              <button onClick={()=>setZoom(z=>Math.max(0.3,z*0.8))}
+                style={{width:30,height:30,borderRadius:6,border:'1px solid var(--c-border)',background:'rgba(13,17,23,0.9)',
+                  color:'var(--t-1)',cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>−</button>
+              <button onClick={()=>{setZoom(1);setPanX(0);setPanY(0);}} title="Reset view"
+                style={{width:30,height:30,borderRadius:6,border:'1px solid var(--c-border)',background:'rgba(13,17,23,0.9)',
+                  color:'var(--t-3)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>⌖</button>
+            </div>
+
+            {/* Measure readout */}
+            {measureStart && measureEnd && (
+              <div style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:30,
+                background:'rgba(13,17,23,0.95)',border:'1px solid var(--c-gold-bdr)',borderRadius:8,
+                padding:'4px 14px',fontFamily:'var(--ff-stat)',fontWeight:700,fontSize:13,color:'var(--c-gold-l)'}}>
+                📏 {measureDistFt} ft
+              </div>
+            )}
+
+            {/* Map canvas — extracted to MapInnerCanvas component for TS nesting fix */}
+            <MapInnerCanvas
+              map={activeMap}
+              zoom={zoom} panX={panX} panY={panY}
+              gridSize={gridSize}
+              shapes={shapes} drawColor={drawColor} activeTool={activeTool}
+              currentPath={currentPath} drawStart={drawStart} drawEnd={drawEnd}
+              measureStart={measureStart} measureEnd={measureEnd} pingPos={pingPos}
+              draggingTokenId={draggingTokenId} selectedTokenId={selectedTokenId}
+              visibleTokens={visibleTokens}
+              isDM={isDM} playerBlocked={playerBlocked}
+              isPanning={isPanning} isDrawingRef={isDrawing}
+              mapContainerRef={mapContainerRef}
+              onWheel={handleWheel}
+              onMouseDown={handleMapMouseDown}
+              onMouseMove={handleMapMouseMove}
+              onMouseUp={handleMapMouseUp}
+              onMouseLeave={()=>{setIsPanning(false);isDrawing.current=false;}}
+              onTokenClick={id=>setSelectedTokenId(prev=>prev===id?null:id)}
+              onTokenDragStart={handleDragStart}
+              onCellDrop={handleCellDrop}
+            />
             </div>
           ) : (
             <div style={{padding:'60px 20px',textAlign:'center',color:'var(--t-3)',fontSize:14,
-              border:'1px dashed var(--c-border)',borderRadius:10}}>
-              {isDM?'Create a new map above to get started.':'Waiting for DM to set up the map…'}
+              border:'1px dashed var(--c-border)',borderRadius:10,height:'72vh',
+              display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8}}>
+              <span style={{fontSize:32,opacity:0.3}}>🗺</span>
+              <div>{isDM?'Create a new map above to get started.':'Waiting for DM to set up the map...'}</div>
             </div>
           )}
-          {/* Legend */}
+          {/* Legend / footer */}
           {activeMap&&(
-            <div style={{display:'flex',gap:12,fontSize:10,color:'var(--t-3)',marginTop:6,flexWrap:'wrap'}}>
+            <div style={{display:'flex',gap:12,fontSize:10,color:'var(--t-3)',marginTop:6,flexWrap:'wrap',padding:'0 4px'}}>
               <span>🟢 Full HP · 🟡 Bloodied · 🔴 Critical</span>
               <span>🟠 dot = conditions active</span>
               {isDM&&<span>· Drag tokens to move · Click to inspect</span>}
               {!isDM&&<span>· Click tokens for details & party notes</span>}
+              {isDM&&shapes.length>0&&<span style={{color:'var(--c-gold-l)'}}>· {shapes.length} drawing{shapes.length!==1?'s':''} on map</span>}
             </div>
           )}
         </div>
