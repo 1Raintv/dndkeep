@@ -234,7 +234,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
             <button
               className="btn-secondary btn-sm"
               onClick={() => setShowCampaignSettings(true)}
-              title="Campaign Settings"
+              title="Campaign Settings (v2)"
             >
               ⚙️ Settings
             </button>

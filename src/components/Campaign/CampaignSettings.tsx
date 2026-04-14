@@ -102,7 +102,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
         style={{ maxWidth: 520 }}
         onClick={e => e.stopPropagation()}
       >
-        <h3 style={{ marginBottom: 4 }}>⚙️ Campaign Settings</h3>
+        <h3 style={{ marginBottom: 4 }}>⚙️ Campaign Settings</h3>{/* cs-v2 */}
         <p style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)', marginBottom: 20 }}>
           {campaign.name}
         </p>
