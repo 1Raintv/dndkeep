@@ -48,10 +48,11 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [notes, setNotes] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editCampaign, setEditCampaign] = useState(campaign);
 
+  // Derived from props/context — after all hooks
   const isOwner = campaign.owner_id === user?.id;
-  const [showCampaignSettings, setShowCampaignSettings] = useState(false);
-  const [localCampaign, setLocalCampaign] = useState(campaign);
 
   useEffect(() => {
     loadMembers();
@@ -233,7 +234,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           {isOwner && (
             <button
               className="btn-secondary btn-sm"
-              onClick={() => setShowCampaignSettings(true)}
+              onClick={() => setSettingsOpen(true)}
               title="Campaign Settings (v2)"
             >
               ⚙️ Settings
@@ -642,12 +643,12 @@ function CharactersTab({ campaignId, userId, characters, onRefresh }: {
       </div>
 
       {/* Campaign Settings Modal */}
-      {showCampaignSettings && isOwner && (
+      {settingsOpen && isOwner && (
         <CampaignSettings
-          campaign={localCampaign}
-          onClose={() => setShowCampaignSettings(false)}
-          onDeleted={() => { setShowCampaignSettings(false); onBack(); }}
-          onUpdated={updates => setLocalCampaign(c => ({ ...c, ...updates }))}
+          campaign={editCampaign}
+          onClose={() => setSettingsOpen(false)}
+          onDeleted={() => { setSettingsOpen(false); onBack(); }}
+          onUpdated={updates => setEditCampaign(c => ({ ...c, ...updates }))}
         />
       )}
     </div>
