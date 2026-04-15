@@ -393,6 +393,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     // Recover ALL class resources on long rest
     const abilityScores = { strength: character.strength, dexterity: character.dexterity, constitution: character.constitution, intelligence: character.intelligence, wisdom: character.wisdom, charisma: character.charisma };
     const newResources = buildDefaultResources(character.class_name, character.level, abilityScores);
+    // Preserve non-numeric resources (e.g. psion-disciplines array, subclass-spells)
+    const existing = (character.class_resources ?? {}) as Record<string, unknown>;
+    for (const [key, val] of Object.entries(existing)) {
+      if (typeof val !== 'number') newResources[key] = val as any;
+    }
 
     // Reset ALL feature_uses on long rest
     applyUpdate({

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility } from '../../data/classAbilities';
+import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 
@@ -182,8 +183,31 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
   }
   const abilities = CLASS_COMBAT_ABILITIES[character.class_name] ?? [];
 
+  // Inject active/both psychic disciplines as usable abilities
+  const disciplineAbilities: ClassAbility[] = [];
+  if (character.class_name === 'Psion') {
+    const chosen: string[] = Array.isArray((character.class_resources as any)?.['psion-disciplines'])
+      ? (character.class_resources as any)['psion-disciplines'] as string[]
+      : [];
+    for (const id of chosen) {
+      const disc = PSION_DISCIPLINES.find(d => d.id === id);
+      if (!disc || disc.type === 'passive') continue;
+      disciplineAbilities.push({
+        name: disc.name,
+        actionType: disc.actionType ?? 'action',
+        description: disc.description,
+        minLevel: 2,
+        isPool: true,
+        rest: 'long',
+        // Mark as psionic die cost
+        ...(disc.dieCost ? { psionicDie: true } : {}),
+      } as any);
+    }
+  }
+  const allAbilities = [...abilities, ...disciplineAbilities];
+
   // Filter by level and action type
-  const filtered = abilities.filter(a => {
+  const filtered = allAbilities.filter(a => {
     if (a.minLevel > character.level) return false;
     if (combatFilter === 'limited') return a.maxUsesFn !== undefined || (a as any).isPool === true || (a as any).psionicDie === true;
     if (combatFilter === 'all') return true;
@@ -205,6 +229,13 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
         ✦ {character.class_name} Abilities
       </div>
 
+      {/* Split disciplines into their own sub-section */}
+      {disciplineAbilities.length > 0 && filtered.some(a => disciplineAbilities.includes(a)) && (
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+          textTransform: 'uppercase' as const, color: '#c084fc', marginBottom: 6, marginTop: 4 }}>
+          🧠 Psychic Disciplines
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {filtered.map(ability => {
           const maxUses = getMaxUses(ability, character);
