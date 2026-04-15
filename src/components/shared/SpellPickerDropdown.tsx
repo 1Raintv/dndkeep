@@ -119,8 +119,6 @@ export default function SpellPickerDropdown({
     );
   }, [allByLevel, activeLevel, search]);
 
-  const selectedSpells = SPELLS.filter(s => selected.includes(s.id));
-
   const dropdownContent = open && dropPos ? (
     <div
       ref={dropRef}
@@ -350,36 +348,23 @@ export default function SpellPickerDropdown({
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* Trigger button */}
+      {/* Trigger button — compact gold CTA */}
       <button
         ref={triggerRef}
         type="button"
         onClick={() => open ? setOpen(false) : openDropdown()}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-          border: selected.length > 0 ? '2px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
-          background: selected.length > 0 ? 'rgba(212,160,23,0.05)' : 'var(--c-card)',
-          textAlign: 'left', transition: 'all 0.15s',
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+          borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap',
+          border: open ? '1px solid var(--c-gold-bdr)' : '1px solid rgba(212,160,23,0.35)',
+          background: open ? 'var(--c-gold-bg)' : 'rgba(212,160,23,0.06)',
+          color: 'var(--c-gold-l)',
+          fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12,
+          transition: 'all 0.15s',
         }}
       >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          {selected.length > 0 ? (
-            <div>
-              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-gold-l)' }}>
-                {selected.length} {isCantrip ? 'cantrip' : 'spell'}{selected.length !== 1 ? 's' : ''} selected
-              </span>
-              <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {selectedSpells.map(s => s.name).join(', ')}
-              </div>
-            </div>
-          ) : (
-            <span style={{ fontSize: 13, color: 'var(--t-3)' }}>
-              {label} — click to browse and add {isCantrip ? 'cantrips' : 'spells'}…
-            </span>
-          )}
-        </div>
-        <span style={{ fontSize: 11, color: 'var(--t-3)', marginLeft: 8, flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
+        <span>{label}</span>
+        <span style={{ fontSize: 9, opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
       </button>
 
       {typeof document !== 'undefined' && createPortal(dropdownContent, document.body)}
