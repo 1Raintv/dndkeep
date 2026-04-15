@@ -48,9 +48,6 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   const [notes, setNotes] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [editCampaign, setEditCampaign] = useState(campaign);
-
   // Derived from props/context — after all hooks
   const isOwner = campaign.owner_id === user?.id;
 
@@ -232,13 +229,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
             </button>
           )}
           {isOwner && (
-            <button
-              className="btn-secondary btn-sm"
-              onClick={() => setSettingsOpen(true)}
-              title="Campaign Settings (v2)"
-            >
-              ⚙️ Settings
-            </button>
+            <CampaignSettingsButton campaign={campaign} onBack={onBack} />
           )}
         </div>
       </div>
@@ -525,6 +516,31 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   );
 }
 
+// ── Campaign Settings Button — self-contained to avoid minifier scope issues ──
+function CampaignSettingsButton({ campaign, onBack }: { campaign: Campaign; onBack: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState(campaign);
+  return (
+    <>
+      <button
+        className="btn-secondary btn-sm"
+        onClick={() => setOpen(true)}
+        title="Campaign Settings"
+      >
+        ⚙️ Settings
+      </button>
+      {open && (
+        <CampaignSettings
+          campaign={current}
+          onClose={() => setOpen(false)}
+          onDeleted={() => { setOpen(false); onBack(); }}
+          onUpdated={updates => setCurrent(c => ({ ...c, ...updates }))}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Characters Tab ────────────────────────────────────────────────────────────
 function CharactersTab({ campaignId, userId, characters, onRefresh }: {
   campaignId: string;
@@ -642,15 +658,7 @@ function CharactersTab({ campaignId, userId, characters, onRefresh }: {
         )}
       </div>
 
-      {/* Campaign Settings Modal */}
-      {settingsOpen && isOwner && (
-        <CampaignSettings
-          campaign={editCampaign}
-          onClose={() => setSettingsOpen(false)}
-          onDeleted={() => { setSettingsOpen(false); onBack(); }}
-          onUpdated={updates => setEditCampaign(c => ({ ...c, ...updates }))}
-        />
-      )}
+      {/* Campaign Settings rendered inside CampaignSettingsButton */}
     </div>
   );
 }
