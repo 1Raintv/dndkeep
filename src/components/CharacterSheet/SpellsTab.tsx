@@ -3,6 +3,7 @@ import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { SPELLS } from '../../data/spells';
+import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
 
@@ -51,7 +52,9 @@ const LEVEL_LABELS: Record<number, string> = {
   4: '4th', 5: '5th', 6: '6th', 7: '7th', 8: '8th', 9: '9th',
 };
 
+// Preparers: choose spells to prepare each day from their full class list
 const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
+// Known casters: permanently learn a fixed number of spells (Bard, Sorcerer, Warlock, Ranger)
 
 /** Derive a DDB-style effect category from spell mechanics + description */
 function getEffectCategory(spell: SpellData): { label: string; color: string } {
@@ -80,13 +83,22 @@ export default function SpellsTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSchool, setFilterSchool] = useState<string | null>(null);
 
-  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
+  const isPreparer  = PREPARER_CLASSES.includes(character.class_name);
+  const isKnown     = isKnownCaster(character.class_name);
+  const knownMax    = getMaxSpellsKnown(character.class_name, character.level);
+
+  // Spellcasting ability modifier
+  const spellAbilityScore =
+    (character.class_name === 'Wizard' || character.class_name === 'Artificer') ? character.intelligence
+    : (character.class_name === 'Paladin' || character.class_name === 'Warlock' || character.class_name === 'Sorcerer' || character.class_name === 'Bard') ? character.charisma
+    : character.wisdom;
+  const spellAbilityMod = Math.floor((spellAbilityScore - 10) / 2);
+
+  // Prepare max — Paladin = floor(level/2) + CHA mod; others = level + mod
   const prepareMax = isPreparer
-    ? character.level + Math.max(0, Math.floor(((
-        character.class_name === 'Wizard' || character.class_name === 'Artificer'
-          ? character.intelligence
-          : character.class_name === 'Paladin' ? character.charisma : character.wisdom
-      ) - 10) / 2))
+    ? character.class_name === 'Paladin'
+      ? Math.max(1, Math.floor(character.level / 2) + spellAbilityMod)
+      : Math.max(1, character.level + spellAbilityMod)
     : 0;
 
   // Cantrip limit for this class/level
@@ -150,7 +162,7 @@ export default function SpellsTab({
   const visibleSpells = useMemo(() => {
     return knownSpellData.filter(s => {
       if (activeLevel !== 'all' && s.level !== activeLevel) return false;
-      if (filterPrepared && isPreparer && s.level > 0 && !character.prepared_spells.includes(s.id)) return false;
+      if (filterPrepared && isPreparer && !isKnown && s.level > 0 && !character.prepared_spells.includes(s.id)) return false;
       if (filterSchool && s.school !== filterSchool) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -196,7 +208,21 @@ export default function SpellsTab({
 
       {/* ── Top bar: prepared count + Add Spells button ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        {isPreparer && (
+        {/* Known-casters: show spells known counter */}
+        {isKnown && knownMax !== null && (() => {
+          const knownCount = knownSpellData.filter(s => s.level > 0 && !grantedPrepared.includes(s.id)).length;
+          const atCap = knownCount >= knownMax;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--c-card)', border: `1px solid ${atCap ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`, borderRadius: 999 }}>
+              <span style={{ fontSize: 11, color: 'var(--t-2)' }}>Spells Known:</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: atCap ? 'var(--c-gold-l)' : 'var(--t-1)', fontFamily: 'var(--ff-stat)' }}>
+                {knownCount} / {knownMax}
+              </span>
+              {atCap && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.08em' }}>FULL</span>}
+            </div>
+          );
+        })()}
+        {isPreparer && !isKnown && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 999 }}>
             <div style={{
               width: `${Math.min(100, (preparedCount / prepareMax) * 100)}%`,
@@ -227,8 +253,15 @@ export default function SpellsTab({
             selected={character.known_spells}
             onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
             cantripMax={cantripMax}
-            prepareMax={isPreparer ? prepareMax : undefined}
-            prepareCount={isPreparer ? knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id) && !grantedPrepared.includes(s.id)).length : undefined}
+            prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
+            prepareCount={
+              isPreparer
+                ? knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id) && !grantedPrepared.includes(s.id)).length
+                : isKnown
+                  ? knownSpellData.filter(s => s.level > 0 && !grantedPrepared.includes(s.id)).length
+                  : undefined
+            }
+            isKnownCaster={isKnown}
             slotsPerLevel={slotsPerLevel}
             grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
           />
@@ -364,7 +397,7 @@ export default function SpellsTab({
                         isExpanded={expandedSpell === spell.id}
                         isPrepared={character.prepared_spells.includes(spell.id)}
                         isConcentrating={concentrationSpellId === spell.id}
-                        isPreparer={isPreparer}
+                        isPreparer={isPreparer && !isKnown}
                         grantedReason={grantedReasonMap[spell.id]}
                         spellAttack={computed.spell_attack_bonus ?? undefined}
                         saveDC={computed.spell_save_dc ?? undefined}
@@ -439,7 +472,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
   onConcentrate: () => void; onRemove: () => void;
 }) {
   const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
-  const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason;
+  const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
   const effect = getEffectCategory(spell);
   const mechanics = parseSpellMechanics(spell.description);
   // Abbreviate casting time for table display

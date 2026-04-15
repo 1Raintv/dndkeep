@@ -15,6 +15,7 @@ interface SpellPickerDropdownProps {
   prepareCount?: number;       // current prepared/known count
   slotsPerLevel?: Record<number, number>; // how many slots at each spell level
   grantedSpellIds?: string[];  // auto-granted spells excluded from limit counts
+  isKnownCaster?: boolean;     // true for Bard/Sorcerer/Warlock/Ranger — show "X known" not "X prepared"
 }
 
 const SCHOOL_COLORS: Record<string, string> = {
@@ -27,7 +28,7 @@ const LEVEL_LABELS = ['Cantrips', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th
 
 export default function SpellPickerDropdown({
   label, isCantrip, className, maxLevel, selected, onToggle,
-  cantripMax, prepareMax, prepareCount, slotsPerLevel, grantedSpellIds = [],
+  cantripMax, prepareMax, prepareCount, slotsPerLevel, grantedSpellIds = [], isKnownCaster = false,
 }: SpellPickerDropdownProps) {
   const [open, setOpen] = useState(false);
   const [activeLevel, setActiveLevel] = useState(0);
@@ -206,7 +207,7 @@ export default function SpellPickerDropdown({
             border: `1px solid ${isAtLimit(activeLevel) ? 'rgba(239,68,68,0.4)' : 'rgba(212,160,23,0.3)'}`,
             color: isAtLimit(activeLevel) ? '#ef4444' : 'var(--c-gold-l)',
           }}>
-            {prepareCount}/{prepareMax} prepared
+            {prepareCount}/{prepareMax} {isKnownCaster ? 'known' : 'prepared'}
             {isAtLimit(activeLevel) ? ' — FULL' : ''}
           </span>
         )}
