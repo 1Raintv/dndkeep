@@ -58,7 +58,13 @@ const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', '
 
 /** Derive a DDB-style effect category from spell mechanics + description */
 function getEffectCategory(spell: SpellData): { label: string; color: string } {
-  const m = parseSpellMechanics(spell.description);
+  const m = parseSpellMechanics(spell.description, {
+    save_type: (spell as any).save_type,
+    attack_type: (spell as any).attack_type,
+    damage_dice: (spell as any).damage_dice,
+    damage_type: (spell as any).damage_type,
+    heal_dice: (spell as any).heal_dice,
+  });
   const d = spell.description.toLowerCase();
   if (m.healDice) return { label: 'Healing', color: '#34d399' };
   if (d.includes('teleport') || d.includes('misty step')) return { label: 'Teleportation', color: '#60a5fa' };
@@ -500,7 +506,13 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
   const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
   const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
   const effect = getEffectCategory(spell);
-  const mechanics = parseSpellMechanics(spell.description);
+  const mechanics = parseSpellMechanics(spell.description, {
+    save_type: (spell as any).save_type,
+    attack_type: (spell as any).attack_type,
+    damage_dice: (spell as any).damage_dice,
+    damage_type: (spell as any).damage_type,
+    heal_dice: (spell as any).heal_dice,
+  });
   // Abbreviate casting time for table display
   const timeAbbr = spell.casting_time
     .replace('1 action', '1A').replace('1 Action', '1A')
