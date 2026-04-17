@@ -546,7 +546,6 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
 
       {/* FEATS */}
       {(filter === 'all' || filter === 'feats') && (() => {
-        const [addingFeat, setAddingFeat] = [featAddOpen, setFeatAddOpen];
         return (
           <div style={{ marginTop: filter === 'all' ? 16 : 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>

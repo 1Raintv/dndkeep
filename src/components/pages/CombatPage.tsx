@@ -15,7 +15,6 @@ export default function CombatPage() {
   const [currentTurn, setCurrentTurn] = useState(0);
   const [round, setRound] = useState(1);
   const [active, setActive] = useState(false);
-  const [monsterSearch, setMonsterSearch] = useState('');
   const [showMonsterPanel, setShowMonsterPanel] = useState(false);
   const [showEncounterBuilder, setShowEncounterBuilder] = useState(false);
   const [hpEdits, setHpEdits] = useState<Record<string, string>>({});
@@ -149,11 +148,6 @@ export default function CombatPage() {
       return { ...c, initiative: rollDie(20) };
     }));
   }
-
-  const filteredMonsters = useMemo(
-    () => MONSTERS.filter(m => !monsterSearch || m.name.toLowerCase().includes(monsterSearch.toLowerCase())),
-    [monsterSearch]
-  );
 
   return (
     <div>

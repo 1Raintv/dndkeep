@@ -39,13 +39,8 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
   const [asiChoice, setAsiChoice] = useState<'asi' | 'feat'>('asi');
   const [abiBoosts, setAbiBoosts] = useState<Partial<Record<AbilityKey, number>>>({});
   const [selectedFeat, setSelectedFeat] = useState('');
-  const [featSearch, setFeatSearch] = useState('');
 
   const totalBoosts = (Object.values(abiBoosts) as number[]).reduce((a, b) => a + (b ?? 0), 0);
-  const availableFeats = FEATS.filter(f =>
-    (f.category === 'general' || f.category === 'fighting-style') &&
-    f.name.toLowerCase().includes(featSearch.toLowerCase())
-  );
 
   // Compute what new HP they get
   const classHD = classData?.hit_die ?? 8;

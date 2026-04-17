@@ -18,7 +18,6 @@ interface SessionLogExportProps {
 
 export default function SessionLogExport({ rolls, campaignName, sessionDate }: SessionLogExportProps) {
   const [exporting, setExporting] = useState(false);
-  const [format, setFormat] = useState<'markdown' | 'print'>('markdown');
 
   const date = sessionDate ?? new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 

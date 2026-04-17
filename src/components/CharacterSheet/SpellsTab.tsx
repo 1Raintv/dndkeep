@@ -325,6 +325,43 @@ export default function SpellsTab({
         );
       })()}
 
+      {/* ── Search bar (only when there are spells to search) ── */}
+      {knownSpellData.length > 0 && (
+        <div style={{ position: 'relative' }}>
+          <span aria-hidden="true" style={{
+            position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+            fontSize: 12, color: 'var(--t-3)', pointerEvents: 'none', lineHeight: 1,
+          }}>🔍</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search spells by name, school, casting time, damage type..."
+            aria-label="Search spells"
+            style={{
+              width: '100%', fontSize: 13, padding: '7px 30px 7px 30px',
+              borderRadius: 8, border: '1px solid var(--c-border)',
+              background: 'var(--c-card)', color: 'var(--t-1)',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              title="Clear search"
+              style={{
+                position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                width: 20, height: 20, padding: 0, lineHeight: 1,
+                background: 'var(--c-raised)', border: '1px solid var(--c-border)',
+                borderRadius: 999, color: 'var(--t-2)', cursor: 'pointer',
+                fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Level tabs ── */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

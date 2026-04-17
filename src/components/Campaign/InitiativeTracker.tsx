@@ -24,7 +24,6 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
   const [newAC, setNewAC] = useState('');
   const [hpDeltas, setHpDeltas] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [attackModal, setAttackModal] = useState<{ combatantId: string; targetId: string; attackIdx: number } | null>(null);
   const [attackResult, setAttackResult] = useState<{ hit: boolean; roll: number; total: number; damage?: number; damageRoll?: number } | null>(null);
   const [attackTarget, setAttackTarget] = useState<string>('');
   const [ongoingPrompts, setOngoingPrompts] = useState<{ id: string; name: string; od: OngoingDamage }[]>([]);
