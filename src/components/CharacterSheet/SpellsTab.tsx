@@ -6,19 +6,7 @@ import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
-import { getSpellCounts } from '../../lib/spellLimits';
-
-// Max cantrips per class at each level (index = level-1)
-const CANTRIP_MAX: Record<string, number[]> = {
-  Psion:     [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
-  Wizard:    [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5],
-  Sorcerer:  [4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6],
-  Warlock:   [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
-  Druid:     [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
-  Cleric:    [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5],
-  Bard:      [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
-  Artificer: [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4],
-};
+import { getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
 
 interface SpellsTabProps {
   character: Character;
@@ -94,22 +82,10 @@ export default function SpellsTab({
   const isKnown     = isKnownCaster(character.class_name);
   const knownMax    = getMaxSpellsKnown(character.class_name, character.level);
 
-  // Spellcasting ability modifier
-  const spellAbilityScore =
-    (character.class_name === 'Wizard' || character.class_name === 'Artificer') ? character.intelligence
-    : (character.class_name === 'Paladin' || character.class_name === 'Warlock' || character.class_name === 'Sorcerer' || character.class_name === 'Bard') ? character.charisma
-    : character.wisdom;
-  const spellAbilityMod = Math.floor((spellAbilityScore - 10) / 2);
-
-  // Prepare max — Paladin = floor(level/2) + CHA mod; others = level + mod
-  const prepareMax = isPreparer
-    ? character.class_name === 'Paladin'
-      ? Math.max(1, Math.floor(character.level / 2) + spellAbilityMod)
-      : Math.max(1, character.level + spellAbilityMod)
-    : 0;
-
-  // Cantrip limit for this class/level
-  const cantripMax = CANTRIP_MAX[character.class_name]?.[Math.min(character.level - 1, 19)];
+  // Spell ability modifier + caps — all from canonical source (src/lib/spellLimits.ts)
+  const spellAbilityMod = getSpellAbilityMod(character);
+  const prepareMax = getMaxPrepared(character);
+  const cantripMax = getMaxCantrips(character.class_name, character.level);
 
   // Current cantrip count (exclude auto-granted Mage Hand for Psion)
   const classCantrips = useMemo(() =>

@@ -12,6 +12,7 @@
 import type { Character } from '../types';
 import { SPELLS, SPELL_MAP } from '../data/spells';
 import { getGrantedSpellIds } from './grantedSpells';
+import { getPreparedTable } from '../data/spellPreparedTables';
 
 /** Classes that prepare spells from their list each long rest (vs. fixed "known" lists) */
 export const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion', 'Ranger'] as const;
@@ -61,25 +62,24 @@ export function getSpellAbilityMod(character: Character): number {
  * Maximum number of LEVELED spells (not cantrips) a preparing caster can prepare.
  * Returns 0 for known casters and non-casters.
  *
- * 2024 PHB / UA Psion: prepared = ability mod + class level (Paladin = +half level,
- * Artificer = +half level rounded up, Ranger = +half level).
- *
- * For Psion specifically, the UA 2025 v2 PDF table gives explicit values per level.
- * The level + INT mod formula matches the table for typical INT scores, so we use
- * the formula as a single source.
+ * Preferred source: per-level tables in src/data/spellPreparedTables.ts (the 2024
+ * PHB and UA 2025 Psion v2 both use explicit per-level values, NOT the old
+ * `mod + level` formula). If the class has no canonical table (currently
+ * Artificer), we fall back to the old formula with Math.max(1, ...) so they can
+ * always prepare at least one spell.
  */
 export function getMaxPrepared(character: Character): number {
   if (!isPreparer(character.class_name)) return 0;
-  const mod = getSpellAbilityMod(character);
-  const lvl = character.level;
-  const cls = character.class_name;
-  if (cls === 'Paladin' || cls === 'Ranger') {
-    return Math.max(1, mod + Math.floor(lvl / 2));
+  const lvl = Math.max(1, Math.min(character.level, 20));
+  const table = getPreparedTable(character.class_name);
+  if (table) {
+    return table[lvl - 1] ?? 0;
   }
-  if (cls === 'Artificer') {
+  // Fallback for classes without canonical tables (Artificer)
+  const mod = getSpellAbilityMod(character);
+  if (character.class_name === 'Artificer') {
     return Math.max(1, mod + Math.ceil(lvl / 2));
   }
-  // Wizard, Cleric, Druid, Psion
   return Math.max(1, mod + lvl);
 }
 

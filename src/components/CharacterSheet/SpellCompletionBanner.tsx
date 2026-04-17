@@ -1,66 +1,22 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { SPELLS } from '../../data/spells';
-import { getSpellCounts } from '../../lib/spellLimits';
+import { getSpellCounts, getMaxPrepared, getMaxCantrips, getMaxAccessibleSpellLevel, isPreparer } from '../../lib/spellLimits';
 
 interface Props {
   character: Character;
   onGoToSpells: () => void;
 }
 
-// Expected cantrips per class at each level
-function getExpectedCantrips(className: string, level: number): number {
-  const tables: Record<string, number[]> = {
-    Psion:      [2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
-    Wizard:     [3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-    Sorcerer:   [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
-    Warlock:    [2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
-    Druid:      [2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
-    Cleric:     [3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-    Bard:       [2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
-    Artificer:  [2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
-  };
-  const table = tables[className];
-  if (!table) return 0;
-  return table[Math.min(level - 1, 19)] ?? 0;
-}
-
-// How many prepared/known non-cantrip spells the character should have
-function getExpectedSpells(character: Character): { min: number; note: string } {
-  const { class_name, level, intelligence, wisdom, charisma } = character;
-  const intMod = Math.floor((intelligence - 10) / 2);
-  const wisMod = Math.floor((wisdom - 10) / 2);
-  const chaMod = Math.floor((charisma - 10) / 2);
-
-  switch (class_name) {
-    case 'Wizard':
-      return { min: intMod + level, note: `INT mod (${intMod}) + level (${level})` };
-    case 'Psion':
-      return { min: intMod + level, note: `INT mod (${intMod}) + level (${level})` };
-    case 'Cleric':
-    case 'Druid':
-      return { min: wisMod + level, note: `WIS mod (${wisMod}) + level (${level})` };
-    case 'Paladin':
-      return { min: chaMod + Math.floor(level / 2), note: `CHA mod (${chaMod}) + half level (${Math.floor(level / 2)})` };
-    case 'Ranger':
-      return { min: wisMod + Math.floor(level / 2), note: `WIS mod (${wisMod}) + half level (${Math.floor(level / 2)})` };
-    case 'Artificer':
-      return { min: intMod + Math.ceil(level / 2), note: `INT mod (${intMod}) + half level rounded up (${Math.ceil(level / 2)})` };
-    case 'Bard':
-    case 'Sorcerer':
-    case 'Warlock':
-      // These classes have "spells known" tables, not prepared — skip the warning
-      return { min: 0, note: '' };
-    default:
-      return { min: 0, note: '' };
+// Human-readable explanation of where the prepared cap comes from.
+// Kept out of spellLimits.ts so the canonical helper stays UI-free.
+function getPreparedNote(character: Character): string {
+  if (!isPreparer(character.class_name)) return '';
+  if (character.class_name === 'Artificer') {
+    const mod = Math.floor((character.intelligence - 10) / 2);
+    return `INT mod (${mod}) + half level rounded up (${Math.ceil(character.level / 2)})`;
   }
-}
-
-// Get highest accessible spell level for this character
-function getMaxSpellLevel(character: Character): number {
-  return Object.entries(character.spell_slots).reduce((max, [k, s]: [string, any]) => {
-    return (s.total ?? 0) > 0 ? Math.max(max, parseInt(k, 10)) : max;
-  }, 0);
+  return `from the ${character.class_name} class table at level ${character.level}`;
 }
 
 export default function SpellCompletionBanner({ character, onGoToSpells }: Props) {
@@ -70,14 +26,15 @@ export default function SpellCompletionBanner({ character, onGoToSpells }: Props
 
   const classSpells = SPELLS.filter(s => s.classes.includes(character.class_name));
   const classCantrips = classSpells.filter(s => s.level === 0);
-  const maxSpellLevel = getMaxSpellLevel(character);
+  const maxSpellLevel = getMaxAccessibleSpellLevel(character);
 
   const counts = getSpellCounts(character);
   const currentCantrips = counts.cantrips;
-  const expectedCantrips = getExpectedCantrips(character.class_name, character.level);
+  const expectedCantrips = getMaxCantrips(character.class_name, character.level);
 
   const currentPrepared = counts.prepared;
-  const { min: expectedPrepared, note: preparedNote } = getExpectedSpells(character);
+  const expectedPrepared = getMaxPrepared(character);
+  const preparedNote = getPreparedNote(character);
 
   const missingCantrips = Math.max(0, expectedCantrips - currentCantrips);
   const missingSpells = Math.max(0, expectedPrepared - currentPrepared);

@@ -1,9 +1,9 @@
 // DNDKeep Service Worker
 // IMPORTANT: CACHE_NAME is auto-rewritten by deploy.bat on every deploy
-// to match the app version (e.g. 'dndkeep-v2.18.1'). Any byte change to
+// to match the app version (e.g. 'dndkeep-v2.18.2'). Any byte change to
 // this file forces browsers to install the new SW, which (with skipWaiting +
 // clients.claim below) immediately replaces the old one and clears its cache.
-const CACHE_NAME = 'dndkeep-v2.18.1';
+const CACHE_NAME = 'dndkeep-v2.18.2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
