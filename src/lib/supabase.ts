@@ -4,6 +4,13 @@ import type { Character, Profile, Campaign, CampaignMember, RollResult, SessionS
 // =============================================================
 // Database type map — mirrors the Supabase schema exactly
 // =============================================================
+// Tables marked "// stub" use permissive `any` types — they unblock the build
+// (otherwise queries collapse to `never`) but provide no column-level typing.
+// To get full typing for these, run:
+//   npx supabase gen types typescript --project-id <id> > src/types/db.types.ts
+// then merge the generated rows into this interface.
+type AnyRow = Record<string, any>;
+
 export interface Database {
   public: {
     Tables: {
@@ -51,6 +58,21 @@ export interface Database {
         Insert: Omit<SessionState, 'id' | 'updated_at'>;
         Update: Partial<Omit<SessionState, 'id' | 'campaign_id'>>;
       };
+      // ── Stub tables (see comment above) ──
+      action_log_reactions: { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      action_logs:          { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      battle_maps:          { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      campaign_chat:        { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      dice_skin_unlocks:    { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      discord_integrations: { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      dm_npc_roster:        { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      homebrew_classes:     { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      npcs:                 { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      roll_requests:        { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      schedule_availability:{ Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      session_schedules:    { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      session_summaries:    { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
+      token_notes:          { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
     };
   };
 }

@@ -1,5 +1,9 @@
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
-import DiceRoller3D from '../components/DiceRoller3D';
+import { createContext, useContext, useState, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
+
+// Lazy-load DiceRoller3D — it pulls in three.js + cannon-es (~600 KB).
+// We only mount it when an actual dice roll is triggered, keeping that weight
+// out of the initial bundle for users who haven't rolled yet.
+const DiceRoller3D = lazy(() => import('../components/DiceRoller3D'));
 
 export interface DiceRollEvent {
   result: number;      // the raw die result (primary die) — used for display hint only
@@ -44,12 +48,16 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   return (
     <DiceRollContext.Provider value={{ triggerRoll, current }}>
       {children}
-      {current && <DiceRoller3D
-        event={current}
-        onDismiss={() => setCurrent(null)}
-        onResult={current.onResult}
-        skinId={typeof window!=='undefined'?localStorage.getItem('dndkeep_dice_skin')||'classic':'classic'}
-      />}
+      {current && (
+        <Suspense fallback={null}>
+          <DiceRoller3D
+            event={current}
+            onDismiss={() => setCurrent(null)}
+            onResult={current.onResult}
+            skinId={typeof window!=='undefined'?localStorage.getItem('dndkeep_dice_skin')||'classic':'classic'}
+          />
+        </Suspense>
+      )}
     </DiceRollContext.Provider>
   );
 }

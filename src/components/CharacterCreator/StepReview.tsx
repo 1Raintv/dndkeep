@@ -1,4 +1,4 @@
-import type { AbilityKey, AbilityScoreMethod } from '../../types';
+import type { AbilityKey, AbilityScoreMethod, Alignment } from '../../types';
 import { abilityModifier, formatModifier } from '../../lib/gameUtils';
 import { CLASS_MAP } from '../../data/classes';
 import { BACKGROUND_MAP } from '../../data/backgrounds';
@@ -9,6 +9,13 @@ import type { BuildChoices } from './StepBuild';
 const ABILITIES: AbilityKey[] = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
 const ABBREV: Record<AbilityKey, string> = { strength: 'STR', dexterity: 'DEX', constitution: 'CON', intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA' };
 const FULL: Record<AbilityKey, string> = { strength: 'Strength', dexterity: 'Dexterity', constitution: 'Constitution', intelligence: 'Intelligence', wisdom: 'Wisdom', charisma: 'Charisma' };
+
+const ALIGNMENTS: Alignment[] = [
+  'Lawful Good', 'Neutral Good', 'Chaotic Good',
+  'Lawful Neutral', 'True Neutral', 'Chaotic Neutral',
+  'Lawful Evil', 'Neutral Evil', 'Chaotic Evil',
+  'Unaligned',
+];
 
 interface StepReviewProps {
   name: string;
@@ -22,9 +29,11 @@ interface StepReviewProps {
   selectedSkills: string[];
   buildChoices: BuildChoices;
   originFeat: string;
+  alignment: Alignment;
+  onAlignmentChange: (a: Alignment) => void;
 }
 
-export default function StepReview({ name, species, className, subclass, background, level, scores, selectedSkills, buildChoices, originFeat }: StepReviewProps) {
+export default function StepReview({ name, species, className, subclass, background, level, scores, selectedSkills, buildChoices, originFeat, alignment, onAlignmentChange }: StepReviewProps) {
   const cls = CLASS_MAP[className];
   const bg = BACKGROUND_MAP[background];
   const sp = SPECIES_MAP[species];
@@ -169,6 +178,23 @@ export default function StepReview({ name, species, className, subclass, backgro
           </div>
         </div>
       )}
+
+      {/* Alignment selector — required field, was previously hardcoded to True Neutral */}
+      <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)' }}>
+        <label htmlFor="alignment-select" style={{ display: 'block', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 6 }}>
+          Alignment
+        </label>
+        <select
+          id="alignment-select"
+          value={alignment}
+          onChange={e => onAlignmentChange(e.target.value as Alignment)}
+          style={{ width: '100%', fontSize: 'var(--fs-sm)', padding: '8px 10px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+        >
+          {ALIGNMENTS.map(a => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+      </div>
 
       <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 'var(--r-lg)', fontSize: 'var(--fs-sm)', color: 'var(--c-green-l)', fontWeight: 600 }}>
         Looking good — click Create Character to save your build.

@@ -4,7 +4,7 @@ import { rollDie } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { useEffect, useRef } from 'react';
-import { DICE_SKINS } from '../DiceRoller3D';
+import { DICE_SKINS } from '../../data/diceSkins';
 
 interface DiceInQueue { die: number; count: number; }
 interface RollResultDie { die: number; value: number; index: number; dropped?: boolean; }

@@ -22,10 +22,53 @@ for /f "tokens=*" %%L in ('findstr "APP_VERSION = " src\version.ts') do (
 )
 if "%VER%"=="" set VER=unknown
 
-echo  [1/4] Bumping service worker cache name to dndkeep-v%VER%...
+echo  [1/6] Bumping service worker cache name to dndkeep-v%VER%...
 powershell -NoProfile -Command "$f='public\sw.js'; if (Test-Path $f) { (Get-Content -Raw $f) -replace 'dndkeep-v[0-9.]+', 'dndkeep-v%VER%' | Set-Content -NoNewline $f }"
 
-echo  [2/4] Staging all changes...
+echo  [2/6] Checking dependencies are installed...
+if not exist "node_modules\three\package.json" goto needs_install
+if not exist "node_modules\cannon-es\package.json" goto needs_install
+if not exist "node_modules\react\package.json" goto needs_install
+if not exist "node_modules\@supabase\supabase-js\package.json" goto needs_install
+if not exist "node_modules\vite\package.json" goto needs_install
+goto deps_ok
+
+:needs_install
+echo        Missing or stale dependencies — running npm install...
+call npm install
+if %errorlevel% neq 0 (
+    echo  [ERROR] npm install failed.
+    pause
+    exit /b 1
+)
+
+:deps_ok
+echo        Dependencies OK.
+
+echo  [3/6] Running production build (catches errors before deploying)...
+call npx vite build >nul 2>build-output.tmp
+if %errorlevel% neq 0 (
+    echo.
+    echo  ============================================
+    echo   [ERROR] Build failed! See errors below:
+    echo  ============================================
+    echo.
+    type build-output.tmp
+    del build-output.tmp
+    echo.
+    echo   Fix the errors above before deploying.
+    echo   Vercel will fail on the same errors if you push now.
+    echo.
+    echo   Tip: if you see "Rollup failed to resolve import",
+    echo   try running 'npm install' manually then retry.
+    echo  ============================================
+    pause
+    exit /b 1
+)
+del build-output.tmp
+echo        Build OK.
+
+echo  [4/6] Staging all changes...
 git add .
 
 REM Fail fast if nothing actually changed (catches silent zip-extract failures)
@@ -47,12 +90,12 @@ if %errorlevel% == 0 (
     exit /b 1
 )
 
-echo  [3/4] Committing...
+echo  [5/6] Committing...
 for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
 
 git commit -m "deploy: v%VER% built %TIMESTAMP%"
 
-echo  [4/4] Pushing to GitHub...
+echo  [6/6] Pushing to GitHub...
 git push origin main 2>nul || git push origin master
 
 if %errorlevel% == 0 (

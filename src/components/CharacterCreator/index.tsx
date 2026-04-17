@@ -358,6 +358,8 @@ export default function CharacterCreator() {
             selectedSkills={selectedSkills}
             buildChoices={buildChoices}
             originFeat={originFeat}
+            alignment={alignment}
+            onAlignmentChange={setAlignment}
           />
         )}
 
