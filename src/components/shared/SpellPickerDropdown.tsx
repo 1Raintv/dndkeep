@@ -42,9 +42,37 @@ export default function SpellPickerDropdown({
   function openDropdown() {
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    setDropPos({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX, width: Math.max(rect.width, 480) });
+    const viewportW = window.innerWidth;
+    const margin = 12; // breathing room from viewport edges
+    // Desired width: 480 ideal, shrinks to fit on narrow screens
+    const desiredWidth = Math.min(480, viewportW - 2 * margin);
+    // Default left = trigger's left edge, but clamp so dropdown stays fully on-screen
+    let left = rect.left + window.scrollX;
+    const maxLeft = window.scrollX + viewportW - desiredWidth - margin;
+    if (left > maxLeft) left = maxLeft;
+    if (left < window.scrollX + margin) left = window.scrollX + margin;
+    setDropPos({ top: rect.bottom + window.scrollY + 4, left, width: desiredWidth });
     setOpen(true);
   }
+
+  // Re-clamp on viewport resize while open (e.g. orientation change, devtools toggle)
+  useEffect(() => {
+    if (!open || !triggerRef.current) return;
+    function reclamp() {
+      if (!triggerRef.current) return;
+      const rect = triggerRef.current.getBoundingClientRect();
+      const viewportW = window.innerWidth;
+      const margin = 12;
+      const desiredWidth = Math.min(480, viewportW - 2 * margin);
+      let left = rect.left + window.scrollX;
+      const maxLeft = window.scrollX + viewportW - desiredWidth - margin;
+      if (left > maxLeft) left = maxLeft;
+      if (left < window.scrollX + margin) left = window.scrollX + margin;
+      setDropPos({ top: rect.bottom + window.scrollY + 4, left, width: desiredWidth });
+    }
+    window.addEventListener('resize', reclamp);
+    return () => window.removeEventListener('resize', reclamp);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
