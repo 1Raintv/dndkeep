@@ -6,6 +6,7 @@ import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
+import { getSpellCounts } from '../../lib/spellLimits';
 
 // Max cantrips per class at each level (index = level-1)
 const CANTRIP_MAX: Record<string, number[]> = {
@@ -207,7 +208,7 @@ export default function SpellsTab({
     );
   }
 
-  const preparedCount = knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id)).length;
+  const { prepared: preparedCount } = getSpellCounts(character);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -271,13 +272,7 @@ export default function SpellsTab({
             onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
             cantripMax={cantripMax}
             prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
-            prepareCount={
-              isPreparer
-                ? knownSpellData.filter(s => s.level > 0 && character.prepared_spells.includes(s.id) && !grantedPrepared.includes(s.id)).length
-                : isKnown
-                  ? knownSpellData.filter(s => s.level > 0 && !grantedPrepared.includes(s.id)).length
-                  : undefined
-            }
+            prepareCount={isPreparer ? preparedCount : isKnown ? getSpellCounts(character).known : undefined}
             isKnownCaster={isKnown}
             slotsPerLevel={slotsPerLevel}
             grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}

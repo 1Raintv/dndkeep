@@ -10,6 +10,7 @@ import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 import { acBreakdown } from '../../data/equipment';
+import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -1011,7 +1012,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             concentrationSpellId={concentrationSpellId}
             hasSpellSlots={hasSpellSlots}
             onUpdateSlots={handleUpdateSlots}
-            onAddSpell={id => applyUpdate({ known_spells: [...character.known_spells, id] }, true)}
+            onAddSpell={id => {
+              const check = canAddKnownSpell(character, id);
+              if (!check.allowed) {
+                console.warn('[spell add blocked]', check.reason);
+                return;
+              }
+              applyUpdate({ known_spells: [...character.known_spells, id] }, true);
+            }}
             onRemoveSpell={id => {
               if (concentrationSpellId === id) setConcentrationSpellId(null);
               applyUpdate({ known_spells: character.known_spells.filter(x => x !== id), prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
@@ -1022,25 +1030,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 // Always allow unpreparing
                 applyUpdate({ prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
               } else {
-                // Enforce prepare limit for prepared casters
-                const PREPARER_CLS = ['Cleric','Druid','Paladin','Wizard','Artificer','Psion'];
-                if (PREPARER_CLS.includes(character.class_name)) {
-                  const spellAbilityMap: Record<string,keyof typeof character> = { Wizard:'intelligence', Artificer:'intelligence', Psion:'intelligence', Cleric:'wisdom', Druid:'wisdom', Paladin:'charisma', Ranger:'wisdom' };
-                  const key = spellAbilityMap[character.class_name] ?? 'intelligence';
-                  const score = (character[key] as number) ?? 10;
-                  const mod = Math.floor((score - 10) / 2);
-                  const cap = character.class_name === 'Paladin'
-                    ? mod + Math.floor(character.level / 2)
-                    : character.class_name === 'Artificer'
-                      ? mod + Math.ceil(character.level / 2)
-                      : mod + character.level;
-                  // Count current prepared (exclude granted spells)
-                  const grantedIds = character.subclass ? (character.class_resources?.['subclass-spells'] as string[] ?? []) : [];
-                  const count = character.prepared_spells.filter(x => {
-                    const sp = SPELLS.find(s => s.id === x);
-                    return sp && sp.level > 0 && !grantedIds.includes(x);
-                  }).length;
-                  if (count >= cap) return; // at limit, don't add
+                // Use canonical enforcement — single source of truth (src/lib/spellLimits.ts)
+                const check = canPrepareSpell(character, id);
+                if (!check.allowed) {
+                  console.warn('[spell prepare blocked]', check.reason);
+                  return;
                 }
                 applyUpdate({ prepared_spells: [...character.prepared_spells, id] }, true);
               }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { SPELLS } from '../../data/spells';
+import { getSpellCounts } from '../../lib/spellLimits';
 
 interface Props {
   character: Character;
@@ -71,15 +72,11 @@ export default function SpellCompletionBanner({ character, onGoToSpells }: Props
   const classCantrips = classSpells.filter(s => s.level === 0);
   const maxSpellLevel = getMaxSpellLevel(character);
 
-  // Count what the character currently has
-  const allKnown = [...new Set([...character.known_spells, ...character.prepared_spells])];
-  const currentCantrips = allKnown.filter(id => classCantrips.find(s => s.id === id)).length;
+  const counts = getSpellCounts(character);
+  const currentCantrips = counts.cantrips;
   const expectedCantrips = getExpectedCantrips(character.class_name, character.level);
 
-  const currentPrepared = character.prepared_spells.filter(id => {
-    const spell = SPELLS.find(s => s.id === id);
-    return spell && spell.level > 0 && spell.classes.includes(character.class_name);
-  }).length;
+  const currentPrepared = counts.prepared;
   const { min: expectedPrepared, note: preparedNote } = getExpectedSpells(character);
 
   const missingCantrips = Math.max(0, expectedCantrips - currentCantrips);
