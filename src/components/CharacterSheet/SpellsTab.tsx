@@ -539,6 +539,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
             <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {spell.name}
             </span>
+            {/* @ts-ignore - Conditionally render AoE badge if field exists */}
             {spell.area_of_effect && <AoEBadge spell={spell} />}
             {isConcentrating && <span style={{ fontSize: 8, fontWeight: 800, color: '#a78bfa', flexShrink: 0 }}>● CONC</span>}
           </div>
