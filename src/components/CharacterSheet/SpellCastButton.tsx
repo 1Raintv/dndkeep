@@ -51,7 +51,14 @@ export default function SpellCastButton({
   const { triggerRoll } = useDiceRoll();
 
   const isCantrip = spell.level === 0;
-  const mechanics = parseSpellMechanics(spell.description);
+  const mechanics = parseSpellMechanics(spell.description, {
+    save_type: (spell as any).save_type,
+    attack_type: (spell as any).attack_type,
+    damage_dice: (spell as any).damage_dice,
+    damage_type: (spell as any).damage_type,
+    heal_dice: (spell as any).heal_dice,
+    area_of_effect: (spell as any).area_of_effect,
+  });
 
   // Available slots at spell.level or higher
   const availableSlots: { level: number; remaining: number }[] = [];
