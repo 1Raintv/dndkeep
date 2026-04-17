@@ -159,9 +159,24 @@
 
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Service Worker registration with auto-reload on update.
+      // Pattern: when a new SW takes control (after byte-changing sw.js, install,
+      // skipWaiting, clients.claim), the controllerchange event fires and we
+      // reload once so the page picks up fresh index.html + asset hashes.
+      // The `refreshing` flag guards against reload loops.
       if ('serviceWorker' in navigator) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            // Check for an updated SW immediately on load and once per hour.
+            reg.update().catch(() => {});
+            setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+          }).catch(() => {});
         });
       }
     </script>
