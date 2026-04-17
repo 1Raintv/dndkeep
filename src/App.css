@@ -1,0 +1,87 @@
+/* App-specific styles */
+
+.App {
+  text-align: left;
+}
+
+/* Navigation styles */
+.nav-button {
+  transition: all 0.2s ease-in-out;
+}
+
+.nav-button:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Spell card specific styles */
+.spell-level-0 {
+  border-left: 4px solid #10b981;
+}
+
+.spell-level-1 {
+  border-left: 4px solid #3b82f6;
+}
+
+.spell-level-2 {
+  border-left: 4px solid #6366f1;
+}
+
+.spell-level-3 {
+  border-left: 4px solid #8b5cf6;
+}
+
+.spell-level-4 {
+  border-left: 4px solid #a855f7;
+}
+
+.spell-level-5 {
+  border-left: 4px solid #d946ef;
+}
+
+.spell-level-6 {
+  border-left: 4px solid #ec4899;
+}
+
+.spell-level-7 {
+  border-left: 4px solid #f43f5e;
+}
+
+.spell-level-8 {
+  border-left: 4px solid #ef4444;
+}
+
+.spell-level-9 {
+  border-left: 4px solid #dc2626;
+}
+
+/* Filter section styling */
+.filters-section {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  color: white;
+}
+
+.filter-input {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  transition: all 0.2s ease-in-out;
+}
+
+.filter-input:focus {
+  background: white;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .spell-card {
+    padding: 16px;
+  }
+  
+  .spell-card h3 {
+    font-size: 16px;
+  }
+}

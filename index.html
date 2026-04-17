@@ -1,169 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-
-    <title>DNDKeep — D&D 5e Session Companion | Free Character Builder</title>
-    <meta name="description" content="DNDKeep is a free D&D 5e session companion. Build characters with the 2024 PHB rules, track HP, roll dice, manage spells, and run campaigns with real-time party sync. Free to start." />
-    <meta name="keywords" content="D&D character builder, DnD 5e character sheet, D&D session companion, D&D dice roller, Dungeons and Dragons online tools, D&D campaign manager" />
-    <link rel="canonical" href="https://dndkeep.vercel.app/" />
-
-    <!-- Open Graph -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://dndkeep.vercel.app/" />
-    <meta property="og:title" content="DNDKeep — D&D 5e Session Companion" />
-    <meta property="og:description" content="Build characters, track HP, roll dice, and run campaigns. A free D&D 5e companion built for the 2024 rules. No credit card required." />
-    <meta property="og:image" content="https://dndkeep.vercel.app/og-image.png" />
-    <meta property="og:site_name" content="DNDKeep" />
-    <meta property="og:locale" content="en_US" />
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="DNDKeep — D&D 5e Session Companion" />
-    <meta name="twitter:description" content="Build characters, track HP, roll dice, and run campaigns. Free to start. Built for the 2024 PHB rules." />
-    <meta name="twitter:image" content="https://dndkeep.vercel.app/og-image.png" />
-
-    <!-- PWA -->
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#c9922a" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="DNDKeep" />
-    <meta name="mobile-web-app-capable" content="yes" />
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-
-    <!-- SEO shell: visible to crawlers, hidden once JS loads -->
-    <style>
-      #seo-shell { display: block; font-family: sans-serif; max-width: 900px; margin: 0 auto; padding: 32px 24px; color: #eef2f7; background: #08080E; }
-      #seo-shell h1 { font-size: 2.5rem; margin-bottom: 16px; color: #d4a017; }
-      #seo-shell h2 { font-size: 1.4rem; margin: 32px 0 12px; color: #d4a017; }
-      #seo-shell p { line-height: 1.7; color: #9aa5b4; margin-bottom: 12px; }
-      #seo-shell ul { color: #9aa5b4; line-height: 1.9; padding-left: 20px; }
-      #seo-shell a { color: #d4a017; }
-      #seo-shell .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 48px; border-bottom: 1px solid #1e2a3a; padding-bottom: 20px; }
-      #seo-shell .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #d4a017; border: 1px solid #c9922a40; padding: 4px 14px; border-radius: 999px; margin-bottom: 24px; }
-      #seo-shell .features { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; margin: 24px 0; }
-      #seo-shell .feature { border: 1px solid #1e2a3a; border-radius: 12px; padding: 20px; }
-      #seo-shell .feature h3 { color: #eef2f7; margin-bottom: 8px; font-size: 1rem; }
-      #seo-shell .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 640px; margin: 24px 0; }
-      #seo-shell .plan { border: 1px solid #1e2a3a; border-radius: 12px; padding: 24px; }
-      #seo-shell .plan.pro { border-color: #c9922a60; }
-      .js-ready #seo-shell { display: none !important; }
-    </style>
-    <script>
-      // Mark JS as loading so we can hide the static shell after React mounts
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() { document.documentElement.classList.add('js-ready'); }, 50);
-      });
-    </script>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DNDKeep - D&D 5e Companion</title>
+    <meta name="description" content="Your ultimate D&D 5e session companion app">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body style="margin:0;background:#08080E">
-    <!-- Ambient gradient orbs — blur behind glass elements for depth -->
-    <div style="position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden">
-      <div style="position:absolute;top:-20%;left:-10%;width:600px;height:600px;background:radial-gradient(ellipse,rgba(123,94,167,0.07) 0%,transparent 70%);filter:blur(40px)"></div>
-      <div style="position:absolute;bottom:-15%;right:-5%;width:500px;height:500px;background:radial-gradient(ellipse,rgba(200,146,42,0.05) 0%,transparent 70%);filter:blur(40px)"></div>
-      <div style="position:absolute;top:40%;left:60%;width:400px;height:400px;background:radial-gradient(ellipse,rgba(45,107,228,0.04) 0%,transparent 70%);filter:blur(60px)"></div>
-    </div>
-
-    <!-- Static SEO shell — read by search engines, hidden after React loads -->
-    <div id="seo-shell">
-      <div class="nav">
-        <strong style="color:#d4a017;font-size:1.2rem;letter-spacing:0.1em">DNDKEEP</strong>
-        <div>
-          <a href="/auth" style="margin-right:16px;color:#9aa5b4;text-decoration:none">Sign in</a>
-          <a href="/auth" style="color:#d4a017;text-decoration:none;font-weight:700">Get started free →</a>
-        </div>
-      </div>
-
-      <div class="badge">Compatible with 5th Edition · 2024 PHB rules · Free to start</div>
-
-      <h1>The D&D companion that automates the rules</h1>
-
-      <p>DNDKeep is a free D&amp;D 5e session companion for players and dungeon masters. Build characters with the 2024 Player's Handbook rules, track hit points and spell slots, roll dice with animated results, and run campaigns with real-time party sync — all in one place.</p>
-      <p>No spreadsheets. No manual math. When you apply a condition, the rules change automatically. When you roll, the result is instant.</p>
-
-      <a href="/auth" style="display:inline-block;margin:24px 0;background:#c9922a;color:#0d1117;font-weight:800;padding:14px 36px;border-radius:8px;text-decoration:none;font-size:1rem">Create a free account</a>
-      <p style="font-size:13px;color:#4a5568">Free forever for one character. No credit card required.</p>
-
-      <h2>Features</h2>
-      <div class="features">
-        <div class="feature">
-          <h3>Guided character creator</h3>
-          <p>Six-step wizard covering species, class, background, ability scores, and build choices. Supports all 13 classes, 14 species, and 23 backgrounds from the 2024 PHB.</p>
-        </div>
-        <div class="feature">
-          <h3>Live character sheet</h3>
-          <p>HP tracking, spell slots, conditions, weapons, inventory, saving throws, and skills — all automatically calculated. Click any ability score to roll it.</p>
-        </div>
-        <div class="feature">
-          <h3>Conditions auto-apply</h3>
-          <p>Poisoned means disadvantage on attack rolls. Stunned drops concentration. The rules apply themselves so you can focus on playing.</p>
-        </div>
-        <div class="feature">
-          <h3>Dice with real results</h3>
-          <p>Every roll triggers an animated result. Natural 20s glow gold. Fumbles flash red. Full modifier breakdown shown for every roll.</p>
-        </div>
-        <div class="feature">
-          <h3>Spell browser</h3>
-          <p>Search and filter 282 spells by level, school, and name. Add spells to your character and cast them directly from the sheet.</p>
-        </div>
-        <div class="feature">
-          <h3>Campaign &amp; DM tools</h3>
-          <p>DMs create campaigns and share a join code. Real-time HP sync, initiative tracker, NPC attacks, and party view — all live at the table.</p>
-        </div>
-      </div>
-
-      <h2>Pricing</h2>
-      <div class="pricing">
-        <div class="plan">
-          <h3>Free</h3>
-          <p style="font-size:2rem;font-weight:900;color:#eef2f7;margin:8px 0">$0</p>
-          <p>Forever</p>
-          <ul>
-            <li>1 character</li>
-            <li>Full character sheet</li>
-            <li>Dice rolling</li>
-            <li>Spell browser (282 spells)</li>
-            <li>Condition tracking</li>
-            <li>Join campaigns with a code</li>
-          </ul>
-        </div>
-        <div class="plan pro">
-          <h3 style="color:#d4a017">Pro — $4.99/month</h3>
-          <p style="font-size:2rem;font-weight:900;color:#eef2f7;margin:8px 0">$4.99</p>
-          <p>per month</p>
-          <ul>
-            <li>Unlimited characters</li>
-            <li>Create &amp; run campaigns</li>
-            <li>Real-time party sync</li>
-            <li>DM combat dashboard</li>
-            <li>Initiative tracker</li>
-            <li>Homebrew Workshop</li>
-          </ul>
-        </div>
-      </div>
-
-      <p style="margin-top:48px;font-size:13px;color:#4a5568">
-        Compatible with 5th Edition. Not affiliated with Wizards of the Coast or DnD Beyond.
-        Game content used under <a href="/srd">Creative Commons CC-BY-4.0 (SRD 5.1)</a>.
-      </p>
-    </div>
-
-    <!-- React app mounts here -->
-    <div id="root" style="position:relative;z-index:1"></div>
-
+  <body>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
-      }
-    </script>
   </body>
 </html>

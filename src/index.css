@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom AoE Badge Styling */
+.aoe-badge {
+  @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full;
+}
+
+.aoe-badge:hover {
+  @apply bg-orange-200;
+}
+
+/* Spell Card Animations */
+.spell-card {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.spell-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Combat badges */
+.combat-badge {
+  @apply inline-flex items-center px-2 py-1 text-xs font-medium rounded;
+}
+
+/* Loading animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
