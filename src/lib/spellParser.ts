@@ -57,7 +57,6 @@ export function parseSpellMechanics(description: string, structured?: {
   }
   // ── Fallback: regex parsing of description text ───────────────
   const lower = description.toLowerCase();
-  const lower = description.toLowerCase();
 
   // Detect attack rolls
   const isRanged = /ranged spell attack/.test(lower);
