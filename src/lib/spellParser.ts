@@ -28,34 +28,7 @@ const SAVE_MAP: Record<string, string> = {
   'charisma': 'CHA',
 };
 
-/**
- * Parse spell mechanics — uses structured API fields when available,
- * falls back to regex parsing of description text.
- */
-export function parseSpellMechanics(description: string, structured?: {
-  save_type?: string;
-  attack_type?: string;
-  damage_dice?: string;
-  damage_type?: string;
-  heal_dice?: string;
-  area_of_effect?: { type: string; size: number };
-}): SpellMechanics {
-  // ── Use structured API data when available ────────────────────
-  if (structured) {
-    const isAttack = !!structured.attack_type;
-    const isUtility = !structured.damage_dice && !structured.heal_dice &&
-      !structured.save_type && !isAttack;
-    return {
-      damageDice:  structured.damage_dice ?? null,
-      damageType:  structured.damage_type ?? null,
-      saveType:    structured.save_type ?? null,
-      isAttack,
-      attackType:  structured.attack_type as ('ranged'|'melee'|null) ?? null,
-      healDice:    structured.heal_dice ?? null,
-      isUtility,
-    };
-  }
-  // ── Fallback: regex parsing of description text ───────────────
+export function parseSpellMechanics(description: string): SpellMechanics {
   const lower = description.toLowerCase();
 
   // Detect attack rolls

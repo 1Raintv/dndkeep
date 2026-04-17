@@ -2,6 +2,7 @@ import { useState, useMemo, type ReactNode } from 'react';
 import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
+import AoEBadge from './AoEBadge';
 import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics } from '../../lib/spellParser';
@@ -58,13 +59,7 @@ const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', '
 
 /** Derive a DDB-style effect category from spell mechanics + description */
 function getEffectCategory(spell: SpellData): { label: string; color: string } {
-  const m = parseSpellMechanics(spell.description, {
-    save_type: (spell as any).save_type,
-    attack_type: (spell as any).attack_type,
-    damage_dice: (spell as any).damage_dice,
-    damage_type: (spell as any).damage_type,
-    heal_dice: (spell as any).heal_dice,
-  });
+  const m = parseSpellMechanics(spell.description);
   const d = spell.description.toLowerCase();
   if (m.healDice) return { label: 'Healing', color: '#34d399' };
   if (d.includes('teleport') || d.includes('misty step')) return { label: 'Teleportation', color: '#60a5fa' };
@@ -228,42 +223,31 @@ export default function SpellsTab({
             </div>
           );
         })()}
-        {isPreparer && !isKnown && (() => {
-          const remaining = prepareMax - preparedCount;
-          const atCap = preparedCount >= prepareMax;
-          const pct = Math.min(100, prepareMax > 0 ? (preparedCount / prepareMax) * 100 : 0);
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
-              background: 'var(--c-card)', border: `1px solid ${atCap ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
-              borderRadius: 999, cursor: 'default' }}
-              title={atCap ? 'All spell slots are prepared' : `${remaining} more spell${remaining !== 1 ? 's' : ''} can be prepared`}
+        {isPreparer && !isKnown && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 999 }}>
+            <div style={{
+              width: `${Math.min(100, (preparedCount / prepareMax) * 100)}%`,
+            }} />
+            <span style={{ fontSize: 11, color: 'var(--t-2)' }}>Prepared:</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: preparedCount >= prepareMax ? 'var(--c-gold-l)' : 'var(--t-1)', fontFamily: 'var(--ff-stat)' }}>
+              {preparedCount} / {prepareMax}
+            </span>
+            <button
+              onClick={() => setFilterPrepared(v => !v)}
+              style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                border: filterPrepared ? '1px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                background: filterPrepared ? 'var(--c-gold-bg)' : 'transparent',
+                color: filterPrepared ? 'var(--c-gold-l)' : 'var(--t-3)' }}
             >
-              {/* Progress bar */}
-              <div style={{ width: 48, height: 5, borderRadius: 3, background: 'var(--c-raised)', overflow: 'hidden', flexShrink: 0 }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: atCap ? 'var(--c-gold)' : 'var(--c-gold-l)', borderRadius: 3, transition: 'width 0.3s', opacity: 0.8 }}/>
-              </div>
-              <span style={{ fontSize: 11, color: 'var(--t-3)' }}>Prepared</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: atCap ? 'var(--c-gold-l)' : 'var(--t-1)', fontFamily: 'var(--ff-stat)', minWidth: 28 }}>
-                {preparedCount}<span style={{ fontWeight: 400, color: 'var(--t-3)' }}>/{prepareMax}</span>
-              </span>
-              {atCap && <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--c-gold-l)', letterSpacing: '0.08em' }}>FULL</span>}
-              <button
-                onClick={() => setFilterPrepared(v => !v)}
-                style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                  border: filterPrepared ? '1px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-                  background: filterPrepared ? 'var(--c-gold-bg)' : 'transparent',
-                  color: filterPrepared ? 'var(--c-gold-l)' : 'var(--t-3)' }}
-              >
-                {filterPrepared ? 'All' : 'Unprepared'}
-              </button>
-            </div>
-          );
-        })()}
+              {filterPrepared ? 'All' : 'Prepared only'}
+            </button>
+          </div>
+        )}
 
-        {/* Add Spells button — clean right-side CTA */}
-        <div style={{ marginLeft: 'auto' }}>
+        {/* Add Spells portal button */}
+        <div style={{ marginLeft: 'auto', minWidth: 240 }}>
           <SpellPickerDropdown
-            label={`✦ Add Spells`}
+            label={`Add ${character.class_name} Spells`}
             isCantrip={false}
             className={character.class_name}
             maxLevel={maxSpellLevel}
@@ -284,21 +268,6 @@ export default function SpellsTab({
           />
         </div>
 
-        {/* Add Cantrips picker */}
-        {cantripMax !== undefined && currentCantripCount < cantripMax && (
-          <div>
-            <SpellPickerDropdown
-              label={`✦ Add Cantrips (${currentCantripCount}/${cantripMax})`}
-              isCantrip={true}
-              className={character.class_name}
-              maxLevel={0}
-              selected={character.known_spells}
-              onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
-              cantripMax={cantripMax}
-              grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
-            />
-          </div>
-        )}
       </div>
 
       {/* ── Spell stats header (DDB-style) — modifier / attack / save DC ── */}
@@ -506,13 +475,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
   const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
   const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
   const effect = getEffectCategory(spell);
-  const mechanics = parseSpellMechanics(spell.description, {
-    save_type: (spell as any).save_type,
-    attack_type: (spell as any).attack_type,
-    damage_dice: (spell as any).damage_dice,
-    damage_type: (spell as any).damage_type,
-    heal_dice: (spell as any).heal_dice,
-  });
+  const mechanics = parseSpellMechanics(spell.description);
   // Abbreviate casting time for table display
   const timeAbbr = spell.casting_time
     .replace('1 action', '1A').replace('1 Action', '1A')
@@ -535,10 +498,6 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
       overflow: 'hidden', opacity: dimmed ? 0.5 : 1,
       transition: 'all 0.15s',
     }}>
-      {/* Hint for unprepared spells */}
-      {dimmed && (
-        <div style={{ height: 2, background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.15), transparent)' }}/>
-      )}
       {/* ── DDB-style compact table row ── */}
       <div
         style={{
@@ -558,16 +517,12 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
               onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
               title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
               style={{
-                cursor: 'pointer', borderRadius: 4, padding: '2px 4px',
-                border: `1px solid ${isPrepared ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
-                background: isPrepared ? 'var(--c-gold-bg)' : 'transparent',
-                transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 12, height: 12, borderRadius: '50%', cursor: 'pointer',
+                border: `2px solid ${isPrepared ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+                background: isPrepared ? 'var(--c-gold)' : 'transparent',
+                transition: 'all 0.15s',
               }}
-            >
-              <span style={{ fontSize: 7, fontWeight: 800, color: isPrepared ? 'var(--c-gold-l)' : 'var(--t-3)', letterSpacing: '0.04em', lineHeight: 1.3, textAlign: 'center', textTransform: 'uppercase' as const }}>
-                {isPrepared ? 'PREP' : '—'}
-              </span>
-            </div>
+            />
           ) : grantedReason ? (
             <span title={grantedReason} style={{ fontSize: 8, fontWeight: 800, color: '#34d399', cursor: 'help' }}>✦</span>
           ) : (
@@ -584,6 +539,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
             <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {spell.name}
             </span>
+            {spell.area_of_effect && <AoEBadge spell={spell} />}
             {isConcentrating && <span style={{ fontSize: 8, fontWeight: 800, color: '#a78bfa', flexShrink: 0 }}>● CONC</span>}
           </div>
           <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
@@ -626,23 +582,8 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
           {castButton}
         </div>
 
-        {/* Col 8: Quick remove + expand chevron */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
-          {!grantedReason && (
-            <button
-              onClick={onRemove}
-              title="Remove spell"
-              style={{ width: 18, height: 18, borderRadius: 4, border: '1px solid transparent', background: 'transparent',
-                color: 'var(--t-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11, padding: 0, lineHeight: 1, transition: 'all 0.15s',
-                ':hover': { background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' },
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.12)'; (e.currentTarget as HTMLButtonElement).style.color = '#f87171'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--t-3)'; }}
-            >✕</button>
-          )}
-          <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
-        </div>
+        {/* Col 8: Expand chevron */}
+        <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
       </div>
 
       {/* Expanded detail panel */}

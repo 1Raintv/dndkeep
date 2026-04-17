@@ -307,94 +307,38 @@ export interface ClassData {
 }
 
 export interface SpellData {
-  id: string;
+  id: string;          // kebab-case slug
   name: string;
   level: SpellLevel;
   school: SpellSchool;
   casting_time: string;
   range: string;
-  components: string;
+  components: string;  // e.g. "V, S, M (a tiny ball of bat guano)"
   duration: string;
   concentration: boolean;
   ritual: boolean;
   classes: string[];
   description: string;
   higher_levels?: string;
-  // ── Structured combat fields (from SRD API) ──────────────────────
-  save_type?: string;            // 'DEX' | 'CON' | 'WIS' etc.
-  attack_type?: 'ranged' | 'melee';
-  damage_dice?: string;          // base damage e.g. '8d6'
-  damage_type?: string;          // 'Fire' | 'Cold' etc.
-  damage_at_slot_level?: Record<string, string>;  // { '3': '8d6', '4': '9d6' }
-  damage_at_char_level?: Record<string, string>;  // cantrip scaling
-  heal_dice?: string;
-  heal_at_slot_level?: Record<string, string>;
-  area_of_effect?: { type: 'sphere'|'cone'|'cube'|'cylinder'|'line'; size: number };
-}
-
-export interface MonsterAction {
-  name: string;
-  desc: string;
-  attack_bonus?: number;
-  damage_dice?: string;
-  damage_type?: string;
-  bonus_damage_dice?: string;
-  bonus_damage_type?: string;
-  dc_type?: string;
-  dc_value?: number;
-  dc_success?: string;
-  usage?: string;
-}
-
-export interface MonsterTrait {
-  name: string;
-  desc: string;
-}
-
-export interface MonsterLegendaryAction {
-  name: string;
-  desc: string;
-  cost?: number;
 }
 
 export interface MonsterData {
   id: string;
   name: string;
-  type: string;          // full string, not restricted enum
-  subtype?: string;
-  alignment?: string;
-  cr: number | string;
-  xp: number;
+  type: MonsterType;
+  cr: number | string;  // "1/8" | "1/4" | "1/2" | 1 | 2 ...
   size: CreatureSize;
   hp: number;
   hp_formula: string;
   ac: number;
   ac_note?: string;
   speed: number;
-  fly_speed?: number;
-  swim_speed?: number;
-  climb_speed?: number;
-  burrow_speed?: number;
   str: number; dex: number; con: number;
   int: number; wis: number; cha: number;
-  saving_throws?: Record<string, number>;
-  skills?: Record<string, number>;
-  damage_immunities?: string[];
-  damage_resistances?: string[];
-  damage_vulnerabilities?: string[];
-  condition_immunities?: string[];
-  senses?: Record<string, string | number>;
-  languages?: string;
-  proficiency_bonus?: number;
-  traits?: MonsterTrait[];
-  actions?: MonsterAction[];
-  reactions?: MonsterTrait[];
-  legendary_actions?: MonsterLegendaryAction[];
-  legendary_resistance_count?: number;
-  // Backward compat — primary attack summary
   attack_name: string;
   attack_bonus: number;
-  attack_damage: string;
+  attack_damage: string;  // e.g. "2d6 + 4"
+  xp: number;
 }
 
 export interface ConditionData {

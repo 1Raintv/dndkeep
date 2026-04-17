@@ -5,7 +5,6 @@ import type { MonsterData } from '../../types';
 
 const TYPES = ['All', ...Array.from(new Set(MONSTERS.map(m => m.type))).sort()];
 const CR_ORDER = ['0', '1/8', '1/4', '1/2', ...Array.from({ length: 30 }, (_, i) => String(i + 1))];
-const SIZES = ['All', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
 
 function crSort(a: MonsterData, b: MonsterData) {
   return CR_ORDER.indexOf(String(a.cr)) - CR_ORDER.indexOf(String(b.cr));
@@ -25,7 +24,6 @@ interface MonsterBrowserProps {
 export default function MonsterBrowser({ onAddToCombat, compact = false }: MonsterBrowserProps) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
-  const [sizeFilter, setSizeFilter] = useState('All');
   const [crMin, setCrMin] = useState('');
   const [crMax, setCrMax] = useState('');
   const [selected, setSelected] = useState<MonsterData | null>(null);
@@ -34,7 +32,6 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
     return MONSTERS
       .filter(m => {
         if (typeFilter !== 'All' && m.type !== typeFilter) return false;
-        if (sizeFilter !== 'All' && m.size !== sizeFilter) return false;
         if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
         if (crMin) {
           const minIdx = CR_ORDER.indexOf(crMin);
@@ -47,7 +44,7 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
         return true;
       })
       .sort(crSort);
-  }, [search, typeFilter, sizeFilter, crMin, crMax]);
+  }, [search, typeFilter, crMin, crMax]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: selected && !compact ? '1fr 1fr' : '1fr', gap: 'var(--sp-6)' }}>
@@ -63,9 +60,6 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
           />
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ flex: 1, minWidth: 110, fontSize: 'var(--fs-sm)' }}>
             {TYPES.map(t => <option key={t}>{t}</option>)}
-          </select>
-          <select value={sizeFilter} onChange={e => setSizeFilter(e.target.value)} style={{ width: 90, fontSize: 'var(--fs-sm)' }}>
-            {SIZES.map(s => <option key={s}>{s}</option>)}
           </select>
           <select value={crMin} onChange={e => setCrMin(e.target.value)} style={{ width: 80, fontSize: 'var(--fs-sm)' }}>
             <option value="">CR min</option>
@@ -147,179 +141,67 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
 
 function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddToCombat?: (m: MonsterData) => void }) {
   const xpLabel = m.xp >= 1000 ? `${(m.xp / 1000).toFixed(1)}k` : String(m.xp);
-  const speedStr = [
-    m.speed ? `${m.speed} ft.` : '',
-    m.fly_speed ? `fly ${m.fly_speed} ft.` : '',
-    m.swim_speed ? `swim ${m.swim_speed} ft.` : '',
-    m.climb_speed ? `climb ${m.climb_speed} ft.` : '',
-    m.burrow_speed ? `burrow ${m.burrow_speed} ft.` : '',
-  ].filter(Boolean).join(', ');
-
-  const savesStr = m.saving_throws
-    ? Object.entries(m.saving_throws).map(([k,v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(', ')
-    : null;
-  const skillsStr = m.skills
-    ? Object.entries(m.skills).map(([k,v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(', ')
-    : null;
-  const immunities = m.damage_immunities?.join(', ');
-  const resistances = m.damage_resistances?.join(', ');
-  const condImm = m.condition_immunities?.join(', ');
-  const sensesStr = m.senses
-    ? Object.entries(m.senses).filter(([k]) => k !== 'passive_perception')
-        .map(([k, v]) => `${k.replace(/_/g,' ')} ${v}`).join(', ')
-        + (m.senses.passive_perception ? `, Passive Perception ${m.senses.passive_perception}` : '')
-    : null;
 
   return (
-    <div style={{ fontFamily: 'var(--ff-body)', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, overflow: 'hidden', maxHeight: '80vh', overflowY: 'auto' }}>
-      {/* Header — red DnD stat block style */}
-      <div style={{ background: 'rgba(139,0,0,0.15)', borderBottom: '2px solid var(--c-gold)', padding: '12px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+    <div className="card card-gold" style={{ fontFamily: 'var(--ff-body)' }}>
+      {/* Header */}
+      <div style={{ borderBottom: '2px solid var(--c-gold)', paddingBottom: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--t-1)' }}>{m.name}</div>
-            <div style={{ fontStyle: 'italic', fontSize: 12, color: 'var(--t-2)', marginTop: 2 }}>
-              {m.size} {m.type}{m.subtype ? ` (${m.subtype})` : ''}{m.alignment ? `, ${m.alignment}` : ''}
-            </div>
+            <h3 style={{ marginBottom: 2 }}>{m.name}</h3>
+            <p style={{ fontStyle: 'italic', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>
+              {m.size} {m.type}
+            </p>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: 12, color: 'var(--c-gold-l)', background: 'rgba(201,146,42,0.15)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '2px 10px' }}>CR {formatCR(m.cr)}</span>
-            <span style={{ fontSize: 11, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 8px' }}>{xpLabel} XP</span>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+            <span className="badge badge-gold">CR {formatCR(m.cr)}</span>
+            <span className="badge badge-muted">{xpLabel} XP</span>
             {onAddToCombat && (
-              <button className="btn-gold btn-sm" onClick={() => onAddToCombat(m)} style={{ fontSize: 11 }}>+ Combat</button>
+              <button className="btn-gold btn-sm" onClick={() => onAddToCombat(m)}>
+                + Add to Combat
+              </button>
             )}
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Core defense row */}
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-          <SBStat label="Armor Class" value={`${m.ac}${m.ac_note ? ` (${m.ac_note})` : ''}`}/>
-          <SBStat label="Hit Points" value={`${m.hp} (${m.hp_formula})`}/>
-          <SBStat label="Speed" value={speedStr || `${m.speed} ft.`}/>
-        </div>
-
-        {/* Ability scores */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, textAlign: 'center', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-          {(['STR','DEX','CON','INT','WIS','CHA'] as const).map((label, i) => {
-            const score = [m.str, m.dex, m.con, m.int, m.wis, m.cha][i];
-            const sv = m.saving_throws?.[label];
-            return (
-              <div key={label}>
-                <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--t-3)', letterSpacing: '0.1em' }}>{label}</div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--t-1)', fontFamily: 'var(--ff-stat)' }}>{score}</div>
-                <div style={{ fontSize: 10, color: 'var(--c-gold-l)' }}>{mod(score)}</div>
-                {sv !== undefined && <div style={{ fontSize: 9, color: '#34d399' }}>Save {sv >= 0 ? '+' : ''}{sv}</div>}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Secondary stats */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingBottom: 10, borderBottom: '1px solid var(--c-border)', fontSize: 12 }}>
-          {skillsStr && <SBStat label="Skills" value={skillsStr}/>}
-          {immunities && <SBStat label="Damage Immunities" value={immunities}/>}
-          {resistances && <SBStat label="Resistances" value={resistances}/>}
-          {condImm && <SBStat label="Condition Immunities" value={condImm}/>}
-          {sensesStr && <SBStat label="Senses" value={sensesStr}/>}
-          {m.languages && <SBStat label="Languages" value={m.languages}/>}
-        </div>
-
-        {/* Traits */}
-        {m.traits && m.traits.length > 0 && (
-          <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-            {m.traits.map(t => (
-              <div key={t.name} style={{ marginBottom: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{t.name}. </span>
-                <span style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{t.desc}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Actions */}
-        {m.actions && m.actions.length > 0 ? (
-          <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#f87171', marginBottom: 8 }}>Actions</div>
-            {m.actions.map(a => (
-              <div key={a.name} style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
-                  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{a.name}</span>
-                  {a.attack_bonus !== undefined && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      +{a.attack_bonus} to hit
-                    </span>
-                  )}
-                  {a.damage_dice && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      {a.damage_dice} {a.damage_type}
-                    </span>
-                  )}
-                  {a.bonus_damage_dice && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#fb923c', background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      +{a.bonus_damage_dice} {a.bonus_damage_type}
-                    </span>
-                  )}
-                  {a.dc_type && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      DC {a.dc_value} {a.dc_type}
-                    </span>
-                  )}
-                  {a.usage && <span style={{ fontSize: 9, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '1px 5px' }}>{a.usage}</span>}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>{a.desc}</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* Fallback to legacy attack fields */
-          <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#f87171', marginBottom: 6 }}>Actions</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{m.attack_name}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '1px 6px' }}>+{m.attack_bonus} to hit</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 999, padding: '1px 6px' }}>{m.attack_damage}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Reactions */}
-        {m.reactions && m.reactions.length > 0 && (
-          <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#34d399', marginBottom: 8 }}>Reactions</div>
-            {m.reactions.map(r => (
-              <div key={r.name} style={{ marginBottom: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{r.name}. </span>
-                <span style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{r.desc}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Legendary Actions */}
-        {m.legendary_actions && m.legendary_actions.length > 0 && (
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#c084fc', marginBottom: 8 }}>
-              Legendary Actions{m.legendary_resistance_count ? ` (${m.legendary_resistance_count}/Day)` : ''}
-            </div>
-            {m.legendary_actions.map(la => (
-              <div key={la.name} style={{ marginBottom: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 12, color: '#c084fc' }}>{la.name}{la.cost && la.cost > 1 ? ` (Costs ${la.cost})` : ''}. </span>
-                <span style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{la.desc}</span>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Core stats */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-4)', marginBottom: 'var(--sp-3)', borderBottom: '1px solid var(--c-border)', paddingBottom: 'var(--sp-3)' }}>
+        <Stat label="Armor Class" value={`${m.ac}${m.ac_note ? ` (${m.ac_note})` : ''}`} />
+        <Stat label="Hit Points" value={`${m.hp} (${m.hp_formula})`} />
+        <Stat label="Speed" value={`${m.speed} ft.`} />
       </div>
-    </div>
-  );
-}
 
-function SBStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ fontSize: 12 }}>
-      <span style={{ fontWeight: 700, color: 'var(--t-1)' }}>{label}: </span>
-      <span style={{ color: 'var(--t-2)' }}>{value}</span>
+      {/* Ability scores */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--sp-2)', textAlign: 'center', marginBottom: 'var(--sp-3)', borderBottom: '1px solid var(--c-border)', paddingBottom: 'var(--sp-3)' }}>
+        {(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const).map((label, i) => {
+          const score = [m.str, m.dex, m.con, m.int, m.wis, m.cha][i];
+          return (
+            <div key={label}>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--t-2)', letterSpacing: '0.08em' }}>{label}</div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)' }}>{score}</div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)' }}>{mod(score)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Attack */}
+      <div style={{ marginBottom: 'var(--sp-3)' }}>
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 4 }}>
+          Actions
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
+            {m.attack_name}
+          </span>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
+            Melee Weapon Attack
+          </span>
+          <span className="badge badge-gold">+{m.attack_bonus} to hit</span>
+          <span className="badge badge-crimson">{m.attack_damage} damage</span>
+        </div>
+      </div>
     </div>
   );
 }

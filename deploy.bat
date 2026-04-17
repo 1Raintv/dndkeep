@@ -1,34 +1,48 @@
 @echo off
-echo =====================================
-echo DNDKeep Deployment Script v2.17.0
-echo =====================================
-
-REM Get current date for commit message
-for /f "tokens=1-3 delims=/ " %%a in ('date /t') do set DATE=%%c-%%a-%%b
-for /f "tokens=1-2 delims=: " %%a in ('time /t') do set TIME=%%a:%%b
-set DATETIME=%DATE% %TIME%
+title DNDKeep Deploy
+color 0A
+cd /d "C:\Users\Jared\OneDrive\Desktop\DNDKeep"
 
 echo.
-echo Checking git status...
-git status
-
+echo  ============================================
+echo   DNDKeep Auto Deploy
+echo  ============================================
 echo.
-echo Adding all changes...
+
+git rev-parse --git-dir >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [ERROR] Git not initialized. Run setup first.
+    pause
+    exit /b 1
+)
+
+echo  [1/3] Staging all changes...
 git add .
 
-echo.
-echo Committing changes...
-git commit -m "deploy: v2.17.0 built %DATETIME%"
+echo  [2/3] Committing...
+for /f "tokens=*" %%i in ('powershell -command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
+
+REM Extract version value: find the line, grab everything between the single quotes
+for /f "tokens=*" %%L in ('findstr "APP_VERSION = " src\version.ts') do (
+    for /f "tokens=2 delims='" %%V in ("%%L") do set VER=%%V
+)
+
+if "%VER%"=="" set VER=unknown
+
+git commit -m "deploy: v%VER% built %TIMESTAMP%"
+
+echo  [3/3] Pushing to GitHub...
+git push origin main 2>nul || git push origin master
+
+if %errorlevel% == 0 (
+    echo.
+    echo  ============================================
+    echo   DEPLOYED v%VER%! Live in ~60 seconds:
+    echo   https://dndkeep.vercel.app
+    echo  ============================================
+) else (
+    echo  [ERROR] Push failed - check git remote setup
+)
 
 echo.
-echo Pushing to GitHub...
-git push origin main
-
-echo.
-echo =====================================
-echo Deployment completed!
-echo Vercel will automatically deploy from GitHub
-echo Check https://dndkeep.vercel.app in a few minutes
-echo =====================================
-
 pause
