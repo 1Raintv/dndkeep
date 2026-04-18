@@ -197,6 +197,22 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
                     </div>
                   )}
 
+                  {/* Select button — placed before description so users can commit
+                      to the feat immediately after seeing name/prereq/ASI, without
+                      having to scroll past the full description and benefits list. */}
+                  <button
+                    onClick={() => pick(feat.name)}
+                    style={{
+                      fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7,
+                      cursor: 'pointer', minHeight: 0, marginTop: 8, marginBottom: 8,
+                      border: `1px solid ${isSel ? 'var(--c-border-m)' : 'var(--c-gold-bdr)'}`,
+                      background: isSel ? 'var(--c-raised)' : 'rgba(212,160,23,0.12)',
+                      color: isSel ? 'var(--t-3)' : 'var(--c-gold-l)',
+                    }}
+                  >
+                    {isSel ? 'Deselect' : 'Select this feat'}
+                  </button>
+
                   <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65, margin: '8px 0 8px' }}>
                     {feat.description}
                   </p>
@@ -210,18 +226,6 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
                       ))}
                     </div>
                   )}
-                  <button
-                    onClick={() => pick(feat.name)}
-                    style={{
-                      fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7,
-                      cursor: 'pointer', minHeight: 0,
-                      border: `1px solid ${isSel ? 'var(--c-border-m)' : 'var(--c-gold-bdr)'}`,
-                      background: isSel ? 'var(--c-raised)' : 'rgba(212,160,23,0.12)',
-                      color: isSel ? 'var(--t-3)' : 'var(--c-gold-l)',
-                    }}
-                  >
-                    {isSel ? 'Deselect' : 'Select this feat'}
-                  </button>
                 </div>
               )}
             </div>

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
-import { SPELLS } from '../../data/spells';
 
 interface Props {
   character: Character;
@@ -20,6 +19,10 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
   const className = character.class_name;
 
   // ── PSION DISCIPLINE TRACKING ─────────────────────────────────────────────
+  // NOTE: This component only handles discipline choices now. Cantrip/spell
+  // pending prompts live in SpellCompletionBanner, which reads from the
+  // canonical spellLimits helpers and works for all spellcaster classes —
+  // having the Psion-specific duplicate here caused double-prompts.
   const currentDisciplines: string[] = Array.isArray(
     (character.class_resources as Record<string, unknown>)?.['psion-disciplines']
   )
@@ -31,28 +34,30 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
     : 0;
   const missingDisciplines = Math.max(0, expectedDisciplines - currentDisciplines.length);
 
-  // ── PSION CANTRIP TRACKING ─────────────────────────────────────────────────
-  const expectedCantrips = className === 'Psion'
-    ? (level >= 10 ? 4 : level >= 4 ? 3 : 2)
-    : 0;
-  const classCantrips = SPELLS.filter(s => s.classes.includes('Psion') && s.level === 0);
-  const currentCantrips = character.known_spells.filter(id =>
-    classCantrips.find(s => s.id === id) && id !== 'mage-hand'
-  ).length;
-  const missingCantrips = Math.max(0, expectedCantrips - currentCantrips);
-
-  const hasAlerts = missingDisciplines > 0 || missingCantrips > 0;
+  const hasAlerts = missingDisciplines > 0;
   if (!hasAlerts) return null;
 
-  // Discipline picker helpers
+  // Discipline picker helpers — keep selected disciplines in the list so
+  // users can unselect an accidentally-picked one without hunting. Picked
+  // ones render grayed out with a Remove button instead of Choose.
   const filteredDiscs = PSION_DISCIPLINES.filter(d =>
     discSearch === '' ||
     d.name.toLowerCase().includes(discSearch.toLowerCase()) ||
     d.description.toLowerCase().includes(discSearch.toLowerCase())
-  ).filter(d => !currentDisciplines.includes(d.name));
+  );
 
   function selectDiscipline(name: string) {
     const next = [...currentDisciplines, name];
+    onUpdate({
+      class_resources: {
+        ...((character.class_resources as Record<string, unknown>) ?? {}),
+        'psion-disciplines': next,
+      },
+    });
+  }
+
+  function removeDiscipline(name: string) {
+    const next = currentDisciplines.filter(d => d !== name);
     onUpdate({
       class_resources: {
         ...((character.class_resources as Record<string, unknown>) ?? {}),
@@ -148,14 +153,22 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
                 <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                   {filteredDiscs.map(disc => {
                     const isExpanded = expandedDisc === disc.id;
+                    const isSelected = currentDisciplines.includes(disc.name);
                     const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
                     return (
-                      <div key={disc.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                      <div key={disc.id} style={{
+                        borderBottom: '1px solid var(--c-border)',
+                        // Selected rows are visibly dimmer so the user's eye
+                        // skips them when scanning — but they remain fully
+                        // interactive so an accidental pick can be undone.
+                        background: isSelected ? 'rgba(232,121,249,0.04)' : 'transparent',
+                        opacity: isSelected ? 0.65 : 1,
+                      }}>
                         <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>
-                                {disc.name}
+                              <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: isSelected ? '#e879f9' : 'var(--t-1)' }}>
+                                {isSelected && '✓ '}{disc.name}
                               </span>
                               <span style={{
                                 fontSize: 9, fontWeight: 700, color: typeColor,
@@ -182,16 +195,29 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
                             )}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                            <button
-                              onClick={() => selectDiscipline(disc.name)}
-                              style={{
-                                padding: '3px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
-                                background: 'rgba(232,121,249,0.15)', border: '1px solid rgba(232,121,249,0.4)',
-                                color: '#e879f9', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
-                              }}
-                            >
-                              Choose
-                            </button>
+                            {isSelected ? (
+                              <button
+                                onClick={() => removeDiscipline(disc.name)}
+                                style={{
+                                  padding: '3px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                                  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)',
+                                  color: '#ef4444', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                                }}
+                              >
+                                Remove
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => selectDiscipline(disc.name)}
+                                style={{
+                                  padding: '3px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                                  background: 'rgba(232,121,249,0.15)', border: '1px solid rgba(232,121,249,0.4)',
+                                  color: '#e879f9', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                                }}
+                              >
+                                Choose
+                              </button>
+                            )}
                             <button
                               onClick={() => setExpandedDisc(isExpanded ? null : disc.id)}
                               style={{
@@ -209,7 +235,7 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
                   })}
                   {filteredDiscs.length === 0 && (
                     <div style={{ padding: 12, textAlign: 'center', fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)' }}>
-                      All disciplines already chosen or no results
+                      No disciplines match "{discSearch}"
                     </div>
                   )}
                 </div>
@@ -218,35 +244,8 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
           </div>
         )}
 
-        {/* Cantrip reminder */}
-        {missingCantrips > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{
-              fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 12,
-              color: '#ef4444', background: 'rgba(239,68,68,0.12)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              borderRadius: 999, padding: '1px 8px',
-            }}>
-              {currentCantrips}/{expectedCantrips}
-            </span>
-            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', flex: 1 }}>
-              Psion cantrips — {missingCantrips} still needed
-            </span>
-            <button
-              onClick={() => {
-                const evt = new CustomEvent('dndkeep:gototab', { detail: 'spells' });
-                window.dispatchEvent(evt);
-              }}
-              style={{
-                padding: '3px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
-                background: '#ef4444', border: 'none', color: '#fff',
-                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
-              }}
-            >
-              Go to Spells
-            </button>
-          </div>
-        )}
+        {/* Cantrip reminder removed — SpellCompletionBanner shows this for
+            all spellcaster classes using canonical spellLimits data. */}
 
       </div>
     </div>

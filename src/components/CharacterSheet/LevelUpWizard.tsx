@@ -475,14 +475,15 @@ function SubclassStep({ classData, selected, onSelect }: any) {
           const featureLevels = Object.keys(featuresByLevel).map(Number).sort((a, b) => a - b);
           const isSel = selected === sub.name;
           return (
-            <button key={sub.name} onClick={() => onSelect(sub.name)} style={{
-              textAlign: 'left', padding: 'var(--sp-3) var(--sp-4)',
+            <div key={sub.name} style={{
+              padding: 'var(--sp-3) var(--sp-4)',
               border: isSel ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
               borderRadius: 'var(--r-lg)',
               background: isSel ? 'rgba(212,160,23,0.08)' : '#080d14',
-              cursor: 'pointer', transition: 'all var(--tr-fast)',
-              display: 'flex', flexDirection: 'column', gap: 5,
+              transition: 'all var(--tr-fast)',
+              display: 'flex', flexDirection: 'column', gap: 8,
             }}>
+              {/* Title row */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: isSel ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
                   {isSel ? '✓ ' : ''}{sub.name}
@@ -491,9 +492,34 @@ function SubclassStep({ classData, selected, onSelect }: any) {
                   <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: '#c084fc', background: 'rgba(192,132,252,0.12)', border: '1px solid rgba(192,132,252,0.3)', borderRadius: 999, padding: '1px 6px' }}>UA</span>
                 )}
               </div>
+
+              {/* Description */}
               <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
                 {sub.description}
               </div>
+
+              {/* Choose button — right here, before the features list so players don't have to scroll */}
+              <button
+                onClick={() => onSelect(sub.name)}
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '6px 14px',
+                  borderRadius: 'var(--r-md)',
+                  cursor: 'pointer',
+                  minHeight: 0,
+                  fontFamily: 'var(--ff-body)',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  border: isSel ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-gold-bdr)',
+                  background: isSel ? 'var(--c-gold)' : 'rgba(212,160,23,0.12)',
+                  color: isSel ? '#0b0b14' : 'var(--c-gold-l)',
+                  transition: 'all var(--tr-fast)',
+                }}
+              >
+                {isSel ? `✓ ${sub.name} chosen` : `Choose ${sub.name}`}
+              </button>
+
+              {/* Features list — secondary, below the choice */}
               {featureLevels.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
                   {featureLevels.map((lvl: number) => (
@@ -509,7 +535,7 @@ function SubclassStep({ classData, selected, onSelect }: any) {
                   ))}
                 </div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>
