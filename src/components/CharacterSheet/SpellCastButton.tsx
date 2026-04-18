@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
-import { parseSpellMechanics } from '../../lib/spellParser';
+import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice } from '../../lib/spellParser';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface SpellCastButtonProps {
@@ -59,6 +59,12 @@ export default function SpellCastButton({
     heal_dice: (spell as any).heal_dice,
     area_of_effect: (spell as any).area_of_effect,
   });
+
+  // Upcast scaling info — derived from spell.higher_levels (preferred) or description
+  const upcast = parseUpcastScaling(
+    (spell as any).higher_levels || spell.description,
+    spell.level,
+  );
 
   // Available slots at spell.level or higher
   const availableSlots: { level: number; remaining: number }[] = [];

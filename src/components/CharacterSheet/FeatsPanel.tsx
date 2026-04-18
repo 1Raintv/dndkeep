@@ -49,6 +49,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function FeatsPanel({ character, onUpdate }: FeatsPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // `adding` was part of an earlier in-panel "add feat" UI that was later removed.
+  // The add flow now lives in the Level Up wizard. We keep the state variable so
+  // the existing render branch (`!adding`) resolves correctly; it's just always false.
+  const [adding, setAdding] = useState(false);
 
   const featNames: string[] = character.gained_feats ?? [];
 

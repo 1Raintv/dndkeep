@@ -3,6 +3,7 @@ import type { Character } from '../../types';
 import { CLASS_FEATURES } from '../../data/classFeatures';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_COMBAT_ABILITIES, PASSIVE_FEATURE_NAMES } from '../../data/classAbilities';
+import { FEATS } from '../../data/feats';
 import FeatsPanel from './FeatsPanel';
 
 interface Props {

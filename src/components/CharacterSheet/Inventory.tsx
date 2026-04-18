@@ -227,7 +227,7 @@ function CurrencyDisplay({ currency, onUpdate }: {
       background: '#080d14', borderRadius: 'var(--r-md)',
       marginBottom: 'var(--sp-4)',
     }}>
-      {coins.map(({ key, label, color }) => (
+      {coins.map(({ key, label, color, icon, title }) => (
         <div key={key} style={{ textAlign: 'center', flex: 1, cursor: 'pointer' }}
           onClick={() => editing !== key && open(key)} title={title}>
           <div style={{ fontSize: 14, marginBottom: 2 }}>{icon}</div>
