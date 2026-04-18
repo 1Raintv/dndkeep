@@ -65,8 +65,9 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
     const subclassToApply = needsSubclass ? selectedSubclass : (character.subclass ?? '');
     if (needsSubclass && selectedSubclass) {
       updates.subclass = selectedSubclass;
-      // Auto-add subclass always-prepared spells
-      const subSpellIds = getSubclassSpellIds(selectedSubclass, character.class_name);
+      // Auto-add subclass always-prepared spells — filter by level being assigned
+      // so a new Psi Warper at level 3 doesn't get level-5/7/9 spells yet.
+      const subSpellIds = getSubclassSpellIds(selectedSubclass, character.class_name, newLevel);
       if (subSpellIds.length > 0) {
         const existing = [...new Set([...character.known_spells, ...subSpellIds])];
         updates.known_spells = existing;

@@ -1,4 +1,5 @@
 import type { ClassData } from '../types';
+import { SPELL_MAP } from './spells';
 
 export const CLASSES: ClassData[] = [
   {
@@ -872,13 +873,42 @@ const SPELL_NAME_TO_ID: Record<string, string> = {
   'Mass Cure Wounds': 'mass-cure-wounds',
 };
 
-/** Get spell IDs for a subclass's always-prepared spell list */
-export function getSubclassSpellIds(subclassName: string, className: string): string[] {
+/**
+ * Get spell IDs for a subclass's always-prepared spell list, filtered by
+ * character level using the 2024 PHB standard full-caster progression:
+ *
+ *   spell level 1-2 ....... accessible at subclass unlock_level (usually 3)
+ *   spell level 3 ......... at unlock_level + 2 (usually 5)
+ *   spell level 4 ......... at unlock_level + 4 (usually 7)
+ *   spell level 5 ......... at unlock_level + 6 (usually 9)
+ *
+ * Pass `characterLevel = undefined` to get the full list regardless of level
+ * (used for UI that needs to show what a subclass will eventually grant).
+ */
+export function getSubclassSpellIds(
+  subclassName: string,
+  className: string,
+  characterLevel?: number,
+): string[] {
   const cls = CLASS_MAP[className];
   if (!cls) return [];
   const sub = cls.subclasses?.find(s => s.name === subclassName);
   if (!sub?.spell_list) return [];
-  return sub.spell_list
+
+  const allIds = sub.spell_list
     .map((name: string) => SPELL_NAME_TO_ID[name])
     .filter(Boolean) as string[];
+
+  if (characterLevel === undefined) return allIds;
+
+  const unlockLevel = sub.unlock_level ?? 3;
+
+  return allIds.filter(id => {
+    const spell = SPELL_MAP[id];
+    if (!spell) return false; // unknown spell — safer to drop than silently include
+    // Levels 0, 1, 2 all gated only by the subclass unlock level itself.
+    // Levels 3+ gated by +2 character levels per spell-level tier above 2.
+    const extraLevelsNeeded = Math.max(0, spell.level - 2) * 2;
+    return characterLevel >= unlockLevel + extraLevelsNeeded;
+  });
 }

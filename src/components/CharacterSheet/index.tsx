@@ -147,30 +147,45 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     if (!character.class_name) return;
     const updates: Partial<typeof character> = {};
 
-    // Subclass always-prepared spells
+    // Subclass always-prepared spells accessible at THIS character's level.
+    // Previously this returned the entire subclass spell_list unconditionally,
+    // which caused level-4 Psions to be granted level-5/7/9 spells they
+    // shouldn't have. v2.18.7+ filters by the standard full-caster progression.
     const subSpellIds = character.subclass
+      ? getSubclassSpellIds(character.subclass, character.class_name, character.level)
+      : [];
+
+    // The FULL subclass list (regardless of level) — used to detect which of
+    // the character's stored spells came from auto-granting but are now
+    // above what their level should allow. We prune only those; anything the
+    // player manually added via "Add Spells" is left alone.
+    const fullSubList = character.subclass
       ? getSubclassSpellIds(character.subclass, character.class_name)
       : [];
+    const stale = fullSubList.filter(id => !subSpellIds.includes(id));
 
     // Class auto-granted cantrips (e.g. Psion Mage Hand)
     const classGranted = character.class_name === 'Psion' ? ['mage-hand'] : [];
     const allGranted = [...new Set([...subSpellIds, ...classGranted])];
 
-    const missingKnown = allGranted.filter(id => !character.known_spells.includes(id));
-    if (missingKnown.length > 0) {
-      updates.known_spells = [...character.known_spells, ...missingKnown];
+    // Known spells: add missing granted, strip stale auto-grants
+    const desiredKnown = character.known_spells.filter(id => !stale.includes(id));
+    const missingKnown = allGranted.filter(id => !desiredKnown.includes(id));
+    if (missingKnown.length > 0 || desiredKnown.length !== character.known_spells.length) {
+      updates.known_spells = [...desiredKnown, ...missingKnown];
     }
 
-    // Auto-prepare all granted prepared spells (subclass spells always prepared)
-    const missingPrepared = subSpellIds.filter(id => !character.prepared_spells.includes(id));
-    if (missingPrepared.length > 0) {
-      updates.prepared_spells = [...character.prepared_spells, ...missingPrepared];
+    // Prepared spells: same — auto-prepare what's currently granted, drop stale
+    const desiredPrepared = character.prepared_spells.filter(id => !stale.includes(id));
+    const missingPrepared = subSpellIds.filter(id => !desiredPrepared.includes(id));
+    if (missingPrepared.length > 0 || desiredPrepared.length !== character.prepared_spells.length) {
+      updates.prepared_spells = [...desiredPrepared, ...missingPrepared];
     }
 
     if (Object.keys(updates).length > 0) {
       applyUpdate(updates, true);
     }
-  }, [character.subclass, character.class_name]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [character.subclass, character.class_name, character.level]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!character.id) return;

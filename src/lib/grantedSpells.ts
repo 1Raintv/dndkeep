@@ -26,7 +26,7 @@ export function getGrantedSpellIds(character: Character): {
   const grantedCantrips = (CLASS_GRANTED_CANTRIPS[character.class_name] ?? []).map(e => e.id);
 
   const grantedPrepared: string[] = character.subclass
-    ? getSubclassSpellIds(character.subclass, character.class_name)
+    ? getSubclassSpellIds(character.subclass, character.class_name, character.level)
     : [];
 
   const entries: GrantedSpellEntry[] = [
