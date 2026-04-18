@@ -811,7 +811,7 @@ export const CLASSES: ClassData[] = [
         source: 'ua',
         description: "Master the landscape of the mind — read thoughts undetected, distract attackers, and eventually scramble the minds of many at once. Bulwark Mind grants psychic resistance and saving throw bonuses.",
         unlock_level: 3,
-        spell_list: ['Bane', 'Command', 'Detect Thoughts', 'Mind Spike', 'Counterspell', 'Slow', 'Compulsion', 'Confusion', 'Modify Memory', "Yolande's Regal Presence"],
+        spell_list: ['Bane', 'Command', 'Detect Thoughts', 'Mind Spike', 'Counterspell', 'Speak with Plants', 'Compulsion', 'Confusion', 'Awaken', 'Modify Memory'],
         features: [
           { level: 3, name: 'Telepath Spells', description: "Always have Bane, Command, Detect Thoughts, Mind Spike prepared. More spells at 5, 7, 9.", isChoice: false },
           { level: 3, name: 'Mind Infiltrator', description: "Cast Detect Thoughts spending only 1 Psionic Energy Die: no components, no Concentration. Target doesn't know you're probing if it fails its Wisdom save.", isChoice: false },
@@ -833,6 +833,10 @@ export function buildClassMap(classList: typeof CLASSES): Record<string, typeof 
 }
 
 // ─── Subclass always-prepared spell name → ID lookup ─────────────────────────
+// All spells referenced in any subclass `spell_list` must be mapped here, and
+// their ID must exist in SPELL_MAP (data/spells.ts). Missing mappings cause
+// the spell to be silently dropped from auto-grants — hard to debug, so keep
+// this in sync when adding new subclasses.
 const SPELL_NAME_TO_ID: Record<string, string> = {
   'Expeditious Retreat': 'expeditious-retreat',
   'Feather Fall': 'feather-fall',
@@ -850,8 +854,12 @@ const SPELL_NAME_TO_ID: Record<string, string> = {
   'Thunderwave': 'thunderwave',
   'Slow': 'slow',
   'Telekinetic Crush': 'telekinetic-crush',
-  "Otiluke's Resilient Sphere": 'otilukes-resilient-sphere',
+  // Stored in data as "Resilient Sphere" per 2024 PHB naming; UA Psion lists
+  // it with the classic "Otiluke's" prefix, so accept both.
+  "Otiluke's Resilient Sphere": 'resilient-sphere',
+  'Resilient Sphere': 'resilient-sphere',
   'Stone Shape': 'stone-shape',
+  'Stoneskin': 'stoneskin',
   'Telekinesis': 'telekinesis',
   'Wall of Force': 'wall-of-force',
   'Bane': 'bane',
@@ -859,15 +867,18 @@ const SPELL_NAME_TO_ID: Record<string, string> = {
   'Detect Thoughts': 'detect-thoughts',
   'Mind Spike': 'mind-spike',
   'Counterspell': 'counterspell',
+  'Speak with Plants': 'speak-with-plants',
   'Compulsion': 'compulsion',
   'Confusion': 'confusion',
+  'Awaken': 'awaken',
   'Modify Memory': 'modify-memory',
-  "Yolande's Regal Presence": 'dominate-person', // closest equivalent
   'Alter Self': 'alter-self',
   'Cure Wounds': 'cure-wounds',
   'Inflict Wounds': 'inflict-wounds',
   'Lesser Restoration': 'lesser-restoration',
   'Aura of Vitality': 'aura-of-vitality',
+  'Polymorph': 'polymorph',
+  'Contagion': 'contagion',
   'Mass Healing Word': 'mass-healing-word',
   'Greater Restoration': 'greater-restoration',
   'Mass Cure Wounds': 'mass-cure-wounds',
