@@ -1,0 +1,62 @@
+===============================================================
+  IMPORTANT — ONE-TIME SETUP IF deploy.bat WON'T RUN
+===============================================================
+
+If you double-click deploy.bat and Windows says:
+  "Smart App Control blocked a file it may be unsafe"
+  -- OR --
+  the window opens and closes instantly with no output
+
+It's because Windows flagged the .bat file as "from the internet"
+(every file extracted from a downloaded zip gets this flag).
+
+ONE-TIME FIX
+=============
+
+Do this BEFORE you extract the zip next time — it unblocks all
+files inside in one shot:
+
+  1. Right-click the downloaded .zip file (NOT an extracted file —
+     the .zip itself, probably in your Downloads folder)
+
+  2. Click Properties
+
+  3. At the bottom of the General tab, look for a checkbox or
+     button labeled Unblock. Check it / click it.
+
+  4. Click Apply, then OK.
+
+  5. NOW extract the zip. All files inside are trusted.
+
+  6. Run deploy.bat — it'll work.
+
+
+ALREADY EXTRACTED THE ZIP?
+===========================
+
+If you've already extracted and deploy.bat is being blocked,
+you can unblock everything that's already on disk with one
+PowerShell command:
+
+  1. Open PowerShell (press Win+X, click "Terminal" or
+     "Windows PowerShell")
+
+  2. Paste this entire line and press Enter:
+
+     Get-ChildItem "C:\Users\Jared\OneDrive\Desktop\DNDKeep" -Recurse | Unblock-File
+
+  3. Close PowerShell.
+
+  4. Double-click deploy.bat — it'll work from now on.
+
+
+WHY THIS HAPPENS
+=================
+
+Windows adds a hidden "came from internet" marker to every file
+you download. Smart App Control looks at that marker and blocks
+scripts it can't verify. Once you unblock a file (or a zip before
+extracting), the marker is gone and Windows leaves it alone.
+
+This is a ONE-TIME fix per download. Future edits to deploy.bat
+by you won't re-trigger it — only fresh downloads will.

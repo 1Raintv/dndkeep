@@ -891,7 +891,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
 /* The HUD grid wrapper — contains vitals col + content col */
 .cs-hud-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  /* 280px vitals sidebar + up to 900px content column. Capping the right
+     column keeps alerts and full-width panels from stretching way past the
+     last tab label on wide displays, which looked like content was
+     "sticking out" past the visible tab bar. */
+  grid-template-columns: 280px minmax(0, 900px);
   gap: var(--sp-4);
   align-items: start;
 }

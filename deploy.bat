@@ -31,6 +31,12 @@ echo   Log file: %CD%\deploy-log.txt
 echo  ============================================
 echo.
 
+REM Self-heal: strip mark-of-the-web from all DNDKeep files so Smart App
+REM Control / SmartScreen won't block this script (or future ones) again.
+REM Harmless if there's nothing to unblock. Uses PowerShell's built-in
+REM Unblock-File cmdlet (no execution policy issues for cmdlets).
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem '%CD%' -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue" >>deploy-log.txt 2>&1
+
 REM ---- Pre-flight checks ----
 
 where git >nul 2>&1

@@ -1,0 +1,4 @@
+DNDKeep deploy log — Fri 04/17/2026 19:48:01.39 
+Working dir: C:\Users\Jared\OneDrive\Desktop\DNDKeep 
+ 
+ Detected version: 2.18.6 
