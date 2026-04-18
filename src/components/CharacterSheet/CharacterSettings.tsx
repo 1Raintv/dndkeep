@@ -159,7 +159,15 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
       <div className="modal-overlay" onClick={onClose}>
         <div
           className="modal"
-          style={{ maxWidth: 660, width: '100%' }}
+          style={{
+            // Bumped 660 → 760 for more breathing room with ability scores + 2-col multiclass fields.
+            maxWidth: 760,
+            width: '100%',
+            // .modal itself has no padding in the stylesheet (it expects
+            // .modal-header/.modal-body/.modal-footer children). This component
+            // renders content directly inside .modal, so padding lives here.
+            padding: 'var(--sp-5) var(--sp-6) var(--sp-6)',
+          }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
