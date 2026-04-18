@@ -475,14 +475,25 @@ function SubclassStep({ classData, selected, onSelect }: any) {
           const featureLevels = Object.keys(featuresByLevel).map(Number).sort((a, b) => a - b);
           const isSel = selected === sub.name;
           return (
-            <div key={sub.name} style={{
-              padding: 'var(--sp-3) var(--sp-4)',
-              border: isSel ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
-              borderRadius: 'var(--r-lg)',
-              background: isSel ? 'rgba(212,160,23,0.08)' : '#080d14',
-              transition: 'all var(--tr-fast)',
-              display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
+            <div
+              key={sub.name}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(sub.name)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(sub.name); } }}
+              style={{
+                padding: 'var(--sp-3) var(--sp-4)',
+                border: isSel ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                borderRadius: 'var(--r-lg)',
+                background: isSel ? 'rgba(212,160,23,0.08)' : '#080d14',
+                transition: 'all var(--tr-fast)',
+                display: 'flex', flexDirection: 'column', gap: 8,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+              onMouseEnter={(e) => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border-m)'; }}
+              onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border)'; }}
+            >
               {/* Title row */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: isSel ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
@@ -498,28 +509,7 @@ function SubclassStep({ classData, selected, onSelect }: any) {
                 {sub.description}
               </div>
 
-              {/* Choose button — right here, before the features list so players don't have to scroll */}
-              <button
-                onClick={() => onSelect(sub.name)}
-                style={{
-                  alignSelf: 'flex-start',
-                  padding: '6px 14px',
-                  borderRadius: 'var(--r-md)',
-                  cursor: 'pointer',
-                  minHeight: 0,
-                  fontFamily: 'var(--ff-body)',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  border: isSel ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-gold-bdr)',
-                  background: isSel ? 'var(--c-gold)' : 'rgba(212,160,23,0.12)',
-                  color: isSel ? '#0b0b14' : 'var(--c-gold-l)',
-                  transition: 'all var(--tr-fast)',
-                }}
-              >
-                {isSel ? `✓ ${sub.name} chosen` : `Choose ${sub.name}`}
-              </button>
-
-              {/* Features list — secondary, below the choice */}
+              {/* Features list — secondary, below the description */}
               {featureLevels.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
                   {featureLevels.map((lvl: number) => (

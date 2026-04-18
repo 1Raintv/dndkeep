@@ -73,13 +73,6 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
 
   const selectedFeat = FEATS.find(f => f.name === selected);
 
-  function pick(name: string) {
-    onSelect(name === selected ? null : name);
-    setOpen(false);
-    setSearch('');
-    setExpanded(null);
-  }
-
   const dropdownContent = open && dropPos ? (
     <div
       ref={dropRef}
@@ -116,7 +109,7 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
 
       {/* Count */}
       <div style={{ padding: '5px 12px 3px', fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>
-        {feats.length} feat{feats.length !== 1 ? 's' : ''} · click row to expand · click Select to choose
+        {feats.length} feat{feats.length !== 1 ? 's' : ''} · click row to view & select · close to lock in
       </div>
 
       {/* Feat list */}
@@ -131,20 +124,23 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
           const isExp = expanded === feat.name;
           return (
             <div key={feat.name} style={{ borderBottom: '1px solid var(--c-border)', background: isSel ? 'rgba(212,160,23,0.06)' : 'transparent' }}>
-              {/* Row */}
+              {/* Row — click to BOTH expand AND select */}
               <div
-                onClick={() => setExpanded(isExp ? null : feat.name)}
+                onClick={() => {
+                  setExpanded(isExp ? null : feat.name);
+                  if (!isSel) onSelect(feat.name);
+                }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', minHeight: 44 }}
                 onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
               >
-                {/* Radio dot */}
+                {/* Selection indicator (visual only — click anywhere on row to select) */}
                 <div
-                  onClick={e => { e.stopPropagation(); pick(feat.name); }}
                   style={{
-                    width: 14, height: 14, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                    width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
                     border: `2px solid ${isSel ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
                     background: isSel ? 'var(--c-gold)' : 'transparent',
+                    transition: 'all 0.15s',
                   }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -171,7 +167,7 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
                 <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0, transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
               </div>
 
-              {/* Expanded */}
+              {/* Expanded — full details (no separate Select button needed; the row click already selected it) */}
               {isExp && (
                 <div style={{ padding: '0 14px 12px 38px', borderTop: '1px solid var(--c-border)' }}>
 
@@ -197,21 +193,18 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
                     </div>
                   )}
 
-                  {/* Select button — placed before description so users can commit
-                      to the feat immediately after seeing name/prereq/ASI, without
-                      having to scroll past the full description and benefits list. */}
-                  <button
-                    onClick={() => pick(feat.name)}
-                    style={{
-                      fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7,
-                      cursor: 'pointer', minHeight: 0, marginTop: 8, marginBottom: 8,
-                      border: `1px solid ${isSel ? 'var(--c-border-m)' : 'var(--c-gold-bdr)'}`,
-                      background: isSel ? 'var(--c-raised)' : 'rgba(212,160,23,0.12)',
-                      color: isSel ? 'var(--t-3)' : 'var(--c-gold-l)',
-                    }}
-                  >
-                    {isSel ? 'Deselect' : 'Select this feat'}
-                  </button>
+                  {/* Selection status indicator (subtle, since row click already selected) */}
+                  {isSel && (
+                    <div style={{
+                      fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                      marginTop: 8, marginBottom: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
+                      border: '1px solid var(--c-gold-bdr)',
+                      background: 'rgba(212,160,23,0.1)',
+                      color: 'var(--c-gold-l)',
+                    }}>
+                      ✓ Selected · click another to switch
+                    </div>
+                  )}
 
                   <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65, margin: '8px 0 8px' }}>
                     {feat.description}

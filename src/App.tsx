@@ -119,8 +119,12 @@ const NAV_ITEMS = [
 function Sidebar() {
   const { user, profile, isPro } = useAuth();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
-  const [homeOpen, setHomeOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('dndkeep:sidebar-collapsed') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('dndkeep:sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
+  }, [collapsed]);
   const [characters, setCharacters] = useState<{id:string;name:string;class_name:string;level:number}[]>([]);
   const [campaigns, setCampaigns] = useState<{id:string;name:string}[]>([]);
 
@@ -149,31 +153,19 @@ function Sidebar() {
 
       {/* Nav items */}
       <nav className="sidebar-nav">
-        {/* Home with submenu */}
+        {/* Home with submenu (always shown when sidebar expanded) */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <NavLink
-              to="/lobby"
-              className={({ isActive }) => `sidebar-link ${isActive || location.pathname.startsWith('/character') ? 'active' : ''}`}
-              style={{ flex: 1 }}
-              title={collapsed ? 'Home' : undefined}
-            >
-              <span className="sidebar-link-icon">{Icons.characters}</span>
-              {!collapsed && <span className="sidebar-link-label">Home</span>}
-            </NavLink>
-            {!collapsed && (
-              <button
-                onClick={() => setHomeOpen(o => !o)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px',
-                  color: 'var(--t-3)', fontSize: 12, flexShrink: 0, minHeight: 0,
-                  transform: homeOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}
-                title={homeOpen ? 'Collapse' : 'Expand'}
-              >›</button>
-            )}
-          </div>
+          <NavLink
+            to="/lobby"
+            className={({ isActive }) => `sidebar-link ${isActive || location.pathname.startsWith('/character') ? 'active' : ''}`}
+            title={collapsed ? 'Home' : undefined}
+          >
+            <span className="sidebar-link-icon">{Icons.characters}</span>
+            {!collapsed && <span className="sidebar-link-label">Home</span>}
+          </NavLink>
 
           {/* Submenu */}
-          {!collapsed && homeOpen && (
+          {!collapsed && (
             <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 1 }}>
               {/* Characters section */}
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
