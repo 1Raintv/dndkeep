@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { SPELLS } from '../../data/spells';
+import { useSpells } from '../../lib/hooks/useSpells';
+import type { SpellData } from '../../types';
 
 interface SpellPickerDropdownProps {
   label: string;
@@ -30,6 +31,10 @@ export default function SpellPickerDropdown({
   label, isCantrip, className, maxLevel, selected, onToggle,
   cantripMax, prepareMax, prepareCount, slotsPerLevel, grantedSpellIds = [], isKnownCaster = false,
 }: SpellPickerDropdownProps) {
+  // v2.22.0: spells now come from useSpells() — DB-backed with static fallback
+  // for any IDs not yet seeded into public.spells.
+  const { spells: allSpells } = useSpells();
+
   const [open, setOpen] = useState(false);
   const [activeLevel, setActiveLevel] = useState(0);
   const [search, setSearch] = useState('');
@@ -94,11 +99,11 @@ export default function SpellPickerDropdown({
   const selectedByLevel = useMemo(() => {
     const counts: Record<number, number> = {};
     // Exclude auto-granted spells from limit counts
-    SPELLS.filter(s => selected.includes(s.id) && !grantedSpellIds.includes(s.id)).forEach(s => {
+    allSpells.filter(s => selected.includes(s.id) && !grantedSpellIds.includes(s.id)).forEach(s => {
       counts[s.level] = (counts[s.level] ?? 0) + 1;
     });
     return counts;
-  }, [selected, grantedSpellIds]);
+  }, [allSpells, selected, grantedSpellIds]);
 
   // Is adding a spell at this level at the cap?
   function isAtLimit(level: number): boolean {
@@ -114,8 +119,8 @@ export default function SpellPickerDropdown({
   const levelOptions: number[] = isCantrip ? [0] : [0, ...Array.from({ length: maxLevel }, (_, i) => i + 1)];
 
   const allByLevel = useMemo(() => {
-    const map: Record<number, typeof SPELLS> = {};
-    SPELLS.forEach(s => {
+    const map: Record<number, SpellData[]> = {};
+    allSpells.forEach(s => {
       if (!s.classes.includes(className)) return;
       if (isCantrip ? s.level !== 0 : s.level > maxLevel) return;
       // Show all matching spells — selected ones get a "− Remove" button automatically
@@ -124,7 +129,7 @@ export default function SpellPickerDropdown({
       map[s.level].push(s);
     });
     return map;
-  }, [className, isCantrip, maxLevel, selected, grantedSpellIds]);
+  }, [allSpells, className, isCantrip, maxLevel, selected, grantedSpellIds]);
 
   const spellsAtLevel = useMemo(() => {
     const base = allByLevel[activeLevel] ?? [];

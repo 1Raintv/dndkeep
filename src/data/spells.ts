@@ -3227,7 +3227,7 @@ export const SPELLS: SpellData[] = [
   ritual: false,
   classes: ["Psion", "Ranger", "Wizard"],
   description: "You flourish the weapon used in the casting and then vanish to strike like the wind. Choose up to five creatures you can see within range. Make a melee spell attack against each target. On a hit, a target takes 6d10 force damage.\n\nYou can then teleport to an unoccupied space you can see within 5 feet of one of the targets you hit or missed.",
-  attack_type: "melee_spell",
+  attack_type: "melee",
   damage_type: "Force",
   damage_dice: "6d10",
   },
