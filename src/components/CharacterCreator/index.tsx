@@ -184,12 +184,19 @@ export default function CharacterCreator() {
       skill_expertises: [],
       spell_slots: spellSlots,
       prepared_spells: [],
-      known_spells: [
-        ...buildChoices.spells,
-        ...buildChoices.cantrips,
+      known_spells: (() => {
+        const base = [...buildChoices.spells, ...buildChoices.cantrips];
         // Psion gets Mage Hand automatically (invisible, no components)
-        ...(className === 'Psion' && !buildChoices.cantrips.includes('mage-hand') ? ['mage-hand'] : []),
-      ],
+        if (className === 'Psion' && !base.includes('mage-hand')) base.push('mage-hand');
+        // Psion starter spells — Psi Warper recommended set per UA 2025.
+        // Players can remove these from the Spell Book if they prefer different choices.
+        if (className === 'Psion') {
+          for (const sid of ['charm-person', 'command', 'dissonant-whispers', 'mage-armor']) {
+            if (!base.includes(sid)) base.push(sid);
+          }
+        }
+        return base;
+      })(),
       inventory: [],
       currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
       active_conditions: [],

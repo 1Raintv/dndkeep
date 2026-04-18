@@ -51,8 +51,6 @@ export default function WeaponsTracker({
   weapons, onUpdate, characterId, characterName, campaignId,
   activeConditions = [], activeBufss = [],
 }: WeaponsTrackerProps) {
-  const [target, setTarget] = useState('');
-  const [targetAC, setTargetAC] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
@@ -101,10 +99,9 @@ export default function WeaponsTracker({
     const roll1 = rollDie(20);
     const nat = hasDisadvantage ? Math.min(roll1, rollDie(20)) : roll1;
     const hit = nat + weapon.attackBonus + blessRoll + buffBonuses.attackBonus;
-    const acNum = parseInt(targetAC, 10);
+    // Hit-vs-AC adjudication moved to the DM's BattleMap; only nat 20 / nat 1 are decided here
     const hitVsAC: RollResult['hitVsAC'] = nat === 20 ? 'crit'
       : nat === 1 ? 'miss'
-      : !isNaN(acNum) ? (hit >= acNum ? 'hit' : 'miss')
       : 'unknown';
 
     setLastRoll(prev => ({
@@ -136,10 +133,9 @@ export default function WeaponsTracker({
       await logAction({
         campaignId, characterId, characterName: characterName ?? '',
         actionType: 'attack', actionName: `${weapon.name} (Hit Roll)`,
-        targetName: target || undefined,
         diceExpression: `1d20+${weapon.attackBonus}`,
         individualResults: [nat], total: hit,
-        hitResult: nat === 20 ? 'crit' : nat === 1 ? 'fumble' : hitVsAC === 'hit' ? 'hit' : 'miss',
+        hitResult: nat === 20 ? 'crit' : nat === 1 ? 'fumble' : '',
         notes: `To hit: ${hit}`,
       });
     }
@@ -185,7 +181,6 @@ export default function WeaponsTracker({
       await logAction({
         campaignId, characterId, characterName: characterName ?? '',
         actionType: 'attack', actionName: `${weapon.name} (Damage)`,
-        targetName: target || undefined,
         diceExpression: `${weapon.damageDice}${weapon.damageBonus !== 0 ? modStr(weapon.damageBonus) : ''}`,
         individualResults: [baseDmg], total: damage,
         hitResult: 'hit',
@@ -200,18 +195,6 @@ export default function WeaponsTracker({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-
-      {/* Target / AC row */}
-      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flex: 2, minWidth: 160 }}>
-          <label style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-2)', flexShrink: 0, background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>Target</label>
-          <input value={target} onChange={e => setTarget(e.target.value)} placeholder='Name (e.g. "Goblin 2")' style={{ fontSize: 13, flex: 1 }} />
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-          <label style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-2)', flexShrink: 0, background: 'none', WebkitTextFillColor: 'var(--t-2)' }}>AC</label>
-          <input type="number" value={targetAC} onChange={e => setTargetAC(e.target.value)} placeholder="—" min={1} max={30} style={{ fontSize: 13, width: 56, textAlign: 'center' }} />
-        </div>
-      </div>
 
       {/* Last roll result */}
       {lastRoll && lastRoll.damage > 0 && (() => {
@@ -234,7 +217,6 @@ export default function WeaponsTracker({
               {lastRoll.nat > 0 && (
                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
                   d20={lastRoll.nat} → hit <strong style={{ color: isCrit ? 'var(--c-gold-l)' : isHit ? 'var(--c-green-l)' : 'var(--t-1)' }}>{lastRoll.hit}</strong>
-                  {targetAC && <span style={{ color: 'var(--t-3)', marginLeft: 6 }}>vs AC {targetAC}</span>}
                 </div>
               )}
             </div>

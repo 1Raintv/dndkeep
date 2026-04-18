@@ -237,10 +237,10 @@ export default function SpellsTab({
           );
         })()}
 
-        {/* Add Spells button — clean right-side CTA */}
+        {/* Spell Book button — opens picker with all levels including cantrips (Level 0 tab) */}
         <div style={{ marginLeft: 'auto' }}>
           <SpellPickerDropdown
-            label={`✦ Add Spells`}
+            label={`📖 Spell Book`}
             isCantrip={false}
             className={character.class_name}
             maxLevel={maxSpellLevel}
@@ -254,22 +254,6 @@ export default function SpellsTab({
             grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
           />
         </div>
-
-        {/* Add Cantrips picker */}
-        {cantripMax !== undefined && currentCantripCount < cantripMax && (
-          <div>
-            <SpellPickerDropdown
-              label={`✦ Add Cantrips (${currentCantripCount}/${cantripMax})`}
-              isCantrip={true}
-              className={character.class_name}
-              maxLevel={0}
-              selected={character.known_spells}
-              onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
-              cantripMax={cantripMax}
-              grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
-            />
-          </div>
-        )}
       </div>
 
       {/* ── Spell stats header (DDB-style) — modifier / attack / save DC ── */}
@@ -381,7 +365,7 @@ export default function SpellsTab({
         <div style={{ textAlign: 'center', padding: '40px 20px', border: '1px dashed var(--c-border-m)', borderRadius: 16, color: 'var(--t-2)' }}>
           <div style={{ fontSize: 32, opacity: 0.15, marginBottom: 12 }}>✦</div>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)', marginBottom: 8 }}>No spells yet</div>
-          <p style={{ fontSize: 12, color: 'var(--t-3)', margin: 0 }}>Use the "Add Spells" button above to add {character.class_name} spells to your sheet.</p>
+          <p style={{ fontSize: 12, color: 'var(--t-3)', margin: 0 }}>Use the "Spell Book" button above to add {character.class_name} spells to your sheet.</p>
         </div>
       ) : visibleSpells.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 12 }}>

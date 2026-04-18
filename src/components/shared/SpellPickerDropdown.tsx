@@ -118,8 +118,8 @@ export default function SpellPickerDropdown({
     SPELLS.forEach(s => {
       if (!s.classes.includes(className)) return;
       if (isCantrip ? s.level !== 0 : s.level > maxLevel) return;
-      // Hide spells already owned (granted spells are auto-added so keep showing them)
-      if (selected.includes(s.id) && !grantedSpellIds.includes(s.id)) return;
+      // Show all matching spells — selected ones get a "− Remove" button automatically
+      // (granted spells are auto-added but the user can't remove them)
       if (!map[s.level]) map[s.level] = [];
       map[s.level].push(s);
     });
@@ -239,6 +239,7 @@ export default function SpellPickerDropdown({
           const sel = selected.includes(spell.id);
           const isExp = expanded === spell.id;
           const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
+          const isGranted = grantedSpellIds.includes(spell.id);
           // Gray out: at limit AND this spell isn't already selected
           const blocked = !sel && isAtLimit(spell.level);
           return (
@@ -282,31 +283,47 @@ export default function SpellPickerDropdown({
                   </div>
                 </div>
 
-                {/* Add/Remove button */}
-                <button
-                  onClick={e => { e.stopPropagation(); if (!blocked) onToggle(spell.id); }}
-                  disabled={blocked}
-                  title={blocked ? `${activeLevel === 0 ? 'Cantrip' : 'Spell'} limit reached — remove one first` : undefined}
-                  style={{
-                    fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8,
-                    cursor: blocked ? 'not-allowed' : 'pointer',
-                    minHeight: 0, flexShrink: 0, whiteSpace: 'nowrap',
-                    border: sel
-                      ? '1px solid rgba(248,113,113,0.35)'
-                      : blocked
-                        ? '1px solid var(--c-border)'
-                        : '1px solid var(--c-gold-bdr)',
-                    background: sel
-                      ? 'rgba(248,113,113,0.08)'
-                      : blocked
-                        ? 'var(--c-surface)'
-                        : 'var(--c-gold-bg)',
-                    color: sel ? '#f87171' : blocked ? 'var(--t-3)' : 'var(--c-gold-l)',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {sel ? '− Remove' : blocked ? '🔒 Full' : '+ Add'}
-                </button>
+                {/* Add/Remove button — granted spells show as locked */}
+                {isGranted ? (
+                  <span
+                    title="Granted automatically by your class or subclass"
+                    style={{
+                      fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8,
+                      flexShrink: 0, whiteSpace: 'nowrap',
+                      border: '1px solid rgba(52,211,153,0.3)',
+                      background: 'rgba(52,211,153,0.08)',
+                      color: '#34d399',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    ✦ Granted
+                  </span>
+                ) : (
+                  <button
+                    onClick={e => { e.stopPropagation(); if (!blocked) onToggle(spell.id); }}
+                    disabled={blocked}
+                    title={blocked ? `${activeLevel === 0 ? 'Cantrip' : 'Spell'} limit reached — remove one first` : undefined}
+                    style={{
+                      fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8,
+                      cursor: blocked ? 'not-allowed' : 'pointer',
+                      minHeight: 0, flexShrink: 0, whiteSpace: 'nowrap',
+                      border: sel
+                        ? '1px solid rgba(248,113,113,0.35)'
+                        : blocked
+                          ? '1px solid var(--c-border)'
+                          : '1px solid var(--c-gold-bdr)',
+                      background: sel
+                        ? 'rgba(248,113,113,0.08)'
+                        : blocked
+                          ? 'var(--c-surface)'
+                          : 'var(--c-gold-bg)',
+                      color: sel ? '#f87171' : blocked ? 'var(--t-3)' : 'var(--c-gold-l)',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {sel ? '− Remove' : blocked ? '🔒 Full' : '+ Add'}
+                  </button>
+                )}
 
                 <span style={{ fontSize: 9, color: 'var(--t-3)', flexShrink: 0, transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
               </div>
