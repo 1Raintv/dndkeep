@@ -6,6 +6,8 @@ import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { useSpells } from '../../lib/hooks/useSpells';
 import { FEATS } from '../../data/feats';
+import { SPECIES } from '../../data/species';
+import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
@@ -22,7 +24,6 @@ import CampaignBar from './CampaignBar';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
 import SpellCastButton from './SpellCastButton';
-import ConditionMechanics from './ConditionMechanics';
 import Inventory from './Inventory';
 import Notes from './Notes';
 import ActionEconomy from './ActionEconomy';
@@ -1258,13 +1259,95 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  />
  )}
 
- {/* ── ABILITIES: Skills + Condition Mechanics (panel moved to stats strip in v2.33.3) ── */}
+ {/* ── ABILITIES: Skills + Passive Scores + Senses + Tools & Languages ──
+     v2.51.0: Conditions panel removed (visible at top via COND chip + active
+     conditions banner). Passive/Senses/Tools/Languages relocated here from
+     the left sidebar so they live with the rest of the character info. */}
  {activeTab === 'abilities' && (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
  <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
- {character.active_conditions.length > 0 && (
- <ConditionMechanics conditions={character.active_conditions} />
+
+ {/* ── Passive Scores ── */}
+ <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 8 }}>
+ Passive Scores
+ </div>
+ <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
+ {[
+ { label: 'Passive Perception', value: computed.passive_perception },
+ { label: 'Passive Investigation', value: computed.passive_investigation },
+ { label: 'Passive Insight', value: computed.passive_insight },
+ ].map(({ label, value }) => (
+ <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>{label}</span>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 14, color: 'var(--t-1)' }}>{value}</span>
+ </div>
+ ))}
+ </div>
+ </div>
+
+ {/* ── Senses ── */}
+ {(() => {
+ const speciesData = SPECIES.find(s => s.name === character.species);
+ const dv = (character as any).darkvision ?? speciesData?.darkvision ?? 0;
+ if (dv === 0) return null;
+ return (
+ <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 8 }}>
+ Senses
+ </div>
+ <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>Darkvision</span>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 13, color: '#60a5fa' }}>{dv} ft.</span>
+ </div>
+ </div>
+ );
+ })()}
+
+ {/* ── Tools & Languages ── */}
+ {(() => {
+ const bgData = BACKGROUNDS.find((b: any) => b.name === character.background);
+ const bgTool = bgData?.tool_proficiency ?? null;
+ const speciesData = SPECIES.find(s => s.name === character.species);
+ const speciesLangs = speciesData?.languages ?? [];
+ const bgBonusLangCount = bgData?.languages ?? 0;
+ const extraLangs = character.extra_languages ?? [];
+ const extraTools = character.extra_tool_proficiencies ?? [];
+ const allTools: string[] = [
+ ...(bgTool ? [bgTool] : []),
+ ...extraTools,
+ ];
+ const allLangs: string[] = [
+ ...speciesLangs,
+ ...extraLangs,
+ ];
+ if (allTools.length === 0 && allLangs.length === 0 && bgBonusLangCount === 0) return null;
+ return (
+ <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 8 }}>
+ Tools &amp; Languages
+ </div>
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+ {allTools.length > 0 && (
+ <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 700, marginBottom: 3, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Tools</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
+ {allTools.join(', ')}
+ </div>
+ </div>
  )}
+ {(allLangs.length > 0 || bgBonusLangCount > 0) && (
+ <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 700, marginBottom: 3, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Languages</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
+ {allLangs.join(', ')}{bgBonusLangCount > 0 && extraLangs.length < bgBonusLangCount ? ` + ${bgBonusLangCount - extraLangs.length} choice` : ''}
+ </div>
+ </div>
+ )}
+ </div>
+ </div>
+ );
+ })()}
  </div>
  )}
 

@@ -2,8 +2,6 @@ import { supabase } from '../../lib/supabase';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { formatModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
-import { SPECIES } from '../../data/species';
-import { BACKGROUNDS } from '../../data/backgrounds';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface AbilityScoresProps {
@@ -127,150 +125,9 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  Top = ability check · Bottom = saving throw · filled dot = proficient
  </p>
 
- {/* ── Passive Scores ── */}
- <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 6 }}>
- Passive Scores
- </div>
- {[
- { label: 'Passive Perception', value: computed.passive_perception },
- { label: 'Passive Investigation', value: computed.passive_investigation },
- { label: 'Passive Insight', value: computed.passive_insight },
- ].map(({ label, value }) => (
- <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 8px', borderRadius: 'var(--r-sm)', marginBottom: 2, background: 'var(--c-raised)' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>{label}</span>
- <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 13, color: 'var(--t-1)' }}>{value}</span>
- </div>
- ))}
- </div>
-
- {/* ── Senses ── */}
- {(() => {
- const speciesData = SPECIES.find(s => s.name === character.species);
- const dv = character.darkvision ?? speciesData?.darkvision ?? 0;
- if (dv === 0) return null;
- return (
- <>
- <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 6 }}>
- Senses
- </div>
- <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>Darkvision</span>
- <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 12, color: '#60a5fa' }}>{dv} ft.</span>
- </div>
- </div>
- </>
- );
- })()}
-
- {/* ── Defenses ── */}
- {(() => {
- const speciesData = SPECIES.find(s => s.name === character.species);
- const resistances: string[] = [];
- const immunities: string[] = [];
- // Species resistances (e.g. Tiefling fire resistance)
- speciesData?.traits?.forEach((t: any) => {
- const d = t.description?.toLowerCase() ?? '';
- if (d.includes('resistance to')) {
- const m = d.match(/resistance to ([\w, ]+) damage/);
- if (m) m[1].split(/,\s*|\s+and\s+/).forEach((r: string) => resistances.push(r.trim()));
- }
- if (d.includes('immune') || d.includes('immunity to')) {
- const m = d.match(/immunity to ([\w, ]+) damage/);
- if (m) m[1].split(/,\s*|\s+and\s+/).forEach((r: string) => immunities.push(r.trim()));
- }
- });
- // Buffs
- const buffs: any[] = (character as any).active_buffs ?? [];
- buffs.forEach((b: any) => (b.resistances ?? []).forEach((r: string) => { if (!resistances.includes(r)) resistances.push(r); }));
- if (resistances.length === 0 && immunities.length === 0) return null;
- return (
- <>
- <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: '#4ade80', marginBottom: 6 }}>
- Defenses
- </div>
- {resistances.length > 0 && (
- <div style={{ marginBottom: 4 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 2 }}>Resistances</div>
- <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
- {resistances.map(r => (
- <span key={r} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80' }}>
- {r}
- </span>
- ))}
- </div>
- </div>
- )}
- {immunities.length > 0 && (
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 2 }}>Immunities</div>
- <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
- {immunities.map(r => (
- <span key={r} style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }}>
- {r}
- </span>
- ))}
- </div>
- </div>
- )}
- </div>
- </>
- );
- })()}
-
- {/* ── Tools & Languages ── */}
- {(() => {
- const bgData = BACKGROUNDS.find((b: any) => b.name === character.background);
- const bgTool = bgData?.tool_proficiency ?? null;
- const speciesData = SPECIES.find(s => s.name === character.species);
- const speciesLangs = speciesData?.languages ?? [];
- const bgBonusLangCount = bgData?.languages ?? 0;
-
- // Merge derived + user-added (extras set via Settings → Edit Stats)
- const extraLangs = character.extra_languages ?? [];
- const extraTools = character.extra_tool_proficiencies ?? [];
- const allTools: string[] = [
- ...(bgTool ? [bgTool] : []),
- ...extraTools,
- ];
- const allLangs: string[] = [
- ...speciesLangs,
- ...extraLangs,
- ];
-
- if (allTools.length === 0 && allLangs.length === 0 && bgBonusLangCount === 0) return null;
- return (
- <>
- <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 6 }}>
- Tools &amp; Languages
- </div>
- {allTools.length > 0 && (
- <div style={{ padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)', marginBottom: 2 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 600, marginBottom: 2 }}>Tools</div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)' }}>
- {allTools.join(', ')}
- </div>
- </div>
- )}
- {(allLangs.length > 0 || bgBonusLangCount > 0) && (
- <div style={{ padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)', marginBottom: 2 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 600, marginBottom: 2 }}>Languages</div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)' }}>
- {allLangs.join(', ')}{bgBonusLangCount > 0 && extraLangs.length < bgBonusLangCount ? ` + ${bgBonusLangCount - extraLangs.length} choice` : ''}
- </div>
- </div>
- )}
- </div>
- </>
- );
- })()}
+ {/* v2.51.0: Passive Scores, Senses, Defenses, Tools & Languages MOVED out
+     of this sidebar and into the Abilities tab (right under the skills list).
+     Defenses also surface in the inline chip row at the top of every tab. */}
  {/* ── Section divider ── */}
  <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
 
