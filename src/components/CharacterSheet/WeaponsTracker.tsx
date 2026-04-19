@@ -196,41 +196,9 @@ export default function WeaponsTracker({
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
- {/* Last roll result */}
- {lastRoll && lastRoll.damage > 0 && (() => {
- const isCrit = lastRoll.crit;
- const isFumble = lastRoll.miss;
- const isHit = lastRoll.hitVsAC === 'hit' || lastRoll.hitVsAC === 'crit';
- const isMiss = lastRoll.hitVsAC === 'miss' && !isCrit;
- const borderColor = isCrit ? 'var(--c-gold)' : isFumble ? 'rgba(107,20,20,1)' : isHit ? 'rgba(5,150,105,0.5)' : isMiss ? 'rgba(220,38,38,0.4)' : 'var(--c-border)';
- const bgColor = isCrit ? 'rgba(201,146,42,0.08)' : isFumble ? 'rgba(127,29,29,0.12)' : isHit ? 'rgba(5,150,105,0.06)' : isMiss ? 'rgba(220,38,38,0.06)' : '#080d14';
- return (
- <div className="animate-fade-in" style={{ padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--r-md)', border: `1px solid ${borderColor}`, background: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 'var(--sp-3)' }}>
- <div>
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{lastRoll.weaponName}</span>
- {isCrit && <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 8px', borderRadius: 999 }}>⭐ CRIT</span>}
- {isFumble && <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '1px 8px', borderRadius: 999 }}> FUMBLE</span>}
- {!isCrit && !isFumble && isHit && <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--c-green-l)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', padding: '1px 8px', borderRadius: 999 }}> HIT</span>}
- {!isCrit && !isFumble && isMiss && <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--c-red-l)', background: 'var(--c-red-bg)', border: '1px solid rgba(220,38,38,0.3)', padding: '1px 8px', borderRadius: 999 }}> MISS</span>}
- </div>
- {lastRoll.nat > 0 && (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
- d20={lastRoll.nat} → hit <strong style={{ color: isCrit ? 'var(--c-gold-l)' : isHit ? 'var(--c-green-l)' : 'var(--t-1)' }}>{lastRoll.hit}</strong>
- </div>
- )}
- </div>
- <div style={{ textAlign: 'right' }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 28, lineHeight: 1, color: isCrit ? 'var(--c-gold-l)' : isHit ? 'var(--c-green-l)' : isMiss ? 'var(--t-3)' : 'var(--t-1)' }}>
- {isMiss && !isCrit ? '—' : lastRoll.damage}
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>
- {isMiss && !isCrit ? 'no damage' : lastRoll.damageType + ' dmg'}
- </div>
- </div>
- </div>
- );
- })()}
+ {/* v2.35.0: removed the "last roll" banner — 3D dice roller and the action log
+ already surface attack results; the banner was a duplicate that sat above the
+ attack rows and shifted layout on every roll. */}
 
  {/* Weapon rows */}
  {/* ACTIONS section header — DDB style */}

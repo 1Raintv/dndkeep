@@ -11,6 +11,7 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
+import { parseSpellMechanics } from '../../lib/spellParser';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -411,6 +412,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const [contentFilters, setContentFilters] = useState<Set<ContentKind>>(new Set());
  // v2.34.1: Upcast toggle lives on Actions tab too (mirrors SpellsTab behavior)
  const [actionsShowUpcasts, setActionsShowUpcasts] = useState(false);
+ // v2.35.0: Actions-tab row expansion — holds the row key (spell.id-effectiveLevel) of
+ // the currently-expanded spell so users can read the full description inline.
+ const [expandedActionsSpell, setExpandedActionsSpell] = useState<string | null>(null);
  const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
  // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
  const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
@@ -1466,16 +1470,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
+ {/* v2.35.0: Column headers matching Spells tab grid (HIT/DC + EFFECT columns added) */}
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px auto 16px', gap: '0 8px', padding: '0 10px 2px', marginBottom: 2 }}>
+ {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', 'EFFECT', '', ''].map((h, i) => (
+ <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
+ ))}
+ </div>
  {[...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled].map(spell => {
  const sc = schoolColor[spell.school] ?? '#a78bfa';
  const eff = (spell as any).effectiveLevel ?? spell.level;
  const isUpcast = !!(spell as any).isUpcast;
- // v2.34.2: Upcast-aware gray-out.
- // - Upcast rows (isUpcast=true) represent a SPECIFIC slot tier → check only that tier.
- // - Base rows: if the user's toggle is OFF, there's only one row per spell; it should
- // stay castable whenever ANY slot from the spell's base level up to 9 has remaining
- // (the cast-button auto-promotes to the next available higher slot). When upcasts ON,
- // the base row is strictly its own tier because the upcast rows cover higher tiers.
+ const rowKey = `${spell.id}-${eff}`;
+ const isExpanded = expandedActionsSpell === rowKey;
+
+ // v2.34.2 Upcast-aware gray-out: base rows check range, upcast rows check exact tier.
  const slotsExhausted = eff > 0 && (() => {
  if (isUpcast || actionsShowUpcasts) {
  return (slotsByLevel[eff]?.remaining ?? 0) === 0;
@@ -1486,20 +1494,63 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return true;
  })();
 
+ // v2.35.0: mirror Spells-tab HIT/DC + EFFECT computation
+ const mechanics = parseSpellMechanics(spell.description, {
+ save_type: (spell as any).save_type,
+ attack_type: (spell as any).attack_type,
+ damage_dice: (spell as any).damage_dice,
+ damage_type: (spell as any).damage_type,
+ heal_dice: (spell as any).heal_dice,
+ });
+ const spellAttack = computed.spell_attack_bonus ?? undefined;
+ const saveDC = computed.spell_save_dc ?? undefined;
+ const hitDC = mechanics.isAttack && spellAttack !== undefined
+ ? `+${spellAttack}`
+ : mechanics.saveType && saveDC !== undefined
+ ? `${mechanics.saveType} ${saveDC}`
+ : '—';
+ const effectLabel = mechanics.damageDice
+ ? `${mechanics.damageDice}${mechanics.damageType ? ` ${mechanics.damageType}` : ''}`
+ : mechanics.healDice
+ ? `Heal ${mechanics.healDice}`
+ : mechanics.isUtility
+ ? 'Utility'
+ : mechanics.isBuff
+ ? 'Buff'
+ : '—';
+ const effectColor = mechanics.damageDice ? '#f87171' : mechanics.healDice ? '#4ade80' : mechanics.isBuff ? '#60a5fa' : mechanics.isUtility ? '#a78bfa' : 'var(--t-3)';
+
+ // Abbreviate casting time to match Spells-tab TIME column width
+ const timeAbbr = spell.casting_time
+ .replace('1 action', '1A').replace('1 Action', '1A')
+ .replace('1 bonus action', '1BA').replace('Bonus Action', '1BA').replace('bonus action', '1BA')
+ .replace('1 reaction', '1R').replace('Reaction', '1R')
+ .replace('1 minute', '1 min').replace('10 minutes', '10 min')
+ .replace('1 hour', '1 hr').replace('8 hours', '8 hr');
+
  return (
- <div key={`${spell.id}-${eff}`} style={{
- display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 70px 80px auto',
- alignItems: 'center', gap: '0 10px',
- padding: '8px 12px', borderRadius: 'var(--r-md)', minHeight: 44,
- border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.15)' : 'rgba(167,139,250,0.18)'}`,
- background: slotsExhausted ? 'rgba(239,68,68,0.03)' : 'rgba(167,139,250,0.04)',
+ <div key={rowKey} style={{
+ borderRadius: 'var(--r-md)',
+ border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.15)' : isExpanded ? `${sc}45` : 'rgba(167,139,250,0.18)'}`,
+ background: slotsExhausted ? 'rgba(239,68,68,0.03)' : isExpanded ? `${sc}08` : 'rgba(167,139,250,0.04)',
  opacity: slotsExhausted ? 0.55 : 1,
+ overflow: 'hidden',
+ transition: 'all 0.15s',
  }}>
+ {/* Row — same grid as Spells tab */}
+ <div
+ onClick={() => setExpandedActionsSpell(isExpanded ? null : rowKey)}
+ style={{
+ display: 'grid',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px auto 16px',
+ alignItems: 'center', gap: '0 8px',
+ padding: '7px 10px', cursor: 'pointer', minHeight: 44,
+ }}
+ >
  {/* Col 0: Level badge or AT WILL */}
  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
  {eff === 0 ? (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.06em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
  ) : (
  <span style={{
  fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800,
@@ -1515,36 +1566,57 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
 
  {/* Col 1: School color bar */}
- <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.75 }} />
+ <div style={{ width: 3, height: 30, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.75 }} />
 
  {/* Col 2: Name + school line */}
  <div style={{ minWidth: 0 }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)' }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
+ <span style={{ fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
  </span>
  {spell.concentration && (
- <span style={{ fontSize: 8, fontWeight: 800, color: '#fbbf24', letterSpacing: '0.06em' }}>● CONC</span>
+ <span style={{ fontSize: 8, fontWeight: 800, color: '#fbbf24', flexShrink: 0 }}>● CONC</span>
  )}
- {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444' }}>No Slots</span>}
+ {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>No Slots</span>}
  </div>
  <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
- {spell.school}
+ {spell.school}{spell.ritual ? ' · Ritual' : ''}
  </div>
  </div>
 
- {/* Col 3: Time */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
- {spell.casting_time}
+ {/* Col 3: TIME */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
+
+ {/* Col 4: RANGE */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+
+ {/* Col 5: HIT / DC */}
+ <div style={{ textAlign: 'center' }}>
+ {hitDC !== '—' ? (
+ <span style={{
+ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
+ color: mechanics.isAttack ? '#fbbf24' : '#94a3b8',
+ background: mechanics.isAttack ? 'rgba(251,191,36,0.1)' : 'rgba(148,163,184,0.1)',
+ border: `1px solid ${mechanics.isAttack ? 'rgba(251,191,36,0.3)' : 'rgba(148,163,184,0.25)'}`,
+ borderRadius: 999, padding: '1px 6px', display: 'inline-block',
+ }}>{hitDC}</span>
+ ) : (
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>—</span>
+ )}
  </div>
 
- {/* Col 4: Range */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
- {spell.range}
+ {/* Col 6: EFFECT */}
+ <div style={{ textAlign: 'center' }}>
+ <span style={{
+ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.04em',
+ color: effectColor, background: effectColor + '12',
+ border: `1px solid ${effectColor}30`, borderRadius: 4, padding: '1px 5px',
+ whiteSpace: 'nowrap' as const,
+ }}>{effectLabel}</span>
  </div>
 
- {/* Col 5: Cast button */}
- <div style={{ flexShrink: 0 }}>
+ {/* Col 7: Cast button */}
+ <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
  <SpellCastButton
  spell={spell}
  character={character}
@@ -1563,6 +1635,28 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}
  />
  </div>
+
+ {/* Col 8: Expand chevron */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
+ </div>
+ </div>
+
+ {/* Expanded detail panel — mirrors Spells-tab SpellCard expanded block */}
+ {isExpanded && (
+ <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
+ {/* Stats row */}
+ <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+ {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+ <div key={k}>
+ <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
+ <div style={{ fontSize: 12, color: 'var(--t-2)', fontWeight: 500 }}>{v}</div>
+ </div>
+ ) : null)}
+ </div>
+ <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
+ </div>
+ )}
  </div>
  );
  })}
