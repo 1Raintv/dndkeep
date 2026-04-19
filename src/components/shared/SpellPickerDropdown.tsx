@@ -180,7 +180,10 @@ export default function SpellPickerDropdown({
  {!isCantrip && (
  <div style={{ display: 'flex', gap: 5, padding: '8px 14px', borderBottom: '1px solid var(--c-border)', flexShrink: 0, flexWrap: 'wrap' }}>
  {levelOptions.map(lvl => {
- const selAtLvl = (allByLevel[lvl] ?? []).filter(s => selected.includes(s.id)).length;
+ // v2.39.1: Per-level tab badge — exclude granted spells from the count so
+ // it matches the cap badge above (e.g. Psion's auto-granted Mage Hand
+ // shouldn't push the cantrip count to 5/4).
+ const selAtLvl = (allByLevel[lvl] ?? []).filter(s => selected.includes(s.id) && !grantedSpellIds.includes(s.id)).length;
  const isActive = activeLevel === lvl;
  const atCap = isAtLimit(lvl) && selAtLvl === 0;
  const limitForLevel = lvl === 0
