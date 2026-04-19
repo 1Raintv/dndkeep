@@ -12,6 +12,7 @@ import { getCharacterResources, buildDefaultResources } from '../../data/classRe
 import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 import { parseSpellMechanics } from '../../lib/spellParser';
+import { parseUpcastScaling } from '../../lib/spellParser';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -415,6 +416,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // v2.35.0: Actions-tab row expansion — holds the row key (spell.id-effectiveLevel) of
  // the currently-expanded spell so users can read the full description inline.
  const [expandedActionsSpell, setExpandedActionsSpell] = useState<string | null>(null);
+ // v2.36.0: Actions-tab level filter — 'all' | number. Mirrors SpellsTab level tabs.
+ const [actionsLevelFilter, setActionsLevelFilter] = useState<number | 'all'>('all');
  const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
  // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
  const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
@@ -1195,7 +1198,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
  {([
  { id: 'all', label: 'All' },
- { id: 'limited', label: '⏳ Limited Use' },
  { id: 'action', label: ' Action' },
  { id: 'bonus', label: ' Bonus' },
  { id: 'reaction', label: ' Reaction' },
@@ -1381,18 +1383,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const leveledBase = readySpells.filter(s => s.level > 0);
 
  // v2.34.1: expand leveled list with upcast variants when toggle is on.
- // Each row carries effectiveLevel (slot tier) + isUpcast.
+ // v2.36.0: One row per spell (no upcast duplicates). Upcastability is signaled
+ // via a small "↑" chip next to the level badge; actual tier selection happens
+ // via the SpellCastButton's modal picker when the user clicks Cast.
  type ReadyRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
- const leveled: ReadyRow[] = [];
- leveledBase.forEach(s => {
- leveled.push({ ...s, effectiveLevel: s.level, isUpcast: false });
- if (actionsShowUpcasts) {
- for (let up = s.level + 1; up <= Math.min(9, maxSlotLevel); up++) {
- leveled.push({ ...s, effectiveLevel: up, isUpcast: true });
- }
- }
- });
- // Sort by effectiveLevel so upcasts group under the right tier
+ const leveled: ReadyRow[] = leveledBase.map(s => ({ ...s, effectiveLevel: s.level, isUpcast: false }));
  leveled.sort((a, b) => a.effectiveLevel - b.effectiveLevel || a.name.localeCompare(b.name));
 
  // Check if any leveled spells have slots remaining
@@ -1416,84 +1411,131 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa' }}>
  SPELLS
  </span>
- {/* v2.34.1: Upcast toggle inline in the spells header */}
- <button
- onClick={() => setActionsShowUpcasts(v => !v)}
- title="Show spells at every upcast tier they can be cast at"
- style={{
- display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto',
- padding: '3px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
- border: `1px solid ${actionsShowUpcasts ? 'rgba(167,139,250,0.5)' : 'var(--c-border-m)'}`,
- background: actionsShowUpcasts ? 'rgba(167,139,250,0.12)' : 'transparent',
- color: actionsShowUpcasts ? '#a78bfa' : 'var(--t-3)',
- }}
- >
- <span aria-hidden style={{
- display: 'inline-block', width: 10, height: 10, borderRadius: 2,
- border: `1.5px solid ${actionsShowUpcasts ? '#a78bfa' : 'var(--c-border-m)'}`,
- background: actionsShowUpcasts ? '#a78bfa' : 'transparent',
- position: 'relative',
- }}>
- {actionsShowUpcasts && (
- <span style={{ position: 'absolute', top: -2, left: 1, color: '#000', fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>
- )}
- </span>
- <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>
- Upcast variants
- </span>
- </button>
+ {/* v2.36.0: Upcast toggle removed per feedback. Upcast affordance now lives
+ directly on each leveled spell row as a "↑" arrow chip, letting the user
+ upcast from the cast modal picker when they click Cast. */}
  {isPreparer && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>{character.prepared_spells.length} prepared</span>}
  </div>
 
- {/* Mini slot tracker */}
- {Object.keys(slotsByLevel).length > 0 && (
- <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
- {Object.entries(slotsByLevel).map(([lvl, slot]) => {
- const level = parseInt(lvl);
- const levelLabels = ['','1st','2nd','3rd','4th','5th','6th','7th','8th','9th'];
- const full = slot.remaining === 0;
+ {/* v2.36.0: Level filter tabs with slot pips — mirrors the Spells tab UX.
+ Each tab shows its label + remaining-slot pips; clicking filters the list. */}
+ {(() => {
+ const presentLevels = [0, ...Object.keys(slotsByLevel).map(Number).sort((a, b) => a - b)];
+ const LEVEL_LABELS: Record<number, string> = { 0: 'Cantrips', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th', 7: '7th', 8: '8th', 9: '9th' };
  return (
- <div key={lvl} style={{
- display: 'flex', alignItems: 'center', gap: 4,
- padding: '3px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700,
- background: full ? 'rgba(239,68,68,0.08)' : 'rgba(167,139,250,0.1)',
- border: `1px solid ${full ? 'rgba(239,68,68,0.3)' : 'rgba(167,139,250,0.3)'}`,
- color: full ? '#ef4444' : '#a78bfa',
- }}>
- {levelLabels[level]}
- <span style={{ fontFamily: 'var(--ff-stat)' }}>{slot.remaining}/{slot.total}</span>
- {full && <span>🔒</span>}
- </div>
+ <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+ <button
+ onClick={() => setActionsLevelFilter('all')}
+ style={{
+ display: 'flex', alignItems: 'center', gap: 5,
+ padding: '5px 12px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+ border: actionsLevelFilter === 'all' ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+ background: actionsLevelFilter === 'all' ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+ color: actionsLevelFilter === 'all' ? 'var(--c-gold-l)' : 'var(--t-2)',
+ fontSize: 12, fontWeight: actionsLevelFilter === 'all' ? 700 : 500,
+ }}
+ >
+ All
+ <span style={{ fontSize: 9, fontWeight: 700, background: actionsLevelFilter === 'all' ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: actionsLevelFilter === 'all' ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
+ {cantrips.length + leveled.length}
+ </span>
+ </button>
+ {presentLevels.map(lvl => {
+ const slotBucket = slotsByLevel[lvl];
+ const max = lvl > 0 ? (slotBucket?.total ?? 0) : 0;
+ const remaining = lvl > 0 ? (slotBucket?.remaining ?? 0) : 0;
+ const rowCount = lvl === 0 ? cantrips.length : leveled.filter(s => s.level === lvl).length;
+ const active = actionsLevelFilter === lvl;
+ return (
+ <button
+ key={lvl}
+ onClick={() => setActionsLevelFilter(lvl)}
+ style={{
+ display: 'flex', alignItems: 'center', gap: 5,
+ padding: '5px 12px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+ border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+ background: active ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+ color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
+ fontSize: 12, fontWeight: active ? 700 : 500,
+ }}
+ >
+ {LEVEL_LABELS[lvl] ?? String(lvl)}
+ <span style={{ fontSize: 9, fontWeight: 700, background: active ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: active ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
+ {rowCount}
+ </span>
+ {/* Clickable slot pips for leveled tabs — restore a spent slot by clicking a faded pip */}
+ {lvl > 0 && max > 0 && (
+ <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+ {Array.from({ length: Math.min(max, 5) }).map((_, i) => {
+ const filled = i < remaining;
+ return (
+ <span
+ key={i}
+ onClick={e => {
+ e.stopPropagation();
+ // Toggle this specific pip:
+ // - If filled, consume it (increment used) — cap at total.
+ // - If empty, restore it (decrement used) — floor at 0.
+ const cur = character.spell_slots[String(lvl)];
+ if (!cur) return;
+ const used = cur.used ?? 0;
+ const next = filled
+ ? { ...cur, used: Math.min(cur.total, used + 1) }
+ : { ...cur, used: Math.max(0, used - 1) };
+ applyUpdate({ spell_slots: { ...character.spell_slots, [String(lvl)]: next } }, true);
+ }}
+ title={filled ? `Mark a ${LEVEL_LABELS[lvl]}-level slot as spent` : `Restore a ${LEVEL_LABELS[lvl]}-level slot`}
+ style={{
+ display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+ background: filled ? (active ? 'var(--c-gold)' : 'var(--c-gold-l)') : 'transparent',
+ border: `1.5px solid ${filled ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+ cursor: 'pointer',
+ }}
+ />
+ );
+ })}
+ {max > 5 && <span style={{ fontSize: 8, color: active ? 'var(--c-gold-l)' : 'var(--t-3)' }}>+{max - 5}</span>}
+ </span>
+ )}
+ </button>
  );
  })}
  </div>
- )}
+ );
+ })()}
 
  <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
  {/* v2.35.1: Dropped EFFECT column per feedback — effect info lives in the expanded panel.
  Fixed 170px action column so Attack+Damage rows align with Utility "Cast" rows. */}
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 170px 16px', gap: '0 8px', padding: '0 10px 2px', marginBottom: 2 }}>
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px', gap: '0 8px', padding: '0 10px 2px', marginBottom: 2 }}>
  {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
- {[...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled].map(spell => {
+ {[...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled]
+ .filter(s => actionsLevelFilter === 'all' || s.level === actionsLevelFilter)
+ .map(spell => {
  const sc = schoolColor[spell.school] ?? '#a78bfa';
  const eff = (spell as any).effectiveLevel ?? spell.level;
  const isUpcast = !!(spell as any).isUpcast;
  const rowKey = `${spell.id}-${eff}`;
  const isExpanded = expandedActionsSpell === rowKey;
 
- // v2.34.2 Upcast-aware gray-out: base rows check range, upcast rows check exact tier.
+ // v2.36.0: one row per spell, so gray-out if no slot from eff through 9 has remaining.
  const slotsExhausted = eff > 0 && (() => {
- if (isUpcast || actionsShowUpcasts) {
- return (slotsByLevel[eff]?.remaining ?? 0) === 0;
- }
  for (let lvl = eff; lvl <= 9; lvl++) {
  if ((slotsByLevel[lvl]?.remaining ?? 0) > 0) return false;
  }
  return true;
  })();
+
+ // v2.36.0: Whether this spell supports upcasting (has extra dice at higher slot levels).
+ // Used to render a "↑" chip next to the level badge. Cantrips never upcast.
+ const upcastInfo = eff > 0 ? parseUpcastScaling(
+ (spell as any).higher_levels || spell.description,
+ spell.level,
+ ) : null;
+ const canUpcast = !!(upcastInfo && upcastInfo.extraDice);
 
  // v2.35.0: mirror Spells-tab HIT/DC + EFFECT computation
  const mechanics = parseSpellMechanics(spell.description, {
@@ -1544,7 +1586,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onClick={() => setExpandedActionsSpell(isExpanded ? null : rowKey)}
  style={{
  display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 170px 16px',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}
@@ -1561,8 +1603,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.3)' : `${sc}45`}`,
  background: slotsExhausted ? 'rgba(239,68,68,0.08)' : `${sc}0f`,
  whiteSpace: 'nowrap' as const,
- }} title={isUpcast ? `Upcast as level ${eff}` : undefined}>
- Lvl {eff}{isUpcast ? '↑' : ''}
+ display: 'inline-flex', alignItems: 'center', gap: 3,
+ }} title={canUpcast ? `Lvl ${eff} — can be upcast for greater effect` : `Lvl ${eff}`}>
+ Lvl {eff}
+ {canUpcast && (
+ <span aria-hidden style={{
+ display: 'inline-block', fontSize: 10, fontWeight: 900,
+ color: slotsExhausted ? '#ef4444' : sc, lineHeight: 1,
+ transform: 'translateY(-1px)',
+ }}>↑</span>
+ )}
  </span>
  )}
  </div>
@@ -1607,8 +1657,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
  </div>
 
- {/* Col 6: Cast action buttons (fixed 170px — aligns Attack+Damage rows with Cast rows) */}
- <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-start', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+ {/* Col 6: Expand chevron (left of action column) */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
+ </div>
+
+ {/* Col 7: Cast action buttons (fixed 170px, right-justified so Cast sits at far right) */}
+ <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
  <SpellCastButton
  spell={spell}
  character={character}
@@ -1626,11 +1681,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (isBonusAction) setBonusActionSpellCast(true);
  }}
  />
- </div>
-
- {/* Col 8: Expand chevron */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
- <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
  </div>
  </div>
 
