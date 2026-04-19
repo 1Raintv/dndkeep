@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Character } from '../../types';
 import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { FEATS } from '../../data/feats';
@@ -18,22 +18,98 @@ type AbilityKey = typeof ABILITY_NAMES[number];
 
 const ASI_LEVELS = new Set([4, 8, 12, 16, 19]);
 
+/**
+ * v2.32 Multiclass prerequisites (2024 PHB rules).
+ * Character must meet prereqs of BOTH current and new class to multiclass.
+ *   - `all`: every ability in the list must be >= min
+ *   - `any`: at least one of the abilities must be >= min
+ * Artificer/Psion included as homebrew (Artificer = INT 13, Psion = INT 13).
+ */
+type PrereqRule = { abilities: AbilityKey[]; mode: 'all' | 'any'; min: number };
+const MULTICLASS_PREREQS: Record<string, PrereqRule> = {
+  Barbarian: { abilities: ['strength'],                mode: 'all', min: 13 },
+  Bard:      { abilities: ['charisma'],                mode: 'all', min: 13 },
+  Cleric:    { abilities: ['wisdom'],                  mode: 'all', min: 13 },
+  Druid:     { abilities: ['wisdom'],                  mode: 'all', min: 13 },
+  Fighter:   { abilities: ['strength', 'dexterity'],   mode: 'any', min: 13 },
+  Monk:      { abilities: ['dexterity', 'wisdom'],     mode: 'all', min: 13 },
+  Paladin:   { abilities: ['strength', 'charisma'],    mode: 'all', min: 13 },
+  Ranger:    { abilities: ['dexterity', 'wisdom'],     mode: 'all', min: 13 },
+  Rogue:     { abilities: ['dexterity'],               mode: 'all', min: 13 },
+  Sorcerer:  { abilities: ['charisma'],                mode: 'all', min: 13 },
+  Warlock:   { abilities: ['charisma'],                mode: 'all', min: 13 },
+  Wizard:    { abilities: ['intelligence'],            mode: 'all', min: 13 },
+  Artificer: { abilities: ['intelligence'],            mode: 'all', min: 13 },
+  Psion:     { abilities: ['intelligence'],            mode: 'all', min: 13 },
+};
+
+function meetsPrereq(character: Character, className: string): { met: boolean; reason: string } {
+  const rule = MULTICLASS_PREREQS[className];
+  if (!rule) return { met: true, reason: '' };
+  const scores = rule.abilities.map(a => ({ ab: a, val: character[a] as number }));
+  const met = rule.mode === 'all'
+    ? scores.every(s => s.val >= rule.min)
+    : scores.some(s => s.val >= rule.min);
+  const label = scores.map(s => `${s.ab.slice(0,3).toUpperCase()} ${s.val}`).join(rule.mode === 'all' ? ' & ' : ' or ');
+  const need = rule.abilities.map(a => a.slice(0,3).toUpperCase()).join(rule.mode === 'all' ? ' & ' : '/');
+  return {
+    met,
+    reason: met ? '' : `Requires ${need} ${rule.min}+ (you have ${label})`,
+  };
+}
+
 export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUpWizardProps) {
- const newLevel = character.level + 1;
- const classData = CLASSES.find(c => c.name === character.class_name);
+ // ── v2.32: Target-class state ──────────────────────────────────────
+ // targetKind determines which class gets the new level:
+ //   'primary'   = character.class_name (advance character.level)
+ //   'secondary' = advance character.secondary_class + secondary_level
+ //   'new'       = start a new secondary class (newSecondaryClassName)
+ type TargetKind = 'primary' | 'secondary' | 'new';
+ const hasSecondary = !!character.secondary_class && (character.secondary_level ?? 0) >= 1;
+ const [targetKind, setTargetKind] = useState<TargetKind>('primary');
+ const [newSecondaryClassName, setNewSecondaryClassName] = useState<string>('');
+
+ // Effective target class depending on targetKind
+ const effectiveClassName: string =
+   targetKind === 'primary' ? character.class_name :
+   targetKind === 'secondary' ? (character.secondary_class ?? character.class_name) :
+   /* new */                    (newSecondaryClassName || character.class_name);
+
+ const effectiveCurrentLevel: number =
+   targetKind === 'primary' ? character.level :
+   targetKind === 'secondary' ? (character.secondary_level ?? 0) :
+   /* new */                    0; // starting a new class — 0 → 1
+
+ const effectiveNewLevel = effectiveCurrentLevel + 1;
+ const effectiveClassData = CLASSES.find(c => c.name === effectiveClassName);
+ const totalCurrentLevel = (character.level ?? 1) + (character.secondary_level ?? 0);
+ const totalNewLevel = totalCurrentLevel + 1;
+
+ // Existing refs (now computed against effective class)
+ const newLevel = effectiveNewLevel;
+ const classData = effectiveClassData;
  const subclassUnlockLevel = classData?.subclasses?.[0]?.unlock_level ?? 3;
- const needsSubclass = newLevel === subclassUnlockLevel && !character.subclass;
+ // Subclass choice is needed if target class doesn't yet have one assigned and we're hitting unlock level
+ const existingSubclassForTarget =
+   targetKind === 'primary' ? character.subclass :
+   targetKind === 'secondary' ? character.secondary_subclass :
+   /* new */ '';
+ const needsSubclass = newLevel === subclassUnlockLevel && !existingSubclassForTarget;
+ // ASI is based on target class's new level (each class tracks its own ASI levels per 2024 PHB)
  const needsASI = ASI_LEVELS.has(newLevel);
 
  // Psion discipline needs
  const DISCIPLINE_LEVELS = new Set([2, 5, 10, 13, 17]);
- const needsDiscipline = character.class_name === 'Psion' && DISCIPLINE_LEVELS.has(newLevel);
+ // Psion discipline step only triggers if the TARGETED class is Psion
+ const needsDiscipline = effectiveClassName === 'Psion' && DISCIPLINE_LEVELS.has(newLevel);
  const currentDisciplines: string[] = Array.isArray(character.class_resources?.['psion-disciplines'])
  ? character.class_resources['psion-disciplines'] as string[]
  : [];
 
- const [step, setStep] = useState<'overview' | 'subclass' | 'discipline' | 'asi' | 'confirm'>('overview');
- const [selectedSubclass, setSelectedSubclass] = useState(character.subclass ?? '');
+ const [step, setStep] = useState<'classpick' | 'overview' | 'subclass' | 'discipline' | 'asi' | 'confirm'>(
+   totalCurrentLevel >= 1 ? 'classpick' : 'overview',
+ );
+ const [selectedSubclass, setSelectedSubclass] = useState(existingSubclassForTarget ?? '');
  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([...currentDisciplines]);
  const [disciplineSearch, setDisciplineSearch] = useState('');
  const [asiChoice, setAsiChoice] = useState<'asi' | 'feat'>('asi');
@@ -42,7 +118,17 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
  const totalBoosts = (Object.values(abiBoosts) as number[]).reduce((a, b) => a + (b ?? 0), 0);
 
- // Compute what new HP they get
+ // v2.32: When the user switches target class mid-flow, reset downstream picks
+ // so a subclass chosen for the primary doesn't bleed over into the secondary, etc.
+ useEffect(() => {
+   setSelectedSubclass(existingSubclassForTarget ?? '');
+   setAbiBoosts({});
+   setSelectedFeat('');
+   setAsiChoice('asi');
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [targetKind, newSecondaryClassName]);
+
+ // HP gain uses the TARGET class's hit die
  const classHD = classData?.hit_die ?? 8;
  const avgHPGain = Math.floor(classHD / 2) + 1 + abilityModifier(character.constitution);
  const newMaxHP = character.max_hp + avgHPGain;
@@ -50,31 +136,45 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  function computeNewProfBonus(level: number) {
  return Math.ceil(level / 4) + 1;
  }
- const newProfBonus = computeNewProfBonus(newLevel);
- const oldProfBonus = computeNewProfBonus(character.level);
+ // Prof bonus is from TOTAL character level across all classes (2024 PHB)
+ const newProfBonus = computeNewProfBonus(totalNewLevel);
+ const oldProfBonus = computeNewProfBonus(totalCurrentLevel);
  const profBonusIncreased = newProfBonus > oldProfBonus;
 
  function buildUpdates(): Partial<Character> {
  const updates: Partial<Character> = {
- level: newLevel,
  max_hp: newMaxHP,
  current_hp: Math.min(character.current_hp + avgHPGain, newMaxHP),
  };
 
- // Auto-add subclass always-prepared spells when subclass is chosen
- const subclassToApply = needsSubclass ? selectedSubclass : (character.subclass ?? '');
+ // ── v2.32: Route the level increment to the right class field ──
+ if (targetKind === 'primary') {
+ updates.level = newLevel;
+ } else if (targetKind === 'secondary') {
+ updates.secondary_level = newLevel;
+ } else /* 'new' */ {
+ updates.secondary_class = newSecondaryClassName;
+ updates.secondary_level = 1; // starting a new class at level 1
+ updates.secondary_subclass = ''; // cleared — gets filled at subclass unlock
+ }
+
+ // Subclass field routing
  if (needsSubclass && selectedSubclass) {
+ if (targetKind === 'primary') {
  updates.subclass = selectedSubclass;
+ } else {
+ // secondary or new — both write to secondary_subclass
+ updates.secondary_subclass = selectedSubclass;
+ }
  // Auto-add subclass always-prepared spells — filter by level being assigned
- // so a new Psi Warper at level 3 doesn't get level-5/7/9 spells yet.
- const subSpellIds = getSubclassSpellIds(selectedSubclass, character.class_name, newLevel);
+ const subSpellIds = getSubclassSpellIds(selectedSubclass, effectiveClassName, newLevel);
  if (subSpellIds.length > 0) {
  const existing = [...new Set([...character.known_spells, ...subSpellIds])];
  updates.known_spells = existing;
  }
  }
 
- // Save selected disciplines
+ // Save selected disciplines (only relevant when Psion is the target class)
  if (needsDiscipline && selectedDisciplines.length > currentDisciplines.length) {
  updates.class_resources = {
  ...(character.class_resources as Record<string, unknown> ?? {}),
@@ -107,7 +207,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  updates.gained_feats = [...currentFeats, selectedFeat];
  }
  const existing = character.features_and_traits ?? '';
- const featNote = `\n[Feat — Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}`;
+ const featNote = `\n[Feat — ${effectiveClassName} Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}`;
  updates.features_and_traits = existing + featNote;
  }
  }
@@ -119,8 +219,10 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  onClose();
  }
 
- // Steps flow
- const steps: ('overview' | 'subclass' | 'discipline' | 'asi' | 'confirm')[] = ['overview'];
+ // Steps flow — classpick is first when multiclass is an option (total level >= 1)
+ const steps: ('classpick' | 'overview' | 'subclass' | 'discipline' | 'asi' | 'confirm')[] = [];
+ if (totalCurrentLevel >= 1) steps.push('classpick');
+ steps.push('overview');
  if (needsSubclass) steps.push('subclass');
  if (needsDiscipline) steps.push('discipline');
  if (needsASI) steps.push('asi');
@@ -129,7 +231,15 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const currentIdx = steps.indexOf(step);
  const expectedDisciplinesAtLevel = getDisciplineCount(newLevel);
  const newDisciplinesNeeded = expectedDisciplinesAtLevel - currentDisciplines.length;
- const canNext = step === 'overview' ||
+
+ // classpick valid when: primary/secondary selected OR 'new' with a class chosen that meets prereqs
+ const classPickValid = targetKind === 'primary'
+ || (targetKind === 'secondary' && hasSecondary)
+ || (targetKind === 'new' && !!newSecondaryClassName && meetsPrereq(character, newSecondaryClassName).met
+     && meetsPrereq(character, character.class_name).met);
+
+ const canNext = (step === 'classpick' && classPickValid) ||
+ step === 'overview' ||
  (step === 'subclass' && selectedSubclass) ||
  (step === 'discipline' && selectedDisciplines.length >= expectedDisciplinesAtLevel) ||
  (step === 'asi' && (asiChoice === 'feat' ? selectedFeat : totalBoosts === 2)) ||
@@ -156,7 +266,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  Level Up!
  </div>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginTop: 2 }}>
- {character.name} is now {character.class_name} level {newLevel}
+ {character.name} — {effectiveClassName} level {newLevel} (total level {totalNewLevel})
  </div>
  {/* Step dots */}
  <div style={{ display: 'flex', gap: 6, marginTop: 'var(--sp-3)' }}>
@@ -171,10 +281,22 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
  {/* Content */}
  <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-5) var(--sp-6)' }}>
+ {step === 'classpick' && (
+ <ClassPickerStep
+ character={character}
+ targetKind={targetKind}
+ onSetTargetKind={setTargetKind}
+ newSecondaryClassName={newSecondaryClassName}
+ onSetNewSecondary={setNewSecondaryClassName}
+ hasSecondary={hasSecondary}
+ />
+ )}
+
  {step === 'overview' && (
  <OverviewStep
  newLevel={newLevel}
  character={character}
+ effectiveClassName={effectiveClassName}
  classData={classData}
  avgHPGain={avgHPGain}
  newMaxHP={newMaxHP}
@@ -182,6 +304,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  newProfBonus={newProfBonus}
  needsSubclass={needsSubclass}
  needsASI={needsASI}
+ existingSubclass={existingSubclassForTarget ?? ''}
  />
  )}
 
@@ -227,6 +350,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  <ConfirmStep
  character={character}
  newLevel={newLevel}
+ effectiveClassName={effectiveClassName}
  avgHPGain={avgHPGain}
  newMaxHP={newMaxHP}
  selectedSubclass={needsSubclass ? selectedSubclass : undefined}
@@ -270,29 +394,29 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
 // ── Step components ─────────────────────────────────────────────────
 
-function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, profBonusIncreased, newProfBonus, needsSubclass, needsASI }: any) {
- // Pull real features from the level progression table
- const progression = CLASS_LEVEL_PROGRESSION[character.class_name] ?? [];
+function OverviewStep({ newLevel, character, effectiveClassName, classData, avgHPGain, newMaxHP, profBonusIncreased, newProfBonus, needsSubclass, needsASI, existingSubclass }: any) {
+ // Pull real features from the level progression table for the target class
+ const progression = CLASS_LEVEL_PROGRESSION[effectiveClassName] ?? [];
  const milestone = progression.find((m: any) => m.level === newLevel);
  const classFeatures: string[] = milestone?.features ?? [];
  const newSpellLevel = milestone?.newSpellLevel;
 
- // Pull subclass features for this level (with full descriptions)
+ // Pull subclass features for this level (from the target class's subclass)
  const subclassFeatures: any[] = [];
- if (character.subclass && classData) {
- const subcls = classData.subclasses?.find((s: any) => s.name === character.subclass);
+ if (existingSubclass && classData) {
+ const subcls = classData.subclasses?.find((s: any) => s.name === existingSubclass);
  if (subcls?.features) {
  subclassFeatures.push(...subcls.features.filter((f: any) => f.level === newLevel));
  }
  }
- const hasSubclassFeature = (milestone?.subclassFeature && character.subclass) || subclassFeatures.length > 0;
+ const hasSubclassFeature = (milestone?.subclassFeature && existingSubclass) || subclassFeatures.length > 0;
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
  {/* Stat gains row */}
  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
  <Gain icon="" label="Max HP" before={character.max_hp} after={newMaxHP} color="var(--hp-full)" />
- <Gain icon="" label="Level" before={character.level} after={newLevel} color="var(--c-gold-l)" />
+ <Gain icon="" label={`${effectiveClassName} Level`} before={newLevel - 1} after={newLevel} color="var(--c-gold-l)" />
  {profBonusIncreased && <Gain icon="" label="Prof Bonus" before={newProfBonus - 1} after={newProfBonus} color="#a78bfa" />}
  {newSpellLevel && <Gain icon="" label="New Spell Level" before={newSpellLevel - 1} after={newSpellLevel} color="#c084fc" />}
  </div>
@@ -310,7 +434,7 @@ function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, pro
  {subclassFeatures.length > 0 && (
  <div>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
- {character.subclass} — Level {newLevel} Features
+ {existingSubclass} — Level {newLevel} Features
  </div>
  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
  {subclassFeatures.map((f: any, i: number) => (
@@ -321,15 +445,15 @@ function OverviewStep({ newLevel, character, classData, avgHPGain, newMaxHP, pro
  )}
 
  {/* Subclass feature gained but no data available */}
- {milestone?.subclassFeature && subclassFeatures.length === 0 && character.subclass && (
- <Feature text={`${character.subclass} subclass feature gained — check your class description`} icon="" highlight />
+ {milestone?.subclassFeature && subclassFeatures.length === 0 && existingSubclass && (
+ <Feature text={`${existingSubclass} subclass feature gained — check your class description`} icon="" highlight />
  )}
 
  {/* Class features for this level */}
  {classFeatures.length > 0 && (
  <div>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: 'var(--t-2)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
- {character.class_name} Class Features
+ {effectiveClassName} Class Features
  </div>
  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
  {classFeatures.map((f: string, i: number) => (
@@ -722,14 +846,14 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
  );
 }
 
-function ConfirmStep({ character, newLevel, avgHPGain, newMaxHP, selectedSubclass, abiBoosts, selectedFeat }: any) {
+function ConfirmStep({ character, newLevel, effectiveClassName, avgHPGain, newMaxHP, selectedSubclass, abiBoosts, selectedFeat }: any) {
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--c-gold-l)', textAlign: 'center' }}>
  Ready to Level Up?
  </div>
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
- <ConfirmLine icon="" label="New Level" value={`${character.class_name} ${newLevel}`} />
+ <ConfirmLine icon="" label="New Level" value={`${effectiveClassName ?? character.class_name} ${newLevel}`} />
  <ConfirmLine icon="" label="Max HP" value={`${character.max_hp} → ${newMaxHP} (+${avgHPGain})`} />
  {selectedSubclass && <ConfirmLine icon="⭐" label="Subclass" value={selectedSubclass} highlight />}
  {abiBoosts && Object.entries(abiBoosts).filter(([,v]) => v).map(([k, v]) => (
@@ -795,4 +919,163 @@ function ConfirmLine({ icon, label, value, highlight }: { icon: string; label: s
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: highlight ? 'var(--c-gold-l)' : 'var(--t-2)', fontWeight: highlight ? 600 : 400 }}>{value}</span>
  </div>
  );
+}
+
+// ── ClassPickerStep ────────────────────────────────────────────────
+// v2.32: First step in the wizard. Lets the player decide whether this
+// level goes into their primary class, their existing secondary class,
+// or a brand-new class (subject to 2024 PHB multiclass prereqs).
+
+const ALL_CLASS_NAMES = [
+  'Barbarian','Bard','Cleric','Druid','Fighter','Monk','Paladin',
+  'Ranger','Rogue','Sorcerer','Warlock','Wizard','Artificer','Psion',
+];
+
+function ClassPickerStep({
+  character, targetKind, onSetTargetKind, newSecondaryClassName, onSetNewSecondary, hasSecondary,
+}: any) {
+  const primaryLevel = character.level ?? 1;
+  const secondaryLevel = character.secondary_level ?? 0;
+  // To multiclass, character must meet prereqs of BOTH current and new class
+  const primaryPrereq = meetsPrereq(character, character.class_name);
+  const canAddNew = primaryPrereq.met && !hasSecondary;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)' }}>
+        Which class gets this level?
+      </div>
+
+      {/* Primary class option */}
+      <OptionCard
+        active={targetKind === 'primary'}
+        onClick={() => onSetTargetKind('primary')}
+        title={`${character.class_name}`}
+        subtitle={`Level ${primaryLevel} → ${primaryLevel + 1}`}
+        badge="Primary"
+      />
+
+      {/* Existing secondary class option (if any) */}
+      {hasSecondary && (
+        <OptionCard
+          active={targetKind === 'secondary'}
+          onClick={() => onSetTargetKind('secondary')}
+          title={`${character.secondary_class}`}
+          subtitle={`Level ${secondaryLevel} → ${secondaryLevel + 1}`}
+          badge="Secondary"
+        />
+      )}
+
+      {/* Add-a-new-class option (only if character has no secondary and meets own prereqs) */}
+      {!hasSecondary && (
+        <>
+          <OptionCard
+            active={targetKind === 'new'}
+            onClick={() => canAddNew && onSetTargetKind('new')}
+            title="Add a new class"
+            subtitle={canAddNew
+              ? 'Multiclass — choose a class below (2024 PHB rules)'
+              : `Cannot multiclass: ${primaryPrereq.reason}`}
+            badge="Multiclass"
+            disabled={!canAddNew}
+          />
+
+          {targetKind === 'new' && (
+            <div style={{ padding: 'var(--sp-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 8 }}>
+                Pick a new class
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+                {ALL_CLASS_NAMES.filter(n => n !== character.class_name).map(name => {
+                  const prereq = meetsPrereq(character, name);
+                  const chosen = newSecondaryClassName === name;
+                  const disabled = !prereq.met;
+                  return (
+                    <button
+                      key={name}
+                      disabled={disabled}
+                      onClick={() => onSetNewSecondary(name)}
+                      title={disabled ? prereq.reason : `Multiclass into ${name}`}
+                      style={{
+                        padding: '10px 12px', borderRadius: 'var(--r-md)',
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        textAlign: 'left', minHeight: 0,
+                        border: chosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                        background: chosen ? 'var(--c-gold-bg)' : 'var(--c-card)',
+                        color: chosen ? 'var(--c-gold-l)' : disabled ? 'var(--t-3)' : 'var(--t-1)',
+                        opacity: disabled ? 0.45 : 1,
+                        display: 'flex', flexDirection: 'column', gap: 2,
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{name}</span>
+                      <span style={{ fontSize: 10, color: disabled ? 'var(--t-3)' : 'var(--t-2)', fontWeight: 500 }}>
+                        {prereq.met
+                          ? (MULTICLASS_PREREQS[name]
+                              ? `Needs ${MULTICLASS_PREREQS[name].abilities.map(a => a.slice(0,3).toUpperCase()).join(MULTICLASS_PREREQS[name].mode === 'all' ? ' & ' : '/')} ${MULTICLASS_PREREQS[name].min}+`
+                              : 'No prereq')
+                          : prereq.reason}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Already-multiclassed notice */}
+      {hasSecondary && (
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic' }}>
+          You already multiclass between {character.class_name} and {character.secondary_class}.
+          To change classes, see the character edit unlocks in Settings.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OptionCard({ active, onClick, title, subtitle, badge, disabled }: {
+  active: boolean; onClick: () => void; title: string; subtitle: string; badge?: string; disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        textAlign: 'left', padding: '12px 16px', borderRadius: 9, minHeight: 0,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+        background: active ? 'var(--c-gold-bg)' : 'var(--c-card)',
+        opacity: disabled ? 0.55 : 1,
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}
+    >
+      <div style={{
+        width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+        border: active ? '2px solid var(--c-gold)' : '2px solid var(--c-border-m)',
+        background: active ? 'var(--c-gold)' : 'transparent',
+      }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: active ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 2 }}>
+          {subtitle}
+        </div>
+      </div>
+      {badge && (
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+          padding: '3px 8px', borderRadius: 999,
+          background: active ? 'rgba(201,146,42,0.25)' : 'var(--c-raised)',
+          color: active ? 'var(--c-gold-l)' : 'var(--t-3)',
+          border: active ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
+          flexShrink: 0,
+        }}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
 }
