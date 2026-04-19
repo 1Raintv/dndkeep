@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
 import ConditionPickerModal from './ConditionPickerModal';
+import { CONDITION_MAP } from '../../data/conditions';
 import type { Character, ComputedStats, ConditionName } from '../../types';
 
 interface HPStatsPanelProps {
@@ -54,7 +55,22 @@ export default function HPStatsPanel({
     // v2.46.0: INSP removed — Inspiration toggle moved into CharacterHeader (between Rest and HP block)
     { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
-    { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); }, tooltip: editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats' },
+    // v2.53.0: SPEED reflects condition automatically — Grappled/Restrained/Paralyzed/Stunned/
+    // Unconscious/Petrified set effective speed to 0. Tooltip explains which condition is responsible.
+    (() => {
+      const speedZeroSources = activeConditions.filter(c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove);
+      const isImmobilized = speedZeroSources.length > 0;
+      return {
+        label: 'SPEED',
+        value: isImmobilized ? '0ft' : `${character.speed}ft`,
+        color: isImmobilized ? 'var(--c-red-l)' : 'var(--t-2)',
+        editable: editsUnlocked && !isImmobilized,
+        onEdit: () => { if (!editsUnlocked || isImmobilized) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); },
+        tooltip: isImmobilized
+          ? `Speed 0 — ${speedZeroSources.join(', ')}. Base speed ${character.speed}ft.`
+          : (editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats'),
+      };
+    })(),
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
     // v2.45.0: PASS PERC removed — redundant with the Skills list which shows passive perception
     // alongside the live perception modifier on the left side of the sheet.

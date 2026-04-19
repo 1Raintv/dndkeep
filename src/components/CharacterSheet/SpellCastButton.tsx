@@ -4,6 +4,8 @@ import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
 import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSpell } from '../../lib/spellParser';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { CONDITION_MAP } from '../../data/conditions';
+import { rollDie } from '../../lib/gameUtils';
 
 interface SpellCastButtonProps {
  spell: SpellData;
@@ -217,18 +219,29 @@ export default function SpellCastButton({
 
  /** Roll spell attack (d20 + spellAttack) — marks leveled spell as cast */
  async function rollAttack() {
- const d20 = Math.floor(Math.random() * 20) + 1;
+ // v2.53.0: Apply disadvantage automatically when an attack-disadvantaging
+ // condition is active (Blinded, Frightened, Poisoned, Prone, Restrained).
+ // Pulls from CONDITION_MAP — same logic that weapon attacks use in WeaponsTracker.
+ const activeConditions = character.active_conditions ?? [];
+ const disadvSources = activeConditions.filter(c => CONDITION_MAP[c]?.attackDisadvantage);
+ const hasDisadvantage = disadvSources.length > 0;
+ const roll1 = rollDie(20);
+ const roll2 = hasDisadvantage ? rollDie(20) : roll1;
+ const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
  const total = d20 + spellAttack;
  const hitResult = d20 === 20 ? 'crit' : d20 === 1 ? 'fumble' : total >= 10 ? 'hit' : 'miss';
+ const disadvLabel = hasDisadvantage ? ` (Disadv. — ${disadvSources.join(', ')})` : '';
  triggerRoll({
  result: d20, dieType: 20, modifier: spellAttack, total,
- label: `${spell.name} — Spell Attack`,
+ label: `${spell.name} — Spell Attack${disadvLabel}`,
  });
  await logAction({ campaignId, characterId: userId, characterName: character.name,
- actionType: 'attack', actionName: `${spell.name} — Spell Attack`,
- diceExpression: '1d20', individualResults: [d20], total,
+ actionType: 'attack', actionName: `${spell.name} — Spell Attack${disadvLabel}`,
+ diceExpression: hasDisadvantage ? '2d20kl1' : '1d20',
+ individualResults: hasDisadvantage ? [roll1, roll2] : [d20],
+ total,
  hitResult: hitResult as any,
- notes: `+${spellAttack} spell attack (${key.slice(0,3).toUpperCase()} ${spellMod >= 0 ? '+' : ''}${spellMod} + Prof +${profBonus})` });
+ notes: `+${spellAttack} spell attack (${key.slice(0,3).toUpperCase()} ${spellMod >= 0 ? '+' : ''}${spellMod} + Prof +${profBonus})${hasDisadvantage ? ` · disadvantage from ${disadvSources.join(', ')}` : ''}` });
  // v2.46.0: fire for cantrips too so parent action-economy tracks the consumed action.
  onLeveledSpellCast?.(isBonusActionCast);
  }

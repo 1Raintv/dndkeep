@@ -1226,13 +1226,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* v2.46.0: Turn Economy — moved out of the Actions tab so it's visible on
      EVERY tab. The DM and the player both want this front-and-center: it's
      the most-referenced piece during combat. external action/BA props sync
-     spell-cast consumption into the visual token state. */}
+     spell-cast consumption into the visual token state.
+     v2.53.0: speedFeet now reflects condition impact — immobilizing conditions
+     (Grappled / Restrained / Paralyzed / Stunned / Unconscious / Petrified)
+     drop effective speed to 0. */}
+ {(() => {
+ const baseSpeed = character.speed ?? 30;
+ const immobilized = (character.active_conditions ?? []).some(
+ c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove
+ );
+ const effectiveSpeed = immobilized ? 0 : baseSpeed;
+ return (
  <ActionEconomy
- speedFeet={character.speed ?? 30}
+ speedFeet={effectiveSpeed}
  actionUsedExternal={spellCastThisTurn}
  bonusActionUsedExternal={bonusActionSpellCast}
  onActionUsed={(action: string, used: boolean) => {
- // Manual toggle from ActionEconomy mirrors back into our spell-cast flags
  if (action === 'action') setSpellCastThisTurn(used);
  if (action === 'bonusAction') setBonusActionSpellCast(used);
  if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
@@ -1240,6 +1249,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}
  onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
  />
+ );
+ })()}
 
  {/* Tabs */}
  <div className="tabs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
