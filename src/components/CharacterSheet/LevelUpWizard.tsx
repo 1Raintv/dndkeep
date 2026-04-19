@@ -147,6 +147,13 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  current_hp: Math.min(character.current_hp + avgHPGain, newMaxHP),
  };
 
+ // v2.32.1: If a DM-granted level is pending, consume one. (XP-based pending
+ // self-clears since the character's new level will now match xpToLevel.)
+ const dmPending = character.pending_manual_level_grants ?? 0;
+ if (dmPending > 0) {
+ updates.pending_manual_level_grants = dmPending - 1;
+ }
+
  // ── v2.32: Route the level increment to the right class field ──
  if (targetKind === 'primary') {
  updates.level = newLevel;

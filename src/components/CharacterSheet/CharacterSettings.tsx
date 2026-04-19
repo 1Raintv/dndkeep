@@ -418,46 +418,8 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                 />
               </div>
 
-              {/* Multiclassing */}
-              <div>
-                <div className="section-header">Multiclass (Optional)</div>
-                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
-                  Add a second class. Spell slots will use multiclass rules — manage manually or via the Session tab.
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
-                  <div>
-                    <label>Secondary Class</label>
-                    <select
-                      value={character.secondary_class ?? ''}
-                      onChange={e => onUpdate({ secondary_class: e.target.value, secondary_level: e.target.value ? (character.secondary_level || 1) : 0 })}
-                      style={{ fontSize: 'var(--fs-sm)' }}
-                    >
-                      <option value="">— None —</option>
-                      {['Barbarian','Bard','Cleric','Druid','Fighter','Monk','Paladin','Ranger','Rogue','Sorcerer','Warlock','Wizard'].map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label>Secondary Level</label>
-                    <select
-                      value={character.secondary_level ?? 0}
-                      onChange={e => onUpdate({ secondary_level: parseInt(e.target.value) })}
-                      disabled={!character.secondary_class}
-                      style={{ fontSize: 'var(--fs-sm)' }}
-                    >
-                      {Array.from({ length: 19 }, (_, i) => i + 1)
-                        .filter(l => l + character.level <= 20)
-                        .map(l => <option key={l} value={l}>{l}</option>)}
-                    </select>
-                  </div>
-                </div>
-                {character.secondary_class && (character.secondary_level ?? 0) > 0 && (
-                  <div style={{ marginTop: 'var(--sp-2)', padding: 'var(--sp-2) var(--sp-3)', background: 'rgba(91,63,168,0.08)', border: '1px solid rgba(91,63,168,0.25)', borderRadius: 'var(--r-md)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-purple-l)' }}>
-                    {character.class_name} {character.level} / {character.secondary_class} {character.secondary_level} — Total level {character.level + (character.secondary_level ?? 0)}
-                  </div>
-                )}
-              </div>
+              {/* Multiclass section removed in v2.32 — multiclass is now handled
+                  via the Level-Up Wizard's class picker step. */}
             </div>
           )}
 

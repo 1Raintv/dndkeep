@@ -36,9 +36,28 @@ export default function CharacterHeader({
 
  const [hpInput, setHpInput] = useState('');
 
- const classDisplay = character.secondary_class && (character.secondary_level ?? 0) > 0
+ // v2.32 Phase 3: multi-class display with both subclasses
+ const isMulticlass = !!character.secondary_class && (character.secondary_level ?? 0) > 0;
+ const classDisplay = isMulticlass
  ? `${character.class_name} ${character.level} / ${character.secondary_class} ${character.secondary_level}`
  : `${character.class_name} ${character.level}`;
+
+ // Combined subclass label:
+ //   - Both subclasses set: "Champion / Evocation"
+ //   - Only primary: "Champion"
+ //   - Only secondary (rare — primary not yet at subclass unlock): "— / Evocation"
+ //   - Neither: ""
+ const subclassDisplay = (() => {
+ const primarySub = character.subclass;
+ const secondarySub = character.secondary_subclass;
+ if (isMulticlass) {
+ if (primarySub && secondarySub) return `${primarySub} / ${secondarySub}`;
+ if (primarySub && !secondarySub) return primarySub;
+ if (!primarySub && secondarySub) return `— / ${secondarySub}`;
+ return '';
+ }
+ return primarySub ?? '';
+ })();
 
  const hpCol = hpColor(character.current_hp, character.max_hp);
  const hpPct = character.max_hp > 0 ? Math.min(1, character.current_hp / character.max_hp) : 0;
@@ -104,7 +123,7 @@ export default function CharacterHeader({
  </button>
  </div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 1 }}>
- {classDisplay}{character.subclass ? ` — ${character.subclass}` : ''} · {character.species}{character.background ? ` · ${character.background}` : ''}
+ {classDisplay}{subclassDisplay ? ` — ${subclassDisplay}` : ''} · {character.species}{character.background ? ` · ${character.background}` : ''}
  </div>
  </div>
 

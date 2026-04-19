@@ -18,7 +18,10 @@ interface LevelUpBannerProps {
 export default function LevelUpBanner({ character, onOpen }: LevelUpBannerProps) {
   const totalLevel = (character.level ?? 1) + (character.secondary_level ?? 0);
   const targetLevel = xpToLevel(character.experience_points ?? 0);
-  const pending = Math.max(0, targetLevel - totalLevel);
+  // v2.32.1: total pending = XP-earned pending + DM manually-granted pending
+  const xpPending = Math.max(0, targetLevel - totalLevel);
+  const dmPending = character.pending_manual_level_grants ?? 0;
+  const pending = xpPending + dmPending;
 
   if (pending <= 0 || totalLevel >= 20) return null;
 
