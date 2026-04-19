@@ -16,12 +16,14 @@ interface HPStatsPanelProps {
   // v2.45.0: defense chips render inline at the end of the stats row.
   // Each chip carries its own per-type color so Fire is orange, Cold is blue, etc.
   defenseChips?: Array<{ label: string; color: string; kind: 'res' | 'imm' | 'vul' }>;
+  // v2.50.0: clicking the "Defenses" label opens character settings to edit.
+  onOpenSettings?: () => void;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
 
 export default function HPStatsPanel({
-  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [],
+  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [], onOpenSettings,
 }: HPStatsPanelProps) {
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
@@ -57,9 +59,13 @@ export default function HPStatsPanel({
     // v2.45.0: PASS PERC removed — redundant with the Skills list which shows passive perception
     // alongside the live perception modifier on the left side of the sheet.
     // v2.33.3: Conditions as a compact chip — clickable to open the modal
+    // v2.50.0: Count only reflects the actual active_conditions array length.
+    // Exhaustion level is surfaced via the tooltip and the modal but not
+    // double-counted in the chip number (was previously +1ing for any nonzero
+    // exhaustion level, causing 5 conditions + level 1 exhaustion to display 6).
     ...(onUpdateConditions ? [{
       label: 'COND',
-      value: (activeConditions.length + (exhaustionLevel > 0 ? 1 : 0)) || '—',
+      value: activeConditions.length || (exhaustionLevel > 0 ? `Ex${exhaustionLevel}` : '—'),
       color: hasAnyCondition ? (exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b') : 'var(--t-3)',
       clickable: true,
       onClick: () => setShowConditionModal(true),
@@ -123,10 +129,29 @@ export default function HPStatsPanel({
         ))}
 
         {/* v2.45.0: Defense chips inline. Pill shape distinguishes them from stat boxes.
-            Border style encodes kind: solid = resistance, thicker double-style = immunity, dashed = vulnerability. */}
+            Border style encodes kind: solid = resistance, thicker double-style = immunity, dashed = vulnerability.
+            v2.50.0: Added clickable "Defenses" label that jumps into Settings → Damage Modifiers. */}
         {defenseChips.length > 0 && (
           <>
             <div style={{ width: 1, height: 22, background: 'var(--c-border)', marginLeft: 4, marginRight: 2, alignSelf: 'center' }} />
+            <button
+              onClick={onOpenSettings}
+              disabled={!onOpenSettings}
+              title={onOpenSettings ? 'Click to edit your damage modifiers in Settings' : undefined}
+              style={{
+                fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9,
+                letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+                color: 'var(--t-3)', background: 'transparent',
+                border: 'none', padding: '0 6px',
+                cursor: onOpenSettings ? 'pointer' : 'default',
+                height: 22, alignSelf: 'center', minHeight: 0,
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => { if (onOpenSettings) (e.currentTarget as HTMLButtonElement).style.color = 'var(--c-gold-l)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--t-3)'; }}
+            >
+              Defenses
+            </button>
             {defenseChips.map((chip, i) => (
               <span
                 key={`${chip.kind}-${chip.label}-${i}`}

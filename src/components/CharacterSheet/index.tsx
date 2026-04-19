@@ -40,7 +40,6 @@ import ActiveBuffsPanel from './ActiveBuffsPanel';
 import LevelUpWizard from './LevelUpWizard';
 import LevelUpBanner from './LevelUpBanner';
 import SpellsTab from './SpellsTab';
-import ConditionMechanics from './ConditionMechanics';
 import ActionLog from '../shared/ActionLog';
 import WildshapeTracker from './WildshapeTracker';
 import ErrorBoundary from '../ErrorBoundary';
@@ -654,6 +653,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
        onUpdateConditions={handleUpdateConditions}
        onUpdateExhaustionLevel={lvl => applyUpdate({ exhaustion_level: lvl }, true)}
        defenseChips={defenseChips}
+       onOpenSettings={() => setShowSettings(true)}
      />
    );
  })()}
@@ -1050,25 +1050,30 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  The purple banner higher on the page already shows concentration state
  with a full-featured "Drop Concentration" button and duration countdown. */}
 
- {/* Active condition warning banner */}
+ {/* Active condition warning banner — v2.50.0: shows EVERY active condition
+     so the player can roleplay correctly. Mechanical effects (disadv, can't act, etc.)
+     are summarized inline; conditions without specific flags still display by name. */}
  {(() => {
- const mechConditions = (character.active_conditions ?? []).filter(c => {
- const m = CONDITION_MAP[c];
- return m?.attackDisadvantage || m?.abilityCheckDisadvantage || m?.concentrationBreaks || m?.cantAct;
- });
- if (!mechConditions.length) return null;
+ const allConditions = character.active_conditions ?? [];
+ if (!allConditions.length) return null;
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-2) var(--sp-4)', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 'var(--r-md)', flexWrap: 'wrap' }}>
- <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-red-l)', textTransform: 'uppercase', letterSpacing: '0.06em' }}> Active Conditions:</span>
- {mechConditions.map(c => {
+ <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-red-l)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Active Conditions:</span>
+ {allConditions.map(c => {
  const m = CONDITION_MAP[c];
- const effects = [];
+ const effects: string[] = [];
  if (m?.attackDisadvantage) effects.push('disadv. attacks');
+ if (m?.attackAdvantageReceived) effects.push('attackers have adv.');
  if (m?.abilityCheckDisadvantage) effects.push('disadv. checks');
  if (m?.cantAct) effects.push("can't act");
+ if (m?.cantReact) effects.push("can't react");
+ if (m?.cantMove) effects.push("can't move");
+ if (m?.speedZero) effects.push("speed 0");
+ if (m?.autoFailSaves?.length) effects.push(`auto-fail ${m.autoFailSaves.map(s => s.slice(0,3).toUpperCase()).join('/')} saves`);
+ if (m?.concentrationBreaks) effects.push("concentration breaks");
  return (
- <span key={c} style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: m?.color ?? 'var(--t-2)', background: `${m?.color ?? '#64748b'}15`, border: `1px solid ${m?.color ?? '#64748b'}30`, padding: '2px 8px', borderRadius: 999 }}>
- {m?.icon} {c}{effects.length ? ` — ${effects.join(', ')}` : ''}
+ <span key={c} title={m?.description ?? c} style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: m?.color ?? 'var(--t-2)', background: `${m?.color ?? '#64748b'}15`, border: `1px solid ${m?.color ?? '#64748b'}30`, padding: '2px 8px', borderRadius: 999 }}>
+ {m?.icon ? `${m.icon} ` : ''}{c}{effects.length ? ` — ${effects.join(', ')}` : ''}
  </span>
  );
  })}
