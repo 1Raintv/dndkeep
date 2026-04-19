@@ -226,11 +226,24 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  {/* ── Tools & Languages ── */}
  {(() => {
  const bgData = BACKGROUNDS.find((b: any) => b.name === character.background);
- const toolProf = bgData?.tool_proficiency ?? null;
+ const bgTool = bgData?.tool_proficiency ?? null;
  const speciesData = SPECIES.find(s => s.name === character.species);
- const langs = speciesData?.languages ?? [];
- const extraLangs = bgData?.languages ?? 0;
- if (!toolProf && langs.length === 0 && extraLangs === 0) return null;
+ const speciesLangs = speciesData?.languages ?? [];
+ const bgBonusLangCount = bgData?.languages ?? 0;
+
+ // Merge derived + user-added (extras set via Settings → Edit Stats)
+ const extraLangs = character.extra_languages ?? [];
+ const extraTools = character.extra_tool_proficiencies ?? [];
+ const allTools: string[] = [
+ ...(bgTool ? [bgTool] : []),
+ ...extraTools,
+ ];
+ const allLangs: string[] = [
+ ...speciesLangs,
+ ...extraLangs,
+ ];
+
+ if (allTools.length === 0 && allLangs.length === 0 && bgBonusLangCount === 0) return null;
  return (
  <>
  <div style={{ height: 1, background: 'var(--c-border)', margin: '8px 0' }} />
@@ -238,17 +251,19 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 6 }}>
  Tools &amp; Languages
  </div>
- {toolProf && (
- <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)', marginBottom: 2 }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 600 }}>Tool</span>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', fontWeight: 600 }}>{toolProf}</span>
+ {allTools.length > 0 && (
+ <div style={{ padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)', marginBottom: 2 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 600, marginBottom: 2 }}>Tools</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)' }}>
+ {allTools.join(', ')}
+ </div>
  </div>
  )}
- {langs.length > 0 && (
+ {(allLangs.length > 0 || bgBonusLangCount > 0) && (
  <div style={{ padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)', marginBottom: 2 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 600, marginBottom: 2 }}>Languages</div>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)' }}>
- {langs.join(', ')}{extraLangs > 0 ? ` + ${extraLangs} choice` : ''}
+ {allLangs.join(', ')}{bgBonusLangCount > 0 && extraLangs.length < bgBonusLangCount ? ` + ${bgBonusLangCount - extraLangs.length} choice` : ''}
  </div>
  </div>
  )}

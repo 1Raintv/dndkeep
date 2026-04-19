@@ -209,6 +209,11 @@ export interface Character {
   active_conditions: ConditionName[];
   exhaustion_level?: number;  // 0-6 per 2024 rules; 0 = no exhaustion, 6 = death
 
+  // User-added languages and tool proficiencies on top of species/background/class grants.
+  // The character sheet's Languages/Tools display merges these with derived ones.
+  extra_languages?: string[];
+  extra_tool_proficiencies?: string[];
+
   // Death saves (only relevant when current_hp === 0)
   death_saves_successes: number;  // 0–3; three successes stabilizes the character
   death_saves_failures: number;   // 0–3; three failures = dead

@@ -24,6 +24,110 @@ const ABBREV: Record<AbilityKey, string> = {
   intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA',
 };
 
+// ── 2024 PHB language suggestions ──
+const LANGUAGE_SUGGESTIONS = [
+  'Common', 'Common Sign Language',
+  'Draconic', 'Dwarvish', 'Elvish', 'Giant', 'Gnomish', 'Goblin', 'Halfling', 'Orc',
+  'Abyssal', 'Celestial', 'Deep Speech', 'Druidic', 'Infernal', 'Primordial', 'Sylvan', 'Thieves\' Cant', 'Undercommon',
+];
+
+// ── 2024 PHB tool proficiency suggestions (grouped roughly) ──
+const TOOL_SUGGESTIONS = [
+  // Artisan's Tools
+  "Alchemist's Supplies", "Brewer's Supplies", "Calligrapher's Supplies", "Carpenter's Tools",
+  "Cartographer's Tools", "Cobbler's Tools", "Cook's Utensils", "Glassblower's Tools",
+  "Jeweler's Tools", "Leatherworker's Tools", "Mason's Tools", "Painter's Supplies",
+  "Potter's Tools", "Smith's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools",
+  // Gaming sets
+  "Dice Set", "Dragonchess Set", "Playing Cards", "Three-Dragon Ante Set",
+  // Musical instruments
+  "Bagpipes", "Drum", "Dulcimer", "Flute", "Horn", "Lute", "Lyre", "Pan Flute", "Shawm", "Viol",
+  // Other
+  "Disguise Kit", "Forgery Kit", "Herbalism Kit", "Navigator's Tools", "Poisoner's Kit", "Thieves' Tools",
+  // Vehicles
+  "Land Vehicles", "Water Vehicles",
+];
+
+/**
+ * Small reusable editor for adding/removing free-text chips with a suggestion dropdown.
+ * Used by Languages and Tool Proficiencies sections in the Stats tab.
+ */
+function ChipListEditor({
+  label, items, suggestions, onChange,
+}: {
+  label: string;
+  items: string[];
+  suggestions: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const remaining = suggestions.filter(s => !items.includes(s));
+
+  function addItem(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (items.some(x => x.toLowerCase() === trimmed.toLowerCase())) return;
+    onChange([...items, trimmed]);
+    setDraft('');
+  }
+
+  function removeItem(value: string) {
+    onChange(items.filter(x => x !== value));
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+      {items.length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {items.map(it => (
+            <button
+              key={it}
+              onClick={() => removeItem(it)}
+              title={`Remove ${it}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                fontSize: 11, fontWeight: 600,
+                background: 'var(--c-gold-bg)',
+                border: '1px solid var(--c-gold-bdr)',
+                color: 'var(--c-gold-l)',
+              }}
+            >
+              <span>{it}</span>
+              <span style={{ opacity: 0.6, fontSize: 11 }}>×</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
+          None added.
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+        <input
+          list={`chip-suggest-${label}`}
+          type="text"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addItem(draft); } }}
+          placeholder={`Add ${label.toLowerCase()}…`}
+          style={{ flex: 1, fontSize: 'var(--fs-sm)', padding: '6px 10px' }}
+        />
+        <datalist id={`chip-suggest-${label}`}>
+          {remaining.map(s => <option key={s} value={s} />)}
+        </datalist>
+        <button
+          className="btn-gold btn-sm"
+          onClick={() => addItem(draft)}
+          disabled={!draft.trim()}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function EditableField({
   label, value, min = 0, max = 999, format, onCommit,
 }: {
@@ -283,6 +387,34 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   min={-10} max={20}
                   format={formatModifier}
                   onCommit={v => onUpdate({ initiative_bonus: v })}
+                />
+              </div>
+
+              {/* ── Languages (user-added) ── */}
+              <div style={{ opacity: character.advanced_edits_unlocked ? 1 : 0.55, pointerEvents: character.advanced_edits_unlocked ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                <div className="section-header">Languages</div>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
+                  Add languages learned during play. Species-granted languages stay applied automatically — these are extras.
+                </p>
+                <ChipListEditor
+                  label="Language"
+                  items={character.extra_languages ?? []}
+                  suggestions={LANGUAGE_SUGGESTIONS}
+                  onChange={next => onUpdate({ extra_languages: next })}
+                />
+              </div>
+
+              {/* ── Tool Proficiencies (user-added) ── */}
+              <div style={{ opacity: character.advanced_edits_unlocked ? 1 : 0.55, pointerEvents: character.advanced_edits_unlocked ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                <div className="section-header">Tool Proficiencies</div>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
+                  Add tool proficiencies gained during play. Background-granted tools stay applied automatically.
+                </p>
+                <ChipListEditor
+                  label="Tool"
+                  items={character.extra_tool_proficiencies ?? []}
+                  suggestions={TOOL_SUGGESTIONS}
+                  onChange={next => onUpdate({ extra_tool_proficiencies: next })}
                 />
               </div>
 
