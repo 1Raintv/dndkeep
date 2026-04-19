@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Campaign, AutomationSettings } from '../../types';
 import { supabase } from '../../lib/supabase';
+import { AUTOMATIONS, labelForValue, type AutomationValue } from '../../lib/automations';
 
 interface Props {
   campaign: Campaign;
@@ -49,6 +50,33 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
   );
   const [savingAuto, setSavingAuto] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
+
+  // v2.26.0 — automation framework defaults (separate from legacy automation_settings)
+  const [automationDefaults, setAutomationDefaults] = useState<Record<string, AutomationValue>>(
+    (campaign.automation_defaults as Record<string, AutomationValue> | undefined) ?? {}
+  );
+
+  async function saveAutomationDefaults(next: Record<string, AutomationValue>) {
+    setSavingAuto(true);
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ automation_defaults: next })
+      .eq('id', campaign.id);
+    setSavingAuto(false);
+    if (!error) {
+      onUpdated({ automation_defaults: next });
+      setAutoSaved(true);
+      setTimeout(() => setAutoSaved(false), 2000);
+    }
+  }
+
+  function setAutomationDefault(key: string, value: AutomationValue | null) {
+    const next = { ...automationDefaults };
+    if (value === null) delete next[key];
+    else next[key] = value;
+    setAutomationDefaults(next);
+    saveAutomationDefaults(next);
+  }
 
   async function saveAutomation(newSettings: AutomationSettings) {
     setSavingAuto(true);
@@ -170,6 +198,60 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                     border: `1px solid ${enabled ? 'rgba(52,211,153,0.3)' : 'var(--c-border)'}`,
                   }}>
                     {enabled ? 'ON' : 'OFF'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Automations (v2.26 framework) ── */}
+        <div style={{ padding: '14px 16px', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', background: 'var(--c-surface-1)' }}>
+          <div style={{
+            fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+            letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+            color: 'var(--c-gold-l)', marginBottom: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            ⚙️ Rule Automations
+          </div>
+          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 12 }}>
+            Set the default behavior for rule automations campaign-wide. Players can override these on their own characters if they unlock custom automations.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {AUTOMATIONS.map(auto => {
+              const current = automationDefaults[auto.key] ?? auto.default;
+              const isBuiltIn = automationDefaults[auto.key] === undefined;
+              return (
+                <div key={auto.key} style={{ padding: '10px 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'var(--c-raised)' }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)', marginBottom: 2 }}>
+                    {auto.label}
+                  </div>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 8 }}>
+                    {auto.description}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {auto.allowed.map(v => {
+                      const selected = current === v;
+                      return (
+                        <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: `1px solid ${selected ? 'var(--c-gold)' : 'var(--c-border)'}`, borderRadius: 'var(--r-sm)', cursor: 'pointer', background: selected ? 'rgba(201,146,42,0.12)' : 'transparent' }}>
+                          <input
+                            type="radio"
+                            name={`default-${auto.key}`}
+                            checked={selected}
+                            onChange={() => setAutomationDefault(auto.key, v)}
+                          />
+                          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: selected ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
+                            {labelForValue(v)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {isBuiltIn && (
+                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', alignSelf: 'center', marginLeft: 'auto' }}>
+                        (using built-in default)
+                      </span>
+                    )}
                   </div>
                 </div>
               );

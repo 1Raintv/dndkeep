@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { MONSTERS } from '../../data/monsters';
+import { useMonsters } from '../../lib/hooks/useMonsters';
+import type { MonsterData } from '../../types';
 import { DMRollRequestPanel } from './RollRequest';
 import { logRoll } from '../CharacterSheet/QuickRoll';
 
@@ -577,6 +578,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
   campaignId:string; userId:string;
   onAddToMap:(npc:DMRosterNPC)=>void; onClose:()=>void;
 }) {
+  const { monsters } = useMonsters();
   const [roster,setRoster]=useState<DMRosterNPC[]>([]);
   const [search,setSearch]=useState('');
   const [tab,setTab]=useState<'mine'|'stock'>('mine');
@@ -607,7 +609,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
     setRoster(r=>r.filter(n=>n.id!==id));
   }
 
-  function cloneMonster(m:typeof MONSTERS[0]){
+  function cloneMonster(m: MonsterData){
     const npc:Partial<DMRosterNPC>={
       name:m.name, type:String(m.type), cr:String(m.cr), size:String(m.size),
       hp:m.hp, max_hp:m.hp, ac:m.ac, speed:m.speed??30,
@@ -620,7 +622,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
   }
 
   const filteredRoster = roster.filter(n=>n.name.toLowerCase().includes(search.toLowerCase())||n.type.toLowerCase().includes(search.toLowerCase()));
-  const filteredStock = MONSTERS.filter(m=>m.name.toLowerCase().includes(search.toLowerCase())||m.type.toLowerCase().includes(search.toLowerCase()));
+  const filteredStock = monsters.filter(m=>m.name.toLowerCase().includes(search.toLowerCase())||m.type.toLowerCase().includes(search.toLowerCase()));
 
   if(editNPC) return (
     <NPCEditForm npc={editNPC} onSave={saveNPC} onCancel={()=>setEditNPC(null)}/>
@@ -647,7 +649,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
             flex:1,fontSize:11,fontWeight:700,padding:'7px 4px',cursor:'pointer',
             border:'none',borderBottom:tab===t?`2px solid var(--c-gold)`:undefined,
             background:'transparent',color:tab===t?'var(--c-gold-l)':'var(--t-2)',
-          }}>{t==='mine'?`My NPCs (${roster.length})`:`SRD Library (${MONSTERS.length})`}</button>
+          }}>{t==='mine'?`My NPCs (${roster.length})`:`SRD Library (${monsters.length})`}</button>
         ))}
       </div>
 

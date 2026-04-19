@@ -161,6 +161,10 @@ export interface Character {
   wildshape_max_hp: number;
   concentration_spell: string;
 
+  // Automation framework — see src/lib/automations.ts
+  automation_overrides: Record<string, 'off' | 'prompt' | 'auto'>;
+  advanced_automations_unlocked: boolean;
+
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;
   dexterity: number;
@@ -428,6 +432,9 @@ export interface Campaign {
   created_at: string;
   updated_at: string;
   automation_settings?: AutomationSettings;
+
+  // Automation framework — see src/lib/automations.ts
+  automation_defaults: Record<string, 'off' | 'prompt' | 'auto'>;
 }
 
 export interface CampaignMember {

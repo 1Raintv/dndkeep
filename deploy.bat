@@ -8,10 +8,10 @@ REM  Every command logs to deploy-log.txt so we can diagnose failures.
 REM  Window will NEVER auto-close — always waits for a keypress at the end.
 REM =================================================================
 
-cd /d "C:\Users\Jared\OneDrive\Desktop\DNDKeep" 2>nul
+cd /d "C:\dev\DNDKeep" 2>nul
 if %errorlevel% neq 0 (
     echo.
-    echo  [FATAL] Cannot cd to C:\Users\Jared\OneDrive\Desktop\DNDKeep
+    echo  [FATAL] Cannot cd to C:\dev\DNDKeep
     echo         Current dir: %CD%
     echo         Does the folder exist? Is it locked?
     echo.

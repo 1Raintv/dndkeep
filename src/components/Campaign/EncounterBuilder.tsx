@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { MONSTERS, formatCR } from '../../data/monsters';
+import { useMonsters } from '../../lib/hooks/useMonsters';
+import { formatCR } from '../../lib/monsterUtils';
 import type { MonsterData } from '../../types';
 import { rollDie } from '../../lib/gameUtils';
 import { v4 as uuidv4 } from 'uuid';
@@ -60,6 +61,7 @@ function difficultyLabel(xp: number, thresholds: number[]): { label: string; col
 }
 
 export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat, onClose }: EncounterBuilderProps) {
+  const { monsters } = useMonsters();
   const [encounter, setEncounter] = useState<EncounterEntry[]>([]);
   const [search, setSearch] = useState('');
   const [crFilter, setCRFilter] = useState('');
@@ -73,7 +75,7 @@ export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat,
   const adjustedXP = Math.round(rawXP * xpMultiplier(totalMonsters));
   const difficulty = difficultyLabel(adjustedXP, partyThresholds);
 
-  const filteredMonsters = MONSTERS.filter(m => {
+  const filteredMonsters = monsters.filter(m => {
     const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase());
     const matchCR = !crFilter || String(m.cr) === crFilter;
     return matchSearch && matchCR;

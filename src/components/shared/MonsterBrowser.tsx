@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
-import { MONSTERS, formatCR } from '../../data/monsters';
+import { useMonsters } from '../../lib/hooks/useMonsters';
+import { formatCR } from '../../lib/monsterUtils';
 import { abilityModifier } from '../../lib/gameUtils';
 import type { MonsterData } from '../../types';
 
-const TYPES = ['All', ...Array.from(new Set(MONSTERS.map(m => m.type))).sort()];
 const CR_ORDER = ['0', '1/8', '1/4', '1/2', ...Array.from({ length: 30 }, (_, i) => String(i + 1))];
 const SIZES = ['All', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
 
@@ -23,6 +23,7 @@ interface MonsterBrowserProps {
 }
 
 export default function MonsterBrowser({ onAddToCombat, compact = false }: MonsterBrowserProps) {
+  const { monsters } = useMonsters();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
@@ -30,8 +31,13 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
   const [crMax, setCrMax] = useState('');
   const [selected, setSelected] = useState<MonsterData | null>(null);
 
+  const TYPES = useMemo(
+    () => ['All', ...Array.from(new Set(monsters.map(m => m.type))).sort()],
+    [monsters]
+  );
+
   const filtered = useMemo(() => {
-    return MONSTERS
+    return monsters
       .filter(m => {
         if (typeFilter !== 'All' && m.type !== typeFilter) return false;
         if (sizeFilter !== 'All' && m.size !== sizeFilter) return false;
@@ -47,7 +53,7 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
         return true;
       })
       .sort(crSort);
-  }, [search, typeFilter, sizeFilter, crMin, crMax]);
+  }, [monsters, search, typeFilter, sizeFilter, crMin, crMax]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: selected && !compact ? '1fr 1fr' : '1fr', gap: 'var(--sp-6)' }}>

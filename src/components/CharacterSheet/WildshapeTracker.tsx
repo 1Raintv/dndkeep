@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MONSTERS } from '../../data/monsters';
+import { useState, useMemo } from 'react';
+import { useMonsters } from '../../lib/hooks/useMonsters';
 import type { Character } from '../../types';
 
 interface WildshapeTrackerProps {
@@ -25,9 +25,9 @@ function maxWildsnapeCR(level: number): number {
   return 1;
 }
 
-const beasts = MONSTERS.filter(m => m.type === 'Beast');
-
 export default function WildshapeTracker({ character, onUpdate }: WildshapeTrackerProps) {
+  const { monsters } = useMonsters();
+  const beasts = useMemo(() => monsters.filter(m => m.type === 'Beast'), [monsters]);
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [hpInput, setHpInput] = useState('');

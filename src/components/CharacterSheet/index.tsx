@@ -1,10 +1,10 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, ActiveBuff } from '../../types';
+import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, ActiveBuff, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
-import { SPELL_MAP, SPELLS } from '../../data/spells';
+import { useSpells } from '../../lib/hooks/useSpells';
 import { FEATS } from '../../data/feats';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -46,6 +46,8 @@ import { PlayerRollPrompt } from '../Campaign/RollRequest';
 import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
+import { useCampaign } from '../../context/CampaignContext';
+import { resolveAutomation } from '../../lib/automations';
 
 type Tab = 'actions' | 'abilities' | 'features' | 'spells' | 'inventory' | 'bio' | 'history';
 
@@ -260,7 +262,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     setCurrentTurnName(current.name ?? '');
     setIsMyTurn(current.character_id === character.id || current.name === character.name);
   }
-  const [concentrationSpellId, setConcentrationSpellId] = useState<string | null>(null);
+  // Concentration: derived from character.concentration_spell (persisted in DB).
+  // Empty string means "not concentrating" — same as null at the React layer.
+  // Writes go through setConcentration(), which persists immediately so a refresh
+  // mid-combat won't silently drop the spell.
+  const concentrationSpellId = character.concentration_spell || null;
   const [concentrationSaveDC, setConcentrationSaveDC] = useState<number | null>(null);
 
   // Keyboard shortcuts: R = rest, I = inspiration
@@ -308,16 +314,69 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     else debouncedFlush();
   }
 
+  /** Persist concentration spell ID immediately to DB so it survives refresh. */
+  function setConcentration(spellId: string | null) {
+    applyUpdate({ concentration_spell: spellId ?? '' }, true);
+  }
+
+  // ------------------------------------------------------------------
+  // Automation framework — resolve campaign + character settings
+  // ------------------------------------------------------------------
+  const { campaigns } = useCampaign();
+  const activeCampaign = useMemo(
+    () => campaigns.find(c => c.id === character.campaign_id) ?? null,
+    [campaigns, character.campaign_id]
+  );
+
+  /**
+   * Shared concentration-save roll. Used by both the Prompt popup's Roll
+   * button and the Auto path in handleUpdateHP. Rolls 1d20 + CON save
+   * bonus vs the DC, logs to the action log, and drops concentration on
+   * a failed save. Returns the roll result for callers that want it.
+   */
+  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
+    const conScore = character.constitution ?? 10;
+    const conMod = Math.floor((conScore - 10) / 2);
+    const pb = Math.ceil(character.level / 4) + 1;
+    const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
+    const saveBonus = conMod + (hasSaveProf ? pb : 0);
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const total = d20 + saveBonus;
+    const passed = total >= dc;
+    if (!passed) setConcentration(null);
+    import('../shared/ActionLog').then(({ logAction }) => {
+      logAction({
+        campaignId: character.campaign_id,
+        characterId: userId ?? '',
+        characterName: character.name,
+        actionType: 'save',
+        actionName: 'Concentration Check',
+        diceExpression: '1d20',
+        individualResults: [d20],
+        total,
+        notes: `DC ${dc} · ${passed ? '✓ Maintained' : '✗ Concentration broken'}`,
+      });
+    });
+    return { passed, total, d20 };
+  }
+
   // ------------------------------------------------------------------
   // Handlers
   // ------------------------------------------------------------------
   function handleUpdateHP(current_hp: number, temp_hp: number) {
-    // Concentration save check — if taking damage while concentrating
+    // Concentration save check — if taking damage while concentrating,
+    // respect the concentration_on_damage automation setting.
     const damageTaken = current_hp < character.current_hp;
     if (damageTaken && concentrationSpellId) {
       const damage = character.current_hp - current_hp;
       const dc = Math.max(10, Math.floor(damage / 2));
-      setConcentrationSaveDC(dc);
+      const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
+      if (mode === 'prompt') {
+        setConcentrationSaveDC(dc);
+      } else if (mode === 'auto') {
+        rollConcentrationSave(dc);
+      }
+      // 'off' → no action
     }
     applyUpdate({ current_hp, temp_hp }, true);
   }
@@ -328,7 +387,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     // Auto-drop concentration if an incapacitating condition is applied
     const breaksConc = active_conditions.some(c => CONDITION_MAP[c]?.concentrationBreaks);
     if (breaksConc && concentrationSpellId) {
-      setConcentrationSpellId(null);
       applyUpdate({ active_conditions, concentration_spell: '' }, true);
     } else {
       applyUpdate({ active_conditions }, true);
@@ -427,7 +485,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       class_resources: newResources,
       feature_uses: {}, // All per-rest feature uses reset on long rest
     }, true);
-    setConcentrationSpellId(null);
+    setConcentration(null);
     setShortRestHpGained(0);
     setShowRest(false);
   }
@@ -435,10 +493,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   // ------------------------------------------------------------------
   // Derived
   // ------------------------------------------------------------------
+  const { spells: allSpells, spellMap } = useSpells();
   const hasSpellSlots = Object.values(character.spell_slots).some((s: any) => s.total > 0);
   const allSpellIds = [...new Set([...character.known_spells, ...character.prepared_spells])];
   const knownSpellData = allSpellIds
-    .map(id => SPELL_MAP[id])
+    .map(id => spellMap[id])
     .filter(Boolean)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
@@ -449,7 +508,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   }, 0);
 
   // All spells available to this class at this level (not yet added)
-  const availableSpells = SPELLS.filter(spell =>
+  const availableSpells = allSpells.filter(spell =>
     spell.classes.includes(character.class_name) &&
     (spell.level === 0 || spell.level <= maxSpellLevel) &&
     !allSpellIds.includes(spell.id)
@@ -553,7 +612,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
         const pb = Math.ceil(character.level / 4) + 1;
         const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
         const saveBonus = conMod + (hasSaveProf ? pb : 0);
-        const spellName = SPELL_MAP[concentrationSpellId]?.name ?? 'Concentration';
+        const spellName = spellMap[concentrationSpellId]?.name ?? 'Concentration';
         return (
           <div style={{
             padding: '12px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
@@ -571,17 +630,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             </div>
             <button
               onClick={() => {
-                const d20 = Math.floor(Math.random() * 20) + 1;
-                const total = d20 + saveBonus;
-                const passed = total >= concentrationSaveDC!;
-                if (!passed) setConcentrationSpellId(null);
+                rollConcentrationSave(concentrationSaveDC!);
                 setConcentrationSaveDC(null);
-                import('../shared/ActionLog').then(({ logAction }) => {
-                  logAction({ campaignId: character.campaign_id, characterId: userId ?? '', characterName: character.name,
-                    actionType: 'save', actionName: 'Concentration Check',
-                    diceExpression: '1d20', individualResults: [d20], total,
-                    notes: `DC ${concentrationSaveDC} · ${passed ? '✓ Maintained' : '✗ Concentration broken'}` });
-                });
               }}
               style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
                 background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.5)', color: '#a78bfa' }}
@@ -597,7 +647,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
       })()}
 
       {concentrationSpellId && (() => {
-        const spell = SPELL_MAP[concentrationSpellId];
+        const spell = spellMap[concentrationSpellId];
         return spell ? (
           <div className="animate-fade-in" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -619,7 +669,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               </div>
             </div>
             <button
-              onClick={() => setConcentrationSpellId(null)}
+              onClick={() => setConcentration(null)}
               className="btn-secondary btn-sm"
               style={{ flexShrink: 0, borderColor: 'rgba(167,139,250,0.4)', color: '#a78bfa' }}
             >
@@ -810,9 +860,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
             Concentrating:
           </span>
           <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-1)', flex: 1 }}>
-            {SPELL_MAP[concentrationSpellId]?.name ?? concentrationSpellId}
+            {spellMap[concentrationSpellId]?.name ?? concentrationSpellId}
           </span>
-          <button className="btn-ghost btn-sm" onClick={() => setConcentrationSpellId(null)}
+          <button className="btn-ghost btn-sm" onClick={() => setConcentration(null)}
             style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
             End
           </button>
@@ -1036,7 +1086,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
               applyUpdate({ known_spells: [...character.known_spells, id] }, true);
             }}
             onRemoveSpell={id => {
-              if (concentrationSpellId === id) setConcentrationSpellId(null);
+              if (concentrationSpellId === id) setConcentration(null);
               applyUpdate({ known_spells: character.known_spells.filter(x => x !== id), prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
             }}
             onTogglePrepared={id => {
@@ -1054,7 +1104,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                 applyUpdate({ prepared_spells: [...character.prepared_spells, id] }, true);
               }
             }}
-            onConcentrate={id => setConcentrationSpellId(concentrationSpellId === id ? null : id)}
+            onConcentrate={id => setConcentration(concentrationSpellId === id ? null : id)}
             userId={userId}
             campaignId={character.campaign_id}
           />
@@ -1535,7 +1585,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 function SpellRow({
   spell, isPrepared, isConcentrating, castButton, onTogglePrepared, onConcentrate, onRemove,
 }: {
-  spell: NonNullable<typeof SPELL_MAP[string]>;
+  spell: SpellData;
   isPrepared: boolean;
   isConcentrating: boolean;
   castButton?: ReactNode;

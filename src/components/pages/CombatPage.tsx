@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { Combatant, ConditionName } from '../../types';
-import { MONSTERS, formatCR } from '../../data/monsters';
+import { getMonsterById } from '../../lib/hooks/useMonsters';
 import { abilityModifier, rollDie } from '../../lib/gameUtils';
 import { CONDITIONS } from '../../data/conditions';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,7 +28,7 @@ export default function CombatPage() {
   const activeTurnIdx = active ? currentTurn % Math.max(1, sorted.length) : -1;
 
   function addMonster(monsterId: string) {
-    const m = MONSTERS.find(x => x.id === monsterId);
+    const m = getMonsterById(monsterId);
     if (!m) return;
     const newC: Combatant = {
       id: uuidv4(),
@@ -105,7 +105,7 @@ export default function CombatPage() {
   const [xpEarned, setXpEarned] = useState(0);
 
   function awardMonsterXP(monsterId: string) {
-    const m = MONSTERS.find(x => x.id === monsterId);
+    const m = getMonsterById(monsterId);
     if (m) setXpEarned(prev => prev + m.xp);
   }
 
@@ -142,7 +142,7 @@ export default function CombatPage() {
   function rollAllInitiative() {
     setCombatants(prev => prev.map(c => {
       if (c.is_monster) {
-        const m = MONSTERS.find(x => x.id === c.monster_id);
+        const m = getMonsterById(c.monster_id ?? '');
         return { ...c, initiative: rollDie(20) + (m ? abilityModifier(m.dex) : 0) };
       }
       return { ...c, initiative: rollDie(20) };

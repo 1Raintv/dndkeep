@@ -4,8 +4,10 @@ import { abilityModifier, formatModifier } from '../../lib/gameUtils';
 import LevelUp from './LevelUp';
 import { deleteCharacter } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { useCampaign } from '../../context/CampaignContext';
+import { AUTOMATIONS, resolveAutomation, labelForValue, type AutomationValue } from '../../lib/automations';
 
-type SettingsTab = 'stats' | 'levelup' | 'export' | 'danger';
+type SettingsTab = 'stats' | 'levelup' | 'automations' | 'export' | 'danger';
 
 interface CharacterSettingsProps {
   character: Character;
@@ -131,10 +133,20 @@ function AbilityRow({
 
 export default function CharacterSettings({ character, onUpdate, onClose }: CharacterSettingsProps) {
   const navigate = useNavigate();
+  const { campaigns } = useCampaign();
+  const activeCampaign = campaigns.find(c => c.id === character.campaign_id) ?? null;
   const [tab, setTab] = useState<SettingsTab>('stats');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
+
+  function setAutomationOverride(key: string, value: AutomationValue | null) {
+    const current = character.automation_overrides ?? {};
+    const next = { ...current };
+    if (value === null) delete next[key];
+    else next[key] = value;
+    onUpdate({ automation_overrides: next });
+  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -148,10 +160,11 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
   }
 
   const tabs: { id: SettingsTab; label: string }[] = [
-    { id: 'stats',   label: 'Edit Stats' },
-    { id: 'levelup', label: 'Level Up' },
-    { id: 'export',  label: '📄 Export' },
-    { id: 'danger',  label: 'Danger Zone' },
+    { id: 'stats',       label: 'Edit Stats' },
+    { id: 'levelup',     label: 'Level Up' },
+    { id: 'automations', label: '⚙️ Automations' },
+    { id: 'export',      label: '📄 Export' },
+    { id: 'danger',      label: 'Danger Zone' },
   ];
 
   return (
@@ -384,6 +397,88 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   </button>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Automations */}
+          {tab === 'automations' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+              <div style={{ padding: 'var(--sp-3) var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', background: 'var(--c-surface-1)' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.6 }}>
+                  Your DM sets automation defaults for this campaign. Unlock custom automations to override them on this character only.
+                </p>
+              </div>
+
+              {/* Unlock toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)' }}>
+                <span style={{ fontSize: 18 }}>{character.advanced_automations_unlocked ? '🔓' : '🔒'}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
+                    Custom automations {character.advanced_automations_unlocked ? 'unlocked' : 'locked'}
+                  </div>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
+                    {character.advanced_automations_unlocked
+                      ? 'This character uses your per-setting overrides below. Remove an override to fall back to the DM default.'
+                      : 'This character follows the DM campaign defaults. Unlock to override per-automation.'}
+                  </div>
+                </div>
+                <button
+                  className={character.advanced_automations_unlocked ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
+                  onClick={() => onUpdate({ advanced_automations_unlocked: !character.advanced_automations_unlocked })}
+                >
+                  {character.advanced_automations_unlocked ? 'Lock' : 'Unlock'}
+                </button>
+              </div>
+
+              {/* Per-automation rows */}
+              {AUTOMATIONS.map(auto => {
+                const campaignDefault = activeCampaign?.automation_defaults?.[auto.key];
+                const override = character.automation_overrides?.[auto.key];
+                const effective = resolveAutomation(auto.key, character, activeCampaign);
+                const unlocked = character.advanced_automations_unlocked;
+                return (
+                  <div key={auto.key} style={{ padding: 'var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', background: 'var(--c-surface-1)' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)', marginBottom: 'var(--sp-2)' }}>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
+                        {auto.label}
+                      </span>
+                      <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginLeft: 'auto' }}>
+                        Effective: <strong style={{ color: 'var(--c-gold-l)' }}>{labelForValue(effective)}</strong>
+                      </span>
+                    </div>
+                    <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.6, marginBottom: 'var(--sp-3)' }}>
+                      {auto.description}
+                    </p>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginBottom: 'var(--sp-2)' }}>
+                      DM default: <strong>{campaignDefault ? labelForValue(campaignDefault) : `${labelForValue(auto.default)} (built-in)`}</strong>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', opacity: unlocked ? 1 : 0.5 }}>
+                      {auto.allowed.map(v => {
+                        const selected = override === v;
+                        return (
+                          <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', border: `1px solid ${selected ? 'var(--c-gold)' : 'var(--c-border)'}`, borderRadius: 'var(--r-sm)', cursor: unlocked ? 'pointer' : 'not-allowed', background: selected ? 'rgba(201,146,42,0.12)' : 'transparent' }}>
+                            <input
+                              type="radio"
+                              name={`override-${auto.key}`}
+                              checked={selected}
+                              disabled={!unlocked}
+                              onChange={() => setAutomationOverride(auto.key, v)}
+                            />
+                            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: selected ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
+                              {labelForValue(v)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {override && unlocked && (
+                        <button className="btn-ghost btn-sm" onClick={() => setAutomationOverride(auto.key, null)} style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
+                          Clear override
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
