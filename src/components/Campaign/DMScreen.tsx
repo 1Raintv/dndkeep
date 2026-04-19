@@ -18,6 +18,7 @@ interface PartyMember {
   initiative_bonus: number;
   active_conditions: string[];
   concentration_spell: string;
+  concentration_rounds_remaining: number | null;
   avatar_url: string | null;
   inspiration: boolean;
   spell_slots: any;
@@ -101,7 +102,7 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
 
   async function loadParty() {
     const { data } = await supabase.from('characters')
-      .select('id,name,class_name,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,active_conditions,concentration_spell,avatar_url,inspiration,spell_slots,wisdom,skill_proficiencies,skill_expertises,death_saves_successes,death_saves_failures')
+      .select('id,name,class_name,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,active_conditions,concentration_spell,concentration_rounds_remaining,avatar_url,inspiration,spell_slots,wisdom,skill_proficiencies,skill_expertises,death_saves_successes,death_saves_failures')
       .eq('campaign_id', campaign.id).order('name');
     if (data) setParty(data as PartyMember[]);
   }
@@ -136,10 +137,66 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
     setParty(prev => prev.map(p => p.id === m.id ? { ...p, active_conditions: next } : p));
   }
 
+  // v2.42.0: When a new combat round starts, tick down every party member's
+  // concentration timer by one round (= 6 seconds). Any character whose timer
+  // hits 0 has their concentration auto-dropped and gets surfaced in a toast.
+  const [roundTickToast, setRoundTickToast] = useState<string | null>(null);
+
+  async function tickConcentrationTimers() {
+    const decremented: string[] = [];
+    const expired: string[] = [];
+    const updates: Promise<unknown>[] = [];
+
+    party.forEach(p => {
+      const rounds = p.concentration_rounds_remaining;
+      if (rounds === null || rounds === undefined || !p.concentration_spell) return;
+      const next = rounds - 1;
+      if (next <= 0) {
+        // Auto-drop concentration
+        expired.push(p.name);
+        updates.push(updatePlayer(p.id, {
+          concentration_spell: '',
+          concentration_rounds_remaining: null,
+        } as any));
+      } else {
+        decremented.push(p.name);
+        updates.push(updatePlayer(p.id, {
+          concentration_rounds_remaining: next,
+        } as any));
+      }
+    });
+
+    if (updates.length === 0) return;
+    await Promise.all(updates);
+
+    // Optimistic local state update
+    setParty(prev => prev.map(p => {
+      const rounds = p.concentration_rounds_remaining;
+      if (rounds === null || rounds === undefined || !p.concentration_spell) return p;
+      const next = rounds - 1;
+      if (next <= 0) return { ...p, concentration_spell: '', concentration_rounds_remaining: null };
+      return { ...p, concentration_rounds_remaining: next };
+    }));
+
+    // Toast — prioritize expirations, otherwise summarize the decrement
+    if (expired.length > 0) {
+      setRoundTickToast(`${expired.join(', ')} ${expired.length === 1 ? 'has' : 'have'} lost concentration (timer expired)`);
+      setTimeout(() => setRoundTickToast(null), 5000);
+    } else if (decremented.length > 0) {
+      setRoundTickToast(`Ticked ${decremented.length} concentration timer${decremented.length === 1 ? '' : 's'}`);
+      setTimeout(() => setRoundTickToast(null), 2500);
+    }
+  }
+
   function nextTurn() {
     if (!sorted.length) return;
     const next = (currentTurn + 1) % sorted.length;
-    onUpdateSession({ current_turn: next, round: next === 0 ? round + 1 : round });
+    const isNewRound = next === 0;
+    onUpdateSession({ current_turn: next, round: isNewRound ? round + 1 : round });
+    // Only tick concentration when a NEW round starts (not on every individual turn)
+    if (isNewRound) {
+      tickConcentrationTimers();
+    }
   }
 
   function prevTurn() {
@@ -163,7 +220,24 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
   ] as const;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, position: 'relative' }}>
+
+      {/* v2.42.0: Concentration tick toast — appears top-right when round advances and timers tick */}
+      {roundTickToast && (
+        <div style={{
+          position: 'fixed', top: 70, right: 20, zIndex: 1000,
+          padding: '10px 16px', borderRadius: 'var(--r-md)',
+          background: roundTickToast.includes('lost concentration') ? 'rgba(239,68,68,0.18)' : 'rgba(167,139,250,0.18)',
+          border: `1px solid ${roundTickToast.includes('lost concentration') ? 'rgba(239,68,68,0.5)' : 'rgba(167,139,250,0.5)'}`,
+          color: roundTickToast.includes('lost concentration') ? '#fca5a5' : '#c4b5fd',
+          fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 600,
+          maxWidth: 420,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          animation: 'pulse-gold 0.4s ease-out',
+        }}>
+          {roundTickToast.includes('lost concentration') ? '⚠ ' : '⏱ '}{roundTickToast}
+        </div>
+      )}
 
       {/* ── Header bar ── */}
       <div style={{
