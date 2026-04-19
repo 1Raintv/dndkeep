@@ -406,6 +406,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Short rest: roll hit dice to recover HP
  const [shortRestHpGained, setShortRestHpGained] = useState(0);
  const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'|'limited'>('all');
+ // v2.34.1: Content-type filter for Actions tab. Empty set = show all categories.
+ type ContentKind = 'weapon' | 'spell' | 'ability' | 'item';
+ const [contentFilters, setContentFilters] = useState<Set<ContentKind>>(new Set());
+ // v2.34.1: Upcast toggle lives on Actions tab too (mirrors SpellsTab behavior)
+ const [actionsShowUpcasts, setActionsShowUpcasts] = useState(false);
  const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
  // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
  const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
@@ -1183,7 +1188,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* Filter chips */}
  <div>
- <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+ <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
  {([
  { id: 'all', label: 'All' },
  { id: 'limited', label: '⏳ Limited Use' },
@@ -1211,8 +1216,57 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
  </div>
 
+ {/* v2.34.1: Content-type filters — multi-select. Empty set = show all. */}
+ <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+ <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginRight: 4 }}>
+ Show:
+ </span>
+ {([
+ { id: 'weapon' as const, label: 'Weapons', color: '#f87171' },
+ { id: 'spell' as const, label: 'Spells', color: '#a78bfa' },
+ { id: 'ability' as const, label: 'Abilities', color: '#fbbf24' },
+ { id: 'item' as const, label: 'Items', color: '#4ade80' },
+ ]).map(f => {
+ const active = contentFilters.has(f.id);
+ return (
+ <button key={f.id} onClick={() => {
+ setContentFilters(prev => {
+ const next = new Set(prev);
+ if (next.has(f.id)) next.delete(f.id); else next.add(f.id);
+ return next;
+ });
+ }}
+ style={{
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+ letterSpacing: '.06em', textTransform: 'uppercase',
+ padding: '4px 10px', borderRadius: 20, cursor: 'pointer', minHeight: 0,
+ border: `1px solid ${active ? f.color : 'var(--c-border)'}`,
+ background: active ? `${f.color}22` : 'transparent',
+ color: active ? f.color : 'var(--t-3)',
+ transition: 'all .15s',
+ }}>
+ {f.label}
+ </button>
+ );
+ })}
+ {contentFilters.size > 0 && (
+ <button onClick={() => setContentFilters(new Set())} style={{
+ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 10, letterSpacing: '.04em',
+ padding: '4px 8px', borderRadius: 20, cursor: 'pointer', minHeight: 0,
+ border: '1px solid var(--c-border)', background: 'transparent',
+ color: 'var(--t-3)',
+ }}>
+ Clear
+ </button>
+ )}
+ </div>
+ </div>
+
+ {/* v2.34.1: content-filter helpers. empty set = show all kinds. */}
+ {(() => null)()}
+
  {/* Weapons — merged from weapons list + equipped inventory */}
- {combatFilter === 'all' && (
+ {combatFilter === 'all' && (contentFilters.size === 0 || contentFilters.has('weapon')) && (
  <WeaponsTracker
  weapons={allWeapons}
  onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
@@ -1225,13 +1279,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  {/* Class Abilities — with DDB-style section labels */}
- {combatFilter === 'all' && (
+ {combatFilter === 'all' && (contentFilters.size === 0 || contentFilters.has('ability')) && (
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 5, marginTop: 4 }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
  ABILITIES &amp; RESOURCES
  </span>
  </div>
  )}
+ {(contentFilters.size === 0 || contentFilters.has('ability')) && (
  <ClassAbilitiesSection
  character={character}
  combatFilter={combatFilter}
@@ -1239,9 +1294,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  userId={userId}
  campaignId={character.campaign_id}
  />
+ )}
 
  {/* Health Potions — consumables that are actions on your turn */}
- {(combatFilter === 'all' || combatFilter === 'action') && (() => {
+ {(combatFilter === 'all' || combatFilter === 'action') && (contentFilters.size === 0 || contentFilters.has('item')) && (() => {
  const potions = (character.inventory ?? []).filter((item: any) =>
  item.category === 'Potion' && item.quantity > 0
  );
@@ -1272,7 +1328,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* Action / Bonus / Reaction features */}
  {/* Active Feats — feats with usable abilities */}
- {(() => {
+ {(contentFilters.size === 0 || contentFilters.has('ability')) && (() => {
  const featNames = character.gained_feats ?? [];
  const ACTIVE_KW = ['magic action', 'bonus action', 'reaction', 'once per', 'luck point', 'spend', 'expend', 'per long rest', 'per short rest'];
  const activeFeats = featNames.filter(name => {
@@ -1294,8 +1350,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return null;
  })()}
 
- {/* ── PREPARED SPELLS ── */}
- {(() => {
+ {(contentFilters.size === 0 || contentFilters.has('spell')) && (() => {
  const isSpellcaster = character.is_spellcaster ||
  Object.values(character.spell_slots).some((s: any) => s.total > 0);
  if (!isSpellcaster) return null;
@@ -1315,8 +1370,26 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (!isNaN(lvl) && v?.total) slotsByLevel[lvl] = { total: v.total, used: v.used ?? 0, remaining: v.total - (v.used ?? 0) };
  });
 
+ // Highest slot level with any total — used to cap upcast expansion
+ const maxSlotLevel = Math.max(0, ...Object.entries(slotsByLevel).map(([k, v]) => (v.total > 0 ? parseInt(k) : 0)));
+
  const cantrips = readySpells.filter(s => s.level === 0);
- const leveled = readySpells.filter(s => s.level > 0);
+ const leveledBase = readySpells.filter(s => s.level > 0);
+
+ // v2.34.1: expand leveled list with upcast variants when toggle is on.
+ // Each row carries effectiveLevel (slot tier) + isUpcast.
+ type ReadyRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
+ const leveled: ReadyRow[] = [];
+ leveledBase.forEach(s => {
+ leveled.push({ ...s, effectiveLevel: s.level, isUpcast: false });
+ if (actionsShowUpcasts) {
+ for (let up = s.level + 1; up <= Math.min(9, maxSlotLevel); up++) {
+ leveled.push({ ...s, effectiveLevel: up, isUpcast: true });
+ }
+ }
+ });
+ // Sort by effectiveLevel so upcasts group under the right tier
+ leveled.sort((a, b) => a.effectiveLevel - b.effectiveLevel || a.name.localeCompare(b.name));
 
  // Check if any leveled spells have slots remaining
  const hasAnySlots = leveled.some(s => {
@@ -1335,10 +1408,36 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return (
  <div style={{ marginTop: 'var(--sp-3)' }}>
  {/* SPELLS section header — DDB style */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(167,139,250,0.2)', paddingBottom: 5, marginBottom: 8 }}>
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(167,139,250,0.2)', paddingBottom: 5, marginBottom: 8, gap: 8, flexWrap: 'wrap' as const }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as 'uppercase', color: '#a78bfa' }}>
  SPELLS
  </span>
+ {/* v2.34.1: Upcast toggle inline in the spells header */}
+ <button
+ onClick={() => setActionsShowUpcasts(v => !v)}
+ title="Show spells at every upcast tier they can be cast at"
+ style={{
+ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto',
+ padding: '3px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+ border: `1px solid ${actionsShowUpcasts ? 'rgba(167,139,250,0.5)' : 'var(--c-border-m)'}`,
+ background: actionsShowUpcasts ? 'rgba(167,139,250,0.12)' : 'transparent',
+ color: actionsShowUpcasts ? '#a78bfa' : 'var(--t-3)',
+ }}
+ >
+ <span aria-hidden style={{
+ display: 'inline-block', width: 10, height: 10, borderRadius: 2,
+ border: `1.5px solid ${actionsShowUpcasts ? '#a78bfa' : 'var(--c-border-m)'}`,
+ background: actionsShowUpcasts ? '#a78bfa' : 'transparent',
+ position: 'relative',
+ }}>
+ {actionsShowUpcasts && (
+ <span style={{ position: 'absolute', top: -2, left: 1, color: '#000', fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>
+ )}
+ </span>
+ <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>
+ Upcast variants
+ </span>
+ </button>
  {isPreparer && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>{character.prepared_spells.length} prepared</span>}
  </div>
 
@@ -1367,20 +1466,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
- {[...cantrips, ...leveled].map(spell => {
+ {[...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled].map(spell => {
  const sc = schoolColor[spell.school] ?? '#a78bfa';
- // Gray out if no slots available for this spell level
- const slotsExhausted = spell.level > 0 && (() => {
- for (let lvl = spell.level; lvl <= 9; lvl++) {
- if ((slotsByLevel[lvl]?.remaining ?? 0) > 0) return false;
- }
- return true;
- })();
+ const eff = (spell as any).effectiveLevel ?? spell.level;
+ const isUpcast = !!(spell as any).isUpcast;
+ // Gray out if no slots available for this spell's cast tier
+ const slotsExhausted = eff > 0 && (slotsByLevel[eff]?.remaining ?? 0) === 0;
 
  return (
- <div key={spell.id} style={{
+ <div key={`${spell.id}-${eff}`} style={{
  display: 'grid',
- gridTemplateColumns: '60px 3px 1fr 70px 80px auto',
+ gridTemplateColumns: '70px 3px 1fr 70px 80px auto',
  alignItems: 'center', gap: '0 10px',
  padding: '8px 12px', borderRadius: 'var(--r-md)', minHeight: 44,
  border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.15)' : 'rgba(167,139,250,0.18)'}`,
@@ -1389,7 +1485,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}>
  {/* Col 0: Level badge or AT WILL */}
  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
- {spell.level === 0 ? (
+ {eff === 0 ? (
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.06em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
  ) : (
  <span style={{
@@ -1399,8 +1495,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.3)' : `${sc}45`}`,
  background: slotsExhausted ? 'rgba(239,68,68,0.08)' : `${sc}0f`,
  whiteSpace: 'nowrap' as const,
- }}>
- Lvl {spell.level}
+ }} title={isUpcast ? `Upcast as level ${eff}` : undefined}>
+ Lvl {eff}{isUpcast ? '↑' : ''}
  </span>
  )}
  </div>
@@ -1443,6 +1539,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  campaignId={character.campaign_id}
  onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
  compact={true}
+ forceSlotLevel={isUpcast ? eff : undefined}
  spellLockedOut={
  (spellCastThisTurn && spell.level > 0) ||
  (bonusActionSpellCast && spell.level > 0)
@@ -1461,7 +1558,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  );
  })()}
 
- </div>
  </div>
  );
  })()}

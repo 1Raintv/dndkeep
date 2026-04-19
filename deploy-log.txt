@@ -1,17 +1,4 @@
-DNDKeep deploy log — Sun 04/19/2026 11:26:49.13 
+DNDKeep deploy log — Sun 04/19/2026 11:36:44.30 
 Working dir: C:\dev\DNDKeep 
  
- Detected version: 2.34.0 
-warning: in the working copy of 'src/components/CharacterSheet/CharacterHeader.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/components/CharacterSheet/ConditionPickerModal.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/components/CharacterSheet/HPStatsPanel.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/components/CharacterSheet/Inventory.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/components/CharacterSheet/SpellCastButton.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/components/CharacterSheet/SpellsTab.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/components/CharacterSheet/index.tsx', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'src/version.ts', LF will be replaced by CRLF the next time Git touches it
-[main 3fa1f8e] deploy: v2.34.0 built 2026-04-19 11:26
- 7 files changed, 167 insertions(+), 38 deletions(-)
- create mode 100644 ts-output.tmp
-To https://github.com/1Raintv/dndkeep.git
-   0745ad1..3fa1f8e  main -> main
+ Detected version: 2.34.1 
