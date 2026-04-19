@@ -220,6 +220,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }
  }
  if (Object.keys(patch).length > 0) {
+ // v2.47.0: Detect external concentration clear (DM-driven round tick,
+ // BattleMap damage auto-drop, etc.). If the realtime patch clears
+ // concentration_spell and we WERE concentrating, fire a toast.
+ const oldConcSpell = current['concentration_spell'] as string;
+ const newConcSpell = (patch as any).concentration_spell as string | undefined;
+ if (oldConcSpell && newConcSpell === '' && newConcSpell !== oldConcSpell) {
+ // Most common cause from external sync = round timer ran out via DM tick
+ showConcentrationLossToast(oldConcSpell, 'duration timer expired');
+ }
  setCharacter(prev => ({ ...prev, ...patch }));
  }
  })
@@ -272,6 +281,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // mid-combat won't silently drop the spell.
  const concentrationSpellId = character.concentration_spell || null;
  const [concentrationSaveDC, setConcentrationSaveDC] = useState<number | null>(null);
+ // v2.47.0: Concentration-loss toast — fires whenever concentration drops via:
+ // failed CON save, incapacitating condition, round timer expiry, or DM-driven
+ // tick from the realtime channel. Manual drops via the banner button are silent.
+ const [concentrationLossToast, setConcentrationLossToast] = useState<string | null>(null);
 
  // Keyboard shortcuts: R = rest, I = inspiration
  useKeyboardShortcuts({
@@ -330,6 +343,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  applyUpdate({ concentration_spell: spellId, concentration_rounds_remaining: rounds }, true);
  }
 
+ // v2.47.0: Fire a toast notifying the player they lost concentration.
+ // `reason` is a short phrase explaining why (e.g. "CON save failed", "timer expired").
+ // The spell name is looked up from the previously-concentrated spell ID.
+ function showConcentrationLossToast(spellId: string | null, reason: string) {
+ const spellName = spellId ? (spellMap[spellId]?.name ?? 'your spell') : 'your spell';
+ setConcentrationLossToast(`Lost concentration on ${spellName} — ${reason}`);
+ // Auto-dismiss after 6 seconds
+ setTimeout(() => setConcentrationLossToast(null), 6000);
+ }
+
  // ------------------------------------------------------------------
  // Automation framework — resolve campaign + character settings
  // ------------------------------------------------------------------
@@ -354,7 +377,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const d20 = Math.floor(Math.random() * 20) + 1;
  const total = d20 + saveBonus;
  const passed = total >= dc;
- if (!passed) setConcentration(null);
+ if (!passed) {
+ // v2.47.0: Notify the player that their concentration broke.
+ showConcentrationLossToast(concentrationSpellId, `CON save failed (${total} vs DC ${dc})`);
+ setConcentration(null);
+ }
  import('../shared/ActionLog').then(({ logAction }) => {
  logAction({
  campaignId: character.campaign_id,
@@ -398,7 +425,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Auto-drop concentration if an incapacitating condition is applied
  const breaksConc = active_conditions.some(c => CONDITION_MAP[c]?.concentrationBreaks);
  if (breaksConc && concentrationSpellId) {
- applyUpdate({ active_conditions, concentration_spell: '' }, true);
+ // v2.47.0: also clear timer + notify the player
+ const breakingConditions = active_conditions.filter(c => CONDITION_MAP[c]?.concentrationBreaks);
+ const reason = `gained ${breakingConditions[0] ?? 'an incapacitating'} condition`;
+ showConcentrationLossToast(concentrationSpellId, reason);
+ applyUpdate({ active_conditions, concentration_spell: '', concentration_rounds_remaining: null }, true);
  } else {
  applyUpdate({ active_conditions }, true);
  }
@@ -624,6 +655,43 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  />
  )}
 
+ {/* v2.47.0: Concentration-loss toast — fires when concentration drops via
+     CON save fail / incapacitation / timer expiry / DM-driven sync. Manual
+     drops via the banner Drop button stay silent (the user knows they did it). */}
+ {concentrationLossToast && (
+ <div
+ role="alert"
+ style={{
+ position: 'fixed', top: 70, right: 20, zIndex: 1000,
+ padding: '12px 18px', borderRadius: 'var(--r-md)',
+ background: 'rgba(239,68,68,0.18)',
+ border: '1px solid rgba(239,68,68,0.5)',
+ color: '#fca5a5',
+ fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 600,
+ maxWidth: 420,
+ boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+ display: 'flex', alignItems: 'flex-start', gap: 10,
+ animation: 'pulse-gold 0.4s ease-out',
+ }}
+ >
+ <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⚠</span>
+ <span style={{ flex: 1, lineHeight: 1.4 }}>{concentrationLossToast}</span>
+ <button
+ onClick={() => setConcentrationLossToast(null)}
+ aria-label="Dismiss"
+ style={{
+ background: 'none', border: 'none', color: '#fca5a5',
+ cursor: 'pointer', padding: 0, fontSize: 16, lineHeight: 1,
+ flexShrink: 0, opacity: 0.7,
+ }}
+ onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+ onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+ >
+ ✕
+ </button>
+ </div>
+ )}
+
  {/* Concentration banner */}
  {/* Concentration Save Prompt — shown when taking damage while concentrating */}
  {concentrationSaveDC !== null && concentrationSpellId && (() => {
@@ -734,7 +802,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onClick={() => {
  const next = Math.max(0, rounds - 1);
  if (next === 0) {
- // Auto-drop: clear concentration and clear the timer
+ // v2.47.0: Auto-drop + notify the player
+ showConcentrationLossToast(concentrationSpellId, 'duration timer expired');
  applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null }, true);
  } else {
  applyUpdate({ concentration_rounds_remaining: next }, true);
