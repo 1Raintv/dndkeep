@@ -245,7 +245,7 @@ export default function SpellsTab({
  className={character.class_name}
  maxLevel={maxSpellLevel}
  selected={character.known_spells}
- onToggle={id => character.known_spells.includes(id) ? (character.advanced_spell_edits_unlocked ? onRemoveSpell(id) : undefined) : onAddSpell(id)}
+ onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
  cantripMax={cantripMax}
  prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
  prepareCount={isPreparer ? preparedCount : isKnown ? getSpellCounts(character).known : undefined}
