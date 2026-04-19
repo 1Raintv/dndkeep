@@ -14,6 +14,9 @@ interface SpellCastButtonProps {
  compact?: boolean;
  spellLockedOut?: boolean; // true when a leveled spell was already cast this turn
  onLeveledSpellCast?: (isBonusAction?: boolean) => void; // called when a leveled spell is successfully cast
+ // v2.34: When set, forces the cast to use this specific slot level (upcast row).
+ // Skips the slot-picker UI and casts straight at this tier.
+ forceSlotLevel?: number;
 }
 
 const SAVE_COLORS: Record<string, string> = {
@@ -42,11 +45,12 @@ function rollNdS(count: number, sides: number): number[] {
 
 export default function SpellCastButton({
  spell, character, userId, campaignId, onUpdateSlots, compact = false,
- spellLockedOut = false, onLeveledSpellCast,
+ spellLockedOut = false, onLeveledSpellCast, forceSlotLevel,
 }: SpellCastButtonProps) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
- const [selectedSlot, setSelectedSlot] = useState<number>(spell.level);
+ // v2.34: if a specific upcast slot is forced by the parent row, start with it
+ const [selectedSlot, setSelectedSlot] = useState<number>(forceSlotLevel ?? spell.level);
  const [target, setTarget] = useState('');
  const { triggerRoll } = useDiceRoll();
 

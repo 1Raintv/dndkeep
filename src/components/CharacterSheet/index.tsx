@@ -1379,35 +1379,63 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  return (
  <div key={spell.id} style={{
- display: 'flex', alignItems: 'center', gap: 10,
- padding: '8px 12px', borderRadius: 'var(--r-md)',
+ display: 'grid',
+ gridTemplateColumns: '60px 3px 1fr 70px 80px auto',
+ alignItems: 'center', gap: '0 10px',
+ padding: '8px 12px', borderRadius: 'var(--r-md)', minHeight: 44,
  border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.15)' : 'rgba(167,139,250,0.18)'}`,
  background: slotsExhausted ? 'rgba(239,68,68,0.03)' : 'rgba(167,139,250,0.04)',
  opacity: slotsExhausted ? 0.55 : 1,
  }}>
- {/* Slot level / AT WILL badge — left side */}
- <div style={{ flexShrink: 0, width: 30, textAlign: 'center' }}>
+ {/* Col 0: Level badge or AT WILL */}
+ <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
  {spell.level === 0 ? (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.06em', textTransform: 'uppercase' as const, lineHeight: 1.2 }}>AT<br/>WILL</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.06em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
  ) : (
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13, color: slotsExhausted ? '#ef4444' : '#a78bfa', lineHeight: 1 }}>
- {spell.level}
- {spell.concentration && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 7, display: 'block', color: '#fbbf24', fontWeight: 700 }}>CONC</span>}
- </div>
+ <span style={{
+ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800,
+ color: slotsExhausted ? '#ef4444' : sc,
+ padding: '3px 8px', borderRadius: 6,
+ border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.3)' : `${sc}45`}`,
+ background: slotsExhausted ? 'rgba(239,68,68,0.08)' : `${sc}0f`,
+ whiteSpace: 'nowrap' as const,
+ }}>
+ Lvl {spell.level}
+ </span>
  )}
  </div>
- <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.7, flexShrink: 0 }} />
- <div style={{ flex: 1, minWidth: 0 }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+
+ {/* Col 1: School color bar */}
+ <div style={{ width: 3, height: 28, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.75 }} />
+
+ {/* Col 2: Name + school line */}
+ <div style={{ minWidth: 0 }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)' }}>
  {spell.name}
  </span>
- {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444' }}>🔒 No Slots</span>}
+ {spell.concentration && (
+ <span style={{ fontSize: 8, fontWeight: 800, color: '#fbbf24', letterSpacing: '0.06em' }}>● CONC</span>
+ )}
+ {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444' }}>No Slots</span>}
  </div>
- <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1 }}>
- {spell.casting_time} · {spell.range} · {spell.school}
+ <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
+ {spell.school}
  </div>
  </div>
+
+ {/* Col 3: Time */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
+ {spell.casting_time}
+ </div>
+
+ {/* Col 4: Range */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+ {spell.range}
+ </div>
+
+ {/* Col 5: Cast button */}
+ <div style={{ flexShrink: 0 }}>
  <SpellCastButton
  spell={spell}
  character={character}
@@ -1416,9 +1444,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
  compact={true}
  spellLockedOut={
- // Locked if: already cast leveled spell this turn
  (spellCastThisTurn && spell.level > 0) ||
- // OR: bonus action spell cast → main action cantrip only (but lockout doesn't apply to cantrips)
  (bonusActionSpellCast && spell.level > 0)
  }
  onLeveledSpellCast={(isBonusAction?: boolean) => {
@@ -1426,6 +1452,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (isBonusAction) setBonusActionSpellCast(true);
  }}
  />
+ </div>
  </div>
  );
  })}

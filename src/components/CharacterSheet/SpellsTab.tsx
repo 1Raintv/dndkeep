@@ -76,6 +76,9 @@ export default function SpellsTab({
  const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
  const [filterPrepared, setFilterPrepared] = useState(false);
  const [filterSchool, setFilterSchool] = useState<string | null>(null);
+ // v2.34: When true, a leveled spell renders once per available upcast slot level
+ // (e.g., Shatter shows at levels 2, 3, 4, 5... up to the highest available slot).
+ const [showUpcasts, setShowUpcasts] = useState(false);
 
  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
  const isKnown = isKnownCaster(character.class_name);
@@ -150,15 +153,44 @@ export default function SpellsTab({
  });
  }, [knownSpellData, activeLevel, filterPrepared, filterSchool, character.prepared_spells, isPreparer]);
 
- // Group visible spells by level
+ // Group visible spells by level. When showUpcasts is on, each leveled spell
+ // is rendered once per slot-level tier from its base level up to the max
+ // available slot — so Shatter (level 2) appears at 2, 3, 4, 5, etc.
+ // Each cloned entry carries an `effectiveLevel` property that differs from
+ // the spell's intrinsic level when upcasted.
+ const maxAvailableSlotLevel = useMemo(() => {
+ let max = 0;
+ Object.entries(slotsPerLevel).forEach(([k, total]) => {
+ const lvl = parseInt(k);
+ if (!isNaN(lvl) && total > 0 && lvl > max) max = lvl;
+ });
+ return max;
+ }, [slotsPerLevel]);
+
+ type SpellRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
+
  const byLevel = useMemo(() => {
- const map: Record<number, SpellData[]> = {};
+ const map: Record<number, SpellRow[]> = {};
  visibleSpells.forEach(s => {
+ // Cantrips never upcast
+ if (s.level === 0) {
+ if (!map[0]) map[0] = [];
+ map[0].push({ ...s, effectiveLevel: 0, isUpcast: false });
+ return;
+ }
+ // Base-level entry
  if (!map[s.level]) map[s.level] = [];
- map[s.level].push(s);
+ map[s.level].push({ ...s, effectiveLevel: s.level, isUpcast: false });
+ // Upcast entries
+ if (showUpcasts && maxAvailableSlotLevel > s.level) {
+ for (let up = s.level + 1; up <= Math.min(9, maxAvailableSlotLevel); up++) {
+ if (!map[up]) map[up] = [];
+ map[up].push({ ...s, effectiveLevel: up, isUpcast: true });
+ }
+ }
  });
  return map;
- }, [visibleSpells]);
+ }, [visibleSpells, showUpcasts, maxAvailableSlotLevel]);
 
  if (!hasSpellSlots) {
  return (
@@ -269,6 +301,42 @@ export default function SpellsTab({
  );
  })()}
 
+ {/* ── v2.34: Upcast toggle ── */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+ <button
+ onClick={() => setShowUpcasts(v => !v)}
+ title="Toggle whether leveled spells appear at every upcast tier"
+ style={{
+ display: 'inline-flex', alignItems: 'center', gap: 6,
+ padding: '5px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+ border: `1px solid ${showUpcasts ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
+ background: showUpcasts ? 'var(--c-gold-bg)' : 'transparent',
+ color: showUpcasts ? 'var(--c-gold-l)' : 'var(--t-2)',
+ transition: 'all 0.15s',
+ }}
+ >
+ <span aria-hidden style={{
+ display: 'inline-block', width: 12, height: 12, borderRadius: 3,
+ border: `1.5px solid ${showUpcasts ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+ background: showUpcasts ? 'var(--c-gold)' : 'transparent',
+ position: 'relative',
+ }}>
+ {showUpcasts && (
+ <span style={{
+ position: 'absolute', top: -1, left: 2,
+ color: '#000', fontSize: 10, fontWeight: 900, lineHeight: 1,
+ }}>✓</span>
+ )}
+ </span>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.04em' }}>
+ Show upcast variants
+ </span>
+ </button>
+ <span style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>
+ {showUpcasts ? 'Spells appear at every slot tier they can be cast at' : 'One row per spell; upcast prompt at cast time'}
+ </span>
+ </div>
+
  {/* ── Level tabs ── */}
  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
  <LevelTab label="All" count={knownSpellData.length} active={activeLevel === 'all'} onClick={() => setActiveLevel('all')} />
@@ -357,7 +425,7 @@ export default function SpellsTab({
 
  {/* Column headers — show once for cantrips, once for leveled */}
  {lvl === 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '24px 3px 1fr 46px 70px 74px 80px auto 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ <div style={{ display: 'grid', gridTemplateColumns: '90px 3px 1fr 46px 70px 74px 80px auto 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
  {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', 'EFFECT', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
@@ -367,9 +435,11 @@ export default function SpellsTab({
  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
  {spells.map(spell => (
  <SpellCard
- key={spell.id}
+ key={`${spell.id}-${spell.effectiveLevel}`}
  spell={spell}
- isExpanded={expandedSpell === spell.id}
+ effectiveLevel={spell.effectiveLevel}
+ isUpcast={spell.isUpcast}
+ isExpanded={expandedSpell === `${spell.id}-${spell.effectiveLevel}`}
  isPrepared={character.prepared_spells.includes(spell.id)}
  isConcentrating={concentrationSpellId === spell.id}
  isPreparer={isPreparer && !isKnown}
@@ -383,12 +453,16 @@ export default function SpellsTab({
  userId={userId}
  campaignId={campaignId}
  onUpdateSlots={onUpdateSlots}
+ forceSlotLevel={spell.isUpcast ? spell.effectiveLevel : undefined}
  />
  }
- onExpand={() => setExpandedSpell(expandedSpell === spell.id ? null : spell.id)}
+ onExpand={() => {
+ const key = `${spell.id}-${spell.effectiveLevel}`;
+ setExpandedSpell(expandedSpell === key ? null : key);
+ }}
  onTogglePrepared={() => onTogglePrepared(spell.id)}
  onConcentrate={() => onConcentrate(spell.id)}
- onRemove={character.advanced_spell_edits_unlocked ? () => onRemoveSpell(spell.id) : undefined}
+ onRemove={!spell.isUpcast && character.advanced_spell_edits_unlocked ? () => onRemoveSpell(spell.id) : undefined}
  />
  ))}
  </div>
@@ -439,8 +513,9 @@ function LevelTab({ label, count, slots, active, onClick }: {
 }
 
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
- spell: SpellData; isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
+ spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
+ isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; grantedReason?: string;
  spellAttack?: number; saveDC?: number;
  onExpand: () => void; onTogglePrepared: () => void;
@@ -448,6 +523,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
 }) {
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
  const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
+ const displayLevel = effectiveLevel ?? spell.level; // for badges / labels that show the cast tier
  const effect = getEffectCategory(spell);
  const mechanics = parseSpellMechanics(spell.description, {
  save_type: (spell as any).save_type,
@@ -486,7 +562,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
  <div
  style={{
  display: 'grid',
- gridTemplateColumns: '24px 3px 1fr 46px 70px 74px 80px auto 16px',
+ gridTemplateColumns: '90px 3px 1fr 46px 70px 74px 80px auto 16px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}
@@ -497,6 +573,18 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
  {spell.level === 0 ? (
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, textAlign: 'center', lineHeight: 1.2 }}>AT<br/>WILL</div>
  ) : isPreparer && !grantedReason ? (
+ isUpcast ? (
+ <span style={{
+ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 13,
+ color: schoolColor, letterSpacing: '0.02em',
+ padding: '4px 10px', borderRadius: 6,
+ border: `1px solid ${schoolColor}45`,
+ background: `${schoolColor}0f`,
+ whiteSpace: 'nowrap' as const,
+ }} title={`Upcast as level ${displayLevel}`}>
+ Lvl {displayLevel}↑
+ </span>
+ ) : (
  <button
  onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
  title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
@@ -526,10 +614,20 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
  {isPrepared ? 'Prepared' : 'Prepare'}
  </span>
  </button>
+ )
  ) : grantedReason ? (
- <span title={grantedReason} style={{ fontSize: 9, fontWeight: 800, color: '#34d399', cursor: 'help', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>Granted</span>
+ <span title={grantedReason} style={{
+ fontSize: 9, fontWeight: 800, color: '#34d399',
+ letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+ padding: '4px 10px', borderRadius: 6,
+ border: '1px solid rgba(52,211,153,0.3)',
+ background: 'rgba(52,211,153,0.08)',
+ cursor: 'help', whiteSpace: 'nowrap' as const,
+ }}>Granted</span>
  ) : (
- <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: schoolColor }}>{spell.level}</span>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 14, fontWeight: 800, color: schoolColor }}>
+ Lvl {displayLevel}{isUpcast ? '↑' : ''}
+ </span>
  )}
  </div>
 
