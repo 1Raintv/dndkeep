@@ -287,6 +287,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // tick from the realtime channel. Manual drops via the banner button are silent.
  const [concentrationLossToast, setConcentrationLossToast] = useState<string | null>(null);
 
+ // v2.55.0: condition info modal — clicking a chip in the active conditions
+ // banner opens a small popup with the condition's name, mechanical effects,
+ // and full RAW description. Replaces the unreliable hover-tooltip approach.
+ const [conditionInfoOpen, setConditionInfoOpen] = useState<ConditionName | null>(null);
+
  // Keyboard shortcuts: R = rest, I = inspiration
  useKeyboardShortcuts({
  onRest: () => setShowRest(v => !v),
@@ -708,6 +713,111 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  />
  )}
 
+ {/* v2.55.0: Condition info popup — opens when a chip in the active conditions
+     banner is clicked. Shows the condition's name, mechanical effects, and full
+     RAW description in a clean modal. */}
+ {conditionInfoOpen && (() => {
+ const m = CONDITION_MAP[conditionInfoOpen];
+ if (!m) { setConditionInfoOpen(null); return null; }
+ const effects: string[] = [];
+ if (m.attackDisadvantage) effects.push('Disadvantage on attacks');
+ if (m.attackAdvantageReceived) effects.push('Attackers have advantage against you');
+ if (m.abilityCheckDisadvantage) effects.push('Disadvantage on ability checks');
+ if (m.cantAct) effects.push("Can't take actions");
+ if (m.cantReact) effects.push("Can't take reactions");
+ if (m.cantMove) effects.push("Can't move");
+ if (m.speedZero) effects.push('Speed becomes 0');
+ if (m.autoFailSaves?.length) effects.push(`Auto-fail ${m.autoFailSaves.map(s => s.toUpperCase()).join('/')} saving throws`);
+ if (m.concentrationBreaks) effects.push('Concentration on spells breaks');
+ if (m.critWithin5ft) effects.push('Hits against you within 5 ft are critical hits');
+ if (m.resistanceAll) effects.push('Resistance to all damage');
+ const accent = m.color ?? '#94a3b8';
+ return (
+ <div className="modal-overlay" onClick={() => setConditionInfoOpen(null)}>
+ <div
+ className="modal"
+ style={{
+ maxWidth: 480, width: 'calc(100vw - 24px)',
+ maxHeight: 'calc(100vh - 48px)',
+ display: 'flex', flexDirection: 'column' as const,
+ padding: 24, borderTop: `4px solid ${accent}`,
+ }}
+ onClick={e => e.stopPropagation()}
+ >
+ <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--c-border)' }}>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: accent, marginBottom: 4 }}>
+ Condition
+ </div>
+ <h3 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--t-1)', wordBreak: 'break-word' as const, lineHeight: 1.2 }}>
+ {m.icon ? `${m.icon} ` : ''}{conditionInfoOpen}
+ </h3>
+ </div>
+ <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
+ {m.description && (
+ <div style={{ marginBottom: 16 }}>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>
+ Description
+ </div>
+ <p style={{ margin: 0, fontSize: 13, color: 'var(--t-2)', lineHeight: 1.6 }}>
+ {m.description}
+ </p>
+ </div>
+ )}
+ {effects.length > 0 && (
+ <div>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 8 }}>
+ Mechanical Effects
+ </div>
+ <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+ {effects.map((e, i) => (
+ <li key={i} style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.5 }}>{e}</li>
+ ))}
+ </ul>
+ </div>
+ )}
+ {(m as any).effects && Array.isArray((m as any).effects) && (m as any).effects.length > 0 && (
+ <div style={{ marginTop: 16 }}>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 8 }}>
+ Additional Notes
+ </div>
+ <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+ {((m as any).effects as string[]).map((e: string, i: number) => (
+ <li key={i} style={{ fontSize: 12, color: 'var(--t-3)', lineHeight: 1.5 }}>{e}</li>
+ ))}
+ </ul>
+ </div>
+ )}
+ </div>
+ <div style={{ display: 'flex', gap: 10, paddingTop: 14, borderTop: '1px solid var(--c-border)', marginTop: 12 }}>
+ <button
+ className="btn-secondary"
+ onClick={() => {
+ // Remove this condition from the character
+ const next = (character.active_conditions ?? []).filter(c => c !== conditionInfoOpen);
+ handleUpdateConditions(next);
+ setConditionInfoOpen(null);
+ }}
+ style={{ flex: '0 1 auto', minWidth: 100, justifyContent: 'center' }}
+ >
+ Remove
+ </button>
+ <button
+ onClick={() => setConditionInfoOpen(null)}
+ style={{
+ flex: 1, justifyContent: 'center',
+ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 13,
+ padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ border: `1px solid ${accent}`, background: `${accent}28`, color: accent,
+ }}
+ >
+ Close
+ </button>
+ </div>
+ </div>
+ </div>
+ );
+ })()}
+
  {/* v2.47.0: Concentration-loss toast — fires when concentration drops via
      CON save fail / incapacitation / timer expiry / DM-driven sync. Manual
      drops via the banner Drop button stay silent (the user knows they did it). */}
@@ -1073,9 +1183,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  The purple banner higher on the page already shows concentration state
  with a full-featured "Drop Concentration" button and duration countdown. */}
 
- {/* Active condition warning banner — v2.52.0: chips show NAME ONLY for
-     readability when many conditions stack. Mechanical effects + RAW description
-     surface on hover via the title tooltip. */}
+ {/* Active condition warning banner — v2.55.0: chips are CLICKABLE buttons
+     that open a popup with the full condition info. Hover tooltip stays as
+     a quick preview, but the click reveals everything (mechanical effects +
+     RAW description) in a more reliable surface than a browser title tooltip. */}
  {(() => {
  const allConditions = character.active_conditions ?? [];
  if (!allConditions.length) return null;
@@ -1084,42 +1195,28 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-red-l)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Active Conditions:</span>
  {allConditions.map(c => {
  const m = CONDITION_MAP[c];
- // Build the tooltip: mechanical effects bullet list + RAW description
- const effects: string[] = [];
- if (m?.attackDisadvantage) effects.push('Disadvantage on attacks');
- if (m?.attackAdvantageReceived) effects.push('Attackers have advantage');
- if (m?.abilityCheckDisadvantage) effects.push('Disadvantage on ability checks');
- if (m?.cantAct) effects.push("Can't take actions");
- if (m?.cantReact) effects.push("Can't take reactions");
- if (m?.cantMove) effects.push("Can't move");
- if (m?.speedZero) effects.push('Speed becomes 0');
- if (m?.autoFailSaves?.length) effects.push(`Auto-fail ${m.autoFailSaves.map(s => s.toUpperCase()).join('/')} saves`);
- if (m?.concentrationBreaks) effects.push('Concentration breaks');
- if (m?.critWithin5ft) effects.push('Hits within 5 ft are critical hits');
- if (m?.resistanceAll) effects.push('Resistance to all damage');
- const tooltipParts = [
- c.toUpperCase(),
- ...(effects.length ? ['', 'EFFECTS:', ...effects.map(e => '• ' + e)] : []),
- ...(m?.description ? ['', 'RAW: ' + m.description] : []),
- ];
  return (
- <span
+ <button
  key={c}
- title={tooltipParts.join('\n')}
+ onClick={() => setConditionInfoOpen(c)}
+ title={`${c} — click for details`}
  style={{
- fontSize: 'var(--fs-xs)', fontWeight: 700,
+ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700,
  color: m?.color ?? 'var(--t-2)',
  background: `${m?.color ?? '#64748b'}18`,
  border: `1px solid ${m?.color ?? '#64748b'}45`,
  padding: '3px 12px', borderRadius: 999,
- cursor: 'help', userSelect: 'none' as const,
- transition: 'background 0.15s, border-color 0.15s',
+ cursor: 'pointer', userSelect: 'none' as const,
+ transition: 'background 0.15s, border-color 0.15s, transform 0.1s',
+ minHeight: 0,
  }}
- onMouseEnter={e => { (e.currentTarget as HTMLSpanElement).style.background = `${m?.color ?? '#64748b'}30`; }}
- onMouseLeave={e => { (e.currentTarget as HTMLSpanElement).style.background = `${m?.color ?? '#64748b'}18`; }}
+ onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${m?.color ?? '#64748b'}30`; }}
+ onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `${m?.color ?? '#64748b'}18`; }}
+ onMouseDown={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.97)'; }}
+ onMouseUp={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
  >
  {m?.icon ? `${m.icon} ` : ''}{c}
- </span>
+ </button>
  );
  })}
  </div>
@@ -1562,10 +1659,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const active = contentFilters.has(f.id);
  return (
  <button key={f.id} onClick={() => {
+ // v2.55.0: single-select behavior — clicking a different filter swaps to it,
+ // clicking the active filter clears it (returns to "show all").
  setContentFilters(prev => {
- const next = new Set(prev);
- if (next.has(f.id)) next.delete(f.id); else next.add(f.id);
- return next;
+ if (prev.has(f.id)) return new Set(); // toggle off
+ return new Set([f.id]); // swap to this one
  });
  }}
  style={{
