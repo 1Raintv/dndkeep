@@ -86,12 +86,13 @@ export default function ConditionPickerModal({
         <div style={{
           padding: 'var(--sp-4)',
           border: `1px solid ${currentLvl > 0 ? 'rgba(245,158,11,0.5)' : 'var(--c-border)'}`,
+          borderLeft: '4px solid #f59e0b',
           borderRadius: 'var(--r-md)',
           background: currentLvl > 0 ? 'rgba(245,158,11,0.06)' : 'var(--c-card)',
           display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)',
         }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)' }}>
-            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: currentLvl === 6 ? 'var(--c-red-l)' : currentLvl > 0 ? '#f59e0b' : 'var(--t-1)' }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 'var(--fs-md)', color: currentLvl === 6 ? 'var(--c-red-l)' : '#f59e0b', letterSpacing: '0.02em' }}>
               Exhaustion
             </span>
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginLeft: 'auto' }}>
@@ -204,8 +205,10 @@ export default function ConditionPickerModal({
                   style={{
                     textAlign: 'left',
                     padding: 'var(--sp-3)',
+                    paddingLeft: 14,
                     borderRadius: 'var(--r-sm)',
                     border: active ? `1px solid ${c.color}aa` : '1px solid var(--c-border)',
+                    borderLeft: `4px solid ${c.color}`,
                     background: active ? `${c.color}18` : 'var(--c-card)',
                     color: 'var(--t-1)',
                     cursor: 'pointer',
@@ -214,7 +217,7 @@ export default function ConditionPickerModal({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)' }}>
-                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: active ? c.color : 'var(--t-1)' }}>
+                    <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 'var(--fs-md)', color: c.color, letterSpacing: '0.02em' }}>
                       {c.name}
                     </span>
                     {active && (

@@ -20,7 +20,7 @@ import CampaignBar from './CampaignBar';
 import SkillsList from './SkillsList';
 import SpellSlotsPanel from './SpellSlots';
 import SpellCastButton from './SpellCastButton';
-import ConditionsPanel from './ConditionsPanel';
+import ConditionMechanics from './ConditionMechanics';
 import Inventory from './Inventory';
 import Notes from './Notes';
 import ActionEconomy from './ActionEconomy';
@@ -1038,11 +1038,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  />
  )}
 
- {/* ── ABILITIES: Skills + Conditions ── */}
+ {/* ── ABILITIES: Skills + Condition Mechanics (panel moved to stats strip in v2.33.3) ── */}
  {activeTab === 'abilities' && (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
  <SkillsList character={character} computed={computed} onUpdate={u => applyUpdate(u, true)} />
- <ConditionsPanel character={character} onUpdateConditions={handleUpdateConditions} />
  {character.active_conditions.length > 0 && (
  <ConditionMechanics conditions={character.active_conditions} />
  )}

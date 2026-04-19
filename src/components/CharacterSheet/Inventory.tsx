@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie } from '../../lib/gameUtils';
 import { calcArmorAC, acBreakdown } from '../../data/equipment';
@@ -21,9 +21,19 @@ function ItemPickerModal({ onAdd, onClose }: {
 }) {
  const [search, setSearch] = useState('');
  const [category, setCategory] = useState<ItemCategory | 'All'>('All');
+ // v2.33.4: Track the name of the most-recently-added item so we can flash its row green
+ const [recentlyAdded, setRecentlyAdded] = useState<string | null>(null);
  const searchRef = useRef<HTMLInputElement>(null);
+ const flashTimerRef = useRef<number | null>(null);
 
  useEffect(() => { searchRef.current?.focus(); }, []);
+
+ // Clear any pending flash timer on unmount
+ useEffect(() => {
+ return () => {
+ if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+ };
+ }, []);
 
  // Close on Escape
  useEffect(() => {
@@ -32,16 +42,24 @@ function ItemPickerModal({ onAdd, onClose }: {
  return () => window.removeEventListener('keydown', handler);
  }, [onClose]);
 
- const filtered = CATALOGUE.filter(item => {
+ // v2.33.4: memoize filtered to prevent row list re-allocation on unrelated parent re-renders
+ const filtered = useMemo(() => CATALOGUE.filter(item => {
  const matchesSearch = search.trim() === '' ||
  item.name.toLowerCase().includes(search.toLowerCase()) ||
  (item.notes ?? '').toLowerCase().includes(search.toLowerCase());
  const matchesCat = category === 'All' || item.category === category;
  return matchesSearch && matchesCat;
- });
+ }), [search, category]);
 
  function addItem(item: CatalogueItem) {
  onAdd(item, 1);
+ // Flash green on this row for ~700ms so user has clear add-feedback without losing modal
+ setRecentlyAdded(item.name);
+ if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+ flashTimerRef.current = window.setTimeout(() => {
+ setRecentlyAdded(curr => curr === item.name ? null : curr);
+ flashTimerRef.current = null;
+ }, 700);
  }
 
  return (
@@ -77,7 +95,7 @@ function ItemPickerModal({ onAdd, onClose }: {
  style={{ width: '100%', fontSize: 14, padding: '7px 10px', borderRadius: 7 }}
  />
  </div>
- <button onClick={onClose} style={{ fontSize: 18, background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}></button>
+ <button onClick={onClose} title="Close" style={{ fontSize: 18, background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
  </div>
 
  {/* Category filters */}
@@ -115,12 +133,18 @@ function ItemPickerModal({ onAdd, onClose }: {
  const catColor = item.category === 'Weapon' ? '#f87171' : item.category === 'Armor' ? '#60a5fa' : item.category === 'Magic Item' || item.category === 'Wondrous Item' ? '#a78bfa' : item.category === 'Potion' ? '#4ade80' : item.category === 'Scroll' ? '#c084fc' : 'var(--t-3)';
  const catBg = item.category === 'Weapon' ? 'rgba(239,68,68,0.1)' : item.category === 'Armor' ? 'rgba(59,130,246,0.1)' : item.category === 'Magic Item' || item.category === 'Wondrous Item' ? 'rgba(167,139,250,0.1)' : item.category === 'Potion' ? 'rgba(74,222,128,0.08)' : item.category === 'Scroll' ? 'rgba(192,132,252,0.08)' : 'rgba(107,114,128,0.1)';
  const catLabel = item.category === 'Adventuring Gear' ? 'Gear' : item.category === 'Mount & Vehicle' ? 'Mount' : item.category === 'Trade Good' ? 'Trade' : item.category === 'Wondrous Item' ? 'Wondrous' : item.category;
+ // v2.33.4: flash this row green when it was just added
+ const isFlashing = recentlyAdded === item.name;
  return (
  <div
  key={item.name}
- style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 3, background: 'var(--c-raised)', border: '1px solid var(--c-border)', transition: 'border-color 0.1s' }}
- onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border-m)'}
- onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border)'}
+ className="item-picker-row"
+ style={{
+ padding: '8px 10px', borderRadius: 8, marginBottom: 3,
+ background: isFlashing ? 'rgba(74,222,128,0.18)' : 'var(--c-raised)',
+ border: `1px solid ${isFlashing ? 'rgba(74,222,128,0.6)' : 'var(--c-border)'}`,
+ transition: 'background 0.2s, border-color 0.2s',
+ }}
  >
  {/* Row 1: name + add button */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: chips.length > 0 || item.armorType ? 4 : 0 }}>
@@ -137,8 +161,16 @@ function ItemPickerModal({ onAdd, onClose }: {
  {item.cost && <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>{item.cost}</span>}
  <button
  onClick={() => addItem(item)}
- style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 7, cursor: 'pointer', border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)', flexShrink: 0 }}
- >Add</button>
+ style={{
+ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 7, cursor: 'pointer',
+ border: `1px solid ${isFlashing ? 'rgba(74,222,128,0.6)' : 'var(--c-gold-bdr)'}`,
+ background: isFlashing ? 'rgba(74,222,128,0.2)' : 'var(--c-gold-bg)',
+ color: isFlashing ? '#4ade80' : 'var(--c-gold-l)',
+ flexShrink: 0,
+ transition: 'background 0.2s, color 0.2s, border-color 0.2s',
+ minWidth: 68,
+ }}
+ >{isFlashing ? 'Added ✓' : '+ Add'}</button>
  </div>
  {/* Row 2: tag strip */}
  {(chips.length > 0 || item.armorType) && (
@@ -540,7 +572,7 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
  )}
  {item.magical && <span style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, marginTop: 2, display: 'block' }}> MAGIC ITEM</span>}
  </div>
- <button onClick={onClose} style={{ fontSize: 18, background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}></button>
+ <button onClick={onClose} title="Close" style={{ fontSize: 18, background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>×</button>
  </div>
 
  {/* Body */}

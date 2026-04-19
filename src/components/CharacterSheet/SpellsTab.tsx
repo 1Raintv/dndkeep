@@ -75,7 +75,6 @@ export default function SpellsTab({
  const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
  const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
  const [filterPrepared, setFilterPrepared] = useState(false);
- const [searchQuery, setSearchQuery] = useState('');
  const [filterSchool, setFilterSchool] = useState<string | null>(null);
 
  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
@@ -147,19 +146,9 @@ export default function SpellsTab({
  if (activeLevel !== 'all' && s.level !== activeLevel) return false;
  if (filterPrepared && isPreparer && !isKnown && s.level > 0 && !character.prepared_spells.includes(s.id)) return false;
  if (filterSchool && s.school !== filterSchool) return false;
- if (searchQuery.trim()) {
- const q = searchQuery.toLowerCase();
- return (
- s.name.toLowerCase().includes(q) ||
- (s.school ?? '').toLowerCase().includes(q) ||
- (s.casting_time ?? '').toLowerCase().includes(q) ||
- (s.damage_type ?? '').toLowerCase().includes(q) ||
- (s.description ?? '').toLowerCase().includes(q)
- );
- }
  return true;
  });
- }, [knownSpellData, activeLevel, filterPrepared, searchQuery, filterSchool, character.prepared_spells, isPreparer]);
+ }, [knownSpellData, activeLevel, filterPrepared, filterSchool, character.prepared_spells, isPreparer]);
 
  // Group visible spells by level
  const byLevel = useMemo(() => {
@@ -280,44 +269,6 @@ export default function SpellsTab({
  );
  })()}
 
- {/* ── Search bar (only when there are spells to search) ── */}
- {knownSpellData.length > 0 && (
- <div style={{ position: 'relative' }}>
- <span aria-hidden="true" style={{
- position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
- fontSize: 12, color: 'var(--t-3)', pointerEvents: 'none', lineHeight: 1,
- }}></span>
- <input
- type="text"
- value={searchQuery}
- onChange={e => setSearchQuery(e.target.value)}
- placeholder="Search spells by name, school, casting time, damage type..."
- aria-label="Search spells"
- style={{
- width: '100%', fontSize: 13, padding: '7px 30px 7px 30px',
- borderRadius: 8, border: '1px solid var(--c-border)',
- background: 'var(--c-card)', color: 'var(--t-1)',
- }}
- />
- {searchQuery && (
- <button
- onClick={() => setSearchQuery('')}
- aria-label="Clear search"
- title="Clear search"
- style={{
- position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
- width: 20, height: 20, padding: 0, lineHeight: 1,
- background: 'var(--c-raised)', border: '1px solid var(--c-border)',
- borderRadius: 999, color: 'var(--t-2)', cursor: 'pointer',
- fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
- }}
- >
- 
- </button>
- )}
- </div>
- )}
-
  {/* ── Level tabs ── */}
  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
  <LevelTab label="All" count={knownSpellData.length} active={activeLevel === 'all'} onClick={() => setActiveLevel('all')} />
@@ -371,10 +322,10 @@ export default function SpellsTab({
  <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 12 }}>
  <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}></div>
  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-2)', marginBottom: 4 }}>
- {searchQuery ? `No spells matching "${searchQuery}"` : 'No spells match your filters'}
+ No spells match your filters
  </div>
  <div style={{ fontSize: 12, color: 'var(--t-3)' }}>
- {searchQuery ? 'Try a different search term' : 'Clear your filters to see all spells'}
+ Clear your filters to see all spells
  </div>
  </div>
  ) : (
@@ -544,26 +495,41 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
  {/* Col 0: AT WILL / prepare dot / level badge */}
  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
  {spell.level === 0 ? (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, textAlign: 'center', lineHeight: 1.2 }}>AT<br/>WILL</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, textAlign: 'center', lineHeight: 1.2 }}>AT<br/>WILL</div>
  ) : isPreparer && !grantedReason ? (
- <div
+ <button
  onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
  title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
  style={{
- cursor: 'pointer', borderRadius: 4, padding: '2px 4px',
+ cursor: 'pointer', borderRadius: 6, padding: '5px 10px', minHeight: 0,
  border: `1px solid ${isPrepared ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
  background: isPrepared ? 'var(--c-gold-bg)' : 'transparent',
- transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+ transition: 'all 0.15s',
+ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+ minWidth: 76,
  }}
  >
- <span style={{ fontSize: 7, fontWeight: 800, color: isPrepared ? 'var(--c-gold-l)' : 'var(--t-3)', letterSpacing: '0.04em', lineHeight: 1.3, textAlign: 'center', textTransform: 'uppercase' as const }}>
- {isPrepared ? 'PREP' : '—'}
+ <span aria-hidden style={{
+ display: 'inline-block', width: 12, height: 12, borderRadius: 3,
+ border: `1.5px solid ${isPrepared ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+ background: isPrepared ? 'var(--c-gold)' : 'transparent',
+ position: 'relative',
+ }}>
+ {isPrepared && (
+ <span style={{
+ position: 'absolute', top: -1, left: 2,
+ color: '#000', fontSize: 10, fontWeight: 900, lineHeight: 1,
+ }}>✓</span>
+ )}
  </span>
- </div>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, color: isPrepared ? 'var(--c-gold-l)' : 'var(--t-2)', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>
+ {isPrepared ? 'Prepared' : 'Prepare'}
+ </span>
+ </button>
  ) : grantedReason ? (
- <span title={grantedReason} style={{ fontSize: 8, fontWeight: 800, color: '#34d399', cursor: 'help' }}></span>
+ <span title={grantedReason} style={{ fontSize: 9, fontWeight: 800, color: '#34d399', cursor: 'help', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>Granted</span>
  ) : (
- <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800, color: schoolColor }}>{spell.level}</span>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: schoolColor }}>{spell.level}</span>
  )}
  </div>
 
