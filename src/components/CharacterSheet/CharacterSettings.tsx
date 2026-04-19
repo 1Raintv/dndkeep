@@ -234,6 +234,27 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
               <div>
                 <div className="section-header">Combat Stats</div>
 
+                {/* Unlock toggle for click-to-edit on Speed/AC chips in vitals column */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)', marginBottom: 'var(--sp-3)' }}>
+                  <span style={{ fontSize: 18 }}>{character.advanced_edits_unlocked ? '🔓' : '🔒'}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
+                      Stat chip edits {character.advanced_edits_unlocked ? 'unlocked' : 'locked'}
+                    </div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
+                      {character.advanced_edits_unlocked
+                        ? 'Click Speed or AC in the vitals column to edit. These override derived values — use the fields below for undo-friendly edits.'
+                        : 'Speed and AC chips are read-only. Unlock to enable click-to-edit on derived stats.'}
+                    </div>
+                  </div>
+                  <button
+                    className={character.advanced_edits_unlocked ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
+                    onClick={() => onUpdate({ advanced_edits_unlocked: !character.advanced_edits_unlocked })}
+                  >
+                    {character.advanced_edits_unlocked ? 'Lock' : 'Unlock'}
+                  </button>
+                </div>
+
                 <EditableField
                   label="Armor Class (override)"
                   value={character.armor_class}

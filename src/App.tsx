@@ -142,10 +142,12 @@ function Sidebar() {
     <aside className={`app-sidebar ${collapsed ? 'collapsed' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo">
-        <NavLink to="/lobby" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="sidebar-logo-icon">⚔</div>
-          {!collapsed && <span className="sidebar-logo-text">DNDKeep</span>}
-        </NavLink>
+        {!collapsed && (
+          <NavLink to="/lobby" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="sidebar-logo-icon">⚔</div>
+            <span className="sidebar-logo-text">DNDKeep</span>
+          </NavLink>
+        )}
         <button className="sidebar-collapse-btn" onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Expand' : 'Collapse'}>
           <span style={{ transform: collapsed ? 'rotate(180deg)' : 'none', display: 'inline-flex', transition: 'transform 200ms' }}>{Icons.chevron}</span>
         </button>

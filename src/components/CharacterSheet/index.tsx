@@ -544,20 +544,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           }}
       />
 
-      {/* HP Stats — shown directly below character name */}
+{/* HP Stats — stat chips + conditions strip (v2.27: HP card moved into header) */}
       <HPStatsPanel
         character={character}
         computed={computed}
-        onUpdateHP={(delta, tempHP) => {
-          if (tempHP !== undefined) {
-            handleUpdateHP(character.current_hp, tempHP);
-          } else {
-            const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
-            handleUpdateHP(newHP, character.temp_hp);
-          }
-        }}
         onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
         onUpdateSpeed={speed => applyUpdate({ speed }, true)}
+        onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
+        onUpdateConditions={handleUpdateConditions}
       />
 
       {/* Death Saves — shown when HP = 0 */}
@@ -566,23 +560,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           character={character}
           onUpdate={u => applyUpdate(u, true)}
         />
-      )}
-
-      {/* Active conditions — shown near HP/name */}
-      {character.active_conditions.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)',
-          padding: '6px 12px', background: 'rgba(155,28,28,0.08)',
-          border: '1px solid rgba(155,28,28,0.3)', borderRadius: 'var(--r-md)',
-          marginTop: -8,
-        }}>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fca5a5', alignSelf: 'center' }}>
-            Conditions:
-          </span>
-          {character.active_conditions.map(c => (
-            <span key={c} className="condition-pill">{c}</span>
-          ))}
-        </div>
       )}
 
       {/* Avatar picker */}

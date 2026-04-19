@@ -1,37 +1,32 @@
 import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
-import type { Character, ComputedStats } from '../../types';
+import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
+import type { Character, ComputedStats, ConditionName } from '../../types';
 
 interface HPStatsPanelProps {
   character: Character;
   computed: ComputedStats;
-  onUpdateHP: (delta: number, tempHP?: number) => void;
   onUpdateAC?: (ac: number) => void;
   onUpdateSpeed?: (speed: number) => void;
   onToggleInspiration?: () => void;
+  onUpdateConditions?: (next: ConditionName[]) => void;
   acTooltip?: string;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
 
-function hpColor(current: number, max: number): string {
-  const pct = max > 0 ? current / max : 0;
-  if (pct > 0.6) return 'var(--hp-full)';
-  if (pct > 0.25) return 'var(--hp-mid)';
-  return 'var(--hp-low)';
-}
-
-export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdateAC, onUpdateSpeed, onToggleInspiration, acTooltip }: HPStatsPanelProps) {
-  const [value, setValue] = useState('');
+export default function HPStatsPanel({
+  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, acTooltip,
+}: HPStatsPanelProps) {
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
   const [editingSpeed, setEditingSpeed] = useState(false);
   const [speedInput, setSpeedInput] = useState('');
+  const [showConditionPicker, setShowConditionPicker] = useState(false);
   const { triggerRoll } = useDiceRoll();
 
-  const hpCol = hpColor(character.current_hp, character.max_hp);
-  const hpPct = character.max_hp > 0 ? Math.min(1, character.current_hp / character.max_hp) : 0;
+  const editsUnlocked = !!character.advanced_edits_unlocked;
 
   const isSpellcaster = SPELLCASTERS.includes(character.class_name);
   const spellAbility = { Bard: 'charisma', Cleric: 'wisdom', Druid: 'wisdom', Paladin: 'charisma', Ranger: 'wisdom', Sorcerer: 'charisma', Warlock: 'charisma', Wizard: 'intelligence', Artificer: 'intelligence' }[character.class_name] ?? 'intelligence';
@@ -40,24 +35,29 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
   const spellDC = 8 + spellAttack;
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
 
-  function applyDamage() { const n = parseInt(value); if (!isNaN(n) && n > 0) { onUpdateHP(-n); setValue(''); } }
-  function applyHeal()   { const n = parseInt(value); if (!isNaN(n) && n > 0) { onUpdateHP(n); setValue(''); } }
-  function applyTemp()   { const n = parseInt(value); if (!isNaN(n) && n >= 0) { onUpdateHP(0, n); setValue(''); } }
-
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') applyDamage();
-  }
-
   function rollInitiative() {
     const d20 = rollDie(20);
     triggerRoll({ result: d20, dieType: 20, modifier: initMod, total: d20 + initMod, label: 'Initiative' });
   }
 
+  const activeConditions: ConditionName[] = character.active_conditions ?? [];
+
+  function removeCondition(name: ConditionName) {
+    if (!onUpdateConditions) return;
+    onUpdateConditions(activeConditions.filter(c => c !== name));
+  }
+  function addCondition(name: ConditionName) {
+    if (!onUpdateConditions) return;
+    if (activeConditions.includes(name)) return;
+    onUpdateConditions([...activeConditions, name]);
+    setShowConditionPicker(false);
+  }
+
   const stats = [
     { label: 'INSP', value: character.inspiration ? '✦' : '○', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
-    { label: 'AC 🛡',     value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: true,   onEdit: () => { setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: acTooltip ?? '10 + DEX (Unarmored)' },
+    { label: 'AC 🛡',     value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'INIT ⚡',   value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
-    { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: true,   onEdit: () => { setSpeedInput(String(character.speed)); setEditingSpeed(true); } },
+    { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); }, tooltip: editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
     { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0),                color: 'var(--t-2)' },
     ...(isSpellcaster ? [
@@ -68,81 +68,6 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-      {/* HP Card */}
-      <div style={{
-        background: 'var(--c-card)',
-        border: `1px solid ${hpCol}40`,
-        borderRadius: 'var(--r-xl)',
-        padding: '14px 16px',
-        boxShadow: `0 0 16px ${hpCol}08`,
-      }}>
-        {/* HP numbers */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 8 }}>
-          <span className={hpPct < 0.25 && character.current_hp > 0 ? 'hp-critical' : ''}
-            style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '2.8rem', color: hpCol, lineHeight: 1 }}>
-            {character.current_hp}
-          </span>
-          <span style={{ fontSize: 14, color: 'var(--t-3)', fontWeight: 500, paddingBottom: 4 }}>/ {character.max_hp}</span>
-          {character.temp_hp > 0 && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', padding: '2px 7px', borderRadius: 999, paddingBottom: 4 }}>
-              +{character.temp_hp} temp
-            </span>
-          )}
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)', paddingBottom: 6, marginLeft: 2 }}>HP</span>
-        </div>
-
-        {/* HP bar */}
-        <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 999, marginBottom: 12, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${Math.max(1, hpPct * 100)}%`, background: hpCol, borderRadius: 999, transition: 'width 0.4s ease, background 0.3s ease', boxShadow: `0 0 8px ${hpCol}` }} />
-        </div>
-
-        {/* Single input + 3 action buttons */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input
-            type="text" // text prevents browser spinner arrows
-            inputMode="numeric"
-            value={value}
-            onChange={e => {
-              const raw = e.target.value.replace(/[^0-9]/g, '');
-              setValue(raw);
-            }}
-            onKeyDown={handleKey}
-            placeholder=""
-            style={{
-              flex: 1, fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 600,
-              textAlign: 'center', padding: '6px 8px', borderRadius: 8,
-              border: '1px solid var(--c-border-m)', background: 'var(--c-raised)',
-              color: 'var(--t-1)', minWidth: 0,
-              MozAppearance: 'textfield',
-            }}
-          />
-          <button
-            onClick={applyDamage}
-            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(248,113,113,0.18)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--stat-str-bg)')}
-          >
-            Damage
-          </button>
-          <button
-            onClick={applyHeal}
-            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(74,222,128,0.18)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--stat-dex-bg)')}
-          >
-            Heal
-          </button>
-          <button
-            onClick={applyTemp}
-            style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa', transition: 'all var(--tr-fast)', whiteSpace: 'nowrap' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(96,165,250,0.18)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(96,165,250,0.08)')}
-          >
-            Temp
-          </button>
-        </div>
-      </div>
 
       {/* Stat chips strip */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
@@ -161,7 +86,7 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
             onMouseEnter={e => { if ((stat as any).onClick || (stat as any).editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}55`; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}22`; }}
           >
-            {stat.label === 'AC' && editingAC ? (
+            {stat.label === 'AC 🛡' && editingAC ? (
               <input autoFocus type="number" value={acInput}
                 onChange={e => setAcInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); } if (e.key === 'Escape') setEditingAC(false); }}
@@ -186,6 +111,102 @@ export default function HPStatsPanel({ character, computed, onUpdateHP, onUpdate
           </div>
         ))}
       </div>
+
+      {/* v2.27: Conditions strip — below stat chips in the vitals column */}
+      {onUpdateConditions && (
+        <div style={{
+          background: 'var(--c-card)',
+          border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-md)',
+          padding: '8px 10px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>
+              Conditions
+            </span>
+            <button
+              onClick={() => setShowConditionPicker(v => !v)}
+              title="Add a condition"
+              style={{
+                marginLeft: 'auto', fontSize: 11, lineHeight: 1, padding: '3px 8px',
+                borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                background: 'var(--c-raised)', border: '1px solid var(--c-border-m)',
+                color: 'var(--t-2)', fontWeight: 700,
+              }}
+            >
+              +
+            </button>
+          </div>
+
+          {activeConditions.length === 0 ? (
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
+              None
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {activeConditions.map(name => {
+                const c = CONDITION_MAP[name];
+                const color = c?.color ?? '#64748b';
+                const icon = c?.icon ?? '•';
+                return (
+                  <button
+                    key={name}
+                    onClick={() => removeCondition(name)}
+                    title={`${c?.description ?? name} — click to remove`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '3px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                      fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
+                      background: `${color}18`,
+                      border: `1px solid ${color}55`,
+                      color,
+                    }}
+                  >
+                    <span style={{ fontSize: 11 }}>{icon}</span>
+                    <span>{name}</span>
+                    <span style={{ opacity: 0.6, marginLeft: 2, fontSize: 10 }}>×</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {showConditionPicker && (
+            <div style={{
+              marginTop: 4, padding: 8, borderRadius: 'var(--r-sm)',
+              background: 'var(--c-raised)', border: '1px solid var(--c-border-m)',
+              display: 'flex', flexWrap: 'wrap', gap: 4,
+            }}>
+              {CONDITIONS
+                .filter(c => !activeConditions.includes(c.name as ConditionName))
+                .map(c => (
+                  <button
+                    key={c.name}
+                    onClick={() => addCondition(c.name as ConditionName)}
+                    title={c.description}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                      padding: '3px 7px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                      fontSize: 10, fontWeight: 700,
+                      background: 'transparent',
+                      border: `1px solid ${c.color}55`,
+                      color: c.color,
+                    }}
+                  >
+                    <span style={{ fontSize: 11 }}>{c.icon}</span>
+                    <span>{c.name}</span>
+                  </button>
+                ))}
+              {CONDITIONS.filter(c => !activeConditions.includes(c.name as ConditionName)).length === 0 && (
+                <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>All conditions active.</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

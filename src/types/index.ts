@@ -164,6 +164,8 @@ export interface Character {
   // Automation framework — see src/lib/automations.ts
   automation_overrides: Record<string, 'off' | 'prompt' | 'auto'>;
   advanced_automations_unlocked: boolean;
+  // Unlocks click-to-edit on derived combat stats (Speed, AC) in vitals column
+  advanced_edits_unlocked?: boolean;
 
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;

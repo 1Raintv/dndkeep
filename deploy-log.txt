@@ -1,16 +1,4 @@
-DNDKeep deploy log — Sat 04/18/2026 19:11:56.47 
+DNDKeep deploy log — Sat 04/18/2026 22:18:42.28 
 Working dir: C:\dev\DNDKeep 
  
- Detected version: 2.26.0 
-
-added 235 packages, and audited 236 packages in 3s
-
-59 packages are looking for funding
-  run `npm fund` for details
-
-2 moderate severity vulnerabilities
-
-To address all issues (including breaking changes), run:
-  npm audit fix --force
-
-Run `npm audit` for details.
+ Detected version: 2.27.0 
