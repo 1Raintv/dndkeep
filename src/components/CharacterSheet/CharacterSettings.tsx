@@ -10,6 +10,8 @@ import { SPECIES } from '../../data/species';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { SPELL_MAP } from '../../data/spells';
+import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
+import { METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS } from '../../data/choiceOptions';
 
 type SettingsTab = 'stats' | 'levelup' | 'automations' | 'export' | 'danger';
 
@@ -611,9 +613,181 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       );
                     })()}
 
-                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                      Class choice re-picks (fighting style, metamagic, invocations) coming in v2.33 Phase 3.
-                    </div>
+                    {/* v2.33 Phase 3 — Class choice re-picks */}
+                    {(() => {
+                      const primaryCls = character.class_name;
+                      const secondaryCls = character.secondary_class;
+                      const relevantClasses = [primaryCls, ...(secondaryCls ? [secondaryCls] : [])];
+                      const hasFightingStyle = relevantClasses.some(c => ['Fighter', 'Paladin', 'Ranger'].includes(c));
+                      const hasMetamagic = relevantClasses.includes('Sorcerer');
+                      const hasInvocations = relevantClasses.includes('Warlock');
+
+                      if (!hasFightingStyle && !hasMetamagic && !hasInvocations) return null;
+
+                      const classRes = (character.class_resources ?? {}) as Record<string, unknown>;
+                      const currentFightingStyle = (classRes.fighting_style as string) ?? '';
+                      const currentMetamagic = Array.isArray(classRes.metamagic) ? classRes.metamagic as string[] : [];
+                      const currentInvocations = Array.isArray(classRes.invocations) ? classRes.invocations as string[] : [];
+
+                      function updateClassResource(key: string, value: unknown) {
+                        const next = { ...classRes, [key]: value } as typeof character.class_resources;
+                        onUpdate({ class_resources: next });
+                      }
+
+                      function toggleArrayItem(key: 'metamagic' | 'invocations', name: string) {
+                        const current = (classRes[key] as string[] | undefined) ?? [];
+                        const next = current.includes(name)
+                          ? current.filter(x => x !== name)
+                          : [...current, name];
+                        updateClassResource(key, next);
+                      }
+
+                      return (
+                        <>
+                          {/* Fighting Style */}
+                          {hasFightingStyle && (
+                            <div>
+                              <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4, display: 'block' }}>
+                                Fighting Style
+                              </label>
+                              <select
+                                value={currentFightingStyle}
+                                onChange={e => updateClassResource('fighting_style', e.target.value)}
+                                style={{ fontSize: 'var(--fs-sm)', width: '100%' }}
+                              >
+                                <option value="">(none)</option>
+                                {FIGHTING_STYLE_OPTIONS.map(s => (
+                                  <option key={s.id} value={s.name}>{s.name}</option>
+                                ))}
+                              </select>
+                              {currentFightingStyle && (() => {
+                                const desc = FIGHTING_STYLE_OPTIONS.find(s => s.name === currentFightingStyle)?.description;
+                                return desc ? (
+                                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginTop: 4, lineHeight: 1.5 }}>
+                                    {desc}
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          )}
+
+                          {/* Metamagic (Sorcerer) */}
+                          {hasMetamagic && (
+                            <div>
+                              <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4, display: 'block' }}>
+                                Metamagic known
+                                <span style={{ color: 'var(--t-3)', fontWeight: 400, marginLeft: 6 }}>
+                                  ({currentMetamagic.length} selected)
+                                </span>
+                              </label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {METAMAGIC_OPTIONS.map(m => {
+                                  const active = currentMetamagic.includes(m.name);
+                                  return (
+                                    <button
+                                      key={m.id}
+                                      onClick={() => toggleArrayItem('metamagic', m.name)}
+                                      style={{
+                                        textAlign: 'left', padding: '8px 12px', borderRadius: 'var(--r-sm)',
+                                        cursor: 'pointer', minHeight: 0,
+                                        border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                                        background: active ? 'var(--c-gold-bg)' : 'var(--c-card)',
+                                        color: active ? 'var(--c-gold-l)' : 'var(--t-1)',
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 12, fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>{m.name}</span>
+                                        <span style={{ color: 'var(--t-3)', fontWeight: 500, fontSize: 11 }}>
+                                          {m.cost} pt{String(m.cost) !== '1' ? 's' : ''}
+                                        </span>
+                                      </div>
+                                      <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.4 }}>
+                                        {m.description}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Eldritch Invocations (Warlock) */}
+                          {hasInvocations && (
+                            <div>
+                              <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4, display: 'block' }}>
+                                Eldritch Invocations
+                                <span style={{ color: 'var(--t-3)', fontWeight: 400, marginLeft: 6 }}>
+                                  ({currentInvocations.length} selected)
+                                </span>
+                              </label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {WARLOCK_INVOCATIONS.map(inv => {
+                                  const active = currentInvocations.includes(inv.name);
+                                  return (
+                                    <button
+                                      key={inv.id}
+                                      onClick={() => toggleArrayItem('invocations', inv.name)}
+                                      style={{
+                                        textAlign: 'left', padding: '8px 12px', borderRadius: 'var(--r-sm)',
+                                        cursor: 'pointer', minHeight: 0,
+                                        border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+                                        background: active ? 'var(--c-gold-bg)' : 'var(--c-card)',
+                                        color: active ? 'var(--c-gold-l)' : 'var(--t-1)',
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 12, fontWeight: 700, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                                        <span>{inv.name}</span>
+                                        {inv.prereq && (
+                                          <span style={{ color: 'var(--t-3)', fontWeight: 500, fontSize: 10, whiteSpace: 'nowrap' }}>
+                                            {inv.prereq}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.4 }}>
+                                        {inv.description}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+
+                    {/* Features by Level — read-only reference */}
+                    {(() => {
+                      const primaryProg = CLASS_LEVEL_PROGRESSION[character.class_name] ?? [];
+                      const primaryFeatures = primaryProg
+                        .filter((m: any) => m.level <= character.level && (m.features?.length > 0))
+                        .flatMap((m: any) => m.features.map((f: string) => ({ level: m.level, class: character.class_name, feature: f })));
+
+                      const secondaryProg = character.secondary_class ? (CLASS_LEVEL_PROGRESSION[character.secondary_class] ?? []) : [];
+                      const secondaryFeatures = secondaryProg
+                        .filter((m: any) => m.level <= (character.secondary_level ?? 0) && (m.features?.length > 0))
+                        .flatMap((m: any) => m.features.map((f: string) => ({ level: m.level, class: character.secondary_class!, feature: f })));
+
+                      const allFeatures = [...primaryFeatures, ...secondaryFeatures].sort((a, b) => a.level - b.level);
+                      if (allFeatures.length === 0) return null;
+
+                      return (
+                        <details style={{ borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-3)' }}>
+                          <summary style={{ cursor: 'pointer', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-2)' }}>
+                            Features by level ({allFeatures.length})
+                          </summary>
+                          <div style={{ marginTop: 'var(--sp-2)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {allFeatures.map((f, i) => (
+                              <div key={i} style={{ display: 'grid', gridTemplateColumns: '50px 80px 1fr', gap: 8, padding: '3px 6px', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
+                                <span style={{ fontFamily: 'var(--ff-stat)', color: 'var(--c-gold-l)', fontWeight: 700 }}>Lvl {f.level}</span>
+                                <span style={{ color: 'var(--t-3)', fontWeight: 500 }}>{f.class}</span>
+                                <span>{f.feature}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
