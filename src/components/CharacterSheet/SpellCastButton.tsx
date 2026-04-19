@@ -321,47 +321,99 @@ export default function SpellCastButton({
  </button>
  {showModal && (
  <div className="modal-overlay" onClick={() => setShowModal(false)}>
- <div className="modal" style={{ maxWidth: 480, width: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' as const, padding: 20 }} onClick={e => e.stopPropagation()}>
- <h3 style={{ marginBottom: 8, marginTop: 0, fontSize: 18 }}>{spell.name} — Upcast</h3>
+ <div
+ className="modal"
+ style={{
+ maxWidth: 560, width: 'calc(100vw - 24px)',
+ maxHeight: 'calc(100vh - 48px)',
+ display: 'flex', flexDirection: 'column' as const,
+ padding: 24,
+ }}
+ onClick={e => e.stopPropagation()}
+ >
+ {/* v2.52.0: Title broken into two lines so long names like "Disorienting
+     Whispers" can't get cut off. UPCAST eyebrow on top, spell name below. */}
+ <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--c-border)' }}>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: '#c4b5fd', marginBottom: 4 }}>
+ ↑ Upcast Spell
+ </div>
+ <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--t-1)', wordBreak: 'break-word' as const, lineHeight: 1.2 }}>
+ {spell.name}
+ </h3>
+ <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 4 }}>
+ Base level {spell.level} · Cast with a higher slot for greater effect
+ </div>
+ </div>
  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
- <div style={{ fontSize: 11, color: 'var(--t-3)', marginBottom: 10, fontStyle: 'italic' }}>
+ {/* Higher-levels rule text — what changes when upcast */}
+ {(spell as any).higher_levels && (
+ <div style={{
+ padding: '10px 12px', borderRadius: 'var(--r-md)',
+ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)',
+ marginBottom: 14,
+ }}>
+ <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#c4b5fd', marginBottom: 4 }}>
+ At Higher Levels
+ </div>
+ <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5 }}>
  {(spell as any).higher_levels}
  </div>
- <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>
- Choose Spell Slot
  </div>
- <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+ )}
+
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 8 }}>
+ Choose Spell Slot Level
+ </div>
+ <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
  {availableSlots.map(({ level, remaining }) => (
  <button key={level} onClick={() => { setSelectedSlot(level); }}
- style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
- padding: '5px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12,
+ padding: '8px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minWidth: 70,
  border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
- background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
- color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)' }}>
- Level {level}
- <span style={{ display: 'block', fontSize: 9, fontWeight: 400 }}>{remaining} left</span>
+ background: selectedSlot === level ? 'rgba(167,139,250,0.18)' : 'var(--c-raised)',
+ color: selectedSlot === level ? '#c4b5fd' : 'var(--t-2)',
+ textAlign: 'center' as const,
+ }}>
+ <div>Level {level}</div>
+ <div style={{ fontSize: 9, fontWeight: 500, color: 'var(--t-3)', marginTop: 2 }}>{remaining} left</div>
  </button>
  ))}
  </div>
- <div style={{ marginBottom: 12 }}>
- <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 4 }}>
+
+ <div>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>
  Target (optional)
  </div>
  <input value={target} onChange={e => setTarget(e.target.value)} placeholder='e.g. "Goblin King"'
  style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
  </div>
  </div>
- <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--c-border)', marginTop: 'auto' }}>
- <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
+ {/* Action footer — pinned at bottom, label clearly says UPCAST */}
+ <div style={{ display: 'flex', gap: 10, paddingTop: 14, borderTop: '1px solid var(--c-border)', marginTop: 12 }}>
+ <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ flex: '0 1 auto', justifyContent: 'center', minWidth: 100 }}>
+ Cancel
+ </button>
  {mechanics.damageDice && (
  <button onClick={() => { rollDamage(selectedSlot); setShowModal(false); setTarget(''); }}
- style={{ flex: 1, justifyContent: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 12 }}>
- Roll Damage
+ style={{
+ flex: 1, justifyContent: 'center',
+ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 13,
+ padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ border: '1px solid rgba(251,191,36,0.5)', background: 'rgba(251,191,36,0.15)',
+ color: '#fbbf24',
+ }}>
+ Roll Damage @ Lvl {selectedSlot}
  </button>
  )}
  <button onClick={() => { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}
- style={{ flex: 1, justifyContent: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)', color: '#a78bfa', fontSize: 12 }}>
- Cast at Level {selectedSlot}
+ style={{
+ flex: 1, justifyContent: 'center',
+ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 13,
+ padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ border: '1px solid #a78bfa', background: 'rgba(167,139,250,0.28)',
+ color: '#e9d5ff', letterSpacing: '0.04em',
+ }}>
+ ↑ Upcast at Level {selectedSlot}
  </button>
  </div>
  </div>

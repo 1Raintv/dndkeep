@@ -1051,9 +1051,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  The purple banner higher on the page already shows concentration state
  with a full-featured "Drop Concentration" button and duration countdown. */}
 
- {/* Active condition warning banner — v2.50.0: shows EVERY active condition
-     so the player can roleplay correctly. Mechanical effects (disadv, can't act, etc.)
-     are summarized inline; conditions without specific flags still display by name. */}
+ {/* Active condition warning banner — v2.52.0: chips show NAME ONLY for
+     readability when many conditions stack. Mechanical effects + RAW description
+     surface on hover via the title tooltip. */}
  {(() => {
  const allConditions = character.active_conditions ?? [];
  if (!allConditions.length) return null;
@@ -1062,19 +1062,41 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-red-l)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Active Conditions:</span>
  {allConditions.map(c => {
  const m = CONDITION_MAP[c];
+ // Build the tooltip: mechanical effects bullet list + RAW description
  const effects: string[] = [];
- if (m?.attackDisadvantage) effects.push('disadv. attacks');
- if (m?.attackAdvantageReceived) effects.push('attackers have adv.');
- if (m?.abilityCheckDisadvantage) effects.push('disadv. checks');
- if (m?.cantAct) effects.push("can't act");
- if (m?.cantReact) effects.push("can't react");
- if (m?.cantMove) effects.push("can't move");
- if (m?.speedZero) effects.push("speed 0");
- if (m?.autoFailSaves?.length) effects.push(`auto-fail ${m.autoFailSaves.map(s => s.slice(0,3).toUpperCase()).join('/')} saves`);
- if (m?.concentrationBreaks) effects.push("concentration breaks");
+ if (m?.attackDisadvantage) effects.push('Disadvantage on attacks');
+ if (m?.attackAdvantageReceived) effects.push('Attackers have advantage');
+ if (m?.abilityCheckDisadvantage) effects.push('Disadvantage on ability checks');
+ if (m?.cantAct) effects.push("Can't take actions");
+ if (m?.cantReact) effects.push("Can't take reactions");
+ if (m?.cantMove) effects.push("Can't move");
+ if (m?.speedZero) effects.push('Speed becomes 0');
+ if (m?.autoFailSaves?.length) effects.push(`Auto-fail ${m.autoFailSaves.map(s => s.toUpperCase()).join('/')} saves`);
+ if (m?.concentrationBreaks) effects.push('Concentration breaks');
+ if (m?.critWithin5ft) effects.push('Hits within 5 ft are critical hits');
+ if (m?.resistanceAll) effects.push('Resistance to all damage');
+ const tooltipParts = [
+ c.toUpperCase(),
+ ...(effects.length ? ['', 'EFFECTS:', ...effects.map(e => '• ' + e)] : []),
+ ...(m?.description ? ['', 'RAW: ' + m.description] : []),
+ ];
  return (
- <span key={c} title={m?.description ?? c} style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: m?.color ?? 'var(--t-2)', background: `${m?.color ?? '#64748b'}15`, border: `1px solid ${m?.color ?? '#64748b'}30`, padding: '2px 8px', borderRadius: 999 }}>
- {m?.icon ? `${m.icon} ` : ''}{c}{effects.length ? ` — ${effects.join(', ')}` : ''}
+ <span
+ key={c}
+ title={tooltipParts.join('\n')}
+ style={{
+ fontSize: 'var(--fs-xs)', fontWeight: 700,
+ color: m?.color ?? 'var(--t-2)',
+ background: `${m?.color ?? '#64748b'}18`,
+ border: `1px solid ${m?.color ?? '#64748b'}45`,
+ padding: '3px 12px', borderRadius: 999,
+ cursor: 'help', userSelect: 'none' as const,
+ transition: 'background 0.15s, border-color 0.15s',
+ }}
+ onMouseEnter={e => { (e.currentTarget as HTMLSpanElement).style.background = `${m?.color ?? '#64748b'}30`; }}
+ onMouseLeave={e => { (e.currentTarget as HTMLSpanElement).style.background = `${m?.color ?? '#64748b'}18`; }}
+ >
+ {m?.icon ? `${m.icon} ` : ''}{c}
  </span>
  );
  })}
