@@ -43,8 +43,19 @@ export default function HPStatsPanel({
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
 
   function rollInitiative() {
-    const d20 = rollDie(20);
-    triggerRoll({ result: d20, dieType: 20, modifier: initMod, total: d20 + initMod, label: 'Initiative' });
+    // v2.54.0: RAW: Initiative is a DEX check. Conditions that impose
+    // disadvantage on ability checks (Frightened, Poisoned) apply to it.
+    const activeConditions: ConditionName[] = character.active_conditions ?? [];
+    const disadvSources = activeConditions.filter(c => CONDITION_MAP[c]?.abilityCheckDisadvantage);
+    const hasDisadvantage = disadvSources.length > 0;
+    const roll1 = rollDie(20);
+    const roll2 = hasDisadvantage ? rollDie(20) : roll1;
+    const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
+    const disadvLabel = hasDisadvantage ? ` (Disadv. — ${disadvSources.join(', ')})` : '';
+    triggerRoll({
+      result: d20, dieType: 20, modifier: initMod, total: d20 + initMod,
+      label: `Initiative${disadvLabel}`,
+    });
   }
 
   const activeConditions: ConditionName[] = character.active_conditions ?? [];

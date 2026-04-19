@@ -430,14 +430,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ------------------------------------------------------------------
  // Handlers
  // ------------------------------------------------------------------
- function handleUpdateHP(current_hp: number, temp_hp: number) {
- // Concentration save check — if taking damage while concentrating,
- // respect the concentration_on_damage automation setting.
- const damageTaken = current_hp < character.current_hp;
- if (damageTaken && concentrationSpellId) {
- const damage = character.current_hp - current_hp;
+ /**
+  * v2.54.0: handleUpdateHP now accepts an optional explicit `damageDealt`
+  * parameter. RAW: temp HP doesn't prevent the concentration save — you still
+  * took damage. The previous `current_hp < character.current_hp` heuristic
+  * missed cases where damage was fully absorbed by temp HP. Callers that
+  * compute damage explicitly (the damage path in onUpdateHP) now pass it
+  * through so the save fires correctly.
+  */
+ function handleUpdateHP(current_hp: number, temp_hp: number, damageDealt?: number) {
+ // Concentration save check — fires when damage was actually taken,
+ // regardless of whether it landed on temp HP or current HP.
+ const inferredDamage = Math.max(0, character.current_hp - current_hp);
+ const totalDamage = damageDealt ?? inferredDamage;
+ if (totalDamage > 0 && concentrationSpellId) {
  // RAW: DC = max(10, floor(damage / 2)), capped at 30
- const dc = Math.min(30, Math.max(10, Math.floor(damage / 2)));
+ const dc = Math.min(30, Math.max(10, Math.floor(totalDamage / 2)));
  const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
  if (mode === 'prompt') {
  setConcentrationSaveDC(dc);
@@ -618,8 +626,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  } : undefined}
  onUpdateHP={(delta, tempHP) => {
  if (tempHP !== undefined) {
+ // Setting temp HP directly (Aid, Armor of Agathys, etc.). RAW: temp HP
+ // doesn't stack — taking the higher value is up to the player; we just set.
  handleUpdateHP(character.current_hp, tempHP);
+ } else if (delta < 0) {
+ // v2.54.0: Damage path — absorb temp HP FIRST per RAW.
+ // Temp HP is depleted before current HP. Concentration save is required
+ // for ANY damage taken (even if fully absorbed by temp HP).
+ const damage = -delta;
+ const tempBefore = character.temp_hp ?? 0;
+ const tempAfter = Math.max(0, tempBefore - damage);
+ const damageThroughTemp = tempBefore - tempAfter;
+ const damageToHP = damage - damageThroughTemp;
+ const newHP = Math.max(0, character.current_hp - damageToHP);
+ handleUpdateHP(newHP, tempAfter, damage);
  } else {
+ // Heal path — heal current HP only, never overflows max.
  const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
  handleUpdateHP(newHP, character.temp_hp);
  }
