@@ -54,7 +54,7 @@ export default function CharacterPage() {
   if (error || !character) {
     return (
       <div style={{ padding: 'var(--sp-8)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--sp-4)', textAlign: 'center', maxWidth: 400, margin: '80px auto' }}>
-        <div style={{ fontSize: 48, opacity: 0.2 }}>⚔</div>
+        <div style={{ fontSize: 48, opacity: 0.2 }}></div>
         <div style={{ fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--t-1)' }}>
           Character Not Found
         </div>

@@ -34,7 +34,7 @@ export default function SharePage() {
 
   if (notFound || !character) return (
     <div style={{ textAlign: 'center', padding: 'var(--sp-16)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--sp-4)' }}>
-      <div style={{ fontSize: 48 }}>⚔️</div>
+      <div style={{ fontSize: 48 }}></div>
       <h2>Character not found</h2>
       <p style={{ color: 'var(--t-2)' }}>This share link may have expired or been disabled by its owner.</p>
       <button className="btn-secondary" onClick={() => navigate('/')}>Go to DNDKeep</button>
@@ -64,7 +64,7 @@ export default function SharePage() {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-2)',
       }}>
         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-          👁 Read-only character sheet shared via DNDKeep
+          Read-only character sheet shared via DNDKeep
         </div>
         <button className="btn-gold btn-sm" onClick={() => navigate('/')}>
           Create Your Own →
@@ -78,7 +78,7 @@ export default function SharePage() {
           <div style={{ width: 72, height: 72, borderRadius: 'var(--r-lg)', border: '2px solid var(--c-gold-bdr)', overflow: 'hidden', flexShrink: 0, background: '#080d14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {character.avatar_url
               ? <img src={character.avatar_url} alt={character.name} width={72} height={72} style={{ objectFit: 'cover' }} />
-              : <span style={{ fontSize: 32 }}>🧙</span>}
+              : <span style={{ fontSize: 32 }}></span>}
           </div>
           <div style={{ flex: 1 }}>
             <h1 style={{ marginBottom: 'var(--sp-2)' }}>{character.name}</h1>

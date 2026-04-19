@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 
 const FEATURES = [
-  { icon: '⚡', label: 'Instant dice rolls', desc: 'Click any skill, ability, or weapon to roll instantly. Nat 20s glow gold. Nat 1s flash red. Full modifier breakdown every time.' },
-  { icon: '🧠', label: 'Conditions that think', desc: 'Toggle Poisoned and every check gets disadvantage automatically. Stunned drops concentration. The rules apply themselves.' },
-  { icon: '🎯', label: 'HIT or MISS instantly', desc: "Enter the enemy's AC and every weapon attack tells you immediately whether it connects — no math required." },
-  { icon: '✨', label: 'Buffs that actually work', desc: 'Toggle Bless and your next roll includes the d4. Toggle Rage and your damage increases. Automatically, every time.' },
-  { icon: '⚔️', label: 'DM combat dashboard', desc: 'Real-time HP for every party member. Apply damage directly. Roll NPC attacks. Track initiative. No spreadsheet needed.' },
-  { icon: '📖', label: 'Built for 2024 rules', desc: 'New PHB exhaustion, updated conditions, concentration mechanics, and all subclasses. Not a retrofit — built from scratch.' },
+  { icon: '', label: 'Instant dice rolls', desc: 'Click any skill, ability, or weapon to roll instantly. Nat 20s glow gold. Nat 1s flash red. Full modifier breakdown every time.' },
+  { icon: '', label: 'Conditions that think', desc: 'Toggle Poisoned and every check gets disadvantage automatically. Stunned drops concentration. The rules apply themselves.' },
+  { icon: '', label: 'HIT or MISS instantly', desc: "Enter the enemy's AC and every weapon attack tells you immediately whether it connects — no math required." },
+  { icon: '', label: 'Buffs that actually work', desc: 'Toggle Bless and your next roll includes the d4. Toggle Rage and your damage increases. Automatically, every time.' },
+  { icon: '', label: 'DM combat dashboard', desc: 'Real-time HP for every party member. Apply damage directly. Roll NPC attacks. Track initiative. No spreadsheet needed.' },
+  { icon: '', label: 'Built for 2024 rules', desc: 'New PHB exhaustion, updated conditions, concentration mechanics, and all subclasses. Not a retrofit — built from scratch.' },
 ];
 
 const STEPS = [
@@ -42,9 +42,9 @@ export default function LandingPage() {
 
         {/* HERO */}
         <section style={{ textAlign: 'center', padding: 'clamp(64px, 10vw, 120px) 24px 80px', maxWidth: 860, margin: '0 auto' }}>
-          <div className="landing-hero-dice" style={{ marginBottom: 24 }}>🎲</div>
+          <div className="landing-hero-dice" style={{ marginBottom: 24 }}></div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '5px 16px', fontSize: 12, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 28 }}>
-            ✦ 2024 PHB rules · Free to start
+            2024 PHB rules · Free to start
           </div>
           <h1 className="landing-hero-title" style={{ marginBottom: 24 }}>
             Your D&D companion<br />that does the math
@@ -142,7 +142,7 @@ export default function LandingPage() {
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column' as const, gap: 10, marginBottom: 28 }}>
                 {PRO_FEATURES.map(f => (
                   <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--t-2)' }}>
-                    <span style={{ color: 'var(--c-gold-l)', fontSize: 16, flexShrink: 0 }}>✦</span>{f}
+                    <span style={{ color: 'var(--c-gold-l)', fontSize: 16, flexShrink: 0 }}></span>{f}
                   </li>
                 ))}
               </ul>

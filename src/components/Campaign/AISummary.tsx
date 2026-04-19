@@ -162,7 +162,7 @@ Return ONLY valid JSON in this exact format:
                 <div className="spinner" style={{ width: 14, height: 14, borderTopColor: '#a78bfa' }} />
                 Writing recap…
               </>
-            ) : '✨ Generate Session Recap'}
+            ) : 'Generate Session Recap'}
           </button>
         </div>
       )}
@@ -189,7 +189,7 @@ Return ONLY valid JSON in this exact format:
               style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-4) var(--sp-5)', cursor: 'pointer' }}
               onClick={() => setExpanded(isOpen ? null : summary.id)}
             >
-              <span style={{ fontSize: 20 }}>📜</span>
+              <span style={{ fontSize: 20 }}></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: isOpen ? 'var(--c-purple-l)' : 'var(--t-1)' }}>
                   {summary.title}
@@ -220,7 +220,7 @@ Return ONLY valid JSON in this exact format:
                       </div>
                       {summary.highlights.map((h, i) => (
                         <div key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 4, display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)' }}>
-                          <span style={{ color: 'var(--c-gold-l)', flexShrink: 0 }}>★</span>
+                          <span style={{ color: 'var(--c-gold-l)', flexShrink: 0 }}></span>
                           {h}
                         </div>
                       ))}
@@ -235,7 +235,7 @@ Return ONLY valid JSON in this exact format:
                         navigator.clipboard.writeText(text);
                       }}
                     >
-                      📋 Copy for Discord
+                      Copy for Discord
                     </button>
                     {isOwner && (
                       <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }} onClick={() => deleteSummary(summary.id)}>

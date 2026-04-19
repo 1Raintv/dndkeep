@@ -127,8 +127,8 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
 
   const TABS = [
     { id: 'players', label: `Players (${playerCharacters.length})` },
-    { id: 'combat', label: sessionState?.combat_active ? '⚔ Combat Active' : 'Combat' },
-    { id: 'map', label: '🗺 Battle Map' },
+    { id: 'combat', label: sessionState?.combat_active ? 'Combat Active' : 'Combat' },
+    { id: 'map', label: 'Battle Map' },
     { id: 'notes', label: `Notes${notes.length > 0 ? ` (${notes.length})` : ''}` },
   ];
 

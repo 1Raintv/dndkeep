@@ -7,25 +7,25 @@ interface OnboardingProps {
 
 const STEPS = [
   {
-    emoji: '⚔️',
+    emoji: '',
     title: 'Welcome to DNDKeep',
     body: 'Your D&D 5e session companion. Build characters, track spells and HP, roll dice, and run live sessions with your party.',
     action: 'Get Started',
   },
   {
-    emoji: '🧙',
+    emoji: '',
     title: 'Create Your Character',
     body: 'Use the Character Creator to build a character using the 2024 PHB rules. Pick your species, class, background, and ability scores — then jump straight in.',
     action: 'Next',
   },
   {
-    emoji: '🎲',
+    emoji: '',
     title: 'At the Table',
-    body: 'The floating 🎲 button lets you roll any die instantly. Your character sheet tracks HP, spell slots, conditions, and weapons. Everything auto-saves.',
+    body: 'The floating button lets you roll any die instantly. Your character sheet tracks HP, spell slots, conditions, and weapons. Everything auto-saves.',
     action: 'Next',
   },
   {
-    emoji: '🗺️',
+    emoji: '',
     title: 'Campaigns & Party Play',
     body: 'Join a campaign with a 6-character code from your DM. Free accounts can play in any campaign. Upgrade to Pro to create and run your own.',
     action: 'Let\'s Go!',

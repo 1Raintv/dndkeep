@@ -113,7 +113,7 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
               <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, background: '#080d14', border: '1px solid var(--c-border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {m.avatar_url
                   ? <img src={m.avatar_url} alt={m.character_name} width={28} height={28} style={{ objectFit: 'cover' }} />
-                  : <span style={{ fontSize: 12 }}>🧙</span>}
+                  : <span style={{ fontSize: 12 }}></span>}
               </div>
             ) : (
               !m.isMe && <div style={{ width: 28, flexShrink: 0 }} />

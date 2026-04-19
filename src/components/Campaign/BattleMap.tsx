@@ -86,7 +86,7 @@ const COND_COLOR: Record<string,string> = {
   Paralyzed:'#e879f9',Petrified:'#6b7280',Poisoned:'#4ade80',Prone:'#fbbf24',
   Restrained:'#f97316',Stunned:'#c084fc',Unconscious:'#ef4444',
 };
-const TOKEN_EMOJIS = ['⚔️','🛡️','🏹','🧙','🧝','🧟','👹','👺','🐉','🐺','🐗','💀','👻','🔥','❄️','⚡','🌊','🌿','🗡️','🪄','🐍','🦅','🐻','🦁','🐊','👤'];
+const TOKEN_EMOJIS = ['','','','','','','','','','','','','','','','','','','','','','','','','',''];
 const TOKEN_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#6366f1','#a855f7','#ec4899','#14b8a6','#f59e0b','#64748b','#ffffff'];
 const MOD = (s:number) => Math.floor((s-10)/2);
 const FMT_MOD = (s:number) => { const m=MOD(s); return (m>=0?'+':'')+m; };
@@ -113,7 +113,7 @@ function TokenDot({ token, selected, dragging, onClick, onDragStart, isDM }:{
         overflow:'hidden',userSelect:'none',transition:'box-shadow .15s,opacity .15s',
       }}>
       <span style={{fontSize:16,lineHeight:1,pointerEvents:'none'}}>
-        {(!isDM&&token.is_hidden)?'👁':token.emoji}
+        {(!isDM&&token.is_hidden)?'':token.emoji}
       </span>
       {token.conditions.length>0&&(
         <div style={{position:'absolute',top:2,right:2,width:7,height:7,borderRadius:'50%',background:'#f97316',border:'1px solid rgba(0,0,0,0.4)'}}/>
@@ -201,7 +201,7 @@ function TokenDetailPanel({ token, isDM, notes, userId, userName, campaignId, on
           ) : (
             <span style={{fontSize:24}}>{token.emoji}</span>
           )}
-          {isDM&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .15s'}} className="hover-show">📷</div>}
+          {isDM&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .15s'}} className="hover-show"></div>}
         </div>
         <input type="file" accept="image/*" ref={fileRef} style={{display:'none'}} onChange={e=>e.target.files?.[0]&&uploadImage(e.target.files[0])}/>
         <div style={{flex:1,minWidth:0}}>
@@ -209,7 +209,7 @@ function TokenDetailPanel({ token, isDM, notes, userId, userName, campaignId, on
           <div style={{fontSize:10,color:'var(--t-3)',textTransform:'uppercase',letterSpacing:'0.08em'}}>
             {token.type==='player'?'Player':token.type==='npc'?`NPC · CR ${token.cr}`:'Object'}
           </div>
-          {isDM&&<div style={{fontSize:9,color:token.is_hidden?'#f97316':'#22c55e',marginTop:2}}>{token.is_hidden?'👁 Hidden from players':'👁 Visible to players'}</div>}
+          {isDM&&<div style={{fontSize:9,color:token.is_hidden?'#f97316':'#22c55e',marginTop:2}}>{token.is_hidden?'Hidden from players':'Visible to players'}</div>}
         </div>
         <button onClick={onClose} style={{background:'none',border:'none',color:'var(--t-2)',cursor:'pointer',fontSize:14,padding:'2px 4px',flexShrink:0}}>✕</button>
       </div>
@@ -374,7 +374,7 @@ function TokenDetailPanel({ token, isDM, notes, userId, userName, campaignId, on
             <div style={{display:'flex',gap:5}}>
               <button onClick={onToggleHide} style={{flex:1,fontSize:10,fontWeight:700,padding:'5px 6px',borderRadius:6,cursor:'pointer',
                 border:'1px solid var(--c-border)',background:token.is_hidden?'rgba(255,255,255,0.06)':'transparent',color:'var(--t-2)'}}>
-                {token.is_hidden?'👁 Show':'🙈 Hide'}
+                {token.is_hidden?'Show':'Hide'}
               </button>
               <button onClick={onDeleteToken} style={{flex:1,fontSize:10,fontWeight:700,padding:'5px 6px',borderRadius:6,cursor:'pointer',
                 border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.08)',color:'#ef4444'}}>Remove</button>
@@ -497,7 +497,7 @@ function MapInnerCanvas({
         {playerBlocked&&(
           <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:10,zIndex:5,pointerEvents:'none'}}>
             <div style={{background:'rgba(0,0,0,0.8)',borderRadius:12,padding:'20px 32px',textAlign:'center',border:'1px solid var(--c-border)'}}>
-              <div style={{fontSize:28,marginBottom:8}}>🗺</div>
+              <div style={{fontSize:28,marginBottom:8}}></div>
               <div style={{fontSize:13,fontWeight:700,color:'var(--t-1)',marginBottom:4}}>Battle Map</div>
               <div style={{fontSize:11,color:'var(--t-3)'}}>Waiting for DM to activate the map...</div>
             </div>
@@ -616,7 +616,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
       str:m.str, dex:m.dex, con:m.con, int:m.int, wis:m.wis, cha:m.cha,
       attack_name:m.attack_name, attack_bonus:m.attack_bonus, attack_damage:m.attack_damage, xp:m.xp,
       description:(m as any).traits||'', traits:(m as any).traits||'', immunities:'',
-      emoji:'👹', color:'#ef4444', source_monster_id:m.id,
+      emoji:'', color:'#ef4444', source_monster_id:m.id,
     };
     setEditNPC(npc as DMRosterNPC);
   }
@@ -695,7 +695,7 @@ function NPCRoster({ campaignId, userId, onAddToMap, onClose }:{
                   str:m.str,dex:m.dex,con:m.con,int:m.int,wis:m.wis,cha:m.cha,
                   attack_name:m.attack_name,attack_bonus:m.attack_bonus,attack_damage:m.attack_damage,xp:m.xp,
                   description:'',traits:(m as any).traits||'',immunities:'',
-                  emoji:'👹',color:'#ef4444',source_monster_id:m.id,times_used:0,
+                  emoji:'',color:'#ef4444',source_monster_id:m.id,times_used:0,
                 };
                 onAddToMap(rosterNpc);
               }} style={{flex:2,fontSize:9,fontWeight:700,padding:'3px 6px',borderRadius:5,cursor:'pointer',
@@ -727,7 +727,7 @@ function NPCEditForm({ npc, onSave, onCancel }:{
   const [atkDmg,setAtkDmg]=useState(npc.attack_damage||'1d6'); const [xp,setXp]=useState(String(npc.xp||100));
   const [desc,setDesc]=useState(npc.description||''); const [traits,setTraits]=useState(npc.traits||'');
   const [immunities,setImmunities]=useState(npc.immunities||'');
-  const [emoji,setEmoji]=useState(npc.emoji||'👹'); const [color,setColor]=useState(npc.color||'#ef4444');
+  const [emoji,setEmoji]=useState(npc.emoji||''); const [color,setColor]=useState(npc.color||'#ef4444');
 
   function submit(){
     if(!name.trim())return;
@@ -1027,7 +1027,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     }
     const token:MapToken={
       id:crypto.randomUUID(),name:pc.name,type:'player',col,row,character_id:pc.id,
-      color:'#60a5fa',emoji:'🧝',
+      color:'#60a5fa',emoji:'',
       hp:pc.current_hp,max_hp:pc.max_hp,ac:pc.armor_class,speed:pc.speed,
       conditions:pc.active_conditions??[],
       str:pc.strength,dex:pc.dexterity,con:pc.constitution,
@@ -1178,13 +1178,13 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   // ── Tool palette ─────────────────────────────────────────────────
   const TOOLS: {id:string;icon:string;tip:string;group?:string}[] = [
     {id:'select',icon:'▶',tip:'Select & Move (S)'},
-    {id:'pan',icon:'✋',tip:'Pan (H)'},
+    {id:'pan',icon:'',tip:'Pan (H)'},
     {id:'draw-freehand',icon:'✏️',tip:'Freehand (F)',group:'draw'},
     {id:'draw-line',icon:'╱',tip:'Line (L)',group:'draw'},
     {id:'draw-rect',icon:'▭',tip:'Rectangle (R)',group:'draw'},
     {id:'draw-ellipse',icon:'◯',tip:'Ellipse (E)',group:'draw'},
-    {id:'measure',icon:'📏',tip:'Measure Distance (M)'},
-    {id:'ping',icon:'📍',tip:'Pointer / Ping (P)'},
+    {id:'measure',icon:'',tip:'Measure Distance (M)'},
+    {id:'ping',icon:'',tip:'Pointer / Ping (P)'},
   ];
   const DRAW_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#a855f7','#ffffff','#000000'];
 
@@ -1211,14 +1211,14 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             border:showRoster?'1px solid var(--c-gold-bdr)':'1px solid var(--c-border)',
             background:showRoster?'var(--c-gold-bg)':'transparent',
             color:showRoster?'var(--c-gold-l)':'var(--t-2)',
-          }}>🗂 NPC Roster</button>
+          }}>NPC Roster</button>
           <button onClick={()=>setShowNewMap(v=>!v)} className="btn-secondary btn-sm">+ New Map</button>
           <button onClick={toggleMapActiveForPlayers} style={{
             fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,cursor:'pointer',
             border:mapIsLive?'1px solid rgba(34,197,94,0.5)':'1px solid rgba(239,68,68,0.4)',
             background:mapIsLive?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.08)',
             color:mapIsLive?'#22c55e':'#ef4444',
-          }} disabled={!activeMap}>{mapIsLive?'🟢 Live for Players':'🔴 Hidden from Players'}</button>
+          }} disabled={!activeMap}>{mapIsLive?'Live for Players':'Hidden from Players'}</button>
           {saving&&<span style={{fontSize:11,color:'var(--t-3)',fontStyle:'italic'}}>Saving...</span>}
         </>}
         {!isDM&&(
@@ -1280,7 +1280,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             {shapes.length>0&&(
               <button title="Clear all drawings" onClick={()=>setShapes([])}
                 style={{width:34,height:28,borderRadius:6,border:'none',cursor:'pointer',fontSize:12,background:'transparent',color:'var(--c-red-l)',marginTop:4}}>
-                🗑
+                
               </button>
             )}
           </div>
@@ -1344,7 +1344,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
               <div style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:30,
                 background:'rgba(13,17,23,0.95)',border:'1px solid var(--c-gold-bdr)',borderRadius:8,
                 padding:'4px 14px',fontFamily:'var(--ff-stat)',fontWeight:700,fontSize:13,color:'var(--c-gold-l)'}}>
-                📏 {measureDistFt} ft
+                {measureDistFt} ft
               </div>
             )}
 
@@ -1375,15 +1375,15 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             <div style={{padding:'60px 20px',textAlign:'center',color:'var(--t-3)',fontSize:14,
               border:'1px dashed var(--c-border)',borderRadius:10,height:'72vh',
               display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8}}>
-              <span style={{fontSize:32,opacity:0.3}}>🗺</span>
+              <span style={{fontSize:32,opacity:0.3}}></span>
               <div>{isDM?'Create a new map above to get started.':'Waiting for DM to set up the map...'}</div>
             </div>
           )}
           {/* Legend / footer */}
           {activeMap&&(
             <div style={{display:'flex',gap:12,fontSize:10,color:'var(--t-3)',marginTop:6,flexWrap:'wrap',padding:'0 4px'}}>
-              <span>🟢 Full HP · 🟡 Bloodied · 🔴 Critical</span>
-              <span>🟠 dot = conditions active</span>
+              <span>Full HP · Bloodied · Critical</span>
+              <span>dot = conditions active</span>
               {isDM&&<span>· Drag tokens to move · Click to inspect</span>}
               {!isDM&&<span>· Click tokens for details & party notes</span>}
               {isDM&&shapes.length>0&&<span style={{color:'var(--c-gold-l)'}}>· {shapes.length} drawing{shapes.length!==1?'s':''} on map</span>}

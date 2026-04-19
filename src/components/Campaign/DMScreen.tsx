@@ -253,12 +253,12 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
                   {/* Name row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--c-border)', overflow: 'hidden', flexShrink: 0, background: 'var(--c-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {m.avatar_url ? <img src={m.avatar_url} alt={m.name} width={36} height={36} style={{ objectFit: 'cover' }} /> : <span style={{ fontSize: 18, opacity: 0.4 }}>⚔</span>}
+                      {m.avatar_url ? <img src={m.avatar_url} alt={m.name} width={36} height={36} style={{ objectFit: 'cover' }} /> : <span style={{ fontSize: 18, opacity: 0.4 }}></span>}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: isDowned ? '#f87171' : 'var(--t-1)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         {m.name}
-                        {m.inspiration && <span title="Inspired" style={{ fontSize: 11 }}>★</span>}
+                        {m.inspiration && <span title="Inspired" style={{ fontSize: 11 }}></span>}
                         {isDowned && <span style={{ fontSize: 9, fontWeight: 800, color: '#f87171', background: 'rgba(220,38,38,0.12)', padding: '1px 5px', borderRadius: 3 }}>DOWNED</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--t-3)' }}>Lv {m.level} {m.class_name}</div>
@@ -314,7 +314,7 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
                         <button onClick={() => applyHPDelta(m, 'heal')} style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.08)', color: '#34d399' }}>Heal</button>
                         <button onClick={() => updatePlayer(m.id, { current_hp: m.max_hp })} style={{ fontSize: 10, fontWeight: 600, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-3)' }}>Full HP</button>
                         <button onClick={() => updatePlayer(m.id, { inspiration: !m.inspiration })} style={{ fontSize: 10, fontWeight: 600, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: `1px solid ${m.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: m.inspiration ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: m.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
-                          {m.inspiration ? '★ Inspired' : 'Inspire'}
+                          {m.inspiration ? 'Inspired' : 'Inspire'}
                         </button>
                       </div>
                       {/* Condition toggles */}
@@ -535,7 +535,7 @@ function NPCRow({ npc, expanded, onExpand, onUpdate, onEdit }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--t-1)', display: 'flex', alignItems: 'center', gap: 6 }}>
             {npc.name}
-            {!npc.is_alive && ' ☠'}
+            {!npc.is_alive && ' '}
             {npc.in_combat && <span style={{ fontSize: 8, fontWeight: 800, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', padding: '1px 5px', borderRadius: 3 }}>IN COMBAT</span>}
           </div>
           <div style={{ fontSize: 10, color: 'var(--t-3)' }}>
@@ -598,7 +598,7 @@ function NPCRow({ npc, expanded, onExpand, onUpdate, onEdit }: {
               style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                 border: '1px solid var(--c-border-m)', background: 'var(--c-raised)',
                 color: npc.is_alive ? 'var(--t-3)' : 'var(--c-green-l)' }}>
-              {npc.is_alive ? '☠ Mark Dead' : '+ Revive'}
+              {npc.is_alive ? 'Mark Dead' : '+ Revive'}
             </button>
             <button onClick={onEdit}
               style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-2)' }}>
@@ -613,7 +613,7 @@ function NPCRow({ npc, expanded, onExpand, onUpdate, onEdit }: {
 
 // ── NPC Form Modal ───────────────────────────────────────────────────
 const ROLES = ['ally', 'enemy', 'neutral', 'merchant', 'quest-giver', 'boss', 'unknown'];
-const ROLE_ICONS: Record<string, string> = { ally: '🤝', enemy: '⚔️', neutral: '😐', merchant: '💰', 'quest-giver': '📜', boss: '👑', unknown: '❓' };
+const ROLE_ICONS: Record<string, string> = { ally: '', enemy: '', neutral: '', merchant: '', 'quest-giver': '', boss: '', unknown: '' };
 
 function NPCFormModal({ npc, onChange, onSave, onClose }: {
   npc: Partial<NPC>;

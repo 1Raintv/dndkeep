@@ -130,7 +130,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
         style={{ maxWidth: 520 }}
         onClick={e => e.stopPropagation()}
       >
-        <h3 style={{ marginBottom: 4 }}>⚙️ Campaign Settings</h3>{/* cs-v2 */}
+        <h3 style={{ marginBottom: 4 }}>Campaign Settings</h3>{/* cs-v2 */}
         <p style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)', marginBottom: 20 }}>
           {campaign.name}
         </p>
@@ -143,7 +143,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
             color: 'var(--c-gold-l)', marginBottom: 12,
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            🤖 Automation
+            Automation
             {savingAuto && <span style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 400 }}>Saving…</span>}
             {autoSaved && <span style={{ fontSize: 9, color: '#34d399', fontWeight: 400 }}>✓ Saved</span>}
           </div>
@@ -213,7 +213,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
             color: 'var(--c-gold-l)', marginBottom: 12,
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            ⚙️ Rule Automations
+            Rule Automations
           </div>
           <p style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 12 }}>
             Set the default behavior for rule automations campaign-wide. Players can override these on their own characters if they unlock custom automations.
@@ -292,7 +292,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                   color: 'var(--c-red-l)',
                 }}
               >
-                🗑 Delete Campaign
+                Delete Campaign
               </button>
             </div>
           ) : (
@@ -334,7 +334,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                     opacity: deleting ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}
                 >
-                  {deleting ? 'Deleting…' : '🗑 Permanently Delete'}
+                  {deleting ? 'Deleting…' : 'Permanently Delete'}
                 </button>
               </div>
             </div>

@@ -26,10 +26,10 @@ const CLASS_COLORS: Record<string, string> = {
 };
 
 const CLASS_ICONS: Record<string, string> = {
-  Barbarian: '⚡', Bard: '🎵', Cleric: '✝', Druid: '🌿',
-  Fighter: '⚔️', Monk: '🥋', Paladin: '🛡', Ranger: '🏹',
-  Rogue: '🗡', Sorcerer: '✨', Warlock: '👁', Wizard: '📚',
-  Artificer: '⚙️', Psion: '🧠',
+  Barbarian: '', Bard: '', Cleric: '', Druid: '',
+  Fighter: '', Monk: '', Paladin: '', Ranger: '',
+  Rogue: '', Sorcerer: '', Warlock: '', Wizard: '',
+  Artificer: '', Psion: '',
 };
 
 const CLASS_TAGLINES: Record<string, string> = {
@@ -125,7 +125,7 @@ export default function ClassCompendiumPage() {
       }}>
         <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid var(--c-border)', flexShrink: 0 }}>
           <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-l)', marginBottom: 10 }}>
-            ✦ Classes
+            Classes
           </div>
           <input
             type="text"
@@ -157,7 +157,7 @@ export default function ClassCompendiumPage() {
                   transition: 'all 0.12s',
                 }}
               >
-                <span style={{ fontSize: 15, flexShrink: 0 }}>{CLASS_ICONS[cls.name] ?? '⚔️'}</span>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>{CLASS_ICONS[cls.name] ?? ''}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: isSelected ? 700 : 600, fontSize: 13, color: isSelected ? color : 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {cls.name}
@@ -177,7 +177,7 @@ export default function ClassCompendiumPage() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
         {!selectedClass ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
-            <div style={{ fontSize: 48, opacity: 0.3 }}>📖</div>
+            <div style={{ fontSize: 48, opacity: 0.3 }}></div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 18, fontWeight: 700, color: 'var(--t-2)' }}>Select a Class</div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 14, color: 'var(--t-3)', textAlign: 'center', maxWidth: 300 }}>
               Choose a class from the left to see the full level 1–20 progression, feature descriptions, and subclass options.
@@ -193,7 +193,7 @@ export default function ClassCompendiumPage() {
               borderRadius: 'var(--r-xl)', padding: '24px 28px', marginBottom: 24,
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                <div style={{ fontSize: 40, flexShrink: 0 }}>{CLASS_ICONS[classData.name] ?? '⚔️'}</div>
+                <div style={{ fontSize: 40, flexShrink: 0 }}>{CLASS_ICONS[classData.name] ?? ''}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
                     <h1 style={{ fontFamily: 'var(--ff-head)', fontSize: 28, fontWeight: 900, color: accentColor, margin: 0 }}>
@@ -291,7 +291,7 @@ export default function ClassCompendiumPage() {
             {/* Level Progression Table */}
             <div style={{ marginBottom: 32 }}>
               <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: accentColor, marginBottom: 12 }}>
-                ✦ Level 1–20 Progression
+                Level 1–20 Progression
                 {selectedSubclass && <span style={{ color: 'var(--t-3)', marginLeft: 8, fontWeight: 400 }}>with {selectedSubclass}</span>}
               </div>
 
@@ -393,7 +393,7 @@ export default function ClassCompendiumPage() {
             {/* Feature Reference — full descriptions */}
             <div>
               <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: accentColor, marginBottom: 16 }}>
-                ✦ Feature Reference
+                Feature Reference
               </div>
 
               {/* Class features */}
@@ -453,7 +453,7 @@ export default function ClassCompendiumPage() {
               {subclassData?.features && subclassData.features.length > 0 && (
                 <div style={{ marginTop: 24 }}>
                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 14 }}>
-                    ✦ {selectedSubclass} Subclass Features
+                    {selectedSubclass} Subclass Features
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {subclassData.features.map((sf, i) => (
@@ -485,7 +485,7 @@ export default function ClassCompendiumPage() {
             {selectedClass === 'Artificer' && (
               <div style={{ marginTop: 32 }}>
                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: accentColor, marginBottom: 16 }}>
-                  ⚙️ Artificer Infusions
+                  Artificer Infusions
                   <span style={{ fontWeight: 400, color: 'var(--t-3)', marginLeft: 8, fontSize: 11 }}>— Choose {getActiveInfusionCount(20)} active at level 20 (2 at level 2, scaling every 4 levels)</span>
                 </div>
                 {[2, 6, 10, 14].map(minLvl => {
@@ -522,7 +522,7 @@ export default function ClassCompendiumPage() {
             {selectedClass === 'Psion' && (
               <div style={{ marginTop: 32 }}>
                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: accentColor, marginBottom: 16 }}>
-                  🧠 Psionic Disciplines
+                  Psionic Disciplines
                   <span style={{ fontWeight: 400, color: 'var(--t-3)', marginLeft: 8, fontSize: 11 }}>— Choose 2 at level 2, gaining 1 more at levels 5, 10, 13, and 17 (6 total at level 17+)</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
@@ -537,7 +537,7 @@ export default function ClassCompendiumPage() {
                           border: `1px solid ${disc.type === 'passive' ? 'rgba(52,211,153,0.3)' : disc.type === 'active' ? 'rgba(251,191,36,0.3)' : 'rgba(96,165,250,0.3)'}`,
                           borderRadius: 999, padding: '1px 6px',
                         }}>
-                          {disc.type === 'passive' ? '✓ PASSIVE' : disc.type === 'active' ? '⚡ ACTIVE' : '◈ BOTH'}
+                          {disc.type === 'passive' ? '✓ PASSIVE' : disc.type === 'active' ? 'ACTIVE' : '◈ BOTH'}
                         </span>
                         {disc.dieCost && (
                           <span style={{ fontSize: 9, fontWeight: 700, color: accentColor, background: accentColor + '15', border: `1px solid ${accentColor}40`, borderRadius: 999, padding: '1px 6px' }}>

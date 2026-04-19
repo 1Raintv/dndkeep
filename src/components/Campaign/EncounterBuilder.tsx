@@ -57,7 +57,7 @@ function difficultyLabel(xp: number, thresholds: number[]): { label: string; col
   if (xp < thresholds[1]) return { label: 'Easy', color: 'var(--hp-full)' };
   if (xp < thresholds[2]) return { label: 'Medium', color: 'var(--c-amber-l)' };
   if (xp < thresholds[3]) return { label: 'Hard', color: '#fb923c' };
-  return { label: 'Deadly ☠️', color: 'var(--c-red-l)' };
+  return { label: 'Deadly ', color: 'var(--c-red-l)' };
 }
 
 export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat, onClose }: EncounterBuilderProps) {
@@ -213,7 +213,7 @@ export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat,
             <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
               <button className="btn-secondary" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
               <button className="btn-gold" onClick={buildAndAdd} disabled={encounter.length === 0} style={{ flex: 2, justifyContent: 'center' }}>
-                ⚔ Add to Combat ({totalMonsters} monsters)
+                Add to Combat ({totalMonsters} monsters)
               </button>
             </div>
           </div>

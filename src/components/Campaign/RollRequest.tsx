@@ -113,7 +113,7 @@ export function DMRollRequestPanel({ campaignId, userId, playerCharacters }: {
     <div style={{ marginBottom: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)', flex: 1 }}>
-          🎲 Roll Requests
+          Roll Requests
         </div>
         <button onClick={() => setOpen(v => !v)} style={{
           fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
@@ -179,7 +179,7 @@ export function DMRollRequestPanel({ campaignId, userId, playerCharacters }: {
           </div>
 
           <button onClick={sendRequest} className="btn-gold btn-sm" style={{ fontWeight: 700 }}>
-            📣 Send Request
+            Send Request
           </button>
         </div>
       )}
@@ -207,7 +207,7 @@ export function DMRollRequestPanel({ campaignId, userId, playerCharacters }: {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <span style={{ fontSize: 11, fontWeight: 700, color: req.success ? '#22c55e' : req.dc ? '#ef4444' : 'var(--t-1)' }}>
-                {req.success === true ? '✓' : req.success === false ? '✗' : '🎲'} {req.roll_name}
+                {req.success === true ? '✓' : req.success === false ? '✗' : ''} {req.roll_name}
               </span>
               <span style={{ fontSize: 10, color: 'var(--t-3)', marginLeft: 6 }}>
                 {req.rolled_by_name} rolled {req.result}{req.dc ? ` vs DC ${req.dc}` : ''}
@@ -338,7 +338,7 @@ export function PlayerRollPrompt({ campaignId, characterId, character }: {
           }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 11, color: 'var(--t-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
-                🎲 DM requests a roll
+                DM requests a roll
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--c-gold-l)' }}>
                 {req.roll_name}
@@ -352,7 +352,7 @@ export function PlayerRollPrompt({ campaignId, characterId, character }: {
               <button onClick={() => performRoll(req)} className="btn-gold" style={{
                 flex: 2, fontWeight: 800, fontSize: 13, justifyContent: 'center',
               }}>
-                🎲 Roll!
+                Roll!
               </button>
               <button onClick={() => dismissRequest(req.id)} style={{
                 flex: 1, fontSize: 11, fontWeight: 700, padding: '7px 8px', borderRadius: 7, cursor: 'pointer',

@@ -161,7 +161,7 @@ export default function CombatPage() {
         </div>
         <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
           <button className="btn-gold btn-sm" onClick={() => setShowEncounterBuilder(true)}>
-            ⚔ Encounter Builder
+            Encounter Builder
           </button>
           <button className="btn-secondary btn-sm" onClick={() => setShowMonsterPanel(v => !v)}>
             {showMonsterPanel ? 'Hide Monsters' : 'Monster Library'}

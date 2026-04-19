@@ -30,8 +30,8 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 const ROLE_ICONS: Record<string, string> = {
-  ally: '🤝', enemy: '⚔️', neutral: '😐', merchant: '💰',
-  'quest-giver': '📜', boss: '👑', unknown: '❓',
+  ally: '', enemy: '', neutral: '', merchant: '',
+  'quest-giver': '', boss: '', unknown: '',
 };
 
 const empty = (): Partial<NPC> => ({
@@ -152,7 +152,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
                         <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: npc.is_alive ? 'var(--t-1)' : 'var(--t-2)' }}>
                           {npc.name}
-                          {!npc.is_alive && ' ☠️'}
+                          {!npc.is_alive && ' '}
                         </span>
                         {npc.race && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{npc.race}</span>}
                         {npc.faction && (
@@ -163,7 +163,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                       </div>
                       {npc.location && (
                         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 1 }}>
-                          📍 {npc.location}{npc.last_seen ? ` · Last seen: ${npc.last_seen}` : ''}
+                          {npc.location}{npc.last_seen ? ` · Last seen: ${npc.last_seen}` : ''}
                         </div>
                       )}
                     </div>
@@ -193,7 +193,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                             onClick={() => toggleAlive(npc)}
                             style={{ color: npc.is_alive ? 'var(--c-red-l)' : 'var(--hp-full)' }}
                           >
-                            {npc.is_alive ? '☠️ Mark Dead' : '💚 Revive'}
+                            {npc.is_alive ? 'Mark Dead' : 'Revive'}
                           </button>
                           <button className="btn-ghost btn-sm" onClick={() => deleteNPC(npc.id)} style={{ color: 'var(--c-red-l)', marginLeft: 'auto' }}>
                             Delete

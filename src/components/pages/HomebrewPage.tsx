@@ -87,7 +87,7 @@ export default function HomebrewPage() {
   if (!isPro) {
     return (
       <div style={{ maxWidth: 560, margin: '60px auto', padding: '0 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🎲</div>
+        <div style={{ fontSize: 48, marginBottom: 16 }}></div>
         <h2 style={{ marginBottom: 12 }}>Homebrew Workshop</h2>
         <p style={{ color: 'var(--t-2)', marginBottom: 24, lineHeight: 1.7 }}>
           Create custom classes and subclasses, or import UA content.<br />

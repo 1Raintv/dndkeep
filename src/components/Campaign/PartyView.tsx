@@ -80,7 +80,7 @@ export default function PartyView({ campaignId }: PartyViewProps) {
           border: showMap ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
           background: showMap ? 'var(--c-gold-bg)' : 'transparent',
           color: showMap ? 'var(--c-gold-l)' : 'var(--t-2)',
-        }}>🗺 {showMap ? 'Hide Map' : 'Battle Map'}</button>
+        }}>{showMap ? 'Hide Map' : 'Battle Map'}</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 'var(--sp-3)' }}>
         {members.map(m => {
@@ -107,7 +107,7 @@ export default function PartyView({ campaignId }: PartyViewProps) {
                   {m.avatar_url ? (
                     <img src={m.avatar_url} alt={m.name} width={44} height={44} style={{ objectFit: 'cover' }} />
                   ) : (
-                    <span style={{ fontSize: 20 }}>🧙</span>
+                    <span style={{ fontSize: 20 }}></span>
                   )}
                 </div>
 

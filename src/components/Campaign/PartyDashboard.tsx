@@ -25,7 +25,7 @@ function hpLabel(current: number, max: number) {
   if (pct > 0.5) return { label: 'Injured', color: 'var(--hp-mid)' };
   if (pct > 0.25) return { label: 'Bloodied', color: '#f97316' };
   if (pct > 0) return { label: 'Critical', color: 'var(--hp-low)' };
-  return { label: '☠ Downed', color: '#dc2626' };
+  return { label: 'Downed', color: '#dc2626' };
 }
 
 export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardProps) {
@@ -191,7 +191,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
 
   if (characters.length === 0) return (
     <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
+      <div style={{ fontSize: 36, marginBottom: 12 }}></div>
       <div style={{ fontSize: 'var(--fs-sm)' }}>No characters in this campaign yet. Players need to assign their characters to this campaign.</div>
     </div>
   );
@@ -308,7 +308,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                         background: newHP <= 0 ? 'rgba(220,38,38,0.12)' : 'rgba(248,113,113,0.08)',
                         border: `1px solid ${newHP <= 0 ? 'rgba(220,38,38,0.4)' : 'rgba(248,113,113,0.2)'}`,
                         color: newHP <= 0 ? '#dc2626' : '#f87171' }}>
-                        {c.name}: {c.current_hp} → {newHP}{newHP <= 0 ? ' ☠' : ''}{c.concentration_spell && dmg > 0 ? ' ⚠ Conc.' : ''}
+                        {c.name}: {c.current_hp} → {newHP}{newHP <= 0 ? ' ' : ''}{c.concentration_spell && dmg > 0 ? ' ⚠ Conc.' : ''}
                       </span>
                     );
                   })}
@@ -746,7 +746,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
                   <button onClick={() => onUpdate({ current_hp: c.max_hp })} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>Full HP</button>
                   <button onClick={() => onUpdate({ current_hp: 0 })} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)' }}>Set to 0</button>
                   <button onClick={() => { onUpdate({ inspiration: !c.inspiration }); }} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: `1px solid ${c.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: c.inspiration ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: c.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
-                    {c.inspiration ? '★ Inspired' : 'Give Inspiration'}
+                    {c.inspiration ? 'Inspired' : 'Give Inspiration'}
                   </button>
                 </div>
                 {/* Concentration break prompt */}

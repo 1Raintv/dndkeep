@@ -123,7 +123,7 @@ export default function LobbyPage() {
 
         {characters.length === 0 ? (
           <div style={{ border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-xl)', padding: '48px 32px', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, opacity: 0.2, marginBottom: 16 }}>⚔</div>
+            <div style={{ fontSize: 40, opacity: 0.2, marginBottom: 16 }}></div>
             <div style={{ fontWeight: 600, color: 'var(--t-1)', marginBottom: 8 }}>No characters yet</div>
             <p style={{ color: 'var(--t-2)', fontSize: 13, maxWidth: 320, margin: '0 auto 20px' }}>
               Build your hero with the 2024 PHB rules — choose your class, species, background, and abilities.

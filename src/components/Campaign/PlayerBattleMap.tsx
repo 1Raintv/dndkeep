@@ -183,7 +183,7 @@ function PlayerTokenPanel({ token, onClose }: { token: MapToken; onClose: () => 
         {/* Fog of war — nothing revealed yet */}
         {!isOwn && !anythingRevealed && token.conditions.length===0 && (
           <div style={{textAlign:'center',padding:'20px 0',color:'var(--t-3)',fontSize:12}}>
-            <div style={{fontSize:28,marginBottom:8}}>🌫️</div>
+            <div style={{fontSize:28,marginBottom:8}}></div>
             <div style={{fontWeight:700,marginBottom:4}}>Unknown</div>
             <div style={{fontSize:11}}>The DM hasn't revealed information about this creature yet.</div>
           </div>
@@ -273,7 +273,7 @@ export default function PlayerBattleMap({ campaignId, myCharacterId }: {
   if(!map || !map.map_active_for_players){
     return (
       <div style={{padding:'48px 20px',textAlign:'center',border:'1px dashed var(--c-border)',borderRadius:12}}>
-        <div style={{fontSize:32,marginBottom:12}}>🗺️</div>
+        <div style={{fontSize:32,marginBottom:12}}></div>
         <div style={{fontSize:14,fontWeight:700,color:'var(--t-1)',marginBottom:6}}>Battle Map</div>
         <div style={{fontSize:12,color:'var(--t-3)'}}>Waiting for your DM to open the map…</div>
       </div>
@@ -344,8 +344,8 @@ export default function PlayerBattleMap({ campaignId, myCharacterId }: {
 
       {/* Legend */}
       <div style={{display:'flex',gap:12,fontSize:10,color:'var(--t-3)',flexWrap:'wrap'}}>
-        <span>🟢 Full HP · 🟡 Bloodied (&lt;50%) · 🔴 Critical (&lt;25%)</span>
-        <span>🟠 dot = conditions · 🌫️ = DM hasn't revealed info yet</span>
+        <span>Full HP · Bloodied (&lt;50%) · Critical (&lt;25%)</span>
+        <span>dot = conditions · = DM hasn't revealed info yet</span>
         <span>· Click any token to inspect</span>
       </div>
 

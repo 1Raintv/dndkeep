@@ -69,7 +69,7 @@ export default function DiscordSettings({ campaignId }: DiscordSettingsProps) {
         <div style={{ padding: 'var(--sp-4)', border: '1px solid rgba(88,101,242,0.4)', borderRadius: 'var(--r-lg)', background: 'rgba(88,101,242,0.06)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-3)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-              <span style={{ fontSize: 24 }}>🎮</span>
+              <span style={{ fontSize: 24 }}></span>
               <div>
                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
                   Connected to {integration.guild_name}
@@ -112,7 +112,7 @@ export default function DiscordSettings({ campaignId }: DiscordSettingsProps) {
         </div>
       ) : (
         <div style={{ textAlign: 'center', padding: 'var(--sp-6)', border: '1px dashed var(--c-border-m)', borderRadius: 'var(--r-xl)' }}>
-          <div style={{ fontSize: 40, marginBottom: 'var(--sp-3)' }}>🎮</div>
+          <div style={{ fontSize: 40, marginBottom: 'var(--sp-3)' }}></div>
           <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
             Connect to Discord
           </div>
@@ -128,7 +128,7 @@ export default function DiscordSettings({ campaignId }: DiscordSettingsProps) {
       {/* Setup Instructions */}
       <div className="card" style={{ padding: 'var(--sp-4)' }}>
         <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 'var(--sp-3)' }}>
-          🔧 Discord Bot Setup (one-time)
+          Discord Bot Setup (one-time)
         </div>
         <ol style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', paddingLeft: 'var(--sp-5)' }}>
           {[

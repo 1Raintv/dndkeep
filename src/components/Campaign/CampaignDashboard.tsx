@@ -199,7 +199,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
             }}
           >
             <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: codeCopied ? 'var(--c-green-l)' : 'var(--c-gold-l)' }}>
-              {codeCopied ? '✓ Copied!' : '🔗 Invite Code:'}
+              {codeCopied ? '✓ Copied!' : 'Invite Code:'}
             </span>
             <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 'var(--fs-md)', letterSpacing: '0.12em', color: codeCopied ? 'var(--c-green-l)' : 'var(--c-gold-xl)' }}>
               {joinCode}
@@ -218,7 +218,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
             style={{ color: activeTab === 'map' ? 'var(--c-gold-l)' : 'var(--t-2)', fontSize: 12 }}
             title="Battle Map"
           >
-            🗺 Map
+            Map
           </button>
           {isOwner && (
             <button
@@ -238,10 +238,10 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
       <div className="tabs">
         {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'members', 'notes', 'schedule', 'recap', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
-            members: 'Members', characters: 'Characters', session: '⚔️ Combat',
-            party: '👥 Party', log: '📜 Log', chat: '💬 Chat', notes: 'Notes',
-            schedule: '📅 Schedule', npcs: '🧙 NPCs', recap: '✨ Recap',
-            dm: '🎲 DM Screen', discord: '🎮 Discord', map: '🗺 Battle Map',
+            members: 'Members', characters: 'Characters', session: 'Combat',
+            party: 'Party', log: 'Log', chat: 'Chat', notes: 'Notes',
+            schedule: 'Schedule', npcs: 'NPCs', recap: 'Recap',
+            dm: 'DM Screen', discord: 'Discord', map: 'Battle Map',
           };
           return (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab as typeof activeTab)}>
@@ -527,7 +527,7 @@ function CampaignSettingsButton({ campaign, onBack }: { campaign: Campaign; onBa
         onClick={() => setOpen(true)}
         title="Campaign Settings"
       >
-        ⚙️ Settings
+        Settings
       </button>
       {open && (
         <CampaignSettings
@@ -647,7 +647,7 @@ function CharactersTab({ campaignId, userId, characters, onRefresh }: {
                       <div style={{ display: 'flex', gap: 12 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: col, fontFamily: 'var(--ff-stat)' }}>{c.current_hp}/{c.max_hp} HP</span>
                         <span style={{ fontSize: 11, color: 'var(--t-3)' }}>AC {c.armor_class}</span>
-                        {c.inspiration && <span style={{ fontSize: 11, color: 'var(--c-gold-l)' }}>★</span>}
+                        {c.inspiration && <span style={{ fontSize: 11, color: 'var(--c-gold-l)' }}></span>}
                       </div>
                     </div>
                   </div>

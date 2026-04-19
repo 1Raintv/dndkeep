@@ -23,7 +23,7 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
 
   function buildMarkdown(): string {
     const lines: string[] = [
-      `# 🎲 Session Log — ${campaignName}`,
+      `# Session Log — ${campaignName}`,
       `**Date:** ${date}  `,
       `**Total Rolls:** ${rolls.length}`,
       '',
@@ -44,13 +44,13 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
       const nat20s = charRolls.filter(r => r.results.some(x => x === 20));
       const nat1s = charRolls.filter(r => r.results.some(x => x === 1));
       if (nat20s.length > 0 || nat1s.length > 0) {
-        lines.push(`> ⭐ **${nat20s.length}** Natural 20s · 💀 **${nat1s.length}** Natural 1s`);
+        lines.push(`> ⭐ **${nat20s.length}** Natural 20s · **${nat1s.length}** Natural 1s`);
         lines.push('');
       }
       for (const roll of charRolls) {
         const time = new Date(roll.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         const nat20 = roll.results.some(x => x === 20) ? ' ⭐' : '';
-        const nat1 = roll.results.some(x => x === 1) ? ' 💀' : '';
+        const nat1 = roll.results.some(x => x === 1) ? ' ' : '';
         lines.push(`- \`${time}\` **${roll.label}** (${roll.expression}): **${roll.total}**${nat20}${nat1}`);
       }
       lines.push('');
@@ -119,7 +119,7 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
   if (rolls.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>
-        <div style={{ fontSize: 40, marginBottom: 'var(--sp-3)' }}>📋</div>
+        <div style={{ fontSize: 40, marginBottom: 'var(--sp-3)' }}></div>
         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)' }}>
           No rolls logged this session yet.
         </div>
@@ -140,7 +140,7 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
           { label: 'Total Rolls', value: rolls.length, color: 'var(--t-1)' },
           { label: 'Avg Total', value: avgTotal, color: '#60a5fa' },
           { label: '⭐ Nat 20s', value: nat20Count, color: 'var(--c-gold-l)' },
-          { label: '💀 Nat 1s', value: nat1Count, color: '#f87171' },
+          { label: 'Nat 1s', value: nat1Count, color: '#f87171' },
         ].map(stat => (
           <div key={stat.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-2)' }}>{stat.label}</div>
@@ -156,13 +156,13 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
           onClick={downloadMarkdown}
           disabled={exporting}
         >
-          📥 {exporting ? 'Exporting…' : 'Download Markdown'}
+          {exporting ? 'Exporting…' : 'Download Markdown'}
         </button>
         <button
           className="btn-secondary btn-sm"
           onClick={printLog}
         >
-          🖨️ Print / Save PDF
+          Print / Save PDF
         </button>
       </div>
 
@@ -194,7 +194,7 @@ export default function SessionLogExport({ rolls, campaignName, sessionDate }: S
                   {roll.expression}
                 </span>
                 <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: nat20 ? 'var(--c-gold-l)' : nat1 ? '#f87171' : 'var(--t-1)', minWidth: 32, textAlign: 'right' }}>
-                  {roll.total}{nat20 ? '⭐' : nat1 ? '💀' : ''}
+                  {roll.total}{nat20 ? '⭐' : nat1 ? '' : ''}
                 </span>
               </div>
             );
