@@ -143,7 +143,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  <div style={{
  background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)',
  borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-gold)',
- width: '100%', maxWidth: 560, maxHeight: '90vh',
+ width: '100%', maxWidth: 760, maxHeight: '90vh',
  display: 'flex', flexDirection: 'column', overflow: 'hidden',
  }}>
  {/* Header */}
@@ -534,13 +534,59 @@ function SubclassStep({ classData, selected, onSelect }: any) {
 }
 
 function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat }: any) {
- const [asiMode, setAsiMode] = useState<'+2' | '+1+1'>('+2');
+ // v2.31.1: match the CharacterCreator StepBuild ASIFeatPicker UI —
+ // three option cards (+2 one ability, +1 two abilities, Feat) with radio selection
+ // and ability buttons underneath. Keep abiBoosts state shape so buildUpdates() still works.
 
- // When ASI mode changes, reset boosts
- function handleAsiMode(mode: '+2' | '+1+1') {
- setAsiMode(mode);
+ const ABILITY_LABELS: Record<string, string> = {
+ strength: 'STR', dexterity: 'DEX', constitution: 'CON',
+ intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA',
+ };
+
+ // Derive 3-way mode from current state (plus2 = one ability got +2; split = two got +1)
+ const currentMode: 'plus2' | 'split' | 'feat' =
+ asiChoice === 'feat' ? 'feat' :
+ (Object.values(abiBoosts).some(v => (v as number) === 2) ? 'plus2' : 'split');
+
+ // For +2 mode: the single ability that has a boost
+ const plus2Ability = Object.entries(abiBoosts).find(([, v]) => v === 2)?.[0] ?? null;
+ // For split mode: the two abilities with +1
+ const splitAbilities = Object.entries(abiBoosts).filter(([, v]) => v === 1).map(([k]) => k);
+ const first = splitAbilities[0] ?? null;
+ const second = splitAbilities[1] ?? null;
+
+ function setMode(m: 'plus2' | 'split' | 'feat') {
+ if (m === 'feat') {
+ onSetChoice('feat');
  onSetBoosts({});
+ } else {
+ onSetChoice('asi');
+ onSetBoosts({});
+ onSetFeat('');
  }
+ }
+
+ function pickPlus2(ab: string) {
+ onSetBoosts({ [ab]: 2 });
+ }
+ function pickSplit(slot: 0 | 1, ab: string) {
+ const other = slot === 0 ? second : first;
+ const next: Record<string, number> = {};
+ if (slot === 0) {
+ next[ab] = 1;
+ if (other) next[other] = 1;
+ } else {
+ if (first) next[first] = 1;
+ next[ab] = 1;
+ }
+ onSetBoosts(next);
+ }
+
+ const OPTIONS = [
+ { id: 'plus2' as const, label: '+2 to One Ability', desc: 'Raise a single ability score by 2 points. Cannot exceed 20.' },
+ { id: 'split' as const, label: '+1 to Two Abilities', desc: 'Raise two different ability scores by 1 point each. Neither can exceed 20.' },
+ { id: 'feat' as const, label: 'Choose a Feat', desc: 'Forgo the ASI entirely and gain a feat from the feat list.' },
+ ];
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
@@ -548,109 +594,125 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
  Ability Score Improvement or Feat
  </div>
 
- {/* Top-level choice: ASI or Feat */}
- <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
- {(['asi', 'feat'] as const).map(choice => (
- <button
- key={choice}
- onClick={() => onSetChoice(choice)}
- style={{
- flex: 1, padding: 'var(--sp-3)', cursor: 'pointer',
- border: asiChoice === choice ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
- borderRadius: 'var(--r-lg)',
- background: asiChoice === choice ? 'rgba(212,160,23,0.08)' : 'var(--c-card)',
- }}
- >
- <div style={{ fontWeight: 700, fontSize: 'var(--fs-sm)', color: asiChoice === choice ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
- {choice === 'asi' ? '+2 Ability Score' : 'Take a Feat'}
- </div>
- <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>
- {choice === 'asi' ? 'Boost one or two ability scores' : 'Choose a special feature or power'}
- </div>
- </button>
- ))}
- </div>
-
- {/* ASI path */}
- {asiChoice === 'asi' && (
- <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
- {/* Sub-choice: +2 one stat or +1 two stats */}
- <div style={{ display: 'flex', gap: 8 }}>
- {(['+2', '+1+1'] as const).map(mode => (
- <button
- key={mode}
- onClick={() => handleAsiMode(mode)}
- style={{
- flex: 1, padding: '8px 12px', cursor: 'pointer', borderRadius: 8,
- border: asiMode === mode ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
- background: asiMode === mode ? 'rgba(212,160,23,0.08)' : 'var(--c-raised)',
- fontSize: 13, fontWeight: 600,
- color: asiMode === mode ? 'var(--c-gold-l)' : 'var(--t-2)',
- }}
- >
- {mode === '+2' ? '+2 to one ability' : '+1 to two abilities'}
- </button>
- ))}
- </div>
-
- {/* Points counter */}
- <div style={{ fontSize: 'var(--fs-xs)', color: totalBoosts === 2 ? 'var(--hp-full)' : 'var(--t-2)', fontWeight: 600 }}>
- {totalBoosts === 2
- ? ' Points fully allocated'
- : `${2 - totalBoosts} point${2 - totalBoosts !== 1 ? 's' : ''} remaining`
- }
- </div>
-
- {/* Ability rows */}
- <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
- {ABILITY_NAMES.map(ab => {
- const current = character[ab] as number;
- const boost = abiBoosts[ab] ?? 0;
- const atCap = current + boost >= 20;
- const maxBoost = asiMode === '+2' ? 2 : 1;
- const canAdd = totalBoosts < 2 && !atCap && boost < maxBoost;
+ {/* Three-option radio stack (matches CharacterCreator) */}
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+ {OPTIONS.map(opt => {
+ const active = currentMode === opt.id;
  return (
- <div key={ab} style={{
- display: 'flex', alignItems: 'center', gap: 8,
- padding: '8px 12px', background: boost > 0 ? 'rgba(212,160,23,0.06)' : 'var(--c-card)',
- borderRadius: 8, border: boost > 0 ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
- transition: 'all var(--tr-fast)',
- }}>
- <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-2)', flex: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
- {ab.slice(0,3)}
- </span>
- <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, color: 'var(--t-2)', fontSize: 14, minWidth: 20, textAlign: 'center' }}>
- {current}
- </span>
- <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
  <button
- onClick={() => { if (boost <= 0) return; onSetBoosts((p: any) => ({ ...p, [ab]: boost - 1 })); }}
- disabled={boost <= 0}
- style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', cursor: boost > 0 ? 'pointer' : 'not-allowed', minHeight: 0, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: boost <= 0 ? 0.3 : 1 }}
- >−</button>
- <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, color: boost > 0 ? 'var(--c-gold-l)' : 'var(--t-3)', minWidth: 20, textAlign: 'center', fontSize: 13 }}>
- {boost > 0 ? `+${boost}` : '0'}
- </span>
+ key={opt.id}
+ onClick={() => setMode(opt.id)}
+ style={{
+ textAlign: 'left', padding: '10px 14px', borderRadius: 9, cursor: 'pointer', minHeight: 0,
+ border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+ background: active ? 'var(--c-gold-bg)' : 'var(--c-card)',
+ display: 'flex', alignItems: 'center', gap: 12,
+ }}
+ >
+ <div style={{
+ width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+ border: active ? '2px solid var(--c-gold)' : '2px solid var(--c-border-m)',
+ background: active ? 'var(--c-gold)' : 'transparent',
+ }} />
+ <div style={{ flex: 1 }}>
+ <div style={{ fontSize: 13, fontWeight: 700, color: active ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+ {opt.label}
+ </div>
+ <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
+ {opt.desc}
+ </div>
+ </div>
+ </button>
+ );
+ })}
+ </div>
+
+ {/* +2 single ability picker */}
+ {currentMode === 'plus2' && (
+ <div>
+ <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 8 }}>
+ Which ability? (+2)
+ </div>
+ <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+ {ABILITY_NAMES.map(ab => {
+ const chosen = plus2Ability === ab;
+ const current = character[ab] as number;
+ const atCap = current + 2 > 20;
+ return (
  <button
- onClick={() => { if (!canAdd) return; onSetBoosts((p: any) => ({ ...p, [ab]: boost + 1 })); }}
- disabled={!canAdd}
- style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', cursor: canAdd ? 'pointer' : 'not-allowed', minHeight: 0, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: !canAdd ? 0.3 : 1 }}
- >+</button>
- </div>
- {boost > 0 && (
- <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, color: 'var(--c-gold-l)', fontSize: 13 }}>
- → {current + boost}
+ key={ab}
+ disabled={atCap && !chosen}
+ onClick={() => pickPlus2(ab)}
+ title={atCap ? `${ABILITY_LABELS[ab]} cannot exceed 20` : `${ABILITY_LABELS[ab]} ${current} → ${current + 2}`}
+ style={{
+ fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 7,
+ cursor: atCap && !chosen ? 'not-allowed' : 'pointer', minHeight: 0,
+ border: chosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+ background: chosen ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+ color: chosen ? 'var(--c-gold-l)' : atCap ? 'var(--t-3)' : 'var(--t-2)',
+ opacity: atCap && !chosen ? 0.4 : 1,
+ }}
+ >
+ {ABILITY_LABELS[ab]}
+ <span style={{ marginLeft: 6, fontWeight: 400, fontSize: 11, color: chosen ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
+ {current}{chosen ? ` → ${current + 2}` : ''}
  </span>
- )}
- </div>
+ </button>
  );
  })}
  </div>
  </div>
  )}
 
- {/* Feat path */}
- {asiChoice === 'feat' && (
+ {/* +1 + +1 split picker — two labeled rows */}
+ {currentMode === 'split' && (
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+ {[0, 1].map(slot => {
+ const chosen = slot === 0 ? first : second;
+ const other = slot === 0 ? second : first;
+ return (
+ <div key={slot}>
+ <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 6 }}>
+ {slot === 0 ? 'First ability (+1)' : 'Second ability (+1)'}
+ </div>
+ <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+ {ABILITY_NAMES.map(ab => {
+ const isChosen = chosen === ab;
+ const isOther = other === ab;
+ const current = character[ab] as number;
+ const atCap = current + 1 > 20;
+ const disabled = isOther || (atCap && !isChosen);
+ return (
+ <button
+ key={ab}
+ disabled={disabled}
+ onClick={() => pickSplit(slot as 0 | 1, ab)}
+ title={isOther ? 'Already selected as the other ability' : atCap ? `${ABILITY_LABELS[ab]} cannot exceed 20` : undefined}
+ style={{
+ fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 7,
+ cursor: disabled ? 'not-allowed' : 'pointer', minHeight: 0,
+ border: isChosen ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+ background: isChosen ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+ color: isChosen ? 'var(--c-gold-l)' : disabled ? 'var(--t-3)' : 'var(--t-2)',
+ opacity: disabled ? 0.4 : 1,
+ }}
+ >
+ {ABILITY_LABELS[ab]}
+ <span style={{ marginLeft: 6, fontWeight: 400, fontSize: 11, color: isChosen ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
+ {current}{isChosen ? ` → ${current + 1}` : ''}
+ </span>
+ </button>
+ );
+ })}
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ )}
+
+ {/* Feat picker */}
+ {currentMode === 'feat' && (
  <FeatPicker
  selected={selectedFeat ?? null}
  onSelect={name => onSetFeat(name ?? '')}
