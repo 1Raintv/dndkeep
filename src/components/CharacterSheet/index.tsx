@@ -580,6 +580,70 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onUpdateExhaustionLevel={lvl => applyUpdate({ exhaustion_level: lvl }, true)}
  />
 
+ {/* v2.43.0: Defenses strip — moved up here so it sits adjacent to the COND chip
+ in the vitals row. Visible on EVERY tab, not just Actions. Auto-populates from
+ species (Tiefling fire, Dwarf poison, etc.) + manual edits in Settings. */}
+ {(() => {
+ const buffsForDef: any[] = (character as any).active_buffs ?? [];
+ const buffResForDef: string[] = [];
+ buffsForDef.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!buffResForDef.includes(r)) buffResForDef.push(r); }); });
+ const defResistances = Array.from(new Set([...resolveResistances(character), ...buffResForDef]));
+ const defImmunities = resolveImmunities(character);
+ const defVulnerabilities = resolveVulnerabilities(character);
+ const hasAny = defResistances.length > 0 || defImmunities.length > 0 || defVulnerabilities.length > 0;
+ if (!hasAny) return null;
+ return (
+ <div style={{
+ background: 'var(--c-card)', border: '1px solid var(--c-border)',
+ borderRadius: 'var(--r-md)', padding: '8px 12px',
+ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' as const,
+ }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--t-3)', flexShrink: 0 }}>
+ Defenses
+ </span>
+ {defResistances.length > 0 && (
+ <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#4ade80' }}>Resist</span>
+ {defResistances.map((t: string) => {
+ const c = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
+ return (
+ <span key={`r-${t}`} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: c, background: c + '15', border: `1px solid ${c}40`, borderRadius: 999, padding: '1px 9px' }}>
+ {labelForDamageType(t)}
+ </span>
+ );
+ })}
+ </div>
+ )}
+ {defImmunities.length > 0 && (
+ <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#60a5fa' }}>Immune</span>
+ {defImmunities.map((t: string) => {
+ const c = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
+ return (
+ <span key={`i-${t}`} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: c, background: c + '22', border: `2px solid ${c}55`, borderRadius: 999, padding: '1px 9px' }}>
+ {labelForDamageType(t)}
+ </span>
+ );
+ })}
+ </div>
+ )}
+ {defVulnerabilities.length > 0 && (
+ <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#ef4444' }}>Vulner</span>
+ {defVulnerabilities.map((t: string) => {
+ const c = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
+ return (
+ <span key={`v-${t}`} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: c, background: c + '15', border: `1px dashed ${c}55`, borderRadius: 999, padding: '1px 9px' }}>
+ {labelForDamageType(t)}
+ </span>
+ );
+ })}
+ </div>
+ )}
+ </div>
+ );
+ })()}
+
  {/* Death Saves — shown when HP = 0 */}
  {character.current_hp <= 0 && !character.wildshape_active && (
  <DeathSaves
@@ -1230,16 +1294,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  };
  const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons];
 
- // Defenses (v2.41.0): Use damageModifiers helpers for full RES/IMM/VUL coverage.
- // Drops the legacy ad-hoc tiefling/barbarian inline checks — those are now in
- // SPECIES_RESISTANCES (tiefling=fire, dwarf=poison, etc.) and active_buffs.
- const buffs: any[] = (character as any).active_buffs ?? [];
- const buffRes: string[] = [];
- buffs.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!buffRes.includes(r)) buffRes.push(r); }); });
- const allResistances = Array.from(new Set([...resolveResistances(character), ...buffRes]));
- const allImmunities = resolveImmunities(character);
- const allVulnerabilities = resolveVulnerabilities(character);
- const hasAnyDefense = allResistances.length > 0 || allImmunities.length > 0 || allVulnerabilities.length > 0;
+ // v2.43.0: Defenses calc moved to top-level vitals row (above HPStatsPanel area).
+ // The Combat IIFE no longer needs to compute these.
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
@@ -1254,54 +1310,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
  />
 
- {/* Defenses strip — v2.41.0: shows RES / IMM / VUL with per-type colored chips */}
- {hasAnyDefense && (
- <div style={{ background: 'var(--c-surface)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)', display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase' as const, color: '#4ade80' }}>Defenses</div>
- {/* Resistances */}
- {allResistances.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#4ade80', minWidth: 36 }}>Resist</span>
- {allResistances.map((t: string) => {
- const color = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
- return (
- <span key={t} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color, background: color + '15', border: `1px solid ${color}40`, borderRadius: 999, padding: '2px 10px' }}>
- {labelForDamageType(t)}
- </span>
- );
- })}
- </div>
- )}
- {/* Immunities */}
- {allImmunities.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#60a5fa', minWidth: 36 }}>Immune</span>
- {allImmunities.map((t: string) => {
- const color = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
- return (
- <span key={t} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color, background: color + '22', border: `2px solid ${color}55`, borderRadius: 999, padding: '2px 10px' }}>
- {labelForDamageType(t)}
- </span>
- );
- })}
- </div>
- )}
- {/* Vulnerabilities */}
- {allVulnerabilities.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#ef4444', minWidth: 36 }}>Vulner</span>
- {allVulnerabilities.map((t: string) => {
- const color = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
- return (
- <span key={t} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color, background: color + '15', border: `1px dashed ${color}55`, borderRadius: 999, padding: '2px 10px' }}>
- {labelForDamageType(t)}
- </span>
- );
- })}
- </div>
- )}
- </div>
- )}
+ {/* v2.43.0: Defenses strip MOVED to vitals row (above HPStatsPanel area).
+ No longer rendered here — keeps Actions tab focused on combat actions. */}
 
  {/* Filter chips */}
  <div>
