@@ -269,11 +269,8 @@ export default function SpellCastButton({
 
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
- {/* Range chip — always shown */}
- <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 999,
- background: 'rgba(255,255,255,0.05)', border: '1px solid var(--c-border)', color: 'var(--t-3)' }}>
- {spell.range}
- </span>
+ {/* v2.35.1: removed the inline range chip — the row's RANGE column already shows it.
+ Keeping it here would duplicate "60 feet" on every spell row. */}
 
  {/* ── CATEGORY 1: UTILITY — cast button only ── */}
  {mechanics.isUtility && (
@@ -325,29 +322,19 @@ export default function SpellCastButton({
  </>
  )}
 
- {/* ── CATEGORY 3: SAVE SPELL — DC button + damage button ── */}
- {mechanics.saveType && !mechanics.isAttack && (
- <>
- <button
- onClick={logSaveDC}
- style={{ ...btnBase, background: saveColor + '18',
- border: `1px solid ${saveColor}50`, color: saveColor }}
- title="Click to relay save DC to the party/DM"
- >
- {mechanics.saveType} DC {saveDC}
- </button>
- {mechanics.damageDice && (
+ {/* ── CATEGORY 3: SAVE SPELL — damage button only ── */}
+ {/* v2.35.1: removed the "CON DC 15" button — HIT/DC column in the row shows this info.
+ The damage button below is the functional roll. If the DM needs the save DC relayed,
+ casting the spell (via damage button) logs the DC to the action log. */}
+ {mechanics.saveType && !mechanics.isAttack && mechanics.damageDice && (
  <button
  onClick={() => rollDamage()}
  style={{ ...btnBase, background: dmgColor + '18',
  border: `1px solid ${dmgColor}50`, color: dmgColor }}
- title="Roll damage independently"
+ title={`Targets make ${mechanics.saveType} DC ${saveDC} save. Click to roll damage.`}
  >
  {mechanics.damageDice} {mechanics.damageType}
  </button>
- )}
-
- </>
  )}
 
  {/* Heal dice */}

@@ -1470,9 +1470,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
- {/* v2.35.0: Column headers matching Spells tab grid (HIT/DC + EFFECT columns added) */}
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px auto 16px', gap: '0 8px', padding: '0 10px 2px', marginBottom: 2 }}>
- {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', 'EFFECT', '', ''].map((h, i) => (
+ {/* v2.35.1: Dropped EFFECT column per feedback — effect info lives in the expanded panel.
+ Fixed 170px action column so Attack+Damage rows align with Utility "Cast" rows. */}
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 170px 16px', gap: '0 8px', padding: '0 10px 2px', marginBottom: 2 }}>
+ {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
@@ -1537,12 +1538,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  overflow: 'hidden',
  transition: 'all 0.15s',
  }}>
- {/* Row — same grid as Spells tab */}
+ {/* Row — 8-col grid (EFFECT column removed per v2.35.1). Fixed 170px action col
+ so rows with Attack+Damage buttons align with rows that only have a Cast button. */}
  <div
  onClick={() => setExpandedActionsSpell(isExpanded ? null : rowKey)}
  style={{
  display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px auto 16px',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 170px 16px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}
@@ -1605,18 +1607,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
  </div>
 
- {/* Col 6: EFFECT */}
- <div style={{ textAlign: 'center' }}>
- <span style={{
- fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.04em',
- color: effectColor, background: effectColor + '12',
- border: `1px solid ${effectColor}30`, borderRadius: 4, padding: '1px 5px',
- whiteSpace: 'nowrap' as const,
- }}>{effectLabel}</span>
- </div>
-
- {/* Col 7: Cast button */}
- <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+ {/* Col 6: Cast action buttons (fixed 170px — aligns Attack+Damage rows with Cast rows) */}
+ <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-start', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
  <SpellCastButton
  spell={spell}
  character={character}
@@ -1646,13 +1638,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {isExpanded && (
  <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
  {/* Stats row */}
- <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+ <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
  {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
  <div key={k}>
  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', fontWeight: 500 }}>{v}</div>
  </div>
  ) : null)}
+ {/* v2.35.1: Effect pill moved here from the main row per feedback */}
+ <div>
+ <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>Effect</div>
+ <span style={{
+ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+ color: effectColor, background: effectColor + '12',
+ border: `1px solid ${effectColor}30`, borderRadius: 4, padding: '2px 7px',
+ whiteSpace: 'nowrap' as const,
+ }}>{effectLabel}</span>
+ </div>
  </div>
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
  </div>
