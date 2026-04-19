@@ -1096,6 +1096,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── Divider ── */}
  <div style={{ height: 1, background: 'var(--c-border)' }} />
 
+ {/* v2.46.0: Turn Economy — moved out of the Actions tab so it's visible on
+     EVERY tab. The DM and the player both want this front-and-center: it's
+     the most-referenced piece during combat. external action/BA props sync
+     spell-cast consumption into the visual token state. */}
+ <ActionEconomy
+ speedFeet={character.speed ?? 30}
+ actionUsedExternal={spellCastThisTurn}
+ bonusActionUsedExternal={bonusActionSpellCast}
+ onActionUsed={(action: string, used: boolean) => {
+ // Manual toggle from ActionEconomy mirrors back into our spell-cast flags
+ if (action === 'action') setSpellCastThisTurn(used);
+ if (action === 'bonusAction') setBonusActionSpellCast(used);
+ if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
+ if (action === 'action' && !used) setCombatFilter('all');
+ }}
+ onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
+ />
+
  {/* Tabs */}
  <div className="tabs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
  {TABS.map(tab => (
@@ -1253,15 +1271,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
- {/* Turn Economy */}
- <ActionEconomy
- speedFeet={character.speed ?? 30}
- onActionUsed={(action: string, used: boolean) => {
- if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
- if (action === 'action' && !used) setCombatFilter('all');
- }}
- onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
- />
+ {/* v2.46.0: Turn Economy MOVED above the tab nav so it's visible on every tab.
+     This Actions-tab-only copy is removed to avoid duplication. */}
 
  {/* v2.43.0: Defenses strip MOVED to vitals row (above HPStatsPanel area).
  No longer rendered here — keeps Actions tab focused on combat actions. */}
@@ -1587,6 +1598,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  {[...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled]
  .filter(s => actionsLevelFilter === 'all' || s.level === actionsLevelFilter)
+ .filter(s => {
+ // v2.46.0: combatFilter now actually filters spell rows by casting time.
+ // 'all' = no filter; 'action' = 1-action spells only; 'bonus' = 1-BA only;
+ // 'reaction' = 1-reaction only. 'limited' is a slot-based filter handled elsewhere.
+ if (combatFilter === 'all' || combatFilter === 'limited') return true;
+ const ct = (s.casting_time ?? '').toLowerCase();
+ if (combatFilter === 'reaction') return ct.includes('reaction');
+ if (combatFilter === 'bonus') return ct.includes('bonus action') || ct.includes('bonus');
+ if (combatFilter === 'action') {
+ // 1 action spells only — exclude bonus actions and reactions
+ return ct.includes('action') && !ct.includes('bonus') && !ct.includes('reaction');
+ }
+ return true;
+ })
  .map(spell => {
  const sc = schoolColor[spell.school] ?? '#a78bfa';
  const eff = (spell as any).effectiveLevel ?? spell.level;
@@ -1775,13 +1800,30 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
  compact={true}
  forceSlotLevel={isUpcast ? eff : undefined}
- spellLockedOut={
- (spellCastThisTurn && spell.level > 0) ||
- (bonusActionSpellCast && spell.level > 0)
- }
+ spellLockedOut={(() => {
+ // v2.46.0: RAW 2024 spell action economy:
+ // - One spell with Action casting time per turn (cantrip OR leveled — both eat the action)
+ // - One spell with Bonus Action casting time per turn (cantrip OR leveled)
+ // - 2024 PHB removed the famous "BA spell forces cantrip-only action" rule
+ const ct = (spell.casting_time ?? '').toLowerCase();
+ const isBonusActionSpell = ct.includes('bonus action') || (ct.includes('bonus') && !ct.includes('action'));
+ const isReactionSpell = ct.includes('reaction');
+ const isActionSpell = ct.includes('action') && !isBonusActionSpell && !isReactionSpell;
+ if (isReactionSpell) return false; // reactions are free, don't lock
+ if (isActionSpell && spellCastThisTurn) return true;
+ if (isBonusActionSpell && bonusActionSpellCast) return true;
+ return false;
+ })()}
  onLeveledSpellCast={(isBonusAction?: boolean) => {
+ // v2.46.0: Track action vs bonus-action consumption based on the spell's
+ // casting time, not just whether it's leveled. Cantrips with 1A casting
+ // time also consume the action. The isBonusAction param from
+ // SpellCastButton already reflects the spell's casting time.
+ if (isBonusAction) {
+ setBonusActionSpellCast(true);
+ } else {
  setSpellCastThisTurn(true);
- if (isBonusAction) setBonusActionSpellCast(true);
+ }
  }}
  onConcentrationCast={() => setConcentration(spell.id)}
  />

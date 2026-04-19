@@ -149,7 +149,9 @@ export default function SpellCastButton({
  const allRolls = [...rolls, ...extraRolls];
  const total = allRolls.reduce((a, b) => a + b, 0);
 
- // Spend slot if leveled spell + mark spell as cast this turn
+ // Spend slot if leveled spell + mark spell as cast this turn.
+ // v2.46.0: cantrips also fire onLeveledSpellCast so parent action-economy
+ // tracking can consume the action/BA based on the spell's casting time.
  if (!isCantrip && slotLevel !== undefined) {
  spendSlot(slotLevel);
  onLeveledSpellCast?.(isBonusActionCast);
@@ -159,6 +161,7 @@ export default function SpellCastButton({
  onLeveledSpellCast?.(isBonusActionCast);
  flashCast(availableSlots[0].level);
  } else if (isCantrip) {
+ onLeveledSpellCast?.(isBonusActionCast);
  flashCast(0);
  }
 
@@ -222,14 +225,19 @@ export default function SpellCastButton({
  diceExpression: '1d20', individualResults: [d20], total,
  hitResult: hitResult as any,
  notes: `+${spellAttack} spell attack (${key.slice(0,3).toUpperCase()} ${spellMod >= 0 ? '+' : ''}${spellMod} + Prof +${profBonus})` });
- if (!isCantrip) onLeveledSpellCast?.(isBonusActionCast);
+ // v2.46.0: fire for cantrips too so parent action-economy tracks the consumed action.
+ onLeveledSpellCast?.(isBonusActionCast);
  }
 
  /** Cast utility spell (no dice) */
  async function castUtility(slotLevel: number, targetName?: string) {
  if (!isCantrip && slotLevel > 0) {
  spendSlot(slotLevel);
- onLeveledSpellCast?.();
+ onLeveledSpellCast?.(isBonusActionCast);
+ } else if (isCantrip) {
+ // v2.46.0: cantrip cast still consumes the action (or BA for bonus-action cantrips
+ // like Vicious Mockery? Actually Vicious Mockery is 1A. Most cantrips = 1A).
+ onLeveledSpellCast?.(isBonusActionCast);
  }
  // v2.34.2: visible confirmation — always flashes, whether or not a slot was spent
  flashCast(slotLevel);

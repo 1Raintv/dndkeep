@@ -49,7 +49,7 @@ export default function HPStatsPanel({
   const hasAnyCondition = activeConditions.length > 0 || exhaustionLevel > 0;
 
   const stats = [
-    { label: 'INSP', value: character.inspiration ? 'YES' : '—', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
+    // v2.46.0: INSP removed — Inspiration toggle moved into CharacterHeader (between Rest and HP block)
     { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); }, tooltip: editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats' },

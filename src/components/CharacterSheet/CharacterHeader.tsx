@@ -107,20 +107,7 @@ export default function CharacterHeader({
  <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--t-1)', letterSpacing: '0.01em' }}>
  {character.name}
  </span>
- <button
- onClick={onToggleInspiration}
- title={character.inspiration ? 'Click to use Inspiration' : 'Click to gain Inspiration'}
- style={{
- fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, padding: '2px 8px',
- borderRadius: 999, cursor: 'pointer', letterSpacing: '0.08em',
- border: `1px solid ${character.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
- background: character.inspiration ? 'var(--c-gold-bg)' : 'transparent',
- color: character.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)',
- transition: 'all 0.2s',
- }}
- >
- {character.inspiration ? 'INSPIRED' : 'Inspiration'}
- </button>
+ {/* v2.46.0: Inspiration button MOVED to between Rest and HP block (further right) */}
  </div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 1 }}>
  {classDisplay}{subclassDisplay ? ` — ${subclassDisplay}` : ''} · {character.species}{character.background ? ` · ${character.background}` : ''}
@@ -143,6 +130,22 @@ export default function CharacterHeader({
  {/* v2.33.3: Rest — sits immediately left of the HP block */}
  <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12, flexShrink: 0 }}>
  Rest
+ </button>
+
+ {/* v2.46.0: Inspiration button — sits between Rest and HP block, more discoverable */}
+ <button
+ onClick={onToggleInspiration}
+ title={character.inspiration ? 'Inspired! Click to use/remove' : 'Click to gain Inspiration'}
+ style={{
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800, padding: '5px 12px',
+ borderRadius: 'var(--r-md)', cursor: 'pointer', letterSpacing: '0.06em',
+ border: `1px solid ${character.inspiration ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
+ background: character.inspiration ? 'var(--c-gold-bg)' : 'transparent',
+ color: character.inspiration ? 'var(--c-gold-l)' : 'var(--t-3)',
+ transition: 'all 0.2s', flexShrink: 0, minHeight: 0,
+ }}
+ >
+ {character.inspiration ? '★ INSPIRED' : '☆ Inspire'}
  </button>
 
  {/* v2.33.3: HP block reordered — actions first, then input, then HP number on the right */}

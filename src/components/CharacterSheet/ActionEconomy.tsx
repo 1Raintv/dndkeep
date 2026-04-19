@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // Per 2024 rules: Action, Bonus Action, Reaction reset each round; Movement tracked separately
 interface ActionState {
@@ -12,6 +12,11 @@ interface ActionEconomyProps {
  speedFeet: number;
  onActionUsed?: (action: string, used: boolean) => void;
  onNewTurn?: () => void;
+ // v2.46.0: external sync — parent can push action/BA used state in (e.g. when
+ // a spell with 1A casting time is cast, the parent flips actionUsedExternal=true
+ // and ActionEconomy reflects it visually). Reactions are still toggled here only.
+ actionUsedExternal?: boolean;
+ bonusActionUsedExternal?: boolean;
 }
 
 const TOKEN = {
@@ -20,10 +25,25 @@ const TOKEN = {
  reaction: { label: 'Reaction', key: 'reaction', icon: '', color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn }: ActionEconomyProps) {
+export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal }: ActionEconomyProps) {
  const [state, setState] = useState<ActionState>({
  action: false, bonusAction: false, reaction: false, movedFeet: 0,
  });
+
+ // v2.46.0: Sync external action/BA flags into local state so spell casts
+ // visually mark the correct action token as consumed.
+ useEffect(() => {
+ if (actionUsedExternal !== undefined && actionUsedExternal !== state.action) {
+ setState(s => ({ ...s, action: !!actionUsedExternal }));
+ }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [actionUsedExternal]);
+ useEffect(() => {
+ if (bonusActionUsedExternal !== undefined && bonusActionUsedExternal !== state.bonusAction) {
+ setState(s => ({ ...s, bonusAction: !!bonusActionUsedExternal }));
+ }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [bonusActionUsedExternal]);
 
  function toggle(key: keyof Omit<ActionState,'movedFeet'>) {
  setState(s => {
@@ -53,13 +73,31 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn }: Ac
  padding: 'var(--sp-3)',
  }}>
  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-2)' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
  Turn Economy
  </span>
+ {/* v2.46.0: New Turn button is now prominent — this is the most-clicked control during combat. */}
  <button
  onClick={reset}
- style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, transition: 'color .15s' }}
- title="Reset all (new turn)"
+ style={{
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+ padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
+ border: '1px solid var(--c-gold-bdr)',
+ background: 'var(--c-gold-bg)',
+ color: 'var(--c-gold-l)',
+ letterSpacing: '.06em',
+ transition: 'all .15s',
+ display: 'inline-flex', alignItems: 'center', gap: 6,
+ }}
+ title="Reset Action / Bonus / Reaction / Movement for a new turn"
+ onMouseEnter={e => {
+ (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,160,23,0.22)';
+ (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold)';
+ }}
+ onMouseLeave={e => {
+ (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-gold-bg)';
+ (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold-bdr)';
+ }}
  >
  ↺ New Turn
  </button>
