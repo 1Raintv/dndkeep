@@ -36,6 +36,7 @@ import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
 import ActiveBuffsPanel from './ActiveBuffsPanel';
 import LevelUpWizard from './LevelUpWizard';
+import LevelUpBanner from './LevelUpBanner';
 import SpellsTab from './SpellsTab';
 import ConditionMechanics from './ConditionMechanics';
 import ActionLog from '../shared/ActionLog';
@@ -543,6 +544,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }
  }}
  />
+
+ {/* v2.31: Pending level-up notification — only renders when XP has crossed the next threshold */}
+ <LevelUpBanner character={character} onOpen={() => setShowLevelUp(true)} />
 
 {/* HP Stats — stat chips + conditions strip (v2.27: HP card moved into header) */}
  <HPStatsPanel
