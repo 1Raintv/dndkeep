@@ -8,6 +8,8 @@ import { useCampaign } from '../../context/CampaignContext';
 import { AUTOMATIONS, resolveAutomation, labelForValue, type AutomationValue } from '../../lib/automations';
 import { SPECIES } from '../../data/species';
 import { BACKGROUNDS } from '../../data/backgrounds';
+import { CLASSES, getSubclassSpellIds } from '../../data/classes';
+import { SPELL_MAP } from '../../data/spells';
 
 type SettingsTab = 'stats' | 'levelup' | 'automations' | 'export' | 'danger';
 
@@ -510,8 +512,107 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       </select>
                     </div>
 
+                    {/* Subclass swap(s) — handles primary and secondary independently */}
+                    {(() => {
+                      const isMulticlass = !!character.secondary_class && (character.secondary_level ?? 0) > 0;
+
+                      function renderSubclassPicker(which: 'primary' | 'secondary') {
+                        const className = which === 'primary' ? character.class_name : character.secondary_class!;
+                        const classLevel = which === 'primary' ? character.level : (character.secondary_level ?? 0);
+                        const currentSub = which === 'primary' ? (character.subclass ?? '') : (character.secondary_subclass ?? '');
+                        const cls = CLASSES.find(c => c.name === className);
+                        const options = cls?.subclasses ?? [];
+                        const unlockLevel = options[0]?.unlock_level ?? 3;
+                        const locked = classLevel < unlockLevel;
+
+                        return (
+                          <div key={which}>
+                            <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4, display: 'block' }}>
+                              {isMulticlass ? `${className} subclass (${which})` : 'Subclass'}
+                            </label>
+                            <select
+                              value={currentSub}
+                              disabled={locked || options.length === 0}
+                              onChange={e => {
+                                const newSub = e.target.value;
+                                if (newSub === currentSub) return;
+
+                                // Compute old and new granted spell sets at the target class's current level
+                                const oldGranted = currentSub
+                                  ? getSubclassSpellIds(currentSub, className, classLevel)
+                                  : [];
+                                const newGranted = newSub
+                                  ? getSubclassSpellIds(newSub, className, classLevel)
+                                  : [];
+
+                                const oldSpellNames = oldGranted.map(id => SPELL_MAP[id]?.name).filter(Boolean);
+                                const newSpellNames = newGranted.map(id => SPELL_MAP[id]?.name).filter(Boolean);
+
+                                const msg = [
+                                  `Swap ${className} subclass?`,
+                                  '',
+                                  `From: ${currentSub || '(none)'}`,
+                                  `To:   ${newSub || '(none)'}`,
+                                  '',
+                                  oldSpellNames.length
+                                    ? `Removing auto-granted spells: ${oldSpellNames.join(', ')}`
+                                    : 'No auto-granted spells to remove.',
+                                  newSpellNames.length
+                                    ? `Adding auto-granted spells: ${newSpellNames.join(', ')}`
+                                    : 'No auto-granted spells to add.',
+                                  '',
+                                  'Features/abilities from the old subclass in your Features & Traits notes are NOT auto-removed — edit those manually. Choices tied to the old subclass (manoeuvres, totem spirits, etc.) are not reset either.',
+                                ].join('\n');
+
+                                if (!window.confirm(msg)) return;
+
+                                // Rewrite known_spells: drop old granted, add new granted (dedup with existing)
+                                const withoutOld = character.known_spells.filter(id => !oldGranted.includes(id));
+                                const newKnown = [...new Set([...withoutOld, ...newGranted])];
+
+                                // Also drop any old-granted entries from prepared_spells
+                                const newPrepared = character.prepared_spells.filter(id => !oldGranted.includes(id));
+
+                                const updates: Partial<Character> = {
+                                  known_spells: newKnown,
+                                  prepared_spells: newPrepared,
+                                };
+                                if (which === 'primary') updates.subclass = newSub;
+                                else updates.secondary_subclass = newSub;
+
+                                onUpdate(updates);
+                              }}
+                              style={{ fontSize: 'var(--fs-sm)', width: '100%' }}
+                            >
+                              <option value="">(none)</option>
+                              {options.map((s: any) => (
+                                <option key={s.name} value={s.name}>{s.name}</option>
+                              ))}
+                            </select>
+                            {locked && (
+                              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic', marginTop: 4 }}>
+                                Locked — this class reaches subclass unlock at level {unlockLevel}.
+                              </div>
+                            )}
+                            {!locked && options.length === 0 && (
+                              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic', marginTop: 4 }}>
+                                No subclasses defined for {className}.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <>
+                          {renderSubclassPicker('primary')}
+                          {isMulticlass && renderSubclassPicker('secondary')}
+                        </>
+                      );
+                    })()}
+
                     <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                      Subclass swap and class re-picks coming in v2.33 Phase 2. For now those require manual edits to gained_feats and known_spells.
+                      Class choice re-picks (fighting style, metamagic, invocations) coming in v2.33 Phase 3.
                     </div>
                   </div>
                 )}
