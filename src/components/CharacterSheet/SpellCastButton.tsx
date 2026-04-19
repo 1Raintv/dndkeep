@@ -357,8 +357,18 @@ export default function SpellCastButton({
  {/* Slot picker modal */}
  {showModal && (
  <div className="modal-overlay" onClick={() => setShowModal(false)}>
- <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
- <h3 style={{ marginBottom: 8 }}>{spell.name}</h3>
+ <div
+ className="modal"
+ style={{
+ maxWidth: 480, width: 'calc(100vw - 32px)',
+ maxHeight: 'calc(100vh - 64px)',
+ display: 'flex', flexDirection: 'column' as const,
+ padding: 20,
+ }}
+ onClick={e => e.stopPropagation()}
+ >
+ <h3 style={{ marginBottom: 8, marginTop: 0, fontSize: 18 }}>{spell.name}</h3>
+ <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
  <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
  border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
@@ -407,7 +417,9 @@ export default function SpellCastButton({
  placeholder='e.g. "Goblin King"' autoFocus
  style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
  </div>
- <div style={{ display: 'flex', gap: 8 }}>
+ </div>
+ {/* Action row — pinned at the bottom of the modal so the Cast button is always reachable */}
+ <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--c-border)', marginTop: 'auto' }}>
  <button className="btn-secondary" onClick={() => setShowModal(false)}
  style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
  {mechanics.damageDice && (

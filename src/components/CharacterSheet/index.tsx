@@ -915,22 +915,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  )}
 
- {/* Toolbar row: save status only */}
- {(saving || saveError) && (
- <div style={{ height: 20, display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
- {saving && (
- <>
- <span className="spinner" style={{ width: 12, height: 12 }} />
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', letterSpacing: '0.06em' }}>
- Saving...
- </span>
- </>
- )}
+ {/* v2.39.0: Removed the "Saving..." spinner that caused layout shift on every
+ keystroke / state change. Saves happen silently in the background. Errors still
+ show here so the user knows if something didn't persist. */}
  {saveError && !saving && (
+ <div style={{ height: 20, display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>
  {saveError}
  </span>
- )}
  </div>
  )}
 

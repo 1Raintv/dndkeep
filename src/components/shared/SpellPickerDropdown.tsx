@@ -106,12 +106,21 @@ export default function SpellPickerDropdown({
  }, [allSpells, selected, grantedSpellIds]);
 
  // Is adding a spell at this level at the cap?
+ // v2.39.0: For LEVELED spells, hard cap = number of slots at that level (excl. granted).
+ // This enforces the house rule: max chosen spells per level = slot count at that level.
+ // Granted spells (e.g. subclass auto-prepared) never count against any cap.
  function isAtLimit(level: number): boolean {
  if (level === 0 && cantripMax !== undefined) {
  return (selectedByLevel[0] ?? 0) >= cantripMax;
  }
- if (level > 0 && prepareMax !== undefined && prepareCount !== undefined) {
+ if (level > 0) {
+ // Per-level slot cap takes precedence when slotsPerLevel is supplied
+ if (slotsPerLevel && slotsPerLevel[level] !== undefined) {
+ return (selectedByLevel[level] ?? 0) >= slotsPerLevel[level];
+ }
+ if (prepareMax !== undefined && prepareCount !== undefined) {
  return prepareCount >= prepareMax;
+ }
  }
  return false;
  }
@@ -221,7 +230,25 @@ export default function SpellPickerDropdown({
  {isAtLimit(0) ? ' — FULL' : ''}
  </span>
  )}
- {activeLevel > 0 && prepareMax !== undefined && prepareCount !== undefined && (
+ {activeLevel > 0 && (() => {
+ // v2.39.0: Show per-level cap when slotsPerLevel is supplied; fall back to global cap.
+ const perLevelCap = slotsPerLevel?.[activeLevel];
+ if (perLevelCap !== undefined) {
+ const cur = selectedByLevel[activeLevel] ?? 0;
+ const full = cur >= perLevelCap;
+ return (
+ <span style={{
+ fontWeight: 700, padding: '1px 7px', borderRadius: 999, fontSize: 10,
+ background: full ? 'rgba(239,68,68,0.15)' : 'rgba(212,160,23,0.1)',
+ border: `1px solid ${full ? 'rgba(239,68,68,0.4)' : 'rgba(212,160,23,0.3)'}`,
+ color: full ? '#ef4444' : 'var(--c-gold-l)',
+ }}>
+ {cur}/{perLevelCap} level-{activeLevel}{full ? ' — FULL' : ''}
+ </span>
+ );
+ }
+ if (prepareMax !== undefined && prepareCount !== undefined) {
+ return (
  <span style={{
  fontWeight: 700, padding: '1px 7px', borderRadius: 999, fontSize: 10,
  background: isAtLimit(activeLevel) ? 'rgba(239,68,68,0.15)' : 'rgba(212,160,23,0.1)',
@@ -231,7 +258,10 @@ export default function SpellPickerDropdown({
  {prepareCount}/{prepareMax} {isKnownCaster ? 'known' : 'prepared'}
  {isAtLimit(activeLevel) ? ' — FULL' : ''}
  </span>
- )}
+ );
+ }
+ return null;
+ })()}
  </div>
 
  {/* Spell list */}
