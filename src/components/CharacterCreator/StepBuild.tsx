@@ -739,6 +739,11 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
   label: string; cls: any;
   choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
 }) {
+  // v2.40.0: Single-click selection — clicking a subclass row selects it AND
+  // expands the description for review. No "Confirm" button needed.
+  // Clicking a different subclass switches the selection. Clicking the
+  // currently-selected one collapses the description but keeps it selected
+  // (use a different row to change picks).
   const [expanded, setExpanded] = useState<string | null>(choices.subclass || null);
   const subclasses: any[] = cls?.subclasses ?? [];
   const selected = choices.subclass;
@@ -746,7 +751,9 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)', marginBottom: 2 }}>Choose Your Subclass</div>
-      <div style={{ fontSize: 11, color: 'var(--t-3)', marginBottom: 6 }}>Click a subclass to see its description, then confirm your choice.</div>
+      <div style={{ fontSize: 11, color: 'var(--t-3)', marginBottom: 6 }}>
+        Click a subclass to select it. Tap a different one any time to switch.
+      </div>
 
       {subclasses.map((sc: any) => {
         const isSelected = selected === sc.name;
@@ -757,13 +764,25 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
             border: isSelected ? '2px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
             borderRadius: 10, overflow: 'hidden',
             background: isSelected ? 'rgba(212,160,23,0.05)' : 'var(--c-card)',
-            transition: 'border-color 0.15s',
+            transition: 'border-color 0.15s, background 0.15s',
           }}>
-            {/* Row */}
-            <button onClick={() => setExpanded(isExpanded && !isSelected ? null : sc.name)} style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-              background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 0,
-            }}>
+            {/* Row — clicking this both selects AND expands the description */}
+            <button
+              onClick={() => {
+                if (isSelected) {
+                  // Already selected: just toggle the description panel
+                  setExpanded(isExpanded ? null : sc.name);
+                } else {
+                  // Different subclass — select it and show its description
+                  onUpdate({ subclass: sc.name });
+                  setExpanded(sc.name);
+                }
+              }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 0,
+              }}
+            >
               {/* Selection indicator */}
               <div style={{
                 width: 20, height: 20, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -778,8 +797,11 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
                   {sc.source === 'ua' && (
                     <span style={{ fontSize: 9, fontWeight: 800, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 6px', borderRadius: 999 }}>UA 2026</span>
                   )}
+                  {isSelected && (
+                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 7px', borderRadius: 999, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Selected</span>
+                  )}
                 </div>
-                {/* One-liner teaser */}
+                {/* One-liner teaser when collapsed */}
                 {!isExpanded && (
                   <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
                     {sc.description.split('.')[0]}.
@@ -789,7 +811,7 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
               <span style={{ fontSize: 10, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
             </button>
 
-            {/* Expanded description */}
+            {/* Expanded description (read-only — selection already happened from the row click) */}
             {isExpanded && (
               <div style={{ borderTop: '1px solid var(--c-border)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.7, margin: 0 }}>{sc.description}</p>
@@ -814,22 +836,6 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
                     {sc.spell_list.join(', ')}
                   </div>
                 )}
-
-                {/* Choose button */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                  <button onClick={() => { onUpdate({ subclass: sc.name }); setExpanded(sc.name); }}
-                    style={{ fontSize: 12, fontWeight: 700, padding: '7px 20px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                      border: isSelected ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--c-gold-bdr)',
-                      background: isSelected ? 'rgba(248,113,113,0.08)' : 'var(--c-gold-bg)',
-                      color: isSelected ? '#f87171' : 'var(--c-gold-l)' }}>
-                    {isSelected ? '✕ Deselect' : 'Choose this Subclass'}
-                  </button>
-                  {!isSelected && (
-                    <button onClick={() => setExpanded(null)} style={{ fontSize: 11, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '7px 12px', borderRadius: 7, cursor: 'pointer' }}>
-                      Close
-                    </button>
-                  )}
-                </div>
               </div>
             )}
           </div>
