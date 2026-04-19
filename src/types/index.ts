@@ -166,6 +166,8 @@ export interface Character {
   advanced_automations_unlocked: boolean;
   // Unlocks click-to-edit on derived combat stats (Speed, AC) in vitals column
   advanced_edits_unlocked?: boolean;
+  // Unlocks removing known spells / unprepping subclass-granted spells
+  advanced_spell_edits_unlocked?: boolean;
 
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;

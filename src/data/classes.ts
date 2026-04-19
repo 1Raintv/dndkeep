@@ -122,6 +122,7 @@ export const CLASSES: ClassData[] = [
     subclasses: [
       {
         name: 'Life Domain', unlock_level: 3,
+        spell_list: ['Bless', 'Cure Wounds', 'Aid', 'Lesser Restoration', 'Mass Healing Word', 'Revivify', 'Death Ward', 'Guardian of Faith', 'Mass Cure Wounds', 'Raise Dead'],
         description: "Master of healing magic. Every healing spell restores extra HP, Channel Divinity distributes mass healing, and at level 17 all healing dice are maximized.",
         features: [
           { level: 3, name: 'Life Domain Spells', description: "Always prepared: Bless, Cure Wounds; Aid, Lesser Restoration; Mass Healing Word, Revivify; Death Ward, Guardian of Faith; Mass Cure Wounds, Raise Dead.", isChoice: false },
@@ -134,6 +135,7 @@ export const CLASSES: ClassData[] = [
       },
       {
         name: 'Light Domain', unlock_level: 3,
+        spell_list: ['Burning Hands', 'Faerie Fire', 'Flaming Sphere', 'Scorching Ray', 'Daylight', 'Fireball', 'Guardian of Faith', 'Wall of Fire', 'Flame Strike', 'Scrying'],
         description: "Wield radiant fire. Impose Disadvantage on attacks targeting you, scorch enemies with Radiance of the Dawn, and extend your protective Flare to allies.",
         features: [
           { level: 3, name: 'Light Domain Spells', description: "Always prepared: Burning Hands, Faerie Fire; Flaming Sphere, Scorching Ray; Daylight, Fireball; Guardian of Faith, Wall of Fire; Flame Strike, Scrying.", isChoice: false },
@@ -146,6 +148,7 @@ export const CLASSES: ClassData[] = [
       },
       {
         name: 'Trickery Domain', unlock_level: 3,
+        spell_list: ['Charm Person', 'Disguise Self', 'Invisibility', 'Pass Without Trace', 'Hypnotic Pattern', 'Nondetection', 'Confusion', 'Dimension Door', 'Dominate Person', 'Modify Memory'],
         description: "Master of deception. Create illusory duplicates to cast through, become invisible at will via Channel Divinity, and eventually shift between planes.",
         features: [
           { level: 3, name: 'Trickery Domain Spells', description: "Always prepared: Charm Person, Disguise Self; Invisibility, Pass without Trace; Hypnotic Pattern, Nondetection; Confusion, Dimension Door; Dominate Person, Modify Memory.", isChoice: false },
@@ -158,6 +161,7 @@ export const CLASSES: ClassData[] = [
       },
       {
         name: 'War Domain', unlock_level: 3,
+        spell_list: ['Divine Favor', 'Shield of Faith', 'Magic Weapon', 'Spiritual Weapon', "Crusader's Mantle", 'Spirit Guardians', 'Fire Shield', 'Freedom of Movement', 'Destructive Wave', 'Hold Monster'],
         description: "A divine soldier. Extra weapon attacks as a Bonus Action, grant attack rerolls to allies, and gain resistance to physical damage at level 17.",
         features: [
           { level: 3, name: 'War Domain Spells', description: "Always prepared: Divine Favor, Shield of Faith; Magic Weapon, Spiritual Weapon; Crusader's Mantle, Spirit Guardians; Fire Shield, Freedom of Movement; Destructive Wave, Hold Monster.", isChoice: false },
@@ -354,6 +358,7 @@ export const CLASSES: ClassData[] = [
     subclasses: [
       {
         name: 'Oath of Devotion', unlock_level: 3,
+        spell_list: ['Protection from Evil and Good', 'Shield of Faith', 'Aid', 'Zone of Truth', 'Beacon of Hope', 'Dispel Magic', 'Freedom of Movement', 'Guardian of Faith', 'Commune', 'Flame Strike'],
         description: "The archetypal holy warrior. Sacred Weapon enchants your blade with Charisma. Aura of Devotion prevents Charm. At level 20, Holy Nimbus burns enemies with radiant sunlight.",
         features: [
           { level: 3, name: 'Oath of Devotion Spells', description: "Always prepared: Protection from Evil and Good, Shield of Faith; Aid, Zone of Truth; Beacon of Hope, Dispel Magic; Freedom of Movement, Guardian of Faith; Commune, Flame Strike.", isChoice: false },
@@ -366,6 +371,7 @@ export const CLASSES: ClassData[] = [
       },
       {
         name: 'Oath of Glory', unlock_level: 3,
+        spell_list: ['Guiding Bolt', 'Heroism', 'Enhance Ability', 'Magic Weapon', 'Haste', 'Protection from Energy', 'Compulsion', 'Freedom of Movement', 'Legend Lore'],
         description: "Inspire greatness in your allies. Aura of Alacrity grants bonus Speed to nearby allies. Channel Divinity distributes Temp HP or empowers athletic feats.",
         features: [
           { level: 3, name: 'Oath of Glory Spells', description: "Always prepared: Guiding Bolt, Heroism; Enhance Ability, Magic Weapon; Haste, Protection from Energy; Compulsion, Freedom of Movement; Legend Lore, Yolande's Regal Presence.", isChoice: false },
@@ -378,6 +384,7 @@ export const CLASSES: ClassData[] = [
       },
       {
         name: 'Oath of the Ancients', unlock_level: 3,
+        spell_list: ['Ensnaring Strike', 'Speak with Animals', 'Misty Step', 'Moonbeam', 'Plant Growth', 'Protection from Energy', 'Ice Storm', 'Stoneskin', 'Commune with Nature', 'Tree Stride'],
         description: "Protect the light of life. Aura of Warding gives resistance to spell damage. Nature's Wrath restrains enemies. You stop aging and at level 15 you drop to 1 HP instead of 0.",
         features: [
           { level: 3, name: 'Oath of the Ancients Spells', description: "Always prepared: Ensnaring Strike, Speak with Animals; Misty Step, Moonbeam; Plant Growth, Protection from Energy; Ice Storm, Stoneskin; Commune with Nature, Tree Stride.", isChoice: false },
@@ -390,6 +397,7 @@ export const CLASSES: ClassData[] = [
       },
       {
         name: 'Oath of Vengeance', unlock_level: 3,
+        spell_list: ['Bane', "Hunter's Mark", 'Hold Person', 'Misty Step', 'Haste', 'Protection from Energy', 'Banishment', 'Dimension Door', 'Hold Monster', 'Scrying'],
         description: "Hunt down evil relentlessly. Vow of Enmity grants Advantage against one target. Relentless Avenger lets you chase enemies who flee. Soul of Vengeance counters their every attack.",
         features: [
           { level: 3, name: 'Oath of Vengeance Spells', description: "Always prepared: Bane, Hunter's Mark; Hold Person, Misty Step; Haste, Protection from Energy; Banishment, Dimension Door; Hold Monster, Scrying.", isChoice: false },
@@ -882,6 +890,58 @@ const SPELL_NAME_TO_ID: Record<string, string> = {
   'Mass Healing Word': 'mass-healing-word',
   'Greater Restoration': 'greater-restoration',
   'Mass Cure Wounds': 'mass-cure-wounds',
+  // v2.28: Cleric domain + Paladin oath spell mappings
+  'Bless': 'bless',
+  'Aid': 'aid',
+  'Revivify': 'revivify',
+  'Death Ward': 'death-ward',
+  'Guardian of Faith': 'guardian-of-faith',
+  'Raise Dead': 'raise-dead',
+  'Burning Hands': 'burning-hands',
+  'Faerie Fire': 'faerie-fire',
+  'Flaming Sphere': 'flaming-sphere',
+  'Scorching Ray': 'scorching-ray',
+  'Daylight': 'daylight',
+  'Fireball': 'fireball',
+  'Wall of Fire': 'wall-of-fire',
+  'Flame Strike': 'flame-strike',
+  'Scrying': 'scrying',
+  'Charm Person': 'charm-person',
+  'Disguise Self': 'disguise-self',
+  'Invisibility': 'invisibility',
+  'Pass Without Trace': 'pass-without-trace',
+  'Hypnotic Pattern': 'hypnotic-pattern',
+  'Nondetection': 'nondetection',
+  'Dominate Person': 'dominate-person',
+  'Divine Favor': 'divine-favor',
+  'Shield of Faith': 'shield-of-faith',
+  'Magic Weapon': 'magic-weapon',
+  'Spiritual Weapon': 'spiritual-weapon',
+  "Crusader's Mantle": 'crusaders-mantle',
+  'Spirit Guardians': 'spirit-guardians',
+  'Fire Shield': 'fire-shield',
+  'Freedom of Movement': 'freedom-of-movement',
+  'Destructive Wave': 'destructive-wave',
+  'Hold Monster': 'hold-monster',
+  'Protection from Evil and Good': 'protection-from-evil-and-good',
+  'Zone of Truth': 'zone-of-truth',
+  'Beacon of Hope': 'beacon-of-hope',
+  'Dispel Magic': 'dispel-magic',
+  'Commune': 'commune',
+  'Guiding Bolt': 'guiding-bolt',
+  'Heroism': 'heroism',
+  'Enhance Ability': 'enhance-ability',
+  'Protection from Energy': 'protection-from-energy',
+  'Legend Lore': 'legend-lore',
+  'Ensnaring Strike': 'ensnaring-strike',
+  'Speak with Animals': 'speak-with-animals',
+  'Moonbeam': 'moonbeam',
+  'Plant Growth': 'plant-growth',
+  'Ice Storm': 'ice-storm',
+  'Commune with Nature': 'commune-with-nature',
+  'Tree Stride': 'tree-stride',
+  "Hunter's Mark": 'hunters-mark',
+  'Hold Person': 'hold-person',
 };
 
 /**

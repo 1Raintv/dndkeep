@@ -245,7 +245,7 @@ export default function SpellsTab({
             className={character.class_name}
             maxLevel={maxSpellLevel}
             selected={character.known_spells}
-            onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
+            onToggle={id => character.known_spells.includes(id) ? (character.advanced_spell_edits_unlocked ? onRemoveSpell(id) : undefined) : onAddSpell(id)}
             cantripMax={cantripMax}
             prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
             prepareCount={isPreparer ? preparedCount : isKnown ? getSpellCounts(character).known : undefined}
@@ -437,7 +437,7 @@ export default function SpellsTab({
                         onExpand={() => setExpandedSpell(expandedSpell === spell.id ? null : spell.id)}
                         onTogglePrepared={() => onTogglePrepared(spell.id)}
                         onConcentrate={() => onConcentrate(spell.id)}
-                        onRemove={() => onRemoveSpell(spell.id)}
+                        onRemove={character.advanced_spell_edits_unlocked ? () => onRemoveSpell(spell.id) : undefined}
                       />
                     ))}
                   </div>
@@ -493,7 +493,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
   isPreparer: boolean; castButton: ReactNode; grantedReason?: string;
   spellAttack?: number; saveDC?: number;
   onExpand: () => void; onTogglePrepared: () => void;
-  onConcentrate: () => void; onRemove: () => void;
+  onConcentrate: () => void; onRemove?: () => void;
 }) {
   const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
   const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
@@ -620,7 +620,7 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
 
         {/* Col 8: Quick remove + expand chevron */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
-          {!grantedReason && (
+          {!grantedReason && onRemove && (
             <button
               onClick={onRemove}
               title="Remove spell"
@@ -691,12 +691,14 @@ function SpellCard({ spell, isExpanded, isPrepared, isConcentrating, isPreparer,
                 </button>
               )
             )}
-            <button
-              onClick={onRemove}
-              style={{ fontSize: 11, fontWeight: 600, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0, marginLeft: 'auto', border: '1px solid rgba(248,113,113,0.2)', background: 'transparent', color: 'var(--stat-str)' }}
-            >
-              Remove
-            </button>
+            {onRemove && (
+              <button
+                onClick={onRemove}
+                style={{ fontSize: 11, fontWeight: 600, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0, marginLeft: 'auto', border: '1px solid rgba(248,113,113,0.2)', background: 'transparent', color: 'var(--stat-str)' }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         </div>
       )}
