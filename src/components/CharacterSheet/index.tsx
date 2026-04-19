@@ -1144,7 +1144,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
           if (character.class_name?.toLowerCase().includes('barbarian') && !res.includes('Non-magical B/P/S')) res.push('Non-magical B/P/S (while raging)');
 
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 800 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
               {/* Turn Economy */}
               <ActionEconomy

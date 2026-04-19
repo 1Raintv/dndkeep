@@ -18,9 +18,9 @@ interface CharacterHeaderProps {
 
 function hpColor(current: number, max: number): string {
   const pct = max > 0 ? current / max : 0;
-  if (pct > 0.6) return 'var(--hp-full)';
-  if (pct > 0.25) return 'var(--hp-mid)';
-  return 'var(--hp-low)';
+  if (pct > 0.5) return 'var(--hp-full)';   // full green above half HP
+  if (pct > 0.25) return 'var(--hp-mid)';   // yellow between 25% and 50%
+  return 'var(--hp-low)';                    // red/orange below 25%
 }
 
 /**
@@ -208,7 +208,7 @@ export default function CharacterHeader({
           <div style={{
             height: '100%',
             width: `${Math.max(1, hpPct * 100)}%`,
-            background: `linear-gradient(90deg, var(--hp-low), ${hpCol})`,
+            background: hpCol,
             boxShadow: `0 0 6px ${hpCol}`,
             transition: 'width 0.4s ease, background 0.3s ease',
           }} />
