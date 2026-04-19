@@ -52,7 +52,15 @@ export default function SpellCastButton({
  // v2.34: if a specific upcast slot is forced by the parent row, start with it
  const [selectedSlot, setSelectedSlot] = useState<number>(forceSlotLevel ?? spell.level);
  const [target, setTarget] = useState('');
+ // v2.34.2: flash "Cast!" on the button for ~900ms after firing so users see confirmation
+ const [recentlyCast, setRecentlyCast] = useState<string | null>(null);
  const { triggerRoll } = useDiceRoll();
+
+ function flashCast(slotLevel: number) {
+ const label = isCantrip ? 'Cast!' : `Cast (Lvl ${slotLevel}) ✓`;
+ setRecentlyCast(label);
+ window.setTimeout(() => setRecentlyCast(curr => curr === label ? null : curr), 900);
+ }
 
  const isCantrip = spell.level === 0;
  const mechanics = parseSpellMechanics(spell.description, {
@@ -131,9 +139,13 @@ export default function SpellCastButton({
  if (!isCantrip && slotLevel !== undefined) {
  spendSlot(slotLevel);
  onLeveledSpellCast?.(isBonusActionCast);
+ flashCast(slotLevel);
  } else if (!isCantrip && availableSlots.length === 1) {
  spendSlot(availableSlots[0].level);
  onLeveledSpellCast?.(isBonusActionCast);
+ flashCast(availableSlots[0].level);
+ } else if (isCantrip) {
+ flashCast(0);
  }
 
  // Fire 3D roller
@@ -205,6 +217,8 @@ export default function SpellCastButton({
  spendSlot(slotLevel);
  onLeveledSpellCast?.();
  }
+ // v2.34.2: visible confirmation — always flashes, whether or not a slot was spent
+ flashCast(slotLevel);
  await logAction({ campaignId, characterId: userId, characterName: character.name,
  actionType: 'spell', actionName: spell.name, targetName,
  notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
@@ -264,13 +278,26 @@ export default function SpellCastButton({
  {/* ── CATEGORY 1: UTILITY — cast button only ── */}
  {mechanics.isUtility && (
  <button
- onClick={() => isCantrip || availableSlots.length <= 1
- ? castUtility(isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level))
- : setShowModal(true)}
- style={{ ...btnBase, background: 'rgba(167,139,250,0.15)',
- border: '1px solid rgba(167,139,250,0.4)', color: '#a78bfa' }}
+ onClick={() => {
+ // v2.34.2: when a slot is forced (upcast row), skip picker and cast at that tier
+ if (forceSlotLevel !== undefined) {
+ castUtility(forceSlotLevel);
+ return;
+ }
+ if (isCantrip || availableSlots.length <= 1) {
+ castUtility(isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+ } else {
+ setShowModal(true);
+ }
+ }}
+ style={{ ...btnBase,
+ background: recentlyCast ? 'rgba(74,222,128,0.22)' : 'rgba(167,139,250,0.15)',
+ border: `1px solid ${recentlyCast ? 'rgba(74,222,128,0.55)' : 'rgba(167,139,250,0.4)'}`,
+ color: recentlyCast ? '#4ade80' : '#a78bfa',
+ transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+ }}
  >
- Cast
+ {recentlyCast ?? 'Cast'}
  </button>
  )}
 

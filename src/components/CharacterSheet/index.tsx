@@ -1470,8 +1470,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const sc = schoolColor[spell.school] ?? '#a78bfa';
  const eff = (spell as any).effectiveLevel ?? spell.level;
  const isUpcast = !!(spell as any).isUpcast;
- // Gray out if no slots available for this spell's cast tier
- const slotsExhausted = eff > 0 && (slotsByLevel[eff]?.remaining ?? 0) === 0;
+ // v2.34.2: Upcast-aware gray-out.
+ // - Upcast rows (isUpcast=true) represent a SPECIFIC slot tier → check only that tier.
+ // - Base rows: if the user's toggle is OFF, there's only one row per spell; it should
+ // stay castable whenever ANY slot from the spell's base level up to 9 has remaining
+ // (the cast-button auto-promotes to the next available higher slot). When upcasts ON,
+ // the base row is strictly its own tier because the upcast rows cover higher tiers.
+ const slotsExhausted = eff > 0 && (() => {
+ if (isUpcast || actionsShowUpcasts) {
+ return (slotsByLevel[eff]?.remaining ?? 0) === 0;
+ }
+ for (let lvl = eff; lvl <= 9; lvl++) {
+ if ((slotsByLevel[lvl]?.remaining ?? 0) > 0) return false;
+ }
+ return true;
+ })();
 
  return (
  <div key={`${spell.id}-${eff}`} style={{

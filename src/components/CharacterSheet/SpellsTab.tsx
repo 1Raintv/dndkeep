@@ -339,10 +339,20 @@ export default function SpellsTab({
 
  {/* ── Level tabs ── */}
  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
- <LevelTab label="All" count={knownSpellData.length} active={activeLevel === 'all'} onClick={() => setActiveLevel('all')} />
+ {/* v2.34.2: counts exclude granted spells so caps + known-counts reflect the player's chosen spells */}
+ <LevelTab
+ label="All"
+ count={knownSpellData.filter(s => !grantedCantrips.includes(s.id) && !grantedPrepared.includes(s.id)).length}
+ active={activeLevel === 'all'}
+ onClick={() => setActiveLevel('all')}
+ />
  {knownLevels.map(lvl => {
  const slots = lvl > 0 ? slotInfo[lvl] : null;
- const count = knownSpellData.filter(s => s.level === lvl).length;
+ const count = knownSpellData.filter(s =>
+ s.level === lvl &&
+ !grantedCantrips.includes(s.id) &&
+ !grantedPrepared.includes(s.id)
+ ).length;
  return (
  <LevelTab
  key={lvl}
