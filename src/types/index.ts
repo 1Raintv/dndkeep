@@ -207,6 +207,7 @@ export interface Character {
 
   // Conditions
   active_conditions: ConditionName[];
+  exhaustion_level?: number;  // 0-6 per 2024 rules; 0 = no exhaustion, 6 = death
 
   // Death saves (only relevant when current_hp === 0)
   death_saves_successes: number;  // 0–3; three successes stabilizes the character

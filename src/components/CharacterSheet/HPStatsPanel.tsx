@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
-import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
+import { CONDITION_MAP } from '../../data/conditions';
+import ConditionPickerModal from './ConditionPickerModal';
 import type { Character, ComputedStats, ConditionName } from '../../types';
 
 interface HPStatsPanelProps {
@@ -11,19 +12,20 @@ interface HPStatsPanelProps {
   onUpdateSpeed?: (speed: number) => void;
   onToggleInspiration?: () => void;
   onUpdateConditions?: (next: ConditionName[]) => void;
+  onUpdateExhaustionLevel?: (level: number) => void;
   acTooltip?: string;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
 
 export default function HPStatsPanel({
-  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, acTooltip,
+  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip,
 }: HPStatsPanelProps) {
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
   const [editingSpeed, setEditingSpeed] = useState(false);
   const [speedInput, setSpeedInput] = useState('');
-  const [showConditionPicker, setShowConditionPicker] = useState(false);
+  const [showConditionModal, setShowConditionModal] = useState(false);
   const { triggerRoll } = useDiceRoll();
 
   const editsUnlocked = !!character.advanced_edits_unlocked;
@@ -41,22 +43,18 @@ export default function HPStatsPanel({
   }
 
   const activeConditions: ConditionName[] = character.active_conditions ?? [];
+  const exhaustionLevel = character.exhaustion_level ?? 0;
+  const hasAnyCondition = activeConditions.length > 0 || exhaustionLevel > 0;
 
   function removeCondition(name: ConditionName) {
     if (!onUpdateConditions) return;
     onUpdateConditions(activeConditions.filter(c => c !== name));
   }
-  function addCondition(name: ConditionName) {
-    if (!onUpdateConditions) return;
-    if (activeConditions.includes(name)) return;
-    onUpdateConditions([...activeConditions, name]);
-    setShowConditionPicker(false);
-  }
 
   const stats = [
-    { label: 'INSP', value: character.inspiration ? '✦' : '○', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
-    { label: 'AC 🛡',     value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
-    { label: 'INIT ⚡',   value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
+    { label: 'INSP', value: character.inspiration ? 'YES' : '—', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
+    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
+    { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); }, tooltip: editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
     { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0),                color: 'var(--t-2)' },
@@ -86,7 +84,7 @@ export default function HPStatsPanel({
             onMouseEnter={e => { if ((stat as any).onClick || (stat as any).editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}55`; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}22`; }}
           >
-            {stat.label === 'AC 🛡' && editingAC ? (
+            {stat.label === 'AC' && editingAC ? (
               <input autoFocus type="number" value={acInput}
                 onChange={e => setAcInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); } if (e.key === 'Escape') setEditingAC(false); }}
@@ -112,100 +110,98 @@ export default function HPStatsPanel({
         ))}
       </div>
 
-      {/* v2.27: Conditions strip — below stat chips in the vitals column */}
+      {/* v2.29: Conditions strip — pills + modal trigger, no emotes */}
       {onUpdateConditions && (
-        <div style={{
-          background: 'var(--c-card)',
-          border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-md)',
-          padding: '8px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>
-              Conditions
-            </span>
-            <button
-              onClick={() => setShowConditionPicker(v => !v)}
-              title="Add a condition"
-              style={{
-                marginLeft: 'auto', fontSize: 11, lineHeight: 1, padding: '3px 8px',
-                borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                background: 'var(--c-raised)', border: '1px solid var(--c-border-m)',
-                color: 'var(--t-2)', fontWeight: 700,
-              }}
-            >
-              +
-            </button>
-          </div>
-
-          {activeConditions.length === 0 ? (
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
-              None
+        <>
+          <div style={{
+            background: 'var(--c-card)',
+            border: '1px solid var(--c-border)',
+            borderRadius: 'var(--r-md)',
+            padding: '8px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>
+                Conditions
+              </span>
+              <button
+                onClick={() => setShowConditionModal(true)}
+                title="Manage conditions"
+                style={{
+                  marginLeft: 'auto', fontSize: 10, lineHeight: 1, padding: '3px 10px',
+                  borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                  background: 'var(--c-raised)', border: '1px solid var(--c-border-m)',
+                  color: 'var(--t-2)', fontWeight: 700, letterSpacing: '0.06em',
+                }}
+              >
+                Manage
+              </button>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {activeConditions.map(name => {
-                const c = CONDITION_MAP[name];
-                const color = c?.color ?? '#64748b';
-                const icon = c?.icon ?? '•';
-                return (
+
+            {!hasAnyCondition ? (
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
+                None
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {/* Exhaustion pill (if > 0) — shown first, with level */}
+                {exhaustionLevel > 0 && (
                   <button
-                    key={name}
-                    onClick={() => removeCondition(name)}
-                    title={`${c?.description ?? name} — click to remove`}
+                    onClick={() => onUpdateExhaustionLevel?.(Math.max(0, exhaustionLevel - 1))}
+                    title={`Exhaustion ${exhaustionLevel} — click to decrease`}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '3px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
                       fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
-                      background: `${color}18`,
-                      border: `1px solid ${color}55`,
-                      color,
+                      background: exhaustionLevel === 6 ? 'rgba(229,57,53,0.18)' : 'rgba(245,158,11,0.18)',
+                      border: `1px solid ${exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b'}55`,
+                      color: exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b',
                     }}
                   >
-                    <span style={{ fontSize: 11 }}>{icon}</span>
-                    <span>{name}</span>
+                    <span>Exhaustion {exhaustionLevel}</span>
                     <span style={{ opacity: 0.6, marginLeft: 2, fontSize: 10 }}>×</span>
                   </button>
-                );
-              })}
-            </div>
-          )}
+                )}
 
-          {showConditionPicker && (
-            <div style={{
-              marginTop: 4, padding: 8, borderRadius: 'var(--r-sm)',
-              background: 'var(--c-raised)', border: '1px solid var(--c-border-m)',
-              display: 'flex', flexWrap: 'wrap', gap: 4,
-            }}>
-              {CONDITIONS
-                .filter(c => !activeConditions.includes(c.name as ConditionName))
-                .map(c => (
-                  <button
-                    key={c.name}
-                    onClick={() => addCondition(c.name as ConditionName)}
-                    title={c.description}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 3,
-                      padding: '3px 7px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                      fontSize: 10, fontWeight: 700,
-                      background: 'transparent',
-                      border: `1px solid ${c.color}55`,
-                      color: c.color,
-                    }}
-                  >
-                    <span style={{ fontSize: 11 }}>{c.icon}</span>
-                    <span>{c.name}</span>
-                  </button>
-                ))}
-              {CONDITIONS.filter(c => !activeConditions.includes(c.name as ConditionName)).length === 0 && (
-                <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>All conditions active.</div>
-              )}
-            </div>
+                {/* Other active condition pills */}
+                {activeConditions.map(name => {
+                  const c = CONDITION_MAP[name];
+                  const color = c?.color ?? '#64748b';
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => removeCondition(name)}
+                      title={`${c?.description ?? name} — click to remove`}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '3px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+                        fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
+                        background: `${color}18`,
+                        border: `1px solid ${color}55`,
+                        color,
+                      }}
+                    >
+                      <span>{name}</span>
+                      <span style={{ opacity: 0.6, marginLeft: 2, fontSize: 10 }}>×</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {showConditionModal && (
+            <ConditionPickerModal
+              activeConditions={activeConditions}
+              exhaustionLevel={exhaustionLevel}
+              onUpdateConditions={onUpdateConditions}
+              onUpdateExhaustionLevel={lvl => onUpdateExhaustionLevel?.(lvl)}
+              onClose={() => setShowConditionModal(false)}
+            />
           )}
-        </div>
+        </>
       )}
     </div>
   );
