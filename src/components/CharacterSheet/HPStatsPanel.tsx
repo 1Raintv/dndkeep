@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
-import { CONDITION_MAP } from '../../data/conditions';
 import ConditionPickerModal from './ConditionPickerModal';
 import type { Character, ComputedStats, ConditionName } from '../../types';
 
@@ -46,11 +45,6 @@ export default function HPStatsPanel({
   const exhaustionLevel = character.exhaustion_level ?? 0;
   const hasAnyCondition = activeConditions.length > 0 || exhaustionLevel > 0;
 
-  function removeCondition(name: ConditionName) {
-    if (!onUpdateConditions) return;
-    onUpdateConditions(activeConditions.filter(c => c !== name));
-  }
-
   const stats = [
     { label: 'INSP', value: character.inspiration ? 'YES' : '—', color: character.inspiration ? 'var(--c-amber-l)' : 'var(--t-3)', clickable: true, onClick: onToggleInspiration, tooltip: character.inspiration ? 'Inspired! Click to remove' : 'No Inspiration. Click to grant' },
     { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
@@ -58,6 +52,20 @@ export default function HPStatsPanel({
     { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); }, tooltip: editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
     { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0),                color: 'var(--t-2)' },
+    // v2.33.3: Conditions as a compact chip — clickable to open the modal
+    ...(onUpdateConditions ? [{
+      label: 'COND',
+      value: (activeConditions.length + (exhaustionLevel > 0 ? 1 : 0)) || '—',
+      color: hasAnyCondition ? (exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b') : 'var(--t-3)',
+      clickable: true,
+      onClick: () => setShowConditionModal(true),
+      tooltip: hasAnyCondition
+        ? [
+            ...(exhaustionLevel > 0 ? [`Exhaustion ${exhaustionLevel}`] : []),
+            ...activeConditions,
+          ].join(', ') + ' — click to manage'
+        : 'No conditions — click to add',
+    }] : []),
     ...(isSpellcaster ? [
       { label: 'SPL ATK', value: spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack), color: '#c084fc' },
       { label: 'SPL DC',  value: spellDC,                                                     color: '#c084fc' },
@@ -110,98 +118,15 @@ export default function HPStatsPanel({
         ))}
       </div>
 
-      {/* v2.29: Conditions strip — pills + modal trigger, no emotes */}
-      {onUpdateConditions && (
-        <>
-          <div style={{
-            background: 'var(--c-card)',
-            border: '1px solid var(--c-border)',
-            borderRadius: 'var(--r-md)',
-            padding: '8px 10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>
-                Conditions
-              </span>
-              <button
-                onClick={() => setShowConditionModal(true)}
-                title="Manage conditions"
-                style={{
-                  marginLeft: 'auto', fontSize: 10, lineHeight: 1, padding: '3px 10px',
-                  borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                  background: 'var(--c-raised)', border: '1px solid var(--c-border-m)',
-                  color: 'var(--t-2)', fontWeight: 700, letterSpacing: '0.06em',
-                }}
-              >
-                Manage
-              </button>
-            </div>
-
-            {!hasAnyCondition ? (
-              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
-                None
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {/* Exhaustion pill (if > 0) — shown first, with level */}
-                {exhaustionLevel > 0 && (
-                  <button
-                    onClick={() => onUpdateExhaustionLevel?.(Math.max(0, exhaustionLevel - 1))}
-                    title={`Exhaustion ${exhaustionLevel} — click to decrease`}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      padding: '3px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                      fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
-                      background: exhaustionLevel === 6 ? 'rgba(229,57,53,0.18)' : 'rgba(245,158,11,0.18)',
-                      border: `1px solid ${exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b'}55`,
-                      color: exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b',
-                    }}
-                  >
-                    <span>Exhaustion {exhaustionLevel}</span>
-                    <span style={{ opacity: 0.6, marginLeft: 2, fontSize: 10 }}>×</span>
-                  </button>
-                )}
-
-                {/* Other active condition pills */}
-                {activeConditions.map(name => {
-                  const c = CONDITION_MAP[name];
-                  const color = c?.color ?? '#64748b';
-                  return (
-                    <button
-                      key={name}
-                      onClick={() => removeCondition(name)}
-                      title={`${c?.description ?? name} — click to remove`}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '3px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                        fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
-                        background: `${color}18`,
-                        border: `1px solid ${color}55`,
-                        color,
-                      }}
-                    >
-                      <span>{name}</span>
-                      <span style={{ opacity: 0.6, marginLeft: 2, fontSize: 10 }}>×</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {showConditionModal && (
-            <ConditionPickerModal
-              activeConditions={activeConditions}
-              exhaustionLevel={exhaustionLevel}
-              onUpdateConditions={onUpdateConditions}
-              onUpdateExhaustionLevel={lvl => onUpdateExhaustionLevel?.(lvl)}
-              onClose={() => setShowConditionModal(false)}
-            />
-          )}
-        </>
+      {/* v2.33.3: Conditions modal — opened by the COND chip in the stats strip above */}
+      {onUpdateConditions && showConditionModal && (
+        <ConditionPickerModal
+          activeConditions={activeConditions}
+          exhaustionLevel={exhaustionLevel}
+          onUpdateConditions={onUpdateConditions}
+          onUpdateExhaustionLevel={lvl => onUpdateExhaustionLevel?.(lvl)}
+          onClose={() => setShowConditionModal(false)}
+        />
       )}
     </div>
   );

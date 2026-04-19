@@ -127,44 +127,32 @@ export default function CharacterHeader({
  </div>
  </div>
 
- {/* v2.27: HP block — sits between class/species and Settings */}
+ {/* v2.33.3: Share + Map — secondary actions, left of the main button cluster */}
+ {onShare && (
+ <button className="btn-ghost btn-sm" onClick={onShare} style={{ color: 'var(--t-2)', fontSize: 12, flexShrink: 0 }}>
+ Share
+ </button>
+ )}
+ {onOpenMap && (
+ <button className="btn-ghost btn-sm" onClick={onOpenMap} title="Battle Map"
+ style={{ fontSize: 12, color: 'var(--t-2)', flexShrink: 0 }}>
+ Map
+ </button>
+ )}
+
+ {/* v2.33.3: Rest — sits immediately left of the HP block */}
+ <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12, flexShrink: 0 }}>
+ Rest
+ </button>
+
+ {/* v2.33.3: HP block reordered — actions first, then input, then HP number on the right */}
  {onUpdateHP && (
  <div style={{
- display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
  padding: '6px 10px', borderRadius: 'var(--r-md)',
  background: 'var(--c-card)',
  border: `1px solid ${hpCol}40`,
- flexWrap: 'wrap',
  }}>
- <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0 }}>
- <span
- className={hpPct < 0.25 && character.current_hp > 0 ? 'hp-critical' : ''}
- style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '1.3rem', color: hpCol, lineHeight: 1 }}
- >
- {character.current_hp}
- </span>
- <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 500 }}>/ {character.max_hp}</span>
- {character.temp_hp > 0 && (
- <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', padding: '1px 5px', borderRadius: 999, marginLeft: 4 }}>
- +{character.temp_hp}
- </span>
- )}
- <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)', marginLeft: 2 }}>HP</span>
- </div>
- <input
- type="text"
- inputMode="numeric"
- value={hpInput}
- onChange={e => setHpInput(e.target.value.replace(/[^0-9]/g, ''))}
- onKeyDown={handleKey}
- style={{
- width: 48, fontSize: 12, fontFamily: 'var(--ff-stat)', fontWeight: 600,
- textAlign: 'center', padding: '4px 6px', borderRadius: 6,
- border: '1px solid var(--c-border-m)', background: 'var(--c-raised)',
- color: 'var(--t-1)',
- MozAppearance: 'textfield',
- }}
- />
  <button
  onClick={applyDamage}
  style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', whiteSpace: 'nowrap' }}
@@ -183,29 +171,43 @@ export default function CharacterHeader({
  >
  Temp
  </button>
+ <input
+ type="text"
+ inputMode="numeric"
+ value={hpInput}
+ onChange={e => setHpInput(e.target.value.replace(/[^0-9]/g, ''))}
+ onKeyDown={handleKey}
+ style={{
+ width: 48, fontSize: 12, fontFamily: 'var(--ff-stat)', fontWeight: 600,
+ textAlign: 'center', padding: '4px 6px', borderRadius: 6,
+ border: '1px solid var(--c-border-m)', background: 'var(--c-raised)',
+ color: 'var(--t-1)',
+ MozAppearance: 'textfield',
+ }}
+ />
+ <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, paddingLeft: 4, borderLeft: '1px solid var(--c-border)' }}>
+ <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-3)' }}>HP</span>
+ <span
+ className={hpPct < 0.25 && character.current_hp > 0 ? 'hp-critical' : ''}
+ style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: '1.3rem', color: hpCol, lineHeight: 1 }}
+ >
+ {character.current_hp}
+ </span>
+ <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 500 }}>/ {character.max_hp}</span>
+ {character.temp_hp > 0 && (
+ <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', padding: '1px 5px', borderRadius: 999, marginLeft: 2 }}>
+ +{character.temp_hp}
+ </span>
+ )}
+ </div>
  </div>
  )}
 
- {/* Actions */}
- <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
- {onShare && (
- <button className="btn-ghost btn-sm" onClick={onShare} style={{ color: 'var(--t-2)', fontSize: 12 }}>
- Share
- </button>
- )}
- <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12 }}>
- Rest
- </button>
- {onOpenMap && (
- <button className="btn-ghost btn-sm" onClick={onOpenMap} title="Battle Map"
- style={{ fontSize: 12, color: 'var(--t-2)' }}>
- Map
- </button>
- )}
+ {/* v2.33.3: Settings — pinned to the far right of the header, aligned with the character sheet edge */}
  <button
  className="btn-ghost btn-sm"
  onClick={onOpenSettings}
- style={{ color: character.level < 20 ? 'var(--c-gold-l)' : 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+ style={{ color: character.level < 20 ? 'var(--c-gold-l)' : 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, flexShrink: 0 }}
  title={character.level < 20 ? 'Level up available — open Settings' : 'Settings'}
  >
  Settings
@@ -215,7 +217,6 @@ export default function CharacterHeader({
  </span>
  )}
  </button>
- </div>
 
  {/* v2.27: thin gradient HP bar along the bottom edge of the header */}
  {character.max_hp > 0 && (

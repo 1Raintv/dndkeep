@@ -962,10 +962,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  : 'rgba(255,255,255,0.03)',
  border: `1px solid ${isMyTurn ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
  borderRadius: 10,
- display: 'flex', alignItems: 'center', gap: 10,
+ display: 'grid',
+ gridTemplateColumns: '1fr auto 1fr',
+ alignItems: 'center',
+ gap: 10,
  transition: 'all 0.3s',
  animation: isMyTurn ? 'pulse-gold 2s infinite' : 'none',
  }}>
+ {/* left spacer */}
+ <div />
+ {/* centered content */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
  <div style={{
  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
  background: isMyTurn ? 'var(--c-gold)' : 'var(--t-3)',
@@ -980,7 +987,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  Combat active — {currentTurnName ? `${currentTurnName}'s turn` : 'waiting…'}
  </span>
  )}
- <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)', fontWeight: 600 }}>
+ </div>
+ {/* right: round */}
+ <span style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 600, textAlign: 'right' }}>
  ROUND {combatRound}
  </span>
  </div>
