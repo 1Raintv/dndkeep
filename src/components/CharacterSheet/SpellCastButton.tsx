@@ -17,6 +17,9 @@ interface SpellCastButtonProps {
  // v2.34: When set, forces the cast to use this specific slot level (upcast row).
  // Skips the slot-picker UI and casts straight at this tier.
  forceSlotLevel?: number;
+ // v2.37.0: called when ANY cast (cantrip or leveled) happens for a concentration spell.
+ // The parent should set character.concentration_spell = spell.id.
+ onConcentrationCast?: () => void;
 }
 
 const SAVE_COLORS: Record<string, string> = {
@@ -45,7 +48,7 @@ function rollNdS(count: number, sides: number): number[] {
 
 export default function SpellCastButton({
  spell, character, userId, campaignId, onUpdateSlots, compact = false,
- spellLockedOut = false, onLeveledSpellCast, forceSlotLevel,
+ spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast,
 }: SpellCastButtonProps) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
@@ -60,6 +63,11 @@ export default function SpellCastButton({
  const label = isCantrip ? 'Cast!' : `Cast (Lvl ${slotLevel}) ✓`;
  setRecentlyCast(label);
  window.setTimeout(() => setRecentlyCast(curr => curr === label ? null : curr), 900);
+ // v2.37.0: if this spell requires concentration, notify the parent so it can
+ // set character.concentration_spell. Fires for cantrips + leveled alike.
+ if (spell.concentration) {
+ onConcentrationCast?.();
+ }
  }
 
  const isCantrip = spell.level === 0;

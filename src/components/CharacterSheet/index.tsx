@@ -645,29 +645,62 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return spell ? (
  <div className="animate-fade-in" style={{
  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
- padding: 'var(--sp-3) var(--sp-4)',
- background: 'rgba(167,139,250,0.08)',
- border: '1px solid rgba(167,139,250,0.4)',
- borderRadius: 'var(--r-md)',
+ padding: '14px 18px',
+ background: 'linear-gradient(90deg, rgba(167,139,250,0.14), rgba(167,139,250,0.06))',
+ border: '2px solid rgba(167,139,250,0.55)',
+ borderRadius: 'var(--r-lg)',
  gap: 'var(--sp-3)',
+ boxShadow: '0 0 0 4px rgba(167,139,250,0.08), 0 2px 8px rgba(167,139,250,0.12)',
+ position: 'relative' as const,
  }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
- 
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: '#a78bfa' }}>
- Concentrating: {spell.name}
+ {/* Pulsing indicator dot */}
+ <span
+ aria-hidden
+ style={{
+ position: 'absolute', top: 12, left: 10,
+ width: 8, height: 8, borderRadius: '50%',
+ background: '#a78bfa',
+ boxShadow: '0 0 8px #a78bfa, 0 0 4px #a78bfa',
+ animation: 'pulse-gold 1.5s ease-in-out infinite',
+ }}
+ />
+ <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', paddingLeft: 14, flex: 1, minWidth: 0 }}>
+ <div style={{ minWidth: 0, flex: 1 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 10, color: '#a78bfa', letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 3 }}>
+ Concentrating
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
- {spell.duration} · Taking damage requires a CON save (DC 10 or half damage taken)
+ <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 15, color: 'var(--t-1)', marginBottom: 2 }}>
+ {spell.name}
+ </div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)' }}>
+ {spell.duration} · Taking damage triggers a CON save (DC 10 or half damage, whichever is higher)
  </div>
  </div>
  </div>
  <button
  onClick={() => setConcentration(null)}
- className="btn-secondary btn-sm"
- style={{ flexShrink: 0, borderColor: 'rgba(167,139,250,0.4)', color: '#a78bfa' }}
+ style={{
+ flexShrink: 0,
+ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, letterSpacing: '0.04em',
+ padding: '8px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
+ background: 'rgba(167,139,250,0.15)',
+ border: '1px solid rgba(167,139,250,0.5)',
+ color: '#c4b5fd',
+ transition: 'all 0.15s',
+ }}
+ onMouseEnter={e => {
+ (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.18)';
+ (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,0.5)';
+ (e.currentTarget as HTMLButtonElement).style.color = '#fca5a5';
+ }}
+ onMouseLeave={e => {
+ (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.15)';
+ (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.5)';
+ (e.currentTarget as HTMLButtonElement).style.color = '#c4b5fd';
+ }}
+ title="Drop concentration on this spell"
  >
- Drop
+ ✕ Drop Concentration
  </button>
  </div>
  ) : null;
@@ -1571,14 +1604,26 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  .replace('1 minute', '1 min').replace('10 minutes', '10 min')
  .replace('1 hour', '1 hr').replace('8 hours', '8 hr');
 
+ // v2.37.0: highlight the row if this spell is the one being concentrated on
+ const isActivelyConcentrating = concentrationSpellId === spell.id;
+
  return (
  <div key={rowKey} style={{
  borderRadius: 'var(--r-md)',
- border: `1px solid ${slotsExhausted ? 'rgba(239,68,68,0.15)' : isExpanded ? `${sc}45` : 'rgba(167,139,250,0.18)'}`,
- background: slotsExhausted ? 'rgba(239,68,68,0.03)' : isExpanded ? `${sc}08` : 'rgba(167,139,250,0.04)',
+ border: `1px solid ${
+ isActivelyConcentrating ? 'rgba(167,139,250,0.55)' :
+ slotsExhausted ? 'rgba(239,68,68,0.15)' :
+ isExpanded ? `${sc}45` :
+ 'rgba(167,139,250,0.18)'
+ }`,
+ background: isActivelyConcentrating ? 'rgba(167,139,250,0.10)' :
+ slotsExhausted ? 'rgba(239,68,68,0.03)' :
+ isExpanded ? `${sc}08` :
+ 'rgba(167,139,250,0.04)',
  opacity: slotsExhausted ? 0.55 : 1,
  overflow: 'hidden',
  transition: 'all 0.15s',
+ boxShadow: isActivelyConcentrating ? '0 0 0 2px rgba(167,139,250,0.18)' : 'none',
  }}>
  {/* Row — 8-col grid (EFFECT column removed per v2.35.1). Fixed 170px action col
  so rows with Attack+Damage buttons align with rows that only have a Cast button. */}
@@ -1626,8 +1671,29 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
  </span>
+ {/* v2.37.0: Upgraded concentration marker — pillbox, always clearly visible.
+ When THIS spell is being concentrated on, pill shows "● ACTIVE" in purple. */}
  {spell.concentration && (
- <span style={{ fontSize: 8, fontWeight: 800, color: '#fbbf24', flexShrink: 0 }}>● CONC</span>
+ isActivelyConcentrating ? (
+ <span style={{
+ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+ color: '#c4b5fd', background: 'rgba(167,139,250,0.22)',
+ border: '1px solid rgba(167,139,250,0.55)', borderRadius: 999,
+ padding: '2px 8px', flexShrink: 0,
+ boxShadow: '0 0 0 2px rgba(167,139,250,0.08)',
+ }} title="You are currently concentrating on this spell">
+ ● Active
+ </span>
+ ) : (
+ <span style={{
+ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+ color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
+ border: '1px solid rgba(251,191,36,0.35)', borderRadius: 999,
+ padding: '1px 7px', flexShrink: 0,
+ }} title="Concentration spell — casting requires maintaining focus">
+ Concentration
+ </span>
+ )
  )}
  {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>No Slots</span>}
  </div>
@@ -1680,6 +1746,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setSpellCastThisTurn(true);
  if (isBonusAction) setBonusActionSpellCast(true);
  }}
+ onConcentrationCast={() => setConcentration(spell.id)}
  />
  </div>
  </div>

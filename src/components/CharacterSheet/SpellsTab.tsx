@@ -464,6 +464,7 @@ export default function SpellsTab({
  campaignId={campaignId}
  onUpdateSlots={onUpdateSlots}
  forceSlotLevel={spell.isUpcast ? spell.effectiveLevel : undefined}
+ onConcentrationCast={() => onConcentrate(spell.id)}
  />
  }
  onExpand={() => {
