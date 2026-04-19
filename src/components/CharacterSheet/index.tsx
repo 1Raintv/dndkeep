@@ -12,8 +12,7 @@ import { getCharacterResources, buildDefaultResources } from '../../data/classRe
 import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
-import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining } from '../../lib/spellParser';
-import { parseUpcastScaling } from '../../lib/spellParser';
+import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -569,79 +568,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* v2.31: Pending level-up notification — only renders when XP has crossed the next threshold */}
  <LevelUpBanner character={character} onOpen={() => setShowLevelUp(true)} />
 
-{/* HP Stats — stat chips + conditions strip (v2.27: HP card moved into header) */}
- <HPStatsPanel
- character={character}
- computed={computed}
- onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
- onUpdateSpeed={speed => applyUpdate({ speed }, true)}
- onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
- onUpdateConditions={handleUpdateConditions}
- onUpdateExhaustionLevel={lvl => applyUpdate({ exhaustion_level: lvl }, true)}
- />
-
- {/* v2.43.0: Defenses strip — moved up here so it sits adjacent to the COND chip
- in the vitals row. Visible on EVERY tab, not just Actions. Auto-populates from
- species (Tiefling fire, Dwarf poison, etc.) + manual edits in Settings. */}
+{/* HP Stats — stat chips + conditions strip + defense chips (v2.45.0: defenses
+    now render INLINE in the stats row alongside INSP/AC/INIT/SPEED/PROF/COND
+    instead of as a separate strip below) */}
  {(() => {
- const buffsForDef: any[] = (character as any).active_buffs ?? [];
- const buffResForDef: string[] = [];
- buffsForDef.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!buffResForDef.includes(r)) buffResForDef.push(r); }); });
- const defResistances = Array.from(new Set([...resolveResistances(character), ...buffResForDef]));
- const defImmunities = resolveImmunities(character);
- const defVulnerabilities = resolveVulnerabilities(character);
- const hasAny = defResistances.length > 0 || defImmunities.length > 0 || defVulnerabilities.length > 0;
- if (!hasAny) return null;
- return (
- <div style={{
- background: 'var(--c-card)', border: '1px solid var(--c-border)',
- borderRadius: 'var(--r-md)', padding: '8px 12px',
- display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' as const,
- }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--t-3)', flexShrink: 0 }}>
- Defenses
- </span>
- {defResistances.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#4ade80' }}>Resist</span>
- {defResistances.map((t: string) => {
- const c = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
- return (
- <span key={`r-${t}`} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: c, background: c + '15', border: `1px solid ${c}40`, borderRadius: 999, padding: '1px 9px' }}>
- {labelForDamageType(t)}
- </span>
- );
- })}
- </div>
- )}
- {defImmunities.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#60a5fa' }}>Immune</span>
- {defImmunities.map((t: string) => {
- const c = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
- return (
- <span key={`i-${t}`} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: c, background: c + '22', border: `2px solid ${c}55`, borderRadius: 999, padding: '1px 9px' }}>
- {labelForDamageType(t)}
- </span>
- );
- })}
- </div>
- )}
- {defVulnerabilities.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#ef4444' }}>Vulner</span>
- {defVulnerabilities.map((t: string) => {
- const c = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
- return (
- <span key={`v-${t}`} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: c, background: c + '15', border: `1px dashed ${c}55`, borderRadius: 999, padding: '1px 9px' }}>
- {labelForDamageType(t)}
- </span>
- );
- })}
- </div>
- )}
- </div>
- );
+   const buffsForDef: any[] = (character as any).active_buffs ?? [];
+   const buffResForDef: string[] = [];
+   buffsForDef.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!buffResForDef.includes(r)) buffResForDef.push(r); }); });
+   const defResistances = Array.from(new Set([...resolveResistances(character), ...buffResForDef]));
+   const defImmunities = resolveImmunities(character);
+   const defVulnerabilities = resolveVulnerabilities(character);
+   const defenseChips: Array<{ label: string; color: string; kind: 'res' | 'imm' | 'vul' }> = [
+     ...defResistances.map(t => ({ label: labelForDamageType(t), color: DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8', kind: 'res' as const })),
+     ...defImmunities.map(t => ({ label: labelForDamageType(t), color: DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8', kind: 'imm' as const })),
+     ...defVulnerabilities.map(t => ({ label: labelForDamageType(t), color: DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8', kind: 'vul' as const })),
+   ];
+   return (
+     <HPStatsPanel
+       character={character}
+       computed={computed}
+       onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
+       onUpdateSpeed={speed => applyUpdate({ speed }, true)}
+       onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
+       onUpdateConditions={handleUpdateConditions}
+       onUpdateExhaustionLevel={lvl => applyUpdate({ exhaustion_level: lvl }, true)}
+       defenseChips={defenseChips}
+     />
+   );
  })()}
 
  {/* Death Saves — shown when HP = 0 */}
@@ -1649,13 +1602,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return true;
  })();
 
- // v2.36.0: Whether this spell supports upcasting (has extra dice at higher slot levels).
- // Used to render a "↑" chip next to the level badge. Cantrips never upcast.
- const upcastInfo = eff > 0 ? parseUpcastScaling(
- (spell as any).higher_levels || spell.description,
- spell.level,
- ) : null;
- const canUpcast = !!(upcastInfo && upcastInfo.extraDice);
+ // v2.44.0: Whether this spell supports upcasting at all. Single source of
+ // truth = presence of higher_levels text. Spells like Jump (no higher_levels
+ // field) won't show the ↑ chip and won't allow upcasting from the modal.
+ const canUpcast = canUpcastSpell(spell);
 
  // v2.35.0: mirror Spells-tab HIT/DC + EFFECT computation
  const mechanics = parseSpellMechanics(spell.description, {

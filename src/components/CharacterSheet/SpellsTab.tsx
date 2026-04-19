@@ -4,7 +4,7 @@ import SpellCastButton from './SpellCastButton';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
-import { parseSpellMechanics } from '../../lib/spellParser';
+import { parseSpellMechanics, canUpcastSpell } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
 import { getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
 
@@ -181,8 +181,10 @@ export default function SpellsTab({
  // Base-level entry
  if (!map[s.level]) map[s.level] = [];
  map[s.level].push({ ...s, effectiveLevel: s.level, isUpcast: false });
- // Upcast entries
- if (showUpcasts && maxAvailableSlotLevel > s.level) {
+ // v2.44.0: Only generate upcast rows for spells that ACTUALLY support
+ // upcasting (i.e. have a non-empty higher_levels field). Spells like
+ // Jump/Find Familiar/etc. have no higher_levels and won't show upcast variants.
+ if (showUpcasts && maxAvailableSlotLevel > s.level && canUpcastSpell(s)) {
  for (let up = s.level + 1; up <= Math.min(9, maxAvailableSlotLevel); up++) {
  if (!map[up]) map[up] = [];
  map[up].push({ ...s, effectiveLevel: up, isUpcast: true });

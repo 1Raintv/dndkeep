@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
-import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice } from '../../lib/spellParser';
+import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSpell } from '../../lib/spellParser';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface SpellCastButtonProps {
@@ -86,10 +86,16 @@ export default function SpellCastButton({
  spell.level,
  );
 
- // Available slots at spell.level or higher
+ // Available slots at spell.level or higher.
+ // v2.44.0: If the spell cannot be upcast (no higher_levels text), the picker
+ // is restricted to ONLY the spell's base level — even if higher slots exist.
+ // This matches RAW: spells like Jump, Find Familiar, Mage Armor can't benefit
+ // from a higher-level slot, so showing those options would be misleading.
  const availableSlots: { level: number; remaining: number }[] = [];
  if (!isCantrip) {
- for (let lvl = spell.level; lvl <= 9; lvl++) {
+ const allowsUpcast = canUpcastSpell(spell);
+ const maxSlotLevel = allowsUpcast ? 9 : spell.level;
+ for (let lvl = spell.level; lvl <= maxSlotLevel; lvl++) {
  const slot = character.spell_slots[String(lvl)];
  if (slot && slot.total > 0) {
  const remaining = slot.total - (slot.used ?? 0);

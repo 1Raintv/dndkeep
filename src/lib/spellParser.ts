@@ -247,3 +247,19 @@ export function formatRoundsRemaining(rounds: number | null | undefined): string
   }
   return `${secondsTotal}s (${rounds} round${rounds === 1 ? '' : 's'})`;
 }
+
+// v2.44.0: Single source of truth for whether a spell supports upcasting.
+// Per 2024 PHB: a leveled spell can be upcast ONLY if it has an explicit
+// "Using a Higher-Level Spell Slot" / "At Higher Levels" clause. Spells like
+// Jump, Mage Armor (1st only), Charm Person (target additional) etc. each
+// have or lack this field. We trust the data: presence of a non-empty
+// higher_levels string = upcastable; absent or empty = NOT upcastable.
+//
+// Cantrips upcast at character levels 5/11/17 via parseCantripScaling, NOT
+// via slot levels — this helper returns false for cantrips since they can't
+// be cast with a slot.
+export function canUpcastSpell(spell: { level: number; higher_levels?: string | null }): boolean {
+  if (spell.level === 0) return false;
+  const hl = spell.higher_levels;
+  return !!(hl && hl.trim().length > 0);
+}

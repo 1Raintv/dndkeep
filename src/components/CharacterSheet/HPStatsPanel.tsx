@@ -13,12 +13,15 @@ interface HPStatsPanelProps {
   onUpdateConditions?: (next: ConditionName[]) => void;
   onUpdateExhaustionLevel?: (level: number) => void;
   acTooltip?: string;
+  // v2.45.0: defense chips render inline at the end of the stats row.
+  // Each chip carries its own per-type color so Fire is orange, Cold is blue, etc.
+  defenseChips?: Array<{ label: string; color: string; kind: 'res' | 'imm' | 'vul' }>;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
 
 export default function HPStatsPanel({
-  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip,
+  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [],
 }: HPStatsPanelProps) {
   const [editingAC, setEditingAC] = useState(false);
   const [acInput, setAcInput] = useState('');
@@ -51,7 +54,8 @@ export default function HPStatsPanel({
     { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     { label: 'SPEED',     value: `${character.speed}ft`,                                           color: 'var(--t-2)',      editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); }, tooltip: editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats' },
     { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
-    { label: 'PASS PERC', value: 10 + (computed.skills['Perception']?.total ?? 0),                color: 'var(--t-2)' },
+    // v2.45.0: PASS PERC removed — redundant with the Skills list which shows passive perception
+    // alongside the live perception modifier on the left side of the sheet.
     // v2.33.3: Conditions as a compact chip — clickable to open the modal
     ...(onUpdateConditions ? [{
       label: 'COND',
@@ -75,8 +79,9 @@ export default function HPStatsPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* Stat chips strip */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+      {/* Stat chips strip — v2.45.0: defense chips render inline at the end so
+          they share the same wrap row with INSP/AC/INIT/SPEED/PROF/COND. */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
         {stats.map(stat => (
           <div
             key={stat.label}
@@ -116,6 +121,38 @@ export default function HPStatsPanel({
             </div>
           </div>
         ))}
+
+        {/* v2.45.0: Defense chips inline. Pill shape distinguishes them from stat boxes.
+            Border style encodes kind: solid = resistance, thicker double-style = immunity, dashed = vulnerability. */}
+        {defenseChips.length > 0 && (
+          <>
+            <div style={{ width: 1, height: 22, background: 'var(--c-border)', marginLeft: 4, marginRight: 2, alignSelf: 'center' }} />
+            {defenseChips.map((chip, i) => (
+              <span
+                key={`${chip.kind}-${chip.label}-${i}`}
+                title={chip.kind === 'res' ? `Resistant to ${chip.label} (half damage)` : chip.kind === 'imm' ? `Immune to ${chip.label} (no damage)` : `Vulnerable to ${chip.label} (double damage)`}
+                style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 11,
+                  fontWeight: chip.kind === 'imm' ? 800 : 700,
+                  color: chip.color,
+                  background: chip.color + (chip.kind === 'imm' ? '22' : '12'),
+                  border: chip.kind === 'imm'
+                    ? `2px solid ${chip.color}66`
+                    : chip.kind === 'vul'
+                      ? `1px dashed ${chip.color}66`
+                      : `1px solid ${chip.color}55`,
+                  borderRadius: 999, padding: '4px 10px',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  height: 22, lineHeight: 1,
+                }}
+              >
+                {chip.kind === 'imm' && <span style={{ fontSize: 8, opacity: 0.85 }}>IMM</span>}
+                {chip.kind === 'vul' && <span style={{ fontSize: 8, opacity: 0.85 }}>VUL</span>}
+                {chip.label}
+              </span>
+            ))}
+          </>
+        )}
       </div>
 
       {/* v2.33.3: Conditions modal — opened by the COND chip in the stats strip above */}
