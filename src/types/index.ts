@@ -172,6 +172,12 @@ export interface Character {
   // Unlocks removing known spells / unprepping subclass-granted spells
   advanced_spell_edits_unlocked?: boolean;
 
+  // v2.49.0: House rule — when true, NAT 1 on any saving throw = auto-fail,
+  // NAT 20 = auto-success. RAW 5e only applies this to attacks + death saves;
+  // many DMs extend it to all saves. Default false (RAW). User-editable behind
+  // advanced_edits_unlocked.
+  nat_1_20_saves?: boolean;
+
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;
   dexterity: number;

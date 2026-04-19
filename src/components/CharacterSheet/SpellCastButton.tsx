@@ -20,6 +20,10 @@ interface SpellCastButtonProps {
  // v2.37.0: called when ANY cast (cantrip or leveled) happens for a concentration spell.
  // The parent should set character.concentration_spell = spell.id.
  onConcentrationCast?: () => void;
+ // v2.49.0: Renders a single "↑ Upcast" button that opens the slot picker modal directly.
+ // Used in spell description panels so the user can deliberately choose a higher slot
+ // instead of just casting at base level.
+ upcastTrigger?: boolean;
 }
 
 const SAVE_COLORS: Record<string, string> = {
@@ -48,7 +52,7 @@ function rollNdS(count: number, sides: number): number[] {
 
 export default function SpellCastButton({
  spell, character, userId, campaignId, onUpdateSlots, compact = false,
- spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast,
+ spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger,
 }: SpellCastButtonProps) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
@@ -288,6 +292,84 @@ export default function SpellCastButton({
  cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
  fontFamily: 'var(--ff-body)',
  };
+
+ // v2.49.0: Upcast trigger mode — render ONLY a single button that opens the
+ // slot-picker modal, so users can deliberately pick a higher slot instead of
+ // just casting at base level. Reuses the same modal as the compact button.
+ if (upcastTrigger) {
+ // Only render if the spell actually supports upcasting + has slots higher than base
+ if (isCantrip || !canUpcastSpell(spell)) return null;
+ const hasHigherSlots = availableSlots.some(s => s.level > spell.level);
+ if (!hasHigherSlots) return null;
+ return (
+ <>
+ <button
+ onClick={() => setShowModal(true)}
+ style={{
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+ padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
+ border: '1px solid rgba(167,139,250,0.5)',
+ background: 'rgba(167,139,250,0.12)',
+ color: '#c4b5fd', letterSpacing: '0.04em',
+ display: 'inline-flex', alignItems: 'center', gap: 5,
+ }}
+ onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.22)'; }}
+ onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
+ title="Cast this spell using a higher-level spell slot for greater effect"
+ >
+ ↑ Upcast at higher slot
+ </button>
+ {showModal && (
+ <div className="modal-overlay" onClick={() => setShowModal(false)}>
+ <div className="modal" style={{ maxWidth: 480, width: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' as const, padding: 20 }} onClick={e => e.stopPropagation()}>
+ <h3 style={{ marginBottom: 8, marginTop: 0, fontSize: 18 }}>{spell.name} — Upcast</h3>
+ <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
+ <div style={{ fontSize: 11, color: 'var(--t-3)', marginBottom: 10, fontStyle: 'italic' }}>
+ {(spell as any).higher_levels}
+ </div>
+ <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>
+ Choose Spell Slot
+ </div>
+ <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+ {availableSlots.map(({ level, remaining }) => (
+ <button key={level} onClick={() => { setSelectedSlot(level); }}
+ style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+ padding: '5px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
+ background: selectedSlot === level ? 'rgba(167,139,250,0.15)' : '#080d14',
+ color: selectedSlot === level ? '#a78bfa' : 'var(--t-2)' }}>
+ Level {level}
+ <span style={{ display: 'block', fontSize: 9, fontWeight: 400 }}>{remaining} left</span>
+ </button>
+ ))}
+ </div>
+ <div style={{ marginBottom: 12 }}>
+ <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 4 }}>
+ Target (optional)
+ </div>
+ <input value={target} onChange={e => setTarget(e.target.value)} placeholder='e.g. "Goblin King"'
+ style={{ fontSize: 'var(--fs-sm)', width: '100%' }} />
+ </div>
+ </div>
+ <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--c-border)', marginTop: 'auto' }}>
+ <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
+ {mechanics.damageDice && (
+ <button onClick={() => { rollDamage(selectedSlot); setShowModal(false); setTarget(''); }}
+ style={{ flex: 1, justifyContent: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 12 }}>
+ Roll Damage
+ </button>
+ )}
+ <button onClick={() => { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}
+ style={{ flex: 1, justifyContent: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer', border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)', color: '#a78bfa', fontSize: 12 }}>
+ Cast at Level {selectedSlot}
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+ </>
+ );
+ }
 
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>

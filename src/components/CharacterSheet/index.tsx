@@ -380,7 +380,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
  const d20 = Math.floor(Math.random() * 20) + 1;
  const total = d20 + saveBonus;
- const passed = total >= dc;
+ // v2.49.0: NAT 1/20 house rule — overrides total comparison if enabled.
+ // RAW: saving throws don't crit; only attacks + death saves do. Many tables
+ // play with the house rule that NAT 1 = auto-fail, NAT 20 = auto-success on
+ // ALL d20 rolls. The character can opt in via Settings.
+ const useNat = !!character.nat_1_20_saves;
+ let passed: boolean;
+ let verdict: string;
+ if (useNat && d20 === 20) {
+ passed = true;
+ verdict = '✓ Maintained (NAT 20 — auto-success)';
+ } else if (useNat && d20 === 1) {
+ passed = false;
+ verdict = '✗ Broken (NAT 1 — auto-fail)';
+ } else {
+ passed = total >= dc;
+ verdict = passed ? '✓ Maintained' : '✗ Broken';
+ }
  // v2.48.0: Fire the 3D dice roller so the user sees the d20 land and the
  // total vs DC verdict. Same pattern used for ability/skill checks elsewhere.
  const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
@@ -389,10 +405,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  dieType: 20,
  modifier: saveBonus,
  total,
- label: `${spellName} — Concentration Save (DC ${dc}) · ${passed ? '✓ Maintained' : '✗ Broken'}`,
+ label: `${spellName} — Concentration Save (DC ${dc}) · ${verdict}`,
  });
  if (!passed) {
- showConcentrationLossToast(concentrationSpellId, `CON save failed (${total} vs DC ${dc})`);
+ showConcentrationLossToast(concentrationSpellId, useNat && d20 === 1 ? 'NAT 1 — auto-fail' : `CON save failed (${total} vs DC ${dc})`);
  setConcentration(null);
  }
  import('../shared/ActionLog').then(({ logAction }) => {
@@ -405,7 +421,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  diceExpression: '1d20',
  individualResults: [d20],
  total,
- notes: `DC ${dc} · ${passed ? ' Maintained' : ' Concentration broken'} · CON ${conMod >= 0 ? '+' : ''}${conMod}${hasSaveProf ? ` + Prof +${pb}` : ''}`,
+ notes: `DC ${dc} · ${verdict} · CON ${conMod >= 0 ? '+' : ''}${conMod}${hasSaveProf ? ` + Prof +${pb}` : ''}`,
  });
  });
  return { passed, total, d20 };
@@ -1936,6 +1952,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  </div>
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
+
+ {/* v2.49.0: Upcast trigger button — appears for spells that support
+     upcasting and have higher slots available. Lets the user deliberately
+     pick a higher slot via a modal, instead of always casting at base. */}
+ <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+ <SpellCastButton
+ spell={spell}
+ character={character}
+ userId={userId ?? ''}
+ campaignId={character.campaign_id}
+ onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
+ upcastTrigger={true}
+ onLeveledSpellCast={(isBonusAction?: boolean) => {
+ if (isBonusAction) setBonusActionSpellCast(true); else setSpellCastThisTurn(true);
+ }}
+ onConcentrationCast={() => setConcentration(spell.id)}
+ />
+ </div>
  </div>
  )}
  </div>

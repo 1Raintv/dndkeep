@@ -469,6 +469,32 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                 </div>
               </div>
 
+              {/* ── v2.49.0: House rule — NAT 1/20 on saving throws ── */}
+              <div style={{ opacity: character.advanced_edits_unlocked ? 1 : 0.55, pointerEvents: character.advanced_edits_unlocked ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                <div className="section-header">House Rules</div>
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-3)',
+                  padding: 'var(--sp-3)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)',
+                  background: 'var(--c-raised)', cursor: character.advanced_edits_unlocked ? 'pointer' : 'not-allowed',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!!character.nat_1_20_saves}
+                    onChange={e => onUpdate({ nat_1_20_saves: e.target.checked })}
+                    style={{ marginTop: 3, cursor: character.advanced_edits_unlocked ? 'pointer' : 'not-allowed' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 2 }}>
+                      Natural 1 & 20 on Saving Throws
+                    </div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
+                      When enabled: rolling a natural 1 on a saving throw is an automatic failure regardless of total, and a natural 20 is an automatic success.
+                      Per RAW 5e, only attack rolls and death saves use this rule — many tables extend it to all saves. Currently applies to concentration saves; will extend to other saves in future versions.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               {/* ── v2.33 Deep Edits: Species / Background / Subclass swap ── */}
               <div style={{ marginTop: 'var(--sp-4)', padding: 'var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', background: 'var(--c-raised)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
