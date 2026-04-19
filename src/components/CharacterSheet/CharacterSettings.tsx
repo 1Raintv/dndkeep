@@ -6,6 +6,8 @@ import { deleteCharacter } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useCampaign } from '../../context/CampaignContext';
 import { AUTOMATIONS, resolveAutomation, labelForValue, type AutomationValue } from '../../lib/automations';
+import { SPECIES } from '../../data/species';
+import { BACKGROUNDS } from '../../data/backgrounds';
 
 type SettingsTab = 'stats' | 'levelup' | 'automations' | 'export' | 'danger';
 
@@ -416,6 +418,103 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   suggestions={TOOL_SUGGESTIONS}
                   onChange={next => onUpdate({ extra_tool_proficiencies: next })}
                 />
+              </div>
+
+              {/* ── v2.33 Deep Edits: Species / Background / Subclass swap ── */}
+              <div style={{ marginTop: 'var(--sp-4)', padding: 'var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', background: 'var(--c-raised)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
+                  <span style={{ fontSize: 18 }}>{character.advanced_deep_edits_unlocked ? '🔓' : '🔒'}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
+                      Deep Edits {character.advanced_deep_edits_unlocked ? 'unlocked' : 'locked'}
+                    </div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5, marginTop: 2 }}>
+                      {character.advanced_deep_edits_unlocked
+                        ? 'You can swap species and background below. Retroactive changes affect derived stats.'
+                        : 'Swap species and background on an existing character. Use carefully — other stats don\'t auto-adjust.'}
+                    </div>
+                  </div>
+                  <button
+                    className={character.advanced_deep_edits_unlocked ? 'btn-secondary btn-sm' : 'btn-gold btn-sm'}
+                    onClick={() => onUpdate({ advanced_deep_edits_unlocked: !character.advanced_deep_edits_unlocked })}
+                    style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+                  >
+                    {character.advanced_deep_edits_unlocked ? 'Lock' : 'Unlock'}
+                  </button>
+                </div>
+
+                {character.advanced_deep_edits_unlocked && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                    {/* Species swap */}
+                    <div>
+                      <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4, display: 'block' }}>
+                        Species
+                      </label>
+                      <select
+                        value={character.species}
+                        onChange={e => {
+                          const newSpecies = e.target.value;
+                          const oldData = SPECIES.find(s => s.name === character.species);
+                          const newData = SPECIES.find(s => s.name === newSpecies);
+                          if (!newData) return;
+                          // Confirm change — shows old vs new implications
+                          const oldSummary = oldData
+                            ? `${oldData.name} (size ${oldData.size}, speed ${oldData.speed}, ${oldData.traits.length} traits, languages: ${oldData.languages.join(', ')})`
+                            : character.species;
+                          const newSummary = `${newData.name} (size ${newData.size}, speed ${newData.speed}, ${newData.traits.length} traits, languages: ${newData.languages.join(', ')})`;
+                          if (window.confirm(
+                            `Change species?\n\nFrom: ${oldSummary}\nTo:   ${newSummary}\n\nYour displayed traits, languages, and darkvision will update immediately. Base speed on your sheet will not auto-adjust — edit Speed manually if needed.`
+                          )) {
+                            onUpdate({ species: newSpecies });
+                          }
+                        }}
+                        style={{ fontSize: 'var(--fs-sm)', width: '100%' }}
+                      >
+                        {SPECIES.map(s => (
+                          <option key={s.name} value={s.name}>
+                            {s.name} — speed {s.speed}{s.darkvision > 0 ? `, darkvision ${s.darkvision}ft` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Background swap */}
+                    <div>
+                      <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4, display: 'block' }}>
+                        Background
+                      </label>
+                      <select
+                        value={character.background}
+                        onChange={e => {
+                          const newBg = e.target.value;
+                          const oldData = BACKGROUNDS.find((b: any) => b.name === character.background);
+                          const newData = BACKGROUNDS.find((b: any) => b.name === newBg);
+                          if (!newData) return;
+                          const oldSummary = oldData
+                            ? `${oldData.name} (skills: ${oldData.skill_proficiencies.join(', ')}${oldData.tool_proficiency ? ', tool: ' + oldData.tool_proficiency : ''})`
+                            : character.background;
+                          const newSummary = `${newData.name} (skills: ${newData.skill_proficiencies.join(', ')}${newData.tool_proficiency ? ', tool: ' + newData.tool_proficiency : ''})`;
+                          if (window.confirm(
+                            `Change background?\n\nFrom: ${oldSummary}\nTo:   ${newSummary}\n\nSkill/tool proficiencies and the background feature description update. Your skill_proficiencies array is NOT auto-rewritten — manually remove old background skills if they shouldn't carry over.`
+                          )) {
+                            onUpdate({ background: newBg });
+                          }
+                        }}
+                        style={{ fontSize: 'var(--fs-sm)', width: '100%' }}
+                      >
+                        {BACKGROUNDS.map((b: any) => (
+                          <option key={b.name} value={b.name}>
+                            {b.name} — {b.skill_proficiencies.join(', ')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                      Subclass swap and class re-picks coming in v2.33 Phase 2. For now those require manual edits to gained_feats and known_spells.
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Multiclass section removed in v2.32 — multiclass is now handled

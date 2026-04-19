@@ -219,6 +219,11 @@ export interface Character {
   // Set by DM tools in the campaign (stub field for now — UI comes in v2.33).
   pending_manual_level_grants?: number;
 
+  // v2.33: Unlock for mid-campaign character edits — species swap, background swap,
+  // subclass swap, re-pick class choices. Gated separately from advanced_edits_unlocked
+  // because these edits cause larger retroactive changes to the character.
+  advanced_deep_edits_unlocked?: boolean;
+
   // Death saves (only relevant when current_hp === 0)
   death_saves_successes: number;  // 0–3; three successes stabilizes the character
   death_saves_failures: number;   // 0–3; three failures = dead
