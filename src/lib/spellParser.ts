@@ -193,3 +193,57 @@ export function rollDice(expression: string): { total: number; rolls: number[]; 
 
   return { total, rolls, expression };
 }
+
+// v2.38.0: ─── Concentration duration parser ───────────────────────────────
+// Converts a spell's duration string into combat rounds remaining.
+// RAW 5e: 1 round = 6 seconds. 1 minute = 10 rounds. 1 hour = 600 rounds.
+// Returns null for non-round-denominated durations (Instantaneous, Until dispelled,
+// Special, Permanent) — those spells still concentrate but don't get a timer.
+export function parseDurationToRounds(duration: string | null | undefined): number | null {
+  if (!duration) return null;
+  const d = duration.toLowerCase().trim();
+
+  // Instantaneous / Special / Until dispelled / Permanent → no timer
+  if (d.includes('instantaneous') || d.includes('special') ||
+      d.includes('until dispelled') || d.includes('permanent')) {
+    return null;
+  }
+
+  // "Concentration, up to N minutes/hours/rounds" or "N minutes" directly
+  // Match patterns like: "up to 10 minutes", "1 hour", "1 minute", "10 rounds"
+  const roundsMatch = d.match(/(\d+)\s*rounds?/);
+  if (roundsMatch) return parseInt(roundsMatch[1], 10);
+
+  const minutesMatch = d.match(/(\d+)\s*minutes?/);
+  if (minutesMatch) return parseInt(minutesMatch[1], 10) * 10;
+
+  const hoursMatch = d.match(/(\d+)\s*hours?/);
+  if (hoursMatch) return parseInt(hoursMatch[1], 10) * 600;
+
+  const daysMatch = d.match(/(\d+)\s*days?/);
+  if (daysMatch) return parseInt(daysMatch[1], 10) * 14400;
+
+  // Unknown format → no timer
+  return null;
+}
+
+// Format rounds remaining into a human-readable countdown string.
+// Prefers the largest unit that's >= 1 of itself.
+// Examples: 600 → "1 hr", 15 → "1 min 30s", 3 → "18s (3 rounds)"
+export function formatRoundsRemaining(rounds: number | null | undefined): string {
+  if (rounds === null || rounds === undefined) return '';
+  if (rounds <= 0) return 'Expired';
+  const secondsTotal = rounds * 6;
+
+  if (secondsTotal >= 3600) {
+    const hrs = Math.floor(secondsTotal / 3600);
+    const mins = Math.floor((secondsTotal % 3600) / 60);
+    return mins > 0 ? `${hrs} hr ${mins} min` : `${hrs} hr`;
+  }
+  if (secondsTotal >= 60) {
+    const mins = Math.floor(secondsTotal / 60);
+    const secs = secondsTotal % 60;
+    return secs > 0 ? `${mins} min ${secs}s` : `${mins} min`;
+  }
+  return `${secondsTotal}s (${rounds} round${rounds === 1 ? '' : 's'})`;
+}

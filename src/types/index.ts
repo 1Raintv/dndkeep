@@ -160,6 +160,9 @@ export interface Character {
   wildshape_current_hp: number;
   wildshape_max_hp: number;
   concentration_spell: string;
+ // v2.38.0: Rounds remaining on current concentration. NULL = no timer (instantaneous
+ // / until dispelled / missing duration info). 0 = expired. One combat round = 6 seconds.
+ concentration_rounds_remaining: number | null;
 
   // Automation framework — see src/lib/automations.ts
   automation_overrides: Record<string, 'off' | 'prompt' | 'auto'>;

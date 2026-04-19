@@ -11,7 +11,7 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
-import { parseSpellMechanics } from '../../lib/spellParser';
+import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining } from '../../lib/spellParser';
 import { parseUpcastScaling } from '../../lib/spellParser';
 
 import CharacterHeader from './CharacterHeader';
@@ -206,6 +206,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Fields that can be written by external sources (BattleMap, DM actions)
  const externalFields = [
  'current_hp', 'temp_hp', 'active_conditions', 'concentration_spell',
+ 'concentration_rounds_remaining',
  'spell_slots', 'death_saves_successes', 'death_saves_failures',
  ] as const;
  const patch: Partial<Character> = {};
@@ -317,9 +318,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  else debouncedFlush();
  }
 
- /** Persist concentration spell ID immediately to DB so it survives refresh. */
+ /** Persist concentration spell ID immediately to DB so it survives refresh.
+ * v2.38.0: Also parses the spell's duration and starts a round countdown. */
  function setConcentration(spellId: string | null) {
- applyUpdate({ concentration_spell: spellId ?? '' }, true);
+ if (!spellId) {
+ applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null }, true);
+ return;
+ }
+ const spell = spellMap[spellId];
+ const rounds = spell ? parseDurationToRounds(spell.duration) : null;
+ applyUpdate({ concentration_spell: spellId, concentration_rounds_remaining: rounds }, true);
  }
 
  // ------------------------------------------------------------------
@@ -673,10 +681,63 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {spell.name}
  </div>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)' }}>
- {spell.duration} · Taking damage triggers a CON save (DC 10 or half damage, whichever is higher)
+ {spell.duration} · CON save on damage (DC 10 or half damage)
  </div>
  </div>
  </div>
+
+ {/* v2.38.0: Round timer + "End Round" button.
+ - Timer shows formatted remaining time (e.g. "1 min 30s" or "18s (3 rounds)")
+ - End Round button decrements the round counter
+ - At 0 rounds, concentration auto-drops with a notification.
+ - Spells without a round-denominated duration (null) show "—" and no button. */}
+ {(() => {
+ const rounds = character.concentration_rounds_remaining;
+ if (rounds === null || rounds === undefined) return (
+ <div style={{ flexShrink: 0, fontSize: 10, color: 'var(--t-3)', textAlign: 'center', minWidth: 110 }}>
+ No round timer
+ </div>
+ );
+ const isLow = rounds <= 3;
+ const isExpired = rounds <= 0;
+ return (
+ <div style={{
+ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+ flexShrink: 0, minWidth: 110,
+ padding: '6px 10px', borderRadius: 'var(--r-md)',
+ background: isExpired ? 'rgba(239,68,68,0.12)' : isLow ? 'rgba(251,191,36,0.10)' : 'rgba(167,139,250,0.10)',
+ border: `1px solid ${isExpired ? 'rgba(239,68,68,0.4)' : isLow ? 'rgba(251,191,36,0.35)' : 'rgba(167,139,250,0.3)'}`,
+ }}>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 14,
+ color: isExpired ? '#ef4444' : isLow ? '#fbbf24' : '#c4b5fd', lineHeight: 1 }}>
+ {formatRoundsRemaining(rounds)}
+ </div>
+ <button
+ onClick={() => {
+ const next = Math.max(0, rounds - 1);
+ if (next === 0) {
+ // Auto-drop: clear concentration and clear the timer
+ applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null }, true);
+ } else {
+ applyUpdate({ concentration_rounds_remaining: next }, true);
+ }
+ }}
+ disabled={isExpired}
+ style={{
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '0.04em',
+ padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: isExpired ? 'not-allowed' : 'pointer', minHeight: 0,
+ background: 'rgba(167,139,250,0.15)',
+ border: '1px solid rgba(167,139,250,0.4)',
+ color: '#c4b5fd',
+ opacity: isExpired ? 0.5 : 1,
+ }}
+ title="Advance combat one round (−6 seconds). Concentration drops automatically at 0."
+ >
+ − Round
+ </button>
+ </div>
+ );
+ })()}
  <button
  onClick={() => setConcentration(null)}
  style={{
@@ -876,27 +937,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
 
  {/* Concentration banner */}
- {concentrationSpellId && (
- <div style={{
- display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
- padding: 'var(--sp-3) var(--sp-4)',
- background: 'rgba(201,146,42,0.06)', border: '1px solid rgba(201,146,42,0.3)',
- borderRadius: 'var(--r-md)',
- }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
- Concentrating:
- </span>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-1)', flex: 1 }}>
- {spellMap[concentrationSpellId]?.name ?? concentrationSpellId}
- </span>
- <button className="btn-ghost btn-sm" onClick={() => setConcentration(null)}
- style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
- End
- </button>
- </div>
- )}
-
-
+ {/* v2.38.0: removed duplicate yellow "Concentrating: X / End" banner.
+ The purple banner higher on the page already shows concentration state
+ with a full-featured "Drop Concentration" button and duration countdown. */}
 
  {/* Active condition warning banner */}
  {(() => {
