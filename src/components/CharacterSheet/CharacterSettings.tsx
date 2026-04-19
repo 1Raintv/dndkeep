@@ -54,6 +54,13 @@ const TOOL_SUGGESTIONS = [
   "Land Vehicles", "Water Vehicles",
 ];
 
+// v2.41.0: Damage type suggestions for the resistance/immunity/vulnerability editors.
+// Display labels are Title Case; storage normalizes to lowercase via the editor.
+const DAMAGE_TYPE_SUGGESTIONS = [
+  'Acid', 'Bludgeoning', 'Cold', 'Fire', 'Force', 'Lightning',
+  'Necrotic', 'Piercing', 'Poison', 'Psychic', 'Radiant', 'Slashing', 'Thunder',
+];
+
 /**
  * Small reusable editor for adding/removing free-text chips with a suggestion dropdown.
  * Used by Languages and Tool Proficiencies sections in the Stats tab.
@@ -422,6 +429,44 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   suggestions={TOOL_SUGGESTIONS}
                   onChange={next => onUpdate({ extra_tool_proficiencies: next })}
                 />
+              </div>
+
+              {/* ── v2.41.0: Damage Modifiers (user-edited) ── */}
+              <div style={{ opacity: character.advanced_edits_unlocked ? 1 : 0.55, pointerEvents: character.advanced_edits_unlocked ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                <div className="section-header">Damage Modifiers</div>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
+                  Track resistances, immunities, and vulnerabilities to damage types.
+                  Species defaults (Tiefling fire, Dwarf poison, etc.) apply automatically and don't need to be added here.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: '#4ade80', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 4 }}>Resistances <span style={{ fontWeight: 400, color: 'var(--t-3)', textTransform: 'none', letterSpacing: 0 }}>(half damage)</span></div>
+                    <ChipListEditor
+                      label="Resistance"
+                      items={(character.damage_resistances ?? []).map(s => s.charAt(0).toUpperCase() + s.slice(1))}
+                      suggestions={DAMAGE_TYPE_SUGGESTIONS}
+                      onChange={next => onUpdate({ damage_resistances: next.map(s => s.toLowerCase()) })}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: '#60a5fa', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 4 }}>Immunities <span style={{ fontWeight: 400, color: 'var(--t-3)', textTransform: 'none', letterSpacing: 0 }}>(no damage)</span></div>
+                    <ChipListEditor
+                      label="Immunity"
+                      items={(character.damage_immunities ?? []).map(s => s.charAt(0).toUpperCase() + s.slice(1))}
+                      suggestions={DAMAGE_TYPE_SUGGESTIONS}
+                      onChange={next => onUpdate({ damage_immunities: next.map(s => s.toLowerCase()) })}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: '#ef4444', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 4 }}>Vulnerabilities <span style={{ fontWeight: 400, color: 'var(--t-3)', textTransform: 'none', letterSpacing: 0 }}>(double damage)</span></div>
+                    <ChipListEditor
+                      label="Vulnerability"
+                      items={(character.damage_vulnerabilities ?? []).map(s => s.charAt(0).toUpperCase() + s.slice(1))}
+                      suggestions={DAMAGE_TYPE_SUGGESTIONS}
+                      onChange={next => onUpdate({ damage_vulnerabilities: next.map(s => s.toLowerCase()) })}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* ── v2.33 Deep Edits: Species / Background / Subclass swap ── */}

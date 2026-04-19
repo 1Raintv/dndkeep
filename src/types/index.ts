@@ -212,6 +212,12 @@ export interface Character {
   active_conditions: ConditionName[];
   exhaustion_level?: number;  // 0-6 per 2024 rules; 0 = no exhaustion, 6 = death
 
+  // v2.41.0: Damage modifiers — auto-populated from species, editable when
+  // advanced_edits_unlocked. Vocabulary: 13 RAW damage types (lowercase).
+  damage_resistances?: string[];
+  damage_immunities?: string[];
+  damage_vulnerabilities?: string[];
+
   // User-added languages and tool proficiencies on top of species/background/class grants.
   // The character sheet's Languages/Tools display merges these with derived ones.
   extra_languages?: string[];

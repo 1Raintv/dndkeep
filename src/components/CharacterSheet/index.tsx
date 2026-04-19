@@ -11,6 +11,7 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
+import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining } from '../../lib/spellParser';
 import { parseUpcastScaling } from '../../lib/spellParser';
 
@@ -1229,12 +1230,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  };
  const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons];
 
- // Defenses
+ // Defenses (v2.41.0): Use damageModifiers helpers for full RES/IMM/VUL coverage.
+ // Drops the legacy ad-hoc tiefling/barbarian inline checks — those are now in
+ // SPECIES_RESISTANCES (tiefling=fire, dwarf=poison, etc.) and active_buffs.
  const buffs: any[] = (character as any).active_buffs ?? [];
- const res: string[] = [];
- buffs.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!res.includes(r)) res.push(r); }); });
- if (character.species?.toLowerCase().includes('tiefling') && !res.includes('Fire')) res.push('Fire');
- if (character.class_name?.toLowerCase().includes('barbarian') && !res.includes('Non-magical B/P/S')) res.push('Non-magical B/P/S (while raging)');
+ const buffRes: string[] = [];
+ buffs.forEach((b: any) => { (b.resistances ?? []).forEach((r: string) => { if (!buffRes.includes(r)) buffRes.push(r); }); });
+ const allResistances = Array.from(new Set([...resolveResistances(character), ...buffRes]));
+ const allImmunities = resolveImmunities(character);
+ const allVulnerabilities = resolveVulnerabilities(character);
+ const hasAnyDefense = allResistances.length > 0 || allImmunities.length > 0 || allVulnerabilities.length > 0;
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
@@ -1249,15 +1254,52 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
  />
 
- {/* Defenses strip */}
- {res.length > 0 && (
- <div style={{ background: 'var(--c-surface)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)' }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4ade80', marginBottom: 8 }}> Defenses</div>
- <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
- {res.map((r: string, i: number) => (
- <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 20, padding: '2px 10px' }}>{r}</span>
- ))}
+ {/* Defenses strip — v2.41.0: shows RES / IMM / VUL with per-type colored chips */}
+ {hasAnyDefense && (
+ <div style={{ background: 'var(--c-surface)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 'var(--r-lg)', padding: 'var(--sp-3) var(--sp-4)', display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase' as const, color: '#4ade80' }}>Defenses</div>
+ {/* Resistances */}
+ {allResistances.length > 0 && (
+ <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#4ade80', minWidth: 36 }}>Resist</span>
+ {allResistances.map((t: string) => {
+ const color = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
+ return (
+ <span key={t} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color, background: color + '15', border: `1px solid ${color}40`, borderRadius: 999, padding: '2px 10px' }}>
+ {labelForDamageType(t)}
+ </span>
+ );
+ })}
  </div>
+ )}
+ {/* Immunities */}
+ {allImmunities.length > 0 && (
+ <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#60a5fa', minWidth: 36 }}>Immune</span>
+ {allImmunities.map((t: string) => {
+ const color = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
+ return (
+ <span key={t} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color, background: color + '22', border: `2px solid ${color}55`, borderRadius: 999, padding: '2px 10px' }}>
+ {labelForDamageType(t)}
+ </span>
+ );
+ })}
+ </div>
+ )}
+ {/* Vulnerabilities */}
+ {allVulnerabilities.length > 0 && (
+ <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#ef4444', minWidth: 36 }}>Vulner</span>
+ {allVulnerabilities.map((t: string) => {
+ const color = DAMAGE_TYPE_COLORS[t.toLowerCase()] ?? '#94a3b8';
+ return (
+ <span key={t} style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 600, color, background: color + '15', border: `1px dashed ${color}55`, borderRadius: 999, padding: '2px 10px' }}>
+ {labelForDamageType(t)}
+ </span>
+ );
+ })}
+ </div>
+ )}
  </div>
  )}
 
