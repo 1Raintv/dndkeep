@@ -359,6 +359,36 @@ export default function SpellCastButton({
  </button>
  )}
 
+ {/* ── CATEGORY 3.5 (v2.48.0): SAVE-ONLY SPELL with NO damage ──
+     Spells like Calm Emotions, Hold Person, Hypnotic Pattern, Suggestion, Banishment.
+     Was previously rendering NO button at all because mechanics.isUtility
+     requires no save, and Category 3 requires damage. Now treated like a utility
+     cast: spends the slot, logs the spell + save DC, no damage roll. */}
+ {mechanics.saveType && !mechanics.isAttack && !mechanics.damageDice && (
+ <button
+ onClick={() => {
+ if (forceSlotLevel !== undefined) {
+ castUtility(forceSlotLevel);
+ return;
+ }
+ if (isCantrip || availableSlots.length <= 1) {
+ castUtility(isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+ } else {
+ setShowModal(true);
+ }
+ }}
+ style={{ ...btnBase,
+ background: recentlyCast ? 'rgba(74,222,128,0.22)' : 'rgba(167,139,250,0.15)',
+ border: `1px solid ${recentlyCast ? 'rgba(74,222,128,0.55)' : 'rgba(167,139,250,0.4)'}`,
+ color: recentlyCast ? '#4ade80' : '#a78bfa',
+ transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+ }}
+ title={`Targets make ${mechanics.saveType} DC ${saveDC} save. Click to cast.`}
+ >
+ {recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ </button>
+ )}
+
  {/* Heal dice */}
  {mechanics.healDice && (
  <button onClick={rollHeal}

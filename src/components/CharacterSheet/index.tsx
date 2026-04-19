@@ -50,6 +50,7 @@ import ClassResourcesPanel from './ClassResourcesPanel';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 import { useCampaign } from '../../context/CampaignContext';
+import { useDiceRoll } from '../../context/DiceRollContext';
 import { resolveAutomation } from '../../lib/automations';
 
 type Tab = 'actions' | 'abilities' | 'features' | 'spells' | 'inventory' | 'bio' | 'history';
@@ -357,6 +358,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Automation framework — resolve campaign + character settings
  // ------------------------------------------------------------------
  const { campaigns } = useCampaign();
+ // v2.48.0: 3D dice roller — used to visualize concentration saves so user
+ // sees the d20 land vs the DC in real time.
+ const { triggerRoll } = useDiceRoll();
  const activeCampaign = useMemo(
  () => campaigns.find(c => c.id === character.campaign_id) ?? null,
  [campaigns, character.campaign_id]
@@ -377,8 +381,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const d20 = Math.floor(Math.random() * 20) + 1;
  const total = d20 + saveBonus;
  const passed = total >= dc;
+ // v2.48.0: Fire the 3D dice roller so the user sees the d20 land and the
+ // total vs DC verdict. Same pattern used for ability/skill checks elsewhere.
+ const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
+ triggerRoll({
+ result: d20,
+ dieType: 20,
+ modifier: saveBonus,
+ total,
+ label: `${spellName} — Concentration Save (DC ${dc}) · ${passed ? '✓ Maintained' : '✗ Broken'}`,
+ });
  if (!passed) {
- // v2.47.0: Notify the player that their concentration broke.
  showConcentrationLossToast(concentrationSpellId, `CON save failed (${total} vs DC ${dc})`);
  setConcentration(null);
  }
@@ -392,7 +405,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  diceExpression: '1d20',
  individualResults: [d20],
  total,
- notes: `DC ${dc} · ${passed ? ' Maintained' : ' Concentration broken'}`,
+ notes: `DC ${dc} · ${passed ? ' Maintained' : ' Concentration broken'} · CON ${conMod >= 0 ? '+' : ''}${conMod}${hasSaveProf ? ` + Prof +${pb}` : ''}`,
  });
  });
  return { passed, total, d20 };
@@ -407,7 +420,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const damageTaken = current_hp < character.current_hp;
  if (damageTaken && concentrationSpellId) {
  const damage = character.current_hp - current_hp;
- const dc = Math.max(10, Math.floor(damage / 2));
+ // RAW: DC = max(10, floor(damage / 2)), capped at 30
+ const dc = Math.min(30, Math.max(10, Math.floor(damage / 2)));
  const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
  if (mode === 'prompt') {
  setConcentrationSaveDC(dc);
