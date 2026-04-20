@@ -416,6 +416,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  * button and the Auto path in handleUpdateHP. Rolls 1d20 + CON save
  * bonus vs the DC, logs to the action log, and drops concentration on
  * a failed save. Returns the roll result for callers that want it.
+ *
+ * v2.74.0: the "concentration broken" toast + the actual drop of
+ * concentration now wait until the 3D dice roller fires onResult (dice
+ * have physically settled). Previously the toast flashed up before the
+ * animation finished, which looked broken. A 3.5s fallback ensures the
+ * handler still fires even if onResult never does (e.g. physics error).
  */
  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
  const conScore = character.constitution ?? 10;
@@ -443,20 +449,36 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  passed = total >= dc;
  verdict = passed ? '✓ Maintained' : '✗ Broken';
  }
+ // v2.74.0: gather deferred actions — fire only after dice settle.
+ const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
+ const concSpellIdAtRoll = concentrationSpellId; // capture for the callback
+ let resolved = false;
+ const resolveVerdict = () => {
+ if (resolved) return;
+ resolved = true;
+ if (!passed) {
+ showConcentrationLossToast(
+ concSpellIdAtRoll,
+ useNat && d20 === 1 ? 'NAT 1 — auto-fail' : `CON save failed (${total} vs DC ${dc})`
+ );
+ setConcentration(null);
+ }
+ };
  // v2.48.0: Fire the 3D dice roller so the user sees the d20 land and the
  // total vs DC verdict. Same pattern used for ability/skill checks elsewhere.
- const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
  triggerRoll({
  result: d20,
  dieType: 20,
  modifier: saveBonus,
  total,
  label: `${spellName} — Concentration Save (DC ${dc}) · ${verdict}`,
+ onResult: resolveVerdict, // fires when physics dice settle
  });
- if (!passed) {
- showConcentrationLossToast(concentrationSpellId, useNat && d20 === 1 ? 'NAT 1 — auto-fail' : `CON save failed (${total} vs DC ${dc})`);
- setConcentration(null);
- }
+ // Fallback: if for any reason onResult never fires, resolve after 3.5s
+ // so the toast + concentration-drop still happens.
+ setTimeout(resolveVerdict, 3500);
+ // Action log can write immediately — it's a separate surface and doesn't
+ // conflict with the dice animation.
  import('../shared/ActionLog').then(({ logAction }) => {
  logAction({
  campaignId: character.campaign_id,
