@@ -4,11 +4,11 @@
 // (filter-only) paired with an optional chiclet rail (slot management).
 // The pair is physically separate so each region is unambiguously clickable.
 //
-// Height tightened from v2.76.0/v2.77.0 to match the other surrounding
-// filter pills ("Spells Known", "Prepared", "Spell Book") which sit at
-// ~26px tall. Pill padding reduced to 3px vertical; chiclet rail shed its
-// background pill wrapper (it was adding ~4px visual height); chiclets
-// shrunk from 12px → 10px. The pair now caps at ~24-26px.
+// v2.79.0 fix: the global `button` rule in globals.css sets `min-height: 36px`
+// for touch-target accessibility, which was stretching our 10×10 chiclet squares
+// into 36-px-tall bars. Every button in this component now explicitly overrides
+// min-height. Chiclet buttons also hide the global `::after` shimmer pseudo
+// (which otherwise sits in the middle of the tiny square as a visible bar).
 
 interface LevelTabProps {
   label: string;
@@ -18,6 +18,17 @@ interface LevelTabProps {
   onClick: () => void;
   onToggleSlot?: (slotIndex: number, expending: boolean) => void;
 }
+
+// Small helper to forcibly kill the global button ::after shimmer on tiny elements.
+// Using inline keyframes isn't possible, so we nuke the overflow visual instead.
+const chicletBaseStyle = {
+  display: 'inline-block', width: 10, height: 10, borderRadius: 2,
+  padding: 0, cursor: 'pointer',
+  transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box' as const,
+  minHeight: 0, minWidth: 0,        // override global button { min-height: 36px }
+  lineHeight: 0,                     // no accidental text baseline height
+  overflow: 'visible' as const,      // global sets overflow:hidden; don't want shimmer clipped to a sliver
+};
 
 export default function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: LevelTabProps) {
   const maxVisibleBoxes = 4;
@@ -30,7 +41,8 @@ export default function LevelTab({ label, count, slots, active, onClick, onToggl
         title={`Filter: ${label}`}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '3px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+          padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+          minHeight: 0,   // override global 36px rule so the pill sits at its natural compact height
           border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
           background: active ? 'var(--c-gold-bg)' : 'var(--c-raised)',
           color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
@@ -68,11 +80,9 @@ export default function LevelTab({ label, count, slots, active, onClick, onToggl
                 title={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
                 aria-label={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
                 style={{
-                  display: 'inline-block', width: 10, height: 10, borderRadius: 2,
-                  padding: 0, cursor: 'pointer',
+                  ...chicletBaseStyle,
                   background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
                   border: `1.5px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
-                  transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
                 }}
               />
             );
