@@ -469,6 +469,17 @@ export default function SpellsTab({
  onConcentrationCast={() => onConcentrate(spell.id)}
  />
  }
+ upcastButton={
+ <SpellCastButton
+ spell={spell}
+ character={character}
+ userId={userId}
+ campaignId={campaignId}
+ onUpdateSlots={onUpdateSlots}
+ upcastTrigger={true}
+ onConcentrationCast={() => onConcentrate(spell.id)}
+ />
+ }
  onExpand={() => {
  const key = `${spell.id}-${spell.effectiveLevel}`;
  setExpandedSpell(expandedSpell === key ? null : key);
@@ -526,10 +537,10 @@ function LevelTab({ label, count, slots, active, onClick }: {
 }
 
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
- isPreparer: boolean; castButton: ReactNode; grantedReason?: string;
+ isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
  spellAttack?: number; saveDC?: number;
  onExpand: () => void; onTogglePrepared: () => void;
  onConcentrate: () => void; onRemove?: () => void;
@@ -729,6 +740,15 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
 
  {/* Description */}
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '0 0 12px' }}>{spell.description}</p>
+
+ {/* v2.58.0: Upcast trigger button — pinned right after description so users
+     can deliberately pick a higher slot. The button only renders when the spell
+     supports upcasting + has higher slots available (handled by SpellCastButton). */}
+ {upcastButton && (
+ <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+ {upcastButton}
+ </div>
+ )}
 
  {/* Actions */}
  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--c-border)', alignItems: 'center' }}>
