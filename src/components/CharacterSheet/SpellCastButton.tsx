@@ -412,7 +412,7 @@ export default function SpellCastButton({
  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#fbbf24', marginBottom: 6 }}>
  {label}
  </div>
- <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 6 }}>
+ <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
  {tierKeys.map(lvl => {
  const remaining = availableMap.get(lvl) ?? 0;
  const isAvailable = remaining > 0;

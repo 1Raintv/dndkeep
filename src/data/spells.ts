@@ -587,7 +587,6 @@ export const SPELLS: SpellData[] = [
   ritual: false,
   classes: ["Cleric", "Paladin"],
   description: "For the duration, you know if there is an aberration, celestial, elemental, fey, fiend, or undead within 30 feet of you, as well as where the creature is located. Similarly, you know if there is a place or object within 30 feet of you that has been magically consecrated or desecrated.\n\nThe spell can penetrate most barriers, but it is blocked by 1 foot of stone, 1 inch of common metal, a thin sheet of lead, or 3 feet of wood or dirt.",
-  area_of_effect: { type: "sphere", size: 30 },
   },
   {
   id: "detect-magic",
@@ -602,7 +601,6 @@ export const SPELLS: SpellData[] = [
   ritual: true,
   classes: ["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Sorcerer", "Wizard", "Psion"],
   description: "For the duration, you sense the presence of magic within 30 feet of you. If you sense magic in this way, you can use your action to see a faint aura around any visible creature or object in the area that bears magic, and you learn its school of magic, if any.\n\nThe spell can penetrate most barriers, but it is blocked by 1 foot of stone, 1 inch of common metal, a thin sheet of lead, or 3 feet of wood or dirt.",
-  area_of_effect: { type: "sphere", size: 30 },
   },
   {
   id: "detect-poison-and-disease",
@@ -617,7 +615,6 @@ export const SPELLS: SpellData[] = [
   ritual: true,
   classes: ["Cleric", "Druid", "Paladin", "Ranger"],
   description: "For the duration, you can sense the presence and location of poisons, poisonous creatures, and diseases within 30 feet of you. You also identify the kind of poison, poisonous creature, or disease in each case.\n\nThe spell can penetrate most barriers, but it is blocked by 1 foot of stone, 1 inch of common metal, a thin sheet of lead, or 3 feet of wood or dirt.",
-  area_of_effect: { type: "sphere", size: 30 },
   },
   {
   id: "disguise-self",
@@ -2630,7 +2627,6 @@ export const SPELLS: SpellData[] = [
   ritual: false,
   classes: ["Bard", "Druid", "Ranger"],
   description: "You imbue plants within 30 feet of you with limited sentience and animation, giving them the ability to communicate with you and follow your simple commands. You can question plants about events in the spell's area within the past day, gaining information about creatures that have passed, weather, and other circumstances.\n\nYou can also turn difficult terrain caused by plant growth (such as thickets and undergrowth) into ordinary terrain that lasts for the duration. Or you can turn ordinary terrain where plants are present into difficult terrain that lasts for the duration, causing vines and branches to hinder pursuers, for example.\n\nPlants might be able to perform other tasks on your behalf, at the GM's discretion. The spell doesn't enable plants to uproot themselves and move about, but they can freely move branches, tendrils, and stalks.\n\nIf a plant creature is in the area, you can communicate with it as if you shared a common language, but you gain no magical ability to influence it.\n\nThis spell can cause the plants created by the entangle spell to release a restrained creature.",
-  area_of_effect: { type: "sphere", size: 30 },
   },
   {
   id: "spirit-guardians",
@@ -2771,7 +2767,6 @@ export const SPELLS: SpellData[] = [
   ritual: false,
   classes: ["Cleric", "Wizard", "Psion"],
   description: "You create an invisible, magical eye within range that hovers in the air for the duration.\n\nYou mentally receive visual information from the eye, which has normal vision and darkvision out to 30 feet. The eye can look in every direction.\n\nAs an action, you can move the eye up to 30 feet in any direction. There is no limit to how far away from you the eye can move, but it can't enter another plane of existence. A solid barrier blocks the eye's movement, but the eye can pass through an opening as small as 1 inch in diameter.",
-  area_of_effect: { type: "sphere", size: 30 },
   },
   {
   id: "banishment",
@@ -3018,7 +3013,6 @@ export const SPELLS: SpellData[] = [
   damage_type: "Fire",
   damage_at_slot_level: { "4": "2d8" },
   damage_dice: "2d8",
-  area_of_effect: { type: "sphere", size: 5 },
   },
   {
   id: "freedom-of-movement",
