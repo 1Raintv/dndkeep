@@ -4,6 +4,7 @@ import { CLASS_MAP } from '../../data/classes';
 import { getSpellSlotRow, slotRowToSpellSlots } from '../../data/spellSlots';
 import { rollDie, hpPerLevel, abilityModifier } from '../../lib/gameUtils';
 import { FEATS, type FeatData } from '../../data/feats';
+import ModalPortal from '../shared/ModalPortal';
 
 interface LevelUpProps {
  character: Character;
@@ -128,6 +129,7 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  (!hasASI || asiChoice === 'asi' || (asiChoice === 'feat' && !!selectedFeat));
 
  return (
+ <ModalPortal>
  <div className="modal-overlay" onClick={onCancel}>
  <div className="modal" onClick={e=>e.stopPropagation()} style={{ maxWidth:580, maxHeight:'88vh', overflow:'hidden', display:'flex', flexDirection:'column' }}>
  <h2 style={{ marginBottom:'var(--sp-1)', flexShrink:0 }}>Level Up!</h2>
@@ -257,5 +259,6 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  </div>
  </div>
  </div>
+ </ModalPortal>
  );
 }

@@ -6,6 +6,7 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logAction } from '../shared/ActionLog';
 import { supabase } from '../../lib/supabase';
+import ModalPortal from '../shared/ModalPortal';
 
 interface WeaponsTrackerProps {
  weapons: WeaponItem[];
@@ -349,6 +350,7 @@ export default function WeaponsTracker({
 
  {/* Add/Edit form modal */}
  {showAdd && (
+ <ModalPortal>
  <div className="modal-overlay" onClick={() => setShowAdd(false)}>
  <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
  <h3 style={{ marginBottom: 'var(--sp-4)' }}>{editId ? 'Edit Attack' : 'Add Custom Attack'}</h3>
@@ -400,6 +402,7 @@ export default function WeaponsTracker({
  </div>
  </div>
  </div>
+ </ModalPortal>
  )}
  </div>
  );

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMonsters } from '../../lib/hooks/useMonsters';
 import type { Character } from '../../types';
+import ModalPortal from '../shared/ModalPortal';
 
 interface WildshapeTrackerProps {
  character: Character;
@@ -193,6 +194,7 @@ export default function WildshapeTracker({ character, onUpdate }: WildshapeTrack
 
  {/* Beast picker modal */}
  {showPicker && (
+ <ModalPortal>
  <div className="modal-overlay" onClick={() => setShowPicker(false)}>
  <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
  <h3 style={{ marginBottom: 'var(--sp-4)' }}>Choose Beast Form</h3>
@@ -235,6 +237,7 @@ export default function WildshapeTracker({ character, onUpdate }: WildshapeTrack
  <button className="btn-secondary" onClick={() => setShowPicker(false)} style={{ marginTop: 'var(--sp-4)' }}>Cancel</button>
  </div>
  </div>
+ </ModalPortal>
  )}
  </div>
  );

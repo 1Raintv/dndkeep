@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ModalPortal from './ModalPortal';
 
 // DiceBear adventurer style — free, no auth needed
 // Seeds chosen to generate diverse, recognizable fantasy archetypes
@@ -60,6 +61,7 @@ export default function AvatarPicker({ currentSeed, characterName, onSelect, onC
   }
 
   return (
+    <ModalPortal>
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal"
@@ -155,5 +157,6 @@ export default function AvatarPicker({ currentSeed, characterName, onSelect, onC
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

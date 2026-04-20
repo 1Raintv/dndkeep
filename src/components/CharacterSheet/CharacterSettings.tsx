@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Character, AbilityKey } from '../../types';
 import { abilityModifier, formatModifier } from '../../lib/gameUtils';
 import LevelUp from './LevelUp';
+import ModalPortal from '../shared/ModalPortal';
 import { deleteCharacter } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useCampaign } from '../../context/CampaignContext';
@@ -286,6 +287,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
   return (
     <>
+      <ModalPortal>
       <div className="modal-overlay" onClick={onClose}>
         <div
           className="modal"
@@ -1133,6 +1135,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           )}
         </div>
       </div>
+      </ModalPortal>
 
       {/* Level Up modal inside settings — rendered outside the settings overlay */}
       {showLevelUp && (

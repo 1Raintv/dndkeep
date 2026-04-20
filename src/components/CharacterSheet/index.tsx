@@ -35,6 +35,7 @@ import ClassAbilitiesSection from './ClassAbilitiesSection';
 import SpellCompletionBanner from './SpellCompletionBanner';
 import PendingChoicesAlert from './PendingChoicesAlert';
 import AvatarPicker from '../shared/AvatarPicker';
+import ModalPortal from '../shared/ModalPortal';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
 import ActiveBuffsPanel from './ActiveBuffsPanel';
@@ -773,6 +774,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (m.resistanceAll) effects.push('Resistance to all damage');
  const accent = m.color ?? '#94a3b8';
  return (
+ <ModalPortal>
  <div className="modal-overlay" onClick={() => setConditionInfoOpen(null)}>
  <div
  className="modal"
@@ -855,6 +857,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  </div>
  </div>
+ </ModalPortal>
  );
  })()}
 
@@ -1114,6 +1117,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* Rest modal */}
  {showRest && (
+ <ModalPortal>
  <div className="modal-overlay" onClick={() => { setShortRestHpGained(0); setShowRest(false); }}>
  <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
  <h2 style={{ marginBottom: 'var(--sp-2)' }}>Take a Rest</h2>
@@ -1216,6 +1220,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </button>
  </div>
  </div>
+ </ModalPortal>
  )}
 
  {/* v2.39.0: Removed the "Saving..." spinner that caused layout shift on every
