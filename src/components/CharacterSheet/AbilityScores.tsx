@@ -23,8 +23,23 @@ const STAT_META: Record<AbilityKey, { color: string; bg: string; bdr: string; ab
  charisma: { color: 'var(--stat-cha)', bg: 'var(--stat-cha-bg)', bdr: 'var(--stat-cha-bdr)', abbrev: 'CHA' },
 };
 
+// v2.68.0: Abilities whose raw checks commonly require sight. Per 2024 PHB
+// Blinded, any ability check that requires sight auto-fails. Raw ability
+// checks are more contextual than skill checks — the DM decides per-check.
+// We warn on the three abilities most likely to be sight-based:
+//   - DEX: visually catching/dodging an object, threading a needle
+//   - INT: visually examining / analyzing / reading
+//   - WIS: visually noticing / tracking
+// STR, CON, and CHA checks rarely require sight per RAW (STR = pure force,
+// CON = fortitude, CHA = voice/presence), so we don't warn on those and let
+// the player roll normally. The ⚠ on a flagged ability is a reminder, not a
+// hard block — the DM can still rule that the specific check doesn't use
+// sight (e.g., WIS to detect a smell, INT to recall a fact from memory).
+const SIGHT_LIKELY_ABILITIES = new Set<AbilityKey>(['dexterity', 'intelligence', 'wisdom']);
+
 export default function AbilityScores({ character, computed }: AbilityScoresProps) {
  const { triggerRoll } = useDiceRoll();
+ const isBlinded = (character.active_conditions ?? []).includes('Blinded');
 
  function rollAbility(ability: AbilityKey) {
  const mod = computed.modifiers[ability];
@@ -35,15 +50,18 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod, modifier: mod });
  return;
  }
+ const sightAutoFail = isBlinded && SIGHT_LIKELY_ABILITIES.has(ability);
  const roll1 = rollDie(20);
  const d20 = hasDisadvantage ? Math.min(roll1, rollDie(20)) : roll1;
- const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
+ const abilityCapitalized = ability.charAt(0).toUpperCase() + ability.slice(1);
+ const label = `${sightAutoFail ? '⚠ AUTO-FAIL (Blinded · sight) — ' : ''}${abilityCapitalized} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
  triggerRoll({ result: 0, dieType: 20, modifier: mod, label,
  onResult: (_dice, physTotal) => {
  const physRoll = physTotal - mod;
  supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }).then(({error}) => { if (error) console.error(error); });
  },
  });
+ void d20; // d20 captured for parity with skill rolls; auto-fail is label-level
  }
 
  function rollSave(ability: AbilityKey) {
@@ -145,6 +163,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  const meta = STAT_META[ability];
  const score = character[ability as keyof Character] as number;
  const mod = computed.modifiers[ability];
+ const sightAutoFail = isBlinded && SIGHT_LIKELY_ABILITIES.has(ability);
  return (
  <div
  key={ability}
@@ -153,10 +172,12 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  tabIndex={0}
  onClick={() => rollAbility(ability)}
  onKeyDown={e => e.key === 'Enter' && rollAbility(ability)}
- title={`Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
+ title={sightAutoFail
+   ? `⚠ Blinded: a sight-based ${ability} check auto-fails per 2024 RAW (DM may override if the check doesn't use sight)`
+   : `Roll ${ability} check (d20${mod >= 0 ? '+' : ''}${mod})`}
  style={{
  background: 'var(--c-card)',
- border: `1px solid var(--c-border)`,
+ border: `1px solid ${sightAutoFail ? 'var(--c-danger, #dc2626)' : 'var(--c-border)'}`,
  borderTop: `2px solid ${meta.color}`,
  borderRadius: 'var(--r-md)',
  padding: '5px 4px',
@@ -164,8 +185,15 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  cursor: 'pointer',
  transition: 'all var(--tr-fast)',
  display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1,
+ position: 'relative',
  }}
  >
+ {sightAutoFail && (
+ <span
+ aria-label="Blinded — sight auto-fails"
+ style={{ position: 'absolute', top: 1, right: 3, fontSize: 9, color: 'var(--c-danger, #dc2626)', lineHeight: 1 }}
+ >⚠</span>
+ )}
  {/* Abbrev */}
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color, lineHeight: 1 }}>
  {meta.abbrev}
