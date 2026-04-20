@@ -500,19 +500,23 @@ function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: {
  onClick: () => void;
  onToggleSlot?: (slotIndex: number, expending: boolean) => void;
 }) {
- // v2.74.0: single-row layout. The filter pill is now a wide pill containing
- // label + count + slot chiclets INLINE (chiclets to the right of the count).
- // This lets "Cantrips / 1st / 2nd / 3rd / 4th" share one row and "5th / 6th /
- // 7th / 8th / 9th" share the next. Chiclet clicks still stopPropagation so
- // they don't trigger the filter.
+ // v2.76.0: Pill and chiclets are now PHYSICALLY SEPARATE sibling elements
+ // rather than nested inside one button. This makes each region visually
+ // distinct and unambiguously clickable — the pill filters, the chiclet
+ // rail manages slots. Both surfaces are paired in a small flex container
+ // with a tiny gap so they still read as a unit. The outer wrapper uses
+ // `display: inline-flex` so the pair stays together during wrap.
  const maxVisibleBoxes = 4;
  const boxesToShow = slots ? Math.min(slots.max, maxVisibleBoxes) : 0;
  return (
+ <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+ {/* Filter pill — click to set active level */}
  <button
  onClick={onClick}
+ title={`Filter: ${label}`}
  style={{
  display: 'flex', alignItems: 'center', gap: 5,
- padding: '4px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+ padding: '4px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
  border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
  background: active ? 'var(--c-gold-bg)' : 'var(--c-raised)',
  color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
@@ -525,49 +529,45 @@ function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: {
  <span style={{ fontSize: 9, fontWeight: 700, background: active ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: active ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
  {count}
  </span>
+ </button>
+
+ {/* Slot chiclet rail — separate clickable region per box */}
  {slots && (
- <span
- style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 1 }}
- onClick={e => e.stopPropagation()}
+ <div
+ title="Click to expend/restore spell slots"
+ style={{
+ display: 'inline-flex', alignItems: 'center', gap: 3,
+ padding: '3px 6px', borderRadius: 999,
+ background: 'var(--c-card)', border: '1px solid var(--c-border-m)',
+ flex: '0 0 auto',
+ }}
  >
  {Array.from({ length: boxesToShow }).map((_, i) => {
  const isAvailable = i < slots.remaining;
  return (
- <span
+ <button
  key={i}
- role="button"
- tabIndex={0}
- onClick={e => {
- e.stopPropagation();
- if (!onToggleSlot) return;
- onToggleSlot(i, isAvailable);
- }}
- onKeyDown={e => {
- if (e.key === 'Enter' || e.key === ' ') {
- e.preventDefault();
- e.stopPropagation();
- if (!onToggleSlot) return;
- onToggleSlot(i, isAvailable);
- }
- }}
+ onClick={() => onToggleSlot?.(i, isAvailable)}
  title={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
  style={{
- display: 'inline-block', width: 10, height: 10, borderRadius: 2, cursor: 'pointer',
+ display: 'inline-block', width: 12, height: 12, borderRadius: 2,
+ padding: 0, cursor: 'pointer',
  background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
  border: `1.5px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
  transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
  }}
+ aria-label={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
  />
  );
  })}
  {slots.max > maxVisibleBoxes && (
- <span style={{ fontSize: 8, color: active ? 'var(--c-gold-l)' : 'var(--t-3)', marginLeft: 1 }}>
+ <span style={{ fontSize: 9, color: 'var(--t-3)', marginLeft: 1 }}>
  +{slots.max - maxVisibleBoxes}
  </span>
  )}
- </span>
+ </div>
  )}
- </button>
+ </div>
  );
 }
 

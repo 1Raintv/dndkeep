@@ -578,6 +578,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
  // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
  const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
+ // v2.76.0: Reaction state lifted so the Actions-tab filter chiclet and the
+ // ActionEconomy panel share one source of truth. Reset on New Turn.
+ const [reactionUsedThisTurn, setReactionUsedThisTurn] = useState(false);
  const [isDM, setIsDM] = useState(false);
 
  function rollHitDie() {
@@ -1470,13 +1473,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  speedFeet={effectiveSpeed}
  actionUsedExternal={spellCastThisTurn}
  bonusActionUsedExternal={bonusActionSpellCast}
+ reactionUsedExternal={reactionUsedThisTurn}
  onActionUsed={(action: string, used: boolean) => {
  if (action === 'action') setSpellCastThisTurn(used);
  if (action === 'bonusAction') setBonusActionSpellCast(used);
+ if (action === 'reaction') setReactionUsedThisTurn(used);
  if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
  if (action === 'action' && !used) setCombatFilter('all');
  }}
- onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); }}
+ onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); setReactionUsedThisTurn(false); }}
  />
  );
  })()}
@@ -1726,28 +1731,70 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* v2.43.0: Defenses strip MOVED to vitals row (above HPStatsPanel area).
  No longer rendered here — keeps Actions tab focused on combat actions. */}
 
- {/* Filter chips */}
+ {/* Filter chips — v2.76.0: mirrors the Spells-tab LevelTab pattern. Each
+     pill is its own clickable region (filter by action type) and the chiclet
+     immediately to its right is a separate clickable region (toggle turn
+     economy state). ALL has no chiclet since it has no associated state.
+     Gold-filled chiclet = available; hollow chiclet = used this turn.
+     Chiclet state syncs bidirectionally with the ActionEconomy panel above. */}
  <div>
- <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+ <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
  {([
- { id: 'all', label: 'All' },
- { id: 'action', label: ' Action' },
- { id: 'bonus', label: ' Bonus' },
- { id: 'reaction', label: ' Reaction' },
- ] as const).map(f => (
- <button key={f.id} onClick={() => setCombatFilter(f.id)}
+ { id: 'all', label: 'All', used: undefined, setUsed: undefined, color: 'var(--c-gold)' },
+ { id: 'action', label: 'Action', used: spellCastThisTurn, setUsed: setSpellCastThisTurn, color: '#f59e0b' },
+ { id: 'bonus', label: 'Bonus', used: bonusActionSpellCast, setUsed: setBonusActionSpellCast, color: '#8b5cf6' },
+ { id: 'reaction', label: 'Reaction', used: reactionUsedThisTurn, setUsed: setReactionUsedThisTurn, color: '#3b82f6' },
+ ] as const).map(f => {
+ const activePill = combatFilter === f.id;
+ const isAvailable = f.used === false; // undefined for "all"
+ return (
+ <div key={f.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+ {/* Filter pill — click to filter the list by this action type */}
+ <button
+ onClick={() => setCombatFilter(f.id)}
+ title={`Filter: ${f.label}`}
  style={{
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+ fontFamily: 'var(--ff-body)', fontWeight: activePill ? 700 : 600, fontSize: 10,
  letterSpacing: '.06em', textTransform: 'uppercase',
- padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
- border: combatFilter === f.id ? '1px solid var(--c-gold)' : '1px solid var(--c-border)',
- background: combatFilter === f.id ? 'rgba(245,158,11,0.15)' : 'transparent',
- color: combatFilter === f.id ? 'var(--c-gold-l)' : 'var(--t-3)',
+ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+ border: activePill ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
+ background: activePill ? 'rgba(245,158,11,0.15)' : 'var(--c-raised)',
+ color: activePill ? 'var(--c-gold-l)' : 'var(--t-3)',
  transition: 'all .15s',
+ flex: '0 0 auto',
  }}>
  {f.label}
  </button>
- ))}
+
+ {/* Turn economy chiclet — click to toggle used/available for this action type.
+     Rendered in its own pill-shaped container for visual parity with LevelTab. */}
+ {f.setUsed && (
+ <div
+ title={`Click to toggle ${f.label} used/available`}
+ style={{
+ display: 'inline-flex', alignItems: 'center',
+ padding: '3px 6px', borderRadius: 999,
+ background: 'var(--c-card)', border: '1px solid var(--c-border-m)',
+ flex: '0 0 auto',
+ }}
+ >
+ <button
+ onClick={() => f.setUsed(!f.used)}
+ title={isAvailable ? `Mark ${f.label} used this turn` : `Restore ${f.label} for this turn`}
+ aria-label={isAvailable ? `Mark ${f.label} used` : `Restore ${f.label}`}
+ style={{
+ display: 'inline-block', width: 12, height: 12, borderRadius: 2,
+ padding: 0, cursor: 'pointer',
+ background: isAvailable ? f.color : 'transparent',
+ border: `1.5px solid ${isAvailable ? f.color : 'var(--c-border-m)'}`,
+ transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
+ }}
+ />
+ </div>
+ )}
+ </div>
+ );
+ })}
  {inventoryWeapons.length > 0 && (
  <span style={{ marginLeft: 'auto', fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '2px 8px' }}>
  +{inventoryWeapons.length} from inventory

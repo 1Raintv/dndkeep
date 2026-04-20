@@ -14,9 +14,12 @@ interface ActionEconomyProps {
  onNewTurn?: () => void;
  // v2.46.0: external sync — parent can push action/BA used state in (e.g. when
  // a spell with 1A casting time is cast, the parent flips actionUsedExternal=true
- // and ActionEconomy reflects it visually). Reactions are still toggled here only.
+ // and ActionEconomy reflects it visually).
+ // v2.76.0: Reactions now also sync externally so the Actions-tab filter
+ // chiclet for Reaction shares state with this panel.
  actionUsedExternal?: boolean;
  bonusActionUsedExternal?: boolean;
+ reactionUsedExternal?: boolean;
 }
 
 const TOKEN = {
@@ -25,7 +28,7 @@ const TOKEN = {
  reaction: { label: 'Reaction', key: 'reaction', icon: '', color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal }: ActionEconomyProps) {
+export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal }: ActionEconomyProps) {
  const [state, setState] = useState<ActionState>({
  action: false, bonusAction: false, reaction: false, movedFeet: 0,
  });
@@ -44,6 +47,14 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  }
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [bonusActionUsedExternal]);
+ // v2.76.0: Reaction sync — keeps Turn Economy panel in lockstep with
+ // the Actions-tab filter chiclet for Reaction.
+ useEffect(() => {
+ if (reactionUsedExternal !== undefined && reactionUsedExternal !== state.reaction) {
+ setState(s => ({ ...s, reaction: !!reactionUsedExternal }));
+ }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [reactionUsedExternal]);
 
  function toggle(key: keyof Omit<ActionState,'movedFeet'>) {
  setState(s => {
