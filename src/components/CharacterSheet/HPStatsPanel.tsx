@@ -26,8 +26,7 @@ const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','War
 export default function HPStatsPanel({
   character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [], onOpenSettings,
 }: HPStatsPanelProps) {
-  const [editingAC, setEditingAC] = useState(false);
-  const [acInput, setAcInput] = useState('');
+  // v2.72.0: editingAC state removed — AC is no longer quick-editable on the chip.
   const [editingSpeed, setEditingSpeed] = useState(false);
   const [speedInput, setSpeedInput] = useState('');
   const [showConditionModal, setShowConditionModal] = useState(false);
@@ -64,7 +63,13 @@ export default function HPStatsPanel({
 
   const stats = [
     // v2.46.0: INSP removed — Inspiration toggle moved into CharacterHeader (between Rest and HP block)
-    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', editable: editsUnlocked, onEdit: () => { if (!editsUnlocked) return; setAcInput(String(character.armor_class)); setEditingAC(true); }, tooltip: editsUnlocked ? (acTooltip ?? '10 + DEX (Unarmored)') : 'Locked — unlock in Settings → Edit Stats' },
+    // v2.72.0: AC chip is now READ-ONLY at all times. Quick-edit removed to
+    // prevent accidental AC changes during play. AC is modified only via:
+    //   (a) Settings → Edit Stats → Combat Stats (gated behind
+    //       advanced_edits_unlocked, with an override input), and
+    //   (b) equipping/unequipping armor in the Inventory tab (auto-recalc,
+    //       intentional — plate mail should change AC).
+    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', tooltip: acTooltip ?? 'To change AC, equip armor in the Inventory tab or use Settings → Edit Stats (override).' },
     { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     // v2.53.0: SPEED reflects condition automatically — Grappled/Restrained/Paralyzed/Stunned/
     // Unconscious/Petrified set effective speed to 0. Tooltip explains which condition is responsible.
@@ -130,14 +135,7 @@ export default function HPStatsPanel({
             onMouseEnter={e => { if ((stat as any).onClick || (stat as any).editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}55`; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}22`; }}
           >
-            {stat.label === 'AC' && editingAC ? (
-              <input autoFocus type="number" value={acInput}
-                onChange={e => setAcInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); } if (e.key === 'Escape') setEditingAC(false); }}
-                onBlur={() => { const v = parseInt(acInput); if (!isNaN(v)) onUpdateAC?.(v); setEditingAC(false); }}
-                style={{ width: '100%', textAlign: 'center', fontSize: 13, fontFamily: 'var(--ff-stat)', fontWeight: 700, background: 'transparent', border: 'none', color: stat.color, outline: 'none' }}
-              />
-            ) : stat.label === 'SPEED' && editingSpeed ? (
+            {stat.label === 'SPEED' && editingSpeed ? (
               <input autoFocus type="number" value={speedInput}
                 onChange={e => setSpeedInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); } if (e.key === 'Escape') setEditingSpeed(false); }}
