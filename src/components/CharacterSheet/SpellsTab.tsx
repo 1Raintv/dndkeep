@@ -309,7 +309,12 @@ export default function SpellsTab({
      cluttered the spell list. */}
 
  {/* ── Level tabs ── */}
- <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+ {/* v2.71.0: each leveled LevelTab now stacks its filter pill above a row
+     of clickable slot chiclets. Clicking a chiclet expends (if available)
+     or restores (if used) that slot — useful for fixing mistaken casts
+     without having to long-rest. Auto-decrement on cast still flows
+     through SpellCastButton → onUpdateSlots as before. */}
+ <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'flex-start' }}>
  {/* v2.34.2: counts exclude granted spells so caps + known-counts reflect the player's chosen spells */}
  <LevelTab
  label="All"
@@ -332,6 +337,23 @@ export default function SpellsTab({
  slots={slots}
  active={activeLevel === lvl}
  onClick={() => setActiveLevel(lvl)}
+ onToggleSlot={slots ? (_idx, expending) => {
+ // v2.71.0: Simple +1/-1 mutation. The visual fills the
+ // leftmost N boxes based on remaining, so the specific
+ // box index doesn't matter for state — only the direction.
+ const slotKey = String(lvl);
+ const current = character.spell_slots?.[slotKey];
+ if (!current) return;
+ const currentUsed = current.used ?? 0;
+ const newUsed = expending
+ ? Math.min(current.total, currentUsed + 1)
+ : Math.max(0, currentUsed - 1);
+ if (newUsed === currentUsed) return;
+ onUpdateSlots({
+ ...character.spell_slots,
+ [slotKey]: { ...current, used: newUsed },
+ });
+ } : undefined}
  />
  );
  })}
@@ -469,14 +491,30 @@ export default function SpellsTab({
 }
 
 // ── Level tab button ─────────────────────────────────────────────────
-function LevelTab({ label, count, slots, active, onClick }: {
- label: string; count: number; slots?: { max: number; remaining: number } | null; active: boolean; onClick: () => void;
+function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: {
+ label: string;
+ count: number;
+ slots?: { max: number; remaining: number } | null;
+ active: boolean;
+ onClick: () => void;
+ onToggleSlot?: (slotIndex: number, expending: boolean) => void;
 }) {
+ // v2.71.0: the filter pill and the slot chiclets are now stacked vertically.
+ // The pill handles filter activation; the chiclets below are independently
+ // clickable (stopPropagation) for manual expend/restore — matches the
+ // psionic-energy-dice / ClassAbilitiesSection chiclet pattern (16px squares,
+ // gold fill = available, hollow = used). Cantrips get no chiclet row since
+ // they don't use slots.
+ const used = slots ? slots.max - slots.remaining : 0;
+ void used; // reserved for future "X/Y" label if we want to show it inline
+ const maxVisibleBoxes = 5; // when max > 5 we show "+N" suffix like the old inline pips
+ const boxesToShow = slots ? Math.min(slots.max, maxVisibleBoxes) : 0;
  return (
+ <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 3 }}>
  <button
  onClick={onClick}
  style={{
- display: 'flex', alignItems: 'center', gap: 5,
+ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
  padding: '5px 12px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
  border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
  background: active ? 'var(--c-gold-bg)' : 'var(--c-raised)',
@@ -489,19 +527,42 @@ function LevelTab({ label, count, slots, active, onClick }: {
  <span style={{ fontSize: 9, fontWeight: 700, background: active ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: active ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
  {count}
  </span>
+ </button>
  {slots && (
- <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
- {Array.from({ length: Math.min(slots.max, 5) }).map((_, i) => (
- <span key={i} style={{
- display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
- background: i < slots.remaining ? (active ? 'var(--c-gold)' : 'var(--c-gold-l)') : 'transparent',
- border: `1.5px solid ${i < slots.remaining ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
- }} />
- ))}
- {slots.max > 5 && <span style={{ fontSize: 8, color: active ? 'var(--c-gold-l)' : 'var(--t-3)' }}>+{slots.max - 5}</span>}
+ <div
+ style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, minHeight: 18 }}
+ onClick={e => e.stopPropagation()}
+ >
+ {Array.from({ length: boxesToShow }).map((_, i) => {
+ const isAvailable = i < slots.remaining;
+ return (
+ <button
+ key={i}
+ onClick={e => {
+ e.stopPropagation();
+ if (!onToggleSlot) return;
+ // isAvailable means this box is currently full (expendable).
+ // Clicking a full box expends; clicking an empty box restores.
+ onToggleSlot(i, isAvailable);
+ }}
+ title={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
+ style={{
+ width: 14, height: 14, borderRadius: 3, cursor: 'pointer', padding: 0,
+ background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
+ border: `2px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
+ transition: 'all 0.15s', flexShrink: 0,
+ }}
+ />
+ );
+ })}
+ {slots.max > maxVisibleBoxes && (
+ <span style={{ fontSize: 8, color: active ? 'var(--c-gold-l)' : 'var(--t-3)', marginLeft: 2 }}>
+ +{slots.max - maxVisibleBoxes}
  </span>
  )}
- </button>
+ </div>
+ )}
+ </div>
  );
 }
 
