@@ -43,7 +43,11 @@ function formatTime(iso: string) {
 
 export async function logAction(params: {
   campaignId?: string | null; characterId: string; characterName: string;
-  actionType: 'attack' | 'spell' | 'heal' | 'damage' | 'roll' | 'save' | 'check';
+  // v2.86.0: added 'standard-action' for the 2024 PHB universal actions
+  // (Dash, Disengage, Dodge, Help, Hide, Influence, Ready, Search, Study,
+  // Utilize). These broadcast to the DM + party when a player takes one so
+  // the group knows what their teammate is doing without a verbal callout.
+  actionType: 'attack' | 'spell' | 'heal' | 'damage' | 'roll' | 'save' | 'check' | 'standard-action';
   actionName: string; targetName?: string; diceExpression?: string;
   individualResults?: number[]; total?: number;
   hitResult?: 'hit' | 'miss' | 'crit' | 'fumble' | ''; notes?: string;

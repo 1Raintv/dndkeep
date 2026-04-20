@@ -8,6 +8,7 @@ import { useDebouncedCallback } from '../../lib/useDebounce';
 import { useSpells } from '../../lib/hooks/useSpells';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
+import { STANDARD_ACTIONS } from '../../data/standardActions';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -16,7 +17,7 @@ import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
-import { describeCharacterChanges, logHistoryEvents } from '../../lib/characterHistory';
+import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -606,6 +607,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  newHp: number;
  maxHp: number;
  } | null>(null);
+ // v2.86.0: Standard Actions state — tracks which action is currently
+ // flashing "Used!" (cleared after 1.8s) and which is expanded to show
+ // the full RAW description text.
+ const [justUsedStandardAction, setJustUsedStandardAction] = useState<string | null>(null);
+ const [expandedStandardAction, setExpandedStandardAction] = useState<string | null>(null);
 
  function rollHitDie() {
  const cls = CLASS_MAP[character.class_name];
@@ -1873,6 +1879,138 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  activeConditions={character.active_conditions}
  activeBufss={(character as any).active_buffs ?? []}
  />
+ )}
+
+ {/* v2.86.0: Standard Actions — 2024 PHB universal actions every
+     character can take (Dash, Disengage, Dodge, Help, Hide, Influence,
+     Ready, Search, Study, Utilize). Each click broadcasts to the action
+     log so the DM + party see what the player is doing, logs to
+     character_history for the player's personal audit trail, and marks
+     Action as used so Turn Economy flips and leveled spells get locked
+     out for the turn. */}
+ {(combatFilter === 'all' || combatFilter === 'action') && (
+ <div>
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 5, marginBottom: 8, marginTop: 4 }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+ Standard Actions
+ </span>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
+ broadcasts to party · uses your Action
+ </span>
+ </div>
+ <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+ {STANDARD_ACTIONS.map(action => {
+ const isExpanded = expandedStandardAction === action.id;
+ const isFlashing = justUsedStandardAction === action.id;
+ const handleUse = () => {
+ // Lock out for turn (same mechanism spells use).
+ setSpellCastThisTurn(true);
+ // Broadcast to campaign action log so DM + party see it in real time.
+ import('../shared/ActionLog').then(({ logAction }) => {
+ logAction({
+ campaignId: character.campaign_id ?? null,
+ characterId: character.id,
+ characterName: character.name,
+ actionType: 'standard-action',
+ actionName: action.name,
+ notes: action.shortDescription,
+ });
+ }).catch(() => {});
+ // Log to personal character history for audit trail.
+ logHistoryEvent({
+ characterId: character.id,
+ userId: character.user_id,
+ eventType: 'other',
+ description: `Took ${action.name} action`,
+ });
+ // Flash "Used!" feedback for 1.8s.
+ setJustUsedStandardAction(action.id);
+ window.setTimeout(() => {
+ setJustUsedStandardAction(curr => curr === action.id ? null : curr);
+ }, 1800);
+ };
+ return (
+ <div
+ key={action.id}
+ style={{
+ background: 'var(--c-surface)',
+ border: '1px solid rgba(96,165,250,0.18)',
+ borderLeft: '3px solid #60a5fa',
+ borderRadius: 'var(--r-md)',
+ overflow: 'hidden',
+ }}
+ >
+ {/* Header row — name + action tag + Use button + chevron */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: '1 1 auto', minWidth: 100 }}>
+ {action.name}
+ </span>
+ <span style={{
+ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+ color: '#60a5fa', background: 'rgba(96,165,250,0.15)',
+ border: '1px solid rgba(96,165,250,0.4)',
+ borderRadius: 999, padding: '2px 7px', flexShrink: 0,
+ }}>
+ Action
+ </span>
+ <button
+ onClick={handleUse}
+ style={{
+ padding: '4px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ background: isFlashing ? '#34d399' : 'rgba(96,165,250,0.15)',
+ border: `1px solid ${isFlashing ? '#34d399' : 'rgba(96,165,250,0.5)'}`,
+ color: isFlashing ? '#000' : '#60a5fa',
+ fontFamily: 'var(--ff-body)', fontWeight: isFlashing ? 800 : 700, fontSize: 11,
+ letterSpacing: '0.04em',
+ transition: 'background 0.2s, color 0.2s, border-color 0.2s',
+ flexShrink: 0, minHeight: 0,
+ minWidth: 64, textAlign: 'center' as const,
+ }}
+ >
+ {isFlashing ? 'Used!' : 'Use'}
+ </button>
+ <button
+ onClick={() => setExpandedStandardAction(isExpanded ? null : action.id)}
+ title={isExpanded ? 'Collapse details' : 'Expand details'}
+ aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+ style={{
+ background: 'transparent', border: 'none', padding: 0,
+ cursor: 'pointer', color: 'var(--t-3)', fontSize: 12,
+ width: 20, height: 20, minHeight: 0, minWidth: 0,
+ display: 'flex', alignItems: 'center', justifyContent: 'center',
+ flexShrink: 0,
+ transition: 'transform 0.2s',
+ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+ }}
+ >
+ ▼
+ </button>
+ </div>
+ {/* Short description — always visible */}
+ <div style={{
+ padding: '0 14px 10px 14px',
+ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
+ lineHeight: 1.5,
+ }}>
+ {action.shortDescription}
+ </div>
+ {/* Long description — expanded on chevron click */}
+ {isExpanded && (
+ <div style={{
+ padding: '8px 14px 12px 14px',
+ borderTop: '1px solid var(--c-border)',
+ background: 'var(--c-raised)',
+ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+ lineHeight: 1.6, whiteSpace: 'pre-wrap' as const,
+ }}>
+ {action.longDescription}
+ </div>
+ )}
+ </div>
+ );
+ })}
+ </div>
+ </div>
  )}
 
  {/* Class Abilities — with DDB-style section labels */}

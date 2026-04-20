@@ -362,8 +362,13 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  );
  })()}
 
- {/* Expand/collapse chevron — only if there's long-form content or roll history */}
- {(descLong || descShort.length > 80 || ((ability as any).psionicDie && psionicRollHistory.length > 0)) && (
+ {/* Expand/collapse chevron — v2.86.0: only shown when there's
+     additional detail beyond the always-visible short description:
+     either a descriptionLong (the Psionic Dice scaling table) or psionic
+     roll history worth expanding into. Regular abilities with just a
+     short description don't need a chevron — the description is already
+     visible below the row header. */}
+ {(descLong || ((ability as any).psionicDie && psionicRollHistory.length > 0)) && (
  <button
  onClick={() => setExpandedAbility(isExpanded ? null : ability.name)}
  title={isExpanded ? 'Collapse details' : 'Expand details'}
@@ -383,19 +388,35 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  )}
  </div>
 
- {/* Expanded detail panel — full long description + psionic roll history */}
+ {/* v2.86.0: Short description inline — always visible below the
+     header row. Users no longer need to expand to see what an ability
+     does; the chevron reveals only additional long-form detail. */}
+ <div style={{
+ padding: '0 14px 10px 14px',
+ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
+ lineHeight: 1.5,
+ }}>
+ {descShort}
+ </div>
+
+ {/* Expanded detail panel — v2.86.0: only shows long-form detail now.
+     Short description is always visible above the row, so we don't
+     repeat it here. Panel appears only when descLong exists or psionic
+     roll history is present. */}
  {isExpanded && (
  <div style={{
  padding: '8px 12px 10px 12px',
  borderTop: '1px solid var(--c-border)',
  background: 'var(--c-raised)',
  }}>
+ {descLong && (
  <div style={{
  fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
  lineHeight: 1.6, whiteSpace: 'pre-wrap' as const,
  }}>
- {descLong ?? descShort}
+ {descLong}
  </div>
+ )}
 
  {(ability as any).psionicDie && psionicRollHistory.length > 0 && (
  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as const }}>
