@@ -645,6 +645,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
   flex-direction: column;
   overflow: hidden;
   flex-shrink: 0;
+  /* v2.60.0: margin:auto centers the modal vertically + horizontally when there's
+     enough viewport room. When the modal is taller than the viewport, this collapses
+     gracefully and the overlay's overflow-y: auto lets the user scroll the whole
+     modal. Beats align-items:center which can hide the top edge when content overflows. */
+  margin: auto;
   animation: modalIn 250ms cubic-bezier(0.34,1.56,0.64,1) both;
 }
 .modal-header {
