@@ -67,10 +67,73 @@ export default function WeaponsTracker({
  // `characterId` which in some call sites is actually the auth user's id).
  // Falls back to undefined when either is missing so triggerRoll silently skips.
  const logHistory = historyCharacterId && userId ? { characterId: historyCharacterId, userId } : undefined;
+ // v2.87.0: Unarmed Strike mode picker modal. Set when the user clicks the
+ // STRIKE button on the synthesized Unarmed Strike row; holds the weapon
+ // reference so the 4 mode buttons (Damage / Grapple / Shove Push / Shove
+ // Prone) have everything they need.
+ const [unarmedModal, setUnarmedModal] = useState<WeaponItem | null>(null);
  const [form, setForm] = useState<Partial<WeaponItem>>({
  name: '', attackBonus: 0, damageDice: '1d8', damageBonus: 0,
  damageType: 'slashing', range: 'Melee', properties: '', notes: '',
  });
+
+ // v2.87.0: Grapple and Shove are 2024 PHB Unarmed Strike modes. Both are
+ // contested Athletics checks — the target picks Athletics or Acrobatics.
+ // We broadcast the attacker's roll + context; DM adjudicates the target
+ // side (they have the monster/NPC stat block and condition state). Each
+ // handler: triggerRoll (3D dice + history), logAction (action_log
+ // broadcast), then close modal. Closing the modal before the 3D roller
+ // settles is fine — triggerRoll's physics are independent of this UI.
+ async function handleGrapple(weapon: WeaponItem) {
+ const bonus = weapon.athleticsBonus ?? 0;
+ const nat = rollDie(20);
+ const total = nat + bonus;
+ triggerRoll({
+ result: nat, dieType: 20, modifier: bonus, total,
+ label: `Grapple — Athletics check${bonus >= 0 ? '+' : ''}${bonus}`,
+ logHistory,
+ });
+ if (historyCharacterId) {
+ await logAction({
+ campaignId: campaignId ?? null,
+ characterId: historyCharacterId,
+ characterName: characterName ?? '',
+ actionType: 'attack',
+ actionName: `Grapple (Unarmed Strike) — Athletics`,
+ diceExpression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
+ individualResults: [nat],
+ total,
+ notes: 'Contested: target rolls STR (Athletics) or DEX (Acrobatics). On success target gains Grappled condition.',
+ });
+ }
+ setUnarmedModal(null);
+ }
+
+ async function handleShove(weapon: WeaponItem, variant: 'push' | 'prone') {
+ const bonus = weapon.athleticsBonus ?? 0;
+ const nat = rollDie(20);
+ const total = nat + bonus;
+ const variantLabel = variant === 'push' ? 'Push 5 ft' : 'Knock Prone';
+ triggerRoll({
+ result: nat, dieType: 20, modifier: bonus, total,
+ label: `Shove (${variantLabel}) — Athletics check${bonus >= 0 ? '+' : ''}${bonus}`,
+ logHistory,
+ });
+ if (historyCharacterId) {
+ await logAction({
+ campaignId: campaignId ?? null,
+ characterId: historyCharacterId,
+ characterName: characterName ?? '',
+ actionType: 'attack',
+ actionName: `Shove — ${variantLabel} (Unarmed Strike)`,
+ diceExpression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
+ individualResults: [nat],
+ total,
+ notes: `Contested: target rolls STR (Athletics) or DEX (Acrobatics). On success: ${variant === 'push' ? 'target is pushed 5 ft.' : 'target has the Prone condition.'}`,
+ });
+ }
+ setUnarmedModal(null);
+ }
 
  function openEdit(w: WeaponItem) {
  setForm({ ...w });
@@ -295,6 +358,33 @@ export default function WeaponsTracker({
  {w.range || 'Melee'}
  </div>
 
+ {/* v2.87.0: Unarmed Strike — single STRIKE button that opens the mode
+     picker (Damage / Grapple / Shove). Regular weapons get the original
+     HIT + DMG pair. This keeps the 2024 PHB's three distinct Unarmed
+     Strike uses accessible without cluttering every other weapon row. */}
+ {w.unarmedModes ? (
+ <button
+ onClick={() => setUnarmedModal(w)}
+ title="Unarmed Strike: pick Damage, Grapple, or Shove"
+ style={{
+ textAlign: 'center', padding: '5px 10px',
+ borderRadius: 'var(--r-md)',
+ border: '1px solid rgba(200,146,42,0.4)',
+ background: 'linear-gradient(180deg, rgba(200,146,42,0.2), rgba(200,146,42,0.08))',
+ cursor: 'pointer', transition: 'all var(--tr-fast)',
+ minHeight: 0, alignSelf: 'center',
+ gridColumn: 'span 2', // spans the HIT + DMG columns
+ }}
+ >
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13, color: 'var(--c-gold-l)', lineHeight: 1 }}>
+ STRIKE
+ </div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(200,146,42,0.7)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginTop: 2 }}>
+ Damage · Grapple · Shove
+ </div>
+ </button>
+ ) : (
+ <>
  {/* HIT BUTTON */}
  <button
  onClick={() => handleHit(w)}
@@ -336,8 +426,8 @@ export default function WeaponsTracker({
  DAMAGE
  </div>
  </button>
-
- {/* NOTES + edit/delete */}
+ </>
+ )} {/* NOTES + edit/delete */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', minWidth: 0 }}>
  {w.notes && !w.notes.startsWith('save:') && (
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{w.notes}</span>
@@ -411,6 +501,141 @@ export default function WeaponsTracker({
  {editId ? 'Save Changes' : 'Add Attack'}
  </button>
  </div>
+ </div>
+ </div>
+ </ModalPortal>
+ )}
+
+ {/* v2.87.0: Unarmed Strike mode picker — Damage / Grapple / Shove (Push or Prone).
+     Opens when the user clicks the STRIKE button on the synthesized Unarmed
+     Strike row. Each option triggers a 3D dice roll + broadcasts to action_log
+     so the DM sees what the player is attempting in real time. Damage uses
+     the existing handleHit + handleDamage chain so it stays consistent with
+     other melee attacks. Grapple and Shove use dedicated handlers that roll
+     Athletics and broadcast contested-check context for DM adjudication. */}
+ {unarmedModal && (
+ <ModalPortal>
+ <div className="modal-overlay" onClick={() => setUnarmedModal(null)}>
+ <div
+ className="modal"
+ onClick={e => e.stopPropagation()}
+ style={{
+ maxWidth: 480, width: 'calc(100vw - 16px)',
+ maxHeight: 'calc(100dvh - 32px)',
+ display: 'flex', flexDirection: 'column' as const,
+ padding: 20,
+ }}
+ >
+ <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 4 }}>
+ Unarmed Strike
+ </div>
+ <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--t-1)', lineHeight: 1.2 }}>
+ Choose a mode
+ </h3>
+ <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
+ 2024 PHB: you can use one Unarmed Strike per attack action for Damage, Grapple, or Shove.
+ </p>
+ </div>
+
+ <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, marginBottom: 14 }}>
+ {/* Damage — the existing attack flow */}
+ <button
+ onClick={() => {
+ handleHit(unarmedModal);
+ // Slight delay so the two rolls don't visually collide on screen
+ window.setTimeout(() => handleDamage(unarmedModal), 150);
+ setUnarmedModal(null);
+ }}
+ style={{
+ width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ textAlign: 'left' as const,
+ border: '1px solid rgba(248,113,113,0.5)',
+ background: 'rgba(248,113,113,0.1)',
+ color: 'var(--c-red-l)',
+ minHeight: 0,
+ }}
+ >
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ Damage
+ </div>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ Roll to hit ({modStr(unarmedModal.attackBonus)}), then {modStr(unarmedModal.damageBonus)} bludgeoning on hit.
+ </div>
+ </button>
+
+ {/* Grapple — contested Athletics */}
+ <button
+ onClick={() => handleGrapple(unarmedModal)}
+ style={{
+ width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ textAlign: 'left' as const,
+ border: '1px solid rgba(96,165,250,0.5)',
+ background: 'rgba(96,165,250,0.1)',
+ color: '#60a5fa',
+ minHeight: 0,
+ }}
+ >
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ Grapple
+ </div>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target is Grappled.
+ </div>
+ </button>
+
+ {/* Shove — Push 5 ft */}
+ <button
+ onClick={() => handleShove(unarmedModal, 'push')}
+ style={{
+ width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ textAlign: 'left' as const,
+ border: '1px solid rgba(167,139,250,0.5)',
+ background: 'rgba(167,139,250,0.1)',
+ color: '#a78bfa',
+ minHeight: 0,
+ }}
+ >
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ Shove — Push 5 ft
+ </div>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: push target 5 feet.
+ </div>
+ </button>
+
+ {/* Shove — Knock Prone */}
+ <button
+ onClick={() => handleShove(unarmedModal, 'prone')}
+ style={{
+ width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ textAlign: 'left' as const,
+ border: '1px solid rgba(167,139,250,0.5)',
+ background: 'rgba(167,139,250,0.1)',
+ color: '#a78bfa',
+ minHeight: 0,
+ }}
+ >
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ Shove — Knock Prone
+ </div>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target has the Prone condition.
+ </div>
+ </button>
+ </div>
+
+ <button
+ className="btn-secondary"
+ onClick={() => setUnarmedModal(null)}
+ style={{ width: '100%', justifyContent: 'center', fontWeight: 600, minHeight: 0 }}
+ >
+ Cancel
+ </button>
  </div>
  </div>
  </ModalPortal>

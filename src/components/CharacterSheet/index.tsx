@@ -1751,8 +1751,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Unarmed Strike — always available per 2024 PHB (p.377)
  // Attack: d20 + STR mod + Proficiency Bonus
  // Damage: flat 1 + STR modifier bludgeoning (no dice roll)
+ // v2.87.0: Three modes — Damage (existing), Grapple, Shove (new). Grapple
+ // and Shove are contested Athletics checks. We precompute the character's
+ // Athletics bonus (STR mod + prof if proficient + prof again if expertise)
+ // so the modal can show and roll it without re-deriving.
  const strMod = computed.modifiers.strength ?? 0;
  const pb = computed.proficiency_bonus ?? 2;
+ const isAthleticsProf = (character.skill_proficiencies ?? []).includes('Athletics');
+ const isAthleticsExpert = (character.skill_expertises ?? []).includes('Athletics');
+ const athleticsBonus = strMod + (isAthleticsProf ? pb : 0) + (isAthleticsExpert ? pb : 0);
  const unarmedStrike: any = {
  id: 'unarmed',
  name: 'Unarmed Strike',
@@ -1763,6 +1770,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  range: 'Melee',
  properties: '',
  notes: '',
+ unarmedModes: true,
+ athleticsBonus,
  };
  const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons];
 
@@ -1780,7 +1789,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* Filter chips — v2.78.0: plain pills (chiclets removed per user request).
      Turn economy state (used this turn) is tracked by the Turn Economy panel
-     in the vitals column, not here. These pills just filter the list. */}
+     in the vitals column, not here. These pills just filter the list.
+     v2.87.0: Added "Limited" pill to isolate abilities/spells with
+     charges/rests — the filter logic was already wired throughout
+     (ClassAbilitiesSection + spell row filter), just needed a UI entry. */}
  <div>
  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
  {([
@@ -1788,13 +1800,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  { id: 'action', label: 'Action' },
  { id: 'bonus', label: 'Bonus' },
  { id: 'reaction', label: 'Reaction' },
+ { id: 'limited', label: 'Limited Use' },
  ] as const).map(f => {
  const activePill = combatFilter === f.id;
  return (
  <button
  key={f.id}
  onClick={() => setCombatFilter(f.id)}
- title={`Filter: ${f.label}`}
+ title={f.id === 'limited'
+ ? 'Show only abilities and spells with limited uses / rest-based charges'
+ : `Filter: ${f.label}`}
  style={{
  fontFamily: 'var(--ff-body)', fontWeight: activePill ? 700 : 600, fontSize: 10,
  letterSpacing: '.06em', textTransform: 'uppercase',
@@ -1887,7 +1902,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      log so the DM + party see what the player is doing, logs to
      character_history for the player's personal audit trail, and marks
      Action as used so Turn Economy flips and leveled spells get locked
-     out for the turn. */}
+     out for the turn.
+     v2.87.0: Hidden on 'limited' filter — standard actions are unlimited. */}
  {(combatFilter === 'all' || combatFilter === 'action') && (
  <div>
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 5, marginBottom: 8, marginTop: 4 }}>
