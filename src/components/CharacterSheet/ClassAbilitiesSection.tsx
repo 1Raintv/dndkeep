@@ -66,23 +66,21 @@ function UseTracker({ abilityName, max, rest, character, onUpdate }: {
 
  // Checkbox display
  return (
- <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
  {Array.from({ length: max }).map((_, i) => (
  <button
  key={i}
  onClick={() => toggle(i < uses ? i : i + 1)}
- title={i < uses ? 'Restore use' : 'Use'}
+ title={i < uses ? `Restore use (${rest === 'short' ? 'short' : 'long'} rest recovers)` : `Use (${rest === 'short' ? 'short' : 'long'} rest recovers)`}
  style={{
- width: 16, height: 16, borderRadius: 3, cursor: 'pointer', padding: 0,
+ width: 12, height: 12, borderRadius: 2, cursor: 'pointer', padding: 0,
+ minHeight: 0, minWidth: 0,            // override global button 36px touch target
  background: i < uses ? 'transparent' : 'var(--c-gold-l)',
- border: `2px solid ${i < uses ? 'var(--c-border-m)' : 'var(--c-gold-l)'}`,
- transition: 'all 0.15s', flexShrink: 0,
+ border: `1.5px solid ${i < uses ? 'var(--c-border-m)' : 'var(--c-gold-l)'}`,
+ transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
  }}
  />
  ))}
- <span style={{ fontSize: 9, color: rest === 'short' ? '#60a5fa' : '#a78bfa', fontFamily: 'var(--ff-body)', marginLeft: 2 }}>
- / {rest === 'short' ? 'Short Rest' : 'Long Rest'}
- </span>
  </div>
  );
 }
@@ -127,6 +125,8 @@ function resolveDesc(desc: string | ((c: Character) => string), character: Chara
 export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId }: Props) {
  const [justUsed, setJustUsed] = useState<string | null>(null);
  const [psionicRollHistory, setPsionicRollHistory] = useState<{ value: number; die: string }[]>([]);
+ // v2.80.0: which ability card is expanded (click chevron to open detail panel)
+ const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
 
  async function handleUseAbility(ability: ClassAbility, cost?: number) {
  // Mark as used if it has limited uses
@@ -236,27 +236,36 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  Psychic Disciplines
  </div>
  )}
- <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
  {filtered.map(ability => {
  const maxUses = getMaxUses(ability, character);
  const acColor = ACTION_COLORS[ability.actionType] ?? 'var(--t-3)';
  const actionLabel = ACTION_LABELS[ability.actionType] ?? '';
- const desc = resolveDesc(ability.description, character);
+ const descShort = resolveDesc(ability.description, character);
+ const descLong = (ability as any).descriptionLong
+ ? resolveDesc((ability as any).descriptionLong, character)
+ : null;
+ const isExpanded = expandedAbility === ability.name;
 
  return (
  <div
  key={ability.name}
  style={{
- padding: '10px 14px',
  background: 'var(--c-surface)',
  border: `1px solid ${acColor}25`,
  borderLeft: `3px solid ${acColor}`,
  borderRadius: 'var(--r-md)',
+ overflow: 'hidden',
  }}
  >
- {/* Header row */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: 1 }}>
+ {/* v2.80.0: Compact row — name + tags + tracker + button + chevron
+     all on one line. Mirrors the spell-row layout so abilities and
+     spells feel like siblings, not different species. */}
+ <div style={{
+ display: 'flex', alignItems: 'center', gap: 8,
+ padding: '6px 10px', flexWrap: 'wrap' as const,
+ }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)', flex: '1 1 auto', minWidth: 120 }}>
  {ability.name}
  </span>
  {ability.actionType !== 'free' && (
@@ -264,25 +273,18 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
  color: acColor, background: acColor + '15',
  border: `1px solid ${acColor}40`,
- borderRadius: 999, padding: '2px 7px', flexShrink: 0,
+ borderRadius: 999, padding: '1px 6px', flexShrink: 0,
  }}>
  {actionLabel}
  </span>
  )}
  {ability.isPool && (
- <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '2px 6px' }}>
+ <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '1px 6px', flexShrink: 0 }}>
  RESOURCE
  </span>
  )}
- </div>
 
- {/* Description */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, marginBottom: 8 }}>
- {desc}
- </div>
-
- {/* Use tracker + Use button row */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as 'wrap' }}>
+ {/* Use tracker chiclets — inline, no label */}
  {maxUses !== undefined && ability.rest && (
  <UseTracker
  abilityName={ability.name}
@@ -292,39 +294,75 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  onUpdate={onUpdate}
  />
  )}
- {/* Use / Cast button */}
+
+ {/* Use / Spend Die / Trigger button — compact */}
  {ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  style={{
- marginLeft: maxUses !== undefined ? 0 : 'auto',
- padding: '4px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ padding: '3px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  background: justUsed === ability.name ? '#34d399' : acColor + '20',
  border: `1px solid ${justUsed === ability.name ? '#34d399' : acColor + '60'}`,
  color: justUsed === ability.name ? '#000' : acColor,
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
- transition: 'all 0.2s', flexShrink: 0,
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+ letterSpacing: '0.04em',
+ transition: 'all 0.2s', flexShrink: 0, minHeight: 0,
  }}
  >
- {justUsed === ability.name ? ' Used!' :
- ability.actionType === 'reaction' ? ' Trigger' :
- ability.actionType === 'bonus' ? ' Use' :
- (ability as any).psionicDie ? ` Spend Die (1${getPsionicDieSize(character.level)})` : (ability as any).isPool ? ' Spend Die' : ' Use'}
+ {justUsed === ability.name ? 'Used!' :
+ ability.actionType === 'reaction' ? 'Trigger' :
+ (ability as any).psionicDie ? `Spend Die (1${getPsionicDieSize(character.level)})` :
+ (ability as any).isPool ? 'Spend Die' : 'Use'}
  </button>
  )}
 
- {/* Psionic roll history — inline mini log to the right */}
+ {/* Expand/collapse chevron — only if there's long-form content or roll history */}
+ {(descLong || descShort.length > 80 || ((ability as any).psionicDie && psionicRollHistory.length > 0)) && (
+ <button
+ onClick={() => setExpandedAbility(isExpanded ? null : ability.name)}
+ title={isExpanded ? 'Collapse details' : 'Expand details'}
+ aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+ style={{
+ background: 'transparent', border: 'none', padding: 0,
+ cursor: 'pointer', color: 'var(--t-3)', fontSize: 12,
+ width: 20, height: 20, minHeight: 0, minWidth: 0,
+ display: 'flex', alignItems: 'center', justifyContent: 'center',
+ flexShrink: 0,
+ transition: 'transform 0.2s',
+ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+ }}
+ >
+ ▼
+ </button>
+ )}
+ </div>
+
+ {/* Expanded detail panel — full long description + psionic roll history */}
+ {isExpanded && (
+ <div style={{
+ padding: '8px 12px 10px 12px',
+ borderTop: '1px solid var(--c-border)',
+ background: 'var(--c-raised)',
+ }}>
+ <div style={{
+ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+ lineHeight: 1.6, whiteSpace: 'pre-wrap' as const,
+ }}>
+ {descLong ?? descShort}
+ </div>
+
  {(ability as any).psionicDie && psionicRollHistory.length > 0 && (
- <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6, flexWrap: 'wrap' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Rolls:</span>
+ <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginRight: 4 }}>
+ Recent Rolls:
+ </span>
  {psionicRollHistory.map((r, i) => (
  <span key={i} style={{
- fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: i === 0 ? 13 : 10,
- padding: '1px 6px', borderRadius: 999,
+ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: i === 0 ? 13 : 11,
+ padding: '1px 7px', borderRadius: 999,
  background: i === 0 ? 'rgba(232,121,249,0.2)' : 'rgba(232,121,249,0.07)',
  border: `1px solid rgba(232,121,249,${i === 0 ? '0.5' : '0.2'})`,
  color: '#e879f9',
- transition: 'all 0.3s',
  flexShrink: 0,
  }}>
  {r.value}
@@ -333,6 +371,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  )}
  </div>
+ )}
  </div>
  );
  })}

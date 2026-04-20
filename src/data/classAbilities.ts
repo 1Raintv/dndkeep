@@ -6,6 +6,11 @@ export interface ClassAbility {
   name: string;
   actionType: ActionType;
   description: string | ((character: any) => string);
+  /** v2.80.0: Optional extended description shown in the expanded card view.
+   * Use for abilities where the basic description is kept short and the
+   * detailed mechanics (scaling tables, recovery edge-cases, etc.) belong
+   * in a progressive-disclosure panel. Falls back to `description` if absent. */
+  descriptionLong?: string | ((character: any) => string);
   minLevel: number;
   maxUsesFn?: (c: Character) => number;
   rest?: 'short' | 'long';
@@ -420,11 +425,21 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Psionic Energy Dice',
       actionType: 'special',
+      // v2.80.0: basic description is now a one-liner per user request. The
+      // detailed die-scaling table lives in the expanded view of the ability
+      // card (click the chevron on the right to open).
       description: (c: any) => {
+        const level = c?.level ?? 1;
+        const count = level >= 17 ? 12 : level >= 13 ? 10 : level >= 9 ? 8 : level >= 5 ? 6 : 4;
+        return `You have ${count} Psionic Energy Dice that regenerate 1 die on a Short Rest, all on a Long Rest.`;
+      },
+      // Detailed text shown when the card is expanded. Contains the full
+      // die-size scaling progression + recovery mechanics in one place.
+      descriptionLong: (c: any) => {
         const level = c?.level ?? 1;
         const die = level >= 17 ? 'd12' : level >= 11 ? 'd10' : level >= 5 ? 'd8' : 'd6';
         const count = level >= 17 ? 12 : level >= 13 ? 10 : level >= 9 ? 8 : level >= 5 ? 6 : 4;
-        return `You have ${count} Psionic Energy Dice (${die} at level ${level}). Die size: d6 (lv 1–4) → d8 (lv 5–10) → d10 (lv 11–16) → d12 (lv 17+). Regain 1 die on Short Rest, all ${count} on Long Rest.`;
+        return `You have ${count} Psionic Energy Dice. At your current level (${level}), each die is a ${die}.\n\nDie size scales by level: d6 at levels 1–4, d8 at levels 5–10, d10 at levels 11–16, d12 at levels 17+.\nPool size scales by level: 4 dice at levels 1–4, 6 at 5–8, 8 at 9–12, 10 at 13–16, 12 at 17+.\n\nRecovery: regain 1 die on a Short Rest. Regain all ${count} on a Long Rest.\n\nSpend dice to power Psion class features (Telekinetic Propel, Telepathic Connection) and Psychic Disciplines.`;
       },
       minLevel: 1,
       rest: 'short',
