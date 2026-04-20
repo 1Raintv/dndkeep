@@ -284,31 +284,12 @@ export default function SpellCastButton({
  }
 
  // ──────────────────────────────────────────────────────────────────
- // COMPACT MODE (Actions tab)
- if (compact) {
- // If a leveled spell was already cast this turn, lock this spell out
- if (spellLockedOut) {
- return (
- <span title="You already cast a spell this turn. Only one leveled spell per turn (cantrips are free)."
- style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', opacity: 0.5,
- border: '1px solid var(--c-border)', borderRadius: 4, padding: '2px 7px',
- cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
- 🔒 1 spell/turn
- </span>
- );
- }
-
- const dmgColor = DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8';
- const saveColor = SAVE_COLORS[mechanics.saveType ?? ''] ?? '#94a3b8';
- const btnBase: React.CSSProperties = {
- fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
- cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
- fontFamily: 'var(--ff-body)',
- };
-
- // v2.49.0: Upcast trigger mode — render ONLY a single button that opens the
- // slot-picker modal, so users can deliberately pick a higher slot instead of
- // just casting at base level. Reuses the same modal as the compact button.
+ // v2.59.0: Upcast trigger mode — MUST run BEFORE the compact-mode branch
+ // because callers from SpellsTab pass `upcastTrigger=true` without
+ // `compact=true`. The previous nesting silently fell through to FULL MODE
+ // and rendered a regular Cast button instead of the upcast button.
+ // Renders ONLY a single button that opens the slot-picker modal, so users
+ // can deliberately pick a higher slot instead of just casting at base level.
  if (upcastTrigger) {
  // Only render if the spell actually supports upcasting + has slots higher than base
  if (isCantrip || !canUpcastSpell(spell)) return null;
@@ -458,6 +439,29 @@ export default function SpellCastButton({
  </>
  );
  }
+
+ // ──────────────────────────────────────────────────────────────────
+ // COMPACT MODE (Actions tab)
+ if (compact) {
+ // If a leveled spell was already cast this turn, lock this spell out
+ if (spellLockedOut) {
+ return (
+ <span title="You already cast a spell this turn. Only one leveled spell per turn (cantrips are free)."
+ style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', opacity: 0.5,
+ border: '1px solid var(--c-border)', borderRadius: 4, padding: '2px 7px',
+ cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+ 🔒 1 spell/turn
+ </span>
+ );
+ }
+
+ const dmgColor = DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8';
+ const saveColor = SAVE_COLORS[mechanics.saveType ?? ''] ?? '#94a3b8';
+ const btnBase: React.CSSProperties = {
+ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
+ cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
+ fontFamily: 'var(--ff-body)',
+ };
 
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>

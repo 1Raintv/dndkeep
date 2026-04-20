@@ -649,6 +649,7 @@ export const SPELLS: SpellData[] = [
   damage_type: "Radiant",
   damage_at_slot_level: { "1": "1d4" },
   damage_dice: "1d4",
+  higher_levels: "No effect — Divine Favor does not benefit from a higher-level spell slot.",
   },
   {
   id: "entangle",
@@ -2806,6 +2807,7 @@ export const SPELLS: SpellData[] = [
   damage_at_slot_level: { "4": "3d6" },
   damage_dice: "3d6",
   area_of_effect: { type: "cube", size: 20 },
+  higher_levels: "When you cast this spell using a spell slot of 5th level or higher, the damage (initial and ongoing) increases by 1d6 for each slot level above 4.",
   },
   {
   id: "blight",
@@ -3078,6 +3080,7 @@ export const SPELLS: SpellData[] = [
   damage_at_slot_level: { "4": "20" },
   damage_dice: "20",
   area_of_effect: { type: "cylinder", size: 10 },
+  higher_levels: "When you cast this spell using a spell slot of 5th level or higher, the total damage the guardian can deal before vanishing increases by 15 for each slot level above 4.",
   },
   {
   id: "hallucinatory-terrain",
@@ -3892,6 +3895,7 @@ export const SPELLS: SpellData[] = [
   damage_at_slot_level: { "6": "6d10" },
   damage_dice: "6d10",
   area_of_effect: { type: "line", size: 100 },
+  higher_levels: "When you cast this spell using a spell slot of 7th level or higher, the damage increases by 1d10 for each slot level above 6.",
   },
   {
   id: "chain-lightning",
@@ -4123,6 +4127,7 @@ export const SPELLS: SpellData[] = [
   damage_type: "Necrotic",
   damage_at_slot_level: { "6": "14d6" },
   damage_dice: "14d6",
+  higher_levels: "When you cast this spell using a spell slot of 7th level or higher, the necrotic damage increases by 2d6 for each slot level above 6.",
   },
   {
   id: "heal",
@@ -4493,6 +4498,7 @@ export const SPELLS: SpellData[] = [
   damage_at_slot_level: { "7": "7d10" },
   damage_dice: "7d10",
   area_of_effect: { type: "cube", size: 100 },
+  higher_levels: "When you cast this spell using a spell slot of 8th level or higher, the damage increases by 1d10 for each slot level above 7.",
   },
   {
   id: "forcecage",
@@ -4873,6 +4879,7 @@ export const SPELLS: SpellData[] = [
   damage_at_slot_level: { "8": "10d8" },
   damage_dice: "10d8",
   area_of_effect: { type: "sphere", size: 20 },
+  higher_levels: "When you cast this spell using a spell slot of 9th level or higher, the damage increases by 1d8 for each slot level above 8.",
   },
   {
   id: "maze",
@@ -5575,6 +5582,7 @@ export const SPELLS: SpellData[] = [
   save_type: "INT",
   damage_at_slot_level: { "5": "8d6", "6": "8d6", "7": "8d6", "8": "8d6", "9": "8d6" },
   area_of_effect: { type: "sphere", size: 20 },
+  higher_levels: "When you cast this spell using a spell slot of 6th level or higher, the damage increases by 1d6 for each slot level above 5.",
   },
   {
   id: "mental-prison",
@@ -5592,6 +5600,7 @@ export const SPELLS: SpellData[] = [
   damage_type: "Psychic",
   save_type: "INT",
   damage_at_slot_level: { "6": "5d10", "7": "5d10", "8": "5d10", "9": "5d10" },
+  higher_levels: "When you cast this spell using a spell slot of 7th level or higher, the damage on entering and ending each turn increases by 1d10 for each slot level above 6.",
   },
   {
   id: "ottos-irresistible-dance",
@@ -5672,6 +5681,7 @@ export const SPELLS: SpellData[] = [
   save_type: "CON",
   damage_at_slot_level: { "8": "12d8", "9": "12d8" },
   area_of_effect: { type: "cube", size: 30 },
+  higher_levels: "When you cast this spell using a spell slot of 9th level or higher, the damage increases by 1d10 for each slot level above 8.",
   },
   {
   id: "befuddlement",
