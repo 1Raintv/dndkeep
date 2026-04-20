@@ -69,15 +69,18 @@ export default function HPStatsPanel({
     //       advanced_edits_unlocked, with an override input), and
     //   (b) equipping/unequipping armor in the Inventory tab (auto-recalc,
     //       intentional — plate mail should change AC).
-    { label: 'AC',        value: character.armor_class,                                            color: 'var(--c-gold-l)', tooltip: acTooltip ?? 'To change AC, equip armor in the Inventory tab or use Settings → Edit Stats (override).' },
-    { label: 'INIT',      value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
+    // v2.75.0: Labels spelled out fully ("AC" → "Armor Class", etc.) per user
+    // request. The label <div> uppercases via CSS, so source text stays readable.
+    // maxWidth bumped 80→110 and label fontSize 7→8 to fit longer words.
+    { label: 'Armor Class', value: character.armor_class,                                            color: 'var(--c-gold-l)', tooltip: acTooltip ?? 'To change AC, equip armor in the Inventory tab or use Settings → Edit Stats (override).' },
+    { label: 'Initiative',  value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     // v2.53.0: SPEED reflects condition automatically — Grappled/Restrained/Paralyzed/Stunned/
     // Unconscious/Petrified set effective speed to 0. Tooltip explains which condition is responsible.
     (() => {
       const speedZeroSources = activeConditions.filter(c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove);
       const isImmobilized = speedZeroSources.length > 0;
       return {
-        label: 'SPEED',
+        label: 'Speed',
         value: isImmobilized ? '0ft' : `${character.speed}ft`,
         color: isImmobilized ? 'var(--c-red-l)' : 'var(--t-2)',
         editable: editsUnlocked && !isImmobilized,
@@ -87,7 +90,7 @@ export default function HPStatsPanel({
           : (editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats'),
       };
     })(),
-    { label: 'PROF',      value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
+    { label: 'Proficiency', value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
     // v2.45.0: PASS PERC removed — redundant with the Skills list which shows passive perception
     // alongside the live perception modifier on the left side of the sheet.
     // v2.33.3: Conditions as a compact chip — clickable to open the modal
@@ -95,9 +98,13 @@ export default function HPStatsPanel({
     // Exhaustion level is surfaced via the tooltip and the modal but not
     // double-counted in the chip number (was previously +1ing for any nonzero
     // exhaustion level, causing 5 conditions + level 1 exhaustion to display 6).
+    // v2.75.0: Label spelled out as "Conditions". Exhaustion now surfaces
+    // INLINE as a small "Exhaustion N" badge between the count and the label
+    // when exhaustion_level > 0, so both states are visible at a glance.
     ...(onUpdateConditions ? [{
-      label: 'COND',
-      value: activeConditions.length || (exhaustionLevel > 0 ? `Ex${exhaustionLevel}` : '—'),
+      label: 'Conditions',
+      value: activeConditions.length || '—',
+      subValue: exhaustionLevel > 0 ? `Exhaustion ${exhaustionLevel}` : undefined,
       color: hasAnyCondition ? (exhaustionLevel === 6 ? 'var(--c-red-l)' : '#f59e0b') : 'var(--t-3)',
       clickable: true,
       onClick: () => setShowConditionModal(true),
@@ -109,8 +116,8 @@ export default function HPStatsPanel({
         : 'No conditions — click to add',
     }] : []),
     ...(isSpellcaster ? [
-      { label: 'SPL ATK', value: spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack), color: '#c084fc' },
-      { label: 'SPL DC',  value: spellDC,                                                     color: '#c084fc' },
+      { label: 'Spell Attack', value: spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack), color: '#c084fc' },
+      { label: 'Spell DC',     value: spellDC,                                                     color: '#c084fc' },
     ] : []),
   ];
 
@@ -118,7 +125,12 @@ export default function HPStatsPanel({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
       {/* Stat chips strip — v2.45.0: defense chips render inline at the end so
-          they share the same wrap row with INSP/AC/INIT/SPEED/PROF/COND. */}
+          they share the same wrap row with INSP/AC/INIT/SPEED/PROF/COND.
+          v2.75.0: Labels are now spelled out ("Armor Class", "Initiative",
+          "Proficiency", "Conditions", etc.). Chips widened 80→110px and
+          label font bumped 7→8 to accommodate the longer text. Conditions
+          chip supports a `subValue` which renders as a small row between
+          the big value and the label — used to show "Exhaustion N" inline. */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
         {stats.map(stat => (
           <div
@@ -129,13 +141,13 @@ export default function HPStatsPanel({
               background: 'var(--c-card)', border: `1px solid ${stat.color}22`,
               borderRadius: 'var(--r-md)', padding: '5px 8px', textAlign: 'center',
               cursor: (stat as any).onClick || (stat as any).editable ? 'pointer' : 'default',
-              flex: '1 1 auto', minWidth: 48, maxWidth: 80,
+              flex: '1 1 auto', minWidth: 64, maxWidth: 110,
               transition: 'all var(--tr-fast)',
             }}
             onMouseEnter={e => { if ((stat as any).onClick || (stat as any).editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}55`; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}22`; }}
           >
-            {stat.label === 'SPEED' && editingSpeed ? (
+            {stat.label === 'Speed' && editingSpeed ? (
               <input autoFocus type="number" value={speedInput}
                 onChange={e => setSpeedInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); } if (e.key === 'Escape') setEditingSpeed(false); }}
@@ -147,7 +159,12 @@ export default function HPStatsPanel({
                 {stat.value}
               </div>
             )}
-            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginTop: 3 }}>
+            {(stat as any).subValue && (
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, color: stat.color, marginTop: 2, lineHeight: 1 }}>
+                {(stat as any).subValue}
+              </div>
+            )}
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginTop: 3 }}>
               {stat.label}
             </div>
           </div>

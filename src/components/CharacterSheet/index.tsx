@@ -15,6 +15,7 @@ import { acBreakdown } from '../../data/equipment';
 import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
+import { describeCharacterChanges, logHistoryEvents } from '../../lib/characterHistory';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -38,6 +39,7 @@ import AvatarPicker from '../shared/AvatarPicker';
 import ModalPortal from '../shared/ModalPortal';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
+import CharacterHistory from './CharacterHistory';
 import ActiveBuffsPanel from './ActiveBuffsPanel';
 import LevelUpWizard from './LevelUpWizard';
 import LevelUpBanner from './LevelUpBanner';
@@ -367,10 +369,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  useEffect(() => () => { flushToSupabase(); }, [flushToSupabase]);
 
  function applyUpdate(partial: Partial<Character>, immediate = false) {
- setCharacter(prev => ({ ...prev, ...partial }));
- pendingRef.current = { ...pendingRef.current, ...partial };
- if (immediate) flushToSupabase();
- else debouncedFlush();
+  // v2.75.0: Append events to character_history for each meaningful change.
+  // Fire-and-forget — the helper swallows all errors, so logging can never
+  // break the UI or a mutation. Realtime-echoed remote changes bypass
+  // applyUpdate (they write straight to setCharacter via the channel hook),
+  // so we don't double-log mirrors of already-logged events.
+  try {
+    const events = describeCharacterChanges(character, partial, character.id, userId ?? '');
+    if (events.length) logHistoryEvents(events);
+  } catch { /* logging must never break the update path */ }
+  setCharacter(prev => ({ ...prev, ...partial }));
+  pendingRef.current = { ...pendingRef.current, ...partial };
+  if (immediate) flushToSupabase();
+  else debouncedFlush();
  }
 
  /** Persist concentration spell ID immediately to DB so it survives refresh.
@@ -2417,23 +2428,44 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  )}
 
- {/* ── HISTORY: Roll log + Action log merged ── */}
+ {/* ── HISTORY: Permanent character audit log + Roll log + Action log ── */}
  {activeTab === 'history' && (
- <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', maxWidth: 900 }}>
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 900 }}>
+
+ {/* v2.75.0: Character History — append-only audit log of every field
+     change, spell slot use, condition toggle, setting edit, etc. Rows
+     persist forever (RLS blocks delete; only cascades when character
+     is deleted). This sits above the existing roll/action log to make
+     it the primary view of "what happened to this character". */}
+ <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+ Character History
+ </div>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
+ Permanent log · every edit, spell slot, condition, setting change
+ </span>
+ </div>
+ <CharacterHistory characterId={character.id} maxHeight={400} />
+ </section>
+
+ {/* Roll & action log — rolls, attacks, saves, etc. */}
+ <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
  Roll &amp; Action History
  </div>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
- {character.campaign_id ? 'Showing campaign rolls + solo rolls • newest first' : 'Showing solo rolls • newest first'}
+ {character.campaign_id ? 'Showing campaign rolls + solo rolls · newest first' : 'Showing solo rolls · newest first'}
  </span>
  </div>
- {/* Unified timeline: in campaign use ActionLog (richer), solo use RollHistory */}
  {character.campaign_id ? (
- <ActionLog campaignId={character.campaign_id} characterId={character.id} mode="character" maxHeight={620} />
+ <ActionLog campaignId={character.campaign_id} characterId={character.id} mode="character" maxHeight={400} />
  ) : (
  <RollHistory characterId={character.id} userId={userId} />
  )}
+ </section>
+
  </div>
  )}
 

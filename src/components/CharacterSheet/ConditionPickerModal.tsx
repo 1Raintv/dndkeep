@@ -195,7 +195,7 @@ export default function ConditionPickerModal({
           <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 'var(--sp-2)' }}>
             Other conditions — tap to toggle
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
             {nonExhaustion.map(c => {
               const active = activeConditions.includes(c.name as ConditionName);
               return (
