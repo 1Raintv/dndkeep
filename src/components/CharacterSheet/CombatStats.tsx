@@ -42,7 +42,7 @@ export default function CombatStats({ character, computed, onUpdateHP }: CombatS
     if (hasAutoFail) {
       d20 = 1;
       setLastSave({ ability, d20: 1, total: 1 + mod });
-      triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${SAVE_ABBREV[ability]} Save (Auto-Fail)` });
+      triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${SAVE_ABBREV[ability]} Save (Auto-Fail)`, logHistory: { characterId: character.id, userId: character.user_id } });
       return;
     }
 
@@ -58,7 +58,7 @@ export default function CombatStats({ character, computed, onUpdateHP }: CombatS
 
     setLastSave({ ability, d20, total });
     const suffix = hasDisadvantage ? ' (Disadv.)' : '';
-    triggerRoll({ result: 0, dieType: 20, modifier: mod, label: `${SAVE_ABBREV[ability]} Save${suffix}` });
+    triggerRoll({ result: 0, dieType: 20, modifier: mod, label: `${SAVE_ABBREV[ability]} Save${suffix}`, logHistory: { characterId: character.id, userId: character.user_id } });
   }
 
   const hitDiceRemaining = character.level - (character.hit_dice_spent ?? 0);

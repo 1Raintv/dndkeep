@@ -53,6 +53,7 @@ export default function HPStatsPanel({
     triggerRoll({
       result: d20, dieType: 20, modifier: initMod, total: d20 + initMod,
       label: `Initiative${disadvLabel}`,
+      logHistory: { characterId: character.id, userId: character.user_id },
     });
   }
 

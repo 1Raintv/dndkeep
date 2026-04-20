@@ -11,8 +11,15 @@ import ModalPortal from '../shared/ModalPortal';
 interface WeaponsTrackerProps {
  weapons: WeaponItem[];
  onUpdate: (weapons: WeaponItem[]) => void;
+ /** LEGACY NAMING: in some call sites this is the auth user's id (not the
+  * character row id). We preserve it as-is to avoid breaking existing
+  * roll_logs / action_log writes that key on this value. */
  characterId?: string;
  characterName?: string;
+ // v2.82.0: two new props power character_history logging for rolls. Separate
+ // from the legacy `characterId` wiring (which is ambiguous per-caller).
+ historyCharacterId?: string;  // the character row id (character.id)
+ userId?: string;              // the authenticated user's id
  campaignId?: string | null;
  activeConditions?: string[];
  activeBufss?: any[];
@@ -49,13 +56,17 @@ interface RollResult {
 }
 
 export default function WeaponsTracker({
- weapons, onUpdate, characterId, characterName, campaignId,
+ weapons, onUpdate, characterId, characterName, historyCharacterId, userId, campaignId,
  activeConditions = [], activeBufss = [],
 }: WeaponsTrackerProps) {
  const [showAdd, setShowAdd] = useState(false);
  const [editId, setEditId] = useState<string | null>(null);
  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
  const { triggerRoll } = useDiceRoll();
+ // v2.82.0: logHistory hook — uses the explicit history props (not the legacy
+ // `characterId` which in some call sites is actually the auth user's id).
+ // Falls back to undefined when either is missing so triggerRoll silently skips.
+ const logHistory = historyCharacterId && userId ? { characterId: historyCharacterId, userId } : undefined;
  const [form, setForm] = useState<Partial<WeaponItem>>({
  name: '', attackBonus: 0, damageDice: '1d8', damageBonus: 0,
  damageType: 'slashing', range: 'Melee', properties: '', notes: '',
@@ -115,7 +126,7 @@ export default function WeaponsTracker({
  hitVsAC,
  }));
 
- triggerRoll({ result: nat, dieType: 20, modifier: weapon.attackBonus, total: hit, label: `${weapon.name} — d20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus}` });
+ triggerRoll({ result: nat, dieType: 20, modifier: weapon.attackBonus, total: hit, label: `${weapon.name} — d20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus}`, logHistory });
 
  // Write to roll_logs so it appears in Roll History
  if (characterId) {
@@ -163,7 +174,7 @@ export default function WeaponsTracker({
  // Extract the die type so the 3D roller shows the correct physical die
  const dmgDieMatch = weapon.damageDice.match(/\d+d(\d+)/);
  const dmgDieType = dmgDieMatch ? parseInt(dmgDieMatch[1]) : 4;
- triggerRoll({ result: 0, dieType: dmgDieType, modifier: weapon.damageBonus, total: damage, label: `${weapon.name} — ${weapon.damageDice} damage` });
+ triggerRoll({ result: 0, dieType: dmgDieType, modifier: weapon.damageBonus, total: damage, label: `${weapon.name} — ${weapon.damageDice} damage`, logHistory });
 
  // Write to roll_logs so it appears in Roll History
  if (characterId) {

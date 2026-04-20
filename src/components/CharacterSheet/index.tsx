@@ -583,6 +583,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ActionEconomy panel share one source of truth. Reset on New Turn.
  const [reactionUsedThisTurn, setReactionUsedThisTurn] = useState(false);
  const [isDM, setIsDM] = useState(false);
+ // v2.82.0: potion-use modal state. When set, shows a Self/Other chooser;
+ // picking Self rolls the heal dice and applies HP to this character, picking
+ // Other rolls and logs but leaves HP untouched (the other character's sheet
+ // handles their own HP update).
+ const [potionToUse, setPotionToUse] = useState<any | null>(null);
 
  function rollHitDie() {
  const cls = CLASS_MAP[character.class_name];
@@ -1678,8 +1683,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* ── COMBAT: Weapons & Attacks only ── */}
  {activeTab === 'actions' && (() => {
- // Inventory weapons: items with damage or weapon category that are equipped
+ // v2.82.0: Potions are never weapons — even if legacy data has is_weapon=true
+ // or the item was equipped before we blocked that UI. They go in the
+ // Potions & Consumables section with a Use button that heals, not attacks.
  const inventoryWeapons = (character.inventory ?? []).filter((item: any) =>
+ item.category !== 'Potion' &&
  item.equipped && (item.damage || item.is_weapon || item.category?.toLowerCase() === 'weapon' || item.category?.toLowerCase() === 'weapons')
  );
  const inventoryAsWeapons = inventoryWeapons.map((item: any) => {
@@ -1831,6 +1839,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  weapons={allWeapons}
  onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
  characterId={userId}
+ historyCharacterId={character.id}
+ userId={character.user_id}
  characterName={character.name}
  campaignId={character.campaign_id}
  activeConditions={character.active_conditions}
@@ -1879,6 +1889,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, color: 'var(--c-green-l)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)', padding: '2px 8px', borderRadius: 999 }}>
  ×{item.quantity}
  </span>
+ {/* v2.82.0: Use button opens the target chooser. Drinking yourself rolls
+     the heal dice and applies HP; giving to another just rolls + logs. */}
+ <button
+ onClick={() => setPotionToUse(item)}
+ style={{
+ padding: '5px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ background: 'rgba(52,211,153,0.15)',
+ border: '1px solid rgba(52,211,153,0.5)',
+ color: 'var(--c-green-l)',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+ letterSpacing: '0.04em', minHeight: 0, flexShrink: 0,
+ }}
+ >
+ Use
+ </button>
  </div>
  ))}
  </div>
@@ -2530,6 +2555,141 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  </div>{/* end cs-content-col */}
  </div>{/* end cs-hud-layout */}
+
+ {/* v2.82.0: Potion use modal — Self/Other target chooser + heal dice roller.
+     Parses an optional dice expression from the potion description (e.g.
+     "Regain 2d4+2 HP"). If no dice found, falls back to 2d4+2 with a warning
+     badge. On Self, applies HP after the 3D roller settles via onResult and
+     consumes one from the item stack. On Other, just rolls + logs (the other
+     character's sheet handles their HP). Either way, quantity goes -1. */}
+ {potionToUse && (() => {
+ const diceMatch: string = (potionToUse.description ?? potionToUse.name ?? '')
+ .match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)/i)?.[1] ?? '';
+ const expr = diceMatch.replace(/\s+/g, '') || '2d4+2';
+ const parsed = expr.match(/(\d+)d(\d+)(?:([+-])(\d+))?/i);
+ const diceCount = parsed ? parseInt(parsed[1]) : 2;
+ const dieSize = parsed ? parseInt(parsed[2]) : 4;
+ const bonusSign = parsed?.[3] === '-' ? -1 : 1;
+ const flatBonus = parsed?.[4] ? parseInt(parsed[4]) * bonusSign : 0;
+
+ const rollPotion = (target: 'self' | 'other') => {
+ const rolls: { die: number; value: number }[] = [];
+ for (let i = 0; i < diceCount; i++) {
+ rolls.push({ die: dieSize, value: Math.floor(Math.random() * dieSize) + 1 });
+ }
+ const dieSum = rolls.reduce((a, r) => a + r.value, 0);
+ const healTotal = dieSum + flatBonus;
+ const label = target === 'self'
+ ? `${potionToUse.name} — Drink (Heal ${expr})`
+ : `${potionToUse.name} — Given to Ally (Heal ${expr})`;
+
+ triggerRoll({
+ result: rolls[0]?.value ?? 0,
+ dieType: dieSize,
+ allDice: rolls,
+ expression: expr,
+ flatBonus,
+ total: healTotal,
+ label,
+ logHistory: { characterId: character.id, userId: character.user_id },
+ onResult: (_dice, physTotal) => {
+ if (target === 'self') {
+ const currentHp = character.current_hp ?? 0;
+ const maxHp = character.max_hp ?? currentHp;
+ const newHp = Math.min(maxHp, currentHp + physTotal);
+ applyUpdate({ current_hp: newHp }, true);
+ }
+ // Decrement potion count — remove stack if it hits zero.
+ const newInventory = (character.inventory ?? []).map((it: any) =>
+ it.id === potionToUse.id ? { ...it, quantity: Math.max(0, it.quantity - 1) } : it
+ );
+ const cleaned = newInventory.filter((it: any) => !(it.id === potionToUse.id && it.quantity <= 0));
+ applyUpdate({ inventory: cleaned }, true);
+ },
+ });
+ setPotionToUse(null);
+ };
+
+ return (
+ <div className="modal-overlay" onClick={() => setPotionToUse(null)}>
+ <div
+ className="modal"
+ onClick={e => e.stopPropagation()}
+ style={{
+ maxWidth: 420, width: 'calc(100vw - 24px)', padding: 20,
+ display: 'flex', flexDirection: 'column' as const, gap: 14,
+ }}
+ >
+ <div>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)', marginBottom: 6 }}>
+ Use Potion
+ </div>
+ <h3 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--t-1)', lineHeight: 1.2 }}>
+ {potionToUse.name}
+ </h3>
+ {potionToUse.description && (
+ <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--t-3)', lineHeight: 1.5 }}>
+ {potionToUse.description}
+ </p>
+ )}
+ </div>
+ <div style={{
+ display: 'flex', alignItems: 'center', gap: 8,
+ padding: '8px 12px', borderRadius: 'var(--r-md)',
+ background: 'rgba(52,211,153,0.08)',
+ border: '1px solid rgba(52,211,153,0.3)',
+ }}>
+ <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)' }}>Heals</span>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 18, fontWeight: 800, color: 'var(--c-green-l)' }}>{expr} HP</span>
+ {!diceMatch && (
+ <span style={{ fontSize: 9, color: 'var(--t-3)', fontStyle: 'italic' as const, marginLeft: 'auto' }}>
+ (default — no dice found in description)
+ </span>
+ )}
+ </div>
+ <div style={{ fontSize: 12, color: 'var(--t-3)', lineHeight: 1.5 }}>
+ Who is drinking this potion?
+ </div>
+ <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+ <button
+ onClick={() => rollPotion('self')}
+ style={{
+ width: '100%', padding: '12px 16px', borderRadius: 'var(--r-md)',
+ cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 14,
+ border: '1px solid rgba(52,211,153,0.6)',
+ background: 'linear-gradient(180deg, rgba(52,211,153,0.35), rgba(52,211,153,0.2))',
+ color: '#d1fae5', letterSpacing: '0.04em',
+ boxShadow: '0 2px 8px rgba(52,211,153,0.25)',
+ minHeight: 0,
+ }}
+ >
+ Drink yourself — roll {expr} and heal
+ </button>
+ <button
+ onClick={() => rollPotion('other')}
+ style={{
+ width: '100%', padding: '10px 16px', borderRadius: 'var(--r-md)',
+ cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ border: '1px solid var(--c-border-m)',
+ background: 'var(--c-raised)', color: 'var(--t-2)',
+ minHeight: 0,
+ }}
+ >
+ Give to another character — roll {expr}, don't apply to your HP
+ </button>
+ <button
+ className="btn-secondary"
+ onClick={() => setPotionToUse(null)}
+ style={{ width: '100%', justifyContent: 'center', fontWeight: 600, minHeight: 0 }}
+ >
+ Cancel
+ </button>
+ </div>
+ </div>
+ </div>
+ );
+ })()}
+
  </div>
  );
 }

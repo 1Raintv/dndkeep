@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { logHistoryEvent } from '../lib/characterHistory';
 
 // Lazy-load DiceRoller3D — it pulls in three.js + cannon-es (~600 KB).
 // We only mount it when an actual dice roll is triggered, keeping that weight
@@ -19,6 +20,12 @@ export interface DiceRollEvent {
   flatBonus?: number;  // the +2 part
   // Physics callback — called with physics-detected result after dice settle
   onResult?: (allDice: {die:number, value:number}[], total:number) => void;
+  // v2.82.0: Optional character history logging. When provided, triggerRoll
+  // will append a 'roll' event to character_history so the roll appears in
+  // the character's audit log. Previously rolls only surfaced in the campaign
+  // action log, which left character history incomplete for things like
+  // initiative, ability checks, and saves rolled outside combat.
+  logHistory?: { characterId: string; userId: string };
 }
 
 interface DiceRollContextType {
@@ -43,6 +50,28 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setCurrent(event);
     timeoutRef.current = setTimeout(() => setCurrent(null), 4500);
+
+    // v2.82.0: opt-in history logging. Caller passes `logHistory` with the
+    // character's ID and owner user ID; we build a short human-readable
+    // description from the label + total and append it to character_history.
+    // Fire-and-forget (logHistoryEvent never throws) — a failed log must not
+    // break the dice roller UX.
+    if (event.logHistory) {
+      const label = event.label ?? 'Roll';
+      const total = event.total ?? event.result;
+      const desc = event.expression
+        ? `${label}: ${event.expression} = ${total}`
+        : event.modifier !== undefined && event.modifier !== 0
+          ? `${label}: d${event.dieType}(${event.result}) ${event.modifier >= 0 ? '+' : ''}${event.modifier} = ${total}`
+          : `${label}: d${event.dieType} = ${total}`;
+      logHistoryEvent({
+        characterId: event.logHistory.characterId,
+        userId: event.logHistory.userId,
+        eventType: 'roll',
+        description: desc,
+        newValue: total,
+      });
+    }
   }, []);
 
   return (

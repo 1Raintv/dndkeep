@@ -53,6 +53,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
     const total = d20 + modifier + blessRoll;
     const label = `${sightAutoFail ? '⚠ AUTO-FAIL (Blinded · sight) — ' : ''}${skillName} Check${hasDisadvantage ? ' (Disadv.)' : ''}${blessRoll ? ` +${blessRoll} Bless` : ''}`;
     triggerRoll({ result: 0, dieType: 20, modifier: modifier + blessRoll, label,
+      logHistory: { characterId: character.id, userId: character.user_id },
       onResult: (_dice, physTotal) => {
         const physRoll = physTotal - (modifier + blessRoll);
         supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: modifier + blessRoll }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });

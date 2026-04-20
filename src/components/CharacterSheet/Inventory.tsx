@@ -677,6 +677,12 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
  {item.rollExpression}{item.rollLabel ? ` ${item.rollLabel}` : ''}
  </button>
  )}
+ {/* v2.82.0: Potions don't get Equip or "Use as Attack" buttons — they're
+     consumables used via the Potions row in the Actions tab. Showing Equip
+     for a health potion made no sense (you can't wear a potion), and "Use
+     as Attack" implied you could throw it at enemies to deal damage, which
+     isn't how healing potions work. */}
+ {item.category !== 'Potion' && (
  <button onClick={() => { onToggle(item.id); onClose(); }}
  style={{ flex: 1, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
  border: item.equipped ? '1px solid var(--c-border-m)' : '1px solid var(--c-gold-bdr)',
@@ -684,8 +690,10 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
  color: item.equipped ? 'var(--t-2)' : 'var(--c-gold-l)' }}>
  {item.armorType ? (item.equipped ? ' Unequip' : ' Equip') : (item.equipped ? 'Unequip' : ' Equip')}
  </button>
- {/* Mark as weapon — shows in Actions tab attack list */}
- {!item.armorType && (
+ )}
+ {/* Mark as weapon — shows in Actions tab attack list. Potions excluded
+     (they are not attacks; they heal). */}
+ {!item.armorType && item.category !== 'Potion' && (
  <button
  onClick={() => onUpdate(item.id, { is_weapon: !item.is_weapon })}
  title={item.is_weapon ? 'Remove from Actions attack list' : 'Show this item as an attack in the Actions tab'}

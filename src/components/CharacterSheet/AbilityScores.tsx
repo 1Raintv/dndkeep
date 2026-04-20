@@ -40,13 +40,17 @@ const SIGHT_LIKELY_ABILITIES = new Set<AbilityKey>(['dexterity', 'intelligence',
 export default function AbilityScores({ character, computed }: AbilityScoresProps) {
  const { triggerRoll } = useDiceRoll();
  const isBlinded = (character.active_conditions ?? []).includes('Blinded');
+ // v2.82.0: attach history-logging hook to every triggerRoll call so ability
+ // checks and saves surface in character history alongside HP/condition/slot
+ // events.
+ const logHistory = { characterId: character.id, userId: character.user_id };
 
  function rollAbility(ability: AbilityKey) {
  const mod = computed.modifiers[ability];
  const hasDisadvantage = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.abilityCheckDisadvantage);
  const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
  if (hasAutoFail) {
- triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)` });
+ triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, logHistory });
  supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod, modifier: mod });
  return;
  }
@@ -55,7 +59,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  const d20 = hasDisadvantage ? Math.min(roll1, rollDie(20)) : roll1;
  const abilityCapitalized = ability.charAt(0).toUpperCase() + ability.slice(1);
  const label = `${sightAutoFail ? '⚠ AUTO-FAIL (Blinded · sight) — ' : ''}${abilityCapitalized} Check${hasDisadvantage ? ' (Disadvantage)' : ''}`;
- triggerRoll({ result: 0, dieType: 20, modifier: mod, label,
+ triggerRoll({ result: 0, dieType: 20, modifier: mod, label, logHistory,
  onResult: (_dice, physTotal) => {
  const physRoll = physTotal - mod;
  supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }).then(({error}) => { if (error) console.error(error); });
@@ -70,11 +74,11 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  const saveMod = abilityMod + (isProficient ? computed.proficiency_bonus : 0);
  const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
  if (hasAutoFail) {
- triggerRoll({ result: 1, dieType: 20, modifier: saveMod, total: 1 + saveMod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save (Auto-Fail)` });
+ triggerRoll({ result: 1, dieType: 20, modifier: saveMod, total: 1 + saveMod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save (Auto-Fail)`, logHistory });
  return;
  }
  const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save`;
- triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label,
+ triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label, logHistory,
  onResult: (_dice, physTotal) => {
  const physRoll = physTotal - saveMod;
  supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }).then(({error}) => { if (error) console.error(error); });
