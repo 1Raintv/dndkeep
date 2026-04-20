@@ -230,6 +230,38 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Most common cause from external sync = round timer ran out via DM tick
  showConcentrationLossToast(oldConcSpell, 'duration timer expired');
  }
+ // v2.56.0: External damage trigger — when the DM (or BattleMap) reduces
+ // our HP via realtime sync, the local handleUpdateHP path is bypassed
+ // and the concentration save was silently skipped. Detect total damage
+ // (current_hp delta + temp_hp delta) and fire the save here too.
+ const currentConcSpell = (newConcSpell !== undefined ? newConcSpell : oldConcSpell) as string;
+ if (currentConcSpell && currentConcSpell !== '') {
+ const oldHP = (current['current_hp'] as number) ?? 0;
+ const newHP = (patch['current_hp'] !== undefined ? (patch['current_hp'] as number) : oldHP);
+ const oldTemp = (current['temp_hp'] as number) ?? 0;
+ const newTemp = (patch['temp_hp'] !== undefined ? (patch['temp_hp'] as number) : oldTemp);
+ const hpDrop = Math.max(0, oldHP - newHP);
+ const tempDrop = Math.max(0, oldTemp - newTemp);
+ // Total damage = HP lost + temp HP consumed. Per RAW, both count.
+ const totalDamage = hpDrop + tempDrop;
+ if (totalDamage > 0) {
+ const dc = Math.min(30, Math.max(10, Math.floor(totalDamage / 2)));
+ const mode = resolveAutomation(
+ 'concentration_on_damage',
+ { ...characterRef.current, ...patch } as Character,
+ activeCampaignRef.current,
+ );
+ if (mode === 'prompt') {
+ setConcentrationSaveDC(dc);
+ setConcentrationSaveDamage(totalDamage);
+ } else if (mode === 'auto') {
+ // Note: rollConcentrationSave reads from the latest character state via closure;
+ // queue with rAF so the patch lands first.
+ requestAnimationFrame(() => rollConcentrationSave(dc));
+ }
+ // 'off' → no action
+ }
+ }
  setCharacter(prev => ({ ...prev, ...patch }));
  }
  })
@@ -282,6 +314,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // mid-combat won't silently drop the spell.
  const concentrationSpellId = character.concentration_spell || null;
  const [concentrationSaveDC, setConcentrationSaveDC] = useState<number | null>(null);
+ // v2.56.0: Track the actual damage that triggered the prompt so the UI can
+ // show users exactly which formula path produced the DC.
+ const [concentrationSaveDamage, setConcentrationSaveDamage] = useState<number | null>(null);
  // v2.47.0: Concentration-loss toast — fires whenever concentration drops via:
  // failed CON save, incapacitating condition, round timer expiry, or DM-driven
  // tick from the realtime channel. Manual drops via the banner button are silent.
@@ -370,6 +405,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  () => campaigns.find(c => c.id === character.campaign_id) ?? null,
  [campaigns, character.campaign_id]
  );
+ // v2.56.0: Mirror activeCampaign into a ref so the realtime channel closure
+ // (set up once in a useEffect with empty deps) can read the latest value.
+ const activeCampaignRef = useRef(activeCampaign);
+ useEffect(() => { activeCampaignRef.current = activeCampaign; });
 
  /**
  * Shared concentration-save roll. Used by both the Prompt popup's Roll
@@ -454,6 +493,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
  if (mode === 'prompt') {
  setConcentrationSaveDC(dc);
+ setConcentrationSaveDamage(totalDamage);
  } else if (mode === 'auto') {
  rollConcentrationSave(dc);
  }
@@ -856,7 +896,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  {/* Concentration banner */}
- {/* Concentration Save Prompt — shown when taking damage while concentrating */}
+ {/* Concentration Save Prompt — shown when taking damage while concentrating
+     v2.56.0: Now shows the actual damage that triggered the prompt + the formula
+     breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
+     capped at 30. */}
  {concentrationSaveDC !== null && concentrationSpellId && (() => {
  const conScore = character.constitution ?? 10;
  const conMod = Math.floor((conScore - 10) / 2);
@@ -864,32 +907,42 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
  const spellName = spellMap[concentrationSpellId]?.name ?? 'Concentration';
+ const dmg = concentrationSaveDamage ?? 0;
+ const halfDmg = Math.floor(dmg / 2);
+ const dcReason = halfDmg >= 30
+ ? `capped at 30 (half of ${dmg} = ${halfDmg})`
+ : halfDmg > 10
+ ? `half of ${dmg} damage = ${halfDmg}`
+ : `floor of 10 (half of ${dmg} = ${halfDmg}, below floor)`;
  return (
  <div style={{
  padding: '12px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
  background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.4)',
  animation: 'pulse-gold 1s ease-out 1',
  }}>
- <span style={{ fontSize: 18 }}></span>
  <div style={{ flex: 1, minWidth: 0 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 2 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 3 }}>
  Concentration Check Required
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
- {spellName} — CON save DC {concentrationSaveDC} (you need a {concentrationSaveDC} or higher)
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-1)', fontWeight: 600 }}>
+ {spellName} — took {dmg} damage → CON save DC {concentrationSaveDC}
+ </div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
+ DC = {dcReason} · need a {concentrationSaveDC - saveBonus} or higher on the d20
  </div>
  </div>
  <button
  onClick={() => {
  rollConcentrationSave(concentrationSaveDC!);
  setConcentrationSaveDC(null);
+ setConcentrationSaveDamage(null);
  }}
  style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.5)', color: '#a78bfa' }}
  >
- Roll CON Save (+{saveBonus >= 0 ? saveBonus : saveBonus})
+ Roll CON Save ({saveBonus >= 0 ? '+' : ''}{saveBonus})
  </button>
- <button onClick={() => setConcentrationSaveDC(null)}
+ <button onClick={() => { setConcentrationSaveDC(null); setConcentrationSaveDamage(null); }}
  style={{ fontFamily: 'var(--ff-body)', fontSize: 11, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: 'transparent', border: '1px solid var(--c-border)', color: 'var(--t-3)' }}>
  Dismiss
  </button>
