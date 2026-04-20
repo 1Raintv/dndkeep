@@ -56,6 +56,7 @@ import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 import { useCampaign } from '../../context/CampaignContext';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { useScreenFlash } from '../../context/ScreenFlashContext';
 import { resolveAutomation } from '../../lib/automations';
 
 type Tab = 'actions' | 'abilities' | 'features' | 'spells' | 'inventory' | 'bio' | 'history';
@@ -415,6 +416,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // v2.48.0: 3D dice roller — used to visualize concentration saves so user
  // sees the d20 land vs the DC in real time.
  const { triggerRoll } = useDiceRoll();
+ // v2.85.0: Screen-edge flash primitive for HP-change feedback (green heal,
+ // red damage). Used in the potion flow; future damage/healing wiring will
+ // call the same hook.
+ const { flashEdge } = useScreenFlash();
  const activeCampaign = useMemo(
  () => campaigns.find(c => c.id === character.campaign_id) ?? null,
  [campaigns, character.campaign_id]
@@ -589,6 +594,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Other rolls and logs but leaves HP untouched (the other character's sheet
  // handles their own HP update).
  const [potionToUse, setPotionToUse] = useState<any | null>(null);
+ // v2.85.0: Heal success modal state. When set, shows a confirmation modal
+ // after dice settle with the healed amount + new HP. Style mirrors the
+ // concentration-break prompt so the pattern is consistent across
+ // HP-changing events. Damage-taken confirmation will use the same state
+ // shape in a future ship.
+ const [healSuccess, setHealSuccess] = useState<{
+ sourceName: string;
+ expr: string;
+ amount: number;
+ newHp: number;
+ maxHp: number;
+ } | null>(null);
 
  function rollHitDie() {
  const cls = CLASS_MAP[character.class_name];
@@ -2608,7 +2625,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const currentHp = character.current_hp ?? 0;
  const maxHp = character.max_hp ?? currentHp;
  const newHp = Math.min(maxHp, currentHp + physTotal);
+ const actualHealed = newHp - currentHp;
  applyUpdate({ current_hp: newHp }, true);
+ // v2.85.0: Edge flash (green) + confirmation modal fire AFTER dice
+ // settle, keyed to the physics-detected total so the user sees the
+ // visual response in the same beat as the dice result.
+ flashEdge('heal');
+ setHealSuccess({
+ sourceName: potionToUse.name,
+ expr,
+ amount: actualHealed,
+ newHp,
+ maxHp,
+ });
  }
  // Decrement potion count — remove stack if it hits zero.
  const newInventory = (character.inventory ?? []).map((it: any) =>
@@ -2720,6 +2749,78 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  document.body
  );
  })()}
+
+ {/* v2.85.0: Heal success modal — fires after dice settle when a player
+     heals themselves. Mirrors the concentration-break prompt pattern: portal
+     to body, standard modal shell, single OK button to dismiss. This is the
+     canonical post-HP-change confirmation; damage-taken will use the same
+     state shape + modal pattern. */}
+ {healSuccess && createPortal(
+ <div className="modal-overlay" onClick={() => setHealSuccess(null)}>
+ <div
+ className="modal"
+ onClick={e => e.stopPropagation()}
+ style={{
+ maxWidth: 440, width: 'calc(100vw - 16px)',
+ maxHeight: 'calc(100dvh - 32px)',
+ display: 'flex', flexDirection: 'column' as const,
+ padding: 20,
+ }}
+ >
+ <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--c-border)' }}>
+ <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)', marginBottom: 6 }}>
+ You Healed
+ </div>
+ <h3 style={{
+ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--t-1)',
+ wordBreak: 'break-word' as const, overflowWrap: 'anywhere' as const,
+ lineHeight: 1.2,
+ }}>
+ {healSuccess.sourceName}
+ </h3>
+ </div>
+ <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, marginBottom: 16 }}>
+ <div style={{
+ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 10,
+ padding: '18px 16px', borderRadius: 'var(--r-md)',
+ background: 'rgba(52,211,153,0.12)',
+ border: '1px solid rgba(52,211,153,0.4)',
+ }}>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 42, fontWeight: 900, color: 'var(--c-green-l)', lineHeight: 1 }}>
+ +{healSuccess.amount}
+ </span>
+ <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)' }}>
+ HP
+ </span>
+ </div>
+ <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, color: 'var(--t-2)' }}>
+ <span>Rolled <strong style={{ color: 'var(--t-1)' }}>{healSuccess.expr}</strong></span>
+ <span>Now at <strong style={{ color: 'var(--c-green-l)' }}>{healSuccess.newHp}/{healSuccess.maxHp}</strong></span>
+ </div>
+ {healSuccess.newHp === healSuccess.maxHp && (
+ <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--c-gold-l)', letterSpacing: '0.08em', fontWeight: 700, textTransform: 'uppercase' as const }}>
+ Full Health
+ </div>
+ )}
+ </div>
+ <button
+ onClick={() => setHealSuccess(null)}
+ style={{
+ width: '100%', padding: '12px 16px', borderRadius: 'var(--r-md)',
+ cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14,
+ border: '1px solid rgba(52,211,153,0.6)',
+ background: 'linear-gradient(180deg, rgba(52,211,153,0.35), rgba(52,211,153,0.2))',
+ color: '#d1fae5', letterSpacing: '0.04em',
+ boxShadow: '0 2px 8px rgba(52,211,153,0.2)',
+ minHeight: 0,
+ }}
+ >
+ OK
+ </button>
+ </div>
+ </div>,
+ document.body
+ )}
 
  </div>
  );

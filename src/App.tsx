@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useLocati
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
 import { DiceRollProvider } from './context/DiceRollContext';
+import { ScreenFlashProvider } from './context/ScreenFlashContext';
 import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
 import QuickRoll from './components/CharacterSheet/QuickRoll';
@@ -364,9 +365,11 @@ export default function App() {
       <AuthProvider>
         <CampaignProvider>
           <DiceRollProvider>
-            <ToastProvider>
-              <AppRoutes />
-            </ToastProvider>
+            <ScreenFlashProvider>
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            </ScreenFlashProvider>
           </DiceRollProvider>
         </CampaignProvider>
       </AuthProvider>
