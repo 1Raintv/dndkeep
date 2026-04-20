@@ -83,75 +83,57 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  borderRadius: 'var(--r-lg)',
  padding: 'var(--sp-3)',
  }}>
- <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-2)' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
+ {/* v2.77.0: Vertical layout per user spec —
+     Header → Action → Bonus Action → Reaction → Movement → End Turn.
+     Each action type is now its own full-width row button instead of a
+     horizontal token strip, making the panel readable at narrow widths
+     (it lives in the left vitals column above Saving Throws on mobile). */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--c-gold-l)', marginBottom: 'var(--sp-2)' }}>
  Turn Economy
- </span>
- {/* v2.46.0: New Turn button is now prominent — this is the most-clicked control during combat. */}
- <button
- onClick={reset}
- style={{
- fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
- padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
- border: '1px solid var(--c-gold-bdr)',
- background: 'var(--c-gold-bg)',
- color: 'var(--c-gold-l)',
- letterSpacing: '.06em',
- transition: 'all .15s',
- display: 'inline-flex', alignItems: 'center', gap: 6,
- }}
- title="Reset Action / Bonus / Reaction / Movement for a new turn"
- onMouseEnter={e => {
- (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,160,23,0.22)';
- (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold)';
- }}
- onMouseLeave={e => {
- (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-gold-bg)';
- (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold-bdr)';
- }}
- >
- ↺ New Turn
- </button>
  </div>
 
- {/* Action / Bonus / Reaction tokens */}
- <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-2)' }}>
+ {/* Stacked Action / Bonus Action / Reaction — each full-width */}
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 'var(--sp-2)' }}>
  {Object.values(TOKEN).map(t => {
  const used = state[t.key as keyof Omit<ActionState,'movedFeet'>];
+ const fullLabel = t.key === 'bonusAction' ? 'Bonus Action' : t.label;
  return (
  <button
  key={t.key}
  onClick={() => toggle(t.key as keyof Omit<ActionState,'movedFeet'>)}
- title={used ? `${t.label} used — click to undo` : `Mark ${t.label} used`}
+ title={used ? `${fullLabel} used — click to undo` : `Mark ${fullLabel} used`}
  style={{
- flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
- padding: '8px 4px',
+ width: '100%',
+ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+ padding: '8px 12px',
  borderRadius: 8,
  border: `2px solid ${used ? t.color+'60' : t.color+'30'}`,
  background: used ? t.color+'22' : 'transparent',
  cursor: 'pointer', transition: 'all .15s',
- opacity: used ? 0.45 : 1,
- position: 'relative',
+ opacity: used ? 0.5 : 1,
+ textAlign: 'left',
  }}
  >
- <span style={{ fontSize: 18, lineHeight: 1, filter: used ? 'grayscale(0.7)' : 'none' }}>{t.icon}</span>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 8, color: used ? 'var(--t-3)' : t.color, letterSpacing: '.08em', textTransform: 'uppercase' }}>
- {t.label}
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, color: used ? 'var(--t-3)' : t.color, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+ {fullLabel}
  </span>
- {used && (
- <div style={{
- position: 'absolute', top: 4, right: 4, width: 8, height: 8,
- borderRadius: '50%', background: '#ef4444',
- }} />
- )}
+ <span style={{
+ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+ color: used ? '#ef4444' : t.color,
+ letterSpacing: '.08em', textTransform: 'uppercase',
+ display: 'inline-flex', alignItems: 'center', gap: 4,
+ }}>
+ {used && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} />}
+ {used ? 'Used' : 'Available'}
+ </span>
  </button>
  );
  })}
  </div>
 
- {/* Movement bar */}
+ {/* Movement tracker — sits between the three action rows and End Turn */}
  {speedFeet > 0 && (
- <div>
+ <div style={{ marginBottom: 'var(--sp-2)' }}>
  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
  Movement
@@ -169,6 +151,33 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  </div>
  </div>
  )}
+
+ {/* End Turn button at the bottom — full width, prominent */}
+ <button
+ onClick={reset}
+ style={{
+ width: '100%',
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+ padding: '8px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
+ border: '1px solid var(--c-gold-bdr)',
+ background: 'var(--c-gold-bg)',
+ color: 'var(--c-gold-l)',
+ letterSpacing: '.08em', textTransform: 'uppercase',
+ transition: 'all .15s',
+ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+ }}
+ title="Reset Action / Bonus / Reaction / Movement for a new turn"
+ onMouseEnter={e => {
+ (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,160,23,0.22)';
+ (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold)';
+ }}
+ onMouseLeave={e => {
+ (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-gold-bg)';
+ (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold-bdr)';
+ }}
+ >
+ ↺ End Turn
+ </button>
  </div>
  );
 }

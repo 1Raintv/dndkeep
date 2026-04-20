@@ -27,8 +27,7 @@ export default function HPStatsPanel({
   character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [], onOpenSettings,
 }: HPStatsPanelProps) {
   // v2.72.0: editingAC state removed — AC is no longer quick-editable on the chip.
-  const [editingSpeed, setEditingSpeed] = useState(false);
-  const [speedInput, setSpeedInput] = useState('');
+  // v2.77.0: editingSpeed state removed — Speed is no longer quick-editable either.
   const [showConditionModal, setShowConditionModal] = useState(false);
   const { triggerRoll } = useDiceRoll();
 
@@ -76,6 +75,11 @@ export default function HPStatsPanel({
     { label: 'Initiative',  value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     // v2.53.0: SPEED reflects condition automatically — Grappled/Restrained/Paralyzed/Stunned/
     // Unconscious/Petrified set effective speed to 0. Tooltip explains which condition is responsible.
+    // v2.77.0: Speed chip is now READ-ONLY at all times (matches the AC
+    // treatment from v2.72.0). Quick-edit removed to prevent accidental
+    // speed changes during play. Speed is modified only via:
+    //   Settings → Edit Stats → Combat Stats → Speed (gated behind
+    //   advanced_edits_unlocked).
     (() => {
       const speedZeroSources = activeConditions.filter(c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove);
       const isImmobilized = speedZeroSources.length > 0;
@@ -83,11 +87,9 @@ export default function HPStatsPanel({
         label: 'Speed',
         value: isImmobilized ? '0ft' : `${character.speed}ft`,
         color: isImmobilized ? 'var(--c-red-l)' : 'var(--t-2)',
-        editable: editsUnlocked && !isImmobilized,
-        onEdit: () => { if (!editsUnlocked || isImmobilized) return; setSpeedInput(String(character.speed)); setEditingSpeed(true); },
         tooltip: isImmobilized
           ? `Speed 0 — ${speedZeroSources.join(', ')}. Base speed ${character.speed}ft.`
-          : (editsUnlocked ? undefined : 'Locked — unlock in Settings → Edit Stats'),
+          : 'To change Speed, use Settings → Edit Stats.',
       };
     })(),
     { label: 'Proficiency', value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
@@ -147,18 +149,9 @@ export default function HPStatsPanel({
             onMouseEnter={e => { if ((stat as any).onClick || (stat as any).editable) (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}55`; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${stat.color}22`; }}
           >
-            {stat.label === 'Speed' && editingSpeed ? (
-              <input autoFocus type="number" value={speedInput}
-                onChange={e => setSpeedInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); } if (e.key === 'Escape') setEditingSpeed(false); }}
-                onBlur={() => { const v = parseInt(speedInput); if (!isNaN(v)) onUpdateSpeed?.(v); setEditingSpeed(false); }}
-                style={{ width: '100%', textAlign: 'center', fontSize: 13, fontFamily: 'var(--ff-stat)', fontWeight: 700, background: 'transparent', border: 'none', color: stat.color, outline: 'none' }}
-              />
-            ) : (
-              <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 13, color: stat.color, lineHeight: 1 }}>
-                {stat.value}
-              </div>
-            )}
+            <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 13, color: stat.color, lineHeight: 1 }}>
+              {stat.value}
+            </div>
             {(stat as any).subValue && (
               <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, color: stat.color, marginTop: 2, lineHeight: 1 }}>
                 {(stat as any).subValue}

@@ -1340,6 +1340,39 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <div className="cs-hud-layout">
  {/* ── LEFT VITALS COLUMN — sticky on desktop ── */}
  <aside className="cs-vitals-col">
+ {/* v2.77.0: Turn Economy relocated here, ABOVE Saving Throws per user
+     request. On mobile the vitals column renders first in the flow, so
+     this places Turn Economy near the top of the sheet where it's most
+     useful during combat. On desktop it sits at the top of the sticky
+     left rail so the player doesn't have to scroll to reach it.
+     v2.53.0 note still applies: immobilizing conditions zero out
+     effective speed. */}
+ {(() => {
+ const baseSpeed = character.speed ?? 30;
+ const immobilized = (character.active_conditions ?? []).some(
+ c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove
+ );
+ const effectiveSpeed = immobilized ? 0 : baseSpeed;
+ return (
+ <div style={{ marginBottom: 'var(--sp-3)' }}>
+ <ActionEconomy
+ speedFeet={effectiveSpeed}
+ actionUsedExternal={spellCastThisTurn}
+ bonusActionUsedExternal={bonusActionSpellCast}
+ reactionUsedExternal={reactionUsedThisTurn}
+ onActionUsed={(action: string, used: boolean) => {
+ if (action === 'action') setSpellCastThisTurn(used);
+ if (action === 'bonusAction') setBonusActionSpellCast(used);
+ if (action === 'reaction') setReactionUsedThisTurn(used);
+ if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
+ if (action === 'action' && !used) setCombatFilter('all');
+ }}
+ onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); setReactionUsedThisTurn(false); }}
+ />
+ </div>
+ );
+ })()}
+
  {/* Ability scores in the vitals column on desktop */}
  <div className="cs-vitals-ability-scores">
  <AbilityScores character={character} computed={computed} />
@@ -1455,36 +1488,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── Divider ── */}
  <div style={{ height: 1, background: 'var(--c-border)' }} />
 
- {/* v2.46.0: Turn Economy — moved out of the Actions tab so it's visible on
-     EVERY tab. The DM and the player both want this front-and-center: it's
-     the most-referenced piece during combat. external action/BA props sync
-     spell-cast consumption into the visual token state.
-     v2.53.0: speedFeet now reflects condition impact — immobilizing conditions
-     (Grappled / Restrained / Paralyzed / Stunned / Unconscious / Petrified)
-     drop effective speed to 0. */}
- {(() => {
- const baseSpeed = character.speed ?? 30;
- const immobilized = (character.active_conditions ?? []).some(
- c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove
- );
- const effectiveSpeed = immobilized ? 0 : baseSpeed;
- return (
- <ActionEconomy
- speedFeet={effectiveSpeed}
- actionUsedExternal={spellCastThisTurn}
- bonusActionUsedExternal={bonusActionSpellCast}
- reactionUsedExternal={reactionUsedThisTurn}
- onActionUsed={(action: string, used: boolean) => {
- if (action === 'action') setSpellCastThisTurn(used);
- if (action === 'bonusAction') setBonusActionSpellCast(used);
- if (action === 'reaction') setReactionUsedThisTurn(used);
- if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
- if (action === 'action' && !used) setCombatFilter('all');
- }}
- onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); setReactionUsedThisTurn(false); }}
- />
- );
- })()}
+ {/* v2.77.0: Turn Economy moved to the vitals column (above Saving Throws)
+     per user request. See the top of cs-vitals-col for the actual render. */}
 
  {/* Tabs */}
  <div className="tabs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
