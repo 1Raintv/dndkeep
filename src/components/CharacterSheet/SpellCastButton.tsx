@@ -487,8 +487,18 @@ export default function SpellCastButton({
  display: 'flex', flexDirection: 'column' as const, gap: 8,
  paddingTop: 14, borderTop: '1px solid var(--c-border)', marginTop: 12,
  }}>
+ {/* v2.81.0: Single primary button. For damaging spells, clicking it both
+     consumes the slot (castUtility) AND rolls the upcast damage. The separate
+     "Roll Damage @ Level N" button was redundant — a user upcasting a damage
+     spell almost always wants both in one click. Re-rolling damage without
+     burning a slot (e.g. concentration spell tick) is handled elsewhere. */}
  <button
- onClick={() => { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}
+ onClick={() => {
+ castUtility(selectedSlot, target);
+ if (mechanics.damageDice) rollDamage(selectedSlot);
+ setShowModal(false);
+ setTarget('');
+ }}
  style={{
  width: '100%', justifyContent: 'center',
  fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 14,
@@ -499,22 +509,10 @@ export default function SpellCastButton({
  boxShadow: '0 2px 8px rgba(167,139,250,0.25)',
  }}
  >
- ↑ Upcast at Level {selectedSlot}
+ {mechanics.damageDice
+ ? `↑ Upcast at Level ${selectedSlot} + Roll Damage`
+ : `↑ Upcast at Level ${selectedSlot}`}
  </button>
- {mechanics.damageDice && (
- <button
- onClick={() => { rollDamage(selectedSlot); setShowModal(false); setTarget(''); }}
- style={{
- width: '100%', justifyContent: 'center',
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
- padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
- border: '1px solid rgba(251,191,36,0.5)',
- background: 'rgba(251,191,36,0.12)', color: '#fbbf24',
- }}
- >
- Roll Damage @ Level {selectedSlot}
- </button>
- )}
  <button
  className="btn-secondary"
  onClick={() => setShowModal(false)}
@@ -771,17 +769,25 @@ export default function SpellCastButton({
  </div>
  {/* Action footer — v2.57.0: stacked vertically (full-width buttons) so the
      confirm button is always reachable on mobile and never gets pushed off-screen.
-     Confirm on top (most prominent), Roll Damage middle, Cancel bottom. */}
+     v2.81.0: Single button for damaging spells — casts + rolls damage in one click. */}
  {(() => {
  const isUpcasting = !isCantrip && selectedSlot > spell.level;
- const confirmLabel = isUpcasting ? `↑ Upcast at Level ${selectedSlot}` : `Cast at Level ${selectedSlot}`;
+ const verb = isUpcasting ? '↑ Upcast' : 'Cast';
+ const confirmLabel = mechanics.damageDice
+ ? `${verb} at Level ${selectedSlot} + Roll Damage`
+ : `${verb} at Level ${selectedSlot}`;
  return (
  <div style={{
  display: 'flex', flexDirection: 'column' as const, gap: 8,
  paddingTop: 14, borderTop: '1px solid var(--c-border)', marginTop: 12,
  }}>
  <button
- onClick={() => { castUtility(selectedSlot, target); setShowModal(false); setTarget(''); }}
+ onClick={() => {
+ castUtility(selectedSlot, target);
+ if (mechanics.damageDice) rollDamage(selectedSlot);
+ setShowModal(false);
+ setTarget('');
+ }}
  style={{
  width: '100%', justifyContent: 'center',
  fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 14,
@@ -794,20 +800,6 @@ export default function SpellCastButton({
  >
  {confirmLabel}
  </button>
- {mechanics.damageDice && (
- <button
- onClick={() => { rollDamage(selectedSlot); setShowModal(false); setTarget(''); }}
- style={{
- width: '100%', justifyContent: 'center',
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
- padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
- border: '1px solid rgba(251,191,36,0.5)',
- background: 'rgba(251,191,36,0.12)', color: '#fbbf24',
- }}
- >
- Roll Damage @ Level {selectedSlot}
- </button>
- )}
  <button
  className="btn-secondary"
  onClick={() => setShowModal(false)}

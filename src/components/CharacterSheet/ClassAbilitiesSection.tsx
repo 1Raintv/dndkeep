@@ -64,23 +64,36 @@ function UseTracker({ abilityName, max, rest, character, onUpdate }: {
  );
  }
 
- // Checkbox display
+ // v2.81.0: Chiclets fill LEFT → RIGHT, empty from the RIGHT as uses are
+ // consumed. Matches the LevelTab pattern on Spells/Actions tabs, where
+ // available slots sit on the LEFT and spent slots appear on the RIGHT.
+ // Previously this was inverted (used on LEFT), which was inconsistent
+ // with the rest of the app's chiclet direction.
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
- {Array.from({ length: max }).map((_, i) => (
+ {Array.from({ length: max }).map((_, i) => {
+ // Box i is available if its index is within the remaining count.
+ // E.g. max=8, uses=2 → remaining=6 → indices 0-5 filled (LEFT side),
+ // indices 6-7 empty (RIGHT side). Clicking a filled box consumes it
+ // (becomes empty); clicking an empty box restores it (becomes filled).
+ const isAvailable = i < remaining;
+ return (
  <button
  key={i}
- onClick={() => toggle(i < uses ? i : i + 1)}
- title={i < uses ? `Restore use (${rest === 'short' ? 'short' : 'long'} rest recovers)` : `Use (${rest === 'short' ? 'short' : 'long'} rest recovers)`}
+ onClick={() => toggle(isAvailable ? uses + 1 : uses - 1)}
+ title={isAvailable
+ ? `Use a die (${rest === 'short' ? 'Short' : 'Long'} Rest recovers)`
+ : `Restore a die (${rest === 'short' ? 'Short' : 'Long'} Rest recovers)`}
  style={{
  width: 12, height: 12, borderRadius: 2, cursor: 'pointer', padding: 0,
  minHeight: 0, minWidth: 0,            // override global button 36px touch target
- background: i < uses ? 'transparent' : 'var(--c-gold-l)',
- border: `1.5px solid ${i < uses ? 'var(--c-border-m)' : 'var(--c-gold-l)'}`,
+ background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
+ border: `1.5px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
  transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
  }}
  />
- ))}
+ );
+ })}
  </div>
  );
 }
@@ -258,14 +271,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  overflow: 'hidden',
  }}
  >
- {/* v2.80.0: Compact row — name + tags + tracker + button + chevron
-     all on one line. Mirrors the spell-row layout so abilities and
-     spells feel like siblings, not different species. */}
+ {/* v2.81.0: Row sized to match spell & attack rows — padding 10px 14px,
+     name font 14, tags 2px 7px. Same visual weight as the spell rows below
+     so Psion cards and spells feel like siblings. Chevron reveals more detail. */}
  <div style={{
  display: 'flex', alignItems: 'center', gap: 8,
- padding: '6px 10px', flexWrap: 'wrap' as const,
+ padding: '10px 14px', flexWrap: 'wrap' as const,
  }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)', flex: '1 1 auto', minWidth: 120 }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: '1 1 auto', minWidth: 120 }}>
  {ability.name}
  </span>
  {ability.actionType !== 'free' && (
@@ -273,13 +286,13 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
  color: acColor, background: acColor + '15',
  border: `1px solid ${acColor}40`,
- borderRadius: 999, padding: '1px 6px', flexShrink: 0,
+ borderRadius: 999, padding: '2px 7px', flexShrink: 0,
  }}>
  {actionLabel}
  </span>
  )}
  {ability.isPool && (
- <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '1px 6px', flexShrink: 0 }}>
+ <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '2px 7px', flexShrink: 0 }}>
  RESOURCE
  </span>
  )}
@@ -295,16 +308,36 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  />
  )}
 
- {/* Use / Spend Die / Trigger button — compact */}
+ {/* v2.81.0: Last rolled psionic die — inline badge visible BEFORE expanding.
+     Shows the most recent roll right in the row so players can see results
+     at a glance without having to open the detail panel. */}
+ {(ability as any).psionicDie && psionicRollHistory.length > 0 && (
+ <span
+ title={`Last roll: ${psionicRollHistory[0].value} on 1${psionicRollHistory[0].die}`}
+ style={{
+ display: 'inline-flex', alignItems: 'center', gap: 4,
+ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 13,
+ padding: '2px 9px', borderRadius: 999,
+ background: 'rgba(232,121,249,0.18)',
+ border: '1px solid rgba(232,121,249,0.5)',
+ color: '#e879f9', flexShrink: 0,
+ }}
+ >
+ <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', opacity: 0.7 }}>ROLLED</span>
+ {psionicRollHistory[0].value}
+ </span>
+ )}
+
+ {/* Use / Spend Die / Trigger button */}
  {ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  style={{
- padding: '3px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ padding: '4px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  background: justUsed === ability.name ? '#34d399' : acColor + '20',
  border: `1px solid ${justUsed === ability.name ? '#34d399' : acColor + '60'}`,
  color: justUsed === ability.name ? '#000' : acColor,
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
  letterSpacing: '0.04em',
  transition: 'all 0.2s', flexShrink: 0, minHeight: 0,
  }}
