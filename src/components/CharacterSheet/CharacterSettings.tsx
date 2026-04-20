@@ -502,6 +502,33 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                     </div>
                   </div>
                 </label>
+
+                {/* v2.66.0: Long-rest combat condition cleanup toggle */}
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-3)',
+                  padding: 'var(--sp-3)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)',
+                  background: 'var(--c-raised)', cursor: character.advanced_edits_unlocked ? 'pointer' : 'not-allowed',
+                  marginTop: 'var(--sp-3)',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!!character.long_rest_clears_combat_conditions}
+                    onChange={e => onUpdate({ long_rest_clears_combat_conditions: e.target.checked })}
+                    style={{
+                      width: 18, height: 18, flexShrink: 0,
+                      marginTop: 3, cursor: character.advanced_edits_unlocked ? 'pointer' : 'not-allowed',
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 2 }}>
+                      Long Rest Clears Combat Conditions
+                    </div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>
+                      When enabled: a long rest also clears Charmed, Frightened, Poisoned, Stunned, Paralyzed, Restrained, Blinded, Deafened, Grappled, Prone, and Incapacitated. Petrified and Invisible stay since they're typically tied to a specific spell.
+                      Per RAW 5e, conditions persist until their source effect ends — many tables play that anything short of a permanent curse expires during 8 hours of rest. Long rest always clears Unconscious (HP &gt; 0) and reduces Exhaustion by 1 regardless of this toggle.
+                    </div>
+                  </div>
+                </label>
               </div>
 
               {/* ── v2.33 Deep Edits: Species / Background / Subclass swap ── */}

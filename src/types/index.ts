@@ -178,6 +178,13 @@ export interface Character {
   // advanced_edits_unlocked.
   nat_1_20_saves?: boolean;
 
+  // v2.66.0 House rule: when ON, a long rest also clears short-duration combat
+  // conditions (Charmed, Frightened, Poisoned, Stunned, Paralyzed, Restrained,
+  // Blinded, Deafened, Grappled, Prone, Incapacitated) that would naturally
+  // have expired during 8 hours of rest. Petrified + Invisible stay since
+  // they're typically spell-bound rather than duration-bound. Default false (RAW).
+  long_rest_clears_combat_conditions?: boolean;
+
   // Raw ability scores (modifiers computed client-side via gameUtils)
   strength: number;
   dexterity: number;

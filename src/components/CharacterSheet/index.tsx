@@ -617,8 +617,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  //   - Other conditions persist per RAW unless their source duration expired
  //     (Charmed/Frightened/Poisoned/etc. all have specific durations from their
  //     source spell or effect — they don't auto-clear on rest)
+ // v2.66.0: Optional house rule — when long_rest_clears_combat_conditions is ON,
+ //   we also clear short-duration combat conditions that would naturally have
+ //   expired during 8 hours of rest. Petrified + Invisible stay since they're
+ //   typically tied to a specific spell.
  const newExhaustion = Math.max(0, (character.exhaustion_level ?? 0) - 1);
- const conditionsToRemove = new Set(['Exhaustion', 'Unconscious']);
+ const conditionsToRemove = new Set<string>(['Exhaustion', 'Unconscious']);
+ if (character.long_rest_clears_combat_conditions) {
+ ['Charmed', 'Frightened', 'Poisoned', 'Stunned', 'Paralyzed', 'Restrained', 'Blinded', 'Deafened', 'Grappled', 'Prone', 'Incapacitated']
+ .forEach(c => conditionsToRemove.add(c));
+ }
  const newConditions = (character.active_conditions ?? []).filter(c => !conditionsToRemove.has(c));
  applyUpdate({
  current_hp: character.max_hp,
