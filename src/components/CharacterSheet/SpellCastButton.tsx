@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
@@ -313,7 +314,7 @@ export default function SpellCastButton({
  >
  ↑ Upcast at higher slot
  </button>
- {showModal && (
+ {showModal && createPortal(
  <div className="modal-overlay" onClick={() => setShowModal(false)}>
  <div
  className="modal"
@@ -434,7 +435,8 @@ export default function SpellCastButton({
  </button>
  </div>
  </div>
- </div>
+ </div>,
+ document.body
  )}
  </>
  );
@@ -575,7 +577,7 @@ export default function SpellCastButton({
  {/* Slot picker modal — v2.55.0/2.57.0: matches the upcast modal layout.
      Width 560 max with 16px viewport gutter, dvh-based height for iOS Safari,
      title broken into eyebrow + spell name with break-word so long names fit. */}
- {showModal && (
+ {showModal && createPortal(
  <div className="modal-overlay" onClick={() => setShowModal(false)}>
  <div
  className="modal"
@@ -728,7 +730,8 @@ export default function SpellCastButton({
  );
  })()}
  </div>
- </div>
+ </div>,
+ document.body
  )}
  </div>
  );
@@ -750,7 +753,7 @@ export default function SpellCastButton({
  {mechanics.damageDice ? `Cast (${mechanics.damageDice})` : 'Cast'}
  </button>
 
- {showModal && (
+ {showModal && createPortal(
  <div className="modal-overlay" onClick={() => setShowModal(false)}>
  <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
  <h3 style={{ marginBottom: 4 }}>{spell.name}</h3>
@@ -867,7 +870,8 @@ export default function SpellCastButton({
  )}
  </div>
  </div>
- </div>
+ </div>,
+ document.body
  )}
  </>
  );
