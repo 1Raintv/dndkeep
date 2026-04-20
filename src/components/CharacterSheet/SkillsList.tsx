@@ -109,7 +109,11 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
       >
-        {/* Proficiency indicator — click to cycle */}
+        {/* Proficiency indicator — click to cycle
+            v2.83.0: Expertise gets its own color (cyan) so it stands out
+            clearly against plain Proficient (gold). Previously both used
+            the same gold and only the shape differed (circle vs. rotated
+            square), which was hard to read at a glance. */}
         <button
           onClick={e => cycleSkill(e, skill.name)}
           title={data.expert ? 'Expertise — click to remove' : data.proficient ? 'Proficient — click for Expertise' : 'Not proficient — click to add'}
@@ -117,9 +121,10 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         >
           <div style={{
             width: 8, height: 8, borderRadius: data.expert ? '2px' : '50%',
-            background: data.expert ? 'var(--c-gold-l)' : data.proficient ? 'var(--c-gold-l)' : 'transparent',
-            border: `1.5px solid ${data.expert ? 'var(--c-gold-l)' : data.proficient ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
+            background: data.expert ? '#22d3ee' : data.proficient ? 'var(--c-gold-l)' : 'transparent',
+            border: `1.5px solid ${data.expert ? '#22d3ee' : data.proficient ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
             transform: data.expert ? 'rotate(45deg)' : 'none',
+            boxShadow: data.expert ? '0 0 4px rgba(34,211,238,0.6)' : 'none',
           }} />
         </button>
 
@@ -127,7 +132,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         <span style={{
           fontFamily: 'var(--ff-body)', fontWeight: data.proficient ? 600 : 400,
           fontSize: 11, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          color: sightAutoFail ? 'var(--c-danger, #dc2626)' : data.expert ? 'var(--c-gold-xl)' : data.proficient ? 'var(--t-1)' : 'var(--t-2)',
+          color: sightAutoFail ? 'var(--c-danger, #dc2626)' : data.expert ? '#67e8f9' : data.proficient ? 'var(--t-1)' : 'var(--t-2)',
         }}>
           {sightAutoFail && <span style={{ marginRight: 3 }} aria-label="Blinded — sight auto-fails">⚠</span>}
           {skill.name}
@@ -141,7 +146,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         {/* Bonus */}
         <span style={{
           fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 11,
-          color: data.expert ? 'var(--c-gold-xl)' : data.proficient ? 'var(--c-gold-l)' : 'var(--t-3)',
+          color: data.expert ? '#67e8f9' : data.proficient ? 'var(--c-gold-l)' : 'var(--t-3)',
           minWidth: 24, textAlign: 'right', flexShrink: 0,
         }}>
           {formatModifier(data.total)}
@@ -175,7 +180,7 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
           <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--c-gold-l)', border: '1.5px solid var(--c-gold-l)' }} /> Proficient
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 7, height: 7, borderRadius: '2px', background: 'var(--c-gold-l)', transform: 'rotate(45deg)' }} /> Expertise
+          <div style={{ width: 7, height: 7, borderRadius: '2px', background: '#22d3ee', transform: 'rotate(45deg)', boxShadow: '0 0 4px rgba(34,211,238,0.6)' }} /> <span style={{ color: '#67e8f9' }}>Expertise</span>
         </span>
       </div>
     </section>

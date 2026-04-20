@@ -1582,46 +1582,55 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  );
  })()}
 
- {/* ── Tools & Languages ── */}
+ {/* ── Languages (own section) ──
+     v2.83.0: Tools & Languages were previously combined in one card. Split
+     into two separate sections per user request: Languages sits above
+     (right after Senses), Tools at the very bottom of the Abilities tab.
+     Makes each list easier to scan without visual competition. */}
  {(() => {
  const bgData = BACKGROUNDS.find((b: any) => b.name === character.background);
- const bgTool = bgData?.tool_proficiency ?? null;
  const speciesData = SPECIES.find(s => s.name === character.species);
  const speciesLangs = speciesData?.languages ?? [];
  const bgBonusLangCount = bgData?.languages ?? 0;
  const extraLangs = character.extra_languages ?? [];
+ const allLangs: string[] = [
+ ...speciesLangs,
+ ...extraLangs,
+ ];
+ if (allLangs.length === 0 && bgBonusLangCount === 0) return null;
+ return (
+ <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 8 }}>
+ Languages
+ </div>
+ <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
+ {allLangs.join(', ')}{bgBonusLangCount > 0 && extraLangs.length < bgBonusLangCount ? ` + ${bgBonusLangCount - extraLangs.length} choice` : ''}
+ </div>
+ </div>
+ </div>
+ );
+ })()}
+
+ {/* ── Tools (own section, at the bottom of Abilities tab) ── */}
+ {(() => {
+ const bgData = BACKGROUNDS.find((b: any) => b.name === character.background);
+ const bgTool = bgData?.tool_proficiency ?? null;
  const extraTools = character.extra_tool_proficiencies ?? [];
  const allTools: string[] = [
  ...(bgTool ? [bgTool] : []),
  ...extraTools,
  ];
- const allLangs: string[] = [
- ...speciesLangs,
- ...extraLangs,
- ];
- if (allTools.length === 0 && allLangs.length === 0 && bgBonusLangCount === 0) return null;
+ if (allTools.length === 0) return null;
  return (
  <div style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 8 }}>
- Tools &amp; Languages
+ Tools
  </div>
- <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
- {allTools.length > 0 && (
  <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 700, marginBottom: 3, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Tools</div>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
  {allTools.join(', ')}
  </div>
- </div>
- )}
- {(allLangs.length > 0 || bgBonusLangCount > 0) && (
- <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--c-raised)' }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', fontWeight: 700, marginBottom: 3, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Languages</div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
- {allLangs.join(', ')}{bgBonusLangCount > 0 && extraLangs.length < bgBonusLangCount ? ` + ${bgBonusLangCount - extraLangs.length} choice` : ''}
- </div>
- </div>
- )}
  </div>
  </div>
  );
