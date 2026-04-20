@@ -60,7 +60,13 @@ export default function SpellCastButton({
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
  // v2.34: if a specific upcast slot is forced by the parent row, start with it
- const [selectedSlot, setSelectedSlot] = useState<number>(forceSlotLevel ?? spell.level);
+ // v2.64.0: in upcastTrigger mode, default to spell.level + 1 (lowest upcast tier)
+ // since the user explicitly opened the UPCAST modal — defaulting to base level
+ // wouldn't be upcasting at all and the confirm button would say "↑ Upcast at
+ // Level 1" which is misleading.
+ const [selectedSlot, setSelectedSlot] = useState<number>(
+ forceSlotLevel ?? (upcastTrigger ? spell.level + 1 : spell.level)
+ );
  const [target, setTarget] = useState('');
  // v2.34.2: flash "Cast!" on the button for ~900ms after firing so users see confirmation
  const [recentlyCast, setRecentlyCast] = useState<string | null>(null);
@@ -379,17 +385,24 @@ export default function SpellCastButton({
  </div>
  </div>
  )}
- {/* v2.63.0: per-tier breakdown using damage_at_slot_level / heal_at_slot_level
-     data. Shows exactly what each upcast tier does so the player can pick the
-     slot that matches the situation. */}
+ {/* v2.64.0: Unified slot picker. When the spell has per-tier damage/healing
+     data, show a rich grid where each tile = one slot tier with the rolled
+     dice for that tier. Tiles are clickable picker buttons. Tiles without an
+     available slot are dimmed but still visible (so the player sees what they
+     COULD do at higher tiers if they had slots). When the spell has no scaling
+     data (utility/control spells), fall back to the simple slot picker.
+     The redundant "Choose Spell Slot Level" section is removed. */}
  {(() => {
  const dasl = (spell as any).damage_at_slot_level as Record<string, string> | undefined;
  const hasl = (spell as any).heal_at_slot_level as Record<string, string> | undefined;
  const tiers = dasl ?? hasl;
- if (!tiers) return null;
+ const availableMap = new Map(availableSlots.map(s => [s.level, s.remaining]));
+ const label = dasl ? 'Damage by slot · tap to pick' : hasl ? 'Healing by slot · tap to pick' : 'Choose Spell Slot Level';
+
+ if (tiers) {
+ // Rich tier grid: show every tier the spell scales to, picker behavior
  const tierKeys = Object.keys(tiers).map(k => parseInt(k, 10)).filter(k => !isNaN(k) && k >= spell.level).sort((a, b) => a - b);
  if (tierKeys.length === 0) return null;
- const label = dasl ? 'Damage by slot' : 'Healing by slot';
  return (
  <div style={{
  padding: '10px 12px', borderRadius: 'var(--r-md)',
@@ -400,27 +413,48 @@ export default function SpellCastButton({
  {label}
  </div>
  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 6 }}>
- {tierKeys.map(lvl => (
- <div key={lvl} style={{
- padding: '6px 8px', borderRadius: 6,
- background: selectedSlot === lvl ? 'rgba(251,191,36,0.18)' : 'rgba(255,255,255,0.025)',
- border: `1px solid ${selectedSlot === lvl ? 'rgba(251,191,36,0.5)' : 'var(--c-border)'}`,
+ {tierKeys.map(lvl => {
+ const remaining = availableMap.get(lvl) ?? 0;
+ const isAvailable = remaining > 0;
+ const isSelected = selectedSlot === lvl;
+ return (
+ <button
+ key={lvl}
+ onClick={() => isAvailable && setSelectedSlot(lvl)}
+ disabled={!isAvailable}
+ style={{
+ padding: '6px 8px', borderRadius: 6, cursor: isAvailable ? 'pointer' : 'not-allowed',
+ background: isSelected ? 'rgba(251,191,36,0.22)' : isAvailable ? 'rgba(255,255,255,0.025)' : 'transparent',
+ border: `1px solid ${isSelected ? 'rgba(251,191,36,0.6)' : 'var(--c-border)'}`,
  textAlign: 'center' as const,
- }}>
+ opacity: isAvailable ? 1 : 0.35,
+ fontFamily: 'var(--ff-body)',
+ minHeight: 0,
+ }}
+ title={isAvailable ? `Cast at level ${lvl} (${remaining} slot${remaining === 1 ? '' : 's'} left)` : `No level ${lvl} slots available`}
+ >
  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.04em' }}>LVL {lvl}</div>
- <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: selectedSlot === lvl ? '#fbbf24' : 'var(--t-2)', marginTop: 1 }}>{tiers[String(lvl)]}</div>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: isSelected ? '#fbbf24' : 'var(--t-2)', marginTop: 1 }}>{tiers[String(lvl)]}</div>
+ <div style={{ fontSize: 8, fontWeight: 600, color: isAvailable ? 'var(--t-3)' : 'var(--c-red-l)', marginTop: 2 }}>
+ {isAvailable ? `${remaining} left` : 'no slot'}
  </div>
- ))}
+ </button>
+ );
+ })}
  </div>
  </div>
  );
- })()}
+ }
+
+ // Fallback for spells with no scaling data — simple slot picker only
+ return (
+ <>
  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 8 }}>
- Choose Spell Slot Level
+ {label}
  </div>
  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
  {availableSlots.map(({ level, remaining }) => (
- <button key={level} onClick={() => { setSelectedSlot(level); }}
+ <button key={level} onClick={() => setSelectedSlot(level)}
  style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12,
  padding: '8px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minWidth: 70,
  border: selectedSlot === level ? '2px solid #a78bfa' : '1px solid var(--c-border)',
@@ -433,6 +467,9 @@ export default function SpellCastButton({
  </button>
  ))}
  </div>
+ </>
+ );
+ })()}
  <div style={{ marginBottom: 4 }}>
  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 6 }}>
  Target (optional)
