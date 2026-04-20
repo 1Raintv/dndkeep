@@ -481,9 +481,16 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                 }}>
                   <input
                     type="checkbox"
-                    checked={!!character.nat_1_20_saves}
+                    checked={character.nat_1_20_saves !== false}
                     onChange={e => onUpdate({ nat_1_20_saves: e.target.checked })}
-                    style={{ marginTop: 3, cursor: character.advanced_edits_unlocked ? 'pointer' : 'not-allowed' }}
+                    style={{
+                      // v2.63.0: explicit dimensions + flexShrink:0 to override the global
+                      // input { width: 100% } rule which otherwise stretched the checkbox
+                      // across the whole column and squeezed the label/description into a
+                      // tiny right column wrapping every word. Width auto, fixed pixel size.
+                      width: 18, height: 18, flexShrink: 0,
+                      marginTop: 3, cursor: character.advanced_edits_unlocked ? 'pointer' : 'not-allowed',
+                    }}
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 2 }}>

@@ -429,7 +429,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // RAW: saving throws don't crit; only attacks + death saves do. Many tables
  // play with the house rule that NAT 1 = auto-fail, NAT 20 = auto-success on
  // ALL d20 rolls. The character can opt in via Settings.
- const useNat = !!character.nat_1_20_saves;
+ // v2.63.0: ON BY DEFAULT — only false when the user explicitly disables it.
+ const useNat = character.nat_1_20_saves !== false;
  let passed: boolean;
  let verdict: string;
  if (useNat && d20 === 20) {
@@ -610,11 +611,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }
 
  // Reset ALL feature_uses on long rest
+ // v2.63.0: 2024 PHB long rest behavior:
+ //   - Exhaustion level reduces by 1 (was: full removal of binary 'Exhaustion' condition)
+ //   - Unconscious ends when HP > 0 (long rest sets HP to max → always ends)
+ //   - Other conditions persist per RAW unless their source duration expired
+ //     (Charmed/Frightened/Poisoned/etc. all have specific durations from their
+ //     source spell or effect — they don't auto-clear on rest)
+ const newExhaustion = Math.max(0, (character.exhaustion_level ?? 0) - 1);
+ const conditionsToRemove = new Set(['Exhaustion', 'Unconscious']);
+ const newConditions = (character.active_conditions ?? []).filter(c => !conditionsToRemove.has(c));
  applyUpdate({
  current_hp: character.max_hp,
  temp_hp: 0,
  spell_slots: recoveredSlots,
- active_conditions: character.active_conditions.filter(c => c !== 'Exhaustion'),
+ active_conditions: newConditions,
+ exhaustion_level: newExhaustion,
  death_saves_successes: 0,
  death_saves_failures: 0,
  hit_dice_spent: newSpent,
@@ -2165,8 +2176,34 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* Col 3: TIME */}
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
 
- {/* Col 4: RANGE */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+ {/* Col 4: RANGE + TARGET (v2.63.0 stacked) */}
+ <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+ {(() => {
+ // Derive target description: AoE first, else parse description, else "1 target" for ranged spells
+ const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;
+ if (aoe) return <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-3)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{aoe.size}-ft {aoe.type}</div>;
+ const rng = (spell.range || '').toLowerCase();
+ if (rng === 'self') return null; // self-buff spells don't need a target line
+ if (rng === 'touch' || rng === '—' || rng === '') return null;
+ const desc = (spell.description || '').toLowerCase();
+ // Pattern matching for common target counts
+ let targetText = '1 target';
+ const upToN = desc.match(/up to (one|two|three|four|five|six|seven|eight|nine|ten|\d+) (?:creatures?|targets?)/);
+ if (upToN) {
+ const numWord = upToN[1];
+ const numMap: Record<string, string> = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10' };
+ targetText = `${numMap[numWord] ?? numWord} targets`;
+ } else if (/creatures of your choice|any number of creatures/.test(desc)) {
+ targetText = 'multi';
+ } else if (/two creatures|two targets/.test(desc)) {
+ targetText = '2 targets';
+ } else if (/three creatures|three targets/.test(desc)) {
+ targetText = '3 targets';
+ }
+ return <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-3)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{targetText}</div>;
+ })()}
+ </div>
 
  {/* Col 5: HIT / DC */}
  <div style={{ textAlign: 'center' }}>

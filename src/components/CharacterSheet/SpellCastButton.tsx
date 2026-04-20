@@ -349,11 +349,27 @@ export default function SpellCastButton({
 
  {/* Scrollable middle section — slot picker + higher-levels text + target */}
  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
+ {/* v2.63.0: full spell description (one big block) so player has full
+     context on what the spell does without closing the modal. */}
+ {spell.description && (
+ <div style={{
+ padding: '10px 12px', borderRadius: 'var(--r-md)',
+ background: 'rgba(255,255,255,0.025)', border: '1px solid var(--c-border)',
+ marginBottom: 12,
+ }}>
+ <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4 }}>
+ Description
+ </div>
+ <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.55 }}>
+ {spell.description}
+ </div>
+ </div>
+ )}
  {(spell as any).higher_levels && (
  <div style={{
  padding: '10px 12px', borderRadius: 'var(--r-md)',
  background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)',
- marginBottom: 14,
+ marginBottom: 12,
  }}>
  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#c4b5fd', marginBottom: 4 }}>
  At Higher Levels
@@ -363,6 +379,42 @@ export default function SpellCastButton({
  </div>
  </div>
  )}
+ {/* v2.63.0: per-tier breakdown using damage_at_slot_level / heal_at_slot_level
+     data. Shows exactly what each upcast tier does so the player can pick the
+     slot that matches the situation. */}
+ {(() => {
+ const dasl = (spell as any).damage_at_slot_level as Record<string, string> | undefined;
+ const hasl = (spell as any).heal_at_slot_level as Record<string, string> | undefined;
+ const tiers = dasl ?? hasl;
+ if (!tiers) return null;
+ const tierKeys = Object.keys(tiers).map(k => parseInt(k, 10)).filter(k => !isNaN(k) && k >= spell.level).sort((a, b) => a - b);
+ if (tierKeys.length === 0) return null;
+ const label = dasl ? 'Damage by slot' : 'Healing by slot';
+ return (
+ <div style={{
+ padding: '10px 12px', borderRadius: 'var(--r-md)',
+ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)',
+ marginBottom: 14,
+ }}>
+ <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#fbbf24', marginBottom: 6 }}>
+ {label}
+ </div>
+ <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 6 }}>
+ {tierKeys.map(lvl => (
+ <div key={lvl} style={{
+ padding: '6px 8px', borderRadius: 6,
+ background: selectedSlot === lvl ? 'rgba(251,191,36,0.18)' : 'rgba(255,255,255,0.025)',
+ border: `1px solid ${selectedSlot === lvl ? 'rgba(251,191,36,0.5)' : 'var(--c-border)'}`,
+ textAlign: 'center' as const,
+ }}>
+ <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.04em' }}>LVL {lvl}</div>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: selectedSlot === lvl ? '#fbbf24' : 'var(--t-2)', marginTop: 1 }}>{tiers[String(lvl)]}</div>
+ </div>
+ ))}
+ </div>
+ </div>
+ );
+ })()}
  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginBottom: 8 }}>
  Choose Spell Slot Level
  </div>

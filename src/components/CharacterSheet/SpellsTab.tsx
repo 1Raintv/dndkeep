@@ -76,9 +76,9 @@ export default function SpellsTab({
  const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
  const [filterPrepared, setFilterPrepared] = useState(false);
  const [filterSchool, setFilterSchool] = useState<string | null>(null);
- // v2.34: When true, a leveled spell renders once per available upcast slot level
- // (e.g., Shatter shows at levels 2, 3, 4, 5... up to the highest available slot).
- const [showUpcasts, setShowUpcasts] = useState(false);
+ // v2.63.0: removed showUpcasts state — variant rows replaced by per-spell
+ // upcast trigger button that opens the slot picker modal.
+ const showUpcasts = false;
 
  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
  const isKnown = isKnownCaster(character.class_name);
@@ -303,41 +303,10 @@ export default function SpellsTab({
  );
  })()}
 
- {/* ── v2.34: Upcast toggle ── */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
- <button
- onClick={() => setShowUpcasts(v => !v)}
- title="Toggle whether leveled spells appear at every upcast tier"
- style={{
- display: 'inline-flex', alignItems: 'center', gap: 6,
- padding: '5px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
- border: `1px solid ${showUpcasts ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
- background: showUpcasts ? 'var(--c-gold-bg)' : 'transparent',
- color: showUpcasts ? 'var(--c-gold-l)' : 'var(--t-2)',
- transition: 'all 0.15s',
- }}
- >
- <span aria-hidden style={{
- display: 'inline-block', width: 12, height: 12, borderRadius: 3,
- border: `1.5px solid ${showUpcasts ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
- background: showUpcasts ? 'var(--c-gold)' : 'transparent',
- position: 'relative',
- }}>
- {showUpcasts && (
- <span style={{
- position: 'absolute', top: -1, left: 2,
- color: '#000', fontSize: 10, fontWeight: 900, lineHeight: 1,
- }}>✓</span>
- )}
- </span>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.04em' }}>
- Show upcast variants
- </span>
- </button>
- <span style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>
- {showUpcasts ? 'Spells appear at every slot tier they can be cast at' : 'One row per spell; upcast prompt at cast time'}
- </span>
- </div>
+ {/* v2.63.0: removed "Show upcast variants" toggle. Upcasting is now driven
+     entirely from the per-spell upcast trigger button in the expanded panel,
+     which opens the slot-picker modal. The variant-row UX was redundant and
+     cluttered the spell list. */}
 
  {/* ── Level tabs ── */}
  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
