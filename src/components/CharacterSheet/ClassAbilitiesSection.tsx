@@ -328,26 +328,39 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </span>
  )}
 
- {/* Use / Spend Die / Trigger button */}
- {ability.actionType !== 'free' && (
+ {/* Use / Spend Die / Trigger button
+     v2.84.0: Fixed minWidth so the "Used!" flash doesn't resize the button.
+     The widest rest label ("Spend Die (1dN)") defines the button width, and
+     when it briefly swaps to "Used!" the width stays constant — visual
+     feedback without layout reflow of the parent row. */}
+ {ability.actionType !== 'free' && (() => {
+ const restingLabel =
+ ability.actionType === 'reaction' ? 'Trigger' :
+ (ability as any).psionicDie ? `Spend Die (1${getPsionicDieSize(character.level)})` :
+ (ability as any).isPool ? 'Spend Die' : 'Use';
+ const isFlashing = justUsed === ability.name;
+ return (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  style={{
  padding: '4px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
- background: justUsed === ability.name ? '#34d399' : acColor + '20',
- border: `1px solid ${justUsed === ability.name ? '#34d399' : acColor + '60'}`,
- color: justUsed === ability.name ? '#000' : acColor,
+ background: isFlashing ? '#34d399' : acColor + '20',
+ border: `1px solid ${isFlashing ? '#34d399' : acColor + '60'}`,
+ color: isFlashing ? '#000' : acColor,
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
  letterSpacing: '0.04em',
- transition: 'all 0.2s', flexShrink: 0, minHeight: 0,
+ transition: 'background 0.2s, color 0.2s, border-color 0.2s',
+ flexShrink: 0, minHeight: 0,
+ // Estimate px per character (~7.2px for fontSize 11 + letterSpacing 0.04em)
+ // and reserve space for the longest resting label, plus button padding (28px).
+ minWidth: restingLabel.length * 7.2 + 28,
+ textAlign: 'center' as const,
  }}
  >
- {justUsed === ability.name ? 'Used!' :
- ability.actionType === 'reaction' ? 'Trigger' :
- (ability as any).psionicDie ? `Spend Die (1${getPsionicDieSize(character.level)})` :
- (ability as any).isPool ? 'Spend Die' : 'Use'}
+ {isFlashing ? 'Used!' : restingLabel}
  </button>
- )}
+ );
+ })()}
 
  {/* Expand/collapse chevron — only if there's long-form content or roll history */}
  {(descLong || descShort.length > 80 || ((ability as any).psionicDie && psionicRollHistory.length > 0)) && (

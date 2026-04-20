@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, ActiveBuff, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
@@ -2565,12 +2566,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>{/* end cs-content-col */}
  </div>{/* end cs-hud-layout */}
 
- {/* v2.82.0: Potion use modal — Self/Other target chooser + heal dice roller.
-     Parses an optional dice expression from the potion description (e.g.
-     "Regain 2d4+2 HP"). If no dice found, falls back to 2d4+2 with a warning
-     badge. On Self, applies HP after the 3D roller settles via onResult and
-     consumes one from the item stack. On Other, just rolls + logs (the other
-     character's sheet handles their HP). Either way, quantity goes -1. */}
+ {/* v2.82.0 / v2.84.0: Potion use modal — Self/Other target chooser + heal
+     dice roller. v2.84.0 changes: (1) portaled to document.body to escape
+     any transform containing block (was rendering mid-page where you could
+     scroll past it); (2) shell dimensions match the upcast modal exactly
+     (maxWidth 560, calc(100dvh - 32px) for iOS Safari); (3) button labels
+     simplified — primary is "Drink for yourself", secondary is "Give to
+     another player" (the heals badge above already shows the dice expr). */}
  {potionToUse && (() => {
  const diceMatch: string = (potionToUse.description ?? potionToUse.name ?? '')
  .match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)/i)?.[1] ?? '';
@@ -2619,52 +2621,70 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setPotionToUse(null);
  };
 
- return (
+ return createPortal(
  <div className="modal-overlay" onClick={() => setPotionToUse(null)}>
  <div
  className="modal"
  onClick={e => e.stopPropagation()}
  style={{
- maxWidth: 420, width: 'calc(100vw - 24px)', padding: 20,
- display: 'flex', flexDirection: 'column' as const, gap: 14,
+ maxWidth: 560, width: 'calc(100vw - 16px)',
+ // dvh for iOS Safari — vh includes the address bar so 100vh exceeds
+ // the visible area on mobile and pushes content below the fold.
+ maxHeight: 'calc(100dvh - 32px)',
+ display: 'flex', flexDirection: 'column' as const,
+ padding: 20,
  }}
  >
- <div>
+ {/* Title section — mirrors upcast modal structure */}
+ <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--c-border)' }}>
  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)', marginBottom: 6 }}>
  Use Potion
  </div>
- <h3 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--t-1)', lineHeight: 1.2 }}>
+ <h3 style={{
+ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--t-1)',
+ wordBreak: 'break-word' as const, overflowWrap: 'anywhere' as const,
+ lineHeight: 1.15,
+ }}>
  {potionToUse.name}
  </h3>
+ </div>
+
+ {/* Scrollable middle section — description + heals badge */}
+ <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
  {potionToUse.description && (
- <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--t-3)', lineHeight: 1.5 }}>
+ <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.6 }}>
  {potionToUse.description}
  </p>
  )}
- </div>
  <div style={{
- display: 'flex', alignItems: 'center', gap: 8,
- padding: '8px 12px', borderRadius: 'var(--r-md)',
+ display: 'flex', alignItems: 'center', gap: 10,
+ padding: '10px 14px', borderRadius: 'var(--r-md)',
  background: 'rgba(52,211,153,0.08)',
  border: '1px solid rgba(52,211,153,0.3)',
  }}>
  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)' }}>Heals</span>
- <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 18, fontWeight: 800, color: 'var(--c-green-l)' }}>{expr} HP</span>
+ <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 20, fontWeight: 800, color: 'var(--c-green-l)' }}>{expr} HP</span>
  {!diceMatch && (
  <span style={{ fontSize: 9, color: 'var(--t-3)', fontStyle: 'italic' as const, marginLeft: 'auto' }}>
  (default — no dice found in description)
  </span>
  )}
  </div>
- <div style={{ fontSize: 12, color: 'var(--t-3)', lineHeight: 1.5 }}>
- Who is drinking this potion?
  </div>
- <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+
+ {/* Action footer — vertically stacked full-width buttons, mirroring
+     the upcast modal pattern so the primary button is always reachable
+     on mobile. Primary on top, secondary, cancel. */}
+ <div style={{
+ display: 'flex', flexDirection: 'column' as const, gap: 8,
+ paddingTop: 14, borderTop: '1px solid var(--c-border)', marginTop: 12,
+ }}>
  <button
  onClick={() => rollPotion('self')}
  style={{
- width: '100%', padding: '12px 16px', borderRadius: 'var(--r-md)',
- cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 14,
+ width: '100%', justifyContent: 'center',
+ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 14,
+ padding: '12px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  border: '1px solid rgba(52,211,153,0.6)',
  background: 'linear-gradient(180deg, rgba(52,211,153,0.35), rgba(52,211,153,0.2))',
  color: '#d1fae5', letterSpacing: '0.04em',
@@ -2672,19 +2692,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  minHeight: 0,
  }}
  >
- Drink yourself — roll {expr} and heal
+ Drink for yourself
  </button>
  <button
  onClick={() => rollPotion('other')}
  style={{
- width: '100%', padding: '10px 16px', borderRadius: 'var(--r-md)',
- cursor: 'pointer', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ width: '100%', justifyContent: 'center',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+ padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  border: '1px solid var(--c-border-m)',
  background: 'var(--c-raised)', color: 'var(--t-2)',
  minHeight: 0,
  }}
  >
- Give to another character — roll {expr}, don't apply to your HP
+ Give to another player
  </button>
  <button
  className="btn-secondary"
@@ -2695,7 +2716,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </button>
  </div>
  </div>
- </div>
+ </div>,
+ document.body
  );
  })()}
 

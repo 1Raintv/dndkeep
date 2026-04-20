@@ -73,9 +73,13 @@ export default function SpellCastButton({
  const { triggerRoll } = useDiceRoll();
 
  function flashCast(slotLevel: number) {
- const label = isCantrip ? 'Cast!' : `Cast (Lvl ${slotLevel}) ✓`;
+ // v2.84.0: Flash is now more prominent + longer. Was a pastel green tint
+ // for 900ms; now solid green background (matches Psion "Used!" styling)
+ // for 1800ms so the feedback is unmissable — users were clicking Cast
+ // and wondering if anything happened.
+ const label = isCantrip ? 'Cast!' : `Cast Lvl ${slotLevel} ✓`;
  setRecentlyCast(label);
- window.setTimeout(() => setRecentlyCast(curr => curr === label ? null : curr), 900);
+ window.setTimeout(() => setRecentlyCast(curr => curr === label ? null : curr), 1800);
  // v2.37.0: if this spell requires concentration, notify the parent so it can
  // set character.concentration_spell. Fires for cantrips + leveled alike.
  if (spell.concentration) {
@@ -573,9 +577,10 @@ export default function SpellCastButton({
  }
  }}
  style={{ ...btnBase,
- background: recentlyCast ? 'rgba(74,222,128,0.22)' : 'rgba(167,139,250,0.15)',
- border: `1px solid ${recentlyCast ? 'rgba(74,222,128,0.55)' : 'rgba(167,139,250,0.4)'}`,
- color: recentlyCast ? '#4ade80' : '#a78bfa',
+ background: recentlyCast ? '#34d399' : 'rgba(167,139,250,0.15)',
+ border: `1px solid ${recentlyCast ? '#34d399' : 'rgba(167,139,250,0.4)'}`,
+ color: recentlyCast ? '#000' : '#a78bfa',
+ fontWeight: recentlyCast ? 800 : 700,
  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
  }}
  >
@@ -641,9 +646,10 @@ export default function SpellCastButton({
  }
  }}
  style={{ ...btnBase,
- background: recentlyCast ? 'rgba(74,222,128,0.22)' : 'rgba(167,139,250,0.15)',
- border: `1px solid ${recentlyCast ? 'rgba(74,222,128,0.55)' : 'rgba(167,139,250,0.4)'}`,
- color: recentlyCast ? '#4ade80' : '#a78bfa',
+ background: recentlyCast ? '#34d399' : 'rgba(167,139,250,0.15)',
+ border: `1px solid ${recentlyCast ? '#34d399' : 'rgba(167,139,250,0.4)'}`,
+ color: recentlyCast ? '#000' : '#a78bfa',
+ fontWeight: recentlyCast ? 800 : 700,
  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
  }}
  title={`Targets make ${mechanics.saveType} DC ${saveDC} save. Click to cast.`}
