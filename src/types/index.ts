@@ -452,6 +452,12 @@ export interface ConditionData {
 export interface SkillData {
   name: string;
   ability: AbilityKey;
+  // v2.67.0: skills that typically require sight to perform. When the character
+  // is Blinded, rolls of these skills auto-fail per 2024 PHB Blinded condition
+  // ("automatically fails any ability check that requires sight"). The DM can
+  // override on the rare occasion the check doesn't actually use sight (e.g.,
+  // Investigation by touch on a small object).
+  requiresSight?: boolean;
 }
 
 // --- Campaign ---

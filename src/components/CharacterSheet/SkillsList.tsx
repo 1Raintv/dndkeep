@@ -32,24 +32,33 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
   const sortedSkills = [...SKILLS].sort((a, b) => a.name.localeCompare(b.name));
   const { triggerRoll } = useDiceRoll();
 
-  function rollSkill(skillName: string, modifier: number) {
+  // v2.67.0: Blinded auto-fails sight-required ability checks per 2024 PHB.
+  // We don't block the roll (the DM may decide a specific check doesn't use
+  // sight — Investigation by touch, Perception by hearing, etc.), but we tag
+  // the roll prominently and add a ⚠ to the skill row so the player + DM
+  // both see it and can treat the result as a failure RAW.
+  const isBlinded = (character.active_conditions ?? []).includes('Blinded');
+
+  function rollSkill(skillName: string, modifier: number, requiresSight?: boolean) {
     const buffs = computeActiveBonuses((character as any).active_buffs ?? []);
     const hasDisadvantage = (character.active_conditions ?? []).some(c => {
       const mech = CONDITION_MAP[c];
       return mech?.attackDisadvantage || mech?.abilityCheckDisadvantage;
     });
+    const sightAutoFail = isBlinded && !!requiresSight;
     const roll1 = rollDie(20);
     const roll2 = hasDisadvantage ? rollDie(20) : roll1;
     const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
     const blessRoll = buffs.blessActive ? rollDie(4) : 0;
     const total = d20 + modifier + blessRoll;
-    const label = `${skillName} Check${hasDisadvantage ? ' (Disadv.)' : ''}${blessRoll ? ` +${blessRoll} Bless` : ''}`;
+    const label = `${sightAutoFail ? '⚠ AUTO-FAIL (Blinded · sight) — ' : ''}${skillName} Check${hasDisadvantage ? ' (Disadv.)' : ''}${blessRoll ? ` +${blessRoll} Bless` : ''}`;
     triggerRoll({ result: 0, dieType: 20, modifier: modifier + blessRoll, label,
       onResult: (_dice, physTotal) => {
         const physRoll = physTotal - (modifier + blessRoll);
         supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: modifier + blessRoll }).then(({error}) => { if (error) console.error('roll_logs insert error:', error); });
       },
     });
+    void total; // total still computed for signature parity; auto-fail is a label-level annotation per 2024 RAW
   }
 
   function cycleSkill(e: React.MouseEvent, skillName: string) {
@@ -78,14 +87,18 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
     if (!data) return null;
     const abilityColor = ABILITY_COLORS[skill.ability] ?? 'var(--t-3)';
     const abilityAbbrev = ABILITY_ABBREVS[skill.ability] ?? '?';
+    // v2.67.0: warn when this skill would auto-fail due to Blinded + requiresSight
+    const sightAutoFail = isBlinded && !!skill.requiresSight;
 
     return (
       <div
-        onClick={() => rollSkill(skill.name, data.total)}
+        onClick={() => rollSkill(skill.name, data.total, skill.requiresSight)}
         role="button"
         tabIndex={0}
-        onKeyDown={e => e.key === 'Enter' && rollSkill(skill.name, data.total)}
-        title={`Roll ${skill.name} (d20${data.total >= 0 ? '+' : ''}${data.total})`}
+        onKeyDown={e => e.key === 'Enter' && rollSkill(skill.name, data.total, skill.requiresSight)}
+        title={sightAutoFail
+          ? `⚠ Blinded: this sight-based ${skill.name} check auto-fails per 2024 RAW (DM may override if the check doesn't use sight)`
+          : `Roll ${skill.name} (d20${data.total >= 0 ? '+' : ''}${data.total})`}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '3px 4px', borderRadius: 'var(--r-sm)',
@@ -113,8 +126,9 @@ export default function SkillsList({ character, computed, onUpdate }: SkillsList
         <span style={{
           fontFamily: 'var(--ff-body)', fontWeight: data.proficient ? 600 : 400,
           fontSize: 11, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          color: data.expert ? 'var(--c-gold-xl)' : data.proficient ? 'var(--t-1)' : 'var(--t-2)',
+          color: sightAutoFail ? 'var(--c-danger, #dc2626)' : data.expert ? 'var(--c-gold-xl)' : data.proficient ? 'var(--t-1)' : 'var(--t-2)',
         }}>
+          {sightAutoFail && <span style={{ marginRight: 3 }} aria-label="Blinded — sight auto-fails">⚠</span>}
           {skill.name}
         </span>
 
