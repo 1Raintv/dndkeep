@@ -50,6 +50,7 @@ import ErrorBoundary from '../ErrorBoundary';
 import DamageEffect from './DamageEffect';
 import { PlayerRollPrompt } from '../Campaign/RollRequest';
 import ClassResourcesPanel from './ClassResourcesPanel';
+import LevelTab from './_shared/LevelTab';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 import { useCampaign } from '../../context/CampaignContext';
@@ -1736,32 +1737,27 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* v2.43.0: Defenses strip MOVED to vitals row (above HPStatsPanel area).
  No longer rendered here — keeps Actions tab focused on combat actions. */}
 
- {/* Filter chips — v2.76.0: mirrors the Spells-tab LevelTab pattern. Each
-     pill is its own clickable region (filter by action type) and the chiclet
-     immediately to its right is a separate clickable region (toggle turn
-     economy state). ALL has no chiclet since it has no associated state.
-     Gold-filled chiclet = available; hollow chiclet = used this turn.
-     Chiclet state syncs bidirectionally with the ActionEconomy panel above. */}
+ {/* Filter chips — v2.78.0: plain pills (chiclets removed per user request).
+     Turn economy state (used this turn) is tracked by the Turn Economy panel
+     in the vitals column, not here. These pills just filter the list. */}
  <div>
  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
  {([
- { id: 'all', label: 'All', used: undefined, setUsed: undefined, color: 'var(--c-gold)' },
- { id: 'action', label: 'Action', used: spellCastThisTurn, setUsed: setSpellCastThisTurn, color: '#f59e0b' },
- { id: 'bonus', label: 'Bonus', used: bonusActionSpellCast, setUsed: setBonusActionSpellCast, color: '#8b5cf6' },
- { id: 'reaction', label: 'Reaction', used: reactionUsedThisTurn, setUsed: setReactionUsedThisTurn, color: '#3b82f6' },
+ { id: 'all', label: 'All' },
+ { id: 'action', label: 'Action' },
+ { id: 'bonus', label: 'Bonus' },
+ { id: 'reaction', label: 'Reaction' },
  ] as const).map(f => {
  const activePill = combatFilter === f.id;
- const isAvailable = f.used === false; // undefined for "all"
  return (
- <div key={f.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
- {/* Filter pill — click to filter the list by this action type */}
  <button
+ key={f.id}
  onClick={() => setCombatFilter(f.id)}
  title={`Filter: ${f.label}`}
  style={{
  fontFamily: 'var(--ff-body)', fontWeight: activePill ? 700 : 600, fontSize: 10,
  letterSpacing: '.06em', textTransform: 'uppercase',
- padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+ padding: '4px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
  border: activePill ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
  background: activePill ? 'rgba(245,158,11,0.15)' : 'var(--c-raised)',
  color: activePill ? 'var(--c-gold-l)' : 'var(--t-3)',
@@ -1770,34 +1766,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}>
  {f.label}
  </button>
-
- {/* Turn economy chiclet — click to toggle used/available for this action type.
-     Rendered in its own pill-shaped container for visual parity with LevelTab. */}
- {f.setUsed && (
- <div
- title={`Click to toggle ${f.label} used/available`}
- style={{
- display: 'inline-flex', alignItems: 'center',
- padding: '3px 6px', borderRadius: 999,
- background: 'var(--c-card)', border: '1px solid var(--c-border-m)',
- flex: '0 0 auto',
- }}
- >
- <button
- onClick={() => f.setUsed(!f.used)}
- title={isAvailable ? `Mark ${f.label} used this turn` : `Restore ${f.label} for this turn`}
- aria-label={isAvailable ? `Mark ${f.label} used` : `Restore ${f.label}`}
- style={{
- display: 'inline-block', width: 12, height: 12, borderRadius: 2,
- padding: 0, cursor: 'pointer',
- background: isAvailable ? f.color : 'transparent',
- border: `1.5px solid ${isAvailable ? f.color : 'var(--c-border-m)'}`,
- transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
- }}
- />
- </div>
- )}
- </div>
  );
  })}
  {inventoryWeapons.length > 0 && (
@@ -2003,87 +1971,46 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {isPreparer && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>{character.prepared_spells.length} prepared</span>}
  </div>
 
- {/* v2.36.0: Level filter tabs with slot pips — mirrors the Spells tab UX.
- Each tab shows its label + remaining-slot pips; clicking filters the list. */}
+ {/* v2.78.0: Actions-tab level filter now uses the shared LevelTab component
+     (same one SpellsTab uses). Pill + chiclet rail are separated surfaces;
+     pill filters the list, chiclets expend/restore slots. Height matched to
+     surrounding pills. */}
  {(() => {
  const presentLevels = [0, ...Object.keys(slotsByLevel).map(Number).sort((a, b) => a - b)];
  const LEVEL_LABELS: Record<number, string> = { 0: 'Cantrips', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th', 7: '7th', 8: '8th', 9: '9th' };
  return (
- <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 10 }}>
- <button
+ <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
+ <LevelTab
+ label="All"
+ count={cantrips.length + leveled.length}
+ active={actionsLevelFilter === 'all'}
  onClick={() => setActionsLevelFilter('all')}
- style={{
- display: 'flex', alignItems: 'center', gap: 5,
- padding: '5px 12px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
- border: actionsLevelFilter === 'all' ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
- background: actionsLevelFilter === 'all' ? 'var(--c-gold-bg)' : 'var(--c-raised)',
- color: actionsLevelFilter === 'all' ? 'var(--c-gold-l)' : 'var(--t-2)',
- fontSize: 12, fontWeight: actionsLevelFilter === 'all' ? 700 : 500,
- }}
- >
- All
- <span style={{ fontSize: 9, fontWeight: 700, background: actionsLevelFilter === 'all' ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: actionsLevelFilter === 'all' ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
- {cantrips.length + leveled.length}
- </span>
- </button>
+ />
  {presentLevels.map(lvl => {
  const slotBucket = slotsByLevel[lvl];
  const max = lvl > 0 ? (slotBucket?.total ?? 0) : 0;
  const remaining = lvl > 0 ? (slotBucket?.remaining ?? 0) : 0;
  const rowCount = lvl === 0 ? cantrips.length : leveled.filter(s => s.level === lvl).length;
- const active = actionsLevelFilter === lvl;
  return (
- <button
+ <LevelTab
  key={lvl}
+ label={LEVEL_LABELS[lvl] ?? String(lvl)}
+ count={rowCount}
+ slots={lvl > 0 ? { max, remaining } : null}
+ active={actionsLevelFilter === lvl}
  onClick={() => setActionsLevelFilter(lvl)}
- style={{
- display: 'flex', alignItems: 'center', gap: 5,
- padding: '5px 12px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
- border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
- background: active ? 'var(--c-gold-bg)' : 'var(--c-raised)',
- color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
- fontSize: 12, fontWeight: active ? 700 : 500,
- }}
- >
- {LEVEL_LABELS[lvl] ?? String(lvl)}
- <span style={{ fontSize: 9, fontWeight: 700, background: active ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: active ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
- {rowCount}
- </span>
- {/* Clickable slot pips for leveled tabs — restore a spent slot by clicking a faded pip */}
- {lvl > 0 && max > 0 && (
- <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
- {Array.from({ length: Math.min(max, 5) }).map((_, i) => {
- const filled = i < remaining;
- return (
- <span
- key={i}
- onClick={e => {
- e.stopPropagation();
- // Toggle this specific pip:
- // - If filled, consume it (increment used) — cap at total.
- // - If empty, restore it (decrement used) — floor at 0.
- const cur = character.spell_slots[String(lvl)];
- if (!cur) return;
- const used = cur.used ?? 0;
- const next = filled
- ? { ...cur, used: Math.min(cur.total, used + 1) }
- : { ...cur, used: Math.max(0, used - 1) };
- applyUpdate({ spell_slots: { ...character.spell_slots, [String(lvl)]: next } }, true);
- }}
- title={filled ? `Mark a ${LEVEL_LABELS[lvl]}-level slot as spent` : `Restore a ${LEVEL_LABELS[lvl]}-level slot`}
- style={{
- display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
- background: filled ? (active ? 'var(--c-gold)' : 'var(--c-gold-l)') : 'transparent',
- border: `1.5px solid ${filled ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
- cursor: 'pointer',
- }}
+ onToggleSlot={lvl > 0 ? (_idx, expending) => {
+ const slotKey = String(lvl);
+ const current = character.spell_slots?.[slotKey];
+ if (!current) return;
+ const currentUsed = current.used ?? 0;
+ const newUsed = expending
+ ? Math.min(current.total, currentUsed + 1)
+ : Math.max(0, currentUsed - 1);
+ if (newUsed === currentUsed) return;
+ applyUpdate({ spell_slots: { ...character.spell_slots, [slotKey]: { ...current, used: newUsed } } }, true);
+ } : undefined}
  />
- );
- })}
- {max > 5 && <span style={{ fontSize: 8, color: active ? 'var(--c-gold-l)' : 'var(--t-3)' }}>+{max - 5}</span>}
- </span>
- )}
- </button>
  );
  })}
  </div>
@@ -2098,7 +2025,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
- {[...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled]
+ {/* v2.78.0: Spells now grouped by level with a section header per group.
+     Each header shows "{Ordinal} Level" and the remaining/max slot count so
+     the player can see at a glance how many slots they have left as they
+     scroll through the list. Cantrips show "At-Will" instead of a slot count. */}
+ {(() => {
+ const filtered = [...cantrips.map(s => ({ ...s, effectiveLevel: 0, isUpcast: false })), ...leveled]
  .filter(s => actionsLevelFilter === 'all' || s.level === actionsLevelFilter)
  .filter(s => {
  // v2.46.0: combatFilter now actually filters spell rows by casting time.
@@ -2113,8 +2045,42 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return ct.includes('action') && !ct.includes('bonus') && !ct.includes('reaction');
  }
  return true;
- })
- .map(spell => {
+ });
+ const byLevel: Record<number, typeof filtered> = {};
+ filtered.forEach(s => { (byLevel[s.level] ??= []).push(s); });
+ const sortedLevels = Object.keys(byLevel).map(Number).sort((a, b) => a - b);
+ const LVL_LBL: Record<number, string> = { 0: 'Cantrips', 1: '1st Level', 2: '2nd Level', 3: '3rd Level', 4: '4th Level', 5: '5th Level', 6: '6th Level', 7: '7th Level', 8: '8th Level', 9: '9th Level' };
+ return sortedLevels.map(lvl => {
+ const groupSpells = byLevel[lvl];
+ const bucket = slotsByLevel[lvl];
+ return (
+ <div key={`grp-${lvl}`} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+ {/* Level section header with slot pip indicator */}
+ <div style={{
+ display: 'flex', alignItems: 'center', gap: 10,
+ padding: '4px 10px 6px', marginTop: lvl === sortedLevels[0] ? 0 : 6,
+ borderBottom: '1px solid var(--c-border)',
+ }}>
+ <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.12em', color: 'var(--t-2)' }}>
+ {LVL_LBL[lvl] ?? `Level ${lvl}`}
+ </span>
+ <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)', padding: '1px 6px', borderRadius: 999 }}>
+ {groupSpells.length}
+ </span>
+ {lvl === 0 ? (
+ <span style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic', marginLeft: 4 }}>At-Will</span>
+ ) : bucket && bucket.total > 0 ? (
+ <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginLeft: 4 }}>
+ {Array.from({ length: Math.min(bucket.total, 5) }).map((_, i) => (
+ <div key={i} style={{ width: 9, height: 9, borderRadius: '50%', border: '1.5px solid var(--c-gold-bdr)', background: i < bucket.remaining ? 'var(--c-gold)' : 'transparent', boxShadow: i < bucket.remaining ? '0 0 4px rgba(212,160,23,0.4)' : 'none' }} />
+ ))}
+ {bucket.total > 5 && <span style={{ fontSize: 8, color: 'var(--t-3)' }}>+{bucket.total - 5}</span>}
+ <span style={{ fontSize: 10, color: 'var(--t-3)', marginLeft: 3 }}>{bucket.remaining}/{bucket.total} slots</span>
+ </div>
+ ) : null}
+ </div>
+
+ {groupSpells.map(spell => {
  const sc = schoolColor[spell.school] ?? '#a78bfa';
  const eff = (spell as any).effectiveLevel ?? spell.level;
  const isUpcast = !!(spell as any).isUpcast;
@@ -2404,6 +2370,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  );
  })}
+ </div>
+ );
+ });
+ })()}
  </div>
  </div>
  );

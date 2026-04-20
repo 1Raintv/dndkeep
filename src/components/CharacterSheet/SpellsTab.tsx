@@ -7,6 +7,7 @@ import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics, canUpcastSpell } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
 import { getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
+import LevelTab from './_shared/LevelTab';
 
 interface SpellsTabProps {
  character: Character;
@@ -492,85 +493,6 @@ export default function SpellsTab({
 }
 
 // ── Level tab button ─────────────────────────────────────────────────
-function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: {
- label: string;
- count: number;
- slots?: { max: number; remaining: number } | null;
- active: boolean;
- onClick: () => void;
- onToggleSlot?: (slotIndex: number, expending: boolean) => void;
-}) {
- // v2.76.0: Pill and chiclets are now PHYSICALLY SEPARATE sibling elements
- // rather than nested inside one button. This makes each region visually
- // distinct and unambiguously clickable — the pill filters, the chiclet
- // rail manages slots. Both surfaces are paired in a small flex container
- // with a tiny gap so they still read as a unit. The outer wrapper uses
- // `display: inline-flex` so the pair stays together during wrap.
- const maxVisibleBoxes = 4;
- const boxesToShow = slots ? Math.min(slots.max, maxVisibleBoxes) : 0;
- return (
- <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
- {/* Filter pill — click to set active level */}
- <button
- onClick={onClick}
- title={`Filter: ${label}`}
- style={{
- display: 'flex', alignItems: 'center', gap: 5,
- padding: '4px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
- border: active ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
- background: active ? 'var(--c-gold-bg)' : 'var(--c-raised)',
- color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
- fontSize: 12, fontWeight: active ? 700 : 500,
- transition: 'all 0.15s',
- flex: '0 0 auto',
- }}
- >
- <span>{label}</span>
- <span style={{ fontSize: 9, fontWeight: 700, background: active ? 'rgba(212,160,23,0.2)' : 'var(--c-card)', color: active ? 'var(--c-gold-l)' : 'var(--t-3)', padding: '0 5px', borderRadius: 999 }}>
- {count}
- </span>
- </button>
-
- {/* Slot chiclet rail — separate clickable region per box */}
- {slots && (
- <div
- title="Click to expend/restore spell slots"
- style={{
- display: 'inline-flex', alignItems: 'center', gap: 3,
- padding: '3px 6px', borderRadius: 999,
- background: 'var(--c-card)', border: '1px solid var(--c-border-m)',
- flex: '0 0 auto',
- }}
- >
- {Array.from({ length: boxesToShow }).map((_, i) => {
- const isAvailable = i < slots.remaining;
- return (
- <button
- key={i}
- onClick={() => onToggleSlot?.(i, isAvailable)}
- title={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
- style={{
- display: 'inline-block', width: 12, height: 12, borderRadius: 2,
- padding: 0, cursor: 'pointer',
- background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
- border: `1.5px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
- transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
- }}
- aria-label={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
- />
- );
- })}
- {slots.max > maxVisibleBoxes && (
- <span style={{ fontSize: 9, color: 'var(--t-3)', marginLeft: 1 }}>
- +{slots.max - maxVisibleBoxes}
- </span>
- )}
- </div>
- )}
- </div>
- );
-}
-
 // ── Spell card ───────────────────────────────────────────────────────
 function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
