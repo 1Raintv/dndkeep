@@ -10,6 +10,7 @@ import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
 import PartyView from './PartyView';
 import ActionLog from '../shared/ActionLog';
+import CombatEventLog from '../shared/CombatEventLog';
 import PartyChat from './PartyChat';
 import DMScreen from './DMScreen';
 import SessionScheduler from './SessionScheduler';
@@ -422,9 +423,10 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
         {activeTab === 'log' && (
           <div style={{ maxWidth: 720 }}>
             <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)' }}>
-              Live feed of every attack, spell, and roll by all party members — updates in real-time.
+              {/* v2.93.0: unified combat_events view with Player / DM / NPC / Monster filters */}
+              Live feed of every attack, spell, condition, and roll in this campaign. Filter by actor or event type.
             </p>
-            <ActionLog campaignId={campaign.id} mode="campaign" maxHeight={560} />
+            <CombatEventLog campaignId={campaign.id} mode="campaign" maxHeight={560} />
           </div>
         )}
 

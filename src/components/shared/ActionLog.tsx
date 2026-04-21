@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { emitCombatEvent, type CombatEventType } from '../../lib/combatEvents';
 
 export interface ActionLogEntry {
   id: string;
@@ -52,7 +53,8 @@ export async function logAction(params: {
   individualResults?: number[]; total?: number;
   hitResult?: 'hit' | 'miss' | 'crit' | 'fumble' | ''; notes?: string;
 }) {
-  return supabase.from('action_logs').insert({
+  // Legacy write (dual-write during Phase A migration)
+  const legacyResult = supabase.from('action_logs').insert({
     campaign_id: params.campaignId ?? null,
     character_id: params.characterId,
     character_name: params.characterName,
@@ -65,6 +67,38 @@ export async function logAction(params: {
     hit_result: params.hitResult ?? '',
     notes: params.notes ?? '',
   });
+
+  // v2.93.0: also emit to combat_events (Phase A of the Combat Backbone)
+  const evtType: CombatEventType =
+    params.actionType === 'attack'          ? 'attack_roll' :
+    params.actionType === 'damage'          ? 'damage_rolled' :
+    params.actionType === 'heal'            ? 'healing_applied' :
+    params.actionType === 'spell'           ? 'spell_cast' :
+    params.actionType === 'save'            ? 'save_rolled' :
+    params.actionType === 'check'           ? 'ability_check_rolled' :
+    params.actionType === 'standard-action' ? 'standard_action_taken' :
+                                              'generic_roll';
+
+  emitCombatEvent({
+    campaignId: params.campaignId ?? null,
+    actorType: 'player',
+    actorId: params.characterId,
+    actorName: params.characterName,
+    targetType: params.targetName ? 'monster' : null,
+    targetName: params.targetName || null,
+    eventType: evtType,
+    payload: {
+      action_name: params.actionName,
+      dice_expression: params.diceExpression ?? '',
+      individual_results: params.individualResults ?? [],
+      total: params.total ?? 0,
+      hit_result: params.hitResult ?? '',
+      notes: params.notes ?? '',
+      legacy_action_type: params.actionType,
+    },
+  }).catch(() => { /* fire-and-forget */ });
+
+  return legacyResult;
 }
 
 export default function ActionLog({ campaignId, characterId, mode = 'campaign', maxHeight = 480 }: ActionLogProps) {

@@ -47,6 +47,7 @@ import LevelUpWizard from './LevelUpWizard';
 import LevelUpBanner from './LevelUpBanner';
 import SpellsTab from './SpellsTab';
 import ActionLog from '../shared/ActionLog';
+import CombatEventLog from '../shared/CombatEventLog';
 import WildshapeTracker from './WildshapeTracker';
 import ErrorBoundary from '../ErrorBoundary';
 import DamageEffect from './DamageEffect';
@@ -2742,6 +2743,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </span>
  </div>
  <CharacterHistory characterId={character.id} maxHeight={400} />
+ </section>
+
+ {/* v2.93.0 — Phase A: unified Combat Events log for this character */}
+ <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+ Combat Events
+ </div>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
+ Unified log · filter by event type
+ </span>
+ </div>
+ <CombatEventLog characterId={character.id} mode="character" maxHeight={360} />
  </section>
 
  {/* Roll & action log — rolls, attacks, saves, etc. */}

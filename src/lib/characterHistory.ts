@@ -8,6 +8,55 @@
 
 import { supabase } from './supabase';
 import type { Character } from '../types';
+import { emitCombatEvent, type CombatEventType } from './combatEvents';
+
+// v2.93.0 — Phase A: character_history legacy writes also emit to combat_events.
+// We need campaign_id + character name for the unified event. Cache per-session
+// to avoid N extra fetches.
+const characterMetaCache = new Map<string, { name: string; campaignId: string | null }>();
+
+async function getCharacterMeta(characterId: string): Promise<{ name: string; campaignId: string | null }> {
+  const cached = characterMetaCache.get(characterId);
+  if (cached) return cached;
+  try {
+    const { data } = await supabase
+      .from('characters')
+      .select('name, campaign_id')
+      .eq('id', characterId)
+      .single();
+    const meta = {
+      name: data?.name ?? 'Unknown',
+      campaignId: (data?.campaign_id as string | null) ?? null,
+    };
+    characterMetaCache.set(characterId, meta);
+    return meta;
+  } catch {
+    return { name: 'Unknown', campaignId: null };
+  }
+}
+
+function mapHistoryTypeToCombat(t: HistoryEventType): CombatEventType {
+  switch (t) {
+    case 'hp_change':           return 'hp_changed';
+    case 'temp_hp_change':      return 'temp_hp_changed';
+    case 'spell_slot_used':     return 'spell_slot_used';
+    case 'spell_slot_restored': return 'spell_slot_restored';
+    case 'condition_added':     return 'condition_applied';
+    case 'condition_removed':   return 'condition_removed';
+    case 'exhaustion_change':   return 'exhaustion_changed';
+    case 'concentration_start': return 'concentration_started';
+    case 'concentration_end':   return 'concentration_broken';
+    case 'rest':                return 'rest_taken';
+    case 'level_up':            return 'leveled_up';
+    case 'inspiration_change':  return 'inspiration_changed';
+    case 'spell_cast':          return 'spell_cast';
+    case 'roll':                return 'generic_roll';
+    case 'field_change':
+    case 'other':
+    default:
+      return 'character_field_changed';
+  }
+}
 
 export type HistoryEventType =
   | 'field_change'        // generic field edit (hp, ac, name, xp, etc.)
@@ -53,6 +102,24 @@ export async function logHistoryEvent(evt: HistoryEvent): Promise<void> {
     // eslint-disable-next-line no-console
     console.warn('[history] logHistoryEvent failed:', e);
   }
+  // v2.93.0 — Phase A: dual-write to combat_events (fire-and-forget)
+  try {
+    const meta = await getCharacterMeta(evt.characterId);
+    emitCombatEvent({
+      campaignId: meta.campaignId,
+      actorType: 'player',
+      actorId: evt.characterId,
+      actorName: meta.name,
+      eventType: mapHistoryTypeToCombat(evt.eventType),
+      payload: {
+        description: evt.description,
+        field: evt.field ?? null,
+        old_value: evt.oldValue ?? null,
+        new_value: evt.newValue ?? null,
+        legacy_event_type: evt.eventType,
+      },
+    }).catch(() => { /* noop */ });
+  } catch { /* noop */ }
 }
 
 /**
@@ -312,4 +379,34 @@ export async function logHistoryEvents(events: HistoryEvent[]): Promise<void> {
     // eslint-disable-next-line no-console
     console.warn('[history] logHistoryEvents failed:', e);
   }
+
+  // v2.93.0 — Phase A: dual-write to combat_events. Batch per-character to
+  // reuse meta cache and avoid refetching per event.
+  try {
+    const byCharacter = new Map<string, HistoryEvent[]>();
+    for (const e of events) {
+      const arr = byCharacter.get(e.characterId) ?? [];
+      arr.push(e);
+      byCharacter.set(e.characterId, arr);
+    }
+    for (const [charId, evts] of byCharacter.entries()) {
+      const meta = await getCharacterMeta(charId);
+      for (const e of evts) {
+        emitCombatEvent({
+          campaignId: meta.campaignId,
+          actorType: 'player',
+          actorId: charId,
+          actorName: meta.name,
+          eventType: mapHistoryTypeToCombat(e.eventType),
+          payload: {
+            description: e.description,
+            field: e.field ?? null,
+            old_value: e.oldValue ?? null,
+            new_value: e.newValue ?? null,
+            legacy_event_type: e.eventType,
+          },
+        }).catch(() => { /* noop */ });
+      }
+    }
+  } catch { /* noop */ }
 }

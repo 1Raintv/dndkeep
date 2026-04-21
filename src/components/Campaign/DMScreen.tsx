@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import ActionLog from '../shared/ActionLog';
+import CombatEventLog from '../shared/CombatEventLog';
 import type { Campaign, SessionState } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
@@ -530,8 +530,9 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
       )}
 
       {/* ══════════════ LOG SECTION ══════════════ */}
+      {/* v2.93.0 — Phase A: unified CombatEventLog with Player/DM/NPC filters */}
       {section === 'log' && (
-        <ActionLog campaignId={campaign.id} mode="campaign" maxHeight={520} />
+        <CombatEventLog campaignId={campaign.id} mode="campaign" maxHeight={520} />
       )}
 
       {/* ══════════════ NOTES SECTION ══════════════ */}

@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 
-interface ActionLogEntry {
+// v2.93.0 — Phase A: read from combat_events instead of action_logs.
+// The unified table has proper actor_type / actor_name / event_type / payload.
+interface LogRow {
   id: string;
   actor_name: string;
-  action_type: string;
-  action_description: string;
-  value?: number;
+  actor_type: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  target_name: string | null;
   created_at: string;
 }
 
@@ -49,8 +52,12 @@ export default function AISummary({ campaignId, campaignName, isOwner }: AISumma
       // Fetch last session's action log (last 4 hours of activity, or last 100 actions)
       const since = new Date();
       since.setHours(since.getHours() - 8);
-      const { data: logs } = await supabase.from('action_logs')
-        .select('*').eq('campaign_id', campaignId)
+      // v2.93.0: read from combat_events (unified log). Exclude DM-only events
+      // so the AI doesn't leak fudges into the player-facing recap.
+      const { data: logs } = await supabase.from('combat_events')
+        .select('id,actor_name,actor_type,event_type,payload,target_name,created_at')
+        .eq('campaign_id', campaignId)
+        .eq('visibility', 'public')
         .gte('created_at', since.toISOString())
         .order('created_at', { ascending: true })
         .limit(150);
@@ -62,11 +69,17 @@ export default function AISummary({ campaignId, campaignName, isOwner }: AISumma
       }
 
       // Build action log text for the prompt
-      const logText = (logs as ActionLogEntry[]).map(l =>
-        `[${new Date(l.created_at).toLocaleTimeString()}] ${l.actor_name}: ${l.action_description}${l.value ? ` (${l.value})` : ''}`
-      ).join('\n');
+      const rows = logs as LogRow[];
+      const logText = rows.map(l => {
+        const p = l.payload ?? {};
+        const name = (p.action_name as string) || (p.description as string) || l.event_type.replace(/_/g, ' ');
+        const target = l.target_name ? ` → ${l.target_name}` : '';
+        const total = typeof p.total === 'number' && p.total > 0 ? ` (${p.total})` : '';
+        const hit = p.hit_result ? ` [${p.hit_result}]` : '';
+        return `[${new Date(l.created_at).toLocaleTimeString()}] ${l.actor_name}: ${name}${target}${total}${hit}`;
+      }).join('\n');
 
-      const playerNames = [...new Set((logs as ActionLogEntry[]).map(l => l.actor_name))].join(', ');
+      const playerNames = [...new Set(rows.filter(l => l.actor_type === 'player').map(l => l.actor_name))].join(', ');
 
       // Call Claude API
       const response = await fetch('https://api.anthropic.com/v1/messages', {
