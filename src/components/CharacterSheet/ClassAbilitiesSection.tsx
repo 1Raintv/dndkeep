@@ -310,23 +310,33 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
 
  {/* v2.81.0: Last rolled psionic die — inline badge visible BEFORE expanding.
      Shows the most recent roll right in the row so players can see results
-     at a glance without having to open the detail panel. */}
- {(ability as any).psionicDie && psionicRollHistory.length > 0 && (
+     at a glance without having to open the detail panel.
+     v2.88.0: Slot now ALWAYS renders for psionicDie abilities (not only after
+     first roll) so clicking Spend Die doesn't shift the row layout. Empty
+     state shows a muted "—" placeholder; once rolled, it flips to the pink
+     accent value. */}
+ {(ability as any).psionicDie && (() => {
+ const hasRoll = psionicRollHistory.length > 0;
+ return (
  <span
- title={`Last roll: ${psionicRollHistory[0].value} on 1${psionicRollHistory[0].die}`}
+ title={hasRoll ? `Last roll: ${psionicRollHistory[0].value} on 1${psionicRollHistory[0].die}` : 'No rolls yet — click Spend Die to roll'}
  style={{
  display: 'inline-flex', alignItems: 'center', gap: 4,
  fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 13,
  padding: '2px 9px', borderRadius: 999,
- background: 'rgba(232,121,249,0.18)',
- border: '1px solid rgba(232,121,249,0.5)',
- color: '#e879f9', flexShrink: 0,
+ background: hasRoll ? 'rgba(232,121,249,0.18)' : 'transparent',
+ border: `1px solid ${hasRoll ? 'rgba(232,121,249,0.5)' : 'rgba(232,121,249,0.2)'}`,
+ color: hasRoll ? '#e879f9' : 'rgba(232,121,249,0.35)',
+ flexShrink: 0,
+ transition: 'background 0.25s, border-color 0.25s, color 0.25s',
+ minWidth: 64, justifyContent: 'center' as const,
  }}
  >
  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', opacity: 0.7 }}>ROLLED</span>
- {psionicRollHistory[0].value}
+ {hasRoll ? psionicRollHistory[0].value : '—'}
  </span>
- )}
+ );
+ })()}
 
  {/* Use / Spend Die / Trigger button
      v2.84.0: Fixed minWidth so the "Used!" flash doesn't resize the button.

@@ -43,7 +43,14 @@ export function parseSpellMechanics(description: string, structured?: {
   // ── Use structured API data when available ────────────────────
   if (structured) {
     const isAttack = !!structured.attack_type;
-    const isUtility = !structured.damage_dice && !structured.heal_dice &&
+    // v2.88.0: isUtility used to require NO damage, which misclassified spells
+    // like Dimension Door (teleport with conditional 4d6 force damage only if
+    // you arrive in an occupied space). Those spells have damage_dice but no
+    // save_type and no attack_type — they should still render a Cast button
+    // plus a separate Damage roll for the edge case. Fix: exclude damage from
+    // the isUtility check so the Cast button renders, and let SpellCastButton
+    // add a damage button when `isUtility && damageDice`.
+    const isUtility = !structured.heal_dice &&
       !structured.save_type && !isAttack;
     return {
       damageDice:  structured.damage_dice ?? null,

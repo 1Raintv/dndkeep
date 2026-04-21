@@ -1355,7 +1355,7 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Cleric", "Druid", "Paladin", "Psion"],
-  description: "Healing energy radiates from you in an aura with a 30-foot radius. Until the spell ends, the aura moves with you, centered on you. You can use a bonus action to cause one creature in the aura (including you) to regain 2d6 hit points.",
+  description: "Healing energy radiates from you in an aura with a 30-foot radius. The aura moves with you, centered on you for the spell's duration.\n\nUntil the spell ends, on each of your turns you can use a Bonus Action to cause one creature of your choice in the aura (including you) to regain 2d6 Hit Points.\n\nThis spell requires your Concentration. As with other healing effects, it has no effect on Undead or Constructs.",
   heal_dice: "2d6",
   },
   {

@@ -19,12 +19,16 @@ interface HPStatsPanelProps {
   defenseChips?: Array<{ label: string; color: string; kind: 'res' | 'imm' | 'vul' }>;
   // v2.50.0: clicking the "Defenses" label opens character settings to edit.
   onOpenSettings?: () => void;
+  // v2.88.0: Turn-scoped Standard Action effects surface as visible badges
+  // next to AC so the player + DM see them at a glance regardless of tab.
+  dashingThisTurn?: boolean;
+  dodgingThisTurn?: boolean;
 }
 
 const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
 
 export default function HPStatsPanel({
-  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [], onOpenSettings,
+  character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [], onOpenSettings, dashingThisTurn = false, dodgingThisTurn = false,
 }: HPStatsPanelProps) {
   // v2.72.0: editingAC state removed — AC is no longer quick-editable on the chip.
   // v2.77.0: editingSpeed state removed — Speed is no longer quick-editable either.
@@ -163,6 +167,45 @@ export default function HPStatsPanel({
             </div>
           </div>
         ))}
+
+        {/* v2.88.0: Turn-scoped Standard Action effects surface as visible
+            chips in the vitals strip so the player + DM see them at a glance.
+            Both clear on End Turn (ActionEconomy.onNewTurn). */}
+        {(dashingThisTurn || dodgingThisTurn) && (
+          <>
+            <div style={{ width: 1, height: 22, background: 'var(--c-border)', marginLeft: 4, marginRight: 2, alignSelf: 'center' }} />
+            {dashingThisTurn && (
+              <span
+                title="Dashing this turn: extra Movement equal to your Speed (2024 PHB)"
+                style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
+                  letterSpacing: '0.1em', textTransform: 'uppercase' as const,
+                  padding: '3px 9px', borderRadius: 999,
+                  color: '#60a5fa', background: 'rgba(96,165,250,0.15)',
+                  border: '1px solid rgba(96,165,250,0.5)',
+                  alignSelf: 'center',
+                }}
+              >
+                Dashing
+              </span>
+            )}
+            {dodgingThisTurn && (
+              <span
+                title="Dodging: attack rolls against you have Disadvantage; you make DEX saves with Advantage (until start of your next turn)"
+                style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
+                  letterSpacing: '0.1em', textTransform: 'uppercase' as const,
+                  padding: '3px 9px', borderRadius: 999,
+                  color: '#60a5fa', background: 'rgba(96,165,250,0.15)',
+                  border: '1px solid rgba(96,165,250,0.5)',
+                  alignSelf: 'center',
+                }}
+              >
+                Dodging
+              </span>
+            )}
+          </>
+        )}
 
         {/* v2.45.0: Defense chips inline. Pill shape distinguishes them from stat boxes.
             Border style encodes kind: solid = resistance, thicker double-style = immunity, dashed = vulnerability.

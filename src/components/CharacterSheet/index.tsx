@@ -612,6 +612,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // the full RAW description text.
  const [justUsedStandardAction, setJustUsedStandardAction] = useState<string | null>(null);
  const [expandedStandardAction, setExpandedStandardAction] = useState<string | null>(null);
+ // v2.88.0: Turn-scoped effects from Standard Actions that actually change
+ // character behavior while active:
+ //  - dashing: doubles your effective Speed in Turn Economy (2024 PHB Dash)
+ //  - dodging: shows a visible DODGING badge + reminds DM that attackers
+ //    have Disadvantage (2024 PHB Dodge). Cleared on New Turn.
+ const [dashingThisTurn, setDashingThisTurn] = useState(false);
+ const [dodgingThisTurn, setDodgingThisTurn] = useState(false);
+ // v2.88.0: Standard Actions section is collapsed by default to save
+ // vertical space — 10 cards were overwhelming for something rarely used.
+ const [standardActionsOpen, setStandardActionsOpen] = useState(false);
 
  function rollHitDie() {
  const cls = CLASS_MAP[character.class_name];
@@ -808,6 +818,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
        onUpdateExhaustionLevel={lvl => applyUpdate({ exhaustion_level: lvl }, true)}
        defenseChips={defenseChips}
        onOpenSettings={() => setShowSettings(true)}
+       dashingThisTurn={dashingThisTurn}
+       dodgingThisTurn={dodgingThisTurn}
      />
    );
  })()}
@@ -1382,7 +1394,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const immobilized = (character.active_conditions ?? []).some(
  c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove
  );
- const effectiveSpeed = immobilized ? 0 : baseSpeed;
+ // v2.88.0: Dashing doubles your effective Speed for the turn per 2024 PHB
+ // ("you gain extra Movement equal to your Speed for the current turn").
+ // Applied after the immobilized check so a paralyzed character can't Dash
+ // out of 0 speed.
+ const effectiveSpeed = immobilized ? 0 : (dashingThisTurn ? baseSpeed * 2 : baseSpeed);
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
@@ -1397,7 +1413,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (action === 'action' && used && (combatFilter === 'all')) setCombatFilter('bonus');
  if (action === 'action' && !used) setCombatFilter('all');
  }}
- onNewTurn={() => { setSpellCastThisTurn(false); setBonusActionSpellCast(false); setReactionUsedThisTurn(false); }}
+ onNewTurn={() => {
+ setSpellCastThisTurn(false);
+ setBonusActionSpellCast(false);
+ setReactionUsedThisTurn(false);
+ // v2.88.0: Dash / Dodge effects end when your turn ends.
+ setDashingThisTurn(false);
+ setDodgingThisTurn(false);
+ }}
  />
  </div>
  );
@@ -1906,14 +1929,50 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      v2.87.0: Hidden on 'limited' filter — standard actions are unlimited. */}
  {(combatFilter === 'all' || combatFilter === 'action') && (
  <div>
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 5, marginBottom: 8, marginTop: 4 }}>
+ {/* v2.88.0: Header is now a clickable toggle. Collapsed by default (10
+     cards were too much vertical noise for something used rarely). When
+     closed, shows a tiny preview + chevron; when open, the full card
+     grid renders below. Active effects (DASHING/DODGING) show on the
+     header even when collapsed so the player remembers they're active. */}
+ <button
+ onClick={() => setStandardActionsOpen(o => !o)}
+ style={{
+ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+ borderWidth: 0, borderBottomWidth: 1, borderStyle: 'solid', borderColor: 'var(--c-border)',
+ background: 'transparent',
+ marginBottom: standardActionsOpen ? 8 : 0, marginTop: 4,
+ cursor: 'pointer', textAlign: 'left' as const, padding: '0 0 5px 0',
+ minHeight: 0,
+ }}
+ title={standardActionsOpen ? 'Collapse Standard Actions' : 'Expand Standard Actions (Dash, Dodge, Hide, Help, etc.)'}
+ >
+ <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+ <span style={{
+ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+ letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)',
+ transition: 'transform 0.2s',
+ transform: standardActionsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+ }}>▶</span>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
  Standard Actions
  </span>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
- broadcasts to party · uses your Action
+ {/* Active-effect chips — persist on the header when collapsed */}
+ {dashingThisTurn && (
+ <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', padding: '2px 7px', borderRadius: 999, color: '#60a5fa', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.4)' }}>
+ DASHING +{character.speed ?? 30}FT
  </span>
- </div>
+ )}
+ {dodgingThisTurn && (
+ <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', padding: '2px 7px', borderRadius: 999, color: '#60a5fa', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.4)' }}>
+ DODGING
+ </span>
+ )}
+ </span>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
+ {standardActionsOpen ? 'broadcasts to party · uses your Action' : `${STANDARD_ACTIONS.length} actions · tap to expand`}
+ </span>
+ </button>
+ {standardActionsOpen && (
  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
  {STANDARD_ACTIONS.map(action => {
  const isExpanded = expandedStandardAction === action.id;
@@ -1921,6 +1980,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const handleUse = () => {
  // Lock out for turn (same mechanism spells use).
  setSpellCastThisTurn(true);
+ // v2.88.0: Automate the two Standard Actions with mechanical effects.
+ //  - Dash: set dashingThisTurn so Turn Economy doubles your Speed this turn.
+ //  - Dodge: set dodgingThisTurn so the DODGING badge shows on your sheet
+ //    (reminder to DM that attacks against you have Disadvantage).
+ // Both clear on End Turn via onNewTurn in ActionEconomy.
+ if (action.id === 'dash') setDashingThisTurn(true);
+ if (action.id === 'dodge') setDodgingThisTurn(true);
  // Broadcast to campaign action log so DM + party see it in real time.
  import('../shared/ActionLog').then(({ logAction }) => {
  logAction({
@@ -2026,6 +2092,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  );
  })}
  </div>
+ )}
  </div>
  )}
 

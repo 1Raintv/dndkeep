@@ -588,6 +588,27 @@ export default function SpellCastButton({
  </button>
  )}
 
+ {/* v2.88.0: Conditional damage roll for utility spells with damage_dice
+     (e.g. Dimension Door → 4d6 force damage if you arrive in an occupied
+     space). Separate button so the damage is only rolled when the DM
+     determines the edge case triggers — not on every cast. Renders in
+     addition to the Cast button above. */}
+ {mechanics.isUtility && mechanics.damageDice && (
+ <button
+ onClick={() => rollDamage(forceSlotLevel)}
+ title={`Roll ${mechanics.damageDice}${mechanics.damageType ? ` ${mechanics.damageType.toLowerCase()}` : ''} damage (conditional — usually requires DM adjudication)`}
+ style={{ ...btnBase,
+ background: 'rgba(248,113,113,0.12)',
+ border: '1px solid rgba(248,113,113,0.4)',
+ color: 'var(--c-red-l)',
+ fontWeight: 700,
+ transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+ }}
+ >
+ {mechanics.damageDice}{mechanics.damageType ? ` ${mechanics.damageType.toLowerCase().slice(0, 4)}.` : ''}
+ </button>
+ )}
+
  {/* ── CATEGORY 2: ATTACK SPELL — two independent buttons ── */}
  {mechanics.isAttack && (
  <>
