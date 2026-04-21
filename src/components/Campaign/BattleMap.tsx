@@ -36,6 +36,10 @@ interface BattleMapData {
   grid_cols: number; grid_rows: number; grid_size: number;
   tokens: MapToken[]; active: boolean;
   map_active_for_players: boolean; background_color: string;
+  // v2.95.0 — Phase C: drawings persist + realtime sync
+  drawings?: DrawShape[];
+  version?: number;
+  updated_at?: string;
 }
 
 interface DrawShape {
@@ -73,6 +77,9 @@ interface BattleMapProps {
   campaignId: string; isDM: boolean; userId: string;
   playerCharacters?: PlayerChar[];
   onConditionApplied?: (characterId: string, conditions: string[]) => void;
+  // v2.95.0 — Phase C: player drag permission. If set, the player can drag
+  // only the token whose `character_id` matches this id.
+  myCharacterId?: string | null;
 }
 
 const ALL_CONDITIONS = [
@@ -94,20 +101,20 @@ const FMT_MOD = (s:number) => { const m=MOD(s); return (m>=0?'+':'')+m; };
 function hpColor(pct:number){ return pct>0.5?'#22c55e':pct>0.25?'#f59e0b':'#ef4444'; }
 
 // ── Token dot on grid ─────────────────────────────────────────────
-function TokenDot({ token, selected, dragging, onClick, onDragStart, isDM }:{
+function TokenDot({ token, selected, dragging, onClick, onDragStart, isDM, canDrag }:{
   token:MapToken; selected:boolean; dragging:boolean;
-  onClick:()=>void; onDragStart:(e:React.DragEvent)=>void; isDM:boolean;
+  onClick:()=>void; onDragStart:(e:React.DragEvent)=>void; isDM:boolean; canDrag:boolean;
 }) {
   const pct = token.max_hp>0 ? token.hp/token.max_hp : 1;
   const showHp = isDM || token.revealed.hp;
   return (
-    <div draggable={isDM} onDragStart={onDragStart} onClick={onClick} title={isDM||token.visible_to_players?token.name:'???'}
+    <div draggable={canDrag} onDragStart={onDragStart} onClick={onClick} title={isDM||token.visible_to_players?token.name:'???'}
       style={{
         position:'absolute',inset:3,borderRadius:'50%',
         background: token.is_hidden&&!isDM ? 'transparent' : token.color+'bb',
         border:`2px solid ${selected?'#fff':token.color}`,
         boxShadow: selected?`0 0 0 2px #fff,0 0 0 4px ${token.color}`:undefined,
-        cursor:isDM?'grab':'pointer',
+        cursor:canDrag?'grab':'pointer',
         opacity:(token.is_hidden&&!isDM)?0:dragging?0.35:1,
         display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
         overflow:'hidden',userSelect:'none',transition:'box-shadow .15s,opacity .15s',
@@ -421,6 +428,7 @@ interface MapInnerCanvasProps {
   measureEnd: {col:number;row:number;x:number;y:number}|null; pingPos: {x:number;y:number}|null;
   draggingTokenId: string|null; selectedTokenId: string|null; visibleTokens: MapToken[];
   isDM: boolean; playerBlocked: boolean;
+  myCharacterId?: string | null;
   isPanning: boolean; isDrawingRef: React.MutableRefObject<boolean>;
   mapContainerRef: React.RefObject<HTMLDivElement>;
   onWheel: (e:React.WheelEvent)=>void;
@@ -436,7 +444,7 @@ interface MapInnerCanvasProps {
 function MapInnerCanvas({
   map, zoom, panX, panY, gridSize, shapes, drawColor, activeTool,
   currentPath, drawStart, drawEnd, measureStart, measureEnd, pingPos,
-  draggingTokenId, selectedTokenId, visibleTokens, isDM, playerBlocked,
+  draggingTokenId, selectedTokenId, visibleTokens, isDM, playerBlocked, myCharacterId,
   isPanning, isDrawingRef, mapContainerRef,
   onWheel, onMouseDown, onMouseMove, onMouseUp, onMouseLeave,
   onTokenClick, onTokenDragStart, onCellDrop,
@@ -490,6 +498,7 @@ function MapInnerCanvas({
             isSelected={selectedTokenId===token.id}
             isDragging={draggingTokenId===token.id}
             isDM={isDM}
+            canDrag={isDM || (!!myCharacterId && token.character_id === myCharacterId)}
             onClick={()=>onTokenClick(token.id)}
             onDragStart={e=>onTokenDragStart(e,token.id)}/>
         ))}
@@ -551,14 +560,14 @@ function DrawingLayer({shapes,drawColor,activeTool,currentPath,drawStart,drawEnd
 }
 
 // ── TokenWrapper: token + HP bubbles ─────────────────────────────────────────
-function TokenWrapper({token,gridSize,isSelected,isDragging,isDM,onClick,onDragStart}:{
-  token:MapToken; gridSize:number; isSelected:boolean; isDragging:boolean; isDM:boolean;
+function TokenWrapper({token,gridSize,isSelected,isDragging,isDM,canDrag,onClick,onDragStart}:{
+  token:MapToken; gridSize:number; isSelected:boolean; isDragging:boolean; isDM:boolean; canDrag:boolean;
   onClick:()=>void; onDragStart:(e:React.DragEvent)=>void;
 }) {
   const hpPct = token.max_hp>0 ? token.hp/token.max_hp : 1;
   return (
     <div style={{position:'absolute',left:(token.col-1)*gridSize,top:(token.row-1)*gridSize,width:gridSize,height:gridSize,zIndex:isSelected?10:5,transition:isDragging?'none':'left .2s,top .2s'}}>
-      <TokenDot token={token} selected={isSelected} dragging={isDragging} isDM={isDM} onClick={onClick} onDragStart={onDragStart}/>
+      <TokenDot token={token} selected={isSelected} dragging={isDragging} isDM={isDM} canDrag={canDrag} onClick={onClick} onDragStart={onDragStart}/>
       {isSelected&&(isDM||token.revealed.hp)&&(
         <div style={{position:'absolute',top:-26,left:'50%',transform:'translateX(-50%)',display:'flex',gap:5,alignItems:'center',pointerEvents:'none',zIndex:20}}>
           <div title={'HP: '+token.hp+'/'+token.max_hp} style={{width:20,height:20,borderRadius:'50%',background:'radial-gradient(circle at 35% 35%, '+(hpPct>0.5?'#ef4444':hpPct>0.25?'#f97316':'#7f1d1d')+', #7f1d1d)',border:'2px solid #ef4444',boxShadow:'0 1px 4px rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:800,color:'#fff',fontFamily:'var(--ff-stat)'}}>{token.hp}</div>
@@ -811,7 +820,7 @@ function NPCEditForm({ npc, onSave, onCancel }:{
 }
 
 // ── Main BattleMap ─────────────────────────────────────────────────
-export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[], onConditionApplied }:BattleMapProps) {
+export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[], onConditionApplied, myCharacterId }:BattleMapProps) {
   const [maps,setMaps]=useState<BattleMapData[]>([]);
   const [activeMap,setActiveMap]=useState<BattleMapData|null>(null);
   const [selectedTokenId,setSelectedTokenId]=useState<string|null>(null);
@@ -850,6 +859,29 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(userId) supabase.from('profiles').select('display_name,email').eq('id',userId).single()
       .then(({data})=>{ if(data) setUserName(data.display_name||data.email?.split('@')[0]||'Player'); });
   },[userId]);
+
+  // v2.95.0 — Phase C: hydrate shapes from the active map's drawings column.
+  // Uses a ref of the last-seen map id so we only rehydrate on map switch, NOT
+  // on every realtime UPDATE (which would blow away my in-flight local shapes).
+  const hydratedMapIdRef = useRef<string | null>(null);
+  const saveTimerDrawingsRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  useEffect(()=>{
+    if(!activeMap) return;
+    if(hydratedMapIdRef.current !== activeMap.id) {
+      hydratedMapIdRef.current = activeMap.id;
+      setShapes(Array.isArray(activeMap.drawings) ? activeMap.drawings : []);
+    }
+  },[activeMap?.id, activeMap?.drawings]);
+
+  // Persist shapes to DB. Debounced so rapid stroke additions batch into one write.
+  function persistShapes(next: DrawShape[]) {
+    if(!activeMap) return;
+    const mapId = activeMap.id;
+    if(saveTimerDrawingsRef.current) clearTimeout(saveTimerDrawingsRef.current);
+    saveTimerDrawingsRef.current = setTimeout(async ()=>{
+      await supabase.from('battle_maps').update({ drawings: next }).eq('id', mapId);
+    }, 300);
+  }
 
   // Load maps + realtime
   useEffect(()=>{
@@ -1148,15 +1180,21 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if (!isDrawing.current) return;
     isDrawing.current = false;
     const coords = getMapCoords(e);
+    // v2.95.0 — Phase C: compute next shapes array then persist to DB
+    let next: DrawShape[] | null = null;
     if (activeTool === 'draw-freehand' && currentPath.length > 1) {
-      setShapes(s=>[...s,{id:Date.now().toString(),type:'freehand',points:currentPath,color:drawColor}]);
+      next = [...shapes, {id:Date.now().toString(),type:'freehand',points:currentPath,color:drawColor}];
       setCurrentPath([]);
     } else if (activeTool === 'draw-line' && drawStart) {
-      setShapes(s=>[...s,{id:Date.now().toString(),type:'line',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}]);
+      next = [...shapes, {id:Date.now().toString(),type:'line',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}];
     } else if (activeTool === 'draw-rect' && drawStart) {
-      setShapes(s=>[...s,{id:Date.now().toString(),type:'rect',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}]);
+      next = [...shapes, {id:Date.now().toString(),type:'rect',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}];
     } else if (activeTool === 'draw-ellipse' && drawStart) {
-      setShapes(s=>[...s,{id:Date.now().toString(),type:'ellipse',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}]);
+      next = [...shapes, {id:Date.now().toString(),type:'ellipse',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}];
+    }
+    if (next) {
+      setShapes(next);
+      persistShapes(next);
     }
     setDrawStart(null); setDrawEnd(null);
   }
@@ -1278,7 +1316,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             )}
             {/* Clear drawings */}
             {shapes.length>0&&(
-              <button title="Clear all drawings" onClick={()=>setShapes([])}
+              <button title="Clear all drawings" onClick={()=>{ setShapes([]); persistShapes([]); }}
                 style={{width:34,height:28,borderRadius:6,border:'none',cursor:'pointer',fontSize:12,background:'transparent',color:'var(--c-red-l)',marginTop:4}}>
                 
               </button>
@@ -1358,7 +1396,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
               measureStart={measureStart} measureEnd={measureEnd} pingPos={pingPos}
               draggingTokenId={draggingTokenId} selectedTokenId={selectedTokenId}
               visibleTokens={visibleTokens}
-              isDM={isDM} playerBlocked={playerBlocked}
+              isDM={isDM} playerBlocked={playerBlocked} myCharacterId={myCharacterId}
               isPanning={isPanning} isDrawingRef={isDrawing}
               mapContainerRef={mapContainerRef}
               onWheel={handleWheel}
@@ -1385,7 +1423,8 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
               <span>Full HP · Bloodied · Critical</span>
               <span>dot = conditions active</span>
               {isDM&&<span>· Drag tokens to move · Click to inspect</span>}
-              {!isDM&&<span>· Click tokens for details & party notes</span>}
+              {!isDM&&myCharacterId&&<span>· Drag your own token to move · Click tokens for details</span>}
+              {!isDM&&!myCharacterId&&<span>· Click tokens for details & party notes</span>}
               {isDM&&shapes.length>0&&<span style={{color:'var(--c-gold-l)'}}>· {shapes.length} drawing{shapes.length!==1?'s':''} on map</span>}
             </div>
           )}

@@ -120,10 +120,15 @@ export default function CharacterHeader({
  Share
  </button>
  )}
+ {/* v2.95.0 — Phase C: Battle Map link.
+     Per spec 7.1 this button lives in the header so players can jump
+     straight to the shared live canvas without digging through the
+     campaign dashboard tabs. */}
  {onOpenMap && (
- <button className="btn-ghost btn-sm" onClick={onOpenMap} title="Battle Map"
- style={{ fontSize: 12, color: 'var(--t-2)', flexShrink: 0 }}>
- Map
+ <button className="btn-ghost btn-sm" onClick={onOpenMap} title="Open Battle Map"
+ style={{ fontSize: 12, color: 'var(--t-2)', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+ <span aria-hidden style={{ fontSize: 13 }}>⚔️</span>
+ Battle Map
  </button>
  )}
 

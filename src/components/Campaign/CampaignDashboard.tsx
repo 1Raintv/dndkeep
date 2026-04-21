@@ -19,7 +19,6 @@ import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
-import PlayerBattleMap from './PlayerBattleMap';
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
 
@@ -480,12 +479,14 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           </div>
         )}
 
-        {/* Discord Integration */}
-        {activeTab === 'map' && isOwner && (
+        {/* v2.95.0 — Phase C: one unified Battle Map for everyone.
+            DM gets full controls; players get view-all + drag-own-token-only via myCharacterId. */}
+        {activeTab === 'map' && (
           <BattleMap
             campaignId={campaign.id}
-            isDM={true}
+            isDM={isOwner}
             userId={user?.id ?? ''}
+            myCharacterId={characters.find(c => c.user_id === user?.id)?.id ?? null}
             playerCharacters={characters.map(c => ({
               id: c.id, name: c.name, class_name: c.class_name, level: c.level,
               current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
@@ -494,12 +495,6 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
               intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
               speed: c.speed,
             }))}
-          />
-        )}
-        {activeTab === 'map' && !isOwner && (
-          <PlayerBattleMap
-            campaignId={campaign.id}
-            myCharacterId={characters.find(c => c.user_id === user?.id)?.id}
           />
         )}
 
