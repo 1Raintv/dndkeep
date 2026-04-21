@@ -20,13 +20,16 @@ interface MonsterBrowserProps {
   /** If provided, show an "Add to Combat" button */
   onAddToCombat?: (monster: MonsterData) => void;
   compact?: boolean;
+  /** v2.94.0 — Phase B: filter to show only SRD, only homebrew, or both */
+  initialSourceFilter?: 'all' | 'srd' | 'homebrew';
 }
 
-export default function MonsterBrowser({ onAddToCombat, compact = false }: MonsterBrowserProps) {
+export default function MonsterBrowser({ onAddToCombat, compact = false, initialSourceFilter = 'all' }: MonsterBrowserProps) {
   const { monsters } = useMonsters();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'srd' | 'homebrew'>(initialSourceFilter);
   const [crMin, setCrMin] = useState('');
   const [crMax, setCrMax] = useState('');
   const [selected, setSelected] = useState<MonsterData | null>(null);
@@ -41,6 +44,11 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
       .filter(m => {
         if (typeFilter !== 'All' && m.type !== typeFilter) return false;
         if (sizeFilter !== 'All' && m.size !== sizeFilter) return false;
+        if (sourceFilter !== 'all') {
+          const isHomebrew = m.source === 'homebrew' || m.license_key === 'homebrew';
+          if (sourceFilter === 'homebrew' && !isHomebrew) return false;
+          if (sourceFilter === 'srd' && isHomebrew) return false;
+        }
         if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
         if (crMin) {
           const minIdx = CR_ORDER.indexOf(crMin);
@@ -53,12 +61,31 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
         return true;
       })
       .sort(crSort);
-  }, [monsters, search, typeFilter, sizeFilter, crMin, crMax]);
+  }, [monsters, search, typeFilter, sizeFilter, sourceFilter, crMin, crMax]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: selected && !compact ? '1fr 1fr' : '1fr', gap: 'var(--sp-6)' }}>
       {/* Left: list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+        {/* v2.94.0 — Phase B: source filter pills */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {([['all', 'All'], ['srd', 'Official (SRD)'], ['homebrew', 'Homebrew']] as const).map(([id, label]) => {
+            const active = sourceFilter === id;
+            const color = id === 'homebrew' ? '#a78bfa' : id === 'srd' ? '#60a5fa' : 'var(--c-gold-l)';
+            return (
+              <button key={id} onClick={() => setSourceFilter(id)} style={{
+                fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+                border: active ? `1px solid ${color}` : '1px solid var(--c-border)',
+                background: active ? `${color}20` : 'transparent',
+                color: active ? color : 'var(--t-2)',
+                minHeight: 0,
+              }}>{label}</button>
+            );
+          })}
+        </div>
+
         {/* Filters */}
         <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
           <input
@@ -103,9 +130,21 @@ export default function MonsterBrowser({ onAddToCombat, compact = false }: Monst
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: selected?.id === m.id ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
-                  {m.name}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: selected?.id === m.id ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
+                    {m.name}
+                  </span>
+                  {(m.source === 'homebrew' || m.license_key === 'homebrew') && (
+                    <span style={{
+                      fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
+                      letterSpacing: '0.08em', textTransform: 'uppercase',
+                      padding: '1px 5px', borderRadius: 3,
+                      color: '#a78bfa',
+                      background: 'rgba(167,139,250,0.15)',
+                      border: '1px solid rgba(167,139,250,0.3)',
+                    }}>Homebrew</span>
+                  )}
+                </div>
                 <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
                   {m.size} {m.type}
                 </span>
@@ -314,6 +353,18 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
                 <span style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{la.desc}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* v2.94.0 — Phase B: attribution footer */}
+        {(m.attribution_text || m.license_key) && (
+          <div style={{
+            marginTop: 10, paddingTop: 10,
+            borderTop: '1px dashed var(--c-border)',
+            fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)',
+            lineHeight: 1.5, fontStyle: 'italic',
+          }}>
+            {m.attribution_text ?? (m.license_key === 'homebrew' ? 'Homebrew content — created by a DNDKeep user.' : '')}
           </div>
         )}
       </div>

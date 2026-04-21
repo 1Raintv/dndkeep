@@ -20,6 +20,7 @@ const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
 const SpellsPage     = lazy(() => import('./components/pages/SpellsPage'));
 const CombatPage     = lazy(() => import('./components/pages/CombatPage'));
 const HomebrewPage   = lazy(() => import('./components/pages/HomebrewPage'));
+const BestiaryPage   = lazy(() => import('./components/pages/BestiaryPage'));
 const ClassCompendiumPage = lazy(() => import('./components/pages/ClassCompendiumPage'));
 const DicePage       = lazy(() => import('./components/pages/DicePage'));
 const SettingsPage   = lazy(() => import('./components/pages/SettingsPage'));
@@ -90,6 +91,11 @@ const Icons = {
       <path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.58 16.5h12.85"/>
     </svg>
   ),
+  bestiary: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+    </svg>
+  ),
   dice: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 8h.01"/><path d="M8 8h.01"/><path d="M8 16h.01"/><path d="M16 16h.01"/><path d="M12 12h.01"/>
@@ -113,6 +119,7 @@ const Icons = {
 };
 
 const NAV_ITEMS = [
+  { to: '/bestiary',  label: 'Bestiary',   icon: Icons.bestiary },
   { to: '/homebrew',  label: 'Homebrew',   icon: Icons.homebrew, pro: true },
   { to: '/compendium', label: 'Classes & Subclasses', icon: '📖' },
 ];
@@ -342,6 +349,7 @@ function AppRoutes() {
             <Route path="/campaigns"      element={<Navigate to="/lobby" replace />} />
             <Route path="/campaigns/:id"  element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
             <Route path="/homebrew"       element={<ProtectedRoute><HomebrewPage /></ProtectedRoute>} />
+            <Route path="/bestiary"       element={<ProtectedRoute><BestiaryPage /></ProtectedRoute>} />
             <Route path="/compendium"            element={<ProtectedRoute><Suspense fallback={<div style={{padding:32,color:'var(--t-3)'}}>Loading...</div>}><ClassCompendiumPage /></Suspense></ProtectedRoute>} />
             <Route path="/compendium/:className" element={<ProtectedRoute><Suspense fallback={<div style={{padding:32,color:'var(--t-3)'}}>Loading...</div>}><ClassCompendiumPage /></Suspense></ProtectedRoute>} />
             <Route path="/spells"         element={<ProtectedRoute><SpellsPage /></ProtectedRoute>} />

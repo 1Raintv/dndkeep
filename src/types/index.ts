@@ -448,6 +448,14 @@ export interface MonsterData {
   attack_name: string;
   attack_bonus: number;
   attack_damage: string;
+  // v2.94.0 — Phase B: license metadata
+  source?: string;              // 'srd' | 'homebrew'
+  owner_id?: string | null;
+  visibility?: string;          // 'public' | 'private'
+  license_key?: 'ogl-1.0a' | 'cc-by-4.0' | 'homebrew' | 'none' | null;
+  attribution_text?: string | null;
+  ruleset_version?: '2014' | '2024' | null;
+  is_editable?: boolean;
 }
 
 export interface ConditionData {

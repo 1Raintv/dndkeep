@@ -60,6 +60,14 @@ interface DbMonsterRow {
   attack_name: string;
   attack_bonus: number;
   attack_damage: string;
+  // v2.94.0 — Phase B: license metadata
+  source: string | null;
+  owner_id: string | null;
+  visibility: string | null;
+  license_key: string | null;
+  attribution_text: string | null;
+  ruleset_version: string | null;
+  is_editable: boolean | null;
 }
 
 /**
@@ -111,6 +119,14 @@ function rowToMonster(r: DbMonsterRow): MonsterData {
     attack_name: r.attack_name,
     attack_bonus: r.attack_bonus,
     attack_damage: r.attack_damage,
+    // v2.94.0 — Phase B: license metadata
+    ...(r.source ? { source: r.source } : {}),
+    ...(r.owner_id ? { owner_id: r.owner_id } : {}),
+    ...(r.visibility ? { visibility: r.visibility } : {}),
+    ...(r.license_key ? { license_key: r.license_key as MonsterData['license_key'] } : {}),
+    ...(r.attribution_text ? { attribution_text: r.attribution_text } : {}),
+    ...(r.ruleset_version ? { ruleset_version: r.ruleset_version as MonsterData['ruleset_version'] } : {}),
+    ...(r.is_editable != null ? { is_editable: r.is_editable } : {}),
   };
 }
 
