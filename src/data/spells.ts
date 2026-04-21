@@ -431,13 +431,20 @@ export const SPELLS: SpellData[] = [
   school: "Enchantment",
   casting_time: "1 action",
   range: "30 feet",
-  components: "V, S, M (A sprinkling of holy water.)",
+  components: "V, S, M (a Holy Symbol)",
   duration: "Up to 1 minute",
   concentration: true,
   ritual: false,
   classes: ["Cleric", "Paladin"],
-  description: "You bless up to three creatures of your choice within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target can roll a d4 and add the number rolled to the attack roll or saving throw.",
-  higher_levels: "When you cast this spell using a spell slot of 2nd level or higher, you can target one additional creature for each slot level above 1st.",
+  // v2.90.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - Material component: "a sprinkling of holy water" → "a Holy Symbol"
+  //    (2024 divine spells standardized on Holy Symbol, typically worth 5 GP)
+  //  - Prose reworded: "adds 1d4" is cleaner than "can roll a d4 and add"
+  //  - Mechanical effect UNCHANGED: still only attacks + saves, not ability
+  //    checks, despite 2024 general terminology shift to "d20 tests"
+  //  - Duration: "Up to 1 minute" phrasing unchanged
+  description: "You bless up to three creatures within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target adds 1d4 to the attack roll or save.",
+  higher_levels: "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.",
   },
   {
   id: "burning-hands",
@@ -551,7 +558,7 @@ export const SPELLS: SpellData[] = [
   id: "cure-wounds",
   name: "Cure Wounds",
   level: 1,
-  school: "Evocation",
+  school: "Abjuration",
   casting_time: "1 action",
   range: "Touch",
   components: "V, S",
@@ -559,20 +566,26 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Bard", "Cleric", "Druid", "Paladin", "Ranger"],
-  description: "A creature you touch regains a number of hit points equal to 1d8 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
-  higher_levels: "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d8 for each slot level above 1st.",
+  // v2.89.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - School: Evocation → Abjuration
+  //  - Base healing doubled: 1d8 → 2d8 + mod
+  //  - Upcast doubled: +1d8/slot → +2d8/slot
+  //  - "No effect on undead or constructs" restriction REMOVED (2024 healing
+  //    works on all creature types)
+  description: "A creature you touch regains a number of Hit Points equal to 2d8 plus your spellcasting ability modifier.",
+  higher_levels: "Using a Higher-Level Spell Slot. The healing increases by 2d8 for each spell slot level above 1.",
   heal_at_slot_level: {
-    "1": "1d8 + MOD",
-    "2": "2d8 + MOD",
-    "3": "3d8 + MOD",
-    "4": "4d8 + MOD",
-    "5": "5d8 + MOD",
-    "6": "6d8 + MOD",
-    "7": "7d8 + MOD",
-    "8": "8d8 + MOD",
-    "9": "9d8 + MOD"
+    "1": "2d8 + MOD",
+    "2": "4d8 + MOD",
+    "3": "6d8 + MOD",
+    "4": "8d8 + MOD",
+    "5": "10d8 + MOD",
+    "6": "12d8 + MOD",
+    "7": "14d8 + MOD",
+    "8": "16d8 + MOD",
+    "9": "18d8 + MOD"
   },
-  heal_dice: "1d8 + MOD",
+  heal_dice: "2d8 + MOD",
   },
   {
   id: "detect-evil-and-good",
@@ -842,7 +855,7 @@ export const SPELLS: SpellData[] = [
   id: "healing-word",
   name: "Healing Word",
   level: 1,
-  school: "Evocation",
+  school: "Abjuration",
   casting_time: "1 bonus action",
   range: "60 feet",
   components: "V",
@@ -850,20 +863,25 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Bard", "Cleric", "Druid"],
-  description: "A creature of your choice that you can see within range regains hit points equal to 1d4 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
-  higher_levels: "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d4 for each slot level above 1st.",
+  // v2.89.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - School: Evocation → Abjuration
+  //  - Base healing doubled: 1d4 → 2d4 + mod
+  //  - Upcast doubled: +1d4/slot → +2d4/slot
+  //  - "No effect on undead or constructs" restriction REMOVED
+  description: "A creature of your choice that you can see within range regains Hit Points equal to 2d4 plus your spellcasting ability modifier.",
+  higher_levels: "Using a Higher-Level Spell Slot. The healing increases by 2d4 for each spell slot level above 1.",
   heal_at_slot_level: {
-    "1": "1d4 + MOD",
-    "2": "2d4 + MOD",
-    "3": "3d4 + MOD",
-    "4": "4d4 + MOD",
-    "5": "5d4 + MOD",
-    "6": "6d4 + MOD",
-    "7": "7d4 + MOD",
-    "8": "8d4 + MOD",
-    "9": "9d4 + MOD"
+    "1": "2d4 + MOD",
+    "2": "4d4 + MOD",
+    "3": "6d4 + MOD",
+    "4": "8d4 + MOD",
+    "5": "10d4 + MOD",
+    "6": "12d4 + MOD",
+    "7": "14d4 + MOD",
+    "8": "16d4 + MOD",
+    "9": "18d4 + MOD"
   },
-  heal_dice: "1d4 + MOD",
+  heal_dice: "2d4 + MOD",
   },
   {
   id: "hellish-rebuke",
@@ -1856,16 +1874,25 @@ export const SPELLS: SpellData[] = [
   id: "prayer-of-healing",
   name: "Prayer of Healing",
   level: 2,
-  school: "Evocation",
+  school: "Abjuration",
   casting_time: "10 minutes",
   range: "30 feet",
   components: "V",
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Cleric"],
-  description: "Up to six creatures of your choice that you can see within range each regain hit points equal to 2d8 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
-  higher_levels: "When you cast this spell using a spell slot of 3rd level or higher, the healing increases by 1d8 for each slot level above 2nd.",
+  classes: ["Cleric", "Paladin"],
+  // v2.89.0: Updated to 2024 PHB (5.5e). Major changes from 2014:
+  //  - School: Evocation → Abjuration
+  //  - Target count reduced: 6 → 5 creatures
+  //  - NEW MECHANIC: targets also gain the benefits of a Short Rest
+  //    (but can't benefit from this spell again until they finish a Long
+  //    Rest — prevents infinite short-rest chaining)
+  //  - Classes: Cleric → Cleric + Paladin (Paladin added in 2024)
+  //  - "No effect on undead or constructs" restriction REMOVED
+  //  - Base heal unchanged: 2d8 + mod, upcast +1d8/slot
+  description: "Up to five creatures of your choice who remain within range for the spell's entire casting regain Hit Points equal to 2d8 plus your spellcasting ability modifier. A target also gains the benefits of a Short Rest, but can't gain the benefits of this spell again until the target finishes a Long Rest.",
+  higher_levels: "Using a Higher-Level Spell Slot. The healing increases by 1d8 for each spell slot level above 2.",
   heal_at_slot_level: {
     "2": "2d8 + MOD",
     "3": "3d8 + MOD",
@@ -2437,26 +2464,34 @@ export const SPELLS: SpellData[] = [
   id: "mass-healing-word",
   name: "Mass Healing Word",
   level: 3,
-  school: "Evocation",
+  school: "Abjuration",
   casting_time: "1 bonus action",
   range: "60 feet",
   components: "V",
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Cleric"],
-  description: "As you call out words of restoration, up to six creatures of your choice that you can see within range regain hit points equal to 1d4 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
-  higher_levels: "When you cast this spell using a spell slot of 4th level or higher, the healing increases by 1d4 for each slot level above 3rd.",
+  classes: ["Bard", "Cleric"],
+  // v2.89.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - School: Evocation → Abjuration
+  //  - Base healing doubled: 1d4 → 2d4 + mod
+  //  - Upcast scaling unchanged: still +1d4/slot above 3rd
+  //    (Note: unlike Healing Word which scales +2d4/slot, Mass Healing Word
+  //    scales at +1d4/slot to balance the AoE advantage — confirmed 2024 PHB)
+  //  - Classes: Cleric → Bard + Cleric (Bard added)
+  //  - "No effect on undead or constructs" restriction REMOVED
+  description: "Up to six creatures of your choice that you can see within range regain Hit Points equal to 2d4 plus your spellcasting ability modifier.",
+  higher_levels: "Using a Higher-Level Spell Slot. The healing increases by 1d4 for each spell slot level above 3.",
   heal_at_slot_level: {
-    "3": "1d4 + MOD",
-    "4": "2d4 + MOD",
-    "5": "3d4 + MOD",
-    "6": "4d4 + MOD",
-    "7": "5d4 + MOD",
-    "8": "6d4 + MOD",
-    "9": "7d4 + MOD"
+    "3": "2d4 + MOD",
+    "4": "3d4 + MOD",
+    "5": "4d4 + MOD",
+    "6": "5d4 + MOD",
+    "7": "6d4 + MOD",
+    "8": "7d4 + MOD",
+    "9": "8d4 + MOD"
   },
-  heal_dice: "1d4 + MOD",
+  heal_dice: "2d4 + MOD",
   },
   {
   id: "meld-into-stone",
@@ -3657,7 +3692,7 @@ export const SPELLS: SpellData[] = [
   id: "mass-cure-wounds",
   name: "Mass Cure Wounds",
   level: 5,
-  school: "Conjuration",
+  school: "Abjuration",
   casting_time: "1 action",
   range: "60 feet",
   components: "V, S",
@@ -3665,10 +3700,15 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Bard", "Cleric", "Druid"],
-  description: "A wave of healing energy washes out from a point of your choice within range. Choose up to six creatures in a 30-foot-radius sphere centered on that point. Each target regains hit points equal to 3d8 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
-  higher_levels: "When you cast this spell using a spell slot of 6th level or higher, the healing increases by 1d8 for each slot level above 5th.",
-  heal_at_slot_level: { "5": "3d8 + MOD", "6": "4d8 + MOD", "7": "5d8 + MOD", "8": "6d8 + MOD", "9": "7d8 + MOD" },
-  heal_dice: "3d8 + MOD",
+  // v2.90.0: Updated to 2024 PHB (5.5e). Significant changes from 2014:
+  //  - School: Conjuration → Abjuration
+  //  - Base healing increased: 3d8 → 5d8 + mod
+  //  - Upcast unchanged: +1d8/slot above 5th
+  //  - "No effect on undead or constructs" restriction REMOVED
+  description: "A wave of healing energy washes out from a point you can see within range. Choose up to six creatures in a 30-foot-radius Sphere centered on that point. Each target regains Hit Points equal to 5d8 plus your spellcasting ability modifier.",
+  higher_levels: "Using a Higher-Level Spell Slot. The healing increases by 1d8 for each spell slot level above 5.",
+  heal_at_slot_level: { "5": "5d8 + MOD", "6": "6d8 + MOD", "7": "7d8 + MOD", "8": "8d8 + MOD", "9": "9d8 + MOD" },
+  heal_dice: "5d8 + MOD",
   area_of_effect: { type: "sphere", size: 30 },
   },
   {
