@@ -5,7 +5,7 @@ export const SPELLS: SpellData[] = [
   id: "acid-splash",
   name: "Acid Splash",
   level: 0,
-  school: "Conjuration",
+  school: "Evocation",
   casting_time: "1 action",
   range: "60 feet",
   components: "V, S",
@@ -13,11 +13,18 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Sorcerer", "Wizard"],
-  description: "You hurl a bubble of acid. Choose one creature within range, or choose two creatures within range that are within 5 feet of each other. A target must succeed on a dexterity saving throw or take 1d6 acid damage.\n\nThis spell's damage increases by 1d6 when you reach 5th level (2d6), 11th level (3d6), and 17th level (4d6).",
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - School: Conjuration → Evocation
+  //  - Targeting: "one or two creatures within 5 ft" → 5-foot-radius Sphere
+  //    centered on a point you choose within range (anyone in the Sphere saves)
+  //  - Mechanics: Dex save vs 1d6 acid unchanged
+  //  - Cantrip Upgrade phrasing now explicit
+  description: "You create an acidic bubble at a point within range, where it explodes in a 5-foot-radius Sphere. Each creature in that Sphere must succeed on a Dexterity saving throw or take 1d6 Acid damage.\n\nCantrip Upgrade. The damage increases by 1d6 when you reach levels 5 (2d6), 11 (3d6), and 17 (4d6).",
   save_type: "DEX",
   damage_type: "Acid",
   damage_at_char_level: { "1": "1d6", "5": "2d6", "11": "3d6", "17": "4d6" },
   damage_dice: "1d6",
+  area_of_effect: { type: "sphere", size: 5 },
   },
   {
   id: "chill-touch",
@@ -25,17 +32,24 @@ export const SPELLS: SpellData[] = [
   level: 0,
   school: "Necromancy",
   casting_time: "1 action",
-  range: "120 feet",
+  range: "Touch",
   components: "V, S",
   duration: "1 round",
   concentration: false,
   ritual: false,
   classes: ["Sorcerer", "Warlock", "Wizard"],
-  description: "You create a ghostly, skeletal hand in the space of a creature within range. Make a ranged spell attack against the creature to assail it with the chill of the grave. On a hit, the target takes 1d8 necrotic damage, and it can't regain hit points until the start of your next turn. Until then, the hand clings to the target.\n\nIf you hit an undead target, it also has disadvantage on attack rolls against you until the end of your next turn.\n\nThis spell's damage increases by 1d8 when you reach 5th level (2d8), 11th level (3d8), and 17th level (4d8).",
-  attack_type: "ranged",
+  // v2.91.0: Updated to 2024 PHB (5.5e). MAJOR REWORK from 2014:
+  //  - Range: 120 ft ranged spell attack → Touch melee spell attack
+  //  - Damage: 1d8 → 1d10 necrotic
+  //  - Heal-prevention: until start of your next turn → end of your next turn
+  //  - REMOVED: anti-undead disadvantage on attack rolls clause
+  //  - REMOVED: ghostly skeletal hand clinging flavor
+  //  - School unchanged: Necromancy
+  description: "Channeling the chill of the grave, make a melee spell attack against a target within reach. On a hit, the target takes 1d10 Necrotic damage, and it can't regain Hit Points until the end of your next turn.\n\nCantrip Upgrade. The damage increases by 1d10 when you reach levels 5 (2d10), 11 (3d10), and 17 (4d10).",
+  attack_type: "melee",
   damage_type: "Necrotic",
-  damage_at_char_level: { "1": "1d8", "5": "2d8", "11": "3d8", "17": "4d8" },
-  damage_dice: "1d8",
+  damage_at_char_level: { "1": "1d10", "5": "2d10", "11": "3d10", "17": "4d10" },
+  damage_dice: "1d10",
   },
   {
   id: "dancing-lights",
@@ -77,7 +91,14 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Warlock"],
-  description: "A beam of crackling energy streaks toward a creature within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 force damage. The spell creates more than one beam when you reach higher levels: two beams at 5th level, three beams at 11th level, and four beams at 17th level. You can direct the beams at the same target or at different ones. Make a separate attack roll for each beam.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). Minor changes from 2014:
+  //  - Prose: "A beam of crackling energy streaks toward a creature" →
+  //    "You hurl a beam of crackling energy"
+  //  - Can target one creature OR object (was creature only) — fixes the
+  //    long-standing "can I blast a chest to test if it's a mimic" debate
+  //  - Scaling unchanged: 2 beams at L5, 3 at L11, 4 at L17
+  //  - Still works with Agonizing Blast invocation (+CHA to each beam)
+  description: "You hurl a beam of crackling energy. Make a ranged spell attack against one creature or object in range. On a hit, the target takes 1d10 Force damage.\n\nCantrip Upgrade. The spell creates two beams at level 5, three beams at level 11, and four beams at level 17. You can direct the beams at the same target or at different ones. Make a separate attack roll for each beam.",
   attack_type: "ranged",
   damage_type: "Force",
   damage_at_char_level: { "1": "1d10", "5": "1d10", "11": "1d10", "17": "1d10" },
@@ -113,7 +134,16 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Cleric", "Druid"],
-  description: "You touch one willing creature. Once before the spell ends, the target can roll a d4 and add the number rolled to one ability check of its choice. It can roll the die before or after making the ability check. The spell then ends.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). MAJOR REWORK from 2014:
+  //  - 2014: one-shot +1d4 to a single ability check, then spell ends
+  //  - 2024: touch willing creature + choose a skill. Until spell ends,
+  //    creature adds 1d4 to ANY ability check using the chosen skill.
+  //    Full duration (1 min concentration). Skill selection is locked at
+  //    cast time — can't change it mid-spell.
+  //  - Much stronger for repeated skill work (investigating a room,
+  //    chained Athletics climbs, etc.) since the buff doesn't end after
+  //    first use
+  description: "You touch a willing creature and choose a skill. Until the spell ends, the creature adds 1d4 to any ability check using the chosen skill.",
   },
   {
   id: "light",
@@ -149,13 +179,17 @@ export const SPELLS: SpellData[] = [
   name: "Mending",
   level: 0,
   school: "Transmutation",
-  casting_time: "1 minute",
+  casting_time: "1 action",
   range: "Touch",
-  components: "V, S, M (Two lodestones.)",
+  components: "V, S, M (two lodestones)",
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
   classes: ["Cleric", "Bard", "Druid", "Sorcerer", "Wizard", "Psion"],
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - Casting time: 1 minute → 1 Action (can now be cast in combat)
+  //  - Scope otherwise unchanged: single break/tear up to 1 foot, can repair
+  //    magic items/constructs but does not restore magic
   description: "This spell repairs a single break or tear in an object you touch, such as a broken key, a torn cloak, or a leaking wineskin. As long as the break or tear is no longer than 1 foot in any dimension, you mend it, leaving no trace of the former damage.\n\nThis spell can physically repair a magic item or construct, but the spell can't restore magic to such an object.",
   },
   {
@@ -190,16 +224,23 @@ export const SPELLS: SpellData[] = [
   id: "poison-spray",
   name: "Poison Spray",
   level: 0,
-  school: "Conjuration",
+  school: "Necromancy",
   casting_time: "1 action",
-  range: "10 feet",
+  range: "30 feet",
   components: "V, S",
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
   classes: ["Sorcerer", "Warlock", "Wizard", "Druid"],
-  description: "You extend your hand toward a creature you can see within range and project a puff of noxious gas from your palm. The creature must succeed on a constitution saving throw or take 1d12 poison damage.\n\nThis spell's damage increases by 1d12 when you reach 5th level (2d12), 11th level (3d12), and 17th level (4d12).",
-  save_type: "CON",
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - School: Conjuration → Necromancy (standardized with other "touch of death" cantrips)
+  //  - Range: 10 ft → 30 ft (huge usability buff)
+  //  - Mechanic: CON save vs 1d12 → ranged spell attack vs 1d12
+  //    (now standardized like Fire Bolt, Ray of Frost, etc. — you can miss
+  //    but when you hit the full damage lands every time, no "half on save")
+  //  - Damage die unchanged: 1d12 poison, scales at L5/11/17
+  description: "You extend your hand toward a creature you can see within range and project a puff of noxious gas from your palm. Make a ranged spell attack against the target. On a hit, the target takes 1d12 Poison damage.\n\nCantrip Upgrade. The damage increases by 1d12 when you reach levels 5 (2d12), 11 (3d12), and 17 (4d12).",
+  attack_type: "ranged",
   damage_type: "Poison",
   damage_at_char_level: { "1": "1d12", "5": "2d12", "11": "3d12", "17": "4d12" },
   damage_dice: "1d12",
@@ -261,12 +302,20 @@ export const SPELLS: SpellData[] = [
   school: "Abjuration",
   casting_time: "1 action",
   range: "Touch",
-  components: "V, S, M (A miniature cloak.)",
+  components: "V, S, M (a miniature cloak)",
   duration: "Up to 1 minute",
   concentration: true,
   ritual: false,
   classes: ["Cleric", "Druid"],
-  description: "You touch one willing creature. Once before the spell ends, the target can roll a d4 and add the number rolled to one saving throw of its choice. It can roll the die before or after making the saving throw. The spell then ends.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). MAJOR REWORK from 2014:
+  //  - 2014: one-shot +1d4 to one saving throw before spell ends
+  //  - 2024: touch willing creature, choose a damage type (Acid, Bludgeoning,
+  //    Cold, Fire, Lightning, Necrotic, Piercing, Poison, Radiant, Slashing,
+  //    or Thunder). Whenever creature takes damage of chosen type, reduce it
+  //    by 1d4. Only once per turn. Lasts full duration (1 min concentration).
+  //  - Entirely different spell now — proactive damage reduction, not a
+  //    reactive save buff
+  description: "You touch a willing creature and choose a damage type: Acid, Bludgeoning, Cold, Fire, Lightning, Necrotic, Piercing, Poison, Radiant, Slashing, or Thunder. When the creature takes damage of the chosen type before the spell ends, the creature reduces the total damage taken by 1d4. A creature can benefit from this spell only once per turn.",
   },
   {
   id: "sacred-flame",
@@ -293,12 +342,19 @@ export const SPELLS: SpellData[] = [
   school: "Transmutation",
   casting_time: "1 bonus action",
   range: "Touch",
-  components: "V, S, M (Mistletoe, a shamrock leaf, and a club or quarterstaff.)",
+  components: "V, S, M (mistletoe, a shamrock leaf, and a Club or Quarterstaff)",
   duration: "1 minute",
   concentration: false,
   ritual: false,
   classes: ["Druid"],
-  description: "The wood of a club or a quarterstaff you are holding is imbued with nature's power. For the duration, you can use your spellcasting ability instead of Strength for the attack and damage rolls of melee attacks using that weapon, and the weapon's damage die becomes a d8. The weapon also becomes magical, if it isn't already. The spell ends if you cast it again or if you let go of the weapon.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). Major buffs from 2014:
+  //  - NEW: Damage die now scales — d8 → d10 (L5) → d12 (L11) → 2d6 (L17)
+  //  - NEW: Choice of weapon's normal damage type OR Force damage per hit
+  //  - Spell ending: "you cast it again or let go of the weapon" unchanged
+  //  - Material component wording normalized
+  //  - Usability: the scaling + Force option makes this competitive with
+  //    Fire Bolt or True Strike at every tier
+  description: "A Club or Quarterstaff you are holding is imbued with nature's power. For the duration, you can use your spellcasting ability instead of Strength for the attack and damage rolls of melee attacks using that weapon, and the weapon's damage die becomes a d8. If the attack deals damage, it can be Force damage or the weapon's normal damage type (your choice). The spell ends early if you cast it again or if you let go of the weapon.\n\nCantrip Upgrade. The damage die changes when you reach levels 5 (d10), 11 (d12), and 17 (2d6).",
   },
   {
   id: "shocking-grasp",
@@ -324,13 +380,17 @@ export const SPELLS: SpellData[] = [
   level: 0,
   school: "Necromancy",
   casting_time: "1 action",
-  range: "Touch",
+  range: "15 feet",
   components: "V, S",
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Cleric"],
-  description: "You touch a living creature that has 0 hit points. The creature becomes stable. This spell has no effect on undead or constructs.",
+  classes: ["Cleric", "Druid"],
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - Range: Touch → 15 feet (doubles at L5/11/17 per Cantrip Upgrade)
+  //  - Classes: Cleric → Cleric + Druid (Druid added)
+  //  - "No effect on undead or constructs" REMOVED (now works on any creature)
+  description: "Choose a creature within range that has 0 Hit Points and isn't dead. The creature becomes Stable.\n\nCantrip Upgrade. The range doubles when you reach levels 5 (30 feet), 11 (60 feet), and 17 (120 feet).",
   },
   {
   id: "thaumaturgy",
@@ -352,13 +412,24 @@ export const SPELLS: SpellData[] = [
   level: 0,
   school: "Divination",
   casting_time: "1 action",
-  range: "30 feet",
-  components: "S",
-  duration: "Up to 1 round",
-  concentration: true,
+  range: "Self",
+  components: "S, M (a weapon with which you have proficiency and that is worth 1+ CP)",
+  duration: "Instantaneous",
+  concentration: false,
   ritual: false,
   classes: ["Bard", "Sorcerer", "Warlock", "Wizard", "Psion"],
-  description: "You extend your hand and point a finger at a target in range. Your magic grants you a brief insight into the target's defenses. On your next turn, you gain advantage on your first attack roll against the target, provided that this spell hasn't ended.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). COMPLETELY REWORKED from 2014:
+  //  - No longer "gain advantage on next attack" — now casts AS an attack
+  //  - Range: 30 ft → Self (you're attacking with your own weapon)
+  //  - Duration: 1 round concentration → Instantaneous (no concentration)
+  //  - Mechanic: make one attack with your weapon, using your spellcasting
+  //    ability (INT/WIS/CHA) for attack and damage rolls instead of STR/DEX
+  //  - Damage type: choice of weapon's normal type OR Radiant
+  //  - Cantrip Upgrade: +1d6 / +2d6 / +3d6 extra Radiant damage at L5/11/17
+  description: "Guided by a flash of magical insight, you make one attack with the weapon used in the spell's casting. The attack uses your spellcasting ability for the attack and damage rolls instead of using Strength or Dexterity. If the attack deals damage, it can be Radiant damage or the weapon's normal damage type (your choice).\n\nCantrip Upgrade. Whether you deal Radiant damage or the weapon's normal damage type, the attack deals extra Radiant damage when you reach levels 5 (1d6), 11 (2d6), and 17 (3d6).",
+  attack_type: "melee",
+  damage_type: "Radiant",
+  damage_at_char_level: { "1": "0", "5": "1d6", "11": "2d6", "17": "3d6" },
   },
   {
   id: "vicious-mockery",
@@ -647,7 +718,7 @@ export const SPELLS: SpellData[] = [
   id: "divine-favor",
   name: "Divine Favor",
   level: 1,
-  school: "Evocation",
+  school: "Transmutation",
   casting_time: "1 bonus action",
   range: "Self",
   components: "V, S",
@@ -655,7 +726,11 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Paladin"],
-  description: "Your prayer empowers you with divine radiance. Until the spell ends, your weapon attacks deal an extra 1d4 radiant damage on a hit.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - School: Evocation → Transmutation (you're empowering your weapon,
+  //    not creating radiant energy from nothing — cleaner taxonomy)
+  //  - Mechanics unchanged: +1d4 Radiant to weapon attacks for 1 min conc.
+  description: "Your prayer empowers you with divine radiance. Until the spell ends, your weapon attacks deal an extra 1d4 Radiant damage on a hit.",
   damage_type: "Radiant",
   damage_at_slot_level: { "1": "1d4" },
   damage_dice: "1d4",
@@ -689,7 +764,10 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Sorcerer", "Warlock", "Wizard"],
-  description: "This spell allows you to move at an incredible pace. When you cast this spell, and then as a bonus action on each of your turns until the spell ends, you can take the Dash action.",
+  // v2.91.0: Verified against 2024 PHB. Mechanics unchanged from 2014:
+  //  - Bonus action cast, Self range, 10 min concentration
+  //  - Dash on cast, then Dash as bonus action each subsequent turn
+  description: "This spell allows you to move at an incredible pace. When you cast this spell, and as a Bonus Action on each of your later turns until the spell ends, you can take the Dash action.",
   },
   {
   id: "faerie-fire",
@@ -714,13 +792,17 @@ export const SPELLS: SpellData[] = [
   school: "Necromancy",
   casting_time: "1 action",
   range: "Self",
-  components: "V, S, M (A small amount of alcohol or distilled spirits.)",
+  components: "V, S, M (a small amount of alcohol or distilled spirits)",
   duration: "1 hour",
   concentration: false,
   ritual: false,
   classes: ["Sorcerer", "Wizard"],
-  description: "Bolstering yourself with a necromantic facsimile of life, you gain 1d4 + 4 temporary hit points for the duration.",
-  higher_levels: "When you cast this spell using a spell slot of 2nd level or higher, you gain 5 additional temporary hit points for each slot level above 1st.",
+  // v2.91.0: Verified against 2024 PHB. Mechanics unchanged from 2014:
+  //  - 1d4 + 4 temp HP base; +5 temp HP per slot above 1st
+  //  - 1 hour duration, no concentration
+  //  - Material component punctuation normalized
+  description: "Bolstering yourself with a necromantic facsimile of life, you gain 1d4 + 4 Temporary Hit Points for the duration.",
+  higher_levels: "Using a Higher-Level Spell Slot. You gain 5 additional Temporary Hit Points for each spell slot level above 1.",
   heal_at_slot_level: {
     "1": "1d4 + 4",
     "2": "1d4 + 9",
@@ -769,12 +851,20 @@ export const SPELLS: SpellData[] = [
   school: "Conjuration",
   casting_time: "1 action",
   range: "30 feet",
-  components: "V, S, M (A drop of mercury.)",
+  components: "V, S, M (a drop of mercury)",
   duration: "1 hour",
   concentration: false,
   ritual: true,
-  classes: ["Wizard"],
-  description: "This spell creates a circular, horizontal plane of force, 3 feet in diameter and 1 inch thick, that floats 3 feet above the ground in an unoccupied space of your choice that you can see within range. The disk remains for the duration, and can hold up to 500 pounds. If more weight is placed on it, the spell ends, and everything on the disk falls to the ground.\n\nThe disk is immobile while you are within 20 feet of it. If you move more than 20 feet away from it, the disk follows you so that it remains within 20 feet of you. If can move across uneven terrain, up or down stairs, slopes and the like, but it can't cross an elevation change of 10 feet or more. For example, the disk can't move across a 10-foot-deep pit, nor could it leave such a pit if it was created at the bottom.\n\nIf you move more than 100 feet away from the disk (typically because it can't move around an obstacle to follow you), the spell ends.",
+  classes: ["Wizard", "Psion"],
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - Name canonicalized: "Tenser's Floating Disk" → "Floating Disk"
+  //    (2024 PHB dropped the Tenser's prefix; merged duplicate entry)
+  //  - Added Psion to classes list (preserved from prior dup entry)
+  //  - Material component punctuation normalized
+  //  - Typo fix: "If can move" → "It can move"
+  //  - Mechanics unchanged: 3 ft disk, 500 lb capacity, stays within 20 ft,
+  //    can't cross >10 ft elevation changes, ritual castable
+  description: "This spell creates a circular, horizontal plane of force, 3 feet in diameter and 1 inch thick, that floats 3 feet above the ground in an unoccupied space of your choice that you can see within range. The disk remains for the duration and can hold up to 500 pounds. If more weight is placed on it, the spell ends and everything on the disk falls to the ground.\n\nThe disk is immobile while you are within 20 feet of it. If you move more than 20 feet away from it, the disk follows you so that it remains within 20 feet of you. It can move across uneven terrain, up or down stairs, slopes and the like, but it can't cross an elevation change of 10 feet or more. For example, the disk can't move across a 10-foot-deep pit, nor could it leave such a pit if it was created at the bottom.\n\nIf you move more than 100 feet away from the disk (typically because it can't move around an obstacle to follow you), the spell ends.",
   },
   {
   id: "fog-cloud",
@@ -933,12 +1023,20 @@ export const SPELLS: SpellData[] = [
   school: "Enchantment",
   casting_time: "1 action",
   range: "30 feet",
-  components: "V, S, M (Tiny tarts and a feather that is waved in the air.)",
+  components: "V, S, M (tiny tarts and a feather that is waved in the air)",
   duration: "Up to 1 minute",
   concentration: true,
   ritual: false,
-  classes: ["Bard", "Wizard"],
-  description: "A creature of your choice that you can see within range perceives everything as hilariously funny and falls into fits of laughter if this spell affects it. The target must succeed on a wisdom saving throw or fall prone, becoming incapacitated and unable to stand up for the duration. A creature with an Intelligence score of 4 or less isn't affected.\n\nAt the end of each of its turns, and each time it takes damage, the target can make another wisdom saving throw. The target had advantage on the saving throw if it's triggered by damage. On a success, the spell ends.",
+  classes: ["Bard", "Wizard", "Psion"],
+  // v2.91.0: Updated to 2024 PHB (5.5e). Changes from 2014:
+  //  - Name canonicalized: "Tasha's Hideous Laughter" → "Hideous Laughter"
+  //    (2024 PHB dropped the Tasha's prefix; merged with duplicate entry)
+  //  - Added Psion to classes list (preserved from prior dup entry)
+  //  - Typo corrected: "had" → "has" advantage on damage-triggered save
+  //  - Mechanics unchanged: WIS save, Prone + Incapacitated, repeat save on
+  //    damage (advantage) or end of turn
+  //  - INT < 4 immunity unchanged
+  description: "One creature you can see within range perceives everything as hilariously funny and falls into fits of laughter if this spell affects it. The target must succeed on a Wisdom saving throw or fall Prone, becoming Incapacitated and unable to stand up for the duration. A creature with an Intelligence score of 4 or less isn't affected.\n\nAt the end of each of its turns, and each time it takes damage, the target can make another Wisdom saving throw. The target has advantage on the saving throw if it's triggered by damage. On a success, the spell ends.",
   save_type: "WIS",
   },
   {
@@ -996,22 +1094,31 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Cleric"],
-  description: "Make a melee spell attack against a creature you can reach. On a hit, the target takes 3d10 necrotic damage.",
-  higher_levels: "When you cast this spell using a spell slot of 2nd level or higher, the damage increases by 1d10 for each slot level above 1st.",
-  attack_type: "melee",
+  // v2.91.0: Updated to 2024 PHB (5.5e). MAJOR REWORK from 2014:
+  //  - 2014: melee spell attack, 3d10 necrotic on hit, +1d10/slot
+  //  - 2024: no attack roll — target makes CONSTITUTION save instead.
+  //    2d10 necrotic on failed save, half as much on success.
+  //    Upcast: +1d10/slot (unchanged scaling rate, but BASE reduced from
+  //    3d10 to 2d10)
+  //  - Reliable damage when you would normally miss, but ceiling is lower
+  //  - Significant nerf overall — 2014 version hit for ~16 avg on a hit,
+  //    2024 version hits for ~11 avg on save fail and ~5.5 on save success
+  description: "A creature you touch makes a Constitution saving throw, taking 2d10 Necrotic damage on a failed save or half as much damage on a successful one.",
+  higher_levels: "Using a Higher-Level Spell Slot. The damage increases by 1d10 for each spell slot level above 1.",
+  save_type: "CON",
   damage_type: "Necrotic",
   damage_at_slot_level: {
-    "1": "3d10",
-    "2": "4d10",
-    "3": "5d10",
-    "4": "6d10",
-    "5": "7d10",
-    "6": "8d10",
-    "7": "9d10",
-    "8": "10d10",
-    "9": "11d10"
+    "1": "2d10",
+    "2": "3d10",
+    "3": "4d10",
+    "4": "5d10",
+    "5": "6d10",
+    "6": "7d10",
+    "7": "8d10",
+    "8": "9d10",
+    "9": "10d10"
   },
-  damage_dice: "3d10",
+  damage_dice: "2d10",
   },
   {
   id: "jump",
@@ -1020,12 +1127,14 @@ export const SPELLS: SpellData[] = [
   school: "Transmutation",
   casting_time: "1 action",
   range: "Touch",
-  components: "V, S, M (A grasshopper's hind leg.)",
+  components: "V, S, M (a grasshopper's hind leg)",
   duration: "1 minute",
   concentration: false,
   ritual: false,
   classes: ["Druid", "Ranger", "Sorcerer", "Wizard", "Psion"],
-  description: "You touch a creature. The creature's jump distance is tripled until the spell ends.",
+  // v2.91.0: Verified against 2024 PHB. Mechanics unchanged from 2014;
+  // prose and material component punctuation normalized.
+  description: "You touch a willing creature. The creature's jump distance is tripled until the spell ends.",
   },
   {
   id: "longstrider",
@@ -1034,13 +1143,13 @@ export const SPELLS: SpellData[] = [
   school: "Transmutation",
   casting_time: "1 action",
   range: "Touch",
-  components: "V, S, M (A pinch of dirt.)",
+  components: "V, S, M (a pinch of dirt)",
   duration: "1 hour",
   concentration: false,
   ritual: false,
   classes: ["Bard", "Druid", "Ranger", "Wizard", "Psion"],
-  description: "You touch a creature. The target's speed increases by 10 feet until the spell ends.",
-  higher_levels: "When you cast this spell using a spell slot of 2nd level or higher, you can target one additional creature for each spell slot above 1st.",
+  description: "You touch a willing creature. Until the spell ends, the target's Speed increases by 10 feet.",
+  higher_levels: "Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.",
   },
   {
   id: "mage-armor",
@@ -1110,7 +1219,11 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: true,
   classes: ["Cleric", "Druid", "Paladin"],
-  description: "All nonmagical food and drink within a 5-foot radius sphere centered on a point of your choice within range is purified and rendered free of poison and disease.",
+  // v2.91.0: Verified against 2024 PHB. Mechanics unchanged from 2014:
+  //  - 5-foot-radius Sphere at a point within 10 ft
+  //  - Purifies all nonmagical food/drink in sphere, removes poison + disease
+  //  - Ritual cast available
+  description: "All nonmagical food and drink within a 5-foot-radius Sphere centered on a point of your choice within range is purified and rendered free of poison and disease.",
   },
   {
   id: "sanctuary",
@@ -1147,11 +1260,15 @@ export const SPELLS: SpellData[] = [
   school: "Abjuration",
   casting_time: "1 bonus action",
   range: "60 feet",
-  components: "V, S, M (A small parchment with a bit of holy text written on it.)",
+  components: "V, S, M (a prayer scroll)",
   duration: "Up to 10 minutes",
   concentration: true,
   ritual: false,
   classes: ["Cleric", "Paladin"],
+  // v2.91.0: Verified against 2024 PHB. Changes from 2014:
+  //  - Material component: "small parchment with holy text" → "a prayer scroll"
+  //    (2024 standardization of divine material components)
+  //  - Mechanics unchanged: +2 AC, 10 min concentration, bonus action cast
   description: "A shimmering field appears and surrounds a creature of your choice within range, granting it a +2 bonus to AC for the duration.",
   },
   {
@@ -5217,11 +5334,18 @@ export const SPELLS: SpellData[] = [
   casting_time: "1 action",
   range: "Self",
   components: "V, S",
-  duration: "Concentration, up to 1 minute",
-  concentration: true,
+  duration: "1 round",
+  concentration: false,
   ritual: false,
   classes: ["Bard", "Sorcerer", "Warlock", "Wizard", "Psion"],
-  description: "You extend your hand and trace a sigil of warding in the air. Until the start of your next turn, you have Resistance to Bludgeoning, Piercing, and Slashing damage dealt by weapon attacks.",
+  // v2.91.0: Updated to 2024 PHB (5.5e). MAJOR REWORK from 2014:
+  //  - 2014: Resistance to B/P/S from weapon attacks until end of your next turn
+  //  - 2024: whenever a creature makes an attack roll against you before the
+  //    spell ends, the attacker subtracts 1d4 from the attack roll
+  //  - Duration: 1 round (no longer concentration)
+  //  - Applies to ALL attack rolls (not just weapon), which makes it more
+  //    widely useful but caps at ~-2.5 avg per hit rather than halving damage
+  description: "You extend your hand and trace a sigil of warding in the air. Until the start of your next turn, whenever a creature makes an attack roll against you, the attacker subtracts 1d4 from the attack roll.",
   },
   {
   id: "friends",
@@ -5235,6 +5359,11 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Bard", "Sorcerer", "Warlock", "Wizard", "Psion"],
+  // v2.91.0: Verified against 2024 PHB. Minor prose cleanup from 2014:
+  //  - Core effect unchanged: advantage on CHA checks vs one non-Hostile
+  //    creature, target becomes Hostile when spell ends
+  //  - 2024 wording is slightly cleaner but mechanics identical
+  //  - Classes unchanged
   description: "For the duration, you have Advantage on all Charisma checks directed at one creature of your choice that isn't Hostile toward you. When the spell ends, the creature realizes that you used magic to influence its mood and becomes Hostile toward you. A creature prone to violence might attack you. Another creature might seek retribution in other ways depending on the nature of your interaction with it.",
   },
   {
@@ -5308,35 +5437,6 @@ export const SPELLS: SpellData[] = [
   damage_type: "Psychic",
   attack_type: "ranged",
   damage_at_slot_level: { "1": "1d10", "2": "2d10", "3": "3d10", "4": "4d10", "5": "5d10", "6": "6d10", "7": "7d10", "8": "8d10", "9": "9d10" },
-  },
-  {
-  id: "tashas-hideous-laughter",
-  name: "Tasha's Hideous Laughter",
-  level: 1,
-  school: "Enchantment",
-  casting_time: "1 action",
-  range: "30 feet",
-  components: "V, S, M (tarts and a feather)",
-  duration: "Concentration, up to 1 minute",
-  concentration: true,
-  ritual: false,
-  classes: ["Bard", "Wizard", "Psion"],
-  description: "One creature you can see within range perceives everything as hilariously funny and falls into fits of laughter if this spell affects it. The target must succeed on a Wisdom saving throw or fall Prone, becoming Incapacitated and unable to stand up for the duration. A creature with an Intelligence score of 4 or less isn't affected. At the end of each of its turns, and each time it takes damage, the target can make another Wisdom saving throw. The target has Advantage on the saving throw if it's triggered by damage. On a success, the spell ends.",
-  save_type: "WIS",
-  },
-  {
-  id: "tensers-floating-disk",
-  name: "Tenser's Floating Disk",
-  level: 1,
-  school: "Conjuration",
-  casting_time: "1 action",
-  range: "30 feet",
-  components: "V, S, M (a drop of mercury)",
-  duration: "1 hour",
-  concentration: false,
-  ritual: true,
-  classes: ["Wizard", "Psion"],
-  description: "This spell creates a circular, horizontal plane of force, 3 feet in diameter and 1 inch thick, that floats 3 feet above the ground in an unoccupied space of your choice that you can see within range. The disk remains for the duration and can hold up to 500 pounds. If more weight is placed on it, the spell ends and everything on the disk falls to the ground. The disk is immobile while you are within 20 feet of it. If you move more than 20 feet away from it, the disk follows you so that it remains within 20 feet of you. It can move across uneven terrain, up or down stairs, slopes and the like, but it can't cross an elevation change of 10 feet or more.",
   },
   {
   id: "crown-of-madness",

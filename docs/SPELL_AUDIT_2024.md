@@ -49,14 +49,60 @@ Apply these **globally** during audit:
 
 **Tier 1 complete.** 15/15 spells verified. Core healing + most-cast combat spells now match 2024 PHB.
 
-## Tier 2 — Cantrips + L1 combat (session 2)
-*~65 spells, pending v2.90.0*
+## Tier 2a — Cantrips + tiniest L1 (v2.91.0)
 
-## Tier 3 — L2-L3 spells (session 3)
-*~130 spells, pending v2.91.0*
+Verified against 2024 PHB sources (Roll20, aidedd.org, dndbeyond.com, dndlounge.com, mythcreants.com, 5point5.fandom.com).
 
-## Tier 4 — L4-L9 + rare/utility (sessions 4+)
-*~165 spells, pending v2.92.0+*
+### Cantrips with mechanical changes
+
+| Spell | Status | Key 2024 delta |
+|---|---|---|
+| Acid Splash | ✅ | School Conjuration → Evocation; targeting "1–2 creatures" → 5-ft-radius Sphere; added area_of_effect data |
+| Chill Touch | ✅ | **Major rework:** 120 ft ranged → Touch melee; 1d8 → 1d10 necrotic; heal-block extended to end of your next turn; lost anti-undead disadvantage clause |
+| True Strike | ✅ | **Complete rework:** advantage on next attack → now casts AS a weapon attack using spellcasting ability for attack/damage; optional Radiant damage; +1d6/2d6/3d6 radiant at L5/11/17; Duration Instantaneous, no concentration |
+| Spare the Dying | ✅ | Range Touch → 15 ft (doubles at L5/11/17); added Druid class; removed undead/construct exclusion |
+| Resistance | ✅ | **Complete rework:** one-shot +1d4 save → choose damage type, reduce damage of that type by 1d4 once per turn for full 1-min concentration |
+| Guidance | ✅ | **Complete rework:** one-shot +1d4 ability check → choose a skill, +1d4 to any check using that skill for full 1-min concentration |
+| Poison Spray | ✅ | School Conjuration → Necromancy; range 10 ft → 30 ft; CON save → ranged spell attack (1d12 on hit, standardized with Fire Bolt etc.) |
+| Blade Ward | ✅ | **Rework:** Resistance to B/P/S → attackers subtract 1d4 from attack rolls; duration 1 round, no concentration |
+| Mending | ✅ | Casting time 1 min → 1 Action (now combat-usable) |
+| Eldritch Blast | ✅ | Prose updated to "You hurl a beam"; can target one creature **or object** (2024 addition) |
+| Shillelagh | ✅ | **Major buff:** damage die d8 → d10 (L5) → d12 (L11) → 2d6 (L17); optional Force damage per hit |
+| Friends | ✅ | Verified unchanged |
+
+### L1 spells with mechanical changes
+
+| Spell | Status | Key 2024 delta |
+|---|---|---|
+| Inflict Wounds | ✅ | **Major nerf:** melee spell attack 3d10 → Touch + CON save 2d10 (half on success); base reduced by 1d10 |
+| Divine Favor | ✅ | School Evocation → Transmutation; mechanics unchanged |
+| Shield of Faith | ✅ | Material component: "parchment w/ holy text" → "a prayer scroll"; mechanics unchanged |
+| False Life | ✅ | Prose normalized; mechanics unchanged |
+| Expeditious Retreat | ✅ | Prose normalized; mechanics unchanged |
+| Purify Food and Drink | ✅ | Prose normalized; mechanics unchanged |
+| Jump | ✅ | 2024 prose ("willing creature"); mechanics unchanged |
+| Longstrider | ✅ | 2024 prose + "Using a Higher-Level Spell Slot" upcast phrasing |
+
+### 2014/2024 dupe consolidation
+
+| 2014 name | 2024 canonical | Action |
+|---|---|---|
+| Tasha's Hideous Laughter | Hideous Laughter | Deleted dup entry; merged Psion class into canonical; typo fix ("had" → "has"); Supabase row deleted |
+| Tenser's Floating Disk | Floating Disk | Deleted dup entry; merged Psion class into canonical; typo fix ("If can" → "It can"); material comp normalized; Supabase row deleted |
+
+**Tier 2a total: 22 spells fixed/verified this version + 2 dup entries removed.**
+
+## Tier 2b — remaining L1 spells (v2.92.0, pending)
+~45 L1 spells to verify against 2024 PHB (Alarm, Animal Friendship, Armor of Agathys, Arms of Hadar, Bane, Chaos Bolt, Charm Person, Chromatic Orb, Color Spray, Command, Comprehend Languages, Create or Destroy Water, Detect Evil and Good, Detect Magic, Detect Poison and Disease, Disguise Self, Dissonant Whispers, Entangle, Faerie Fire, Feather Fall, Find Familiar, Fog Cloud, Goodberry, Grease, Hellish Rebuke, Heroism, Hunter's Mark, Identify, Illusory Script, Mage Armor, Protection from Evil and Good, Ray of Sickness, Sanctuary, Searing Smite, Silent Image, Sleep, Speak with Animals, Thunderous Smite, Thunderwave, Unseen Servant, Witch Bolt, Wrathful Smite).
+
+## Tier 2c — unchanged cantrips needing verification comments only (v2.92.0)
+Ray of Frost, Fire Bolt, Mage Hand, Message, Minor Illusion, Light, Dancing Lights, Druidcraft, Prestidigitation, Produce Flame, Thaumaturgy, Shocking Grasp, Vicious Mockery, Mind Sliver, Frostbite, Toll the Dead, Word of Radiance — mechanically unchanged in 2024 but haven't yet had their inline verification comment added.
+
+## Tier 3 — L2-L3 spells (~130 spells, pending v2.93.0+)
+
+## Tier 4 — L4-L9 + rare/utility (~165 spells, pending)
+
+---
 
 ## Non-PHB 2024 content (stays on original source)
 - **Psion disciplines** (homebrew, `classes: [..., "Psion"]`)
