@@ -23,7 +23,7 @@ import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, condit
 import {
   getAttackRollBonuses, getSaveBonuses, getDamageRiders,
   rollDiceExpr as rollBuffDice,
-  clearBuffsFromConcentration,
+  clearBuffsFromConcentration, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
 import { CONDITION_MAP } from '../data/conditions';
@@ -882,6 +882,24 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
         crit_doubled: isCrit,
       },
     });
+  }
+
+  // v2.114.0 — Phase H pt 5: consume single-use riders (e.g., Absorb
+  // Elements rider — +1d6 on next melee attack only). Must come after the
+  // contribution events so the log still shows the rider's final hurrah.
+  if (atk.attacker_participant_id) {
+    const singleUseKeys = rolledDamageRiders
+      .filter(r => r.buff.singleUse)
+      .map(r => r.buff.key);
+    for (const key of singleUseKeys) {
+      await removeBuff({
+        participantId: atk.attacker_participant_id,
+        key,
+        reason: 'consumed',
+        campaignId: atk.campaign_id,
+        encounterId: atk.encounter_id,
+      });
+    }
   }
 
   // v2.99.0 — Phase E: offer post-damage reactions (Uncanny Dodge, Absorb

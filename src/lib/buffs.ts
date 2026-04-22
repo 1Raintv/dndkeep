@@ -29,6 +29,9 @@ export interface ActiveBuff {
   onlyVsTargetParticipantId?: string;
   onlyMelee?: boolean;
   onlyRanged?: boolean;
+  /** v2.114.0 — Phase H pt 5: consumed after the first qualifying use
+   *  (Absorb Elements rider — one melee attack only). */
+  singleUse?: boolean;
 }
 
 // ─── Apply / remove ──────────────────────────────────────────────
@@ -230,4 +233,122 @@ export async function clearBuffsFromConcentration(
     }
   }
   return removedCount;
+}
+
+// ─── Spell → buff registry ───────────────────────────────────────
+// v2.114.0 — Phase H pt 5: known concentration/buff spells and the buff
+// template they produce per target. `applyBuffFromSpell` looks up a spell
+// name here and applies the right buff to each target.
+//
+// Design: each registry entry is either:
+//   - { scope: 'per_target', template: fn(caster) → ActiveBuff(noTarget) }
+//       — the same buff applies to each target independently (Bless gives
+//         each target the Bless buff on themselves; the buff modifies their
+//         own attacks/saves).
+//   - { scope: 'on_caster_per_target', template: fn(caster, target) → ActiveBuff }
+//       — the buff applies to the caster but is scoped to the chosen target
+//         (Hunter's Mark / Hex: rider on caster's attacks vs the marked one).
+//   - { scope: 'on_caster_only', template: fn(caster) → ActiveBuff }
+//       — Divine Favor: caster only, no target parameter.
+//
+// Spell names are looked up case-insensitively.
+
+type BuffSpellEntry =
+  | { scope: 'per_target'; template: (casterId: string) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
+  | { scope: 'on_caster_per_target'; template: (casterId: string, targetId: string) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
+  | { scope: 'on_caster_only'; template: (casterId: string) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> };
+
+export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
+  bless: {
+    scope: 'per_target',
+    template: () => ({
+      key: 'bless',
+      name: 'Bless',
+      attackRollBonus: '1d4',
+      saveBonus: '1d4',
+    }),
+  },
+  "hunter's mark": {
+    scope: 'on_caster_per_target',
+    template: (_casterId, targetId) => ({
+      key: 'hunters_mark',
+      name: "Hunter's Mark",
+      damageRider: { dice: '1d6', damageType: 'piercing' }, // actually "weapon damage type" per RAW — 1d6 added to weapon's type on hit. Simplified here.
+      onlyVsTargetParticipantId: targetId,
+    }),
+  },
+  hex: {
+    scope: 'on_caster_per_target',
+    template: (_casterId, targetId) => ({
+      key: 'hex',
+      name: 'Hex',
+      damageRider: { dice: '1d6', damageType: 'necrotic' },
+      onlyVsTargetParticipantId: targetId,
+    }),
+  },
+  'divine favor': {
+    scope: 'on_caster_only',
+    template: () => ({
+      key: 'divine_favor',
+      name: 'Divine Favor',
+      damageRider: { dice: '1d4', damageType: 'radiant' },
+      onlyMelee: true,
+    }),
+  },
+};
+
+/**
+ * Apply the buff(s) produced by a concentration/self-buff spell. Caller
+ * passes the caster's participant id and the affected target participant
+ * ids (may be empty or caster-only depending on the spell's scope).
+ */
+export async function applyBuffFromSpell(input: {
+  campaignId: string;
+  encounterId: string | null;
+  spellName: string;
+  casterParticipantId: string;
+  targetParticipantIds: string[];   // may be empty for caster-only spells
+}): Promise<number> {
+  const key = input.spellName.trim().toLowerCase();
+  const entry = BUFF_SPELL_REGISTRY[key];
+  if (!entry) return 0;
+
+  const source = `spell:${key}`;
+  let applied = 0;
+
+  if (entry.scope === 'per_target') {
+    for (const tid of input.targetParticipantIds) {
+      const tpl = entry.template(input.casterParticipantId);
+      await applyBuff({
+        participantId: tid,
+        buff: { ...tpl, source, casterParticipantId: input.casterParticipantId },
+        campaignId: input.campaignId,
+        encounterId: input.encounterId,
+      });
+      applied++;
+    }
+  } else if (entry.scope === 'on_caster_per_target') {
+    // Bind the rider to the first target (HM/Hex RAW is single-target).
+    const tid = input.targetParticipantIds[0];
+    if (!tid) return 0;
+    const tpl = entry.template(input.casterParticipantId, tid);
+    await applyBuff({
+      participantId: input.casterParticipantId,
+      buff: { ...tpl, source, casterParticipantId: input.casterParticipantId },
+      campaignId: input.campaignId,
+      encounterId: input.encounterId,
+    });
+    applied = 1;
+  } else {
+    const tpl = entry.template(input.casterParticipantId);
+    await applyBuff({
+      participantId: input.casterParticipantId,
+      buff: { ...tpl, source, casterParticipantId: input.casterParticipantId },
+      campaignId: input.campaignId,
+      encounterId: input.encounterId,
+    });
+    applied = 1;
+  }
+
+  return applied;
 }

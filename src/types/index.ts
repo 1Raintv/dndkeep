@@ -574,6 +574,7 @@ export interface CombatParticipant {
     onlyVsTargetParticipantId?: string;   // Hunter's Mark / Hex scoping
     onlyMelee?: boolean;
     onlyRanged?: boolean;
+    singleUse?: boolean;                  // v2.114.0 — Absorb Elements rider
   }>;
   concentration_spell_id: string | null;
   /** v2.107.0 — Phase G: persisted max walking speed in feet, captured at

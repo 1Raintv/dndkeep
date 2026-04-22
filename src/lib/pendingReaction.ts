@@ -271,6 +271,28 @@ REACTION_REGISTRY.push({
       .update({ damage_final: halved })
       .eq('id', attack.id);
 
+    // v2.114.0 — Phase H pt 5: apply the rider buff. "Until the end of your
+    // next turn, the first time you hit with a melee attack on your next
+    // turn, the weapon deals an extra 1d6 damage of the triggering type."
+    // Modeled as a single-use melee damage rider. We don't track "next turn
+    // only" timing yet (Phase I work), so the rider simply persists until
+    // consumed by the first qualifying attack.
+    const damageType = (attack.damage_type ?? '').toLowerCase();
+    const { applyBuff } = await import('./buffs');
+    await applyBuff({
+      participantId: offer.reactor_participant_id,
+      buff: {
+        key: 'absorb_elements_rider',
+        name: 'Absorb Elements rider',
+        source: 'reaction:absorb_elements',
+        damageRider: { dice: '1d6', damageType },
+        onlyMelee: true,
+        singleUse: true,
+      },
+      campaignId: attack.campaign_id,
+      encounterId: attack.encounter_id,
+    });
+
     await emitCombatEvent({
       campaignId: attack.campaign_id,
       encounterId: attack.encounter_id,
@@ -290,7 +312,7 @@ REACTION_REGISTRY.push({
         rider: {
           description: '+1d6 of triggering damage type on your next melee attack',
           damage_type: attack.damage_type,
-          applied: false,  // full buff plumbing lives in Phase H
+          applied: true,  // v2.114.0 — rider now auto-applied via buff pipeline
         },
       },
     });

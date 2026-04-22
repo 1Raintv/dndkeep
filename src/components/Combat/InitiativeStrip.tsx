@@ -11,6 +11,7 @@ import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
 import { takeDash, takeDisengage } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
+import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
 import DeclareAttackModal from './DeclareAttackModal';
 import ConditionPickerModal from './ConditionPickerModal';
@@ -152,6 +153,12 @@ export default function InitiativeStrip({ isDM }: Props) {
           const visibleConds = conditions.slice(0, VISIBLE_CHIPS);
           const overflowCount = conditions.length - visibleConds.length;
 
+          // v2.114.0 — Phase H pt 5: active buffs chip row (Bless, Hunter's
+          // Mark, Hex, Divine Favor, Absorb Elements rider).
+          const buffs = p.active_buffs ?? [];
+          const visibleBuffs = buffs.slice(0, VISIBLE_CHIPS);
+          const buffOverflow = buffs.length - visibleBuffs.length;
+
           function handleTileClick(e: React.MouseEvent) {
             if (!isDM) return;
             // Anchor the picker centered above the clicked tile
@@ -168,6 +175,18 @@ export default function InitiativeStrip({ isDM }: Props) {
             await removeCondition({
               participantId: p.id,
               conditionName: name,
+              campaignId: encounter.campaign_id,
+              encounterId: encounter.id,
+            });
+          }
+
+          async function handleRemoveBuff(e: React.MouseEvent, key: string) {
+            e.stopPropagation();
+            if (!isDM || !encounter) return;
+            await removeBuff({
+              participantId: p.id,
+              key,
+              reason: 'manual',
               campaignId: encounter.campaign_id,
               encounterId: encounter.id,
             });
@@ -251,6 +270,48 @@ export default function InitiativeStrip({ isDM }: Props) {
                       }}
                     >
                       +{overflowCount}
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* v2.114.0 — Phase H pt 5: buff chip row — gold scheme */}
+              {buffs.length > 0 && (
+                <div style={{
+                  display: 'flex', gap: 2, marginTop: 2,
+                  justifyContent: 'center', flexWrap: 'wrap', maxWidth: 100,
+                }}>
+                  {visibleBuffs.map(b => (
+                    <span
+                      key={b.key}
+                      onClick={isDM ? (e => handleRemoveBuff(e, b.key)) : undefined}
+                      title={`${b.name}${b.source ? ' — ' + b.source : ''}${isDM ? ' (click to remove)' : ''}`}
+                      style={{
+                        fontSize: 8, fontWeight: 800,
+                        padding: '1px 4px', borderRadius: 2,
+                        background: 'rgba(250,204,21,0.25)',
+                        color: '#facc15',
+                        border: '1px solid rgba(250,204,21,0.55)',
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                        cursor: isDM ? 'pointer' : 'default',
+                        lineHeight: 1.2, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ✦{b.name.slice(0, 4)}
+                    </span>
+                  ))}
+                  {buffOverflow > 0 && (
+                    <span
+                      title={buffs.slice(VISIBLE_CHIPS).map(b => b.name).join(', ')}
+                      style={{
+                        fontSize: 8, fontWeight: 800,
+                        padding: '1px 4px', borderRadius: 2,
+                        background: 'rgba(250,204,21,0.18)',
+                        color: '#facc15',
+                        border: '1px solid rgba(250,204,21,0.35)',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      +{buffOverflow}
                     </span>
                   )}
                 </div>

@@ -8,6 +8,8 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie } from '../../lib/gameUtils';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
+import BuffTargetPickerModal from '../Combat/BuffTargetPickerModal';
+import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
  spell: SpellData;
@@ -72,6 +74,9 @@ export default function SpellCastButton({
  // v2.34.2: flash "Cast!" on the button for ~900ms after firing so users see confirmation
  const [recentlyCast, setRecentlyCast] = useState<string | null>(null);
  const { triggerRoll } = useDiceRoll();
+ // v2.115.0 — Phase H pt 6: open target picker after casting a registry
+ // buff spell (Bless, Hunter's Mark, Hex, Divine Favor) while in combat.
+ const [buffPickerOpen, setBuffPickerOpen] = useState(false);
 
  function flashCast(slotLevel: number) {
  // v2.84.0: Flash is now more prominent + longer. Was a pastel green tint
@@ -85,6 +90,14 @@ export default function SpellCastButton({
  // set character.concentration_spell. Fires for cantrips + leveled alike.
  if (spell.concentration) {
  onConcentrationCast?.();
+ }
+ // v2.115.0 — Phase H pt 6: auto-open the buff target picker if this spell
+ // is in the registry AND we have a campaign context. The modal itself
+ // checks for active-encounter and resolves caster participant id —
+ // silently no-ops if no encounter is active.
+ const registryEntry = BUFF_SPELL_REGISTRY[spell.name.trim().toLowerCase()];
+ if (registryEntry && campaignId) {
+ setBuffPickerOpen(true);
  }
  }
 
@@ -1039,6 +1052,15 @@ export default function SpellCastButton({
  </div>
  </div>,
  document.body
+ )}
+ {/* v2.115.0 — Phase H pt 6: buff target picker for registry spells */}
+ {buffPickerOpen && campaignId && (
+ <BuffTargetPickerModal
+ campaignId={campaignId}
+ casterCharacterId={character.id}
+ spellName={spell.name}
+ onClose={() => setBuffPickerOpen(false)}
+ />
  )}
  </>
  );
