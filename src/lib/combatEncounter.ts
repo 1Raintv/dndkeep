@@ -283,9 +283,11 @@ export async function advanceTurn(encounterId: string): Promise<void> {
   const currentIdx = encounter.current_turn_index ?? 0;
   let nextIdx = currentIdx + 1;
   let nextRound = encounter.round_number;
+  let roundIncremented = false;
   if (nextIdx >= active.length) {
     nextIdx = 0;
     nextRound = encounter.round_number + 1;
+    roundIncremented = true;
   }
 
   // Reset per-turn budgets for the incoming actor
@@ -313,13 +315,45 @@ export async function advanceTurn(encounterId: string): Promise<void> {
     })
     .eq('id', incomingParticipant.id);
 
+  // v2.127.0 — Phase J: on round increment, reset lair_action_used_this_round
+  // so the DM can fire another one. Only included in the UPDATE when the round
+  // actually ticked over.
+  const lairUpdates = roundIncremented ? { lair_action_used_this_round: false } : {};
+
   await supabase
     .from('combat_encounters')
     .update({
       current_turn_index: nextIdx,
       round_number: nextRound,
+      ...lairUpdates,
     })
     .eq('id', encounterId);
+
+  // v2.127.0 — Phase J: lair action window opens at top of each round (RAW
+  // 2024: initiative 20). Only emit when the encounter is flagged in_lair
+  // AND has at least one configured action — otherwise the DM has no UI
+  // surface to fire from and the event would be noise.
+  if (roundIncremented) {
+    const inLair = (encounter as any).in_lair === true;
+    const lairActions = ((encounter as any).lair_actions_config ?? []) as unknown[];
+    if (inLair && lairActions.length > 0) {
+      await emitCombatEvent({
+        campaignId: incomingParticipant.campaign_id,
+        encounterId,
+        chainId: newChainId(),
+        sequence: 0,
+        actorType: 'system',
+        actorName: 'Lair',
+        targetType: 'self',
+        targetName: 'Encounter',
+        eventType: 'lair_action_window_opened',
+        payload: {
+          round: nextRound,
+          actions_available: lairActions.length,
+        },
+      });
+    }
+  }
 
   // v2.126.0 — Phase J: log refill for the DM
   if (needsLaRefill) {

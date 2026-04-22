@@ -517,6 +517,11 @@ export interface CombatAutomationSettings {
   hidden_monster_reveal_mode: 'roll_at_reveal' | 'roll_at_start';
 }
 
+export interface LairActionEntry {
+  name: string;
+  desc?: string;
+}
+
 export interface CombatEncounter {
   id: string;
   campaign_id: string;
@@ -528,6 +533,12 @@ export interface CombatEncounter {
   hidden_monster_reveal_mode: 'roll_at_reveal' | 'roll_at_start';
   started_at: string | null;
   ended_at: string | null;
+  /** v2.127.0 — Phase J: encounter takes place in a legendary creature's
+   *  lair. When true + config non-empty, the DM gets a "🏛 Lair" button on
+   *  the InitiativeStrip and a round-start event is emitted. */
+  in_lair?: boolean;
+  lair_actions_config?: LairActionEntry[];
+  lair_action_used_this_round?: boolean;
   created_at: string;
   updated_at: string;
 }
