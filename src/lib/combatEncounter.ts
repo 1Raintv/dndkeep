@@ -48,6 +48,10 @@ export interface SeedSource {
   hiddenFromPlayers?: boolean;
   /** v2.107.0 — Phase G: max walking speed in feet. */
   maxSpeedFt?: number;
+  /** v2.138.0 — Phase M pt 1: legendary resistance uses per day. Only
+   *  populated for monster seeds whose stat block has LR (e.g. dragons,
+   *  Lich, Tarrasque). Character/NPC seeds leave this undefined. */
+  legendaryResistance?: number;
 }
 
 export function characterToSeed(c: Character): SeedSource {
@@ -77,6 +81,10 @@ export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSo
     initiativeBonus: 0,
     hiddenFromPlayers,
     maxSpeedFt: (m as any).speed ?? 30,
+    // v2.138.0 — Phase M pt 1: carry LR from the bestiary into combat.
+    // Backfilled for all SRD 2014 LR-bearing creatures via
+    // phase_m_lr_backfill migration. Null/0 for creatures without LR.
+    legendaryResistance: m.legendary_resistance_count ?? undefined,
   };
 }
 
@@ -152,6 +160,13 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
       max_hp: s.maxHp,
       hidden_from_players: s.hiddenFromPlayers ?? false,
       max_speed_ft: s.maxSpeedFt ?? 30,
+      // v2.138.0 — Phase M pt 1: seed LR from the monster stat block so
+      // v2.139's failed-save prompt and v2.140's initiative-strip badge
+      // have data to render. Characters/NPCs leave `legendaryResistance`
+      // undefined → both fields stay null.
+      legendary_resistance: s.legendaryResistance ?? null,
+      legendary_resistance_used:
+        (s.legendaryResistance ?? 0) > 0 ? 0 : null,
     };
   });
 
