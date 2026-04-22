@@ -106,3 +106,101 @@ export async function declineLegendaryResistance(
     .single();
   return (updated ?? null) as PendingAttack | null;
 }
+
+// v2.140.0 — Phase M pt 3: manual DM adjustment helpers for the initiative
+// strip popover. These are separate from the save-driven
+// accept/decline flow — they let the DM fix state outside a failed-save
+// trigger (long rest reset, correcting an accidental use, narrative
+// pre-burn). No pending_attacks row is involved; they just mutate the
+// participant directly.
+
+export interface AdjustLrInput {
+  participantId: string;
+  campaignId?: string;
+  encounterId?: string | null;
+  dmUserName?: string;
+}
+
+/**
+ * Spend one LR charge manually (outside the failed-save flow). No-op if
+ * already at max usage. Emits a `legendary_resistance_used` event with
+ * `manual: true` so the action log distinguishes DM-initiated burns from
+ * save-driven ones.
+ */
+export async function spendLegendaryResistanceManually(
+  input: AdjustLrInput,
+): Promise<void> {
+  const { data: partRow } = await supabase
+    .from('combat_participants')
+    .select('legendary_resistance, legendary_resistance_used, name, participant_type, campaign_id, encounter_id')
+    .eq('id', input.participantId)
+    .maybeSingle();
+  if (!partRow) return;
+  const total = (partRow.legendary_resistance as number | null) ?? 0;
+  const used = (partRow.legendary_resistance_used as number | null) ?? 0;
+  if (total <= 0) return;              // no LR to spend
+  if (used >= total) return;           // already expended
+  const newUsed = used + 1;
+  await supabase
+    .from('combat_participants')
+    .update({ legendary_resistance_used: newUsed })
+    .eq('id', input.participantId);
+
+  await emitCombatEvent({
+    campaignId: (partRow.campaign_id ?? input.campaignId) as string,
+    encounterId: (partRow.encounter_id ?? input.encounterId ?? null) as string | null,
+    chainId: newChainId(),
+    sequence: 0,
+    actorType: partRow.participant_type === 'monster' ? 'monster' : 'system',
+    actorName: (partRow.name as string) ?? 'Monster',
+    targetType: null,
+    targetName: null,
+    eventType: 'legendary_resistance_used',
+    payload: {
+      uses_after: newUsed,
+      total,
+      manual: true,
+      dm_user: input.dmUserName ?? 'DM',
+    },
+  });
+}
+
+/**
+ * Reset LR charges to full. Intended for long-rest resets or correcting
+ * accidental burns. Emits `legendary_resistance_reset` event.
+ */
+export async function resetLegendaryResistance(
+  input: AdjustLrInput,
+): Promise<void> {
+  const { data: partRow } = await supabase
+    .from('combat_participants')
+    .select('legendary_resistance, legendary_resistance_used, name, participant_type, campaign_id, encounter_id')
+    .eq('id', input.participantId)
+    .maybeSingle();
+  if (!partRow) return;
+  const total = (partRow.legendary_resistance as number | null) ?? 0;
+  const used = (partRow.legendary_resistance_used as number | null) ?? 0;
+  if (total <= 0) return;
+  if (used === 0) return;              // already full
+  await supabase
+    .from('combat_participants')
+    .update({ legendary_resistance_used: 0 })
+    .eq('id', input.participantId);
+
+  await emitCombatEvent({
+    campaignId: (partRow.campaign_id ?? input.campaignId) as string,
+    encounterId: (partRow.encounter_id ?? input.encounterId ?? null) as string | null,
+    chainId: newChainId(),
+    sequence: 0,
+    actorType: partRow.participant_type === 'monster' ? 'monster' : 'system',
+    actorName: (partRow.name as string) ?? 'Monster',
+    targetType: null,
+    targetName: null,
+    eventType: 'legendary_resistance_reset',
+    payload: {
+      total,
+      previous_used: used,
+      dm_user: input.dmUserName ?? 'DM',
+    },
+  });
+}

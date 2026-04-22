@@ -16,6 +16,8 @@ import { CONDITION_MAP } from '../../data/conditions';
 import DeclareAttackModal from './DeclareAttackModal';
 import ConditionPickerModal from './ConditionPickerModal';
 import LegendaryActionPopover from './LegendaryActionPopover';
+// v2.140.0 — Phase M pt 3: DM popover for Legendary Resistance
+import LegendaryResistancePopover from './LegendaryResistancePopover';
 import LegendaryActionConfigModal from './LegendaryActionConfigModal';
 import LairActionPickerPopover from './LairActionPickerPopover';
 import LairActionsConfigModal from './LairActionsConfigModal';
@@ -45,6 +47,11 @@ export default function InitiativeStrip({ isDM }: Props) {
     anchor: { x: number; y: number };
   } | null>(null);
   const [laConfigFor, setLaConfigFor] = useState<CombatParticipant | null>(null);
+  // v2.140.0 — Phase M pt 3: LR popover state, parallel to LA
+  const [lrPopover, setLrPopover] = useState<{
+    participant: CombatParticipant;
+    anchor: { x: number; y: number };
+  } | null>(null);
   // v2.127.0 — Phase J pt 5: lair action popover + config modal (encounter-scoped)
   const [lairPopoverAnchor, setLairPopoverAnchor] = useState<{ x: number; y: number } | null>(null);
   const [lairConfigOpen, setLairConfigOpen] = useState(false);
@@ -372,6 +379,43 @@ export default function InitiativeStrip({ isDM }: Props) {
                   </span>
                 );
               })()}
+              {/* v2.140.0 — Phase M pt 3: Legendary Resistance chip. DM-only.
+                  Visible when the participant has LR charges (seeded from the
+                  monster stat block at encounter start). Click opens
+                  LegendaryResistancePopover for manual Spend/Reset. Save-driven
+                  LR uses go through LegendaryResistancePromptModal (v2.139)
+                  and don't route through this chip. */}
+              {isDM && (p.legendary_resistance ?? 0) > 0 && (() => {
+                const lrTot = p.legendary_resistance ?? 0;
+                const lrUsed = p.legendary_resistance_used ?? 0;
+                const lrRem = Math.max(0, lrTot - lrUsed);
+                const hasCharges = lrRem > 0;
+                // Use a distinct gold tone from the amber LA chip so the two
+                // chips are visually independent at a glance.
+                return (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setLrPopover({ participant: p, anchor: { x: rect.left, y: rect.bottom } });
+                    }}
+                    title={`Legendary Resistance: ${lrRem}/${lrTot} remaining (click for options)`}
+                    style={{
+                      marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 2,
+                      fontSize: 9, fontWeight: 800,
+                      padding: '1px 5px', borderRadius: 3,
+                      background: hasCharges ? 'rgba(212,160,23,0.22)' : 'rgba(212,160,23,0.08)',
+                      color: hasCharges ? 'var(--c-gold-l)' : 'rgba(212,160,23,0.5)',
+                      border: `1px solid ${hasCharges ? 'var(--c-gold-bdr)' : 'rgba(212,160,23,0.35)'}`,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      cursor: 'pointer', lineHeight: 1.2, whiteSpace: 'nowrap',
+                      alignSelf: 'center',
+                    }}
+                  >
+                    🛡 LR {lrRem}/{lrTot}
+                  </span>
+                );
+              })()}
               {p.is_dead && (
                 <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: '#f87171' }}>💀</span>
               )}
@@ -571,6 +615,16 @@ export default function InitiativeStrip({ isDM }: Props) {
           encounterId={encounter.id}
           anchor={laPopover.anchor}
           onClose={() => setLaPopover(null)}
+        />
+      )}
+      {/* v2.140.0 — Phase M pt 3: legendary resistance popover (Spend/Reset) */}
+      {lrPopover && encounter && (
+        <LegendaryResistancePopover
+          participant={lrPopover.participant}
+          campaignId={encounter.campaign_id}
+          encounterId={encounter.id}
+          anchor={lrPopover.anchor}
+          onClose={() => setLrPopover(null)}
         />
       )}
       {/* v2.126.0 — Phase J pt 4: legendary action config modal. Opened
