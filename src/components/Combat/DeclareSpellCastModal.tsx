@@ -176,7 +176,7 @@ export default function DeclareSpellCastModal({
   } else if (state === 'countered') {
     color = '#ef4444';
     title = `${spellName} — Countered`;
-    body = 'Your spell fails. The slot is still spent.';
+    body = 'Your spell fails. The slot is spent per 2024 RAW (slot-on-declare).';
   } else if (state === 'resolved') {
     color = '#22c55e';
     title = `${spellName} — Goes off`;

@@ -283,27 +283,48 @@ export default function SpellCastButton({
  onLeveledSpellCast?.(isBonusActionCast);
  }
 
- /** Cast utility spell (no dice) */
- async function castUtility(slotLevel: number, targetName?: string) {
+ /** v2.125.0 — Phase J: burn the spell slot (and fire action-economy hook)
+  *  without applying the spell effect. For cantrips: just consumes the
+  *  action (no slot to burn). Separated from applyEffect so Counterspell's
+  *  RAW 2024 slot-on-declare can work — the slot is spent when the cast is
+  *  announced, before the counterspell window opens. */
+ function burnSlot(slotLevel: number) {
  if (!isCantrip && slotLevel > 0) {
  spendSlot(slotLevel);
  onLeveledSpellCast?.(isBonusActionCast);
  } else if (isCantrip) {
- // v2.46.0: cantrip cast still consumes the action (or BA for bonus-action cantrips
- // like Vicious Mockery? Actually Vicious Mockery is 1A. Most cantrips = 1A).
+ // v2.46.0: cantrip cast still consumes the action.
  onLeveledSpellCast?.(isBonusActionCast);
  }
- // v2.34.2: visible confirmation — always flashes, whether or not a slot was spent
+ }
+
+ /** v2.125.0 — Phase J: apply the spell's visible effects (flash + log
+  *  entry) without burning a slot. Used by the Counterspell flow to
+  *  resolve the effect after the reaction window closes un-countered. */
+ async function applyEffect(slotLevel: number, targetName?: string) {
  flashCast(slotLevel);
  await logAction({ campaignId, characterId: userId, characterName: character.name,
  actionType: 'spell', actionName: spell.name, targetName,
  notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
  }
 
+ /** Cast utility spell (no dice). Composed of burnSlot + applyEffect so
+  *  existing callsites that want the full cast-and-resolve behavior work
+  *  unchanged. */
+ async function castUtility(slotLevel: number, targetName?: string) {
+ burnSlot(slotLevel);
+ await applyEffect(slotLevel, targetName);
+ }
+
  /** v2.124.0 — Phase J: open the Counterspell pre-cast window. Looks up the
   *  active encounter + this character's participant row, then stages the
   *  DeclareSpellCastModal. If no active encounter exists (out-of-combat
-  *  casting), falls through to a normal immediate cast. */
+  *  casting), falls through to a normal immediate cast.
+  *
+  *  v2.125.0 update: burns the slot IMMEDIATELY on declare per 2024 PHB
+  *  p.250 — the slot is spent when the spell is announced regardless of
+  *  whether it's countered. Only the visible effect is deferred to the
+  *  onResolved callback. */
  async function openDeclareCast(slotLevel: number, targetName: string) {
  if (!campaignId) { await castUtility(slotLevel, targetName); return; }
  // Find the active encounter for this campaign
@@ -322,6 +343,9 @@ export default function SpellCastButton({
  .eq('entity_id', character.id)
  .maybeSingle();
  if (!part?.id) { await castUtility(slotLevel, targetName); return; }
+ // v2.125.0 — RAW slot-on-declare: burn the slot now, before the
+ // counterspell window opens. Effect is deferred to onResolved.
+ burnSlot(slotLevel);
  setDeclarePending({
  slotLevel,
  target: targetName,
@@ -1130,12 +1154,13 @@ export default function SpellCastButton({
  onResolved={(outcome) => {
    if (outcome === 'went_off' || outcome === 'saved_through') {
      // Counterspell window closed without a counter (or caster saved).
-     // Proceed with the normal cast path — burns slot + applies effect.
-     castUtility(declarePending.slotLevel, declarePending.target);
+     // Slot was already burned in openDeclareCast (v2.125 RAW compliance),
+     // so only apply the visible effect here.
+     applyEffect(declarePending.slotLevel, declarePending.target);
    }
-   // 'countered': spell fails (MVP: slot not burned; v2.125 polish will
-   // split slot-burn from effect so RAW slot-on-declare is enforced).
-   // 'canceled': user aborted; nothing to do.
+   // 'countered': spell fails. Slot was burned on declare per 2024 PHB p.250
+   // and stays spent — no effect applied.
+   // 'canceled': user aborted after declaring. Slot already spent; no effect.
  }}
  onClose={() => setDeclarePending(null)}
  />
