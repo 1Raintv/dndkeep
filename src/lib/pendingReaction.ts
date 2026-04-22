@@ -340,7 +340,137 @@ REACTION_REGISTRY.push({
   },
 });
 
-// ─── Public helpers ──────────────────────────────────────────────
+// ─── Hellish Rebuke ──────────────────────────────────────────────
+// v2.121.0 — Phase J pt 1.
+// 1st-level evocation spell. Reaction when the caster takes damage from a
+// creature within 60 ft that they can see.
+// Target makes a DEX save against caster's spell DC:
+//   fail → 2d10 fire, half on success
+//   upcast: +1d10 per slot above 1st
+//
+// Implementation notes:
+//   - Uses the existing pending_reactions table (trigger=post_damage_roll,
+//     same as Absorb Elements + Uncanny Dodge — damage_final is known).
+//   - On accept, burns a slot and declareAttack()'s a NEW save-based
+//     counter-attack targeting the original attacker. That attack then
+//     flows through the DM's AttackResolutionModal like any other save
+//     spell. We don't auto-resolve here because the DM owns the monster's
+//     DEX save anyway.
+
+REACTION_REGISTRY.push({
+  key: 'hellish_rebuke',
+  name: 'Hellish Rebuke',
+  triggerPoint: 'post_damage_roll',
+  isEligible(ctx) {
+    const { attack, reactorCharacter } = ctx;
+    if (!reactorCharacter) return false;
+    // Must actually take damage
+    if ((attack.damage_final ?? 0) <= 0) return false;
+    // Need a defined attacker to retaliate against
+    if (!attack.attacker_participant_id) return false;
+    // Must know or prepare Hellish Rebuke
+    const known: string[] = (reactorCharacter as any).known_spells ?? [];
+    const prepared: string[] = (reactorCharacter as any).prepared_spells ?? [];
+    const hasIt =
+      known.some(s => s.toLowerCase() === 'hellish rebuke') ||
+      prepared.some(s => s.toLowerCase() === 'hellish rebuke');
+    if (!hasIt) return false;
+    // Need a spell slot
+    return lowestAvailableSlot(reactorCharacter) != null;
+  },
+  async onAccept(ctx) {
+    const { attack, offer, reactorCharacter } = ctx;
+    const levelUsed = (ctx.decisionPayload?.spell_level_used as number)
+      ?? (reactorCharacter ? lowestAvailableSlot(reactorCharacter) : 1)
+      ?? 1;
+
+    // Burn slot
+    if (reactorCharacter) {
+      const slots = { ...(reactorCharacter as any).spell_slots } as Record<string, { total: number; used: number }>;
+      const slot = slots[String(levelUsed)];
+      if (slot && slot.used < slot.total) {
+        slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
+        await supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id);
+      }
+    }
+
+    // Mark reaction used on the reactor participant
+    await supabase
+      .from('combat_participants')
+      .update({ reaction_used: true })
+      .eq('id', offer.reactor_participant_id);
+
+    // Damage: 2d10 base + 1d10 per slot above 1st
+    const extraDice = Math.max(0, levelUsed - 1);
+    const damageDice = `${2 + extraDice}d10`;
+
+    // Spell save DC: 8 + PB + highest of INT/WIS/CHA (picks the right one
+    // for Warlock/Wizard without needing to know the class specifically;
+    // future polish can read character.spellcasting_ability).
+    let saveDC = 13;   // sane default for L3
+    if (reactorCharacter) {
+      const cha = (reactorCharacter as any).charisma ?? 10;
+      const intl = (reactorCharacter as any).intelligence ?? 10;
+      const wis = (reactorCharacter as any).wisdom ?? 10;
+      const spellAbil = Math.max(cha, intl, wis);
+      const { abilityModifier, proficiencyBonus } = await import('./gameUtils');
+      const spellMod = abilityModifier(spellAbil);
+      const pb = proficiencyBonus((reactorCharacter as any).level ?? 1);
+      saveDC = 8 + pb + spellMod;
+    }
+
+    // Look up the attacker participant's name/type/AC for the counter-attack
+    const { data: targetPart } = await supabase
+      .from('combat_participants')
+      .select('name, participant_type, ac')
+      .eq('id', attack.attacker_participant_id)
+      .maybeSingle();
+
+    // Declare the counter-attack. Flows through the DM's AttackResolutionModal
+    // at 'declared' state so DM rolls the target's DEX save and resolves damage.
+    const { declareAttack } = await import('./pendingAttack');
+    const counterAttack = await declareAttack({
+      campaignId: attack.campaign_id,
+      encounterId: attack.encounter_id,
+      attackerParticipantId: offer.reactor_participant_id,
+      attackerName: offer.reactor_name,
+      attackerType: 'character',
+      targetParticipantId: attack.attacker_participant_id!,
+      targetName: (targetPart?.name as string | null) ?? attack.attacker_name,
+      targetType: ((targetPart?.participant_type as any) ?? attack.attacker_type) as any,
+      attackSource: 'spell',
+      attackName: `Hellish Rebuke${levelUsed > 1 ? ` (L${levelUsed})` : ''}`,
+      attackKind: 'save',
+      saveDC,
+      saveAbility: 'DEX',
+      saveSuccessEffect: 'half',
+      damageDice,
+      damageType: 'fire',
+      targetAC: (targetPart?.ac as number | null) ?? null,
+    });
+
+    await emitCombatEvent({
+      campaignId: attack.campaign_id,
+      encounterId: attack.encounter_id,
+      chainId: attack.chain_id,
+      sequence: 53,
+      actorType: 'player',
+      actorName: offer.reactor_name,
+      targetType: ((targetPart?.participant_type as any) ?? 'monster'),
+      targetName: (targetPart?.name as string | null) ?? attack.attacker_name,
+      eventType: 'reaction_used',
+      payload: {
+        reaction: 'Hellish Rebuke',
+        spell_level_used: levelUsed,
+        save_dc: saveDC,
+        save_ability: 'DEX',
+        damage_dice: damageDice,
+        damage_type: 'fire',
+        counter_attack_id: counterAttack?.id ?? null,
+      },
+    });
+  },
+});
 
 /**
  * Evaluate the registry against the current state and create pending_reactions

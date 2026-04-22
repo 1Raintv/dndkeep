@@ -296,6 +296,12 @@ export default function ReactionPromptModal({ campaignId }: Props) {
             </div>
           )}
 
+          {urgent.reaction_key === 'hellish_rebuke' && attack && (
+            <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5 }}>
+              Cast <strong style={{ color: '#f87171' }}>Hellish Rebuke</strong> to retaliate against <strong style={{ color: 'var(--t-1)' }}>{attack.attacker_name}</strong>. They must make a DEX save or take <strong style={{ color: '#f59e0b' }}>2d10 fire</strong> damage (half on success). Upcast adds +1d10 per level. Costs a level-1+ spell slot.
+            </div>
+          )}
+
           {urgent.reaction_key === 'opportunity_attack' && (() => {
             const mover = (urgent.decision_payload as any)?.mover_name ?? 'The target';
             return (
