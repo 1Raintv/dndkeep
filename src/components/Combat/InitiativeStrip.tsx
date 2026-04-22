@@ -10,7 +10,10 @@ import { useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
 import { takeDash, takeDisengage } from '../../lib/movement';
+import { removeCondition } from '../../lib/conditions';
+import { CONDITION_MAP } from '../../data/conditions';
 import DeclareAttackModal from './DeclareAttackModal';
+import ConditionPickerModal from './ConditionPickerModal';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -26,6 +29,11 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 export default function InitiativeStrip({ isDM }: Props) {
   const { encounter, participants, currentActor } = useCombat();
   const [showDeclare, setShowDeclare] = useState(false);
+  // v2.112.0 — Phase H pt 3: condition picker popover anchored to a tile
+  const [conditionPicker, setConditionPicker] = useState<{
+    participant: CombatParticipant;
+    anchor: { x: number; y: number };
+  } | null>(null);
 
   if (!encounter || encounter.status !== 'active') return null;
 
@@ -138,10 +146,40 @@ export default function InitiativeStrip({ isDM }: Props) {
           const isCurrent = i === currentIdx;
           const color = ACTOR_COLORS[p.participant_type];
           const dimmed = isPast || p.is_dead || p.is_stable;
+          // v2.112.0 — Phase H pt 3: visible conditions + overflow
+          const conditions = p.active_conditions ?? [];
+          const VISIBLE_CHIPS = 3;
+          const visibleConds = conditions.slice(0, VISIBLE_CHIPS);
+          const overflowCount = conditions.length - visibleConds.length;
+
+          function handleTileClick(e: React.MouseEvent) {
+            if (!isDM) return;
+            // Anchor the picker centered above the clicked tile
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setConditionPicker({
+              participant: p,
+              anchor: { x: rect.left + rect.width / 2, y: rect.top },
+            });
+          }
+
+          async function handleRemoveCondition(e: React.MouseEvent, name: string) {
+            e.stopPropagation();  // don't trigger tile click
+            if (!isDM || !encounter) return;
+            await removeCondition({
+              participantId: p.id,
+              conditionName: name,
+              campaignId: encounter.campaign_id,
+              encounterId: encounter.id,
+            });
+          }
+
           return (
             <div
               key={p.id}
-              title={`${p.name} · init ${p.initiative ?? '—'}${p.is_dead ? ' · DEAD' : p.is_stable ? ' · Stable' : ''}`}
+              onClick={handleTileClick}
+              title={isDM
+                ? `${p.name} · init ${p.initiative ?? '—'}${p.is_dead ? ' · DEAD' : p.is_stable ? ' · Stable' : ''} · click to apply condition`
+                : `${p.name} · init ${p.initiative ?? '—'}${p.is_dead ? ' · DEAD' : p.is_stable ? ' · Stable' : ''}`}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 gap: 2, padding: '4px 10px',
@@ -151,6 +189,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                 opacity: dimmed ? 0.45 : 1,
                 minWidth: 72, flexShrink: 0,
                 position: 'relative',
+                cursor: isDM ? 'pointer' : 'default',
               }}
             >
               <span style={{
@@ -169,6 +208,53 @@ export default function InitiativeStrip({ isDM }: Props) {
               }}>
                 {p.initiative ?? '—'}
               </span>
+              {/* v2.112.0 — Phase H pt 3: condition chip row */}
+              {conditions.length > 0 && (
+                <div style={{
+                  display: 'flex', gap: 2, marginTop: 2,
+                  justifyContent: 'center', flexWrap: 'wrap', maxWidth: 100,
+                }}>
+                  {visibleConds.map(cond => {
+                    const meta = CONDITION_MAP[cond];
+                    const chipColor = meta?.color ?? '#64748b';
+                    return (
+                      <span
+                        key={cond}
+                        onClick={isDM ? (e => handleRemoveCondition(e, cond)) : undefined}
+                        title={`${cond}${meta?.description ? ' — ' + meta.description : ''}${isDM ? ' (click to remove)' : ''}`}
+                        style={{
+                          fontSize: 8, fontWeight: 800,
+                          padding: '1px 4px', borderRadius: 2,
+                          background: `${chipColor}35`,
+                          color: chipColor,
+                          border: `1px solid ${chipColor}70`,
+                          letterSpacing: '0.04em', textTransform: 'uppercase',
+                          cursor: isDM ? 'pointer' : 'default',
+                          lineHeight: 1.2,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {cond.slice(0, 4)}
+                      </span>
+                    );
+                  })}
+                  {overflowCount > 0 && (
+                    <span
+                      title={conditions.slice(VISIBLE_CHIPS).join(', ')}
+                      style={{
+                        fontSize: 8, fontWeight: 800,
+                        padding: '1px 4px', borderRadius: 2,
+                        background: 'rgba(148,163,184,0.25)',
+                        color: '#94a3b8',
+                        border: '1px solid rgba(148,163,184,0.4)',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      +{overflowCount}
+                    </span>
+                  )}
+                </div>
+              )}
               {p.is_dead && (
                 <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: '#f87171' }}>💀</span>
               )}
@@ -283,6 +369,13 @@ export default function InitiativeStrip({ isDM }: Props) {
           campaignId={encounter.campaign_id}
           onClose={() => setShowDeclare(false)}
           onDeclared={() => setShowDeclare(false)}
+        />
+      )}
+      {conditionPicker && (
+        <ConditionPickerModal
+          participant={conditionPicker.participant}
+          anchor={conditionPicker.anchor}
+          onClose={() => setConditionPicker(null)}
         />
       )}
     </div>
