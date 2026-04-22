@@ -10,8 +10,9 @@ import { useCombat } from '../../context/CombatContext';
 import { declareAttack, declareMultiTargetAttack } from '../../lib/pendingAttack';
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { supabase } from '../../lib/supabase';
-import { buildParticipantPositions, findParticipantsInRadius } from '../../lib/battleMapGeometry';
+import { buildParticipantPositions, findParticipantsInRadius, loadActiveBattleMap, deriveCoverFromWalls } from '../../lib/battleMapGeometry';
 import type { CombatParticipant } from '../../types';
+import type { ActiveBattleMap } from '../../lib/battleMapGeometry';
 
 interface Props {
   campaignId: string;
@@ -47,6 +48,12 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // v2.103.0 — Phase F cover
   const [coverLevel, setCoverLevel] = useState<'none' | 'half' | 'three_quarters' | 'total'>('none');
   const [persistCover, setPersistCover] = useState(false);
+  // v2.132.0 — Phase K pt 5: track where the current coverLevel value came
+  // from so we can show a 🧱 badge when it was derived from walls. 'manual'
+  // means the DM changed the dropdown themselves (or the default 'none').
+  // The auto-fill useEffect sets this to 'walls' or 'persistent' when it
+  // updates cover; the dropdown onChange resets it to 'manual'.
+  const [coverSource, setCoverSource] = useState<'manual' | 'walls' | 'persistent'>('manual');
   // v2.105.0 — Phase F pt 3d: friendly-fire confirmation (R4)
   const [friendlyFireAck, setFriendlyFireAck] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,20 +68,70 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
     [participants, targetId]
   );
 
+  // Map each participant to its grid position on the active battle map.
+  // v2.129.0 — Phase K pt 2: delegates to battleMapGeometry so this
+  // component no longer owns token-matching rules. Shape:
+  // `Map<participantId, {row, col}>`. Participants without a matching
+  // token are absent from the map (they're treated as "not on the grid"
+  // for radius queries).
+  // v2.132.0 — hoisted above the cover auto-fill effect since that effect
+  // now depends on positions for wall-based cover derivation.
+  const participantPositions = useMemo(() => {
+    if (!battleMapTokens) return new Map<string, { row: number; col: number }>();
+    return buildParticipantPositions(
+      participants.map(p => ({
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      })),
+      battleMapTokens,
+    );
+  }, [battleMapTokens, participants]);
+
   // v2.103.0 — Phase F: auto-populate cover from target's persistent_cover
   // map whenever attacker + target change. DM can still override for this
   // specific attack.
+  // v2.132.0 — Phase K pt 5: walls on the battle map now take priority —
+  // they represent physical obstacles and are more authoritative than
+  // manually-tagged persistent cover. Order:
+  //   1. Wall derivation via deriveCoverFromWalls (if map + both tokens + walls exist)
+  //   2. Target's persistent_cover tag (v2.103 — DM manual)
+  //   3. 'none'
   useEffect(() => {
-    if (!attacker || !target) { setCoverLevel('none'); return; }
+    if (!attacker || !target) { setCoverLevel('none'); setCoverSource('manual'); return; }
+
+    // 1. Try wall-derived cover first
+    if (activeBattleMap && activeBattleMap.walls.length > 0) {
+      const attackerPos = participantPositions.get(attacker.id);
+      const targetPos = participantPositions.get(target.id);
+      if (attackerPos && targetPos) {
+        const wallCover = deriveCoverFromWalls(
+          attackerPos, targetPos,
+          activeBattleMap.walls,
+          activeBattleMap.grid_size,
+        );
+        if (wallCover !== 'none') {
+          setCoverLevel(wallCover);
+          setCoverSource('walls');
+          setPersistCover(false);
+          return;
+        }
+      }
+    }
+
+    // 2. Fall back to persistent_cover tag
     const persistent = target.persistent_cover ?? {};
     const fromMap = persistent[attacker.id];
     if (fromMap === 'half' || fromMap === 'three_quarters' || fromMap === 'total') {
       setCoverLevel(fromMap);
+      setCoverSource('persistent');
     } else {
       setCoverLevel('none');
+      setCoverSource('manual');
     }
     setPersistCover(false);
-  }, [attacker?.id, target?.id]);
+  }, [attacker?.id, target?.id, activeBattleMap, participantPositions]);
 
   // v2.105.0 — Phase F pt 3d: friendly-fire detection. Characters attacking
   // other characters counts as friendly fire here (party-level heuristic —
@@ -99,41 +156,24 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
 
   // v2.106.0 — Phase F pt 3e: load active battle map tokens when multi-target
   // mode turns on. Used by the radius-based auto-select helper below.
+  // v2.132.0 — Phase K pt 5: now loads unconditionally (not just when isMulti)
+  // and stores the full ActiveBattleMap so walls + grid_size are available
+  // for the cover-from-walls auto-derivation useEffect further down. The
+  // old battleMapTokens state is kept as a derived view for backwards
+  // compatibility with the AoE radius-picker render path.
+  const [activeBattleMap, setActiveBattleMap] = useState<ActiveBattleMap | null>(null);
   useEffect(() => {
-    if (!isMulti) return;
     let canceled = false;
-    supabase
-      .from('battle_maps')
-      .select('tokens')
-      .eq('campaign_id', campaignId)
-      .eq('active', true)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (canceled) return;
-        const tokens = (data?.tokens as any[]) ?? null;
-        setBattleMapTokens(tokens);
-      });
+    loadActiveBattleMap(campaignId).then(bmap => {
+      if (canceled) return;
+      setActiveBattleMap(bmap);
+      setBattleMapTokens(bmap ? bmap.tokens : null);
+    });
     return () => { canceled = true; };
-  }, [isMulti, campaignId]);
+  }, [campaignId]);
 
-  // Map each participant to its grid position on the active battle map.
-  // v2.129.0 — Phase K pt 2: delegates to battleMapGeometry so this
-  // component no longer owns token-matching rules. Shape:
-  // `Map<participantId, {row, col}>`. Participants without a matching
-  // token are absent from the map (they're treated as "not on the grid"
-  // for radius queries).
-  const participantPositions = useMemo(() => {
-    if (!battleMapTokens) return new Map<string, { row: number; col: number }>();
-    return buildParticipantPositions(
-      participants.map(p => ({
-        id: p.id,
-        name: p.name,
-        participant_type: p.participant_type,
-        entity_id: p.entity_id,
-      })),
-      battleMapTokens,
-    );
-  }, [battleMapTokens, participants]);
+  // Map each participant to its grid position on the active battle map —
+  // declared above (line ~79) so the cover auto-fill effect can use it.
 
   // Participants with positions are eligible to be the radius center. The
   // default center is the attacker if they have one, else the first
@@ -607,7 +647,15 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
           <div>
             <div style={labelStyle}>
               Target Cover
-              {target && attacker && target.persistent_cover?.[attacker.id] && (
+              {/* v2.132.0 — Phase K pt 5: badge indicating cover was
+                  auto-derived from walls on the battle map. DM can still
+                  override via the buttons below — which resets the badge. */}
+              {coverSource === 'walls' && coverLevel !== 'none' && (
+                <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 700 }}>
+                  · 🧱 from walls
+                </span>
+              )}
+              {coverSource === 'persistent' && target && attacker && target.persistent_cover?.[attacker.id] && (
                 <span style={{ color: 'var(--t-3)', marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0 }}>
                   · default from saved cover
                 </span>
@@ -625,7 +673,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setCoverLevel(key as any)}
+                    onClick={() => { setCoverLevel(key as any); setCoverSource('manual'); }}
                     style={{
                       flex: 1, fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
                       padding: '6px 8px', borderRadius: 5,
