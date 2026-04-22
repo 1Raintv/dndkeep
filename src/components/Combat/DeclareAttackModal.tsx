@@ -226,10 +226,37 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
       setSaving(true);
       setError('');
 
+      // v2.146.0 — Phase N pt 4: compute per-target cover from walls.
+      // Each target gets its own cover level based on the line of effect
+      // from the attacker to that target. Targets with no walls in
+      // between fall through to the blanket `coverLevel` set by the DM.
+      // This fixes the prior behavior where a DM picking "half cover"
+      // once applied it uniformly — now the one target hiding behind a
+      // wall gets total while the three in the open get what the DM
+      // chose manually.
+      const attackerPos = attacker ? participantPositions.get(attacker.id) : null;
+      const wallsForCover = activeBattleMap?.walls ?? [];
+      const gridSizeForCover = activeBattleMap?.grid_size ?? 50;
       const targets = targetIds
         .map(id => participants.find(p => p.id === id))
         .filter((p): p is CombatParticipant => !!p)
-        .map(p => ({ participantId: p.id, name: p.name, type: p.participant_type }));
+        .map(p => {
+          // Per-target wall derivation; only runs when we have both the
+          // attacker and target on the grid AND walls exist. Otherwise
+          // undefined → pending_attack row uses the blanket value.
+          let perTargetCover: 'none' | 'half' | 'three_quarters' | 'total' | undefined;
+          const targetPos = participantPositions.get(p.id);
+          if (attackerPos && targetPos && wallsForCover.length > 0) {
+            const derived = deriveCoverFromWalls(attackerPos, targetPos, wallsForCover, gridSizeForCover);
+            if (derived !== 'none') perTargetCover = derived;
+          }
+          return {
+            participantId: p.id,
+            name: p.name,
+            type: p.participant_type,
+            ...(perTargetCover ? { coverLevel: perTargetCover } : {}),
+          };
+        });
 
       // Multi-target only makes sense for save-based or auto-hit AoE. Fall
       // back to 'save' kind if the DM left it on attack_roll (single-target-
@@ -250,7 +277,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
         saveSuccessEffect: effectiveKind === 'save' ? saveSuccessEffect : null,
         damageDice: damageDice.trim() || null,
         damageType: damageType.trim() || null,
-        coverLevel,    // applies to every target in this batch as a blanket value
+        coverLevel,    // blanket fallback for targets without per-target wall derivation
         persistCover,
         targets,
       });
@@ -428,6 +455,20 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                       checked
                       && attacker?.participant_type === 'character'
                       && p.participant_type === 'character';
+                    // v2.146.0 — Phase N pt 4: preview per-target cover
+                    // derived from walls so DM sees which targets are
+                    // behind obstacles before declaring. Matches the
+                    // actual per-target value that will land on their
+                    // pending_attacks row.
+                    let previewCover: 'half' | 'three_quarters' | 'total' | null = null;
+                    if (checked && attacker && activeBattleMap && activeBattleMap.walls.length > 0) {
+                      const aPos = participantPositions.get(attacker.id);
+                      const tPos = participantPositions.get(p.id);
+                      if (aPos && tPos) {
+                        const lvl = deriveCoverFromWalls(aPos, tPos, activeBattleMap.walls, activeBattleMap.grid_size);
+                        if (lvl !== 'none') previewCover = lvl;
+                      }
+                    }
                     return (
                       <label
                         key={p.id}
@@ -455,6 +496,23 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                         <span style={{ flex: 1 }}>
                           {p.name} <span style={{ color: 'var(--t-3)' }}>· {p.participant_type}</span>
                         </span>
+                        {previewCover && (() => {
+                          const color = previewCover === 'total' ? '#f87171'
+                            : previewCover === 'three_quarters' ? '#a78bfa'
+                            : '#60a5fa';
+                          const label = previewCover === 'three_quarters' ? '¾' : previewCover;
+                          return (
+                            <span title={`Wall-derived cover for this target: ${previewCover}`} style={{
+                              fontSize: 9, fontWeight: 800,
+                              padding: '1px 5px', borderRadius: 3,
+                              background: `${color}22`, color,
+                              border: `1px solid ${color}55`,
+                              letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+                            }}>
+                              🧱 {label}
+                            </span>
+                          );
+                        })()}
                         {isAlly && (
                           <span style={{
                             fontSize: 9, fontWeight: 800,

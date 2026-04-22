@@ -196,6 +196,12 @@ export interface DeclareMultiTargetInput
     participantId: string;
     name: string;
     type: 'character' | 'monster' | 'npc';
+    /** v2.146.0 — Phase N pt 4: optional per-target cover override.
+     *  Callers with a battle map compute this via
+     *  deriveCoverFromWalls(attacker, this target, walls, gridSize) so
+     *  each target in an AoE gets its own cover level. When omitted,
+     *  falls through to the batch-level `coverLevel` and then 'none'. */
+    coverLevel?: 'none' | 'half' | 'three_quarters' | 'total';
   }>;
 }
 
@@ -238,7 +244,12 @@ export async function declareMultiTargetAttack(
     save_success_effect: input.saveSuccessEffect ?? null,
     damage_dice: input.damageDice ?? null,
     damage_type: input.damageType ?? null,
-    cover_level: input.coverLevel ?? 'none',
+    // v2.146.0 — Phase N pt 4: per-target cover takes precedence over the
+    // batch-level blanket value. Callers that compute wall-derived cover
+    // per target (DeclareAttackModal in AoE mode) set t.coverLevel; the
+    // batch value is the fallback for targets with no walls in between
+    // or for AoEs used without a battle map.
+    cover_level: t.coverLevel ?? input.coverLevel ?? 'none',
     state: 'declared',
     chain_id: chainId,
     damage_group_id: damageGroupId,
