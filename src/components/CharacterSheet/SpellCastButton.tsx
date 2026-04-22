@@ -7,6 +7,7 @@ import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSp
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie } from '../../lib/gameUtils';
+import PlayerAttackButton from '../Combat/PlayerAttackButton';
 
 interface SpellCastButtonProps {
  spell: SpellData;
@@ -630,6 +631,32 @@ export default function SpellCastButton({
  {mechanics.damageDice} {mechanics.damageType}
  </button>
  )}
+ {/* v2.101.0 — Phase F: in-combat single-target spell attack. Renders
+     null when out of combat so the existing two-button flow is
+     preserved. Uses the effective upcast dice so higher slots scale
+     correctly when forceSlotLevel is set. */}
+ {character.id && mechanics.damageDice && (() => {
+ const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+ const dice = upcast.extraDice
+ ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
+ : mechanics.damageDice!;
+ return (
+ <PlayerAttackButton
+ characterId={character.id}
+ attackKind="attack_roll"
+ attackBonus={spellAttack}
+ damageDice={dice}
+ damageType={mechanics.damageType ?? ''}
+ attackName={spell.name}
+ source="spell"
+ compact
+ onDeclared={() => {
+ if (!isCantrip) spendSlot(effSlot);
+ flashCast(effSlot);
+ }}
+ />
+ );
+ })()}
  </>
  )}
 
@@ -638,6 +665,7 @@ export default function SpellCastButton({
  The damage button below is the functional roll. If the DM needs the save DC relayed,
  casting the spell (via damage button) logs the DC to the action log. */}
  {mechanics.saveType && !mechanics.isAttack && mechanics.damageDice && (
+ <>
  <button
  onClick={() => rollDamage()}
  style={{ ...btnBase, background: dmgColor + '18',
@@ -646,6 +674,37 @@ export default function SpellCastButton({
  >
  {mechanics.damageDice} {mechanics.damageType}
  </button>
+ {/* v2.101.0 — Phase F: in-combat save-based single-target spell. DM
+     rolls the save from the DeclareAttackModal's follow-up (future
+     ship) or manually; for now the pipeline fires through and the DM
+     applies full damage on fail / half on pass per the
+     saveSuccessEffect setting inside rollDamage. */}
+ {character.id && (() => {
+ const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+ const dice = upcast.extraDice
+ ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
+ : mechanics.damageDice!;
+ return (
+ <PlayerAttackButton
+ characterId={character.id}
+ attackKind="save"
+ saveDC={saveDC}
+ saveAbility={mechanics.saveType as any}
+ saveSuccessEffect="half"
+ damageDice={dice}
+ damageType={mechanics.damageType ?? ''}
+ attackName={spell.name}
+ source="spell"
+ compact
+ label={`⚔ ${mechanics.saveType} DC ${saveDC}`}
+ onDeclared={() => {
+ if (!isCantrip) spendSlot(effSlot);
+ flashCast(effSlot);
+ }}
+ />
+ );
+ })()}
+ </>
  )}
 
  {/* ── CATEGORY 3.5 (v2.48.0): SAVE-ONLY SPELL with NO damage ──

@@ -21,8 +21,9 @@ import type { CombatParticipant } from '../../types';
 
 interface Props {
   characterId: string;
-  /** Attack bonus (includes proficiency, ability mod, magic item bonuses). */
-  attackBonus: number;
+  /** Attack bonus (includes proficiency, ability mod, magic item bonuses).
+   *  Only used when attackKind='attack_roll'. */
+  attackBonus?: number;
   /** Damage dice expression like "1d8+3". */
   damageDice: string;
   damageType: string;
@@ -30,8 +31,18 @@ interface Props {
   attackName: string;
   /** 'weapon' | 'spell' | 'ability' — used for attack_source classification. */
   source?: 'weapon' | 'spell' | 'ability';
+  /** v2.101.0 — single-target spell variant. Defaults to 'attack_roll'. */
+  attackKind?: 'attack_roll' | 'save' | 'auto_hit';
+  /** Required when attackKind='save'. */
+  saveDC?: number;
+  saveAbility?: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA';
+  saveSuccessEffect?: 'half' | 'none' | 'other';
   /** Optional compact / minimal styling override. */
   compact?: boolean;
+  /** Custom button label override. */
+  label?: string;
+  /** Called after the attack is declared + rolled — lets parent spend a spell slot etc. */
+  onDeclared?: () => void;
 }
 
 export default function PlayerAttackButton({
@@ -41,7 +52,13 @@ export default function PlayerAttackButton({
   damageType,
   attackName,
   source = 'weapon',
+  attackKind = 'attack_roll',
+  saveDC,
+  saveAbility,
+  saveSuccessEffect = 'half',
   compact = false,
+  label,
+  onDeclared,
 }: Props) {
   const { encounter, participants } = useCombat();
   const [picking, setPicking] = useState(false);
@@ -73,20 +90,29 @@ export default function PlayerAttackButton({
         targetType: target.participant_type,
         attackSource: source === 'weapon' ? 'weapon' : source === 'spell' ? 'spell' : 'ability',
         attackName,
-        attackKind: 'attack_roll',
-        attackBonus,
-        targetAC: target.ac,
+        attackKind,
+        // Attack-roll specifics
+        attackBonus: attackKind === 'attack_roll' ? (attackBonus ?? 0) : null,
+        targetAC: attackKind === 'attack_roll' ? target.ac : null,
+        // Save-based specifics
+        saveDC: attackKind === 'save' ? saveDC ?? null : null,
+        saveAbility: attackKind === 'save' ? saveAbility ?? null : null,
+        saveSuccessEffect: attackKind === 'save' ? saveSuccessEffect : null,
+        // Damage (always defined for attack pipelines)
         damageDice,
         damageType,
       });
 
       if (attack) {
-        // Immediately roll the attack. This triggers Shield offers on hit.
-        // We intentionally stop here: the DM's AttackResolutionModal takes
-        // over from attack_rolled, waits on outstanding reactions, rolls
-        // damage, and applies.
-        await rollAttackRoll(attack.id);
+        // Auto-roll based on kind. attack_roll → rollAttackRoll (hit/miss +
+        // Shield offer). save / auto_hit → DM handles from the modal (there's
+        // no attack roll to make for these paths).
+        if (attackKind === 'attack_roll') {
+          await rollAttackRoll(attack.id);
+        }
       }
+
+      onDeclared?.();
     } finally {
       setBusy(false);
     }
@@ -120,7 +146,7 @@ export default function PlayerAttackButton({
         title={`Attack a target with ${attackName} — runs full combat resolution`}
         style={buttonStyle}
       >
-        {busy ? '…' : `⚔ Attack`}
+        {busy ? '…' : (label ?? '⚔ Attack')}
       </button>
       {picking && (
         <TargetPickerModal
