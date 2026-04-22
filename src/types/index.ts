@@ -681,6 +681,12 @@ export interface PendingAttack {
    *  damage is rolled once and reused across them. Null for single-target. */
   damage_group_id?: string | null;
 
+  /** v2.139.0 — Phase M pt 2: set by rollSave when a monster with LR
+   *  charges fails a save. While true, rollDamage is gated and the DM
+   *  sees a prompt to either use LR (coerces save_result → 'passed') or
+   *  decline (save stays 'failed'). Cleared after either decision. */
+  pending_lr_decision?: boolean;
+
   state: PendingAttackState;
   chain_id: string;
 

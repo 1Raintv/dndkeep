@@ -24,6 +24,7 @@ import InitiativeStrip from '../Combat/InitiativeStrip';
 import StartCombatButton from '../Combat/StartCombatButton';
 import AttackResolutionModal from '../Combat/AttackResolutionModal';
 import ReactionPromptModal from '../Combat/ReactionPromptModal';
+import LegendaryResistancePromptModal from '../Combat/LegendaryResistancePromptModal';
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
 
@@ -510,6 +511,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
     <AttackResolutionModal campaignId={campaign.id} isDM={isOwner} />
     {/* v2.98.0 — Phase E: reaction prompt for target player on hit */}
     <ReactionPromptModal campaignId={campaign.id} />
+    {/* v2.139.0 — Phase M pt 2: DM-only LR prompt on failed monster saves */}
+    <LegendaryResistancePromptModal campaignId={campaign.id} isDM={isOwner} />
     </CombatProvider>
   );
 }

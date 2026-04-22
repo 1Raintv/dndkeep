@@ -609,12 +609,37 @@ export async function rollSave(
   else if (d20 === 1) result = 'failed';
   else result = total >= dc ? 'passed' : 'failed';
 
+  // v2.139.0 — Phase M pt 2: Legendary Resistance decision point.
+  // When a monster target has LR charges left AND the save failed, flip
+  // pending_lr_decision=true so the DM gets prompted. The DM picks:
+  //   - Accept (acceptLegendaryResistance) → save_result='passed',
+  //     legendary_resistance_used++, save becomes a success
+  //   - Decline (declineLegendaryResistance) → save stays 'failed',
+  //     damage proceeds normally
+  // rollDamage guards on pending_lr_decision so it can't run while the
+  // prompt is open. No prompt when: save passed, no target, target isn't
+  // a monster, or no LR charges remain.
+  let triggerLrPrompt = false;
+  if (result === 'failed' && atk.target_participant_id && atk.target_type === 'monster') {
+    const { data: lrRow } = await supabase
+      .from('combat_participants')
+      .select('legendary_resistance, legendary_resistance_used')
+      .eq('id', atk.target_participant_id)
+      .maybeSingle();
+    const lrTotal = (lrRow?.legendary_resistance as number | null) ?? 0;
+    const lrUsed = (lrRow?.legendary_resistance_used as number | null) ?? 0;
+    if (lrTotal > 0 && lrUsed < lrTotal) {
+      triggerLrPrompt = true;
+    }
+  }
+
   const { data: updated } = await supabase
     .from('pending_attacks')
     .update({
       save_d20: d20,
       save_total: total,
       save_result: result,
+      pending_lr_decision: triggerLrPrompt,
     })
     .eq('id', attackId)
     .select()
@@ -760,6 +785,12 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
 
   if (!atk.damage_dice) return atk;
   if (atk.state === 'damage_rolled' || atk.state === 'applied' || atk.state === 'canceled') return atk;
+
+  // v2.139.0 — Phase M pt 2: block damage while the DM has a pending LR
+  // decision. The prompt modal either flips save_result to 'passed' (LR
+  // used) or leaves it 'failed' (LR declined); either way it clears
+  // pending_lr_decision and the damage roll can proceed.
+  if (atk.pending_lr_decision) return atk;
 
   // attack_roll path: only damage on hit/crit; miss/fumble skip damage → state shifts to applied=0
   if (atk.attack_kind === 'attack_roll') {
