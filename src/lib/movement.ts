@@ -11,7 +11,7 @@
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerOpportunityAttacks } from './pendingReaction';
-import { conditionsSpeedZero } from './conditions';
+import { conditionsSpeedZero, conditionsSpeedHalved } from './conditions';
 
 const FEET_PER_SQUARE = 5;   // D&D standard
 
@@ -65,7 +65,18 @@ export async function canMove(
   // which is already reduced by exhaustion). Clamped at 0.
   const exhaustionLvl = (data?.exhaustion_level as number | null) ?? 0;
   const speedAfterExhaustion = Math.max(0, baseSpeed - 5 * exhaustionLvl);
-  const effectiveBase = dashed ? speedAfterExhaustion * 2 : speedAfterExhaustion;
+  // v2.136.0 — Phase L pt 4: Encumbered halves speed (RAW 2024 p.29). Applied
+  // AFTER exhaustion's flat reduction but BEFORE Dash, so a Dashing
+  // Encumbered character moves 2× their halved Speed for the turn — which is
+  // still the RAW interpretation since Dash doubles "your current Speed".
+  // Halving is only currently triggered by the Encumbered condition (see
+  // src/data/conditions.ts), but other future conditions could opt in via
+  // the speedHalved flag.
+  const halved = conditionsSpeedHalved(conditions);
+  const speedAfterHalving = halved
+    ? Math.floor(speedAfterExhaustion / 2)
+    : speedAfterExhaustion;
+  const effectiveBase = dashed ? speedAfterHalving * 2 : speedAfterHalving;
   const maxSpeed = zeroed ? 0 : effectiveBase;
   const wouldBe = currentUsed + distanceFt;
   const remaining = Math.max(0, maxSpeed - currentUsed);

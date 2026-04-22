@@ -1418,11 +1418,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const immobilized = (character.active_conditions ?? []).some(
  c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove
  );
+ // v2.136.0 — Phase L pt 4: Encumbered halves base Speed before Dash.
+ // Mirrors lib/movement.ts ordering (zero check → exhaustion → halving →
+ // Dash doubling). Exhaustion isn't applied here because the local
+ // character row doesn't carry exhaustion_level via this code path; the
+ // canonical effective speed for combat-time movement gating is in
+ // lib/movement.ts canMove(). This display value is for the action-economy
+ // strip readout only.
+ const halved = (character.active_conditions ?? []).some(
+ c => CONDITION_MAP[c]?.speedHalved
+ );
+ const speedAfterHalving = halved ? Math.floor(baseSpeed / 2) : baseSpeed;
  // v2.88.0: Dashing doubles your effective Speed for the turn per 2024 PHB
  // ("you gain extra Movement equal to your Speed for the current turn").
  // Applied after the immobilized check so a paralyzed character can't Dash
  // out of 0 speed.
- const effectiveSpeed = immobilized ? 0 : (dashingThisTurn ? baseSpeed * 2 : baseSpeed);
+ const effectiveSpeed = immobilized ? 0 : (dashingThisTurn ? speedAfterHalving * 2 : speedAfterHalving);
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy

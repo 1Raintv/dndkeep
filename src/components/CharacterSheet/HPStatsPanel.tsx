@@ -88,13 +88,22 @@ export default function HPStatsPanel({
     (() => {
       const speedZeroSources = activeConditions.filter(c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove);
       const isImmobilized = speedZeroSources.length > 0;
+      // v2.136.0 — Phase L pt 4: Encumbered halves Speed. Listed AFTER the
+      // zero check so a Restrained character still shows 0 (zero wins).
+      const halvedSources = activeConditions.filter(c => CONDITION_MAP[c]?.speedHalved);
+      const isHalved = halvedSources.length > 0;
+      const displaySpeed = isImmobilized
+        ? 0
+        : (isHalved ? Math.floor(character.speed / 2) : character.speed);
       return {
         label: 'Speed',
-        value: isImmobilized ? '0ft' : `${character.speed}ft`,
-        color: isImmobilized ? 'var(--c-red-l)' : 'var(--t-2)',
+        value: isImmobilized ? '0ft' : `${displaySpeed}ft`,
+        color: isImmobilized ? 'var(--c-red-l)' : (isHalved ? '#fbbf24' : 'var(--t-2)'),
         tooltip: isImmobilized
           ? `Speed 0 — ${speedZeroSources.join(', ')}. Base speed ${character.speed}ft.`
-          : 'To change Speed, use Settings → Edit Stats.',
+          : (isHalved
+            ? `Speed halved (${displaySpeed}ft) — ${halvedSources.join(', ')}. Base speed ${character.speed}ft.`
+            : 'To change Speed, use Settings → Edit Stats.'),
       };
     })(),
     { label: 'Proficiency', value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },

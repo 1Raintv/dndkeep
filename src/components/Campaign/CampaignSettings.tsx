@@ -56,6 +56,32 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
     (campaign.automation_defaults as Record<string, AutomationValue> | undefined) ?? {}
   );
 
+  // v2.136.0 — Phase L pt 4: encumbrance variant.
+  //   off     — no auto-application (DM tracks weight manually if at all)
+  //   base    — Encumbered at > STR × 15 lbs (RAW 2024 default)
+  //   variant — 3-tier: > STR × 5 (Encumbered) / > STR × 10 (still
+  //             Encumbered with bigger speed penalty in future polish)
+  const [encumbranceVariant, setEncumbranceVariant] = useState<'off' | 'base' | 'variant'>(
+    (campaign.encumbrance_variant ?? 'off') as 'off' | 'base' | 'variant'
+  );
+  const [savingEnc, setSavingEnc] = useState(false);
+  const [encSaved, setEncSaved] = useState(false);
+
+  async function saveEncumbranceVariant(next: 'off' | 'base' | 'variant') {
+    setSavingEnc(true);
+    setEncumbranceVariant(next);
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ encumbrance_variant: next })
+      .eq('id', campaign.id);
+    setSavingEnc(false);
+    if (!error) {
+      onUpdated({ encumbrance_variant: next });
+      setEncSaved(true);
+      setTimeout(() => setEncSaved(false), 2000);
+    }
+  }
+
   async function saveAutomationDefaults(next: Record<string, AutomationValue>) {
     setSavingAuto(true);
     const { error } = await supabase
@@ -198,6 +224,71 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                     border: `1px solid ${enabled ? 'rgba(52,211,153,0.3)' : 'var(--c-border)'}`,
                   }}>
                     {enabled ? 'ON' : 'OFF'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Encumbrance (v2.136.0 — Phase L) ── */}
+        <div style={{ padding: '14px 16px', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', background: 'var(--c-surface-1)', marginBottom: 16 }}>
+          <div style={{
+            fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+            letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+            color: 'var(--c-gold-l)', marginBottom: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            Encumbrance
+            {savingEnc && <span style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 400 }}>Saving…</span>}
+            {encSaved && <span style={{ fontSize: 9, color: '#34d399', fontWeight: 400 }}>✓ Saved</span>}
+          </div>
+          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 12 }}>
+            When a character's carried weight exceeds their capacity, automatically apply the Encumbered condition (speed halved, disadvantage on STR/DEX/CON rolls).
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {([
+              { value: 'off',     label: 'Off',                 desc: 'No auto-application. Track weight manually if at all.' },
+              { value: 'base',    label: 'Base (RAW 2024)',     desc: 'Encumbered when carried weight > STR × 15 lbs.' },
+              { value: 'variant', label: 'Variant (3-tier)',    desc: 'Encumbered at > STR × 5 (mild). Heavily encumbered at > STR × 10. Optional rule.' },
+            ] as const).map(({ value, label, desc }) => {
+              const active = encumbranceVariant === value;
+              return (
+                <div
+                  key={value}
+                  onClick={() => saveEncumbranceVariant(value)}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                    padding: '10px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                    border: `1px solid ${active ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
+                    background: active ? 'rgba(212,160,23,0.06)' : 'var(--c-raised)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{
+                    width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                    border: `2px solid ${active ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
+                    background: active ? 'var(--c-gold-l)' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {active && (
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#000' }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+                      color: active ? 'var(--t-1)' : 'var(--t-2)',
+                      marginBottom: 2,
+                    }}>
+                      {label}
+                    </div>
+                    <div style={{
+                      fontFamily: 'var(--ff-body)', fontSize: 11,
+                      color: 'var(--t-3)', lineHeight: 1.5,
+                    }}>
+                      {desc}
+                    </div>
                   </div>
                 </div>
               );
