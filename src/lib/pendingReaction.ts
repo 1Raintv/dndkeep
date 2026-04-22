@@ -20,7 +20,7 @@
 // central engine.
 
 import { supabase } from './supabase';
-import { emitCombatEvent } from './combatEvents';
+import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
 
 const DEFAULT_TIMER_SECONDS = 120;
@@ -31,7 +31,7 @@ export interface ReactionRegistryEntry {
   key: string;
   name: string;
   /** When in the attack flow this reaction can trigger. */
-  triggerPoint: 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied' | 'movement_out_of_reach';
+  triggerPoint: 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied' | 'movement_out_of_reach' | 'spell_declared';
   /** Returns true if this reaction should be offered for the given state. */
   isEligible(ctx: ReactionEligibilityContext): boolean;
   /** Runs when a player/DM accepts the offer. Mutates pending_attack + emits log events. */
@@ -471,6 +471,348 @@ REACTION_REGISTRY.push({
     });
   },
 });
+
+// ─── Counterspell ────────────────────────────────────────────────
+// v2.122.0 — Phase J pt 2: pre-cast Counterspell window.
+//
+// Triggered by declareSpellCast() — fundamentally different from other
+// reactions because the "attack" hasn't happened yet. We parallel the
+// pattern by using pending_reactions rows with pending_attack_id=NULL and
+// decision_payload carrying the spell_cast_id.
+//
+// 2024 PHB p.250: when another creature you see within 60 ft casts a spell,
+// you can cast Counterspell (3rd-level slot or higher). The target caster
+// must succeed on a CON save, DC = 10 + level of the spell being counter-
+// spelled. On fail, the spell fails. Upcast: +1 DC per slot above 3rd?
+// Actually RAW 2024 doesn't add DC for upcasting — it stays 10 + target
+// spell's level regardless of Counterspell's slot level. Keeping to RAW.
+//
+// This file owns the REGISTRY ENTRY + OFFER-CREATION helper. The onAccept
+// creates a save-type pending_attack (target = original caster, CON save,
+// DC = 10 + spell_level, no damage). That attack flows through the DM's
+// AttackResolutionModal as usual; on resolution, a separate handler (in
+// pendingAttack.ts) reads the save outcome and updates the pending_spell_
+// casts row to 'countered' or 'resolved'. For this ship we wire the
+// acceptance but leave save-outcome → pending_spell_cast propagation as a
+// v2.123 follow-up (the declareSpellCast UI needs to subscribe anyway).
+
+REACTION_REGISTRY.push({
+  key: 'counterspell',
+  name: 'Counterspell',
+  triggerPoint: 'spell_declared',
+  isEligible(ctx) {
+    const { reactorCharacter } = ctx;
+    if (!reactorCharacter) return false;
+    // Must know or prepare Counterspell
+    const known: string[] = (reactorCharacter as any).known_spells ?? [];
+    const prepared: string[] = (reactorCharacter as any).prepared_spells ?? [];
+    const hasIt =
+      known.some(s => s.toLowerCase() === 'counterspell') ||
+      prepared.some(s => s.toLowerCase() === 'counterspell');
+    if (!hasIt) return false;
+    // Need a level-3+ slot
+    const slots = ((reactorCharacter as any).spell_slots ?? {}) as Record<string, { total: number; used: number }>;
+    for (let lvl = 3; lvl <= 9; lvl++) {
+      const slot = slots[String(lvl)];
+      if (slot && slot.used < slot.total) return true;
+    }
+    return false;
+  },
+  async onAccept(ctx) {
+    const { offer, reactorCharacter } = ctx;
+    const decisionPayload = (ctx.decisionPayload ?? {}) as Record<string, unknown>;
+    const spellCastId = decisionPayload.spell_cast_id as string | undefined;
+    const levelUsed = (decisionPayload.spell_level_used as number)
+      ?? lowestCounterspellSlot(reactorCharacter)
+      ?? 3;
+
+    if (!spellCastId) {
+      console.warn('[counterspell] missing spell_cast_id on decision_payload');
+      return;
+    }
+
+    // Burn the L3+ slot
+    if (reactorCharacter) {
+      const slots = { ...(reactorCharacter as any).spell_slots } as Record<string, { total: number; used: number }>;
+      const slot = slots[String(levelUsed)];
+      if (slot && slot.used < slot.total) {
+        slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
+        await supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id);
+      }
+    }
+
+    // Mark reactor's reaction used
+    await supabase
+      .from('combat_participants')
+      .update({ reaction_used: true })
+      .eq('id', offer.reactor_participant_id);
+
+    // Load the pending_spell_cast to compute save DC and build the attack
+    const { data: pscRow } = await supabase
+      .from('pending_spell_casts')
+      .select('*')
+      .eq('id', spellCastId)
+      .maybeSingle();
+    if (!pscRow) return;
+
+    const targetSpellLevel = pscRow.spell_level as number;
+    const saveDC = 10 + targetSpellLevel;
+
+    // Target participant for the save
+    let targetName = pscRow.caster_name as string;
+    let targetType: 'character' | 'monster' | 'npc' = 'character';
+    if (pscRow.caster_participant_id) {
+      const { data: cp } = await supabase
+        .from('combat_participants')
+        .select('name, participant_type')
+        .eq('id', pscRow.caster_participant_id)
+        .maybeSingle();
+      if (cp) {
+        targetName = cp.name as string;
+        targetType = (cp.participant_type as any) ?? 'character';
+      }
+    }
+
+    // Create a save-type counter-attack (no damage, effect = spell-fate)
+    const { declareAttack } = await import('./pendingAttack');
+    const counterAttack = await declareAttack({
+      campaignId: pscRow.campaign_id as string,
+      encounterId: pscRow.encounter_id as string | null,
+      attackerParticipantId: offer.reactor_participant_id,
+      attackerName: offer.reactor_name,
+      attackerType: 'character',
+      targetParticipantId: pscRow.caster_participant_id as string | null,
+      targetName,
+      targetType,
+      attackSource: 'spell',
+      attackName: `Counterspell vs ${pscRow.spell_name}${levelUsed > 3 ? ` (L${levelUsed})` : ''}`,
+      attackKind: 'save',
+      saveDC,
+      saveAbility: 'CON',
+      saveSuccessEffect: 'none',       // no damage either way — outcome is spell-fate only
+      damageDice: '',
+      damageType: '',
+    });
+
+    // Link the counterspell attack back to the pending_spell_cast so the
+    // resolver (future v2.123 code) can flip state to 'countered' vs
+    // 'resolved' based on the save outcome.
+    await supabase
+      .from('pending_spell_casts')
+      .update({
+        state: 'counterspell_offered',
+        counterspell_attack_id: counterAttack?.id ?? null,
+      })
+      .eq('id', spellCastId);
+
+    await emitCombatEvent({
+      campaignId: pscRow.campaign_id as string,
+      encounterId: pscRow.encounter_id as string | null,
+      chainId: pscRow.chain_id as string,
+      sequence: 70,
+      actorType: 'player',
+      actorName: offer.reactor_name,
+      targetType,
+      targetName,
+      eventType: 'reaction_used',
+      payload: {
+        reaction: 'Counterspell',
+        spell_level_used: levelUsed,
+        target_spell: pscRow.spell_name,
+        target_spell_level: targetSpellLevel,
+        save_dc: saveDC,
+        save_ability: 'CON',
+        counter_attack_id: counterAttack?.id ?? null,
+        spell_cast_id: spellCastId,
+      },
+    });
+  },
+});
+
+function lowestCounterspellSlot(c: Character | null | undefined): number | null {
+  if (!c) return null;
+  const slots = ((c as any).spell_slots ?? {}) as Record<string, { total: number; used: number }>;
+  for (let lvl = 3; lvl <= 9; lvl++) {
+    const slot = slots[String(lvl)];
+    if (slot && slot.used < slot.total) return lvl;
+  }
+  return null;
+}
+
+// ─── Spell cast declaration + counterspell offers ────────────────
+// v2.122.0 — Phase J pt 2: declareSpellCast() creates a pending_spell_casts
+// row with a 30s reaction window, then offerCounterspell() iterates the
+// encounter for eligible counterspellers and creates pending_reactions
+// rows. The v2.123 UI will add a DeclareSpellCastModal + timer resolution.
+
+export interface DeclareSpellCastInput {
+  campaignId: string;
+  encounterId: string | null;
+  chainId?: string;                 // optional — new one generated if omitted
+  casterParticipantId: string | null;
+  casterCharacterId: string | null;
+  casterName: string;
+  spellName: string;
+  spellLevel: number;               // slot level (0 = cantrip)
+  isCantrip?: boolean;
+  reactionWindowSeconds?: number;   // default 30
+}
+
+export async function declareSpellCast(
+  input: DeclareSpellCastInput,
+): Promise<{ pendingSpellCastId: string; chainId: string; offersCreated: number } | null> {
+  const chainId = input.chainId ?? newChainId();
+  const windowSecs = input.reactionWindowSeconds ?? 30;
+  const declaredAt = new Date();
+  const expiresAt = new Date(declaredAt.getTime() + windowSecs * 1000);
+
+  const { data: inserted, error } = await supabase
+    .from('pending_spell_casts')
+    .insert({
+      campaign_id: input.campaignId,
+      encounter_id: input.encounterId,
+      chain_id: chainId,
+      caster_participant_id: input.casterParticipantId,
+      caster_character_id: input.casterCharacterId,
+      caster_name: input.casterName,
+      spell_name: input.spellName,
+      spell_level: input.spellLevel,
+      is_cantrip: input.isCantrip ?? (input.spellLevel === 0),
+      state: 'declared',
+      declared_at: declaredAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+    })
+    .select()
+    .single();
+  if (error || !inserted) {
+    console.warn('[declareSpellCast] insert failed', error);
+    return null;
+  }
+
+  await emitCombatEvent({
+    campaignId: input.campaignId,
+    encounterId: input.encounterId,
+    chainId,
+    sequence: 0,
+    actorType: 'player',
+    actorName: input.casterName,
+    targetType: 'self',
+    targetName: input.casterName,
+    eventType: 'spell_declared',
+    payload: {
+      spell_name: input.spellName,
+      spell_level: input.spellLevel,
+      is_cantrip: input.isCantrip ?? (input.spellLevel === 0),
+      reaction_window_seconds: windowSecs,
+    },
+  });
+
+  const offersCreated = await offerCounterspell({
+    pendingSpellCastId: inserted.id as string,
+    campaignId: input.campaignId,
+    encounterId: input.encounterId,
+    casterParticipantId: input.casterParticipantId,
+    casterName: input.casterName,
+    spellName: input.spellName,
+    spellLevel: input.spellLevel,
+    reactionWindowSeconds: windowSecs,
+  });
+
+  return {
+    pendingSpellCastId: inserted.id as string,
+    chainId,
+    offersCreated,
+  };
+}
+
+export interface OfferCounterspellInput {
+  pendingSpellCastId: string;
+  campaignId: string;
+  encounterId: string | null;
+  casterParticipantId: string | null;
+  casterName: string;
+  spellName: string;
+  spellLevel: number;
+  reactionWindowSeconds?: number;
+}
+
+export async function offerCounterspell(
+  input: OfferCounterspellInput,
+): Promise<number> {
+  if (!input.encounterId) return 0;
+
+  // Load all character participants in the encounter — only characters can
+  // counterspell (monsters with innate counterspell are a future edge case).
+  const { data: rows } = await supabase
+    .from('combat_participants')
+    .select('id, name, participant_type, entity_id, reaction_used, is_dead')
+    .eq('encounter_id', input.encounterId)
+    .eq('participant_type', 'character');
+  if (!rows) return 0;
+
+  const windowSecs = input.reactionWindowSeconds ?? 30;
+  const offeredAt = new Date();
+  const expiresAt = new Date(offeredAt.getTime() + windowSecs * 1000);
+
+  const offers: any[] = [];
+  for (const p of rows) {
+    if (p.id === input.casterParticipantId) continue;   // can't counterspell yourself
+    if (p.is_dead) continue;
+    if (p.reaction_used) continue;
+    if (!p.entity_id) continue;
+
+    // Load the character's spell list + slots to gate eligibility inline
+    // (we could defer to the registry's isEligible but that would require
+    // a separate helper call; inline is simpler here).
+    const { data: ch } = await supabase
+      .from('characters')
+      .select('known_spells, prepared_spells, spell_slots')
+      .eq('id', p.entity_id as string)
+      .maybeSingle();
+    if (!ch) continue;
+    const known: string[] = (ch.known_spells as string[] | null) ?? [];
+    const prepared: string[] = (ch.prepared_spells as string[] | null) ?? [];
+    const hasIt =
+      known.some(s => s.toLowerCase() === 'counterspell') ||
+      prepared.some(s => s.toLowerCase() === 'counterspell');
+    if (!hasIt) continue;
+    const slots = ((ch.spell_slots ?? {}) as Record<string, { total: number; used: number }>);
+    let hasSlot = false;
+    for (let lvl = 3; lvl <= 9; lvl++) {
+      const slot = slots[String(lvl)];
+      if (slot && slot.used < slot.total) { hasSlot = true; break; }
+    }
+    if (!hasSlot) continue;
+
+    offers.push({
+      campaign_id: input.campaignId,
+      pending_attack_id: null,
+      reactor_participant_id: p.id,
+      reactor_name: p.name,
+      reactor_type: 'character',
+      reaction_key: 'counterspell',
+      reaction_name: 'Counterspell',
+      trigger_point: 'spell_declared',
+      offered_at: offeredAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      decided_at: null,
+      state: 'offered',
+      decision_payload: {
+        spell_cast_id: input.pendingSpellCastId,
+        caster_name: input.casterName,
+        spell_name: input.spellName,
+        spell_level: input.spellLevel,
+        save_dc: 10 + input.spellLevel,
+      },
+    });
+  }
+
+  if (offers.length > 0) {
+    await supabase.from('pending_reactions').insert(offers);
+  }
+
+  return offers.length;
+}
 
 /**
  * Evaluate the registry against the current state and create pending_reactions

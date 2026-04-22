@@ -667,7 +667,7 @@ export interface PendingAttack {
 
 // v2.98.0 — Phase E: reaction offers
 export type ReactionState = 'offered' | 'accepted' | 'declined' | 'expired';
-export type ReactionTriggerPoint = 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied' | 'movement_out_of_reach';
+export type ReactionTriggerPoint = 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied' | 'movement_out_of_reach' | 'spell_declared';
 
 export interface PendingReaction {
   id: string;
@@ -686,6 +686,48 @@ export interface PendingReaction {
   decision_payload: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+}
+
+// v2.122.0 — Phase J: pre-cast Counterspell window. Rows in this table
+// represent a spell that's been declared but not yet resolved — eligible
+// counterspellers get an offer before the effect lands.
+export type PendingSpellCastState =
+  | 'declared'
+  | 'counterspell_offered'
+  | 'countered'
+  | 'resolved'
+  | 'canceled';
+
+export type PendingSpellCastOutcome =
+  | 'went_off'
+  | 'countered'
+  | 'saved_through'
+  | 'canceled';
+
+export interface PendingSpellCast {
+  id: string;
+  campaign_id: string;
+  encounter_id: string | null;
+  chain_id: string;
+
+  caster_participant_id: string | null;
+  caster_character_id: string | null;
+  caster_name: string;
+
+  spell_name: string;
+  spell_level: number;
+  is_cantrip: boolean;
+
+  state: PendingSpellCastState;
+
+  declared_at: string;
+  expires_at: string;
+  resolved_at: string | null;
+
+  counterspell_attack_id: string | null;
+  outcome: PendingSpellCastOutcome | null;
+
+  created_at: string;
 }
 
 export interface CampaignMember {
