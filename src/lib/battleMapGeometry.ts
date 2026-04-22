@@ -69,6 +69,40 @@ export interface WallSegment {
   y1: number;
   x2: number;
   y2: number;
+  /** v2.145.0 — Phase N pt 3: wall type determines cover contribution.
+   *    'wall'   — solid wall; single wall alone = total cover (RAW 2024 p.204)
+   *    'low'    — low wall / furniture; single alone = half cover
+   *    'window' — arrow slit / portcullis / barred window; single = ¾ cover
+   *    'door'   — closed door; single = total cover (treat as solid)
+   *    undefined/null — legacy untyped wall; treated as a small obstacle so
+   *    existing maps preserve their multi-wall-stacking behavior
+   *    (1 wall → half, 2 → ¾, 3+ → total). Migrate legacy walls by editing
+   *    them in the drawing tool; no bulk migration forced. */
+  type?: 'wall' | 'low' | 'window' | 'door';
+}
+
+/**
+ * v2.145.0 — Phase N pt 3: cover-point contribution per wall type.
+ *
+ * Each typed wall contributes the cover-equivalent points for its RAW
+ * category. Points are summed across all walls on the line of effect
+ * and mapped via {@link pointsToCoverLevel}. Untyped walls keep their
+ * legacy single-point behavior (multi-wall stacking to total cover).
+ *
+ * Rationale: RAW "creatures use the best cover available" — with typed
+ * walls, a single solid wall already gives total cover, so the additive
+ * model still picks the correct level for clean test cases. Ambiguous
+ * cases (e.g. "low wall + window") resolve toward more cover, which is
+ * defensible since both obstacles do contribute.
+ */
+export function wallCoverPoints(w: WallSegment): number {
+  switch (w.type) {
+    case 'wall':   return 3;   // alone → total
+    case 'door':   return 3;   // alone → total (closed)
+    case 'window': return 2;   // alone → three_quarters
+    case 'low':    return 1;   // alone → half
+    default:       return 1;   // legacy: preserves 1=half / 2=¾ / 3+=total
+  }
 }
 
 /**
@@ -338,25 +372,37 @@ export function hasLineOfSight(
 }
 
 /**
- * Derive 2024-PHB cover level from wall-crossing count. Used by v2.132 to
- * auto-populate DeclareAttackModal's coverLevel field.
+ * Derive 2024-PHB cover level from walls crossing the line of effect.
  *
  * RAW 2024 p.204:
  *   - Half cover: +2 AC, +2 Dex save. Examples: low wall, creature.
- *   - Three-quarters cover: +5 AC, +5 Dex save. Examples: portcullis, tree.
+ *   - Three-quarters cover: +5 AC, +5 Dex save. Examples: portcullis, arrow slit.
  *   - Total cover: can't be targeted directly.
  *
- * We map:
- *   - 0 walls → 'none'
- *   - 1 wall  → 'half'
- *   - 2 walls → 'three_quarters'
- *   - 3+ walls → 'total'
+ * Algorithm (v2.145+): sum cover points from all walls crossed using
+ * {@link wallCoverPoints}, then bucket:
+ *   - 0 pts → 'none'
+ *   - 1     → 'half'
+ *   - 2     → 'three_quarters'
+ *   - 3+    → 'total'
  *
- * This is heuristic — future "wall type" schema (v2.132+) can override
- * with per-segment cover contributions (e.g. a portcullis is always 3/4
- * regardless of count).
+ * Typed walls (new in v2.145) provide RAW-accurate cover in isolation:
+ * a single `wall` or `door` gives total, a `window` gives ¾, a `low` gives
+ * half. Untyped legacy walls contribute 1 each so existing maps preserve
+ * their multi-wall-stacking behavior (1 = half, 2 = ¾, 3+ = total).
  */
 export type CoverLevel = 'none' | 'half' | 'three_quarters' | 'total';
+
+/**
+ * Map cover points to a cover level. Exposed so callers can reuse the
+ * bucketing (e.g. in a "cover score" debug overlay on the map).
+ */
+export function pointsToCoverLevel(points: number): CoverLevel {
+  if (points <= 0) return 'none';
+  if (points <= 1) return 'half';
+  if (points <= 2) return 'three_quarters';
+  return 'total';
+}
 
 export function deriveCoverFromWalls(
   from: ParticipantPosition,
@@ -364,9 +410,16 @@ export function deriveCoverFromWalls(
   walls: WallSegment[],
   gridSize: number,
 ): CoverLevel {
-  const n = countWallsBetween(from, to, walls, gridSize);
-  if (n === 0) return 'none';
-  if (n === 1) return 'half';
-  if (n === 2) return 'three_quarters';
-  return 'total';
+  // Compute crossed walls then sum contributions. We inline the segment
+  // intersection here rather than calling countWallsBetween so we can
+  // preserve type info without a second pass.
+  const a = tokenCenterPx(from, gridSize);
+  const b = tokenCenterPx(to, gridSize);
+  let points = 0;
+  for (const w of walls) {
+    if (segmentsIntersect(a.x, a.y, b.x, b.y, w.x1, w.y1, w.x2, w.y2)) {
+      points += wallCoverPoints(w);
+    }
+  }
+  return pointsToCoverLevel(points);
 }

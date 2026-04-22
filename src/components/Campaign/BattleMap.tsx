@@ -63,6 +63,12 @@ interface WallSegment {
   y1: number;
   x2: number;
   y2: number;
+  // v2.145.0 — Phase N pt 3: optional wall type for RAW-accurate cover.
+  //   'wall' (default) — solid wall, total cover alone
+  //   'low'            — half cover
+  //   'window'         — three-quarters cover (arrow slit, portcullis)
+  //   'door'           — total cover (treated like a wall when closed)
+  type?: 'wall' | 'low' | 'window' | 'door';
 }
 
 interface TokenNote {
@@ -544,17 +550,34 @@ function DrawingLayer({shapes,walls,drawColor,activeTool,currentPath,drawStart,d
   return (
     <svg style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:8}}>
       {/* v2.130.0 — Phase K pt 3: render walls UNDER shapes so decorative
-          marks can be drawn over them. Distinct styling — bold gray with a
-          subtle blue tint so they're recognizable as game-mechanical
-          obstacles vs. decorative line drawings. */}
-      {walls.map(w => (
-        <line
-          key={w.id}
-          x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
-          stroke="#94a3b8" strokeWidth={5} strokeLinecap="round"
-          opacity={0.85}
-        />
-      ))}
+          marks can be drawn over them.
+          v2.145.0 — Phase N pt 3: wall styling now varies by type so DMs
+          and players can tell them apart at a glance:
+            wall     — thick solid gray (default, total cover)
+            low      — thinner solid amber (half cover)
+            window   — dotted gray  (three-quarters cover, see-through)
+            door     — dashed brown (total cover, interactable in future)
+          Null-type walls fall through to the legacy solid gray. */}
+      {walls.map(w => {
+        const t = w.type;
+        const stroke = t === 'low'    ? '#c2a54a'
+                     : t === 'window' ? '#94a3b8'
+                     : t === 'door'   ? '#92400e'
+                     : '#94a3b8';                 // 'wall' or legacy
+        const width  = t === 'low' ? 3 : 5;
+        const dash   = t === 'window' ? '2,4'
+                     : t === 'door'   ? '10,5'
+                     : undefined;
+        return (
+          <line
+            key={w.id}
+            x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
+            stroke={stroke} strokeWidth={width} strokeLinecap="round"
+            strokeDasharray={dash}
+            opacity={0.85}
+          />
+        );
+      })}
       {shapes.map(s=>
         s.type==='freehand'&&s.points.length>1
           ? <path key={s.id} d={'M'+s.points.map((p:number[])=>p[0]+','+p[1]).join(' L')} stroke={s.color} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85}/>
@@ -883,6 +906,10 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   // decorative drawings — clicking the "Clear drawings" button doesn't
   // touch them, and v2.131+ LoS queries intersect against this list.
   const [walls, setWalls] = useState<WallSegment[]>([]);
+  // v2.145.0 — Phase N pt 3: selected wall type for the draw-wall tool.
+  // Defaults to 'wall' (solid) — the common case and the existing legacy
+  // behavior for newly placed walls.
+  const [wallType, setWallType] = useState<'wall' | 'low' | 'window' | 'door'>('wall');
   const [currentPath, setCurrentPath] = useState<number[][]>([]);
   const [drawStart, setDrawStart] = useState<{x:number;y:number}|null>(null);
   const [drawEnd, setDrawEnd] = useState<{x:number;y:number}|null>(null);
@@ -1308,7 +1335,17 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
       const dx = coords.x - drawStart.x;
       const dy = coords.y - drawStart.y;
       if (Math.hypot(dx, dy) >= 4) {
-        nextWalls = [...walls, {id:Date.now().toString(), x1:drawStart.x, y1:drawStart.y, x2:coords.x, y2:coords.y}];
+        // v2.145.0 — Phase N pt 3: stamp the currently-selected wall type
+        // onto the new segment. `wallType` defaults to 'wall' (solid) so
+        // legacy behavior — single wall → total cover — holds after this
+        // ship for newly drawn walls. Existing untyped walls preserve
+        // their legacy half/¾/total stacking behavior via wallCoverPoints().
+        nextWalls = [...walls, {
+          id: Date.now().toString(),
+          x1: drawStart.x, y1: drawStart.y,
+          x2: coords.x, y2: coords.y,
+          type: wallType,
+        }];
       }
     }
     if (next) {
@@ -1446,14 +1483,47 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             ))}
             {/* Separator */}
             <div style={{width:28,height:1,background:'var(--c-border)',margin:'6px 0'}}/>
-            {/* Color picker row */}
-            {activeTool.startsWith('draw-') && (
+            {/* Color picker row — visible for all draw tools EXCEPT wall */}
+            {activeTool.startsWith('draw-') && activeTool !== 'draw-wall' && (
               <div style={{display:'flex',flexDirection:'column',gap:3}}>
                 {DRAW_COLORS.map(c=>(
                   <button key={c} onClick={()=>setDrawColor(c)}
                     style={{width:22,height:22,borderRadius:'50%',border:drawColor===c?'2px solid #fff':'2px solid transparent',
                       background:c,cursor:'pointer',padding:0,outline:'none'}}/>
                 ))}
+              </div>
+            )}
+            {/* v2.145.0 — Phase N pt 3: wall type picker. Four buttons,
+                shown only when the wall tool is active. Each button maps
+                to a cover contribution via wallCoverPoints(). Icons are
+                short glyphs chosen for silhouette legibility at 22px:
+                  ▮ solid wall       — total cover alone
+                  ▁ low wall         — half cover
+                  ⋮ window/portcullis — three-quarters
+                  ⊐ closed door      — total cover */}
+            {activeTool === 'draw-wall' && (
+              <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                {([
+                  {id:'wall',   glyph:'▮', label:'Solid wall — total cover'},
+                  {id:'low',    glyph:'▁', label:'Low wall — half cover'},
+                  {id:'window', glyph:'⋮', label:'Window / portcullis — ¾ cover'},
+                  {id:'door',   glyph:'⊐', label:'Closed door — total cover'},
+                ] as const).map(t => {
+                  const active = wallType === t.id;
+                  return (
+                    <button key={t.id} title={t.label} onClick={()=>setWallType(t.id)}
+                      style={{
+                        width:28, height:26, borderRadius:5, cursor:'pointer',
+                        fontSize:14, fontWeight:800, padding:0,
+                        border: active ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
+                        background: active ? 'rgba(212,160,23,0.2)' : 'transparent',
+                        color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                      }}>
+                      {t.glyph}
+                    </button>
+                  );
+                })}
               </div>
             )}
             {/* Clear drawings */}
