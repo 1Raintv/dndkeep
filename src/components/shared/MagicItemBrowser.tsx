@@ -1,5 +1,11 @@
 import { useState, useMemo } from 'react';
-import { MAGIC_ITEMS, RARITY_COLORS, RARITY_ORDER, type MagicItem, type MagicItemRarity, type MagicItemType } from '../../data/magicItems';
+// v2.154.0 — Phase P pt 2: read from the DB-backed hook instead of the
+// static MAGIC_ITEMS import. Canonical list = 110 SRD items plus any
+// user homebrew entries filtered by RLS. Types, rarity order, and color
+// palette stay in data/magicItems.ts because they're display metadata
+// (not spell-like drifting rows).
+import { RARITY_COLORS, RARITY_ORDER, type MagicItem, type MagicItemRarity, type MagicItemType } from '../../data/magicItems';
+import { useMagicItems } from '../../lib/hooks/useMagicItems';
 import type { InventoryItem } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -15,6 +21,7 @@ const TYPE_LABELS: Record<MagicItemType, string> = {
 };
 
 export default function MagicItemBrowser({ onAddToInventory, compact = false }: MagicItemBrowserProps) {
+  const { items: MAGIC_ITEMS } = useMagicItems();
   const [search, setSearch] = useState('');
   const [filterRarity, setFilterRarity] = useState<MagicItemRarity | ''>('');
   const [filterType, setFilterType] = useState<MagicItemType | ''>('');
@@ -30,10 +37,14 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       if (filterAttunement !== null && item.requiresAttunement !== filterAttunement) return false;
       return true;
     });
-  }, [search, filterRarity, filterType, filterAttunement]);
+  }, [MAGIC_ITEMS, search, filterRarity, filterType, filterAttunement]);
 
   function addToInventory(item: MagicItem) {
     if (!onAddToInventory) return;
+    // v2.154.0 — Phase P pt 2: propagate structured mechanical bonus
+    // fields onto the InventoryItem so computeActiveBonuses (for
+    // attack/damage/save) and recomputeAC (for AC) can read them
+    // directly. The description prefix is preserved for human display.
     const invItem: InventoryItem = {
       id: uuidv4(),
       name: item.name,
@@ -42,13 +53,20 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       description: `[${item.rarity.toUpperCase()}${item.requiresAttunement ? ' — Requires Attunement' : ''}] ${item.description}`,
       equipped: false,
       magical: true,
+      ...(item.acBonus     !== undefined ? { acBonus:     item.acBonus     } : {}),
+      ...(item.saveBonus   !== undefined ? { saveBonus:   item.saveBonus   } : {}),
+      ...(item.attackBonus !== undefined ? { attackBonus: item.attackBonus } : {}),
+      ...(item.damageBonus !== undefined ? { damageBonus: item.damageBonus } : {}),
     };
     onAddToInventory(invItem);
     setAdded(prev => new Set([...prev, item.id]));
     setTimeout(() => setAdded(prev => { const n = new Set(prev); n.delete(item.id); return n; }), 2000);
   }
 
-  const types = [...new Set(MAGIC_ITEMS.map(i => i.type))].sort() as MagicItemType[];
+  const types = useMemo(
+    () => [...new Set(MAGIC_ITEMS.map(i => i.type))].sort() as MagicItemType[],
+    [MAGIC_ITEMS],
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
