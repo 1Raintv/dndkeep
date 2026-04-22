@@ -204,6 +204,76 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   return (updated as PendingAttack) ?? null;
 }
 
+// ─── Roll save (attack_kind='save' only) ─────────────────────────
+// v2.102.0 — Phase F pt 3a: per-target save prompt.
+//
+// Rolls 1d20 + saveBonus for the target and stashes the result on the
+// pending_attacks row. Does NOT change state — the attack stays in 'declared'
+// because damage still needs to be rolled next. rollDamage reads save_result
+// to determine half / zero / full damage.
+//
+// Nat 20 auto-succeeds, nat 1 auto-fails per 2024 PHB.
+export async function rollSave(
+  attackId: string,
+  saveBonus: number,
+): Promise<PendingAttack | null> {
+  const { data: row } = await supabase
+    .from('pending_attacks')
+    .select('*')
+    .eq('id', attackId)
+    .single();
+  if (!row) return null;
+  const atk = row as PendingAttack;
+
+  if (atk.attack_kind !== 'save') return atk;
+  if (atk.save_result) return atk;   // already rolled
+
+  const d20 = rollD20();
+  const total = d20 + saveBonus;
+  const dc = atk.save_dc ?? 10;
+
+  let result: 'passed' | 'failed';
+  if (d20 === 20) result = 'passed';
+  else if (d20 === 1) result = 'failed';
+  else result = total >= dc ? 'passed' : 'failed';
+
+  const { data: updated } = await supabase
+    .from('pending_attacks')
+    .update({
+      save_d20: d20,
+      save_total: total,
+      save_result: result,
+    })
+    .eq('id', attackId)
+    .select()
+    .single();
+
+  await emitCombatEvent({
+    campaignId: atk.campaign_id,
+    encounterId: atk.encounter_id,
+    chainId: atk.chain_id,
+    sequence: 1,
+    actorType: atk.target_type === 'character' ? 'player' : atk.target_type === 'monster' ? 'monster' : 'system',
+    actorName: atk.target_name,
+    targetType: 'self',
+    targetName: atk.target_name,
+    eventType: 'save_rolled',
+    payload: {
+      save_type: 'attack',
+      ability: atk.save_ability,
+      dc,
+      d20,
+      bonus: saveBonus,
+      total,
+      result,
+      trigger_attack_name: atk.attack_name,
+      trigger_attacker: atk.attacker_name,
+    },
+  });
+
+  return (updated as PendingAttack) ?? null;
+}
+
 // ─── Roll damage ─────────────────────────────────────────────────
 export async function rollDamage(attackId: string): Promise<PendingAttack | null> {
   const { data: row } = await supabase
@@ -520,6 +590,58 @@ export async function getActivePendingAttack(campaignId: string): Promise<Pendin
     .limit(1)
     .maybeSingle();
   return (data as PendingAttack) ?? null;
+}
+
+// ─── Save bonus lookup for target ────────────────────────────────
+// v2.102.0 — Phase F pt 3a: resolve the target's save bonus for a given
+// ability. For character targets: ability modifier + proficiency (if save
+// proficient). For monster/npc targets: 0 by default — DM overrides manually.
+export async function getTargetSaveBonus(
+  participantId: string,
+  ability: string,   // 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'
+): Promise<{ bonus: number; breakdown: string }> {
+  const { data: part } = await supabase
+    .from('combat_participants')
+    .select('participant_type, entity_id')
+    .eq('id', participantId)
+    .single();
+  if (!part) return { bonus: 0, breakdown: '0 (no participant)' };
+
+  if (part.participant_type !== 'character') {
+    return { bonus: 0, breakdown: 'manual entry (monster/npc)' };
+  }
+
+  const { data: c } = await supabase
+    .from('characters')
+    .select('level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies')
+    .eq('id', part.entity_id)
+    .single();
+  if (!c) return { bonus: 0, breakdown: '0 (no character)' };
+
+  const abilityMap: Record<string, number> = {
+    STR: (c as any).strength ?? 10,
+    DEX: (c as any).dexterity ?? 10,
+    CON: (c as any).constitution ?? 10,
+    INT: (c as any).intelligence ?? 10,
+    WIS: (c as any).wisdom ?? 10,
+    CHA: (c as any).charisma ?? 10,
+  };
+  const abiFull: Record<string, string> = {
+    STR: 'strength', DEX: 'dexterity', CON: 'constitution',
+    INT: 'intelligence', WIS: 'wisdom', CHA: 'charisma',
+  };
+
+  const score = abilityMap[ability] ?? 10;
+  const mod = abilityModifier(score);
+  const profs: string[] = ((c as any).saving_throw_proficiencies ?? []) as string[];
+  const full = abiFull[ability];
+  const hasProf = profs.some(p => p.toLowerCase() === ability.toLowerCase() || p.toLowerCase() === full);
+  const pb = proficiencyBonus((c as any).level ?? 1);
+  const bonus = mod + (hasProf ? pb : 0);
+  const breakdown = hasProf
+    ? `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${bonus >= 0 ? '+' : ''}${bonus}`
+    : `${mod >= 0 ? '+' : ''}${mod} (${ability}) = ${bonus >= 0 ? '+' : ''}${bonus}`;
+  return { bonus, breakdown };
 }
 
 // ─── Concentration save on damage ────────────────────────────────

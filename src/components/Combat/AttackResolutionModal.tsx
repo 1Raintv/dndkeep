@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import {
   rollAttackRoll, rollDamage, applyDamage, cancelAttack, fudgeDamage,
+  rollSave, getTargetSaveBonus,
 } from '../../lib/pendingAttack';
 import type { PendingAttack, PendingReaction } from '../../types';
 
@@ -22,6 +23,11 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
   const [reactions, setReactions] = useState<PendingReaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [fudgeValue, setFudgeValue] = useState<string>('');
+  // v2.102.0 — Phase F pt 3a: save-prompt state. Editable bonus (auto-fetched
+  // for character targets, manual for monsters/NPCs) and the breakdown string
+  // that explains where the number came from.
+  const [saveBonus, setSaveBonus] = useState<string>('0');
+  const [saveBonusBreakdown, setSaveBonusBreakdown] = useState<string>('');
 
   async function load() {
     const { data } = await supabase
@@ -78,6 +84,22 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
     }
   }, [atk?.state, atk?.damage_final]);
 
+  // v2.102.0 — Phase F pt 3a: auto-fetch the target's save bonus when a
+  // save-kind attack is in flight. Skips if save already rolled.
+  useEffect(() => {
+    if (!atk) return;
+    if (atk.attack_kind !== 'save') return;
+    if (atk.save_result) return;
+    if (!atk.target_participant_id || !atk.save_ability) return;
+    let canceled = false;
+    getTargetSaveBonus(atk.target_participant_id, atk.save_ability).then(r => {
+      if (canceled) return;
+      setSaveBonus(String(r.bonus));
+      setSaveBonusBreakdown(r.breakdown);
+    });
+    return () => { canceled = true; };
+  }, [atk?.id, atk?.attack_kind, atk?.save_result, atk?.target_participant_id, atk?.save_ability]);
+
   const visibleToPlayer = useMemo(() => {
     if (isDM) return true;
     // Phase E v2.97: players see the modal only when they are the attacker or target.
@@ -92,6 +114,14 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
     setLoading(true);
     if (!atk) return;
     await rollAttackRoll(atk.id);
+    setLoading(false);
+  }
+
+  async function onRollSave() {
+    setLoading(true);
+    if (!atk) return;
+    const bonus = parseInt(saveBonus, 10) || 0;
+    await rollSave(atk.id, bonus);
     setLoading(false);
   }
 
@@ -214,15 +244,72 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                   </button>
                 </div>
               )}
-              {(isAutoHit || isSaveBased) && (
+              {isAutoHit && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ color: 'var(--t-2)', fontSize: 13 }}>
-                    {isAutoHit ? 'Auto-hit — roll damage.' : 'Save-based — roll damage, then resolve save per participant (manual for now).'}
-                  </span>
+                  <span style={{ color: 'var(--t-2)', fontSize: 13 }}>Auto-hit — roll damage.</span>
                   <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
                     🎲 Roll Damage
                   </button>
                 </div>
+              )}
+              {/* v2.102.0 — Phase F pt 3a: save-based attacks roll the save
+                  FIRST, then damage. save_result gates half/zero/full in
+                  rollDamage. */}
+              {isSaveBased && !atk.save_result && (
+                <>
+                  <div style={{
+                    padding: 12, borderRadius: 8,
+                    background: 'rgba(167,139,250,0.08)',
+                    border: '1px solid rgba(167,139,250,0.3)',
+                    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#a78bfa', marginBottom: 4 }}>
+                        Target Save · {atk.save_ability} DC {atk.save_dc}
+                      </div>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>
+                        {atk.target_name}
+                        {saveBonusBreakdown && (
+                          <span style={{ color: 'var(--t-3)', marginLeft: 8 }}>· {saveBonusBreakdown}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)' }}>
+                        Bonus
+                      </label>
+                      <input
+                        type="number"
+                        value={saveBonus}
+                        onChange={e => setSaveBonus(e.target.value)}
+                        style={{
+                          width: 56, fontSize: 16, fontWeight: 800,
+                          fontFamily: 'var(--ff-stat)', textAlign: 'center',
+                          minHeight: 0, padding: '4px 6px',
+                        }}
+                      />
+                      <button
+                        className="btn-gold"
+                        onClick={onRollSave}
+                        disabled={loading}
+                        style={{ fontSize: 12, fontWeight: 800, padding: '6px 14px' }}
+                      >
+                        🎲 Roll Save
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* Save already rolled — show result + Roll Damage */}
+              {isSaveBased && atk.save_result && (
+                <>
+                  <SaveBanner atk={atk} />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
+                      🎲 Roll Damage
+                    </button>
+                  </div>
+                </>
               )}
             </>
           )}
@@ -346,6 +433,35 @@ function HitBanner({ atk }: { atk: PendingAttack }) {
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
         Rolled {atk.attack_d20} + {atk.attack_bonus ?? 0} = <strong style={{ color: 'var(--t-1)' }}>{atk.attack_total}</strong>
         {atk.target_ac != null && ` vs AC ${atk.target_ac}`}
+      </div>
+      <span style={{
+        fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 900,
+        letterSpacing: '0.08em',
+        padding: '3px 12px', borderRadius: 5,
+        color, background: `${color}22`, border: `1px solid ${color}50`,
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function SaveBanner({ atk }: { atk: PendingAttack }) {
+  const saved = atk.save_result === 'passed';
+  const color = saved ? '#34d399' : '#f87171';
+  const label = saved ? 'SAVED' : 'FAILED';
+  const effectCopy = saved
+    ? (atk.save_success_effect === 'none' ? 'No damage' : atk.save_success_effect === 'half' ? 'Half damage' : 'Alternate effect')
+    : 'Full damage';
+  return (
+    <div style={{
+      padding: 10, borderRadius: 8,
+      background: `${color}14`, border: `1px solid ${color}40`,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
+        {atk.target_name} rolled {atk.save_d20} + {((atk.save_total ?? 0) - (atk.save_d20 ?? 0))} = <strong style={{ color: 'var(--t-1)' }}>{atk.save_total}</strong> vs DC {atk.save_dc}
+        <span style={{ color: 'var(--t-3)', marginLeft: 8 }}>→ {effectCopy}</span>
       </div>
       <span style={{
         fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 900,
