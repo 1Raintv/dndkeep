@@ -33,6 +33,8 @@ import {
   deriveCoverFromWalls,
   loadActiveBattleMap,
   buildParticipantPositions,
+  findParticipantsInRadius,
+  type ParticipantPosition,
 } from '../../lib/battleMapGeometry';
 import { logAction } from '../shared/ActionLog';
 import type { SpellData, CombatParticipant, Character } from '../../types';
@@ -93,6 +95,19 @@ export default function SpellTargetPickerModal({
   // walls before confirming.
   const [coverByTarget, setCoverByTarget] = useState<Record<string, 'half' | 'three_quarters' | 'total'>>({});
 
+  // v2.151.0 — Phase O pt 4: AoE auto-target helper. Persists the
+  // positions map (for Chebyshev radius queries) and tracks the current
+  // "center" participant (the creature at the AoE's point of origin).
+  // When the spell has `area_of_effect.size` AND a battle map exists,
+  // a new UI section lets the player pick a center + click to auto-
+  // select all tokens within radius.
+  const [positions, setPositions] = useState<Map<string, ParticipantPosition> | null>(null);
+  const [gridSize, setGridSize] = useState<number>(50);
+  const [centerId, setCenterId] = useState<string | null>(null);
+  const autoTargetable = !!(spell.area_of_effect?.size && positions && positions.size > 0);
+  const aoeSize = spell.area_of_effect?.size ?? 0;
+  const aoeShape = spell.area_of_effect?.type ?? 'sphere';
+
   // Load active encounter + participants once on open.
   useEffect(() => {
     if (!open) return;
@@ -101,6 +116,9 @@ export default function SpellTargetPickerModal({
       setLoading(true);
       setError(null);
       setPicked(new Set());
+      setPositions(null);
+      setCenterId(null);
+      setCoverByTarget({});
       // Find the active encounter for this campaign.
       const { data: enc } = await supabase
         .from('combat_encounters')
@@ -143,11 +161,14 @@ export default function SpellTargetPickerModal({
         .filter(p => p.id !== caster.id && !p.is_dead);
       setParticipants(list);
 
-      // Preview per-target cover if a battle map with walls exists.
+      // v2.151.0 — Phase O pt 4: load map for BOTH cover preview AND
+      // auto-target helper. Prior to v2.151 the positions map was
+      // only computed if walls existed — which hid the AoE helper on
+      // open-field maps. Now positions land regardless, and cover
+      // derivation only runs when walls are present.
       try {
         const map = await loadActiveBattleMap(campaignId);
-        if (!cancelled && map && map.walls.length > 0) {
-          // Build positions for the caster AND all targets in one pass.
+        if (!cancelled && map) {
           const posInput = [
             {
               id: caster.id as string,
@@ -162,17 +183,25 @@ export default function SpellTargetPickerModal({
               name: p.name,
             })),
           ];
-          const positions = buildParticipantPositions(posInput, map.tokens);
-          const casterPos = positions.get(caster.id as string);
-          if (casterPos) {
-            const derived: Record<string, 'half' | 'three_quarters' | 'total'> = {};
-            for (const p of list) {
-              const tPos = positions.get(p.id);
-              if (!tPos) continue;
-              const lvl = deriveCoverFromWalls(casterPos, tPos, map.walls, map.grid_size);
-              if (lvl !== 'none') derived[p.id] = lvl;
+          const computed = buildParticipantPositions(posInput, map.tokens);
+          setPositions(computed);
+          setGridSize(map.grid_size);
+          // Default center = caster. Player can change via dropdown.
+          if (computed.has(caster.id as string)) {
+            setCenterId(caster.id as string);
+          }
+          if (map.walls.length > 0) {
+            const casterPos = computed.get(caster.id as string);
+            if (casterPos) {
+              const derived: Record<string, 'half' | 'three_quarters' | 'total'> = {};
+              for (const p of list) {
+                const tPos = computed.get(p.id);
+                if (!tPos) continue;
+                const lvl = deriveCoverFromWalls(casterPos, tPos, map.walls, map.grid_size);
+                if (lvl !== 'none') derived[p.id] = lvl;
+              }
+              setCoverByTarget(derived);
             }
-            setCoverByTarget(derived);
           }
         }
       } catch { /* map optional */ }
@@ -305,8 +334,106 @@ export default function SpellTargetPickerModal({
           ) : participants.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--t-3)' }}>No valid targets in this encounter.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {participants.map(p => {
+            <>
+              {/* v2.151.0 — Phase O pt 4: AoE radius auto-select.
+                  Visible only when the spell has area_of_effect data
+                  AND tokens are on a map (positions loaded). Player
+                  picks a center creature (defaults to caster) and
+                  clicks to auto-select every tokened participant within
+                  {size}ft via Chebyshev distance. Adds to the current
+                  selection; player can still check/uncheck manually. */}
+              {autoTargetable && (
+                <div style={{
+                  marginBottom: 10, padding: 10, borderRadius: 6,
+                  background: 'rgba(96,165,250,0.06)',
+                  border: '1px solid rgba(96,165,250,0.25)',
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                }}>
+                  <div style={{
+                    fontSize: 9, fontWeight: 800,
+                    letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                    color: '#60a5fa',
+                  }}>
+                    AoE Auto-Select · {aoeSize}ft {aoeShape}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: 11, color: 'var(--t-2)' }}>Center on:</label>
+                    <select
+                      value={centerId ?? ''}
+                      onChange={e => setCenterId(e.target.value || null)}
+                      style={{
+                        fontSize: 11, padding: '3px 6px', borderRadius: 4,
+                        border: '1px solid var(--c-border)',
+                        background: 'var(--c-raised)', color: 'var(--t-1)',
+                        minHeight: 0,
+                      }}
+                    >
+                      {casterParticipantId && positions?.has(casterParticipantId) && (
+                        <option value={casterParticipantId}>{character.name} (self)</option>
+                      )}
+                      {participants
+                        .filter(p => positions?.has(p.id))
+                        .map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (!centerId || !positions) return;
+                        const centerPos = positions.get(centerId);
+                        if (!centerPos) return;
+                        // Build the candidate set (eligible targets only —
+                        // excludes caster and dead, already done upstream).
+                        const matches = findParticipantsInRadius(
+                          participants.map(p => ({
+                            id: p.id,
+                            name: p.name,
+                            participant_type: p.participant_type,
+                            entity_id: p.entity_id,
+                          })),
+                          positions,
+                          centerPos,
+                          aoeSize,
+                          null,
+                          gridSize,
+                        );
+                        setPicked(new Set(matches.map(m => m.participant.id)));
+                      }}
+                      disabled={!centerId || !positions?.has(centerId ?? '')}
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: '4px 10px',
+                        borderRadius: 4,
+                        background: 'rgba(96,165,250,0.2)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(96,165,250,0.5)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Select within {aoeSize}ft
+                    </button>
+                    {picked.size > 0 && (
+                      <button
+                        onClick={() => setPicked(new Set())}
+                        style={{
+                          fontSize: 10, fontWeight: 700, padding: '3px 8px',
+                          borderRadius: 4,
+                          background: 'transparent',
+                          color: 'var(--t-3)',
+                          border: '1px solid var(--c-border)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' }}>
+                    Tokens without grid positions are not auto-selected. Tweak manually below as needed.
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {participants.map(p => {
                 const checked = picked.has(p.id);
                 const cover = coverByTarget[p.id];
                 const coverColor = cover === 'total' ? '#f87171'
@@ -357,6 +484,7 @@ export default function SpellTargetPickerModal({
                 );
               })}
             </div>
+            </>
           )}
           {error && (
             <div style={{

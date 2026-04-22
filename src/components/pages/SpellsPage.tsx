@@ -1,6 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import type { SpellData, SpellLevel, Character } from '../../types';
-import { SPELLS, SPELL_CLASSES, SPELL_SCHOOLS } from '../../data/spells';
+// v2.152.0 — Phase O pt 5: read from useSpells hook so SpellsPage sees
+// the same ~400-spell canonical list that DeclareAttackModal /
+// SpellCastButton / SpellPickerDropdown get. Prior to v2.152 this page
+// imported the static SPELLS array, which:
+//   - missed the 17 spells only in the DB (Ensnaring Strike, Conjure
+//     Barrage, Holy Weapon, Swift Quiver, Tasha's Caustic Brew, etc.)
+//   - carried stale data for any spell where the DB has been corrected
+//     (e.g. Scorching Ray's attack_type, fixed in v2.149)
+// SPELL_CLASSES and SPELL_SCHOOLS stay imported because they're static
+// label/sort metadata, not spell rows.
+import { SPELL_CLASSES, SPELL_SCHOOLS } from '../../data/spells';
+import { useSpells } from '../../lib/hooks/useSpells';
 import { useAuth } from '../../context/AuthContext';
 import { getCharacters, updateCharacter } from '../../lib/supabase';
 
@@ -11,6 +22,7 @@ const LEVEL_LABELS: Record<number, string> = {
 
 export default function SpellsPage() {
   const { user } = useAuth();
+  const { spells } = useSpells();
   const [search, setSearch] = useState('');
   const [filterClass, setFilterClass] = useState('');
   const [filterLevel, setFilterLevel] = useState<number | ''>('');
@@ -30,7 +42,7 @@ export default function SpellsPage() {
   }, [user]);
 
   const filtered = useMemo(() => {
-    return SPELLS.filter(s => {
+    return spells.filter(s => {
       if (search && !s.name.toLowerCase().includes(search.toLowerCase()) &&
           !s.description.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterClass && !s.classes.includes(filterClass)) return false;
@@ -40,7 +52,7 @@ export default function SpellsPage() {
       if (filterRitual && !s.ritual) return false;
       return true;
     }).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  }, [search, filterClass, filterLevel, filterSchool, filterConcentration, filterRitual]);
+  }, [spells, search, filterClass, filterLevel, filterSchool, filterConcentration, filterRitual]);
 
   async function addSpellToCharacter(characterId: string, spellId: string) {
     const char = characters.find(c => c.id === characterId);
