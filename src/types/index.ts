@@ -558,6 +558,11 @@ export interface CombatParticipant {
   is_dead: boolean;
   active_conditions: string[];
   concentration_spell_id: string | null;
+  /** v2.103.0 — Phase F cover tagging. Per-attacker cover state on this
+   *  participant as the target. Shape: { [attackerParticipantId]: 'half' |
+   *  'three_quarters' | 'total' }. Used as the auto-populated default in
+   *  DeclareAttackModal. */
+  persistent_cover?: Record<string, 'half' | 'three_quarters' | 'total'>;
   created_at: string;
   updated_at: string;
 }
@@ -611,6 +616,13 @@ export interface PendingAttack {
   damage_final: number | null;
   damage_was_fudged: boolean;
   damage_fudge_reason: string | null;
+
+  /** v2.103.0 — Phase F: cover level applied to this attack. */
+  cover_level?: 'none' | 'half' | 'three_quarters' | 'total' | null;
+
+  /** v2.104.0 — Phase F: sibling attacks in an AoE share this UUID so the
+   *  damage is rolled once and reused across them. Null for single-target. */
+  damage_group_id?: string | null;
 
   state: PendingAttackState;
   chain_id: string;

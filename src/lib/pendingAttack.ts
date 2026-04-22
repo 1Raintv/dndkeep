@@ -75,6 +75,12 @@ export interface DeclareAttackInput {
 
   damageDice?: string | null;
   damageType?: string | null;
+
+  /** v2.103.0 — Phase F: cover level. 'total' auto-misses the attack. */
+  coverLevel?: 'none' | 'half' | 'three_quarters' | 'total' | null;
+  /** v2.103.0 — If set, persist this cover level on the target's
+   *  persistent_cover for this attacker so future attacks inherit it. */
+  persistCover?: boolean;
 }
 
 export async function declareAttack(input: DeclareAttackInput): Promise<PendingAttack | null> {
@@ -100,6 +106,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       save_success_effect: input.saveSuccessEffect ?? null,
       damage_dice: input.damageDice ?? null,
       damage_type: input.damageType ?? null,
+      cover_level: input.coverLevel ?? 'none',
       state: 'declared',
       chain_id: chainId,
     })
@@ -110,6 +117,32 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
     // eslint-disable-next-line no-console
     console.warn('[pendingAttack] declare failed:', error?.message);
     return null;
+  }
+
+  // v2.103.0 — Phase F: write cover through to the target's persistent_cover
+  // map if requested. Non-'none' values stick; 'none' clears any existing
+  // entry for this attacker.
+  if (
+    input.persistCover
+    && input.targetParticipantId
+    && input.attackerParticipantId
+  ) {
+    const { data: tgt } = await supabase
+      .from('combat_participants')
+      .select('persistent_cover')
+      .eq('id', input.targetParticipantId)
+      .single();
+    const current = (tgt?.persistent_cover as Record<string, string>) ?? {};
+    const next = { ...current };
+    if (!input.coverLevel || input.coverLevel === 'none') {
+      delete next[input.attackerParticipantId];
+    } else {
+      next[input.attackerParticipantId] = input.coverLevel;
+    }
+    await supabase
+      .from('combat_participants')
+      .update({ persistent_cover: next })
+      .eq('id', input.targetParticipantId);
   }
 
   await emitCombatEvent({
@@ -138,6 +171,111 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
   return data as PendingAttack;
 }
 
+// ─── Multi-target declare ────────────────────────────────────────
+// v2.104.0 — Phase F pt 3c: AoE spells that hit multiple participants.
+// Creates one pending_attacks row per target, sharing chain_id (so the log
+// reads as one event) and damage_group_id (so dice roll once and the values
+// are reused across siblings). Per-target save is still independent.
+
+export interface DeclareMultiTargetInput
+  extends Omit<DeclareAttackInput,
+    | 'targetParticipantId'
+    | 'targetName'
+    | 'targetType'
+  > {
+  targets: Array<{
+    participantId: string;
+    name: string;
+    type: 'character' | 'monster' | 'npc';
+  }>;
+}
+
+export async function declareMultiTargetAttack(
+  input: DeclareMultiTargetInput
+): Promise<PendingAttack[]> {
+  if (input.targets.length === 0) return [];
+
+  // For single-target calls, fall through to declareAttack so we don't create
+  // an unnecessary damage_group_id. Callers can use either helper.
+  if (input.targets.length === 1) {
+    const t = input.targets[0];
+    const single = await declareAttack({
+      ...input,
+      targetParticipantId: t.participantId,
+      targetName: t.name,
+      targetType: t.type,
+    });
+    return single ? [single] : [];
+  }
+
+  const chainId = newChainId();
+  const damageGroupId = crypto.randomUUID();
+  const rows = input.targets.map(t => ({
+    campaign_id: input.campaignId,
+    encounter_id: input.encounterId ?? null,
+    attacker_participant_id: input.attackerParticipantId ?? null,
+    attacker_name: input.attackerName,
+    attacker_type: input.attackerType,
+    target_participant_id: t.participantId,
+    target_name: t.name,
+    target_type: t.type,
+    attack_source: input.attackSource ?? null,
+    attack_name: input.attackName,
+    attack_kind: input.attackKind,
+    attack_bonus: input.attackBonus ?? null,
+    target_ac: input.targetAC ?? null,
+    save_dc: input.saveDC ?? null,
+    save_ability: input.saveAbility ?? null,
+    save_success_effect: input.saveSuccessEffect ?? null,
+    damage_dice: input.damageDice ?? null,
+    damage_type: input.damageType ?? null,
+    cover_level: input.coverLevel ?? 'none',
+    state: 'declared',
+    chain_id: chainId,
+    damage_group_id: damageGroupId,
+  }));
+
+  const { data, error } = await supabase
+    .from('pending_attacks')
+    .insert(rows)
+    .select();
+
+  if (error || !data) {
+    // eslint-disable-next-line no-console
+    console.warn('[pendingAttack] multi-declare failed:', error?.message);
+    return [];
+  }
+
+  // Emit a single attack_declared event with the target list so the log shows
+  // one natural "Fireball targeting Orc, Goblin, Ogre" entry instead of three
+  // duplicate entries.
+  await emitCombatEvent({
+    campaignId: input.campaignId,
+    encounterId: input.encounterId ?? null,
+    chainId,
+    sequence: 0,
+    actorType: input.attackerType === 'system' ? 'system' : input.attackerType === 'character' ? 'player' : 'monster',
+    actorName: input.attackerName,
+    targetType: null,
+    targetName: input.targets.map(t => t.name).join(', '),
+    eventType: 'attack_declared',
+    payload: {
+      attack_name: input.attackName,
+      attack_kind: input.attackKind,
+      attack_source: input.attackSource ?? null,
+      save_dc: input.saveDC ?? null,
+      save_ability: input.saveAbility ?? null,
+      damage_dice: input.damageDice ?? null,
+      damage_type: input.damageType ?? null,
+      multi_target: true,
+      target_count: input.targets.length,
+      targets: input.targets.map(t => ({ name: t.name, type: t.type })),
+    },
+  });
+
+  return data as PendingAttack[];
+}
+
 // ─── Roll attack (attack_kind='attack_roll' only) ────────────────
 export async function rollAttackRoll(attackId: string): Promise<PendingAttack | null> {
   const { data: row } = await supabase
@@ -155,10 +293,23 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   const bonus = atk.attack_bonus ?? 0;
   const total = d20 + bonus;
 
+  // v2.103.0 — Phase F: cover mechanics per 2024 PHB.
+  //   half cover:           +2 AC (still targetable)
+  //   three-quarters cover: +5 AC (still targetable)
+  //   total cover:          untargetable — auto-miss, no attack roll resolves
+  //
+  // Nat 20 still crits through half / three-quarters cover (RAW crit bypasses
+  // AC comparison). Total cover is a hard gate: the attack never reaches a
+  // valid target, so even a nat 20 misses.
+  const coverLevel = (atk.cover_level ?? 'none') as 'none' | 'half' | 'three_quarters' | 'total';
+  const coverAcBonus = coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0;
+  const effectiveAc = (atk.target_ac ?? 10) + coverAcBonus;
+
   let hitResult: HitResult;
-  if (d20 === 20) hitResult = 'crit';
+  if (coverLevel === 'total') hitResult = 'miss';
+  else if (d20 === 20) hitResult = 'crit';
   else if (d20 === 1) hitResult = 'fumble';
-  else if (atk.target_ac != null && total >= atk.target_ac) hitResult = 'hit';
+  else if (total >= effectiveAc) hitResult = 'hit';
   else hitResult = 'miss';
 
   const { data: updated } = await supabase
@@ -167,11 +318,38 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
       attack_d20: d20,
       attack_total: total,
       hit_result: hitResult,
+      // Store effective AC (with cover bonus baked in) so the log and the
+      // resolution modal both show what the attacker actually had to beat.
+      target_ac: effectiveAc,
       state: 'attack_rolled',
     })
     .eq('id', attackId)
     .select()
     .single();
+
+  // Emit a dedicated cover event first so the log reads naturally:
+  //   1. Cover applied (half / three-quarters / total)
+  //   2. Attack roll
+  if (coverLevel !== 'none') {
+    await emitCombatEvent({
+      campaignId: atk.campaign_id,
+      encounterId: atk.encounter_id,
+      chainId: atk.chain_id,
+      sequence: 0,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: atk.target_type,
+      targetName: atk.target_name,
+      eventType: 'cover_applied',
+      payload: {
+        level: coverLevel,
+        ac_bonus: coverAcBonus,
+        auto_miss: coverLevel === 'total',
+        base_ac: atk.target_ac,
+        effective_ac: effectiveAc,
+      },
+    });
+  }
 
   await emitCombatEvent({
     campaignId: atk.campaign_id,
@@ -228,8 +406,17 @@ export async function rollSave(
   if (atk.attack_kind !== 'save') return atk;
   if (atk.save_result) return atk;   // already rolled
 
+  // v2.103.0 — Phase F: half / three-quarters cover grants +2 / +5 to DEX
+  // saves (2024 PHB). Doesn't apply to other save abilities.
+  const coverLevel = (atk.cover_level ?? 'none') as 'none' | 'half' | 'three_quarters' | 'total';
+  const coverSaveBonus =
+    atk.save_ability === 'DEX'
+      ? (coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0)
+      : 0;
+  const effectiveBonus = saveBonus + coverSaveBonus;
+
   const d20 = rollD20();
-  const total = d20 + saveBonus;
+  const total = d20 + effectiveBonus;
   const dc = atk.save_dc ?? 10;
 
   let result: 'passed' | 'failed';
@@ -248,6 +435,25 @@ export async function rollSave(
     .select()
     .single();
 
+  if (coverSaveBonus > 0) {
+    await emitCombatEvent({
+      campaignId: atk.campaign_id,
+      encounterId: atk.encounter_id,
+      chainId: atk.chain_id,
+      sequence: 0,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: atk.target_type,
+      targetName: atk.target_name,
+      eventType: 'cover_applied',
+      payload: {
+        level: coverLevel,
+        save_bonus: coverSaveBonus,
+        save_ability: atk.save_ability,
+      },
+    });
+  }
+
   await emitCombatEvent({
     campaignId: atk.campaign_id,
     encounterId: atk.encounter_id,
@@ -263,7 +469,9 @@ export async function rollSave(
       ability: atk.save_ability,
       dc,
       d20,
-      bonus: saveBonus,
+      bonus: effectiveBonus,
+      base_bonus: saveBonus,
+      cover_bonus: coverSaveBonus,
       total,
       result,
       trigger_attack_name: atk.attack_name,
@@ -307,7 +515,40 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   // Crit doubles dice count (modifier unchanged)
   const isCrit = atk.hit_result === 'crit';
   const diceExpr = isCrit ? doubleDice(atk.damage_dice) : atk.damage_dice;
-  const { rolls, modifier, total } = rollDiceExpr(diceExpr);
+
+  // v2.104.0 — Phase F: multi-target damage reuse. If this attack is in a
+  // damage_group and a sibling already rolled, reuse those dice results so
+  // every target in the AoE takes the same base damage (differentiated only
+  // by save result). The first sibling to roll is canonical.
+  let rolls: number[];
+  let modifier: number;
+  let total: number;
+  let reusedFromGroup = false;
+
+  if (atk.damage_group_id) {
+    const { data: prior } = await supabase
+      .from('pending_attacks')
+      .select('damage_rolls, damage_raw')
+      .eq('damage_group_id', atk.damage_group_id)
+      .not('damage_rolls', 'is', null)
+      .limit(1)
+      .maybeSingle();
+    if (prior && prior.damage_rolls && prior.damage_raw != null) {
+      rolls = prior.damage_rolls as number[];
+      total = prior.damage_raw as number;
+      // Derive modifier from the dice expression (raw_total = sum(rolls) + mod)
+      const sum = rolls.reduce((a, b) => a + b, 0);
+      modifier = total - sum;
+      reusedFromGroup = true;
+    } else {
+      const fresh = rollDiceExpr(diceExpr);
+      rolls = fresh.rolls; modifier = fresh.modifier; total = fresh.total;
+    }
+  } else {
+    const fresh = rollDiceExpr(diceExpr);
+    rolls = fresh.rolls; modifier = fresh.modifier; total = fresh.total;
+  }
+
   let finalDamage = total;
 
   // Save-based: failed save = full damage; passed save = half or none
@@ -347,6 +588,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
       raw_total: total,
       damage_type: atk.damage_type,
       crit: isCrit,
+      shared_from_group: reusedFromGroup,
     },
   });
 

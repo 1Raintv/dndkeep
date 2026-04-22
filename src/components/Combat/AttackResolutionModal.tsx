@@ -23,6 +23,8 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
   const [reactions, setReactions] = useState<PendingReaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [fudgeValue, setFudgeValue] = useState<string>('');
+  // v2.104.0 — Phase F: AoE sibling progress indicator
+  const [groupProgress, setGroupProgress] = useState<{ remaining: number; total: number } | null>(null);
   // v2.102.0 — Phase F pt 3a: save-prompt state. Editable bonus (auto-fetched
   // for character targets, manual for monsters/NPCs) and the breakdown string
   // that explains where the number came from.
@@ -49,8 +51,26 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
         .eq('pending_attack_id', next.id)
         .order('offered_at', { ascending: false });
       setReactions((rdata ?? []) as PendingReaction[]);
+
+      // v2.104.0 — Phase F: surface AoE sibling progress. Count total vs
+      // still-pending siblings in the same damage_group_id.
+      if (next.damage_group_id) {
+        const { count: totalCount } = await supabase
+          .from('pending_attacks')
+          .select('*', { count: 'exact', head: true })
+          .eq('damage_group_id', next.damage_group_id);
+        const { count: remainingCount } = await supabase
+          .from('pending_attacks')
+          .select('*', { count: 'exact', head: true })
+          .eq('damage_group_id', next.damage_group_id)
+          .in('state', ['declared', 'attack_rolled', 'damage_rolled']);
+        setGroupProgress({ remaining: remainingCount ?? 0, total: totalCount ?? 0 });
+      } else {
+        setGroupProgress(null);
+      }
     } else {
       setReactions([]);
+      setGroupProgress(null);
     }
   }
 
@@ -169,6 +189,17 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
   }
   if (atk.damage_dice) {
     chips.push({ label: 'Dmg', color: '#f87171', value: `${atk.damage_dice} ${atk.damage_type ?? ''}`.trim() });
+  }
+  // v2.103.0 — Phase F: cover chip
+  if (atk.cover_level && atk.cover_level !== 'none') {
+    const coverLabel = atk.cover_level === 'half' ? 'Half cover' : atk.cover_level === 'three_quarters' ? '¾ cover' : 'Total cover';
+    const coverColor = atk.cover_level === 'total' ? '#f87171' : atk.cover_level === 'three_quarters' ? '#a78bfa' : '#60a5fa';
+    chips.push({ label: 'Cover', color: coverColor, value: coverLabel });
+  }
+  // v2.104.0 — Phase F: AoE progress chip
+  if (groupProgress && groupProgress.total > 1) {
+    const done = groupProgress.total - groupProgress.remaining + 1;
+    chips.push({ label: 'AoE', color: '#a78bfa', value: `Target ${done} of ${groupProgress.total}` });
   }
 
   return createPortal(
