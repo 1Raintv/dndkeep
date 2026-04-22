@@ -42,6 +42,11 @@ export interface ReactionEligibilityContext {
   /** null for spell_declared triggers (Counterspell) — the "attack" hasn't happened. */
   attack: PendingAttack | null;
   reactorCharacter?: Character | null;   // populated for character reactors
+  /** v2.128.0 — Phase K: distance from reactor's token to the attacker's
+   *  token on the active battle map, in feet. `null` if either token is
+   *  missing or no map is active (caller should treat as "fail open" —
+   *  distance-gated reactions return true when this is null). */
+  reactorToAttackerFt?: number | null;
 }
 
 export interface ReactionAcceptContext {
@@ -364,7 +369,8 @@ REACTION_REGISTRY.push({
   name: 'Hellish Rebuke',
   triggerPoint: 'post_damage_roll',
   isEligible(ctx) {
-    const { attack, reactorCharacter } = ctx;
+    const { attack, reactorCharacter, reactorToAttackerFt } = ctx;
+    if (!attack) return false;   // HR only fires post-damage, attack must exist
     if (!reactorCharacter) return false;
     // Must actually take damage
     if ((attack.damage_final ?? 0) <= 0) return false;
@@ -378,7 +384,14 @@ REACTION_REGISTRY.push({
       prepared.some(s => s.toLowerCase() === 'hellish rebuke');
     if (!hasIt) return false;
     // Need a spell slot
-    return lowestAvailableSlot(reactorCharacter) != null;
+    if (lowestAvailableSlot(reactorCharacter) == null) return false;
+    // v2.128.0 — Phase K: 60-ft range gate. Fails OPEN when tokens/map
+    // are missing (reactorToAttackerFt === null) — see module docstring
+    // on battleMapGeometry.ts.
+    if (reactorToAttackerFt !== null && reactorToAttackerFt !== undefined) {
+      if (reactorToAttackerFt > 60) return false;
+    }
+    return true;
   },
   async onAccept(ctx) {
     const { attack, offer, reactorCharacter } = ctx;
@@ -756,12 +769,46 @@ export async function offerCounterspell(
   const offeredAt = new Date();
   const expiresAt = new Date(offeredAt.getTime() + windowSecs * 1000);
 
+  // v2.128.0 — Phase K: 60-ft distance gate. Load the active battle map
+  // once + look up the caster's token. For each candidate counterspeller
+  // we then compute Chebyshev distance using the pre-loaded map. Fails
+  // OPEN — if no map is active or the caster's token isn't placed, we
+  // skip the distance check (same for any candidate whose token is
+  // missing). See battleMapGeometry.ts module docstring.
+  const {
+    loadActiveBattleMap,
+    findTokenForParticipant,
+    distanceBetweenTokensFt,
+  } = await import('./battleMapGeometry');
+  const bmap = await loadActiveBattleMap(input.campaignId);
+  let casterToken: ReturnType<typeof findTokenForParticipant> = null;
+  if (bmap && input.casterParticipantId) {
+    // We need the caster participant's full row to look up their token.
+    const { data: casterRow } = await supabase
+      .from('combat_participants')
+      .select('id, name, participant_type, entity_id')
+      .eq('id', input.casterParticipantId)
+      .maybeSingle();
+    if (casterRow) casterToken = findTokenForParticipant(casterRow as any, bmap.tokens);
+  }
+  const COUNTERSPELL_RANGE_FT = 60;
+
   const offers: any[] = [];
   for (const p of rows) {
     if (p.id === input.casterParticipantId) continue;   // can't counterspell yourself
     if (p.is_dead) continue;
     if (p.reaction_used) continue;
     if (!p.entity_id) continue;
+
+    // v2.128.0 — distance gate. Only applied when BOTH caster and reactor
+    // tokens are on the map. Missing tokens = fail open (offer anyway).
+    if (bmap && casterToken) {
+      const reactorToken = findTokenForParticipant(p as any, bmap.tokens);
+      if (reactorToken) {
+        const distFt = distanceBetweenTokensFt(casterToken, reactorToken);
+        if (distFt > COUNTERSPELL_RANGE_FT) continue;
+      }
+    }
 
     // Load the character's spell list + slots to gate eligibility inline
     // (we could defer to the registry's isEligible but that would require
@@ -846,11 +893,37 @@ export async function offerReactionsFor(
     reactorChar = (c as Character) ?? null;
   }
 
+  // v2.128.0 — Phase K: compute reactor↔attacker Chebyshev distance from
+  // the active battle map so distance-gated reactions (Hellish Rebuke 60ft)
+  // can enforce range. Null when either token is missing or no map is
+  // active — isEligible handlers fail OPEN on null.
+  let reactorToAttackerFt: number | null = null;
+  if (attack.attacker_participant_id) {
+    const { loadActiveBattleMap, findTokenForParticipant, distanceBetweenTokensFt } =
+      await import('./battleMapGeometry');
+    const bmap = await loadActiveBattleMap(attack.campaign_id);
+    if (bmap) {
+      // Target participant = reactor; already have tgt. Attacker needs a lookup.
+      const { data: atkPart } = await supabase
+        .from('combat_participants')
+        .select('id, name, participant_type, entity_id')
+        .eq('id', attack.attacker_participant_id)
+        .maybeSingle();
+      if (atkPart) {
+        const reactorToken = findTokenForParticipant(tgt as any, bmap.tokens);
+        const attackerToken = findTokenForParticipant(atkPart as any, bmap.tokens);
+        if (reactorToken && attackerToken) {
+          reactorToAttackerFt = distanceBetweenTokensFt(reactorToken, attackerToken);
+        }
+      }
+    }
+  }
+
   const candidates = REACTION_REGISTRY.filter(r => r.triggerPoint === triggerPoint);
   const offers: Omit<PendingReaction, 'id' | 'created_at' | 'updated_at'>[] = [];
 
   for (const entry of candidates) {
-    if (entry.isEligible({ attack, reactorCharacter: reactorChar })) {
+    if (entry.isEligible({ attack, reactorCharacter: reactorChar, reactorToAttackerFt })) {
       const offeredAt = new Date();
       const expiresAt = new Date(offeredAt.getTime() + DEFAULT_TIMER_SECONDS * 1000);
       offers.push({
