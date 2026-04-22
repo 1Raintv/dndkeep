@@ -154,3 +154,71 @@ export async function isWithinRangeFt(
   if (d === null) return true;   // fail open
   return d <= maxFt;
 }
+
+// v2.129.0 — Phase K pt 2: AoE / radius helpers.
+//
+// Two related helpers used by DeclareAttackModal (player AoE auto-select)
+// and the attack pipeline (future friendly-fire checks, spell-radius target
+// derivation). Both operate on a pre-built positions Map to avoid re-scanning
+// the tokens array for each query.
+
+export interface ParticipantPosition {
+  row: number;
+  col: number;
+}
+
+/**
+ * Build a `participantId → {row, col}` map from a list of participants and
+ * the active map's tokens. Participants without a matching token are simply
+ * absent from the map — callers treat "no position" as "not on the grid" and
+ * typically skip them in distance queries.
+ */
+export function buildParticipantPositions(
+  participants: ParticipantForTokenLookup[],
+  tokens: BattleMapToken[],
+): Map<string, ParticipantPosition> {
+  const map = new Map<string, ParticipantPosition>();
+  for (const p of participants) {
+    const token = findTokenForParticipant(p, tokens);
+    if (token && typeof token.row === 'number' && typeof token.col === 'number') {
+      map.set(p.id, { row: token.row, col: token.col });
+    }
+  }
+  return map;
+}
+
+export interface RadiusMatch<P> {
+  participant: P;
+  distanceFt: number;
+}
+
+/**
+ * Find all participants within `radiusFt` of a center position using
+ * Chebyshev (king's-move) distance. Radius is inclusive — a participant
+ * exactly at `radiusFt` counts as inside.
+ *
+ * Callers can exclude specific participant IDs (e.g., the caster themself)
+ * via the optional `excludeIds` set. Dead participants are NOT auto-excluded
+ * — pass them in `excludeIds` if your spell shouldn't re-target corpses.
+ */
+export function findParticipantsInRadius<P extends ParticipantForTokenLookup>(
+  participants: P[],
+  positions: Map<string, ParticipantPosition>,
+  center: ParticipantPosition,
+  radiusFt: number,
+  excludeIds?: ReadonlySet<string> | null,
+  feetPerSquare: number = FEET_PER_SQUARE,
+): RadiusMatch<P>[] {
+  const radiusCells = Math.floor(radiusFt / feetPerSquare);
+  const results: RadiusMatch<P>[] = [];
+  for (const p of participants) {
+    if (excludeIds && excludeIds.has(p.id)) continue;
+    const pos = positions.get(p.id);
+    if (!pos) continue;
+    const cells = Math.max(Math.abs(pos.row - center.row), Math.abs(pos.col - center.col));
+    if (cells <= radiusCells) {
+      results.push({ participant: p, distanceFt: cells * feetPerSquare });
+    }
+  }
+  return results;
+}

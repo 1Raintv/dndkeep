@@ -1102,15 +1102,15 @@ export async function offerOpportunityAttacks(
   const oaSetting = resolveAutomation('opportunity_attack_offers', null, campRow as any);
   if (oaSetting === 'off') return 0;
 
-  // Load the campaign's active battle map tokens so we can find who's where
-  const { data: bm } = await supabase
-    .from('battle_maps')
-    .select('tokens')
-    .eq('campaign_id', input.campaignId)
-    .eq('active', true)
-    .maybeSingle();
-  const tokens = ((bm?.tokens as any[]) ?? null);
-  if (!tokens || tokens.length === 0) return 0;
+  // v2.129.0 — Phase K pt 2: load via battleMapGeometry so token-matching
+  // rules live in one place. Fails CLOSED here (OA without a battle map
+  // produces no offers) — this is the correct behavior for OA specifically
+  // because movement without grid positions doesn't model reach at all;
+  // compare to Counterspell/HR which fail OPEN for theater-of-the-mind play.
+  const { loadActiveBattleMap, findTokenForParticipant } =
+    await import('./battleMapGeometry');
+  const bmap = await loadActiveBattleMap(input.campaignId);
+  if (!bmap || bmap.tokens.length === 0) return 0;
 
   // All combat participants in this encounter (we only OA between combatants)
   if (!input.encounterId) return 0;
@@ -1144,14 +1144,22 @@ export async function offerOpportunityAttacks(
       (input.moverType === 'character') !== (reactor.participant_type === 'character');
     if (!hostile) continue;
 
-    // Find reactor's token on the battle map
-    const token = tokens.find((t: any) => {
-      if (!t || typeof t.row !== 'number' || typeof t.col !== 'number') return false;
-      if (reactor.participant_type === 'character') return t.character_id === reactor.entity_id;
-      return (t.name ?? '').toLowerCase() === reactor.name.toLowerCase();
-    });
+    // v2.129.0 — delegates token lookup to the library
+    const token = findTokenForParticipant(
+      {
+        id: reactor.id,
+        name: reactor.name,
+        participant_type: reactor.participant_type,
+        entity_id: reactor.entity_id,
+      },
+      bmap.tokens,
+    );
     if (!token) continue;
 
+    // Distance to mover's FROM + TO positions, in cells. We pass fake tokens
+    // wrapping the mover's from/to coords so the library computes Chebyshev
+    // uniformly. Both reach thresholds are still cell-based (STANDARD_REACH_
+    // CELLS = 1 → 5 ft) so no conversion needed.
     const cellsFromStart = Math.max(
       Math.abs(token.row - input.fromRow),
       Math.abs(token.col - input.fromCol),

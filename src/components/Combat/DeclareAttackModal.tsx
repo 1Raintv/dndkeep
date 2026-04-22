@@ -10,6 +10,7 @@ import { useCombat } from '../../context/CombatContext';
 import { declareAttack, declareMultiTargetAttack } from '../../lib/pendingAttack';
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { supabase } from '../../lib/supabase';
+import { buildParticipantPositions, findParticipantsInRadius } from '../../lib/battleMapGeometry';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -115,25 +116,23 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
     return () => { canceled = true; };
   }, [isMulti, campaignId]);
 
-  // Map each participant to its grid position on the active battle map:
-  //   - character participant → token.character_id === participant.entity_id
-  //   - monster/npc → token.name ilike participant.name (best-effort)
-  // Tokens without row/col (drawer items, hidden) and participants without a
-  // matching token are simply absent from the map.
+  // Map each participant to its grid position on the active battle map.
+  // v2.129.0 — Phase K pt 2: delegates to battleMapGeometry so this
+  // component no longer owns token-matching rules. Shape:
+  // `Map<participantId, {row, col}>`. Participants without a matching
+  // token are absent from the map (they're treated as "not on the grid"
+  // for radius queries).
   const participantPositions = useMemo(() => {
-    const map = new Map<string, { row: number; col: number }>();
-    if (!battleMapTokens) return map;
-    for (const p of participants) {
-      const token = battleMapTokens.find((t: any) => {
-        if (!t) return false;
-        if (p.participant_type === 'character') return t.character_id === p.entity_id;
-        return (t.name ?? '').toLowerCase() === p.name.toLowerCase();
-      });
-      if (token && typeof token.row === 'number' && typeof token.col === 'number') {
-        map.set(p.id, { row: token.row, col: token.col });
-      }
-    }
-    return map;
+    if (!battleMapTokens) return new Map<string, { row: number; col: number }>();
+    return buildParticipantPositions(
+      participants.map(p => ({
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      })),
+      battleMapTokens,
+    );
   }, [battleMapTokens, participants]);
 
   // Participants with positions are eligible to be the radius center. The
@@ -153,21 +152,22 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
     const centerPos = participantPositions.get(centerParticipantId);
     if (!centerPos) return;
     const radius = parseInt(radiusFt, 10) || 0;
-    const radiusCells = Math.floor(radius / 5);  // D&D 2024 standard 5 ft/square
-    const within: string[] = [];
-    for (const p of participants) {
-      if (p.id === attackerId) continue;
-      if (p.is_dead) continue;
-      const pos = participantPositions.get(p.id);
-      if (!pos) continue;
-      // Chebyshev distance (2024 PHB rule: diagonals count as 1 cell)
-      const dist = Math.max(
-        Math.abs(pos.row - centerPos.row),
-        Math.abs(pos.col - centerPos.col),
-      );
-      if (dist <= radiusCells) within.push(p.id);
-    }
-    setTargetIds(within);
+    // v2.129.0 — Phase K pt 2: delegates to findParticipantsInRadius.
+    // Excludes the attacker (self-harm prevention — the caster still opts in
+    // via manual checkbox if they want to eat their own Fireball).
+    const matches = findParticipantsInRadius(
+      participants.filter(p => !p.is_dead).map(p => ({
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      })),
+      participantPositions,
+      centerPos,
+      radius,
+      new Set([attackerId]),
+    );
+    setTargetIds(matches.map(m => m.participant.id));
   }
 
   async function handleDeclare() {
