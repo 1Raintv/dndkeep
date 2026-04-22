@@ -299,6 +299,8 @@ export async function advanceTurn(encounterId: string): Promise<void> {
       reaction_used: false,
       movement_used_ft: 0,
       leveled_spell_cast: false,
+      dash_used_this_turn: false,
+      disengaged_this_turn: false,
     })
     .eq('id', incomingParticipant.id);
 

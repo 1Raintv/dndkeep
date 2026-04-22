@@ -10,6 +10,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { acceptReaction, declineReaction, expireReaction } from '../../lib/pendingReaction';
+import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
 import type { PendingReaction, PendingAttack } from '../../types';
 
 interface Props {
@@ -21,6 +22,11 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   const [attacksById, setAttacksById] = useState<Record<string, PendingAttack>>({});
   const [now, setNow] = useState<number>(Date.now());
   const [busy, setBusy] = useState(false);
+  // v2.109.0 — Phase G pt 3: OA acceptance form state
+  const [oaName, setOaName] = useState('Longsword');
+  const [oaBonus, setOaBonus] = useState('3');
+  const [oaDice, setOaDice] = useState('1d8+2');
+  const [oaType, setOaType] = useState('slashing');
 
   async function load() {
     const { data } = await supabase
@@ -98,10 +104,18 @@ export default function ReactionPromptModal({ campaignId }: Props) {
       });
   }, [campaignId]);
 
-  const visibleOffers = useMemo(
-    () => (isDM ? [] : offers),
-    [isDM, offers]
-  );
+  const visibleOffers = useMemo(() => {
+    // Player view: RLS already filtered to rows where this user is the
+    // reactor's owner. Show everything that came back.
+    if (!isDM) return offers;
+    // DM view: show only OA offers for monsters/NPCs (the DM controls them).
+    // Other reactions (Shield, Uncanny Dodge, Absorb Elements) belong to the
+    // player who owns the reacting character.
+    return offers.filter(o =>
+      o.reaction_key === 'opportunity_attack'
+      && (o.reactor_type === 'monster' || o.reactor_type === 'npc')
+    );
+  }, [isDM, offers]);
 
   if (visibleOffers.length === 0) return null;
 
@@ -117,6 +131,75 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   async function onAccept() {
     setBusy(true);
     await acceptReaction(urgent.id);
+    setBusy(false);
+  }
+
+  // v2.109.0 — Phase G pt 3: accept an OA offer. Creates a new pending_attack
+  // where the reactor is the attacker and the mover is the target, then
+  // auto-rolls the attack roll. The DM's AttackResolutionModal picks up from
+  // attack_rolled and walks through damage + apply as normal.
+  async function onAcceptOA() {
+    if (!urgent) return;
+    setBusy(true);
+    const mover = urgent.decision_payload as any;
+    if (!mover || !mover.mover_participant_id) { setBusy(false); return; }
+
+    // Fetch encounter + participant details needed by declareAttack
+    const { data: reactorPart } = await supabase
+      .from('combat_participants')
+      .select('encounter_id, participant_type, max_hp')
+      .eq('id', urgent.reactor_participant_id)
+      .single();
+    const { data: targetPart } = await supabase
+      .from('combat_participants')
+      .select('ac, participant_type')
+      .eq('id', mover.mover_participant_id)
+      .single();
+
+    const bonusNum = parseInt(oaBonus, 10) || 0;
+    const attack = await declareAttack({
+      campaignId,
+      encounterId: (reactorPart?.encounter_id as string | null) ?? null,
+      attackerParticipantId: urgent.reactor_participant_id,
+      attackerName: urgent.reactor_name,
+      attackerType: urgent.reactor_type,
+      targetParticipantId: mover.mover_participant_id,
+      targetName: mover.mover_name,
+      targetType: (targetPart?.participant_type as any) ?? null,
+      attackSource: 'weapon',
+      attackName: `${oaName.trim() || 'Opportunity Attack'} (OA)`,
+      attackKind: 'attack_roll',
+      attackBonus: bonusNum,
+      targetAC: (targetPart?.ac as number | null) ?? null,
+      damageDice: oaDice.trim() || '1d6',
+      damageType: oaType.trim() || 'slashing',
+    });
+
+    if (attack) {
+      // Auto-roll to attack_rolled so the DM's AttackResolutionModal engages
+      await rollAttackRoll(attack.id);
+      // Mark the reactor's reaction as used + close out the offer
+      await supabase
+        .from('combat_participants')
+        .update({ reaction_used: true })
+        .eq('id', urgent.reactor_participant_id);
+    }
+
+    await supabase
+      .from('pending_reactions')
+      .update({
+        state: 'accepted',
+        decided_at: new Date().toISOString(),
+        decision_payload: {
+          ...(urgent.decision_payload ?? {}),
+          attack_id: attack?.id ?? null,
+          attack_name: oaName,
+          attack_bonus: bonusNum,
+          damage_dice: oaDice,
+          damage_type: oaType,
+        },
+      })
+      .eq('id', urgent.id);
     setBusy(false);
   }
 
@@ -213,6 +296,37 @@ export default function ReactionPromptModal({ campaignId }: Props) {
             </div>
           )}
 
+          {urgent.reaction_key === 'opportunity_attack' && (() => {
+            const mover = (urgent.decision_payload as any)?.mover_name ?? 'The target';
+            return (
+              <>
+                <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--t-1)' }}>{mover}</strong> left your melee reach. Make an <strong style={{ color: '#f87171' }}>Opportunity Attack</strong> with your melee weapon — a single standard attack roll.
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8 }}>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 3 }}>Weapon</div>
+                    <input value={oaName} onChange={e => setOaName(e.target.value)} style={{ width: '100%', fontFamily: 'var(--ff-body)', fontSize: 12, minHeight: 0 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 3 }}>+Hit</div>
+                    <input type="number" value={oaBonus} onChange={e => setOaBonus(e.target.value)} style={{ width: '100%', fontFamily: 'var(--ff-body)', fontSize: 12, minHeight: 0 }} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 3 }}>Damage</div>
+                    <input value={oaDice} onChange={e => setOaDice(e.target.value)} placeholder="1d8+3" style={{ width: '100%', fontFamily: 'var(--ff-body)', fontSize: 12, minHeight: 0 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 3 }}>Type</div>
+                    <input value={oaType} onChange={e => setOaType(e.target.value)} placeholder="slashing" style={{ width: '100%', fontFamily: 'var(--ff-body)', fontSize: 12, minHeight: 0 }} />
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
           {/* Buttons */}
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button
@@ -232,7 +346,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
               Decline
             </button>
             <button
-              onClick={onAccept}
+              onClick={urgent.reaction_key === 'opportunity_attack' ? onAcceptOA : onAccept}
               disabled={busy}
               className="btn-gold"
               style={{
@@ -242,7 +356,9 @@ export default function ReactionPromptModal({ campaignId }: Props) {
                 letterSpacing: '0.04em', textTransform: 'uppercase',
               }}
             >
-              ⚡ Cast {urgent.reaction_name}
+              {urgent.reaction_key === 'opportunity_attack'
+                ? '⚔ Make Attack'
+                : `⚡ Cast ${urgent.reaction_name}`}
             </button>
           </div>
         </div>

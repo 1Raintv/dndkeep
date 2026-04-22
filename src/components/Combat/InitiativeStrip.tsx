@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
+import { takeDash, takeDisengage } from '../../lib/movement';
 import DeclareAttackModal from './DeclareAttackModal';
 import type { CombatParticipant } from '../../types';
 
@@ -41,6 +42,32 @@ export default function InitiativeStrip({ isDM }: Props) {
     if (!encounter) return;
     if (!window.confirm('End combat?')) return;
     await endEncounter(encounter.id);
+  }
+
+  // v2.108.0 — Phase G: Dash + Disengage action buttons. Apply to the current
+  // actor (either DM controlling them or the player whose character it is).
+  async function onDash() {
+    if (!encounter || !currentActor) return;
+    if (currentActor.dash_used_this_turn) return;
+    await takeDash({
+      campaignId: encounter.campaign_id,
+      encounterId: encounter.id,
+      participantId: currentActor.id,
+      participantName: currentActor.name,
+      participantType: currentActor.participant_type,
+    });
+  }
+
+  async function onDisengage() {
+    if (!encounter || !currentActor) return;
+    if (currentActor.disengaged_this_turn) return;
+    await takeDisengage({
+      campaignId: encounter.campaign_id,
+      encounterId: encounter.id,
+      participantId: currentActor.id,
+      participantName: currentActor.name,
+      participantType: currentActor.participant_type,
+    });
   }
 
   return (
@@ -155,6 +182,58 @@ export default function InitiativeStrip({ isDM }: Props) {
 
       {isDM && (
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {/* v2.108.0 — Phase G: Dash + Disengage action buttons. Show "ON"
+              state when already used this turn; click does nothing in that
+              state. Dash doubles remaining movement; Disengage suppresses
+              future OA offers. */}
+          <button
+            onClick={onDash}
+            disabled={!currentActor || currentActor.dash_used_this_turn}
+            title={currentActor?.dash_used_this_turn
+              ? 'Already dashed this turn'
+              : `Dash: double ${currentActor?.name ?? ''}'s movement this turn`}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              padding: '6px 10px', borderRadius: 6,
+              border: currentActor?.dash_used_this_turn
+                ? '1px solid rgba(96,165,250,0.8)'
+                : '1px solid var(--c-border)',
+              background: currentActor?.dash_used_this_turn
+                ? 'rgba(96,165,250,0.2)'
+                : 'transparent',
+              color: currentActor?.dash_used_this_turn ? '#60a5fa' : 'var(--t-2)',
+              cursor: currentActor?.dash_used_this_turn ? 'default' : 'pointer',
+              minHeight: 0,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              opacity: currentActor ? 1 : 0.4,
+            }}
+          >
+            {currentActor?.dash_used_this_turn ? '⚡ Dashed' : '⚡ Dash'}
+          </button>
+          <button
+            onClick={onDisengage}
+            disabled={!currentActor || currentActor.disengaged_this_turn}
+            title={currentActor?.disengaged_this_turn
+              ? 'Already disengaged this turn — no OA offers'
+              : `Disengage: suppress Opportunity Attacks from ${currentActor?.name ?? ''}'s remaining movement`}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              padding: '6px 10px', borderRadius: 6,
+              border: currentActor?.disengaged_this_turn
+                ? '1px solid rgba(167,139,250,0.8)'
+                : '1px solid var(--c-border)',
+              background: currentActor?.disengaged_this_turn
+                ? 'rgba(167,139,250,0.2)'
+                : 'transparent',
+              color: currentActor?.disengaged_this_turn ? '#a78bfa' : 'var(--t-2)',
+              cursor: currentActor?.disengaged_this_turn ? 'default' : 'pointer',
+              minHeight: 0,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              opacity: currentActor ? 1 : 0.4,
+            }}
+          >
+            {currentActor?.disengaged_this_turn ? '↩ Disengaged' : '↩ Disengage'}
+          </button>
           <button
             onClick={() => setShowDeclare(true)}
             style={{

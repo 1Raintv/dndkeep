@@ -561,6 +561,12 @@ export interface CombatParticipant {
   /** v2.107.0 — Phase G: persisted max walking speed in feet, captured at
    *  encounter-start time from the underlying character/monster. */
   max_speed_ft?: number;
+  /** v2.108.0 — Phase G: set when the actor takes the Dash action. Doubles
+   *  effective movement this turn. Reset in advanceTurn. */
+  dash_used_this_turn?: boolean;
+  /** v2.108.0 — Phase G: set when the actor takes the Disengage action. Any
+   *  subsequent movement this turn suppresses Opportunity Attack offers. */
+  disengaged_this_turn?: boolean;
   /** v2.103.0 — Phase F cover tagging. Per-attacker cover state on this
    *  participant as the target. Shape: { [attackerParticipantId]: 'half' |
    *  'three_quarters' | 'total' }. Used as the auto-populated default in
@@ -638,7 +644,7 @@ export interface PendingAttack {
 
 // v2.98.0 — Phase E: reaction offers
 export type ReactionState = 'offered' | 'accepted' | 'declined' | 'expired';
-export type ReactionTriggerPoint = 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied';
+export type ReactionTriggerPoint = 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied' | 'movement_out_of_reach';
 
 export interface PendingReaction {
   id: string;

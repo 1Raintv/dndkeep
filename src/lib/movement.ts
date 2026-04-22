@@ -10,6 +10,7 @@
 
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
+import { offerOpportunityAttacks } from './pendingReaction';
 
 const FEET_PER_SQUARE = 5;   // D&D standard
 
@@ -45,12 +46,16 @@ export async function canMove(
 ): Promise<MovementCheck> {
   const { data } = await supabase
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft')
+    .select('movement_used_ft, max_speed_ft, dash_used_this_turn')
     .eq('id', participantId)
     .single();
 
   const currentUsed = (data?.movement_used_ft as number | null) ?? 0;
-  const maxSpeed = (data?.max_speed_ft as number | null) ?? 30;
+  const baseSpeed = (data?.max_speed_ft as number | null) ?? 30;
+  // v2.108.0 — Phase G: Dash doubles effective movement for the turn per
+  // 2024 PHB ("your Speed becomes double your Speed for the turn").
+  const dashed = (data?.dash_used_this_turn as boolean | null) ?? false;
+  const maxSpeed = dashed ? baseSpeed * 2 : baseSpeed;
   const wouldBe = currentUsed + distanceFt;
   const remaining = Math.max(0, maxSpeed - currentUsed);
 
@@ -62,6 +67,103 @@ export async function canMove(
     remaining,
     wouldBe,
   };
+}
+
+// ─── Dash ────────────────────────────────────────────────────────
+// v2.108.0 — Phase G: take the Dash action. Costs an action and grants extra
+// movement equal to the participant's base speed (effectively doubles their
+// per-turn movement budget for the remainder of the turn).
+
+export interface TakeDashInput {
+  campaignId: string;
+  encounterId: string | null;
+  participantId: string;
+  participantName: string;
+  participantType: 'character' | 'monster' | 'npc';
+}
+
+export async function takeDash(input: TakeDashInput): Promise<void> {
+  const { data: cur } = await supabase
+    .from('combat_participants')
+    .select('dash_used_this_turn, action_used, max_speed_ft')
+    .eq('id', input.participantId)
+    .single();
+  if (!cur) return;
+  if (cur.dash_used_this_turn) return;   // already dashed this turn
+
+  await supabase
+    .from('combat_participants')
+    .update({
+      dash_used_this_turn: true,
+      action_used: true,
+    })
+    .eq('id', input.participantId);
+
+  const chainId = newChainId();
+  await emitCombatEvent({
+    campaignId: input.campaignId,
+    encounterId: input.encounterId,
+    chainId,
+    sequence: 0,
+    actorType:
+      input.participantType === 'character' ? 'player'
+      : input.participantType === 'monster' ? 'monster'
+      : 'system',
+    actorName: input.participantName,
+    targetType: null,
+    targetName: null,
+    eventType: 'dash',
+    payload: {
+      bonus_ft: cur.max_speed_ft ?? 30,
+    },
+  });
+}
+
+// ─── Disengage ───────────────────────────────────────────────────
+// v2.108.0 — Phase G: take the Disengage action. Costs an action. Suppresses
+// Opportunity Attack offers for the rest of this turn.
+
+export interface TakeDisengageInput {
+  campaignId: string;
+  encounterId: string | null;
+  participantId: string;
+  participantName: string;
+  participantType: 'character' | 'monster' | 'npc';
+}
+
+export async function takeDisengage(input: TakeDisengageInput): Promise<void> {
+  const { data: cur } = await supabase
+    .from('combat_participants')
+    .select('disengaged_this_turn, action_used')
+    .eq('id', input.participantId)
+    .single();
+  if (!cur) return;
+  if (cur.disengaged_this_turn) return;
+
+  await supabase
+    .from('combat_participants')
+    .update({
+      disengaged_this_turn: true,
+      action_used: true,
+    })
+    .eq('id', input.participantId);
+
+  const chainId = newChainId();
+  await emitCombatEvent({
+    campaignId: input.campaignId,
+    encounterId: input.encounterId,
+    chainId,
+    sequence: 0,
+    actorType:
+      input.participantType === 'character' ? 'player'
+      : input.participantType === 'monster' ? 'monster'
+      : 'system',
+    actorName: input.participantName,
+    targetType: null,
+    targetName: null,
+    eventType: 'disengage',
+    payload: {},
+  });
 }
 
 /**
@@ -85,12 +187,13 @@ export interface LogMovementInput {
 export async function logMovement(input: LogMovementInput): Promise<void> {
   const { data: cur } = await supabase
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft')
+    .select('movement_used_ft, max_speed_ft, disengaged_this_turn')
     .eq('id', input.participantId)
     .single();
 
   const previous = (cur?.movement_used_ft as number | null) ?? 0;
   const maxSpeed = (cur?.max_speed_ft as number | null) ?? 30;
+  const disengaged = (cur?.disengaged_this_turn as boolean | null) ?? false;
   const next = previous + input.distanceFt;
 
   await supabase
@@ -121,5 +224,21 @@ export async function logMovement(input: LogMovementInput): Promise<void> {
       max_speed_ft: maxSpeed,
       remaining_ft: Math.max(0, maxSpeed - next),
     },
+  });
+
+  // v2.109.0 — Phase G pt 3: check for Opportunity Attack triggers. Any
+  // hostile adjacent to the mover's starting cell who isn't adjacent to the
+  // end cell gets a chance. Disengaged movers suppress OA entirely.
+  await offerOpportunityAttacks({
+    campaignId: input.campaignId,
+    encounterId: input.encounterId,
+    moverParticipantId: input.participantId,
+    moverName: input.participantName,
+    moverType: input.participantType,
+    moverDisengaged: disengaged,
+    fromRow: input.fromRow,
+    fromCol: input.fromCol,
+    toRow: input.toRow,
+    toCol: input.toCol,
   });
 }

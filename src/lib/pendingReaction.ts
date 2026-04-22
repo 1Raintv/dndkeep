@@ -31,7 +31,7 @@ export interface ReactionRegistryEntry {
   key: string;
   name: string;
   /** When in the attack flow this reaction can trigger. */
-  triggerPoint: 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied';
+  triggerPoint: 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied' | 'movement_out_of_reach';
   /** Returns true if this reaction should be offered for the given state. */
   isEligible(ctx: ReactionEligibilityContext): boolean;
   /** Runs when a player/DM accepts the offer. Mutates pending_attack + emits log events. */
@@ -454,4 +454,135 @@ export async function hasPendingOffers(attackId: string): Promise<boolean> {
     .eq('pending_attack_id', attackId)
     .eq('state', 'offered');
   return (count ?? 0) > 0;
+}
+
+// ─── Opportunity Attacks ─────────────────────────────────────────
+// v2.109.0 — Phase G pt 3: when a creature moves, find hostiles whose reach
+// they just left and create OA offers for each. 2024 PHB defines OA as a
+// reaction with standard 5-ft reach (weapons with Reach property extend to
+// 10 ft — not modeled here yet; future polish).
+//
+// Architectural note: OA is different from Shield/UD/AE because:
+//   - It's triggered by a movement event, not an attack
+//   - It creates a NEW attack (the reactor's swing), not modifying one
+//   - pending_attack_id on the offer row stays NULL
+// So this lives as its own helper rather than a registry entry.
+
+export interface OfferOpportunityAttacksInput {
+  campaignId: string;
+  encounterId: string | null;
+  moverParticipantId: string;
+  moverName: string;
+  moverType: 'character' | 'monster' | 'npc';
+  moverDisengaged: boolean;
+  fromRow: number;
+  fromCol: number;
+  toRow: number;
+  toCol: number;
+}
+
+/** How many grid cells a standard melee weapon reaches (5 ft). */
+const STANDARD_REACH_CELLS = 1;
+/** Max turn timer for reaction offers, matching other reactions. */
+const OA_TIMER_SECONDS = 120;
+
+export async function offerOpportunityAttacks(
+  input: OfferOpportunityAttacksInput,
+): Promise<number> {
+  // Disengaged suppresses all OAs per 2024 PHB
+  if (input.moverDisengaged) return 0;
+
+  // Load the campaign's active battle map tokens so we can find who's where
+  const { data: bm } = await supabase
+    .from('battle_maps')
+    .select('tokens')
+    .eq('campaign_id', input.campaignId)
+    .eq('active', true)
+    .maybeSingle();
+  const tokens = ((bm?.tokens as any[]) ?? null);
+  if (!tokens || tokens.length === 0) return 0;
+
+  // All combat participants in this encounter (we only OA between combatants)
+  if (!input.encounterId) return 0;
+  const { data: pdata } = await supabase
+    .from('combat_participants')
+    .select('id, name, participant_type, entity_id, is_dead, reaction_used')
+    .eq('encounter_id', input.encounterId);
+  const participants = (pdata ?? []) as Array<{
+    id: string; name: string; participant_type: 'character' | 'monster' | 'npc';
+    entity_id: string; is_dead: boolean; reaction_used: boolean;
+  }>;
+
+  // Eligibility checks per candidate reactor:
+  //   - Not the mover
+  //   - Not dead
+  //   - Hasn't used their reaction this turn
+  //   - Token present on the map
+  //   - Hostile to the mover (participant_type differs — characters vs
+  //     monsters/npcs — same-type pairs don't provoke)
+  //   - Distance to mover's FROM position ≤ reach
+  //   - Distance to mover's TO position > reach
+  const offers: any[] = [];
+  for (const reactor of participants) {
+    if (reactor.id === input.moverParticipantId) continue;
+    if (reactor.is_dead) continue;
+    if (reactor.reaction_used) continue;
+
+    // Hostility: characters are hostile to monsters/npcs and vice versa.
+    // Future Phase H can expand with per-campaign factions if needed.
+    const hostile =
+      (input.moverType === 'character') !== (reactor.participant_type === 'character');
+    if (!hostile) continue;
+
+    // Find reactor's token on the battle map
+    const token = tokens.find((t: any) => {
+      if (!t || typeof t.row !== 'number' || typeof t.col !== 'number') return false;
+      if (reactor.participant_type === 'character') return t.character_id === reactor.entity_id;
+      return (t.name ?? '').toLowerCase() === reactor.name.toLowerCase();
+    });
+    if (!token) continue;
+
+    const cellsFromStart = Math.max(
+      Math.abs(token.row - input.fromRow),
+      Math.abs(token.col - input.fromCol),
+    );
+    const cellsFromEnd = Math.max(
+      Math.abs(token.row - input.toRow),
+      Math.abs(token.col - input.toCol),
+    );
+
+    const hadInReach = cellsFromStart <= STANDARD_REACH_CELLS;
+    const stillInReach = cellsFromEnd <= STANDARD_REACH_CELLS;
+    if (!hadInReach || stillInReach) continue;
+
+    const offeredAt = new Date();
+    const expiresAt = new Date(offeredAt.getTime() + OA_TIMER_SECONDS * 1000);
+    offers.push({
+      campaign_id: input.campaignId,
+      pending_attack_id: null,
+      reactor_participant_id: reactor.id,
+      reactor_name: reactor.name,
+      reactor_type: reactor.participant_type,
+      reaction_key: 'opportunity_attack',
+      reaction_name: 'Opportunity Attack',
+      trigger_point: 'movement_out_of_reach',
+      offered_at: offeredAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      decided_at: null,
+      state: 'offered',
+      decision_payload: {
+        mover_participant_id: input.moverParticipantId,
+        mover_name: input.moverName,
+        mover_type: input.moverType,
+        from: { row: input.fromRow, col: input.fromCol },
+        to: { row: input.toRow, col: input.toCol },
+      },
+    });
+  }
+
+  if (offers.length > 0) {
+    await supabase.from('pending_reactions').insert(offers);
+  }
+
+  return offers.length;
 }
