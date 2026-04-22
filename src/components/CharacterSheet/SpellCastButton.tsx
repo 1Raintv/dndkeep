@@ -7,8 +7,10 @@ import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSp
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie } from '../../lib/gameUtils';
+import { supabase } from '../../lib/supabase';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
 import BuffTargetPickerModal from '../Combat/BuffTargetPickerModal';
+import DeclareSpellCastModal from '../Combat/DeclareSpellCastModal';
 import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
@@ -77,6 +79,16 @@ export default function SpellCastButton({
  // v2.115.0 — Phase H pt 6: open target picker after casting a registry
  // buff spell (Bless, Hunter's Mark, Hex, Divine Favor) while in combat.
  const [buffPickerOpen, setBuffPickerOpen] = useState(false);
+ // v2.124.0 — Phase J: when set, opens the Counterspell pre-cast window.
+ // Payload carries the slot level the player wanted to cast at so we can
+ // resume after the window resolves. encounterId + casterParticipantId are
+ // resolved asynchronously when the Declare button is clicked.
+ const [declarePending, setDeclarePending] = useState<{
+   slotLevel: number;
+   target: string;
+   encounterId: string;
+   casterParticipantId: string;
+ } | null>(null);
 
  function flashCast(slotLevel: number) {
  // v2.84.0: Flash is now more prominent + longer. Was a pastel green tint
@@ -286,6 +298,36 @@ export default function SpellCastButton({
  await logAction({ campaignId, characterId: userId, characterName: character.name,
  actionType: 'spell', actionName: spell.name, targetName,
  notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
+ }
+
+ /** v2.124.0 — Phase J: open the Counterspell pre-cast window. Looks up the
+  *  active encounter + this character's participant row, then stages the
+  *  DeclareSpellCastModal. If no active encounter exists (out-of-combat
+  *  casting), falls through to a normal immediate cast. */
+ async function openDeclareCast(slotLevel: number, targetName: string) {
+ if (!campaignId) { await castUtility(slotLevel, targetName); return; }
+ // Find the active encounter for this campaign
+ const { data: enc } = await supabase
+ .from('combat_encounters')
+ .select('id')
+ .eq('campaign_id', campaignId)
+ .eq('status', 'active')
+ .maybeSingle();
+ if (!enc?.id) { await castUtility(slotLevel, targetName); return; }
+ // Find this character's participant row in that encounter
+ const { data: part } = await supabase
+ .from('combat_participants')
+ .select('id')
+ .eq('encounter_id', enc.id)
+ .eq('entity_id', character.id)
+ .maybeSingle();
+ if (!part?.id) { await castUtility(slotLevel, targetName); return; }
+ setDeclarePending({
+ slotLevel,
+ target: targetName,
+ encounterId: enc.id as string,
+ casterParticipantId: part.id as string,
+ });
  }
 
  /** Log save DC to party */
@@ -1048,6 +1090,19 @@ export default function SpellCastButton({
  Cast{selectedSlot > spell.level ? ` (Lvl ${selectedSlot})` : ''}
  </button>
  )}
+ {/* v2.124.0 — Phase J: Declare Cast opens the Counterspell pre-cast
+     window. Only shown for leveled spells (cantrips bypass counterspell
+     windows per RAW — Counterspell 2024 targets leveled casts). */}
+ {mechanics.isUtility && !isCantrip && selectedSlot > 0 && campaignId && (
+ <button onClick={() => { openDeclareCast(selectedSlot, target); setShowModal(false); setTarget(''); }}
+ title="Declare the cast through the Counterspell reaction window (30s) before resolving the effect. Use when an enemy spellcaster might counterspell you."
+ style={{ flex: 1, fontFamily: 'var(--ff-body)', fontWeight: 700, padding: '7px 10px',
+ borderRadius: 'var(--r-md)', cursor: 'pointer',
+ border: '1px solid #60a5fa60', background: 'rgba(96,165,250,0.15)',
+ color: '#60a5fa', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ 🛡 Declare
+ </button>
+ )}
  </div>
  </div>
  </div>,
@@ -1060,6 +1115,29 @@ export default function SpellCastButton({
  casterCharacterId={character.id}
  spellName={spell.name}
  onClose={() => setBuffPickerOpen(false)}
+ />
+ )}
+ {/* v2.124.0 — Phase J: Counterspell pre-cast window */}
+ {declarePending && campaignId && (
+ <DeclareSpellCastModal
+ campaignId={campaignId}
+ encounterId={declarePending.encounterId}
+ casterParticipantId={declarePending.casterParticipantId}
+ casterCharacterId={character.id}
+ casterName={character.name}
+ spellName={spell.name}
+ spellLevel={declarePending.slotLevel}
+ onResolved={(outcome) => {
+   if (outcome === 'went_off' || outcome === 'saved_through') {
+     // Counterspell window closed without a counter (or caster saved).
+     // Proceed with the normal cast path — burns slot + applies effect.
+     castUtility(declarePending.slotLevel, declarePending.target);
+   }
+   // 'countered': spell fails (MVP: slot not burned; v2.125 polish will
+   // split slot-burn from effect so RAW slot-on-declare is enforced).
+   // 'canceled': user aborted; nothing to do.
+ }}
+ onClose={() => setDeclarePending(null)}
  />
  )}
  </>

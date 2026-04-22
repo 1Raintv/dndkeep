@@ -39,12 +39,14 @@ export interface ReactionRegistryEntry {
 }
 
 export interface ReactionEligibilityContext {
-  attack: PendingAttack;
+  /** null for spell_declared triggers (Counterspell) — the "attack" hasn't happened. */
+  attack: PendingAttack | null;
   reactorCharacter?: Character | null;   // populated for character reactors
 }
 
 export interface ReactionAcceptContext {
-  attack: PendingAttack;
+  /** null for spell_declared triggers — handler reads decision_payload instead. */
+  attack: PendingAttack | null;
   offer: PendingReaction;
   reactorCharacter?: Character | null;
   decisionPayload: Record<string, unknown> | null;
@@ -893,12 +895,19 @@ export async function acceptReaction(
   const offer = offerRow as PendingReaction;
   if (offer.state !== 'offered') return;
 
-  const { data: atk } = await supabase
-    .from('pending_attacks')
-    .select('*')
-    .eq('id', offer.pending_attack_id)
-    .single();
-  if (!atk) return;
+  // v2.124.0 — Phase J: reactions triggered by spell_declared (Counterspell)
+  // don't have a pending_attack_id. Only fetch the attack row when present;
+  // the registry entry's onAccept checks for it when needed.
+  let atk: PendingAttack | null = null;
+  if (offer.pending_attack_id) {
+    const { data: atkRow } = await supabase
+      .from('pending_attacks')
+      .select('*')
+      .eq('id', offer.pending_attack_id)
+      .single();
+    if (!atkRow) return;
+    atk = atkRow as PendingAttack;
+  }
 
   let reactorChar: Character | null = null;
   if (offer.reactor_type === 'character') {
@@ -921,7 +930,7 @@ export async function acceptReaction(
   if (!entry) return;
 
   await entry.onAccept({
-    attack: atk as PendingAttack,
+    attack: (atk ?? null) as PendingAttack,
     offer,
     reactorCharacter: reactorChar,
     decisionPayload: decisionPayload ?? null,

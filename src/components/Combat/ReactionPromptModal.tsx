@@ -27,6 +27,9 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   const [oaBonus, setOaBonus] = useState('3');
   const [oaDice, setOaDice] = useState('1d8+2');
   const [oaType, setOaType] = useState('slashing');
+  // v2.124.0 — Phase J: counterspell slot picker
+  const [csSlotLevel, setCsSlotLevel] = useState<number>(3);
+  const [reactorSlots, setReactorSlots] = useState<Record<number, { total: number; used: number }>>({});
 
   async function load() {
     const { data } = await supabase
@@ -117,12 +120,51 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     );
   }, [isDM, offers]);
 
-  if (visibleOffers.length === 0) return null;
+  // v2.124.0 — Phase J: most-urgent offer (least time remaining) memoized
+  // so effects can key off it without re-running mid-render.
+  const urgent = useMemo(() => {
+    if (visibleOffers.length === 0) return null;
+    return [...visibleOffers].sort(
+      (a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime(),
+    )[0];
+  }, [visibleOffers]);
 
-  // Show the most urgent offer (least time remaining)
-  const urgent = [...visibleOffers].sort((a, b) => {
-    return new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime();
-  })[0];
+  // v2.124.0 — Phase J: when a counterspell offer is urgent, load the
+  // reactor's spell_slots so the slot picker can gate L3–L9 by availability.
+  // Also auto-select the lowest available slot level (≥3).
+  useEffect(() => {
+    if (!urgent || urgent.reaction_key !== 'counterspell') return;
+    let cancelled = false;
+    (async () => {
+      const { data: part } = await supabase
+        .from('combat_participants')
+        .select('entity_id')
+        .eq('id', urgent.reactor_participant_id)
+        .maybeSingle();
+      if (cancelled || !part?.entity_id) return;
+      const { data: ch } = await supabase
+        .from('characters')
+        .select('spell_slots')
+        .eq('id', part.entity_id as string)
+        .maybeSingle();
+      if (cancelled || !ch) return;
+      const slots = ((ch.spell_slots ?? {}) as Record<string, { total: number; used: number }>);
+      const slotRecord: Record<number, { total: number; used: number }> = {};
+      for (let lvl = 1; lvl <= 9; lvl++) {
+        const s = slots[String(lvl)];
+        if (s) slotRecord[lvl] = s;
+      }
+      setReactorSlots(slotRecord);
+      // Auto-select lowest available L3+ slot
+      for (let lvl = 3; lvl <= 9; lvl++) {
+        const s = slotRecord[lvl];
+        if (s && s.used < s.total) { setCsSlotLevel(lvl); break; }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [urgent?.id, urgent?.reaction_key]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!urgent) return null;
 
   const attack = urgent.pending_attack_id ? attacksById[urgent.pending_attack_id] : null;
   const expiresAt = new Date(urgent.expires_at).getTime();
@@ -130,7 +172,17 @@ export default function ReactionPromptModal({ campaignId }: Props) {
 
   async function onAccept() {
     setBusy(true);
-    await acceptReaction(urgent.id);
+    // v2.124.0 — Phase J: for Counterspell, pass spell_level_used so the
+    // registry entry burns the right slot. Merge with offer's decision_payload
+    // (which carries spell_cast_id) so the handler has both pieces.
+    if (urgent.reaction_key === 'counterspell') {
+      await acceptReaction(urgent.id, {
+        ...(urgent.decision_payload ?? {}),
+        spell_level_used: csSlotLevel,
+      });
+    } else {
+      await acceptReaction(urgent.id);
+    }
     setBusy(false);
   }
 
@@ -301,6 +353,58 @@ export default function ReactionPromptModal({ campaignId }: Props) {
               Cast <strong style={{ color: '#f87171' }}>Hellish Rebuke</strong> to retaliate against <strong style={{ color: 'var(--t-1)' }}>{attack.attacker_name}</strong>. They must make a DEX save or take <strong style={{ color: '#f59e0b' }}>2d10 fire</strong> damage (half on success). Upcast adds +1d10 per level. Costs a level-1+ spell slot.
             </div>
           )}
+
+          {urgent.reaction_key === 'counterspell' && (() => {
+            const dp = (urgent.decision_payload ?? {}) as Record<string, unknown>;
+            const targetSpell = (dp.spell_name as string) ?? 'a spell';
+            const targetCaster = (dp.caster_name as string) ?? 'The caster';
+            const targetLevel = (dp.spell_level as number) ?? 0;
+            const saveDC = (dp.save_dc as number) ?? (10 + targetLevel);
+            return (
+              <>
+                <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                  Cast <strong style={{ color: '#a78bfa' }}>Counterspell</strong> to interrupt <strong style={{ color: 'var(--t-1)' }}>{targetCaster}</strong>'s <strong style={{ color: 'var(--t-1)' }}>{targetSpell}</strong> ({targetLevel === 0 ? 'cantrip' : `L${targetLevel}`}). They make a <strong style={{ color: '#60a5fa' }}>DC {saveDC} CON save</strong> — fail and their spell fails.
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 6 }}>
+                    Slot to burn
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                    {[3, 4, 5, 6, 7, 8, 9].map(lvl => {
+                      const s = reactorSlots[lvl];
+                      const available = !!s && s.used < s.total;
+                      const remaining = s ? (s.total - s.used) : 0;
+                      const selected = csSlotLevel === lvl;
+                      return (
+                        <button
+                          key={lvl}
+                          onClick={() => available && setCsSlotLevel(lvl)}
+                          disabled={!available || busy}
+                          title={s
+                            ? `L${lvl}: ${remaining}/${s.total} remaining`
+                            : `L${lvl}: none known`}
+                          style={{
+                            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+                            padding: '6px 4px', borderRadius: 4, minHeight: 0, minWidth: 0,
+                            border: `1px solid ${selected ? '#a78bfa' : 'var(--c-border)'}`,
+                            background: selected ? 'rgba(167,139,250,0.18)' : 'transparent',
+                            color: available ? (selected ? '#a78bfa' : 'var(--t-2)') : 'var(--t-3)',
+                            cursor: available ? 'pointer' : 'not-allowed',
+                            opacity: available ? 1 : 0.35,
+                          }}
+                        >
+                          L{lvl}
+                          <div style={{ fontSize: 8, fontWeight: 700, marginTop: 2 }}>
+                            {s ? `${remaining}/${s.total}` : '—'}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {urgent.reaction_key === 'opportunity_attack' && (() => {
             const mover = (urgent.decision_payload as any)?.mover_name ?? 'The target';
