@@ -271,7 +271,7 @@ export async function advanceTurn(encounterId: string): Promise<void> {
 
   const { data: rows } = await supabase
     .from('combat_participants')
-    .select('id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id')
+    .select('id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining')
     .eq('encounter_id', encounterId)
     .order('turn_order', { ascending: true });
   if (!rows || rows.length === 0) return;
@@ -291,6 +291,14 @@ export async function advanceTurn(encounterId: string): Promise<void> {
   // Reset per-turn budgets for the incoming actor
   const incomingParticipant = active[nextIdx];
 
+  // v2.126.0 — Phase J: refill legendary action pool on the creature's own
+  // turn. RAW 2024: LA pool refills at the START of the legendary creature's
+  // own turn (not at top of round). Only updates if the creature actually
+  // has LAs configured.
+  const laTotal = (incomingParticipant.legendary_actions_total as number | null) ?? 0;
+  const laRemaining = (incomingParticipant.legendary_actions_remaining as number | null) ?? 0;
+  const needsLaRefill = laTotal > 0 && laRemaining < laTotal;
+
   await supabase
     .from('combat_participants')
     .update({
@@ -301,6 +309,7 @@ export async function advanceTurn(encounterId: string): Promise<void> {
       leveled_spell_cast: false,
       dash_used_this_turn: false,
       disengaged_this_turn: false,
+      ...(needsLaRefill ? { legendary_actions_remaining: laTotal } : {}),
     })
     .eq('id', incomingParticipant.id);
 
@@ -311,6 +320,26 @@ export async function advanceTurn(encounterId: string): Promise<void> {
       round_number: nextRound,
     })
     .eq('id', encounterId);
+
+  // v2.126.0 — Phase J: log refill for the DM
+  if (needsLaRefill) {
+    await emitCombatEvent({
+      campaignId: incomingParticipant.campaign_id,
+      encounterId,
+      chainId: newChainId(),
+      sequence: 0,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: incomingParticipant.participant_type === 'character' ? 'character' : 'monster',
+      targetName: incomingParticipant.name,
+      eventType: 'legendary_actions_refilled',
+      payload: {
+        refilled_from: laRemaining,
+        refilled_to: laTotal,
+      },
+      visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
+    });
+  }
 
   // v2.120.0 — Phase I: death save at turn start.
   // Character at 0 HP, not stable, not dead → resolve automation:

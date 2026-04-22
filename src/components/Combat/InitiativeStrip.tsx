@@ -15,6 +15,8 @@ import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
 import DeclareAttackModal from './DeclareAttackModal';
 import ConditionPickerModal from './ConditionPickerModal';
+import LegendaryActionPopover from './LegendaryActionPopover';
+import LegendaryActionConfigModal from './LegendaryActionConfigModal';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -35,6 +37,12 @@ export default function InitiativeStrip({ isDM }: Props) {
     participant: CombatParticipant;
     anchor: { x: number; y: number };
   } | null>(null);
+  // v2.126.0 — Phase J pt 4: legendary action popover + config modal for DM
+  const [laPopover, setLaPopover] = useState<{
+    participant: CombatParticipant;
+    anchor: { x: number; y: number };
+  } | null>(null);
+  const [laConfigFor, setLaConfigFor] = useState<CombatParticipant | null>(null);
 
   if (!encounter || encounter.status !== 'active') return null;
 
@@ -327,11 +335,62 @@ export default function InitiativeStrip({ isDM }: Props) {
                   )}
                 </div>
               )}
+              {/* v2.126.0 — Phase J pt 4: legendary actions chip. DM-only.
+                  Visible when the participant has a configured LA pool. Click
+                  opens LegendaryActionPopover anchored at the chip's
+                  bottom-left. */}
+              {isDM && (p.legendary_actions_total ?? 0) > 0 && (() => {
+                const laRem = p.legendary_actions_remaining ?? 0;
+                const laTot = p.legendary_actions_total ?? 0;
+                const hasPoints = laRem > 0;
+                return (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();   // don't open condition picker
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setLaPopover({ participant: p, anchor: { x: rect.left, y: rect.bottom } });
+                    }}
+                    title={`Legendary Actions: ${laRem}/${laTot} remaining (click to spend)`}
+                    style={{
+                      marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 2,
+                      fontSize: 9, fontWeight: 800,
+                      padding: '1px 5px', borderRadius: 3,
+                      background: hasPoints ? 'rgba(245,158,11,0.22)' : 'rgba(245,158,11,0.08)',
+                      color: hasPoints ? '#f59e0b' : 'rgba(245,158,11,0.55)',
+                      border: `1px solid ${hasPoints ? '#f59e0b80' : 'rgba(245,158,11,0.35)'}`,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      cursor: 'pointer', lineHeight: 1.2, whiteSpace: 'nowrap',
+                      alignSelf: 'center',
+                    }}
+                  >
+                    🐉 LA {laRem}/{laTot}
+                  </span>
+                );
+              })()}
               {p.is_dead && (
                 <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: '#f87171' }}>💀</span>
               )}
               {p.hidden_from_players && isDM && (
                 <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9 }} title="Hidden from players">👁️</span>
+              )}
+              {/* v2.126.0 — Phase J pt 4: DM-only "🐉+" affordance to
+                  bootstrap LA config on creatures that don't have any yet.
+                  Only shown for non-character tiles without configured LAs. */}
+              {isDM && p.participant_type !== 'character' && (p.legendary_actions_total ?? 0) === 0 && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); setLaConfigFor(p); }}
+                  title="Add legendary actions"
+                  style={{
+                    position: 'absolute', bottom: 2, right: 4,
+                    fontSize: 9, fontWeight: 800,
+                    padding: '1px 4px', borderRadius: 3,
+                    background: 'transparent', color: 'rgba(245,158,11,0.45)',
+                    border: '1px dashed rgba(245,158,11,0.35)',
+                    cursor: 'pointer', lineHeight: 1.2, opacity: 0.7,
+                  }}
+                >
+                  🐉+
+                </span>
               )}
             </div>
           );
@@ -448,6 +507,26 @@ export default function InitiativeStrip({ isDM }: Props) {
           participant={conditionPicker.participant}
           anchor={conditionPicker.anchor}
           onClose={() => setConditionPicker(null)}
+        />
+      )}
+      {/* v2.126.0 — Phase J pt 4: legendary action popover (spend) */}
+      {laPopover && encounter && (
+        <LegendaryActionPopover
+          participant={laPopover.participant}
+          campaignId={encounter.campaign_id}
+          encounterId={encounter.id}
+          anchor={laPopover.anchor}
+          onClose={() => setLaPopover(null)}
+        />
+      )}
+      {/* v2.126.0 — Phase J pt 4: legendary action config modal. Opened
+          directly from the 🐉+ affordance on un-configured tiles, or
+          indirectly from the ⚙ Configure button inside LegendaryActionPopover
+          (which manages its own state and doesn't need to be rendered here). */}
+      {laConfigFor && (
+        <LegendaryActionConfigModal
+          participant={laConfigFor}
+          onClose={() => setLaConfigFor(null)}
         />
       )}
     </div>

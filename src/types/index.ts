@@ -595,6 +595,13 @@ export interface CombatParticipant {
    *  'three_quarters' | 'total' }. Used as the auto-populated default in
    *  DeclareAttackModal. */
   persistent_cover?: Record<string, 'half' | 'three_quarters' | 'total'>;
+  /** v2.126.0 — Phase J: legendary actions pool. Total is the refill cap,
+   *  remaining is the live counter. Config is an array of `{name, cost, desc?}`
+   *  describing the actions this creature can take (matches
+   *  MonsterLegendaryAction). Refilled at start of this creature's own turn. */
+  legendary_actions_total?: number;
+  legendary_actions_remaining?: number;
+  legendary_actions_config?: MonsterLegendaryAction[];
   created_at: string;
   updated_at: string;
 }
