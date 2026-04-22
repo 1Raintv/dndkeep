@@ -5,6 +5,7 @@ import { rollDie, computeActiveBonuses } from '../../lib/gameUtils';
 import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logAction } from '../shared/ActionLog';
+import PlayerAttackButton from '../Combat/PlayerAttackButton';
 import { supabase } from '../../lib/supabase';
 import ModalPortal from '../shared/ModalPortal';
 
@@ -426,6 +427,21 @@ export default function WeaponsTracker({
  DAMAGE
  </div>
  </button>
+
+ {/* v2.100.0 — Phase F: in-combat attack flow. Renders null when not in
+     an active encounter, so out-of-combat rolls still use the existing
+     Hit / Damage buttons above. */}
+ {historyCharacterId && (
+ <PlayerAttackButton
+ characterId={historyCharacterId}
+ attackBonus={w.attackBonus ?? 0}
+ damageDice={w.damageDice === 'flat' ? `1d0+${w.damageBonus ?? 0}` : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
+ damageType={w.damageType || 'slashing'}
+ attackName={w.name}
+ source="weapon"
+ compact
+ />
+ )}
  </>
  )} {/* NOTES + edit/delete */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', minWidth: 0 }}>
