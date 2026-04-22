@@ -241,3 +241,132 @@ export function findParticipantsInRadius<P extends ParticipantForTokenLookup>(
   }
   return results;
 }
+
+// v2.131.0 — Phase K pt 4: line-of-sight math over wall segments.
+//
+// Pure geometry — no DB access, no async. Given two points on the battle
+// map and the wall list, determines whether a straight ray between them
+// crosses any walls. Feeds v2.132's auto-cover derivation:
+//   0 walls crossed → no cover
+//   1 wall crossed  → half cover (standard interpretation of "partial cover")
+//   2+ walls        → three-quarters cover
+// Walls tagged as "solid" in future schema extensions will upgrade to total
+// cover regardless of count.
+//
+// Coordinate conventions (matches BattleMap.tsx):
+//   - Token at {row: N, col: M} occupies the cell whose top-left is at
+//     pixel ((M-1)*gridSize, (N-1)*gridSize)
+//   - Cell center is at ((M - 0.5) * gridSize, (N - 0.5) * gridSize)
+
+/**
+ * Convert a token's grid position to its pixel center. Used by all LoS
+ * queries — the ray goes from center to center.
+ */
+export function tokenCenterPx(
+  pos: ParticipantPosition,
+  gridSize: number,
+): { x: number; y: number } {
+  return {
+    x: (pos.col - 0.5) * gridSize,
+    y: (pos.row - 0.5) * gridSize,
+  };
+}
+
+/**
+ * Classic 2D segment-segment intersection via parametric form. Segments AB
+ * and CD intersect iff the solved parameters t and u are both in [0, 1].
+ *
+ * Returns true for proper intersections AND for T-junction endpoints (a
+ * ray that JUST grazes a wall endpoint still counts as crossing). Returns
+ * false for collinear-but-non-overlapping cases — walls on the same line
+ * as the ray are edge cases the DM can resolve manually.
+ */
+export function segmentsIntersect(
+  ax: number, ay: number, bx: number, by: number,   // segment AB
+  cx: number, cy: number, dx: number, dy: number,   // segment CD
+): boolean {
+  const denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (denom === 0) return false;   // parallel or collinear — skip edge case
+  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / denom;
+  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / denom;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+/**
+ * Count how many walls a straight ray between two pixel points crosses.
+ * v2.132 will map counts to cover levels (0=none, 1=half, 2+=three-quarters).
+ */
+export function countWallsBetweenPx(
+  x1: number, y1: number, x2: number, y2: number,
+  walls: WallSegment[],
+): number {
+  let count = 0;
+  for (const w of walls) {
+    if (segmentsIntersect(x1, y1, x2, y2, w.x1, w.y1, w.x2, w.y2)) count++;
+  }
+  return count;
+}
+
+/**
+ * Convenience: count walls between two grid positions. Converts to pixel
+ * centers internally.
+ */
+export function countWallsBetween(
+  from: ParticipantPosition,
+  to: ParticipantPosition,
+  walls: WallSegment[],
+  gridSize: number,
+): number {
+  const a = tokenCenterPx(from, gridSize);
+  const b = tokenCenterPx(to, gridSize);
+  return countWallsBetweenPx(a.x, a.y, b.x, b.y, walls);
+}
+
+/**
+ * True iff the straight ray between two token centers is not blocked by
+ * any walls. Returns true when no walls exist (no obstacles = free
+ * sight-line) — this is the correct baseline since walls opt-in to
+ * blocking LoS.
+ */
+export function hasLineOfSight(
+  from: ParticipantPosition,
+  to: ParticipantPosition,
+  walls: WallSegment[],
+  gridSize: number,
+): boolean {
+  return countWallsBetween(from, to, walls, gridSize) === 0;
+}
+
+/**
+ * Derive 2024-PHB cover level from wall-crossing count. Used by v2.132 to
+ * auto-populate DeclareAttackModal's coverLevel field.
+ *
+ * RAW 2024 p.204:
+ *   - Half cover: +2 AC, +2 Dex save. Examples: low wall, creature.
+ *   - Three-quarters cover: +5 AC, +5 Dex save. Examples: portcullis, tree.
+ *   - Total cover: can't be targeted directly.
+ *
+ * We map:
+ *   - 0 walls → 'none'
+ *   - 1 wall  → 'half'
+ *   - 2 walls → 'three_quarters'
+ *   - 3+ walls → 'total'
+ *
+ * This is heuristic — future "wall type" schema (v2.132+) can override
+ * with per-segment cover contributions (e.g. a portcullis is always 3/4
+ * regardless of count).
+ */
+export type CoverLevel = 'none' | 'half' | 'three_quarters' | 'total';
+
+export function deriveCoverFromWalls(
+  from: ParticipantPosition,
+  to: ParticipantPosition,
+  walls: WallSegment[],
+  gridSize: number,
+): CoverLevel {
+  const n = countWallsBetween(from, to, walls, gridSize);
+  if (n === 0) return 'none';
+  if (n === 1) return 'half';
+  if (n === 2) return 'three_quarters';
+  return 'total';
+}
