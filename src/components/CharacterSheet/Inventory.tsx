@@ -6,6 +6,7 @@ import type { Character, InventoryItem } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import {
   currencyToCp, cpToCurrency, currencyToGp, currencyWeightLbs, formatCurrency,
+  canAfford, parseCurrencyString, subtractCurrency,
 } from '../../lib/currency';
 import { currentWeightLbs, encumbranceStatus } from '../../lib/encumbrance';
 
@@ -19,8 +20,14 @@ interface InventoryProps {
 import { CATALOGUE, ALL_CATEGORIES, type CatalogueItem, type ItemCategory } from '../../data/equipment';
 
 // ── Item Picker Modal ──────────────────────────────────────────────
-function ItemPickerModal({ onAdd, onClose }: {
+function ItemPickerModal({ onAdd, onBuy, currency, onClose }: {
  onAdd: (item: CatalogueItem, qty: number) => void;
+ // v2.137.0 — Phase L pt 5: merchant flow. When `onBuy` is provided the
+ // modal surfaces a per-row Buy button (in addition to Add) that deducts
+ // the item's cost from the character's pouch. Passing `currency` lets
+ // the modal grey out Buy buttons the character can't afford.
+ onBuy?: (item: CatalogueItem, qty: number) => void;
+ currency?: Character['currency'];
  onClose: () => void;
 }) {
  const [search, setSearch] = useState('');
@@ -66,6 +73,34 @@ function ItemPickerModal({ onAdd, onClose }: {
  }, 700);
  }
 
+ // v2.137.0 — Phase L pt 5: Buy calls the parent's onBuy which does the
+ // combined inventory-append + currency-deduct transaction. Reuses the
+ // same green flash as Add for consistent feedback.
+ function buyItem(item: CatalogueItem) {
+ if (!onBuy) return;
+ onBuy(item, 1);
+ setRecentlyAdded(item.name);
+ if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+ flashTimerRef.current = window.setTimeout(() => {
+ setRecentlyAdded(curr => curr === item.name ? null : curr);
+ flashTimerRef.current = null;
+ }, 700);
+ }
+
+ // v2.137.0 — Phase L pt 5: can the character afford this item? Used to
+ // grey out the Buy button when funds are insufficient. Returns:
+ //   'no_cost'   — catalogue item has no cost string (can't buy)
+ //   'unparseable' — cost exists but doesn't match "X gp" format (can't buy)
+ //   'affordable' — cost parsed and pouch >= cost
+ //   'unaffordable' — cost parsed but pouch < cost
+ function affordabilityFor(item: CatalogueItem): 'no_cost' | 'unparseable' | 'affordable' | 'unaffordable' {
+ if (!item.cost) return 'no_cost';
+ const parsed = parseCurrencyString(item.cost);
+ if (!parsed) return 'unparseable';
+ if (!currency) return 'unaffordable';  // no pouch = can't pay
+ return canAfford(currency, parsed) ? 'affordable' : 'unaffordable';
+ }
+
  return (
  <div
  style={{
@@ -88,8 +123,15 @@ function ItemPickerModal({ onAdd, onClose }: {
  {/* Header */}
  <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
  <div style={{ flex: 1 }}>
- <div style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)', marginBottom: 8 }}>
- Add Item
+ <div style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)', marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+ <span>Add Item</span>
+ {/* v2.137.0 — Phase L pt 5: pouch total in the header when merchant
+     flow is wired. Gives the player context for Buy affordability checks. */}
+ {onBuy && currency && (
+ <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--t-3)', letterSpacing: 0, textTransform: 'none' }}>
+ Pouch: <span style={{ color: 'var(--c-gold-l)' }}>{formatCurrency(currency)}</span>
+ </span>
+ )}
  </div>
  <input
  ref={searchRef}
@@ -175,6 +217,34 @@ function ItemPickerModal({ onAdd, onClose }: {
  minWidth: 68,
  }}
  >{isFlashing ? 'Added ✓' : '+ Add'}</button>
+ {/* v2.137.0 — Phase L pt 5: Buy button. Only renders when merchant
+     flow is wired (onBuy provided) AND the item has a parseable cost.
+     Greyed/disabled when pouch can't cover the cost. Hovering tells the
+     player what they're paying and what they have. */}
+ {onBuy && (() => {
+   const afford = affordabilityFor(item);
+   if (afford === 'no_cost' || afford === 'unparseable') return null;
+   const canPay = afford === 'affordable';
+   return (
+     <button
+       onClick={() => canPay && buyItem(item)}
+       disabled={!canPay}
+       title={canPay
+         ? `Deduct ${item.cost} from your pouch`
+         : `Can't afford (${item.cost}). Currently: ${currency ? formatCurrency(currency) : '0 cp'}.`}
+       style={{
+         fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 7,
+         cursor: canPay ? 'pointer' : 'not-allowed',
+         border: `1px solid ${canPay ? 'rgba(74,222,128,0.4)' : 'var(--c-border)'}`,
+         background: canPay ? 'rgba(74,222,128,0.08)' : 'transparent',
+         color: canPay ? '#4ade80' : 'var(--t-3)',
+         flexShrink: 0, opacity: canPay ? 1 : 0.5,
+         transition: 'all 0.2s',
+         minWidth: 56,
+       }}
+     >Buy</button>
+   );
+ })()}
  </div>
  {/* Row 2: tag strip */}
  {(chips.length > 0 || item.armorType) && (
@@ -384,6 +454,24 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  onUpdateInventory([...inventory, item]);
  }
 
+ // v2.137.0 — Phase L pt 5: merchant purchase. Runs add + deduct in
+ // sequence. Both onUpdateInventory and onUpdateCurrency route through
+ // applyUpdate → debouncedFlush (see CharacterSheet/index.tsx), so both
+ // writes batch into the same DB round-trip. If the deduct fails
+ // (insufficient funds — shouldn't happen since Buy is gated by
+ // affordabilityFor, but guard anyway), we abort without adding the item.
+ function buyFromCatalogue(catalogueItem: CatalogueItem, qty: number) {
+ if (!catalogueItem.cost) return;
+ const parsedCost = parseCurrencyString(catalogueItem.cost);
+ if (!parsedCost) return;
+ const newPouch = subtractCurrency(character.currency, parsedCost);
+ if (!newPouch) return;   // can't afford — defensive; button should be disabled
+ // Deduct first so that if anything downstream fails the item doesn't
+ // land in the inventory without payment.
+ onUpdateCurrency(newPouch);
+ addFromCatalogue(catalogueItem, qty);
+ }
+
  function toggleEquippedWithAC(id: string) {
  const item = inventory.find(i => i.id === id);
  if (!item) return;
@@ -582,6 +670,8 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  {showPicker && (
  <ItemPickerModal
  onAdd={(item, qty) => { addFromCatalogue(item, qty); }}
+ onBuy={(item, qty) => { buyFromCatalogue(item, qty); }}
+ currency={character.currency}
  onClose={() => setShowPicker(false)}
  />
  )}
