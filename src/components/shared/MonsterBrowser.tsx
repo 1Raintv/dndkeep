@@ -273,12 +273,37 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
         {/* Traits */}
         {m.traits && m.traits.length > 0 && (
           <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>
-            {m.traits.map(t => (
-              <div key={t.name} style={{ marginBottom: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{t.name}. </span>
-                <span style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{t.desc}</span>
-              </div>
-            ))}
+            {m.traits.map(t => {
+              // v2.141.0 — Phase M pt 4: surface the LR charge count inline
+              // with the Legendary Resistance trait entry. The trait's desc
+              // text doesn't include the "3/Day" count in SRD 2014 imports
+              // so without this badge the DM has no visual cue of how many
+              // charges the monster actually has. Read directly from
+              // legendary_resistance_count (backfilled in v2.138).
+              const isLrTrait = t.name === 'Legendary Resistance';
+              const showLrBadge = isLrTrait && (m.legendary_resistance_count ?? 0) > 0;
+              return (
+                <div key={t.name} style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{t.name}</span>
+                  {showLrBadge && (
+                    <span style={{
+                      marginLeft: 6,
+                      fontSize: 9, fontWeight: 800,
+                      padding: '1px 6px', borderRadius: 999,
+                      color: 'var(--c-gold-l)',
+                      background: 'rgba(212,160,23,0.12)',
+                      border: '1px solid var(--c-gold-bdr)',
+                      letterSpacing: '0.05em', textTransform: 'uppercase' as const,
+                      verticalAlign: 'middle',
+                    }}>
+                      🛡 {m.legendary_resistance_count}/Day
+                    </span>
+                  )}
+                  <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>. </span>
+                  <span style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{t.desc}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -345,7 +370,13 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
         {m.legendary_actions && m.legendary_actions.length > 0 && (
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#c084fc', marginBottom: 8 }}>
-              Legendary Actions{m.legendary_resistance_count ? ` (${m.legendary_resistance_count}/Day)` : ''}
+              {/* v2.141.0 — Phase M pt 4: LR is now surfaced on the
+                  Legendary Resistance TRAIT with its own charge badge
+                  (see traits render above). Previously this header read
+                  "Legendary Actions (3/Day)" which was confusing — that
+                  count describes LR per day, not LA per round. Header
+                  now just says "Legendary Actions". */}
+              Legendary Actions
             </div>
             {m.legendary_actions.map(la => (
               <div key={la.name} style={{ marginBottom: 6 }}>
