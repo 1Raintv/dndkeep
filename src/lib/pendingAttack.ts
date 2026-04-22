@@ -26,6 +26,7 @@ import {
   clearBuffsFromConcentration, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
+import { resolveAutomation } from './automations';
 import { CONDITION_MAP } from '../data/conditions';
 import type { PendingAttack, HitResult } from '../types';
 
@@ -1360,13 +1361,57 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   const { data: charRow } = await supabase
     .from('characters')
-    .select('id, concentration_spell, constitution, level, saving_throw_proficiencies')
+    .select('id, concentration_spell, constitution, level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked')
     .eq('id', part.entity_id)
     .single();
   if (!charRow) return;
 
   const concentrationSpell: string | null = (charRow as any).concentration_spell ?? null;
   if (!concentrationSpell) return;   // not concentrating — nothing to save
+
+  // v2.117.0 — Phase I: resolve the 'concentration_on_damage' automation
+  // via the three-tier system (character override if unlocked → campaign
+  // default → registry default). Off skips the save entirely; Auto runs the
+  // current logic; Prompt currently falls through to Auto — the full
+  // pending_concentration_saves table + modal lands in v2.119.
+  const { data: campaignRow } = await supabase
+    .from('campaigns')
+    .select('automation_defaults')
+    .eq('id', ctx.campaignId)
+    .maybeSingle();
+  const automationSetting = resolveAutomation(
+    'concentration_on_damage',
+    charRow as any,
+    campaignRow as any,
+  );
+
+  if (automationSetting === 'off') {
+    // Skipped — log it so the player/DM can see why concentration survived.
+    await emitCombatEvent({
+      campaignId: ctx.campaignId,
+      encounterId: ctx.encounterId,
+      chainId: ctx.chainId,
+      sequence: 60,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: 'self',
+      targetName: ctx.targetName,
+      eventType: 'automation_skipped',
+      payload: {
+        automation: 'concentration_on_damage',
+        reason: 'resolver_returned_off',
+        spell: concentrationSpell,
+        damage: ctx.damage,
+      },
+    });
+    return;
+  }
+
+  // 'prompt' — future: create pending_concentration_saves row and let the
+  // player's modal resolve it. For now we fall through to auto-roll, which
+  // matches 2024 RAW (the save is mandatory on damage).
+  // TODO v2.119: swap this fall-through for a pending-save row that the
+  // client-side modal picks up via realtime.
 
   const con = (charRow as any).constitution ?? 10;
   const lvl = (charRow as any).level ?? 1;
@@ -1406,6 +1451,9 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
       trigger: 'damage',
       damage: ctx.damage,
       concentration_spell: concentrationSpell,
+      // v2.117.0 — Phase I: log which automation tier resolved this save.
+      // Helpful when debugging why a player saw (or didn't see) a save.
+      automation_setting: automationSetting,
     },
   });
 
