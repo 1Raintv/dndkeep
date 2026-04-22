@@ -13,7 +13,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CONDITIONS } from '../../data/conditions';
-import { applyCondition } from '../../lib/conditions';
+import { applyCondition, adjustExhaustion } from '../../lib/conditions';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -40,6 +40,23 @@ export default function ConditionPickerModal({ participant, anchor, onClose }: P
     } finally {
       setBusyKey(null);
       onClose();
+    }
+  }
+
+  // v2.122.0 — Phase I polish: exhaustion level adjuster. Doesn't close the
+  // modal on each bump so the DM can +/− without reopening the picker.
+  async function handleExhaustionDelta(delta: number) {
+    if (busyKey) return;
+    setBusyKey('Exhaustion');
+    try {
+      await adjustExhaustion({
+        participantId: participant.id,
+        delta,
+        campaignId: participant.campaign_id,
+        encounterId: participant.encounter_id,
+      });
+    } finally {
+      setBusyKey(null);
     }
   }
 
@@ -125,6 +142,87 @@ export default function ConditionPickerModal({ participant, anchor, onClose }: P
           {CONDITIONS.map(cond => {
             const isActive = active.has(cond.name);
             const isBusy = busyKey === cond.name;
+
+            // v2.122.0 — Phase I polish: Exhaustion gets a dedicated row
+            // with inline level display (X/6) and +/−/Clear buttons. The
+            // main row still clicks-to-bump so the UX matches other
+            // conditions, but the secondary controls avoid the
+            // spam-click-then-reopen pattern.
+            if (cond.name === 'Exhaustion') {
+              const lvl = (participant.exhaustion_level as number | undefined) ?? 0;
+              const atMax = lvl >= 6;
+              return (
+                <div
+                  key={cond.name}
+                  title={cond.description}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 10px', borderRadius: 5,
+                    border: `1px solid ${lvl > 0 ? cond.color : 'var(--c-border)'}`,
+                    background: lvl > 0 ? `${cond.color}30` : '#080d14',
+                    minHeight: 0,
+                  }}
+                >
+                  <span style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: cond.color, flexShrink: 0,
+                    boxShadow: `0 0 6px ${cond.color}`,
+                  }} />
+                  <span style={{
+                    fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+                    color: lvl > 0 ? cond.color : 'var(--t-1)',
+                    flexShrink: 0,
+                  }}>
+                    Exhaustion
+                  </span>
+                  <span style={{
+                    fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 900,
+                    color: lvl > 0 ? cond.color : 'var(--t-3)',
+                    minWidth: 24, textAlign: 'center',
+                  }}>
+                    {lvl}/6
+                  </span>
+                  <span style={{
+                    fontFamily: 'var(--ff-body)', fontSize: 10,
+                    color: 'var(--t-3)',
+                    flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {lvl === 0
+                      ? '2024: −2/level to d20, −5 ft/level speed, 6 = death'
+                      : `−${2 * lvl} d20 · −${5 * lvl} ft speed${atMax ? ' · DEAD' : ''}`}
+                  </span>
+                  <button
+                    onClick={() => handleExhaustionDelta(-1)}
+                    disabled={isBusy || lvl === 0}
+                    title="Decrease level by 1"
+                    style={{
+                      fontSize: 11, fontWeight: 800,
+                      padding: '2px 8px', borderRadius: 4, minHeight: 0, minWidth: 0,
+                      border: `1px solid ${lvl > 0 ? cond.color : 'var(--c-border)'}`,
+                      background: 'transparent',
+                      color: lvl === 0 ? 'var(--t-3)' : cond.color,
+                      cursor: lvl === 0 ? 'default' : 'pointer',
+                      opacity: lvl === 0 ? 0.4 : 1,
+                    }}
+                  >−</button>
+                  <button
+                    onClick={() => handleExhaustionDelta(+1)}
+                    disabled={isBusy || atMax}
+                    title={atMax ? 'Already at level 6 (death)' : 'Increase level by 1'}
+                    style={{
+                      fontSize: 11, fontWeight: 800,
+                      padding: '2px 8px', borderRadius: 4, minHeight: 0, minWidth: 0,
+                      border: `1px solid ${cond.color}`,
+                      background: atMax ? 'transparent' : `${cond.color}30`,
+                      color: atMax ? 'var(--t-3)' : cond.color,
+                      cursor: atMax ? 'default' : 'pointer',
+                      opacity: atMax ? 0.4 : 1,
+                    }}
+                  >+</button>
+                </div>
+              );
+            }
+
             return (
               <button
                 key={cond.name}
@@ -189,7 +287,7 @@ export default function ConditionPickerModal({ participant, anchor, onClose }: P
           fontFamily: 'var(--ff-body)', fontSize: 9,
           color: 'var(--t-3)', fontStyle: 'italic',
         }}>
-          Tip: click a chip on the initiative tile to remove it.
+          Tip: click a chip on the initiative tile to remove it. Exhaustion uses +/− above.
         </div>
       </div>
     </>,

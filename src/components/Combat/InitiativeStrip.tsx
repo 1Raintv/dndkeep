@@ -236,11 +236,22 @@ export default function InitiativeStrip({ isDM }: Props) {
                   {visibleConds.map(cond => {
                     const meta = CONDITION_MAP[cond];
                     const chipColor = meta?.color ?? '#64748b';
+                    // v2.122.0 — Phase I polish: show exhaustion level as a
+                    // superscript digit on the chip so DMs can tell which
+                    // level the character is at without hovering.
+                    const isExhaustion = cond === 'Exhaustion';
+                    const exhaustionLvl = (p.exhaustion_level as number | undefined) ?? 0;
+                    const chipText = isExhaustion && exhaustionLvl > 0
+                      ? `EXH${exhaustionLvl}`
+                      : cond.slice(0, 4);
+                    const chipTitle = isExhaustion
+                      ? `Exhaustion ${exhaustionLvl} — −${2 * exhaustionLvl} to d20 rolls, −${5 * exhaustionLvl} ft speed${isDM ? ' (click to remove; click tile for +/−)' : ''}`
+                      : `${cond}${meta?.description ? ' — ' + meta.description : ''}${isDM ? ' (click to remove)' : ''}`;
                     return (
                       <span
                         key={cond}
                         onClick={isDM ? (e => handleRemoveCondition(e, cond)) : undefined}
-                        title={`${cond}${meta?.description ? ' — ' + meta.description : ''}${isDM ? ' (click to remove)' : ''}`}
+                        title={chipTitle}
                         style={{
                           fontSize: 8, fontWeight: 800,
                           padding: '1px 4px', borderRadius: 2,
@@ -253,7 +264,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {cond.slice(0, 4)}
+                        {chipText}
                       </span>
                     );
                   })}
