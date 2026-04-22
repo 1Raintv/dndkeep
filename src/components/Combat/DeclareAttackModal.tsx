@@ -8,6 +8,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
 import { declareAttack, declareMultiTargetAttack } from '../../lib/pendingAttack';
+import { emitCombatEvent } from '../../lib/combatEvents';
+import { supabase } from '../../lib/supabase';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -27,6 +29,12 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // v2.104.0 — Phase F pt 3c: multi-target AoE
   const [isMulti, setIsMulti] = useState(false);
   const [targetIds, setTargetIds] = useState<string[]>([]);
+  // v2.106.0 — Phase F pt 3e: map-positioned auto-target helper. Loads the
+  // active battle map's tokens so the DM can pick a center + radius and have
+  // DNDKeep check the targets automatically based on grid distance.
+  const [battleMapTokens, setBattleMapTokens] = useState<any[] | null>(null);
+  const [centerParticipantId, setCenterParticipantId] = useState<string>('');
+  const [radiusFt, setRadiusFt] = useState<string>('20');
   const [attackName, setAttackName] = useState('');
   const [kind, setKind] = useState<'attack_roll' | 'save' | 'auto_hit'>('attack_roll');
   const [attackBonus, setAttackBonus] = useState<string>('0');
@@ -38,6 +46,8 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // v2.103.0 — Phase F cover
   const [coverLevel, setCoverLevel] = useState<'none' | 'half' | 'three_quarters' | 'total'>('none');
   const [persistCover, setPersistCover] = useState(false);
+  // v2.105.0 — Phase F pt 3d: friendly-fire confirmation (R4)
+  const [friendlyFireAck, setFriendlyFireAck] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,6 +75,101 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
     setPersistCover(false);
   }, [attacker?.id, target?.id]);
 
+  // v2.105.0 — Phase F pt 3d: friendly-fire detection. Characters attacking
+  // other characters counts as friendly fire here (party-level heuristic —
+  // DNDKeep doesn't yet model explicit allegiance/factions). Monsters and
+  // NPCs hitting their own kind don't fire this warning since group alliances
+  // aren't tracked.
+  const friendlyFireTargets = useMemo(() => {
+    if (!isMulti) return [];
+    if (!attacker || attacker.participant_type !== 'character') return [];
+    return targetIds
+      .map(id => participants.find(p => p.id === id))
+      .filter((p): p is CombatParticipant =>
+        !!p && p.participant_type === 'character' && p.id !== attacker.id
+      );
+  }, [isMulti, attacker, targetIds, participants]);
+
+  // Reset confirmation any time the friendly-fire set changes (new targets
+  // added or removed), so the DM has to re-acknowledge after editing.
+  useEffect(() => {
+    setFriendlyFireAck(false);
+  }, [friendlyFireTargets.length]);
+
+  // v2.106.0 — Phase F pt 3e: load active battle map tokens when multi-target
+  // mode turns on. Used by the radius-based auto-select helper below.
+  useEffect(() => {
+    if (!isMulti) return;
+    let canceled = false;
+    supabase
+      .from('battle_maps')
+      .select('tokens')
+      .eq('campaign_id', campaignId)
+      .eq('active', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (canceled) return;
+        const tokens = (data?.tokens as any[]) ?? null;
+        setBattleMapTokens(tokens);
+      });
+    return () => { canceled = true; };
+  }, [isMulti, campaignId]);
+
+  // Map each participant to its grid position on the active battle map:
+  //   - character participant → token.character_id === participant.entity_id
+  //   - monster/npc → token.name ilike participant.name (best-effort)
+  // Tokens without row/col (drawer items, hidden) and participants without a
+  // matching token are simply absent from the map.
+  const participantPositions = useMemo(() => {
+    const map = new Map<string, { row: number; col: number }>();
+    if (!battleMapTokens) return map;
+    for (const p of participants) {
+      const token = battleMapTokens.find((t: any) => {
+        if (!t) return false;
+        if (p.participant_type === 'character') return t.character_id === p.entity_id;
+        return (t.name ?? '').toLowerCase() === p.name.toLowerCase();
+      });
+      if (token && typeof token.row === 'number' && typeof token.col === 'number') {
+        map.set(p.id, { row: token.row, col: token.col });
+      }
+    }
+    return map;
+  }, [battleMapTokens, participants]);
+
+  // Participants with positions are eligible to be the radius center. The
+  // default center is the attacker if they have one, else the first
+  // positioned participant.
+  useEffect(() => {
+    if (!isMulti) return;
+    if (centerParticipantId && participantPositions.has(centerParticipantId)) return;
+    const preferred =
+      (attacker && participantPositions.has(attacker.id) ? attacker.id : null)
+      ?? Array.from(participantPositions.keys())[0]
+      ?? '';
+    setCenterParticipantId(preferred);
+  }, [isMulti, attacker?.id, participantPositions, centerParticipantId]);
+
+  function handleAutoSelectByRadius() {
+    const centerPos = participantPositions.get(centerParticipantId);
+    if (!centerPos) return;
+    const radius = parseInt(radiusFt, 10) || 0;
+    const radiusCells = Math.floor(radius / 5);  // D&D 2024 standard 5 ft/square
+    const within: string[] = [];
+    for (const p of participants) {
+      if (p.id === attackerId) continue;
+      if (p.is_dead) continue;
+      const pos = participantPositions.get(p.id);
+      if (!pos) continue;
+      // Chebyshev distance (2024 PHB rule: diagonals count as 1 cell)
+      const dist = Math.max(
+        Math.abs(pos.row - centerPos.row),
+        Math.abs(pos.col - centerPos.col),
+      );
+      if (dist <= radiusCells) within.push(p.id);
+    }
+    setTargetIds(within);
+  }
+
   async function handleDeclare() {
     if (!attacker) { setError('Pick an attacker'); return; }
     if (!attackName.trim()) { setError('Enter an attack name'); return; }
@@ -73,6 +178,11 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
 
     if (isMulti) {
       if (targetIds.length === 0) { setError('Pick at least one target'); return; }
+      // v2.105.0 — Phase F pt 3d: require explicit ack before hitting allies
+      if (friendlyFireTargets.length > 0 && !friendlyFireAck) {
+        setError('Confirm hitting allies before declaring.');
+        return;
+      }
       setSaving(true);
       setError('');
 
@@ -104,6 +214,29 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
         persistCover,
         targets,
       });
+
+      // v2.105.0 — Phase F pt 3d: emit friendly-fire acknowledgement event so
+      // the log captures the DM's deliberate choice. Uses the chain_id from
+      // the first row (all siblings share it).
+      if (rows.length > 0 && friendlyFireTargets.length > 0) {
+        await emitCombatEvent({
+          campaignId,
+          encounterId: encounter?.id ?? null,
+          chainId: rows[0].chain_id,
+          sequence: 1,
+          actorType: attackerType === 'character' ? 'player' : 'monster',
+          actorName: attacker.name,
+          targetType: null,
+          targetName: friendlyFireTargets.map(t => t.name).join(', '),
+          eventType: 'friendly_fire_acknowledged',
+          payload: {
+            attack_name: attackName.trim(),
+            ally_targets: friendlyFireTargets.map(t => ({ id: t.id, name: t.name })),
+            ally_count: friendlyFireTargets.length,
+          },
+          visibility: 'public',
+        });
+      }
 
       setSaving(false);
       if (rows.length === 0) {
@@ -248,13 +381,24 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                 }}>
                   {selectable.filter(p => p.id !== attackerId).map(p => {
                     const checked = targetIds.includes(p.id);
+                    // v2.105.0 — Phase F pt 3d: flag allies (character target
+                    // when attacker is also a character) with a distinct
+                    // amber indicator so the DM sees friendly fire at a glance.
+                    const isAlly =
+                      checked
+                      && attacker?.participant_type === 'character'
+                      && p.participant_type === 'character';
                     return (
                       <label
                         key={p.id}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '4px 6px', borderRadius: 4,
-                          background: checked ? 'rgba(167,139,250,0.12)' : 'transparent',
+                          background:
+                            isAlly ? 'rgba(251,191,36,0.14)'
+                            : checked ? 'rgba(167,139,250,0.12)'
+                            : 'transparent',
+                          borderLeft: isAlly ? '2px solid #fbbf24' : '2px solid transparent',
                           cursor: 'pointer', fontSize: 11,
                         }}
                       >
@@ -271,6 +415,17 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                         <span style={{ flex: 1 }}>
                           {p.name} <span style={{ color: 'var(--t-3)' }}>· {p.participant_type}</span>
                         </span>
+                        {isAlly && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 800,
+                            padding: '1px 5px', borderRadius: 3,
+                            background: 'rgba(251,191,36,0.2)',
+                            color: '#fbbf24',
+                            letterSpacing: '0.06em', textTransform: 'uppercase',
+                          }}>
+                            Ally
+                          </span>
+                        )}
                         <span style={{ color: '#60a5fa', fontSize: 10 }}>AC {p.ac ?? '?'}</span>
                         <span style={{ color: 'var(--t-3)', fontSize: 10 }}>{p.current_hp}/{p.max_hp}</span>
                       </label>
@@ -280,6 +435,83 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
               )}
             </div>
           </div>
+
+          {/* v2.106.0 — Phase F pt 3e: radius auto-select helper. Visible
+              only in multi-target mode. Uses the active battle map's token
+              positions to pick targets within a given radius from a chosen
+              center, via Chebyshev distance (2024 PHB rule: diagonals count
+              as 1 cell, 5 ft each). */}
+          {isMulti && (
+            <div style={{
+              padding: 10, borderRadius: 6,
+              background: 'rgba(96,165,250,0.06)',
+              border: '1px solid rgba(96,165,250,0.25)',
+            }}>
+              <div style={{ ...labelStyle, color: '#60a5fa', marginBottom: 8 }}>
+                ⊙ Auto-select by Radius
+                {battleMapTokens === null && (
+                  <span style={{ color: 'var(--t-3)', marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0 }}>
+                    · loading map…
+                  </span>
+                )}
+              </div>
+              {participantPositions.size === 0 ? (
+                <div style={{ fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
+                  No active battle map, or no participants have tokens placed. Manual selection only.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <div style={{ ...labelStyle, marginBottom: 3 }}>Center on</div>
+                    <select
+                      value={centerParticipantId}
+                      onChange={e => setCenterParticipantId(e.target.value)}
+                      style={{ ...fieldStyle, width: '100%' }}
+                    >
+                      {Array.from(participantPositions.keys()).map(pid => {
+                        const p = participants.find(x => x.id === pid);
+                        if (!p) return null;
+                        return <option key={pid} value={pid}>{p.name}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ ...labelStyle, marginBottom: 3 }}>Radius (ft)</div>
+                    <input
+                      type="number"
+                      value={radiusFt}
+                      onChange={e => setRadiusFt(e.target.value)}
+                      style={{ ...fieldStyle, width: 72 }}
+                      placeholder="20"
+                      min={5}
+                      step={5}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAutoSelectByRadius}
+                    disabled={!centerParticipantId}
+                    style={{
+                      fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                      padding: '6px 12px', borderRadius: 5,
+                      border: '1px solid rgba(96,165,250,0.5)',
+                      background: 'rgba(96,165,250,0.15)',
+                      color: '#60a5fa',
+                      cursor: 'pointer', minHeight: 0,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                    }}
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
+              {participantPositions.size > 0 && participantPositions.size < participants.length - 1 && (
+                <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 6, fontStyle: 'italic' }}>
+                  {participants.length - 1 - participantPositions.size} participant(s) aren't on the map and won't be auto-selected.
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <div style={labelStyle}>Attack Name</div>
@@ -427,6 +659,37 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
             )}
           </div>
 
+          {/* v2.105.0 — Phase F pt 3d: friendly-fire confirmation (R4).
+              Rendered only when multi-target AoE will catch allies. Gates the
+              Declare button via friendlyFireAck state. */}
+          {isMulti && friendlyFireTargets.length > 0 && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 6,
+              background: 'rgba(251,191,36,0.1)',
+              border: '1px solid rgba(251,191,36,0.45)',
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+                <div style={{ flex: 1, fontSize: 12, color: '#fbbf24', lineHeight: 1.4 }}>
+                  <strong>Friendly fire:</strong> This AoE will hit {friendlyFireTargets.length} {friendlyFireTargets.length === 1 ? 'ally' : 'allies'} — <span style={{ color: 'var(--t-2)' }}>{friendlyFireTargets.map(t => t.name).join(', ')}</span>.
+                </div>
+              </div>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 11, color: 'var(--t-2)', cursor: 'pointer', userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={friendlyFireAck}
+                  onChange={e => setFriendlyFireAck(e.target.checked)}
+                  style={{ margin: 0 }}
+                />
+                I confirm this attack will hit my allies.
+              </label>
+            </div>
+          )}
+
           {error && (
             <div style={{
               padding: '8px 12px', borderRadius: 6,
@@ -445,8 +708,11 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
           <button
             className="btn-gold"
             onClick={handleDeclare}
-            disabled={saving}
-            style={{ fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 800, padding: '6px 18px' }}
+            disabled={saving || (friendlyFireTargets.length > 0 && !friendlyFireAck)}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 800, padding: '6px 18px',
+              opacity: (friendlyFireTargets.length > 0 && !friendlyFireAck) ? 0.5 : 1,
+            }}
           >
             {saving ? 'Declaring…' : 'Declare Attack'}
           </button>

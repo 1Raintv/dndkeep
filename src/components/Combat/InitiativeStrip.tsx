@@ -74,6 +74,30 @@ export default function InitiativeStrip({ isDM }: Props) {
           color: 'var(--t-2)',
         }}>
           Now: <span style={{ color: 'var(--c-gold-l)' }}>{currentActor?.name ?? '—'}</span>
+          {/* v2.107.0 — Phase G: remaining movement chip for the current actor. */}
+          {currentActor && currentActor.max_speed_ft != null && (() => {
+            const used = currentActor.movement_used_ft ?? 0;
+            const max = currentActor.max_speed_ft;
+            const remaining = Math.max(0, max - used);
+            const pct = max > 0 ? used / max : 0;
+            const color = pct >= 1 ? '#f87171' : pct >= 0.67 ? '#fbbf24' : '#60a5fa';
+            return (
+              <span
+                title={`${used} / ${max} ft used this turn — ${remaining} ft remaining`}
+                style={{
+                  marginLeft: 8,
+                  fontFamily: 'var(--ff-stat)',
+                  fontSize: 10, fontWeight: 800,
+                  padding: '1px 6px', borderRadius: 3,
+                  color,
+                  background: `${color}20`,
+                  border: `1px solid ${color}40`,
+                }}
+              >
+                {remaining}/{max} ft
+              </span>
+            );
+          })()}
         </span>
       </div>
 

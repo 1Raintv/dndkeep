@@ -4,6 +4,8 @@ import { useMonsters } from '../../lib/hooks/useMonsters';
 import type { MonsterData } from '../../types';
 import { DMRollRequestPanel } from './RollRequest';
 import { logRoll } from '../CharacterSheet/QuickRoll';
+import { useCombat } from '../../context/CombatContext';
+import { computeChebyshevFt, canMove, logMovement } from '../../lib/movement';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface MapToken {
@@ -821,6 +823,11 @@ function NPCEditForm({ npc, onSave, onCancel }:{
 
 // ── Main BattleMap ─────────────────────────────────────────────────
 export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[], onConditionApplied, myCharacterId }:BattleMapProps) {
+  // v2.107.0 — Phase G: read active encounter + participants for movement
+  // tracking. BattleMap is mounted inside CombatProvider at the dashboard
+  // level, so this hook is always available.
+  const { encounter: combatEncounter, participants: combatParticipants } = useCombat();
+
   const [maps,setMaps]=useState<BattleMapData[]>([]);
   const [activeMap,setActiveMap]=useState<BattleMapData|null>(null);
   const [selectedTokenId,setSelectedTokenId]=useState<string|null>(null);
@@ -1112,12 +1119,58 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     e.dataTransfer.setData('tokenId',tokenId);
     setDraggingTokenId(tokenId);
   }
-  function handleCellDrop(e:React.DragEvent,col:number,row:number){
+  async function handleCellDrop(e:React.DragEvent,col:number,row:number){
     e.preventDefault();
     const tokenId=e.dataTransfer.getData('tokenId');
     if(!tokenId||!activeMap)return;
     if(activeMap.tokens.find(t=>t.col===col&&t.row===row&&t.id!==tokenId))return;
-    updateToken(tokenId,{col,row},false); // debounced position save
+
+    const token=activeMap.tokens.find(t=>t.id===tokenId);
+    if(!token){ setDraggingTokenId(null); return; }
+    const fromRow=token.row, fromCol=token.col;
+
+    // v2.107.0 — Phase G: if we're in active combat, look up the matching
+    // participant and hard-block moves that exceed remaining movement.
+    //   characters → match by token.character_id
+    //   monsters/npcs → match by name (case-insensitive)
+    let participant = null as typeof combatParticipants[number] | null;
+    if (combatEncounter && combatEncounter.status === 'active') {
+      participant = combatParticipants.find(p =>
+        p.participant_type === 'character'
+          ? p.entity_id === token.character_id
+          : p.name.toLowerCase() === token.name.toLowerCase()
+      ) ?? null;
+    }
+
+    if (participant) {
+      const distance = computeChebyshevFt(fromRow, fromCol, row, col);
+      const check = await canMove(participant.id, distance);
+      if (!check.allowed) {
+        // Silent UI would be worse than a clear message here — the DM/player
+        // needs to know why their drag didn't stick.
+        // eslint-disable-next-line no-alert
+        window.alert(
+          `Not enough movement.\n\n` +
+          `Requested: ${distance} ft\n` +
+          `Remaining: ${check.remaining} ft (of ${check.maxSpeed} ft total, ${check.currentUsed} ft used).`
+        );
+        setDraggingTokenId(null);
+        return;
+      }
+      updateToken(tokenId,{col,row},false);
+      await logMovement({
+        campaignId,
+        encounterId: combatEncounter!.id,
+        participantId: participant.id,
+        participantName: participant.name,
+        participantType: participant.participant_type,
+        fromRow, fromCol,
+        toRow: row, toCol: col,
+        distanceFt: distance,
+      });
+    } else {
+      updateToken(tokenId,{col,row},false);
+    }
     setDraggingTokenId(null);
   }
 

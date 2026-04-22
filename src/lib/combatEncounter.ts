@@ -46,6 +46,8 @@ export interface SeedSource {
   dexMod: number;
   initiativeBonus: number;
   hiddenFromPlayers?: boolean;
+  /** v2.107.0 — Phase G: max walking speed in feet. */
+  maxSpeedFt?: number;
 }
 
 export function characterToSeed(c: Character): SeedSource {
@@ -59,6 +61,7 @@ export function characterToSeed(c: Character): SeedSource {
     dexMod: abilityModifier(c.dexterity ?? 10),
     initiativeBonus: (c as any).initiative_bonus ?? 0,
     hiddenFromPlayers: false,
+    maxSpeedFt: (c as any).speed ?? 30,
   };
 }
 
@@ -73,6 +76,7 @@ export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSo
     dexMod: abilityModifier(m.dex ?? 10),
     initiativeBonus: 0,
     hiddenFromPlayers,
+    maxSpeedFt: (m as any).speed ?? 30,
   };
 }
 
@@ -147,6 +151,7 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
       current_hp: s.hp,
       max_hp: s.maxHp,
       hidden_from_players: s.hiddenFromPlayers ?? false,
+      max_speed_ft: s.maxSpeedFt ?? 30,
     };
   });
 

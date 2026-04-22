@@ -558,6 +558,9 @@ export interface CombatParticipant {
   is_dead: boolean;
   active_conditions: string[];
   concentration_spell_id: string | null;
+  /** v2.107.0 — Phase G: persisted max walking speed in feet, captured at
+   *  encounter-start time from the underlying character/monster. */
+  max_speed_ft?: number;
   /** v2.103.0 — Phase F cover tagging. Per-attacker cover state on this
    *  participant as the target. Shape: { [attackerParticipantId]: 'half' |
    *  'three_quarters' | 'total' }. Used as the auto-populated default in
