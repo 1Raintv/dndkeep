@@ -304,6 +304,20 @@ export function conditionsSpeedZero(conditions: string[]): boolean {
   return false;
 }
 
+/**
+ * v2.135.0 — Phase L pt 3. Is the target's speed halved by a condition?
+ * Currently only Encumbered uses this. Callers that compute effective
+ * speed should multiply by 0.5 when this returns true (after applying any
+ * speedZero check, which always wins).
+ */
+export function conditionsSpeedHalved(conditions: string[]): boolean {
+  for (const c of conditions) {
+    const m = CONDITION_MAP[c];
+    if (m?.speedHalved) return true;
+  }
+  return false;
+}
+
 // ─── Concentration break cleanup ─────────────────────────────────
 // v2.111.0 — Phase H pt 2: when a caster drops concentration, every condition
 // they placed via that spell comes off automatically. We match on:

@@ -10,6 +10,10 @@ export interface ConditionMechanic {
   autoFailSaves?: ('strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma')[];
   abilityCheckDisadvantage?: boolean;
   speedZero?: boolean;
+  // v2.135.0 — Phase L pt 3: used by Encumbered. Speed is halved rather
+  // than zeroed. Consumed by conditionsSpeedHalved(); full movement-code
+  // integration is future polish (v2.136+).
+  speedHalved?: boolean;
   concentrationBreaks?: boolean;
   cantAct?: boolean;
   cantReact?: boolean;
@@ -37,6 +41,16 @@ export const CONDITIONS: ConditionMechanic[] = [
   { name: 'Stunned', description: "Overwhelmed — incapacitated.", effects: ["No actions or reactions.", "Can't move.", "Auto-fail Str/Dex saves.", "Attacks have advantage."], cantAct: true, cantReact: true, cantMove: true, concentrationBreaks: true, autoFailSaves: ['strength', 'dexterity'], attackAdvantageReceived: true, color: '#7c3aed', icon: '' },
   { name: 'Unconscious', description: "Inert. Auto-crits from within 5ft.", effects: ["Incapacitated, falls prone.", "Auto-fail Str/Dex saves.", "Attacks have advantage.", "Within 5ft = critical hit."], cantAct: true, cantReact: true, cantMove: true, concentrationBreaks: true, autoFailSaves: ['strength', 'dexterity'], attackAdvantageReceived: true, critWithin5ft: true, color: '#1e1b4b', icon: '' },
   { name: 'Bloodied', description: "Below half HP. Some monsters react.", effects: ["No direct mechanical effect.", "Some monsters have Bloodied reactions."], color: '#dc2626', icon: '' },
+  // v2.135.0 — Phase L pt 3: auto-applied/removed by syncEncumbranceCondition
+  // when a character's carried weight exceeds their capacity. Not a RAW
+  // "condition" per se — the PHB describes Encumbered as a state rather
+  // than listing it with the 14 formal conditions — but routing it through
+  // the same pipeline lets it participate in the existing disadvantage/
+  // speed-penalty machinery. RAW 2024 p.29: disadvantage on STR/DEX/CON
+  // ability checks, saves, and attack rolls; speed halved. The
+  // attackDisadvantage flag here is a broad approximation (covers
+  // non-STR-based attacks too) — DM adjudicates finesse weapons etc.
+  { name: 'Encumbered', description: "Overburdened. Speed halved, disadvantage on STR/DEX/CON rolls.", effects: ["Speed halved.", "Disadvantage on attacks.", "Disadvantage on STR/DEX/CON checks + saves."], attackDisadvantage: true, savingThrowDisadvantage: ['strength','dexterity','constitution'], speedHalved: true, color: '#a16207', icon: '' },
 ];
 
 export const CONDITION_MAP: Record<string, ConditionMechanic> = Object.fromEntries(

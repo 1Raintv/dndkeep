@@ -499,6 +499,13 @@ export interface Campaign {
   // Automation framework — see src/lib/automations.ts
   automation_defaults: Record<string, 'off' | 'prompt' | 'auto'>;
 
+  // v2.135.0 — Phase L pt 3: auto-apply Encumbered condition when a
+  // character's carried weight exceeds their capacity.
+  //   'off'     — no auto-application (DM manages manually)
+  //   'base'    — 2024 PHB base rule: Encumbered at > STR × 15 lbs
+  //   'variant' — optional 3-tier rule: > STR × 5 / > STR × 10 / > STR × 15
+  encumbrance_variant?: 'off' | 'base' | 'variant';
+
   // v2.96.0 — Phase D: combat state machine settings
   combat_automation_settings?: CombatAutomationSettings;
 }

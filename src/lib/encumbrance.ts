@@ -165,3 +165,97 @@ export function variantSpeedPenaltyFt(status: EncumbranceStatus): number {
     case 'over_max':     return -999;
   }
 }
+
+// v2.135.0 — Phase L pt 3: bridge between carried weight and Phase H's
+// condition pipeline. Call this whenever a character's inventory, currency,
+// or strength changes (or at combat encounter start).
+//
+// Behavior matrix:
+//   variant='off'         → no-op regardless of weight
+//   should be encumbered  → apply 'Encumbered' with source='encumbrance'
+//                           IF the condition isn't already present
+//   should NOT be enc.    → remove 'Encumbered' ONLY if it was applied by
+//                           this sync (source === 'encumbrance'). DM-applied
+//                           Encumbered (e.g. a homebrew circumstance) is
+//                           left alone — we never clobber manual tags.
+//
+// Runs against the character's ACTIVE combat_participant row (looked up by
+// entity_id = character.id + participant_type = 'character'). If the
+// character isn't currently in combat, the sync exits quietly — encumbrance
+// is a combat-time concern (mechanical disadvantage); narrative effects
+// out of combat are the DM's call.
+//
+// Dynamic imports (supabase, applyCondition, removeCondition) avoid the
+// cyclic dependency that would form with static imports of './conditions'.
+
+export interface SyncEncumbranceConditionInput {
+  characterId: string;
+  character: Character;
+  /** Optional pre-fetched variant (saves a DB round-trip). If omitted and
+   *  campaignId is provided, the helper looks it up from the campaigns row. */
+  variant?: 'off' | 'base' | 'variant';
+  campaignId?: string;
+  encounterId?: string | null;
+}
+
+export async function syncEncumbranceCondition(
+  input: SyncEncumbranceConditionInput,
+): Promise<void> {
+  const { supabase } = await import('./supabase');
+
+  // Resolve the variant setting. Prefer caller-provided value; otherwise
+  // look it up on the campaigns row. Missing campaign → default to 'off'
+  // (safe conservative — no auto-application unless DM opted in).
+  let variant = input.variant;
+  if (!variant && input.campaignId) {
+    const { data: camp } = await supabase
+      .from('campaigns')
+      .select('encumbrance_variant')
+      .eq('id', input.campaignId)
+      .maybeSingle();
+    variant = ((camp?.encumbrance_variant as any) ?? 'off') as 'off' | 'base' | 'variant';
+  }
+  if (!variant || variant === 'off') return;
+
+  const shouldBeEncumbered = isEncumbered(
+    input.character,
+    variant === 'variant' ? 'variant' : 'base',
+  );
+
+  // Find the character's active combat participant, if any.
+  const { data: part } = await supabase
+    .from('combat_participants')
+    .select('id, active_conditions, condition_sources, campaign_id, encounter_id')
+    .eq('entity_id', input.characterId)
+    .eq('participant_type', 'character')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!part) return;   // not in combat — encumbrance is narrative only
+
+  const conditions: string[] = (part.active_conditions ?? []) as string[];
+  const sources = (part.condition_sources ?? {}) as Record<string, { source?: string }>;
+  const hasEncumbered = conditions.includes('Encumbered');
+  const currentSource = sources['Encumbered']?.source;
+
+  if (shouldBeEncumbered && !hasEncumbered) {
+    const { applyCondition } = await import('./conditions');
+    await applyCondition({
+      participantId: part.id as string,
+      conditionName: 'Encumbered',
+      source: 'encumbrance',
+      campaignId: (part.campaign_id ?? input.campaignId) as string | undefined,
+      encounterId: (part.encounter_id ?? input.encounterId) as string | null | undefined,
+    });
+  } else if (!shouldBeEncumbered && hasEncumbered && currentSource === 'encumbrance') {
+    // Only remove if WE set it. Leaves DM/homebrew tags alone.
+    const { removeCondition } = await import('./conditions');
+    await removeCondition({
+      participantId: part.id as string,
+      conditionName: 'Encumbered',
+      campaignId: (part.campaign_id ?? input.campaignId) as string | undefined,
+      encounterId: (part.encounter_id ?? input.encounterId) as string | null | undefined,
+    });
+  }
+  // else: already in the correct state, no-op
+}

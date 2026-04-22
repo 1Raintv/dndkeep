@@ -391,6 +391,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
   pendingRef.current = { ...pendingRef.current, ...partial };
   if (immediate) flushToSupabase();
   else debouncedFlush();
+
+  // v2.135.0 — Phase L pt 3: if carried weight or Strength changed, bridge
+  // to the condition pipeline so Encumbered auto-applies/clears. No-op
+  // out of combat (no participant row) and no-op when campaign has
+  // encumbrance_variant='off' (the default). Fire-and-forget — like
+  // history logging, this must never break the update path.
+  if ('inventory' in partial || 'currency' in partial || 'strength' in partial) {
+    if (character.campaign_id) {
+      const merged: Character = { ...character, ...partial };
+      import('../../lib/encumbrance').then(({ syncEncumbranceCondition }) => {
+        syncEncumbranceCondition({
+          characterId: character.id,
+          character: merged,
+          campaignId: character.campaign_id!,
+        }).catch(() => { /* swallow — encumbrance sync never blocks the save path */ });
+      });
+    }
+  }
  }
 
  /** Persist concentration spell ID immediately to DB so it survives refresh.
