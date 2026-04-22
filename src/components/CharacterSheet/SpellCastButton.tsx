@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
 import BuffTargetPickerModal from '../Combat/BuffTargetPickerModal';
 import DeclareSpellCastModal from '../Combat/DeclareSpellCastModal';
+import SpellTargetPickerModal from '../Combat/SpellTargetPickerModal';
 import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
@@ -88,6 +89,17 @@ export default function SpellCastButton({
    target: string;
    encounterId: string;
    casterParticipantId: string;
+ } | null>(null);
+
+ // v2.148.0 — Phase O pt 1: multi-target save spell picker. When set,
+ // opens SpellTargetPickerModal which routes the cast through
+ // declareMultiTargetAttack, auto-populating save DC / save ability /
+ // damage dice / damage type / per-target cover. Deferred from the Cast
+ // button click — slot burn happens in onDeclared, not on open, so a
+ // player can cancel the picker without losing the slot.
+ const [aoePicker, setAoePicker] = useState<{
+   slotLevel: number;
+   damageDice: string;
  } | null>(null);
 
  function flashCast(slotLevel: number) {
@@ -753,34 +765,56 @@ export default function SpellCastButton({
  >
  {mechanics.damageDice} {mechanics.damageType}
  </button>
- {/* v2.101.0 — Phase F: in-combat save-based single-target spell. DM
-     rolls the save from the DeclareAttackModal's follow-up (future
-     ship) or manually; for now the pipeline fires through and the DM
-     applies full damage on fail / half on pass per the
-     saveSuccessEffect setting inside rollDamage. */}
- {character.id && (() => {
+ {/* v2.101.0 — Phase F: in-combat save-based single-target spell via
+     PlayerAttackButton.
+     v2.148.0 — Phase O pt 1: for AoE save spells (area_of_effect set),
+     route through SpellTargetPickerModal instead — one pending_attacks
+     row per picked target via declareMultiTargetAttack. PlayerAttackButton
+     remains for single-target save spells (Dissonant Whispers etc.). */}
+ {character.id && campaignId && (() => {
  const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
  const dice = upcast.extraDice
  ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
  : mechanics.damageDice!;
+ const isAoE = !!spell.area_of_effect;
+ if (isAoE) {
+   // Multi-target flow — button opens my picker.
+   const shape = spell.area_of_effect!.type;
+   const size = spell.area_of_effect!.size;
+   return (
+     <button
+       onClick={() => setAoePicker({ slotLevel: effSlot, damageDice: dice })}
+       title={`${size}ft ${shape} · ${mechanics.saveType} DC ${saveDC} save · ${dice} ${mechanics.damageType ?? 'damage'} (half on save). Click to pick targets and declare through the combat pipeline.`}
+       style={{
+         ...btnBase,
+         background: 'rgba(167,139,250,0.15)',
+         border: '1px solid rgba(167,139,250,0.5)',
+         color: '#a78bfa', fontWeight: 700,
+       }}
+     >
+       ⚔ AoE {size}ft · DC {saveDC} {mechanics.saveType}
+     </button>
+   );
+ }
+ // Single-target save: existing PlayerAttackButton path.
  return (
- <PlayerAttackButton
- characterId={character.id}
- attackKind="save"
- saveDC={saveDC}
- saveAbility={mechanics.saveType as any}
- saveSuccessEffect="half"
- damageDice={dice}
- damageType={mechanics.damageType ?? ''}
- attackName={spell.name}
- source="spell"
- compact
- label={`⚔ ${mechanics.saveType} DC ${saveDC}`}
- onDeclared={() => {
- if (!isCantrip) spendSlot(effSlot);
- flashCast(effSlot);
- }}
- />
+   <PlayerAttackButton
+     characterId={character.id}
+     attackKind="save"
+     saveDC={saveDC}
+     saveAbility={mechanics.saveType as any}
+     saveSuccessEffect="half"
+     damageDice={dice}
+     damageType={mechanics.damageType ?? ''}
+     attackName={spell.name}
+     source="spell"
+     compact
+     label={`⚔ ${mechanics.saveType} DC ${saveDC}`}
+     onDeclared={() => {
+       if (!isCantrip) spendSlot(effSlot);
+       flashCast(effSlot);
+     }}
+   />
  );
  })()}
  </>
@@ -1163,6 +1197,27 @@ export default function SpellCastButton({
    // 'canceled': user aborted after declaring. Slot already spent; no effect.
  }}
  onClose={() => setDeclarePending(null)}
+ />
+ )}
+ {/* v2.148.0 — Phase O pt 1: multi-target save spell picker. Opens when
+     the AoE save button is clicked. onDeclared burns the slot + sets
+     concentration; picker cancel leaves slot unspent. */}
+ {aoePicker && campaignId && (
+ <SpellTargetPickerModal
+ open={true}
+ onClose={() => setAoePicker(null)}
+ spell={spell}
+ slotLevel={aoePicker.slotLevel}
+ effectiveDamageDice={aoePicker.damageDice}
+ saveDC={saveDC}
+ character={character}
+ campaignId={campaignId}
+ onDeclared={() => {
+ if (!isCantrip) spendSlot(aoePicker.slotLevel);
+ flashCast(aoePicker.slotLevel);
+ onLeveledSpellCast?.(isBonusActionCast);
+ if (spell.concentration) onConcentrationCast?.();
+ }}
  />
  )}
  </>
