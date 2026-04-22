@@ -278,20 +278,40 @@ REACTION_REGISTRY.push({
     // only" timing yet (Phase I work), so the rider simply persists until
     // consumed by the first qualifying attack.
     const damageType = (attack.damage_type ?? '').toLowerCase();
-    const { applyBuff } = await import('./buffs');
-    await applyBuff({
-      participantId: offer.reactor_participant_id,
-      buff: {
-        key: 'absorb_elements_rider',
-        name: 'Absorb Elements rider',
-        source: 'reaction:absorb_elements',
-        damageRider: { dice: '1d6', damageType },
-        onlyMelee: true,
-        singleUse: true,
-      },
-      campaignId: attack.campaign_id,
-      encounterId: attack.encounter_id,
-    });
+
+    // v2.119.0 — Phase I: respect the 'absorb_elements_rider_auto' automation.
+    // When off, the damage halving still happens but the rider isn't auto-
+    // applied — the player tracks it manually. Uses reactor's character for
+    // per-character override + campaign default.
+    const { data: campRow } = await supabase
+      .from('campaigns')
+      .select('automation_defaults')
+      .eq('id', attack.campaign_id)
+      .maybeSingle();
+    const { resolveAutomation } = await import('./automations');
+    const riderSetting = resolveAutomation(
+      'absorb_elements_rider_auto',
+      reactorCharacter as any,
+      campRow as any,
+    );
+    let riderApplied = false;
+    if (riderSetting !== 'off') {
+      const { applyBuff } = await import('./buffs');
+      await applyBuff({
+        participantId: offer.reactor_participant_id,
+        buff: {
+          key: 'absorb_elements_rider',
+          name: 'Absorb Elements rider',
+          source: 'reaction:absorb_elements',
+          damageRider: { dice: '1d6', damageType },
+          onlyMelee: true,
+          singleUse: true,
+        },
+        campaignId: attack.campaign_id,
+        encounterId: attack.encounter_id,
+      });
+      riderApplied = true;
+    }
 
     await emitCombatEvent({
       campaignId: attack.campaign_id,
@@ -312,7 +332,8 @@ REACTION_REGISTRY.push({
         rider: {
           description: '+1d6 of triggering damage type on your next melee attack',
           damage_type: attack.damage_type,
-          applied: true,  // v2.114.0 — rider now auto-applied via buff pipeline
+          applied: riderApplied,
+          automation_setting: riderSetting,
         },
       },
     });
@@ -513,6 +534,19 @@ export async function offerOpportunityAttacks(
 ): Promise<number> {
   // Disengaged suppresses all OAs per 2024 PHB
   if (input.moverDisengaged) return 0;
+
+  // v2.119.0 — Phase I: respect the 'opportunity_attack_offers' automation.
+  // When campaign default is 'off', no offers are created (gritty manual
+  // call-out). Per-character override isn't meaningful here since OA offers
+  // are cross-creature — we only check the campaign default.
+  const { data: campRow } = await supabase
+    .from('campaigns')
+    .select('automation_defaults')
+    .eq('id', input.campaignId)
+    .maybeSingle();
+  const { resolveAutomation } = await import('./automations');
+  const oaSetting = resolveAutomation('opportunity_attack_offers', null, campRow as any);
+  if (oaSetting === 'off') return 0;
 
   // Load the campaign's active battle map tokens so we can find who's where
   const { data: bm } = await supabase

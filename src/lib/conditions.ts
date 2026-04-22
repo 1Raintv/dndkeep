@@ -71,7 +71,43 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
 
   // Walk cascade tree (depth 1 — no deep recursion; PHB cascades never chain)
   const cascaded = CASCADE[input.conditionName] ?? [];
-  for (const c of cascaded) toApply.add(c);
+
+  // v2.119.0 — Phase I: respect the 'condition_cascade_auto' automation.
+  // When resolved to 'off', only the named condition is applied — cascades
+  // are left to the DM to manage manually. Per-character override supported
+  // for character participants (via automation_overrides on characters).
+  if (cascaded.length > 0) {
+    let charAutoRow: any = null;
+    if (part.participant_type === 'character') {
+      const { data: entity } = await supabase
+        .from('combat_participants')
+        .select('entity_id')
+        .eq('id', input.participantId)
+        .maybeSingle();
+      if (entity?.entity_id) {
+        const { data: ch } = await supabase
+          .from('characters')
+          .select('automation_overrides, advanced_automations_unlocked')
+          .eq('id', entity.entity_id as string)
+          .maybeSingle();
+        charAutoRow = ch;
+      }
+    }
+    const { data: campRow } = await supabase
+      .from('campaigns')
+      .select('automation_defaults')
+      .eq('id', part.campaign_id as string)
+      .maybeSingle();
+    const { resolveAutomation } = await import('./automations');
+    const cascadeSetting = resolveAutomation(
+      'condition_cascade_auto',
+      charAutoRow,
+      campRow as any,
+    );
+    if (cascadeSetting !== 'off') {
+      for (const c of cascaded) toApply.add(c);
+    }
+  }
 
   const nextConditions = [...existing];
   let actuallyApplied: string[] = [];

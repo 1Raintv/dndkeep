@@ -46,6 +46,30 @@ export const AUTOMATIONS: readonly AutomationDef[] = [
     default: 'prompt',
     allowed: ['off', 'prompt', 'auto'] as const,
   },
+  {
+    key: 'opportunity_attack_offers',
+    label: 'Opportunity Attack offers',
+    description:
+      "When a creature moves out of another creature's 5-ft reach, offer the reactor a chance to make an Opportunity Attack. Off: no offers (gritty RAW manual call-out). Auto: offer appears automatically. Prompt currently behaves like Auto since the offer itself is the prompt.",
+    default: 'auto',
+    allowed: ['off', 'auto'] as const,
+  },
+  {
+    key: 'condition_cascade_auto',
+    label: 'Auto-cascade conditions',
+    description:
+      'When a condition like Unconscious or Paralyzed is applied, automatically also apply the conditions it implies (Unconscious → Prone + Incapacitated; Paralyzed/Stunned/Petrified → Incapacitated). Off: only the named condition is applied — DM manages cascades manually. Auto: cascades fire per 2024 PHB.',
+    default: 'auto',
+    allowed: ['off', 'auto'] as const,
+  },
+  {
+    key: 'absorb_elements_rider_auto',
+    label: 'Auto-apply Absorb Elements rider',
+    description:
+      "When Absorb Elements is cast as a reaction, automatically apply the +1d6 melee damage rider buff to the caster. Off: damage is halved but the rider must be tracked manually (the player can apply it via the buff UI). Auto: buff applied automatically and consumed on the next melee hit.",
+    default: 'auto',
+    allowed: ['off', 'auto'] as const,
+  },
   // Future automations go here. Keep key strings stable once shipped.
 ];
 

@@ -9,6 +9,7 @@ import { useSpells } from '../../lib/hooks/useSpells';
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import ReactionPromptModal from '../Combat/ReactionPromptModal';
+import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
@@ -3066,6 +3067,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <InitiativeStrip isDM={false} />
  {/* v2.98.0 — Phase E: reaction prompt for this character */}
  {character.campaign_id && <ReactionPromptModal campaignId={character.campaign_id} />}
+ {/* v2.118.0 — Phase I pt 2: concentration save prompt when automation is 'prompt' */}
+ <ConcentrationSavePromptModal characterId={character.id} />
  </CombatProvider>
  );
 }

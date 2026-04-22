@@ -1407,12 +1407,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
     return;
   }
 
-  // 'prompt' — future: create pending_concentration_saves row and let the
-  // player's modal resolve it. For now we fall through to auto-roll, which
-  // matches 2024 RAW (the save is mandatory on damage).
-  // TODO v2.119: swap this fall-through for a pending-save row that the
-  // client-side modal picks up via realtime.
-
+  // v2.118.0 — Phase I pt 2: compute save mechanics once, used by both paths.
   const con = (charRow as any).constitution ?? 10;
   const lvl = (charRow as any).level ?? 1;
   const profs: string[] = ((charRow as any).saving_throw_proficiencies ?? []) as string[];
@@ -1423,13 +1418,93 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
   const bonus = conMod + (hasConProf ? pb : 0);
   const dc = Math.max(10, Math.floor(ctx.damage / 2));
 
+  // 'prompt' branch: insert a pending_concentration_saves row and return.
+  // The player's modal subscribes via realtime, shows the damage/DC/spell,
+  // and on click calls resolvePendingConcentrationSave which reuses the
+  // same roll-and-drop logic as the auto path.
+  if (automationSetting === 'prompt') {
+    const PROMPT_TIMEOUT_SECONDS = 120;
+    const offeredAt = new Date();
+    const expiresAt = new Date(offeredAt.getTime() + PROMPT_TIMEOUT_SECONDS * 1000);
+    await supabase
+      .from('pending_concentration_saves')
+      .insert({
+        campaign_id: ctx.campaignId,
+        encounter_id: ctx.encounterId,
+        chain_id: ctx.chainId,
+        participant_id: ctx.participantId,
+        character_id: (charRow as any).id,
+        spell_name: concentrationSpell,
+        damage: ctx.damage,
+        dc,
+        con_bonus: bonus,
+        has_con_prof: hasConProf,
+        state: 'offered',
+        offered_at: offeredAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+    await emitCombatEvent({
+      campaignId: ctx.campaignId,
+      encounterId: ctx.encounterId,
+      chainId: ctx.chainId,
+      sequence: 60,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: 'self',
+      targetName: ctx.targetName,
+      eventType: 'concentration_save_prompted',
+      payload: {
+        spell: concentrationSpell,
+        dc,
+        damage: ctx.damage,
+        expires_in_seconds: PROMPT_TIMEOUT_SECONDS,
+        automation_setting: 'prompt',
+      },
+    });
+    return;
+  }
+
+  // 'auto' branch: roll and resolve inline.
+  await performConcentrationSave({
+    ctx,
+    charId: (charRow as any).id,
+    concentrationSpell,
+    dc,
+    bonus,
+    resolutionSource: 'player',   // 'auto' is effectively the player accepting by default
+    automationSetting,
+  });
+}
+
+// ─── Shared concentration save resolver ──────────────────────────
+// v2.118.0 — Phase I pt 2: extracted from runConcentrationSave so that both
+// the 'auto' automation branch and the prompt-resolution path (called when
+// the player clicks "Roll Save" in the modal, or on 120s timeout) share one
+// implementation. Rolls the d20, emits save_rolled, and on failure drops
+// concentration + cleans up spell-sourced conditions and buffs.
+
+export interface PerformConcentrationSaveInput {
+  ctx: ConcentrationSaveContext;
+  charId: string;
+  concentrationSpell: string;
+  dc: number;
+  bonus: number;
+  resolutionSource: 'player' | 'timeout';
+  automationSetting: string;
+}
+
+export async function performConcentrationSave(
+  input: PerformConcentrationSaveInput,
+): Promise<{ saved: boolean; d20: number; total: number }> {
+  const { ctx, charId, concentrationSpell, dc, bonus } = input;
+
   const d20 = Math.floor(Math.random() * 20) + 1;
   const total = d20 + bonus;
   const passed = total >= dc || d20 === 20;   // nat 20 always succeeds (RAW)
   const autoFail = d20 === 1;                 // nat 1 always fails (RAW)
   const saved = autoFail ? false : passed;
 
-  // Emit the save roll for the log
   await emitCombatEvent({
     campaignId: ctx.campaignId,
     encounterId: ctx.encounterId,
@@ -1451,18 +1526,16 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
       trigger: 'damage',
       damage: ctx.damage,
       concentration_spell: concentrationSpell,
-      // v2.117.0 — Phase I: log which automation tier resolved this save.
-      // Helpful when debugging why a player saw (or didn't see) a save.
-      automation_setting: automationSetting,
+      automation_setting: input.automationSetting,
+      resolution_source: input.resolutionSource,
     },
   });
 
   if (!saved) {
-    // Drop concentration
     await supabase
       .from('characters')
       .update({ concentration_spell: null, concentration_rounds_remaining: null })
-      .eq('id', (charRow as any).id);
+      .eq('id', charId);
 
     await supabase
       .from('combat_participants')
@@ -1487,20 +1560,12 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
       },
     });
 
-    // v2.111.0 — Phase H pt 2: clean up conditions that this caster placed
-    // via the now-broken concentration spell (e.g., Hold Person's Paralyzed,
-    // Faerie Fire's condition, etc.). Matches on
-    //   condition_sources[cond].source === 'spell:{name}' AND
-    //   condition_sources[cond].casterParticipantId === this participant
     await clearConditionsFromConcentration(
       ctx.campaignId,
       ctx.encounterId,
       ctx.participantId,
       concentrationSpell,
     );
-
-    // v2.113.0 — Phase H pt 4: same cleanup pattern for buffs (Bless targets
-    // lose +1d4, Hunter's Mark/Hex lose damage riders, etc.).
     await clearBuffsFromConcentration(
       ctx.campaignId,
       ctx.encounterId,
@@ -1508,4 +1573,58 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
       concentrationSpell,
     );
   }
+
+  return { saved, d20, total };
+}
+
+// ─── Resolve a pending prompt row ────────────────────────────────
+// Called from ConcentrationSavePromptModal on player action or timeout.
+
+export async function resolvePendingConcentrationSave(
+  pendingId: string,
+  resolutionSource: 'player' | 'timeout',
+): Promise<void> {
+  const { data: row } = await supabase
+    .from('pending_concentration_saves')
+    .select('*')
+    .eq('id', pendingId)
+    .single();
+  if (!row || row.state !== 'offered') return;
+
+  const ctx: ConcentrationSaveContext = {
+    campaignId: row.campaign_id as string,
+    encounterId: row.encounter_id as string | null,
+    chainId: row.chain_id as string,
+    participantId: row.participant_id as string,
+    targetName: '',            // filled from participants below for event payload
+    damage: row.damage as number,
+  };
+
+  const { data: part } = await supabase
+    .from('combat_participants')
+    .select('name')
+    .eq('id', ctx.participantId)
+    .maybeSingle();
+  ctx.targetName = (part?.name as string | null) ?? 'Unknown';
+
+  const { saved, d20, total } = await performConcentrationSave({
+    ctx,
+    charId: row.character_id as string,
+    concentrationSpell: row.spell_name as string,
+    dc: row.dc as number,
+    bonus: row.con_bonus as number,
+    resolutionSource,
+    automationSetting: 'prompt',
+  });
+
+  await supabase
+    .from('pending_concentration_saves')
+    .update({
+      state: resolutionSource === 'timeout' ? 'expired' : 'resolved',
+      decided_at: new Date().toISOString(),
+      d20, total,
+      result: saved ? 'passed' : 'failed',
+      resolution_source: resolutionSource,
+    })
+    .eq('id', pendingId);
 }
