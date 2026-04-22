@@ -22,6 +22,8 @@ import BattleMap from './BattleMap';
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import StartCombatButton from '../Combat/StartCombatButton';
+import AttackResolutionModal from '../Combat/AttackResolutionModal';
+import ReactionPromptModal from '../Combat/ReactionPromptModal';
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
 
@@ -504,6 +506,10 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
     </div>
     {/* v2.96.0 — Phase D: bottom initiative strip renders when active encounter exists */}
     <InitiativeStrip isDM={isOwner} />
+    {/* v2.97.0 — Phase E: auto-opens when a pending attack is in flight (DM only) */}
+    <AttackResolutionModal campaignId={campaign.id} isDM={isOwner} />
+    {/* v2.98.0 — Phase E: reaction prompt for target player on hit */}
+    <ReactionPromptModal campaignId={campaign.id} />
     </CombatProvider>
   );
 }

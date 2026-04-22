@@ -6,8 +6,10 @@
 // for the DM (invisible to players — RLS-filtered out of the participants
 // array for non-DMs).
 
+import { useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
+import DeclareAttackModal from './DeclareAttackModal';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -22,6 +24,7 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 
 export default function InitiativeStrip({ isDM }: Props) {
   const { encounter, participants, currentActor } = useCombat();
+  const [showDeclare, setShowDeclare] = useState(false);
 
   if (!encounter || encounter.status !== 'active') return null;
 
@@ -129,6 +132,20 @@ export default function InitiativeStrip({ isDM }: Props) {
       {isDM && (
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button
+            onClick={() => setShowDeclare(true)}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+              padding: '6px 14px', borderRadius: 6,
+              border: '1px solid rgba(248,113,113,0.5)',
+              background: 'rgba(248,113,113,0.12)',
+              color: '#f87171',
+              cursor: 'pointer', minHeight: 0,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}
+          >
+            ⚔ Attack
+          </button>
+          <button
             onClick={onEndTurn}
             style={{
               fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
@@ -157,6 +174,13 @@ export default function InitiativeStrip({ isDM }: Props) {
             End Combat
           </button>
         </div>
+      )}
+      {showDeclare && encounter && (
+        <DeclareAttackModal
+          campaignId={encounter.campaign_id}
+          onClose={() => setShowDeclare(false)}
+          onDeclared={() => setShowDeclare(false)}
+        />
       )}
     </div>
   );

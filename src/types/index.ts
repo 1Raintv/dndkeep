@@ -562,6 +562,88 @@ export interface CombatParticipant {
   updated_at: string;
 }
 
+// v2.97.0 — Phase E: attack resolution state machine
+export type PendingAttackState =
+  | 'declared'         // target chosen, nothing rolled yet
+  | 'attack_rolled'    // attack roll done (hit/miss/crit determined)
+  | 'damage_rolled'    // damage total known, waiting to apply
+  | 'applied'          // damage written to target HP, terminal
+  | 'canceled';        // aborted at any stage, terminal
+
+export type AttackKind = 'attack_roll' | 'save' | 'auto_hit';
+export type HitResult = 'hit' | 'miss' | 'crit' | 'fumble';
+export type SaveResult = 'passed' | 'failed';
+
+export interface PendingAttack {
+  id: string;
+  campaign_id: string;
+  encounter_id: string | null;
+
+  attacker_participant_id: string | null;
+  attacker_name: string;
+  attacker_type: 'character' | 'monster' | 'npc' | 'system';
+
+  target_participant_id: string | null;
+  target_name: string;
+  target_type: 'character' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
+
+  attack_source: string | null;
+  attack_name: string;
+  attack_kind: AttackKind;
+
+  attack_bonus: number | null;
+  target_ac: number | null;
+  attack_d20: number | null;
+  attack_total: number | null;
+  hit_result: HitResult | null;
+
+  save_dc: number | null;
+  save_ability: string | null;
+  save_success_effect: string | null;
+  save_d20: number | null;
+  save_total: number | null;
+  save_result: SaveResult | null;
+
+  damage_dice: string | null;
+  damage_type: string | null;
+  damage_rolls: number[] | null;
+  damage_raw: number | null;
+  damage_final: number | null;
+  damage_was_fudged: boolean;
+  damage_fudge_reason: string | null;
+
+  state: PendingAttackState;
+  chain_id: string;
+
+  declared_at: string;
+  applied_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// v2.98.0 — Phase E: reaction offers
+export type ReactionState = 'offered' | 'accepted' | 'declined' | 'expired';
+export type ReactionTriggerPoint = 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied';
+
+export interface PendingReaction {
+  id: string;
+  campaign_id: string;
+  pending_attack_id: string | null;
+  reactor_participant_id: string;
+  reactor_name: string;
+  reactor_type: 'character' | 'monster' | 'npc';
+  reaction_key: string;           // 'shield' | 'uncanny_dodge' | ...
+  reaction_name: string;          // 'Shield'
+  trigger_point: ReactionTriggerPoint;
+  offered_at: string;
+  expires_at: string;
+  decided_at: string | null;
+  state: ReactionState;
+  decision_payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CampaignMember {
   id: string;
   campaign_id: string;
