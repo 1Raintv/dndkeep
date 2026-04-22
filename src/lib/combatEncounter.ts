@@ -426,8 +426,9 @@ export async function advanceTurn(encounterId: string): Promise<void> {
   //   'off'    : no save this turn (DM will manage manually)
   //   'auto'   : roll now, update success/failure counters, emit events,
   //              flip stable/dead at thresholds
-  //   'prompt' : falls through to 'auto' for now; v2.121 will add the
-  //              pending_death_saves table + modal for real prompting
+  //   'prompt' : v2.144.0 — Phase N pt 2: create a pending_death_saves
+  //              row so the player's DeathSavePromptModal picks it up
+  //              and they can roll via a single-click button.
   if (
     incomingParticipant.participant_type === 'character'
     && !incomingParticipant.is_dead
@@ -451,7 +452,18 @@ export async function advanceTurn(encounterId: string): Promise<void> {
     const { resolveAutomation } = await import('./automations');
     const dsSetting = resolveAutomation('death_save_on_turn_start', charRow, campRow as any);
 
-    if (dsSetting !== 'off') {
+    if (dsSetting === 'prompt') {
+      // v2.144.0 — Phase N pt 2: create pending row, modal takes it from here.
+      if (incomingParticipant.entity_id) {
+        const { createPendingDeathSave } = await import('./deathSaves');
+        await createPendingDeathSave({
+          campaignId: incomingParticipant.campaign_id,
+          encounterId,
+          participantId: incomingParticipant.id,
+          characterId: incomingParticipant.entity_id as string,
+        });
+      }
+    } else if (dsSetting !== 'off') {
       // Roll the save. RAW 2024 p.195:
       //   d20 ≥ 10 → success, < 10 → failure
       //   nat 1    → 2 failures (cumulative)

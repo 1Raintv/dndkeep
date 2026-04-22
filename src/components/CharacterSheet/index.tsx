@@ -10,6 +10,7 @@ import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import ReactionPromptModal from '../Combat/ReactionPromptModal';
 import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal';
+import DeathSavePromptModal from '../Combat/DeathSavePromptModal';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
@@ -3099,6 +3100,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {character.campaign_id && <ReactionPromptModal campaignId={character.campaign_id} />}
  {/* v2.118.0 — Phase I pt 2: concentration save prompt when automation is 'prompt' */}
  <ConcentrationSavePromptModal characterId={character.id} />
+ {/* v2.144.0 — Phase N pt 2: death save prompt when the downed character
+     starts their turn at 0 HP and automation resolves to 'prompt' */}
+ {character.campaign_id && <DeathSavePromptModal characterId={character.id} campaignId={character.campaign_id} />}
  </CombatProvider>
  );
 }
