@@ -557,6 +557,10 @@ export interface CombatParticipant {
   is_stable: boolean;
   is_dead: boolean;
   active_conditions: string[];
+  /** v2.110.0 — Phase H: per-condition source metadata so concentration
+   *  cleanup (v2.111) can remove only the conditions that came from the
+   *  dropped spell. Shape: { [name]: { source, casterParticipantId? } }. */
+  condition_sources?: Record<string, { source: string; casterParticipantId?: string }>;
   concentration_spell_id: string | null;
   /** v2.107.0 — Phase G: persisted max walking speed in feet, captured at
    *  encounter-start time from the underlying character/monster. */

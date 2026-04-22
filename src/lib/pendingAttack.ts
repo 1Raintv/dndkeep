@@ -19,6 +19,8 @@ import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
 import { abilityModifier, proficiencyBonus } from './gameUtils';
+import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll, clearConditionsFromConcentration } from './conditions';
+import { CONDITION_MAP } from '../data/conditions';
 import type { PendingAttack, HitResult } from '../types';
 
 // ─── Dice helpers ────────────────────────────────────────────────
@@ -289,8 +291,67 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   if (atk.state !== 'declared') return atk;
   if (atk.attack_kind !== 'attack_roll') return atk;
 
-  const d20 = rollD20();
+  // v2.110.0 — Phase H: condition-aware advantage/disadvantage.
+  // Load both combatants' active_conditions + token positions, compute the
+  // net state, then roll 2d20 with take-higher or take-lower as appropriate.
+  let attackerConditions: string[] = [];
+  let targetConditions: string[] = [];
+  let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
+  if (atk.attacker_participant_id && atk.target_participant_id) {
+    const [aRes, tRes] = await Promise.all([
+      supabase
+        .from('combat_participants')
+        .select('active_conditions, entity_id, participant_type, name')
+        .eq('id', atk.attacker_participant_id)
+        .maybeSingle(),
+      supabase
+        .from('combat_participants')
+        .select('active_conditions, entity_id, participant_type, name')
+        .eq('id', atk.target_participant_id)
+        .maybeSingle(),
+    ]);
+    attackerConditions = ((aRes.data?.active_conditions as string[] | null) ?? []);
+    targetConditions = ((tRes.data?.active_conditions as string[] | null) ?? []);
+
+    // Attempt distance lookup via the campaign's active battle map tokens.
+    // If either token is missing we fall back to the default "far" distance,
+    // which means no Prone-within-5ft advantage and no auto-crit.
+    if (aRes.data && tRes.data) {
+      const { data: bm } = await supabase
+        .from('battle_maps')
+        .select('tokens')
+        .eq('campaign_id', atk.campaign_id)
+        .eq('active', true)
+        .maybeSingle();
+      const tokens = (bm?.tokens as any[]) ?? [];
+      const matchToken = (p: { entity_id: string; participant_type: string; name: string }) =>
+        tokens.find((t: any) => {
+          if (!t || typeof t.row !== 'number' || typeof t.col !== 'number') return false;
+          if (p.participant_type === 'character') return t.character_id === p.entity_id;
+          return (t.name ?? '').toLowerCase() === p.name.toLowerCase();
+        });
+      const at = matchToken(aRes.data as any);
+      const tt = matchToken(tRes.data as any);
+      if (at && tt) {
+        distanceCells = Math.max(Math.abs(at.row - tt.row), Math.abs(at.col - tt.col));
+      }
+    }
+  }
+
+  const advantageState = getAdvantageState(attackerConditions, targetConditions, distanceCells);
   const bonus = atk.attack_bonus ?? 0;
+
+  // Advantage/disadvantage: roll 2d20 and take higher / lower. Normal: 1d20.
+  let d20: number;
+  let d20Alt: number | null = null;
+  if (advantageState === 'normal') {
+    d20 = rollD20();
+  } else {
+    const r1 = rollD20();
+    const r2 = rollD20();
+    d20Alt = advantageState === 'advantage' ? Math.min(r1, r2) : Math.max(r1, r2);
+    d20 = advantageState === 'advantage' ? Math.max(r1, r2) : Math.min(r1, r2);
+  }
   const total = d20 + bonus;
 
   // v2.103.0 — Phase F: cover mechanics per 2024 PHB.
@@ -305,10 +366,16 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   const coverAcBonus = coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0;
   const effectiveAc = (atk.target_ac ?? 10) + coverAcBonus;
 
+  // v2.110.0 — Phase H: auto-crit when target is Paralyzed/Unconscious and
+  // attacker is within 5 ft melee range. Still bypassed by total cover.
+  const autoCrit = meleeAutoCritApplies(targetConditions, distanceCells);
+
   let hitResult: HitResult;
   if (coverLevel === 'total') hitResult = 'miss';
   else if (d20 === 20) hitResult = 'crit';
   else if (d20 === 1) hitResult = 'fumble';
+  else if (autoCrit && total >= effectiveAc) hitResult = 'crit';   // hit + auto-crit trigger
+  else if (autoCrit && total < effectiveAc) hitResult = 'miss';    // miss stays a miss
   else if (total >= effectiveAc) hitResult = 'hit';
   else hitResult = 'miss';
 
@@ -364,10 +431,13 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     payload: {
       action_name: atk.attack_name,
       dice_expression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
-      individual_results: [d20],
+      individual_results: d20Alt != null ? [d20, d20Alt] : [d20],
       total,
       hit_result: hitResult,
       target_ac: atk.target_ac,
+      // v2.110.0 — Phase H condition integration
+      advantage_state: advantageState,
+      auto_crit: autoCrit && (hitResult === 'crit' || hitResult === 'hit'),
     },
   });
 
@@ -406,6 +476,22 @@ export async function rollSave(
   if (atk.attack_kind !== 'save') return atk;
   if (atk.save_result) return atk;   // already rolled
 
+  // v2.111.0 — Phase H pt 2: look up target's active conditions for save
+  // modifications. Auto-fail wins over disadvantage (e.g., Paralyzed target
+  // fails DEX saves outright regardless of modifier).
+  let targetConditions: string[] = [];
+  if (atk.target_participant_id) {
+    const { data: tRow } = await supabase
+      .from('combat_participants')
+      .select('active_conditions')
+      .eq('id', atk.target_participant_id)
+      .maybeSingle();
+    targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
+  }
+  const ability = atk.save_ability ?? '';
+  const autoFail = conditionsAutoFailSave(targetConditions, ability);
+  const saveDisadvantage = !autoFail && conditionsDisadvantageSave(targetConditions, ability);
+
   // v2.103.0 — Phase F: half / three-quarters cover grants +2 / +5 to DEX
   // saves (2024 PHB). Doesn't apply to other save abilities.
   const coverLevel = (atk.cover_level ?? 'none') as 'none' | 'half' | 'three_quarters' | 'total';
@@ -415,12 +501,28 @@ export async function rollSave(
       : 0;
   const effectiveBonus = saveBonus + coverSaveBonus;
 
-  const d20 = rollD20();
-  const total = d20 + effectiveBonus;
+  // Auto-fail: force result=failed, d20=0 shown as cosmetic 1, no actual roll
+  let d20: number;
+  let d20Alt: number | null = null;
+  let total: number;
+  if (autoFail) {
+    d20 = 1;                                   // cosmetic — always a "nat 1" for log readability
+    total = 1 + effectiveBonus;
+  } else if (saveDisadvantage) {
+    const r1 = rollD20();
+    const r2 = rollD20();
+    d20 = Math.min(r1, r2);
+    d20Alt = Math.max(r1, r2);
+    total = d20 + effectiveBonus;
+  } else {
+    d20 = rollD20();
+    total = d20 + effectiveBonus;
+  }
   const dc = atk.save_dc ?? 10;
 
   let result: 'passed' | 'failed';
-  if (d20 === 20) result = 'passed';
+  if (autoFail) result = 'failed';
+  else if (d20 === 20) result = 'passed';
   else if (d20 === 1) result = 'failed';
   else result = total >= dc ? 'passed' : 'failed';
 
@@ -476,6 +578,10 @@ export async function rollSave(
       result,
       trigger_attack_name: atk.attack_name,
       trigger_attacker: atk.attacker_name,
+      // v2.111.0 — Phase H pt 2: condition-sourced save mods
+      auto_fail: autoFail,
+      disadvantage: saveDisadvantage,
+      individual_results: d20Alt != null ? [d20, d20Alt] : undefined,
     },
   });
 
@@ -618,12 +724,45 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {
     const { data: tgt } = await supabase
       .from('combat_participants')
-      .select('id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id')
+      .select('id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions')
       .eq('id', atk.target_participant_id)
       .single();
 
     if (tgt) {
-      const dmg = atk.damage_final;
+      // v2.111.0 — Phase H pt 2: Petrified (and any future condition flagged
+      // resistanceAll) halves damage taken. Emits a resistance_applied event
+      // before the damage settles so the log shows WHY the number shrank.
+      const targetConditions = (tgt.active_conditions ?? []) as string[];
+      const resistAll = conditionsResistAll(targetConditions);
+      let dmg = atk.damage_final;
+      if (resistAll && dmg > 0) {
+        const halved = Math.floor(dmg / 2);
+        await emitCombatEvent({
+          campaignId: atk.campaign_id,
+          encounterId: atk.encounter_id,
+          chainId: atk.chain_id,
+          sequence: 5,
+          actorType: 'system',
+          actorName: 'System',
+          targetType: 'character',
+          targetName: tgt.name,
+          eventType: 'resistance_applied',
+          payload: {
+            source: 'condition',
+            conditions: targetConditions.filter(c => CONDITION_MAP[c]?.resistanceAll),
+            original_damage: dmg,
+            reduced_damage: halved,
+          },
+        });
+        dmg = halved;
+        // Persist the reduced damage_final so the applied event below reads
+        // the right number and future reads of this row are consistent.
+        await supabase
+          .from('pending_attacks')
+          .update({ damage_final: dmg })
+          .eq('id', attackId);
+      }
+
       const tempBefore = tgt.temp_hp ?? 0;
       const tempAfter = Math.max(0, tempBefore - dmg);
       const dmgThroughTemp = tempBefore - tempAfter;
@@ -991,5 +1130,17 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
         total,
       },
     });
+
+    // v2.111.0 — Phase H pt 2: clean up conditions that this caster placed
+    // via the now-broken concentration spell (e.g., Hold Person's Paralyzed,
+    // Faerie Fire's condition, etc.). Matches on
+    //   condition_sources[cond].source === 'spell:{name}' AND
+    //   condition_sources[cond].casterParticipantId === this participant
+    await clearConditionsFromConcentration(
+      ctx.campaignId,
+      ctx.encounterId,
+      ctx.participantId,
+      concentrationSpell,
+    );
   }
 }

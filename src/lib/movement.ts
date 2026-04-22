@@ -11,6 +11,7 @@
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerOpportunityAttacks } from './pendingReaction';
+import { conditionsSpeedZero } from './conditions';
 
 const FEET_PER_SQUARE = 5;   // D&D standard
 
@@ -46,7 +47,7 @@ export async function canMove(
 ): Promise<MovementCheck> {
   const { data } = await supabase
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft, dash_used_this_turn')
+    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions')
     .eq('id', participantId)
     .single();
 
@@ -55,7 +56,11 @@ export async function canMove(
   // v2.108.0 — Phase G: Dash doubles effective movement for the turn per
   // 2024 PHB ("your Speed becomes double your Speed for the turn").
   const dashed = (data?.dash_used_this_turn as boolean | null) ?? false;
-  const maxSpeed = dashed ? baseSpeed * 2 : baseSpeed;
+  // v2.111.0 — Phase H pt 2: Grappled/Restrained/Paralyzed/Stunned/
+  // Unconscious/Petrified zero out speed entirely. Overrides Dash.
+  const conditions = ((data?.active_conditions as string[] | null) ?? []);
+  const zeroed = conditionsSpeedZero(conditions);
+  const maxSpeed = zeroed ? 0 : (dashed ? baseSpeed * 2 : baseSpeed);
   const wouldBe = currentUsed + distanceFt;
   const remaining = Math.max(0, maxSpeed - currentUsed);
 
