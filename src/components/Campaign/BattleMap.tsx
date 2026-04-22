@@ -40,6 +40,9 @@ interface BattleMapData {
   map_active_for_players: boolean; background_color: string;
   // v2.95.0 — Phase C: drawings persist + realtime sync
   drawings?: DrawShape[];
+  // v2.130.0 — Phase K pt 3: walls for line-of-sight (DM-authored, distinct
+  // from decorative drawings).
+  walls?: WallSegment[];
   version?: number;
   updated_at?: string;
 }
@@ -49,6 +52,17 @@ interface DrawShape {
   type: 'freehand' | 'line' | 'rect' | 'ellipse';
   points: number[][];
   color: string;
+}
+
+// v2.130.0 — Phase K pt 3: wall segment, identical shape to the type
+// exported from src/lib/battleMapGeometry.ts. Re-declared locally to avoid a
+// long import chain inside this 1500-line component file.
+interface WallSegment {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 }
 
 interface TokenNote {
@@ -424,7 +438,7 @@ function TokenDetailPanel({ token, isDM, notes, userId, userName, campaignId, on
 interface MapInnerCanvasProps {
   map: BattleMapData;
   zoom: number; panX: number; panY: number;
-  gridSize: number; shapes: DrawShape[]; drawColor: string;
+  gridSize: number; shapes: DrawShape[]; walls: WallSegment[]; drawColor: string;
   activeTool: string; currentPath: number[][]; drawStart: {x:number;y:number}|null;
   drawEnd: {x:number;y:number}|null; measureStart: {col:number;row:number;x:number;y:number}|null;
   measureEnd: {col:number;row:number;x:number;y:number}|null; pingPos: {x:number;y:number}|null;
@@ -444,7 +458,7 @@ interface MapInnerCanvasProps {
 }
 
 function MapInnerCanvas({
-  map, zoom, panX, panY, gridSize, shapes, drawColor, activeTool,
+  map, zoom, panX, panY, gridSize, shapes, walls, drawColor, activeTool,
   currentPath, drawStart, drawEnd, measureStart, measureEnd, pingPos,
   draggingTokenId, selectedTokenId, visibleTokens, isDM, playerBlocked, myCharacterId,
   isPanning, isDrawingRef, mapContainerRef,
@@ -481,7 +495,7 @@ function MapInnerCanvas({
           ))}
         </svg>
         {/* Drawing layer */}
-        <DrawingLayer shapes={shapes} drawColor={drawColor} activeTool={activeTool}
+        <DrawingLayer shapes={shapes} walls={walls} drawColor={drawColor} activeTool={activeTool}
           currentPath={currentPath} drawStart={drawStart} drawEnd={drawEnd}
           measureStart={measureStart} measureEnd={measureEnd} pingPos={pingPos}
           mapW={map.grid_cols*gridSize} mapH={map.grid_rows*gridSize}/>
@@ -521,14 +535,26 @@ function MapInnerCanvas({
 
 // ── DrawingLayer: SVG annotation overlay ─────────────────────────────────────
 interface DrawingLayerProps {
-  shapes:DrawShape[]; drawColor:string; activeTool:string;
+  shapes:DrawShape[]; walls:WallSegment[]; drawColor:string; activeTool:string;
   currentPath:number[][]; drawStart:{x:number;y:number}|null; drawEnd:{x:number;y:number}|null;
   measureStart:{x:number;y:number}|null; measureEnd:{x:number;y:number}|null;
   pingPos:{x:number;y:number}|null; mapW:number; mapH:number;
 }
-function DrawingLayer({shapes,drawColor,activeTool,currentPath,drawStart,drawEnd,measureStart,measureEnd,pingPos,mapW,mapH}:DrawingLayerProps) {
+function DrawingLayer({shapes,walls,drawColor,activeTool,currentPath,drawStart,drawEnd,measureStart,measureEnd,pingPos,mapW,mapH}:DrawingLayerProps) {
   return (
     <svg style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:8}}>
+      {/* v2.130.0 — Phase K pt 3: render walls UNDER shapes so decorative
+          marks can be drawn over them. Distinct styling — bold gray with a
+          subtle blue tint so they're recognizable as game-mechanical
+          obstacles vs. decorative line drawings. */}
+      {walls.map(w => (
+        <line
+          key={w.id}
+          x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
+          stroke="#94a3b8" strokeWidth={5} strokeLinecap="round"
+          opacity={0.85}
+        />
+      ))}
       {shapes.map(s=>
         s.type==='freehand'&&s.points.length>1
           ? <path key={s.id} d={'M'+s.points.map((p:number[])=>p[0]+','+p[1]).join(' L')} stroke={s.color} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85}/>
@@ -542,6 +568,9 @@ function DrawingLayer({shapes,drawColor,activeTool,currentPath,drawStart,drawEnd
       )}
       {activeTool==='draw-freehand'&&currentPath.length>1&&<path d={'M'+currentPath.map(p=>p[0]+','+p[1]).join(' L')} stroke={drawColor} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85}/>}
       {activeTool==='draw-line'&&drawStart&&drawEnd&&<line x1={drawStart.x} y1={drawStart.y} x2={drawEnd.x} y2={drawEnd.y} stroke={drawColor} strokeWidth={3} strokeLinecap="round" opacity={0.85}/>}
+      {/* v2.130.0 — Phase K pt 3: wall preview during drag uses the same
+          gray styling as committed walls so the DM sees what they'll get */}
+      {activeTool==='draw-wall'&&drawStart&&drawEnd&&<line x1={drawStart.x} y1={drawStart.y} x2={drawEnd.x} y2={drawEnd.y} stroke="#94a3b8" strokeWidth={5} strokeLinecap="round" opacity={0.6} strokeDasharray="6,4"/>}
       {activeTool==='draw-rect'&&drawStart&&drawEnd&&<rect x={Math.min(drawStart.x,drawEnd.x)} y={Math.min(drawStart.y,drawEnd.y)} width={Math.abs(drawEnd.x-drawStart.x)} height={Math.abs(drawEnd.y-drawStart.y)} stroke={drawColor} strokeWidth={2} fill={drawColor+'25'} opacity={0.85}/>}
       {activeTool==='draw-ellipse'&&drawStart&&drawEnd&&<ellipse cx={(drawStart.x+drawEnd.x)/2} cy={(drawStart.y+drawEnd.y)/2} rx={Math.abs(drawEnd.x-drawStart.x)/2} ry={Math.abs(drawEnd.y-drawStart.y)/2} stroke={drawColor} strokeWidth={2} fill={drawColor+'25'} opacity={0.85}/>}
       {activeTool==='measure'&&measureStart&&measureEnd&&(
@@ -845,11 +874,15 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{x:number;y:number;px:number;py:number}|null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  type Tool = 'select' | 'pan' | 'draw-freehand' | 'draw-line' | 'draw-rect' | 'draw-ellipse' | 'measure' | 'ping';
+  type Tool = 'select' | 'pan' | 'draw-freehand' | 'draw-line' | 'draw-rect' | 'draw-ellipse' | 'draw-wall' | 'measure' | 'ping';
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [drawColor, setDrawColor] = useState('#ef4444');
   // Drawing layer shapes (DrawShape declared at module level)
   const [shapes, setShapes] = useState<DrawShape[]>([]);
+  // v2.130.0 — Phase K pt 3: walls layer. DM-authored, distinct from
+  // decorative drawings — clicking the "Clear drawings" button doesn't
+  // touch them, and v2.131+ LoS queries intersect against this list.
+  const [walls, setWalls] = useState<WallSegment[]>([]);
   const [currentPath, setCurrentPath] = useState<number[][]>([]);
   const [drawStart, setDrawStart] = useState<{x:number;y:number}|null>(null);
   const [drawEnd, setDrawEnd] = useState<{x:number;y:number}|null>(null);
@@ -872,13 +905,16 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
   // on every realtime UPDATE (which would blow away my in-flight local shapes).
   const hydratedMapIdRef = useRef<string | null>(null);
   const saveTimerDrawingsRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const saveTimerWallsRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   useEffect(()=>{
     if(!activeMap) return;
     if(hydratedMapIdRef.current !== activeMap.id) {
       hydratedMapIdRef.current = activeMap.id;
       setShapes(Array.isArray(activeMap.drawings) ? activeMap.drawings : []);
+      // v2.130.0 — Phase K pt 3: hydrate walls on the same map-switch path
+      setWalls(Array.isArray(activeMap.walls) ? activeMap.walls : []);
     }
-  },[activeMap?.id, activeMap?.drawings]);
+  },[activeMap?.id, activeMap?.drawings, activeMap?.walls]);
 
   // Persist shapes to DB. Debounced so rapid stroke additions batch into one write.
   function persistShapes(next: DrawShape[]) {
@@ -887,6 +923,16 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if(saveTimerDrawingsRef.current) clearTimeout(saveTimerDrawingsRef.current);
     saveTimerDrawingsRef.current = setTimeout(async ()=>{
       await supabase.from('battle_maps').update({ drawings: next }).eq('id', mapId);
+    }, 300);
+  }
+
+  // v2.130.0 — Phase K pt 3: persist walls on the same debounced pattern as drawings.
+  function persistWalls(next: WallSegment[]) {
+    if(!activeMap) return;
+    const mapId = activeMap.id;
+    if(saveTimerWallsRef.current) clearTimeout(saveTimerWallsRef.current);
+    saveTimerWallsRef.current = setTimeout(async ()=>{
+      await supabase.from('battle_maps').update({ walls: next }).eq('id', mapId);
     }, 300);
   }
 
@@ -1202,6 +1248,18 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
       setMeasureStart(coords); setMeasureEnd(null);
       return;
     }
+    // v2.130.0 — Phase K pt 3: wall mode supports shift-click delete.
+    // Test point against each wall using point-to-segment distance ≤ 8 px.
+    if (activeTool === 'draw-wall' && e.shiftKey) {
+      const HIT_THRESHOLD = 8;   // px — generous so DMs don't have to be pixel-perfect
+      const hitIdx = walls.findIndex(w => pointToSegmentDistancePx(coords.x, coords.y, w) <= HIT_THRESHOLD);
+      if (hitIdx >= 0) {
+        const next = walls.filter((_, i) => i !== hitIdx);
+        setWalls(next);
+        persistWalls(next);
+      }
+      return;
+    }
     if (activeTool.startsWith('draw-')) {
       isDrawing.current = true;
       if (activeTool === 'draw-freehand') { setCurrentPath([[coords.x, coords.y]]); }
@@ -1223,7 +1281,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     if (activeTool === 'measure' && measureStart) { setMeasureEnd(coords); return; }
     if (!isDrawing.current) return;
     if (activeTool === 'draw-freehand') { setCurrentPath(p=>[...p,[coords.x,coords.y]]); }
-    else if (activeTool === 'draw-line'||activeTool === 'draw-rect'||activeTool === 'draw-ellipse') {
+    else if (activeTool === 'draw-line' || activeTool === 'draw-wall' || activeTool === 'draw-rect' || activeTool === 'draw-ellipse') {
       setDrawEnd({x:coords.x,y:coords.y});
     }
   }
@@ -1235,6 +1293,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     const coords = getMapCoords(e);
     // v2.95.0 — Phase C: compute next shapes array then persist to DB
     let next: DrawShape[] | null = null;
+    let nextWalls: WallSegment[] | null = null;
     if (activeTool === 'draw-freehand' && currentPath.length > 1) {
       next = [...shapes, {id:Date.now().toString(),type:'freehand',points:currentPath,color:drawColor}];
       setCurrentPath([]);
@@ -1244,12 +1303,38 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
       next = [...shapes, {id:Date.now().toString(),type:'rect',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}];
     } else if (activeTool === 'draw-ellipse' && drawStart) {
       next = [...shapes, {id:Date.now().toString(),type:'ellipse',points:[[drawStart.x,drawStart.y],[coords.x,coords.y]],color:drawColor}];
+    } else if (activeTool === 'draw-wall' && drawStart) {
+      // v2.130.0 — Phase K pt 3: ignore zero-length walls (single click without drag)
+      const dx = coords.x - drawStart.x;
+      const dy = coords.y - drawStart.y;
+      if (Math.hypot(dx, dy) >= 4) {
+        nextWalls = [...walls, {id:Date.now().toString(), x1:drawStart.x, y1:drawStart.y, x2:coords.x, y2:coords.y}];
+      }
     }
     if (next) {
       setShapes(next);
       persistShapes(next);
     }
+    if (nextWalls) {
+      setWalls(nextWalls);
+      persistWalls(nextWalls);
+    }
     setDrawStart(null); setDrawEnd(null);
+  }
+
+  // v2.130.0 — Phase K pt 3: point-to-segment distance for the shift-click
+  // wall delete hit test. Standard formula — projects the point onto the
+  // segment line, clamps to the segment, returns Euclidean distance.
+  function pointToSegmentDistancePx(px:number, py:number, w:WallSegment):number {
+    const dx = w.x2 - w.x1;
+    const dy = w.y2 - w.y1;
+    const lenSq = dx*dx + dy*dy;
+    if (lenSq === 0) return Math.hypot(px - w.x1, py - w.y1);
+    let t = ((px - w.x1) * dx + (py - w.y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = w.x1 + t * dx;
+    const cy = w.y1 + t * dy;
+    return Math.hypot(px - cx, py - cy);
   }
 
   const selectedToken=activeMap?.tokens.find(t=>t.id===selectedTokenId)??null;
@@ -1274,6 +1359,10 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
     {id:'draw-line',icon:'╱',tip:'Line (L)',group:'draw'},
     {id:'draw-rect',icon:'▭',tip:'Rectangle (R)',group:'draw'},
     {id:'draw-ellipse',icon:'◯',tip:'Ellipse (E)',group:'draw'},
+    // v2.130.0 — Phase K pt 3: wall tool. DM-only (filtered below). Blocks
+    // line of sight for v2.131+ LoS queries. Drag to add, shift+click to
+    // delete.
+    {id:'draw-wall',icon:'🧱',tip:'Wall — drag to add, shift+click to delete (DM)',group:'walls'},
     {id:'measure',icon:'',tip:'Measure Distance (M)'},
     {id:'ping',icon:'',tip:'Pointer / Ping (P)'},
   ];
@@ -1342,7 +1431,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
             borderRadius:'10px 0 0 10px',display:'flex',flexDirection:'column',alignItems:'center',
             paddingTop:8,paddingBottom:8,gap:2,zIndex:20,
           }}>
-            {TOOLS.map(t=>(
+            {TOOLS.filter(t => isDM || t.group !== 'walls').map(t=>(
               <button key={t.id} title={t.tip} onClick={()=>setActiveTool(t.id as any)}
                 style={{
                   width:34,height:34,borderRadius:6,border:'none',cursor:'pointer',
@@ -1444,7 +1533,7 @@ export default function BattleMap({ campaignId, isDM, userId, playerCharacters=[
               map={activeMap}
               zoom={zoom} panX={panX} panY={panY}
               gridSize={gridSize}
-              shapes={shapes} drawColor={drawColor} activeTool={activeTool}
+              shapes={shapes} walls={walls} drawColor={drawColor} activeTool={activeTool}
               currentPath={currentPath} drawStart={drawStart} drawEnd={drawEnd}
               measureStart={measureStart} measureEnd={measureEnd} pingPos={pingPos}
               draggingTokenId={draggingTokenId} selectedTokenId={selectedTokenId}

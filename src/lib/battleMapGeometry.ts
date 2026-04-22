@@ -51,6 +51,24 @@ export interface ActiveBattleMap {
   grid_cols: number;
   grid_rows: number;
   grid_size: number;   // px per cell (rendering)
+  /** v2.130.0 — Phase K pt 3: wall segments for line-of-sight. Coordinates
+   *  are map-local pixels (same system as tokens + drawings). v2.131+ LoS
+   *  queries intersect token-to-token rays against these segments. */
+  walls: WallSegment[];
+}
+
+/**
+ * A wall segment on the battle map. DM-authored via the "wall" drawing tool
+ * (v2.130.0). Stored in map-local pixels. LoS calculations (v2.131+) will
+ * test segment-segment intersection against these entries. Walls are
+ * distinct from `drawings` — decorative marks don't block sight.
+ */
+export interface WallSegment {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 }
 
 /**
@@ -62,7 +80,7 @@ export async function loadActiveBattleMap(
 ): Promise<ActiveBattleMap | null> {
   const { data } = await supabase
     .from('battle_maps')
-    .select('id, tokens, grid_cols, grid_rows, grid_size')
+    .select('id, tokens, grid_cols, grid_rows, grid_size, walls')
     .eq('campaign_id', campaignId)
     .eq('active', true)
     .maybeSingle();
@@ -73,6 +91,7 @@ export async function loadActiveBattleMap(
     grid_cols: (data.grid_cols as number) ?? 0,
     grid_rows: (data.grid_rows as number) ?? 0,
     grid_size: (data.grid_size as number) ?? 50,
+    walls: ((data.walls ?? []) as WallSegment[]),
   };
 }
 
