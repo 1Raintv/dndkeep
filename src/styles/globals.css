@@ -800,6 +800,24 @@ button:active:not(:disabled) { transform: scale(0.96); }
 /* ── HP bar critical pulse ───────────────────────────────────── */
 .hp-critical { animation: criticalPulse 1.8s ease-in-out infinite; }
 
+/* ── v2.96.0 — Phase D: in-combat ambient border glow ─────────
+   Applied to <body> (via a class toggle) whenever this user's
+   campaign has an active encounter they're a participant in.
+   Uses an inset box-shadow so no layout shift and no DOM wrapper
+   is needed. */
+@keyframes combatBorderPulse {
+  0%   { box-shadow: inset 0 0 0 3px rgba(234, 179, 8, 0.45), inset 0 0 38px rgba(234, 179, 8, 0.22); }
+  50%  { box-shadow: inset 0 0 0 3px rgba(234, 179, 8, 0.75), inset 0 0 58px rgba(234, 179, 8, 0.38); }
+  100% { box-shadow: inset 0 0 0 3px rgba(234, 179, 8, 0.45), inset 0 0 38px rgba(234, 179, 8, 0.22); }
+}
+body.in-combat::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  animation: combatBorderPulse 2.4s ease-in-out infinite;
+}
+
 /* ── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .app-sidebar { width: var(--sidebar-w-collapsed); }

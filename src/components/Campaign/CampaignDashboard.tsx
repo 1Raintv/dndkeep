@@ -19,6 +19,9 @@ import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
+import { CombatProvider } from '../../context/CombatContext';
+import InitiativeStrip from '../Combat/InitiativeStrip';
+import StartCombatButton from '../Combat/StartCombatButton';
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
 
@@ -172,7 +175,8 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
   }
 
   return (
-    <div>
+    <CombatProvider campaignId={campaign.id}>
+    <div style={{ paddingBottom: 72 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', marginBottom: 'var(--sp-6)', flexWrap: 'wrap' }}>
         <button className="btn-ghost btn-sm" onClick={onBack}>Back</button>
@@ -207,11 +211,6 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           </button>
         )}
         <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-          {sessionState?.combat_active && (
-            <span className="badge badge-crimson" style={{ animation: 'pulse-gold 2s infinite' }}>
-              Combat Active — Round {sessionState.round}
-            </span>
-          )}
           <button
             className="btn-ghost btn-sm"
             onClick={() => setActiveTab('map')}
@@ -220,14 +219,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           >
             Map
           </button>
-          {isOwner && (
-            <button
-              className={sessionState?.combat_active ? 'btn-danger btn-sm' : 'btn-primary btn-sm'}
-              onClick={toggleCombat}
-            >
-              {sessionState?.combat_active ? 'End Combat' : 'Start Combat'}
-            </button>
-          )}
+          {isOwner && <StartCombatButton campaignId={campaign.id} />}
           {isOwner && (
             <CampaignSettingsButton campaign={campaign} onBack={onBack} />
           )}
@@ -510,6 +502,9 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
       </div>
       </ErrorBoundary>
     </div>
+    {/* v2.96.0 — Phase D: bottom initiative strip renders when active encounter exists */}
+    <InitiativeStrip isDM={isOwner} />
+    </CombatProvider>
   );
 }
 

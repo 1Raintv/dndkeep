@@ -498,6 +498,68 @@ export interface Campaign {
 
   // Automation framework — see src/lib/automations.ts
   automation_defaults: Record<string, 'off' | 'prompt' | 'auto'>;
+
+  // v2.96.0 — Phase D: combat state machine settings
+  combat_automation_settings?: CombatAutomationSettings;
+}
+
+export interface CombatAutomationSettings {
+  initiative_mode: 'auto_all' | 'player_agency';
+  reaction_timer_enabled: boolean;
+  reaction_timer_seconds: number;
+  auto_dm_attack_rolls: boolean;
+  auto_dm_damage_rolls: boolean;
+  auto_dm_save_rolls: boolean;
+  auto_condition_effects: boolean;
+  hard_block_movement: boolean;
+  one_leveled_spell_per_turn: boolean;
+  player_initiative_mode: 'auto' | 'prompt';
+  hidden_monster_reveal_mode: 'roll_at_reveal' | 'roll_at_start';
+}
+
+export interface CombatEncounter {
+  id: string;
+  campaign_id: string;
+  name: string | null;
+  status: 'setup' | 'active' | 'ended';
+  round_number: number;
+  current_turn_index: number;
+  initiative_mode: 'auto_all' | 'player_agency';
+  hidden_monster_reveal_mode: 'roll_at_reveal' | 'roll_at_start';
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CombatParticipant {
+  id: string;
+  encounter_id: string;
+  campaign_id: string;
+  participant_type: 'character' | 'monster' | 'npc';
+  entity_id: string;
+  name: string;
+  initiative: number | null;
+  initiative_tiebreaker: number;
+  turn_order: number;
+  action_used: boolean;
+  bonus_used: boolean;
+  reaction_used: boolean;
+  movement_used_ft: number;
+  leveled_spell_cast: boolean;
+  hidden_from_players: boolean;
+  current_hp: number | null;
+  max_hp: number | null;
+  temp_hp: number;
+  ac: number | null;
+  death_save_successes: number;
+  death_save_failures: number;
+  is_stable: boolean;
+  is_dead: boolean;
+  active_conditions: string[];
+  concentration_spell_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CampaignMember {

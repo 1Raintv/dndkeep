@@ -6,6 +6,8 @@ import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { useSpells } from '../../lib/hooks/useSpells';
+import { CombatProvider } from '../../context/CombatContext';
+import InitiativeStrip from '../Combat/InitiativeStrip';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
@@ -750,6 +752,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Render
  // ------------------------------------------------------------------
  return (
+ <CombatProvider campaignId={character.campaign_id}>
  <div className="animate-fade-in cs-shell">
 
  <CharacterHeader
@@ -3058,6 +3061,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  </div>
+ {/* v2.96.0 — Phase D: initiative strip for players on their sheet */}
+ <InitiativeStrip isDM={false} />
+ </CombatProvider>
  );
 }
 
