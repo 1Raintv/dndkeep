@@ -237,7 +237,30 @@ export function rollDiceExpression(expr: string): { rolls: number[]; total: numb
   return { rolls, total, expression: expr };
 }
 
-/** Compute net bonuses from active buffs on a character */
+/**
+ * Sum bonuses from buffs + (optionally) attuned magic items.
+ *
+ * v2.153.0 — Phase P pt 1 rework:
+ *   • Dropped the hardcoded magic-item name map (Ring of Protection /
+ *     Cloak of Protection / Bracers of Defense / etc.) — that branch
+ *     never fired in production because no caller ever passed the
+ *     `inventory` arg. Magic-item bonuses now come from structured
+ *     InventoryItem fields (acBonus, saveBonus, attackBonus,
+ *     damageBonus) populated from the catalogue, and they only count
+ *     when the item is equipped AND attuned (or equipped + doesn't
+ *     require attunement — rings of swimming, etc.). Phase P pt 3
+ *     (v2.155) adds the attuned flag and the UI to toggle it; until
+ *     then the attuned check is permissive so existing behavior holds.
+ *
+ *   • Kept the `*Active` booleans callers rely on (blessActive,
+ *     rageActive, huntersMarkActive, hexActive, divineFavorActive).
+ *
+ * For AC specifically, prefer `recomputeAC(character, inventory)` in
+ * lib/armorClass.ts — that helper owns the full base + armor + shield
+ * + items summation. `acBonus` here is what buffs add ON TOP of a
+ * character's persisted AC (e.g. Shield spell, Shield of Faith), not
+ * the baseline calc.
+ */
 export function computeActiveBonuses(activeBufss: any[], inventory?: any[]): {
   attackBonus: number; damageBonus: number; acBonus: number;
   saveBonus: number; blessActive: boolean; rageActive: boolean;
@@ -259,25 +282,27 @@ export function computeActiveBonuses(activeBufss: any[], inventory?: any[]): {
     if (b.name === 'Hex') hexActive = true;
     if (b.name === 'Divine Favor') divineFavorActive = true;
   }
-  // Also apply bonuses from attuned magic items in inventory
+  // v2.153.0 — Phase P pt 1: structured magic-item bonuses from
+  // InventoryItem.{attackBonus,damageBonus,saveBonus}. Magic items
+  // contribute to attack/damage/save here; AC has its own dedicated
+  // helper (lib/armorClass.ts) that handles the more complex armor +
+  // shield + item-bonus stacking. Attunement gate is permissive until
+  // v2.155 adds the attuned flag — for now "equipped AND magical"
+  // is the signal.
   if (inventory) {
-    const MAGIC_ITEM_BONUSES: Record<string, { ac?: number; save?: number; atk?: number; dmg?: number }> = {
-      'Ring of Protection':   { ac: 1, save: 1 },
-      'Cloak of Protection':  { ac: 1, save: 1 },
-      'Bracers of Defense':   { ac: 2 },
-      'Gauntlets of Ogre Power': {},
-      'Sword of Sharpness':   { dmg: 0 }, // handled separately
-    };
     for (const item of inventory) {
-      if (!item.equipped || !item.magical) continue;
-      const bonus = MAGIC_ITEM_BONUSES[item.name];
-      if (bonus) {
-        acBonus     += bonus.ac   ?? 0;
-        saveBonus   += bonus.save ?? 0;
-        attackBonus += bonus.atk  ?? 0;
-        damageBonus += bonus.dmg  ?? 0;
-      }
+      if (!item?.equipped) continue;
+      // Non-magical items contribute nothing through this path — weapon
+      // attack bonuses for mundane weapons are computed in
+      // WeaponsTracker from item.rollExpression + proficiency.
+      if (!item.magical) continue;
+      // v2.155 will gate this on item.attuned when the item requires
+      // attunement. Permissive default until then.
+      attackBonus += item.attackBonus ?? 0;
+      damageBonus += item.damageBonus ?? 0;
+      saveBonus   += item.saveBonus ?? 0;
     }
   }
   return { attackBonus, damageBonus, acBonus, saveBonus, blessActive, rageActive, huntersMarkActive, hexActive, divineFavorActive };
 }
+

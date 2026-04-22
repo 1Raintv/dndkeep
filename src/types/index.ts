@@ -104,6 +104,18 @@ export interface InventoryItem {
   properties?: string;
   castingTime?: string;
   saveOrHit?: string;
+  // v2.153.0 — Phase P pt 1: magic-item mechanical bonuses.
+  // Populated by the catalogue (data/magicItems.ts or magic_items DB
+  // table from v2.154). Summed through computeActiveBonuses at read
+  // time when the item is equipped (and attuned, once v2.155 lands).
+  // AC bonuses flow through lib/armorClass.ts recomputeAC instead so
+  // the "cumulative write-on-equip" model keeps working naturally.
+  acBonus?: number;
+  attackBonus?: number;
+  damageBonus?: number;
+  saveBonus?: number;
+  // v2.155.0 — Phase P pt 3 will add: attuned?: boolean, magic_item_id?: string
+  // v2.157.0 — Phase P pt 5 will add: charges_current?: number, charges_max?: number, recharge?: 'dawn' | 'dusk' | 'long_rest'
 }
 
 export interface WeaponItem {
