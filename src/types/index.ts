@@ -561,6 +561,20 @@ export interface CombatParticipant {
    *  cleanup (v2.111) can remove only the conditions that came from the
    *  dropped spell. Shape: { [name]: { source, casterParticipantId? } }. */
   condition_sources?: Record<string, { source: string; casterParticipantId?: string }>;
+  /** v2.113.0 — Phase H pt 4: active buffs (Bless, Hunter's Mark, Hex, etc.)
+   *  consumed by rollAttackRoll/rollDamage/rollSave to modify rolls. */
+  active_buffs?: Array<{
+    key: string;
+    name: string;
+    source: string;                       // 'spell:bless' | 'reaction:absorb_elements' etc.
+    casterParticipantId?: string;         // for concentration cleanup
+    attackRollBonus?: string;             // dice expr, e.g. '1d4'
+    saveBonus?: string;                   // dice expr, e.g. '1d4'
+    damageRider?: { dice: string; damageType: string };
+    onlyVsTargetParticipantId?: string;   // Hunter's Mark / Hex scoping
+    onlyMelee?: boolean;
+    onlyRanged?: boolean;
+  }>;
   concentration_spell_id: string | null;
   /** v2.107.0 — Phase G: persisted max walking speed in feet, captured at
    *  encounter-start time from the underlying character/monster. */

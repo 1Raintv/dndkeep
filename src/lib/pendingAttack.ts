@@ -20,6 +20,12 @@ import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
 import { abilityModifier, proficiencyBonus } from './gameUtils';
 import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll, clearConditionsFromConcentration } from './conditions';
+import {
+  getAttackRollBonuses, getSaveBonuses, getDamageRiders,
+  rollDiceExpr as rollBuffDice,
+  clearBuffsFromConcentration,
+} from './buffs';
+import type { ActiveBuff } from './buffs';
 import { CONDITION_MAP } from '../data/conditions';
 import type { PendingAttack, HitResult } from '../types';
 
@@ -296,12 +302,13 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   // net state, then roll 2d20 with take-higher or take-lower as appropriate.
   let attackerConditions: string[] = [];
   let targetConditions: string[] = [];
+  let attackerBuffs: ActiveBuff[] = [];
   let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
   if (atk.attacker_participant_id && atk.target_participant_id) {
     const [aRes, tRes] = await Promise.all([
       supabase
         .from('combat_participants')
-        .select('active_conditions, entity_id, participant_type, name')
+        .select('active_conditions, active_buffs, entity_id, participant_type, name')
         .eq('id', atk.attacker_participant_id)
         .maybeSingle(),
       supabase
@@ -312,6 +319,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     ]);
     attackerConditions = ((aRes.data?.active_conditions as string[] | null) ?? []);
     targetConditions = ((tRes.data?.active_conditions as string[] | null) ?? []);
+    attackerBuffs = ((aRes.data?.active_buffs as ActiveBuff[] | null) ?? []);
 
     // Attempt distance lookup via the campaign's active battle map tokens.
     // If either token is missing we fall back to the default "far" distance,
@@ -352,7 +360,21 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     d20Alt = advantageState === 'advantage' ? Math.min(r1, r2) : Math.max(r1, r2);
     d20 = advantageState === 'advantage' ? Math.max(r1, r2) : Math.min(r1, r2);
   }
-  const total = d20 + bonus;
+
+  // v2.113.0 — Phase H pt 4: buff bonuses to attack roll (e.g., Bless +1d4).
+  // Melee vs ranged inferred from attack_source — weapon attacks are assumed
+  // melee unless source hints "ranged" (future enhancement can inspect weapon
+  // properties). Spell attacks don't distinguish in Bless logic either.
+  const isMelee = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
+  const attackBonuses = getAttackRollBonuses(attackerBuffs, { isMelee });
+  type RolledBonus = { buff: ActiveBuff; dice: string; rolls: number[]; total: number };
+  const rolledAttackBonuses: RolledBonus[] = attackBonuses.map(b => {
+    const r = rollBuffDice(b.dice);
+    return { buff: b.buff, dice: b.dice, rolls: r.rolls, total: r.total };
+  });
+  const buffAttackTotal = rolledAttackBonuses.reduce((s, r) => s + r.total, 0);
+
+  const total = d20 + bonus + buffAttackTotal;
 
   // v2.103.0 — Phase F: cover mechanics per 2024 PHB.
   //   half cover:           +2 AC (still targetable)
@@ -438,8 +460,41 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
       // v2.110.0 — Phase H condition integration
       advantage_state: advantageState,
       auto_crit: autoCrit && (hitResult === 'crit' || hitResult === 'hit'),
+      // v2.113.0 — Phase H pt 4 buff contributions
+      buff_contributions: rolledAttackBonuses.map(r => ({
+        key: r.buff.key,
+        name: r.buff.name,
+        dice: r.dice,
+        rolls: r.rolls,
+        total: r.total,
+      })),
+      buff_total: buffAttackTotal,
     },
   });
+
+  // v2.113.0 — Phase H pt 4: emit a dedicated buff_contributed event per
+  // buff so the log can render "Bless contributed 3 to the hit" inline.
+  for (const r of rolledAttackBonuses) {
+    await emitCombatEvent({
+      campaignId: atk.campaign_id,
+      encounterId: atk.encounter_id,
+      chainId: atk.chain_id,
+      sequence: 2,
+      actorType: 'system',
+      actorName: r.buff.name,
+      targetType: atk.attacker_type,
+      targetName: atk.attacker_name,
+      eventType: 'buff_contributed',
+      payload: {
+        key: r.buff.key,
+        source: r.buff.source,
+        applies_to: 'attack_roll',
+        dice: r.dice,
+        rolls: r.rolls,
+        total: r.total,
+      },
+    });
+  }
 
   // v2.98.0 — Phase E: offer reactions (Shield, etc.) to the target now that
   // we have a hit/miss. If any offers are created, the resolution pauses on
@@ -480,13 +535,15 @@ export async function rollSave(
   // modifications. Auto-fail wins over disadvantage (e.g., Paralyzed target
   // fails DEX saves outright regardless of modifier).
   let targetConditions: string[] = [];
+  let targetBuffs: ActiveBuff[] = [];
   if (atk.target_participant_id) {
     const { data: tRow } = await supabase
       .from('combat_participants')
-      .select('active_conditions')
+      .select('active_conditions, active_buffs')
       .eq('id', atk.target_participant_id)
       .maybeSingle();
     targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
+    targetBuffs = ((tRow?.active_buffs as ActiveBuff[] | null) ?? []);
   }
   const ability = atk.save_ability ?? '';
   const autoFail = conditionsAutoFailSave(targetConditions, ability);
@@ -499,7 +556,18 @@ export async function rollSave(
     atk.save_ability === 'DEX'
       ? (coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0)
       : 0;
-  const effectiveBonus = saveBonus + coverSaveBonus;
+
+  // v2.113.0 — Phase H pt 4: Bless save bonus (+1d4). Readers return all
+  // buffs that modify saves; we roll each and add to effectiveBonus.
+  const saveBuffBonuses = getSaveBonuses(targetBuffs);
+  type RolledSaveBonus = { buff: ActiveBuff; dice: string; rolls: number[]; total: number };
+  const rolledSaveBuffs: RolledSaveBonus[] = saveBuffBonuses.map(b => {
+    const r = rollBuffDice(b.dice);
+    return { buff: b.buff, dice: b.dice, rolls: r.rolls, total: r.total };
+  });
+  const buffSaveTotal = rolledSaveBuffs.reduce((s, r) => s + r.total, 0);
+
+  const effectiveBonus = saveBonus + coverSaveBonus + buffSaveTotal;
 
   // Auto-fail: force result=failed, d20=0 shown as cosmetic 1, no actual roll
   let d20: number;
@@ -582,8 +650,40 @@ export async function rollSave(
       auto_fail: autoFail,
       disadvantage: saveDisadvantage,
       individual_results: d20Alt != null ? [d20, d20Alt] : undefined,
+      // v2.113.0 — Phase H pt 4 buff contributions
+      buff_contributions: rolledSaveBuffs.map(r => ({
+        key: r.buff.key,
+        name: r.buff.name,
+        dice: r.dice,
+        rolls: r.rolls,
+        total: r.total,
+      })),
+      buff_total: buffSaveTotal,
     },
   });
+
+  // v2.113.0 — Phase H pt 4: emit dedicated buff_contributed events for saves
+  for (const r of rolledSaveBuffs) {
+    await emitCombatEvent({
+      campaignId: atk.campaign_id,
+      encounterId: atk.encounter_id,
+      chainId: atk.chain_id,
+      sequence: 2,
+      actorType: 'system',
+      actorName: r.buff.name,
+      targetType: atk.target_type,
+      targetName: atk.target_name,
+      eventType: 'buff_contributed',
+      payload: {
+        key: r.buff.key,
+        source: r.buff.source,
+        applies_to: 'save_roll',
+        dice: r.dice,
+        rolls: r.rolls,
+        total: r.total,
+      },
+    });
+  }
 
   return (updated as PendingAttack) ?? null;
 }
@@ -655,6 +755,52 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     rolls = fresh.rolls; modifier = fresh.modifier; total = fresh.total;
   }
 
+  // v2.113.0 — Phase H pt 4: damage riders from attacker buffs (Hunter's
+  // Mark +1d6, Hex +1d6 necrotic, etc.). Target-scoped buffs only fire when
+  // attacking the marked creature. Per 2024 PHB weapon-damage-dice rules,
+  // these DO double on a crit — we double the rider dice expression to match
+  // the base weapon crit treatment. On a miss or save-for-none the riders
+  // don't fire at all.
+  let rolledDamageRiders: Array<{
+    buff: ActiveBuff; dice: string; rolls: number[]; total: number; damageType: string;
+  }> = [];
+  let riderTotal = 0;
+  const riderEligible =
+    (atk.attack_kind === 'attack_roll' && (atk.hit_result === 'hit' || atk.hit_result === 'crit'))
+    || (atk.attack_kind === 'save' && atk.save_result !== 'passed')
+    || (atk.attack_kind === 'save' && atk.save_result === 'passed' && atk.save_success_effect === 'half');
+
+  if (riderEligible && atk.attacker_participant_id) {
+    const { data: aRow } = await supabase
+      .from('combat_participants')
+      .select('active_buffs')
+      .eq('id', atk.attacker_participant_id)
+      .maybeSingle();
+    const attackerBuffs = ((aRow?.active_buffs as ActiveBuff[] | null) ?? []);
+    const isMeleeDmg = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
+    const riders = getDamageRiders(attackerBuffs, {
+      targetParticipantId: atk.target_participant_id ?? null,
+      isMelee: isMeleeDmg,
+    });
+    for (const rider of riders) {
+      // Crit doubles the dice — Hunter's Mark/Hex weapon-damage-dice per RAW
+      const diceToRoll = isCrit ? doubleDice(rider.dice) : rider.dice;
+      const r = rollBuffDice(diceToRoll);
+      rolledDamageRiders.push({
+        buff: rider.buff,
+        dice: diceToRoll,
+        rolls: r.rolls,
+        total: r.total,
+        damageType: rider.buff.damageRider?.damageType ?? 'untyped',
+      });
+      riderTotal += r.total;
+    }
+    // Halve riders too if save for half
+    if (atk.attack_kind === 'save' && atk.save_result === 'passed' && atk.save_success_effect === 'half') {
+      riderTotal = Math.floor(riderTotal / 2);
+    }
+  }
+
   let finalDamage = total;
 
   // Save-based: failed save = full damage; passed save = half or none
@@ -662,6 +808,10 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     if (atk.save_success_effect === 'half') finalDamage = Math.floor(total / 2);
     else finalDamage = 0;
   }
+
+  // Riders add on top after save-reduction logic above (save-for-half
+  // already halves the rider total to match).
+  finalDamage = finalDamage + riderTotal;
 
   const { data: updated } = await supabase
     .from('pending_attacks')
@@ -695,8 +845,44 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
       damage_type: atk.damage_type,
       crit: isCrit,
       shared_from_group: reusedFromGroup,
+      // v2.113.0 — Phase H pt 4 damage riders
+      damage_riders: rolledDamageRiders.map(r => ({
+        key: r.buff.key,
+        name: r.buff.name,
+        dice: r.dice,
+        rolls: r.rolls,
+        total: r.total,
+        damage_type: r.damageType,
+      })),
+      rider_total: riderTotal,
     },
   });
+
+  // v2.113.0 — Phase H pt 4: per-rider buff_contributed event so the log
+  // shows "Hunter's Mark added 4 piercing damage" alongside the main hit.
+  for (const r of rolledDamageRiders) {
+    await emitCombatEvent({
+      campaignId: atk.campaign_id,
+      encounterId: atk.encounter_id,
+      chainId: atk.chain_id,
+      sequence: 3,
+      actorType: 'system',
+      actorName: r.buff.name,
+      targetType: atk.target_type,
+      targetName: atk.target_name,
+      eventType: 'buff_contributed',
+      payload: {
+        key: r.buff.key,
+        source: r.buff.source,
+        applies_to: 'damage_rider',
+        dice: r.dice,
+        rolls: r.rolls,
+        total: r.total,
+        damage_type: r.damageType,
+        crit_doubled: isCrit,
+      },
+    });
+  }
 
   // v2.99.0 — Phase E: offer post-damage reactions (Uncanny Dodge, Absorb
   // Elements) once damage is rolled but not yet applied. These can halve the
@@ -1137,6 +1323,15 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
     //   condition_sources[cond].source === 'spell:{name}' AND
     //   condition_sources[cond].casterParticipantId === this participant
     await clearConditionsFromConcentration(
+      ctx.campaignId,
+      ctx.encounterId,
+      ctx.participantId,
+      concentrationSpell,
+    );
+
+    // v2.113.0 — Phase H pt 4: same cleanup pattern for buffs (Bless targets
+    // lose +1d4, Hunter's Mark/Hex lose damage riders, etc.).
+    await clearBuffsFromConcentration(
       ctx.campaignId,
       ctx.encounterId,
       ctx.participantId,
