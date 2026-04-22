@@ -271,7 +271,7 @@ export async function advanceTurn(encounterId: string): Promise<void> {
 
   const { data: rows } = await supabase
     .from('combat_participants')
-    .select('id, turn_order, is_dead, name, participant_type, hidden_from_players, campaign_id')
+    .select('id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id')
     .eq('encounter_id', encounterId)
     .order('turn_order', { ascending: true });
   if (!rows || rows.length === 0) return;
@@ -311,6 +311,127 @@ export async function advanceTurn(encounterId: string): Promise<void> {
       round_number: nextRound,
     })
     .eq('id', encounterId);
+
+  // v2.120.0 — Phase I: death save at turn start.
+  // Character at 0 HP, not stable, not dead → resolve automation:
+  //   'off'    : no save this turn (DM will manage manually)
+  //   'auto'   : roll now, update success/failure counters, emit events,
+  //              flip stable/dead at thresholds
+  //   'prompt' : falls through to 'auto' for now; v2.121 will add the
+  //              pending_death_saves table + modal for real prompting
+  if (
+    incomingParticipant.participant_type === 'character'
+    && !incomingParticipant.is_dead
+    && !incomingParticipant.is_stable
+    && (incomingParticipant.current_hp ?? 1) === 0
+  ) {
+    const { data: campRow } = await supabase
+      .from('campaigns')
+      .select('automation_defaults')
+      .eq('id', incomingParticipant.campaign_id)
+      .maybeSingle();
+    let charRow: any = null;
+    if (incomingParticipant.entity_id) {
+      const { data } = await supabase
+        .from('characters')
+        .select('automation_overrides, advanced_automations_unlocked')
+        .eq('id', incomingParticipant.entity_id as string)
+        .maybeSingle();
+      charRow = data;
+    }
+    const { resolveAutomation } = await import('./automations');
+    const dsSetting = resolveAutomation('death_save_on_turn_start', charRow, campRow as any);
+
+    if (dsSetting !== 'off') {
+      // Roll the save. RAW 2024 p.195:
+      //   d20 ≥ 10 → success, < 10 → failure
+      //   nat 1    → 2 failures (cumulative)
+      //   nat 20   → regain 1 HP + conscious (clears both counters)
+      const d20 = Math.floor(Math.random() * 20) + 1;
+      let successes = incomingParticipant.death_save_successes ?? 0;
+      let failures = incomingParticipant.death_save_failures ?? 0;
+      let isStable = false;
+      let isDead = false;
+      let currentHp = 0;
+      let result: 'success' | 'failure' | 'crit_success' | 'crit_failure';
+
+      if (d20 === 20) {
+        // Wake with 1 HP
+        successes = 0;
+        failures = 0;
+        currentHp = 1;
+        result = 'crit_success';
+      } else if (d20 === 1) {
+        failures = Math.min(3, failures + 2);
+        result = 'crit_failure';
+      } else if (d20 >= 10) {
+        successes = Math.min(3, successes + 1);
+        result = 'success';
+      } else {
+        failures = Math.min(3, failures + 1);
+        result = 'failure';
+      }
+
+      if (successes >= 3) isStable = true;
+      if (failures >= 3) isDead = true;
+
+      const updates: Record<string, any> = {
+        death_save_successes: successes,
+        death_save_failures: failures,
+        is_stable: isStable,
+        is_dead: isDead,
+      };
+      if (result === 'crit_success') updates.current_hp = currentHp;
+
+      await supabase
+        .from('combat_participants')
+        .update(updates)
+        .eq('id', incomingParticipant.id);
+
+      // Emit a structured event for the log
+      await emitCombatEvent({
+        campaignId: incomingParticipant.campaign_id,
+        encounterId,
+        chainId: newChainId(),
+        sequence: 0,
+        actorType: 'player',
+        actorName: incomingParticipant.name,
+        targetType: 'self',
+        targetName: incomingParticipant.name,
+        eventType: 'death_save_rolled',
+        payload: {
+          d20,
+          result,
+          successes,
+          failures,
+          became_stable: isStable,
+          became_dead: isDead,
+          woke_up: result === 'crit_success',
+          trigger: 'turn_start',
+          automation_setting: dsSetting,
+        },
+        visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
+      });
+    } else {
+      // 'off' — log that we skipped so DMs can see the automation chose silence
+      await emitCombatEvent({
+        campaignId: incomingParticipant.campaign_id,
+        encounterId,
+        chainId: newChainId(),
+        sequence: 0,
+        actorType: 'system',
+        actorName: 'System',
+        targetType: 'self',
+        targetName: incomingParticipant.name,
+        eventType: 'automation_skipped',
+        payload: {
+          automation: 'death_save_on_turn_start',
+          reason: 'resolver_returned_off',
+        },
+        visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
+      });
+    }
+  }
 
   // Emit turn_ended (for outgoing) + turn_started (for incoming)
   const outgoing = active[currentIdx] ?? null;

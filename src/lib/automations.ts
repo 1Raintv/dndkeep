@@ -70,6 +70,14 @@ export const AUTOMATIONS: readonly AutomationDef[] = [
     default: 'auto',
     allowed: ['off', 'auto'] as const,
   },
+  {
+    key: 'death_save_on_turn_start',
+    label: 'Death saves at turn start',
+    description:
+      'When a downed character starts their turn at 0 HP, roll a death save (d20 ≥ 10 succeeds, nat 1 = 2 failures, nat 20 wakes with 1 HP). Off: DM manages death saves manually. Auto: rolls automatically and updates success/failure counters. Prompt falls through to Auto until v2.121 adds the modal.',
+    default: 'auto',
+    allowed: ['off', 'prompt', 'auto'] as const,
+  },
   // Future automations go here. Keep key strings stable once shipped.
 ];
 
