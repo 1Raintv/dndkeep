@@ -4,6 +4,10 @@ import { rollDie } from '../../lib/gameUtils';
 import { calcArmorAC, acBreakdown } from '../../data/equipment';
 import type { Character, InventoryItem } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  currencyToCp, cpToCurrency, currencyToGp, currencyWeightLbs, formatCurrency,
+} from '../../lib/currency';
+import { currentWeightLbs, encumbranceStatus } from '../../lib/encumbrance';
 
 interface InventoryProps {
  character: Character;
@@ -236,7 +240,7 @@ function CurrencyDisplay({ currency, onUpdate }: {
  const coins: { key: keyof Character['currency']; label: string; color: string; icon: string; title: string }[] = [
  { key: 'pp', label: 'PP', color: '#e2e8f0', icon: '', title: 'Platinum Pieces (1 PP = 10 GP)' },
  { key: 'gp', label: 'GP', color: 'var(--c-gold-l)', icon: '', title: 'Gold Pieces' },
- { key: 'ep', label: 'EP', color: '#60a5fa', icon: '', title: 'Electrum Pieces (1 EP = 5 SP)' },
+ { key: 'ep', label: 'EP', color: '#60a5fa', icon: '', title: 'Electrum Pieces (1 EP = 5 SP) — optional in 2024' },
  { key: 'sp', label: 'SP', color: '#9ca3af', icon: '', title: 'Silver Pieces (1 SP = 10 CP)' },
  { key: 'cp', label: 'CP', color: '#b45309', icon: '', title: 'Copper Pieces' },
  ];
@@ -253,12 +257,29 @@ function CurrencyDisplay({ currency, onUpdate }: {
  setEditing(null);
  }
 
+ // v2.134.0 — Phase L pt 2: re-mix coins into the best-fit distribution
+ // using the v2.133 library. Preserves EP only if the player already had
+ // EP (respects the 2024 optional-EP default — players without EP get a
+ // clean PP/GP/SP/CP breakdown; legacy characters keep their EP).
+ function handleOptimize() {
+ const totalCp = currencyToCp(currency);
+ const useEp = (currency.ep ?? 0) > 0;
+ onUpdate(cpToCurrency(totalCp, useEp));
+ }
+
+ // v2.134.0 — computed summaries for the footer row
+ const totalGp = currencyToGp(currency);
+ const coinWeight = currencyWeightLbs(currency);
+ const isEmpty = currencyToCp(currency) === 0;
+
  return (
  <div style={{
- display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-3)',
+ padding: 'var(--sp-3)',
  background: '#080d14', borderRadius: 'var(--r-md)',
  marginBottom: 'var(--sp-4)',
+ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)',
  }}>
+ <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
  {coins.map(({ key, label, color, icon, title }) => (
  <div key={key} style={{ textAlign: 'center', flex: 1, cursor: 'pointer' }}
  onClick={() => editing !== key && open(key)} title={title}>
@@ -277,6 +298,39 @@ function CurrencyDisplay({ currency, onUpdate }: {
  </div>
  ))}
  </div>
+ {/* v2.134.0 — Phase L pt 2: footer with total value, coin weight, and
+     an Optimize button that collapses small coins into larger denominations
+     (e.g. 12 sp → 1 gp 2 sp). Hidden when the pouch is empty. */}
+ {!isEmpty && (
+ <div style={{
+ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+ paddingTop: 'var(--sp-2)',
+ borderTop: '1px solid rgba(255,255,255,0.05)',
+ fontSize: 10, color: 'var(--t-3)', fontFamily: 'var(--ff-body)',
+ }}>
+ <span title={formatCurrency(currency)}>
+ <strong style={{ color: 'var(--c-gold-l)', fontFamily: 'var(--ff-stat)', fontWeight: 800 }}>
+ {totalGp.toFixed(totalGp % 1 === 0 ? 0 : 2)} gp
+ </strong>
+ <span style={{ marginLeft: 8, opacity: 0.7 }}>
+ · {coinWeight.toFixed(coinWeight < 1 ? 2 : 1)} lb
+ </span>
+ </span>
+ <button
+ onClick={handleOptimize}
+ title="Re-mix coins into the best-fit distribution (e.g. 25 sp → 2 gp 5 sp)"
+ style={{
+ fontSize: 10, fontWeight: 700, padding: '2px 8px', minHeight: 0,
+ background: 'transparent', color: 'var(--t-2)',
+ border: '1px solid var(--c-border)', borderRadius: 4,
+ cursor: 'pointer',
+ }}
+ >
+ ⇅ Optimize
+ </button>
+ </div>
+ )}
+ </div>
  );
 }
 
@@ -287,7 +341,9 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
 
  const { triggerRoll } = useDiceRoll();
  const inventory = character.inventory;
- const totalWeight = inventory.reduce((sum, item) => sum + item.weight * item.quantity, 0);
+ // v2.134.0 — Phase L pt 2: delegate to encumbrance library so coin weight
+ // is included and tier thresholds come from one source of truth.
+ const totalWeight = currentWeightLbs(character);
 
  function toggleEquipped(id: string) {
  // toggleEquipped moved to toggleEquippedWithAC for armor AC sync
@@ -414,18 +470,25 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  </div>
  <div style={{ display: 'flex', gap: 'var(--sp-2)', marginBottom: 'var(--sp-2)', alignItems: 'center' }}>
  {(() => {
- const str = character.strength;
- const unencumbered = str * 5;
- const encumbered = str * 10;
- const heavyEncumbered = str * 15;
- const isEncumbered = totalWeight > unencumbered;
- const isHeavy = totalWeight > encumbered;
+ // v2.134.0 — Phase L pt 2: delegate to encumbrance library. Uses the
+ // 3-tier variant rule (unencumbered / encumbered / heavy / over_max)
+ // because that's what this component was already displaying. Base 2024
+ // rule can be opted into via a future campaign flag.
+ const enc = encumbranceStatus(character, 'variant');
+ const isEncumbered = enc.status === 'encumbered' || enc.status === 'heavy' || enc.status === 'over_max';
+ const isHeavy = enc.status === 'heavy' || enc.status === 'over_max';
  const encColor = isHeavy ? '#ef4444' : isEncumbered ? '#fbbf24' : 'var(--t-2)';
- const encLabel = isHeavy ? ' (Heavy)' : isEncumbered ? ' (Encumbered)' : '';
+ const encLabel = enc.status === 'over_max'
+   ? ' (Over Max)'
+   : isHeavy
+     ? ' (Heavy)'
+     : isEncumbered
+       ? ' (Encumbered)'
+       : '';
  return (
- <span title={`Carry capacity: ${heavyEncumbered} lb max (STR ${str} × 15)`}
+ <span title={`Carry capacity: ${enc.capacityLbs} lb max (STR ${character.strength} × 15). Thresholds: ${enc.tiers.encumbered} / ${enc.tiers.heavy} / ${enc.tiers.max} lb.`}
  style={{ fontSize: 'var(--fs-xs)', color: encColor, fontFamily: 'var(--ff-body)', fontWeight: isEncumbered ? 700 : 400 }}>
- {totalWeight.toFixed(totalWeight % 1 === 0 ? 0 : 1)} / {heavyEncumbered} lb{encLabel}
+ {totalWeight.toFixed(totalWeight % 1 === 0 ? 0 : 1)} / {enc.capacityLbs} lb{encLabel}
  </span>
  );
  })()}
