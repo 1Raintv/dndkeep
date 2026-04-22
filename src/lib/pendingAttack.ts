@@ -303,12 +303,13 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   let attackerConditions: string[] = [];
   let targetConditions: string[] = [];
   let attackerBuffs: ActiveBuff[] = [];
+  let attackerExhaustion = 0;
   let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
   if (atk.attacker_participant_id && atk.target_participant_id) {
     const [aRes, tRes] = await Promise.all([
       supabase
         .from('combat_participants')
-        .select('active_conditions, active_buffs, entity_id, participant_type, name')
+        .select('active_conditions, active_buffs, exhaustion_level, entity_id, participant_type, name')
         .eq('id', atk.attacker_participant_id)
         .maybeSingle(),
       supabase
@@ -320,6 +321,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     attackerConditions = ((aRes.data?.active_conditions as string[] | null) ?? []);
     targetConditions = ((tRes.data?.active_conditions as string[] | null) ?? []);
     attackerBuffs = ((aRes.data?.active_buffs as ActiveBuff[] | null) ?? []);
+    attackerExhaustion = ((aRes.data?.exhaustion_level as number | null) ?? 0);
 
     // Attempt distance lookup via the campaign's active battle map tokens.
     // If either token is missing we fall back to the default "far" distance,
@@ -374,7 +376,10 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   });
   const buffAttackTotal = rolledAttackBonuses.reduce((s, r) => s + r.total, 0);
 
-  const total = d20 + bonus + buffAttackTotal;
+  // v2.116.0 — Phase H pt 7: 2024 exhaustion penalty (-2 per level to d20)
+  const exhaustionPenalty = -2 * attackerExhaustion;
+
+  const total = d20 + bonus + buffAttackTotal + exhaustionPenalty;
 
   // v2.103.0 — Phase F: cover mechanics per 2024 PHB.
   //   half cover:           +2 AC (still targetable)
@@ -469,6 +474,9 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
         total: r.total,
       })),
       buff_total: buffAttackTotal,
+      // v2.116.0 — Phase H pt 7 exhaustion penalty
+      exhaustion_level: attackerExhaustion,
+      exhaustion_penalty: exhaustionPenalty,
     },
   });
 
@@ -536,14 +544,16 @@ export async function rollSave(
   // fails DEX saves outright regardless of modifier).
   let targetConditions: string[] = [];
   let targetBuffs: ActiveBuff[] = [];
+  let targetExhaustion = 0;
   if (atk.target_participant_id) {
     const { data: tRow } = await supabase
       .from('combat_participants')
-      .select('active_conditions, active_buffs')
+      .select('active_conditions, active_buffs, exhaustion_level')
       .eq('id', atk.target_participant_id)
       .maybeSingle();
     targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
     targetBuffs = ((tRow?.active_buffs as ActiveBuff[] | null) ?? []);
+    targetExhaustion = ((tRow?.exhaustion_level as number | null) ?? 0);
   }
   const ability = atk.save_ability ?? '';
   const autoFail = conditionsAutoFailSave(targetConditions, ability);
@@ -567,7 +577,11 @@ export async function rollSave(
   });
   const buffSaveTotal = rolledSaveBuffs.reduce((s, r) => s + r.total, 0);
 
-  const effectiveBonus = saveBonus + coverSaveBonus + buffSaveTotal;
+  // v2.116.0 — Phase H pt 7: 2024 exhaustion applies to ALL d20 rolls
+  // including saves. -2 per level.
+  const saveExhaustionPenalty = -2 * targetExhaustion;
+
+  const effectiveBonus = saveBonus + coverSaveBonus + buffSaveTotal + saveExhaustionPenalty;
 
   // Auto-fail: force result=failed, d20=0 shown as cosmetic 1, no actual roll
   let d20: number;
@@ -659,6 +673,9 @@ export async function rollSave(
         total: r.total,
       })),
       buff_total: buffSaveTotal,
+      // v2.116.0 — Phase H pt 7 exhaustion penalty
+      exhaustion_level: targetExhaustion,
+      exhaustion_penalty: saveExhaustionPenalty,
     },
   });
 
@@ -1059,6 +1076,93 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
           death_save_failures: deathFailures,
         })
         .eq('id', tgt.id);
+
+      // v2.116.0 — Phase H pt 7: death-tied cleanup.
+      // When a participant dies:
+      //   1. Their concentration drops → remove conditions/buffs they placed
+      //      on OTHERS via spells (Hold Person's Paralyzed wears off, Bless
+      //      bonus vanishes, Hunter's Mark rider cleared, etc.)
+      //   2. Their own active_buffs clear (they don't benefit while dead)
+      //   3. active_conditions stays — a dead body can still be Prone/etc.
+      //      for description purposes, though it's moot mechanically
+      if (isDead && !tgt.is_dead) {
+        const { data: deadRow } = await supabase
+          .from('combat_participants')
+          .select('concentration_spell_id, entity_id, participant_type')
+          .eq('id', tgt.id)
+          .maybeSingle();
+
+        // Drop concentration on character's DB row
+        if (deadRow?.participant_type === 'character' && deadRow.entity_id) {
+          await supabase
+            .from('characters')
+            .update({ concentration_spell: null, concentration_rounds_remaining: null })
+            .eq('id', deadRow.entity_id);
+        }
+
+        // Clear own buffs + concentration pointer on the participant
+        await supabase
+          .from('combat_participants')
+          .update({
+            active_buffs: [],
+            concentration_spell_id: null,
+          })
+          .eq('id', tgt.id);
+
+        // Walk the campaign for anything this caster had placed via
+        // concentration. We don't know the spell name (concentration_spell
+        // on characters was just cleared), so we do broad cleanup: remove
+        // any condition or buff on any participant where casterParticipantId
+        // equals this one.
+        const { data: allRows } = await supabase
+          .from('combat_participants')
+          .select('id, active_conditions, condition_sources, active_buffs, encounter_id')
+          .eq('encounter_id', atk.encounter_id);
+        for (const row of (allRows ?? [])) {
+          const sources = ((row.condition_sources ?? {}) as Record<string, any>);
+          const condsToRemove: string[] = [];
+          for (const [cond, meta] of Object.entries(sources)) {
+            if (meta?.casterParticipantId === tgt.id) condsToRemove.push(cond);
+          }
+          for (const c of condsToRemove) {
+            const { removeCondition: rc } = await import('./conditions');
+            await rc({
+              participantId: row.id as string,
+              conditionName: c,
+              campaignId: atk.campaign_id,
+              encounterId: row.encounter_id as string | null,
+            });
+          }
+          const buffs = ((row.active_buffs ?? []) as ActiveBuff[]);
+          const buffsToRemove = buffs
+            .filter(b => b.casterParticipantId === tgt.id)
+            .map(b => b.key);
+          for (const k of buffsToRemove) {
+            await removeBuff({
+              participantId: row.id as string,
+              key: k,
+              reason: 'caster_died',
+              campaignId: atk.campaign_id,
+              encounterId: row.encounter_id as string | null,
+            });
+          }
+        }
+
+        await emitCombatEvent({
+          campaignId: atk.campaign_id,
+          encounterId: atk.encounter_id,
+          chainId: atk.chain_id,
+          sequence: 6,
+          actorType: 'system',
+          actorName: 'System',
+          targetType: (deadRow?.participant_type ?? 'character') as any,
+          targetName: tgt.name,
+          eventType: 'participant_died',
+          payload: {
+            cleanup: 'buffs_and_concentration_dropped',
+          },
+        });
+      }
 
       // v2.99.0 — Phase E: concentration save on damage.
       // Only characters maintain concentration. Target must be a character

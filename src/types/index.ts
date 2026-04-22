@@ -557,6 +557,10 @@ export interface CombatParticipant {
   is_stable: boolean;
   is_dead: boolean;
   active_conditions: string[];
+  /** v2.116.0 — Phase H pt 7: 2024 exhaustion level (0-6). Level 6 = death.
+   *  Separate column because only Exhaustion has a level; the name stays in
+   *  active_conditions for UI/cascade uniformity. */
+  exhaustion_level?: number;
   /** v2.110.0 — Phase H: per-condition source metadata so concentration
    *  cleanup (v2.111) can remove only the conditions that came from the
    *  dropped spell. Shape: { [name]: { source, casterParticipantId? } }. */

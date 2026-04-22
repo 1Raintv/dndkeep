@@ -47,7 +47,7 @@ export async function canMove(
 ): Promise<MovementCheck> {
   const { data } = await supabase
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions')
+    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions, exhaustion_level')
     .eq('id', participantId)
     .single();
 
@@ -60,7 +60,13 @@ export async function canMove(
   // Unconscious/Petrified zero out speed entirely. Overrides Dash.
   const conditions = ((data?.active_conditions as string[] | null) ?? []);
   const zeroed = conditionsSpeedZero(conditions);
-  const maxSpeed = zeroed ? 0 : (dashed ? baseSpeed * 2 : baseSpeed);
+  // v2.116.0 — Phase H pt 7: exhaustion reduces speed by 5 ft per level.
+  // Applied BEFORE Dash doubling per 2024 RAW (Dash uses your current Speed,
+  // which is already reduced by exhaustion). Clamped at 0.
+  const exhaustionLvl = (data?.exhaustion_level as number | null) ?? 0;
+  const speedAfterExhaustion = Math.max(0, baseSpeed - 5 * exhaustionLvl);
+  const effectiveBase = dashed ? speedAfterExhaustion * 2 : speedAfterExhaustion;
+  const maxSpeed = zeroed ? 0 : effectiveBase;
   const wouldBe = currentUsed + distanceFt;
   const remaining = Math.max(0, maxSpeed - currentUsed);
 
