@@ -506,6 +506,14 @@ export interface Campaign {
   //   'variant' — optional 3-tier rule: > STR × 5 / > STR × 10 / > STR × 15
   encumbrance_variant?: 'off' | 'base' | 'variant';
 
+  // v2.142.0 — Phase M pt 5: default ruleset filter for the bestiary.
+  //   null    — show all monsters regardless of ruleset
+  //   '2014'  — hide 2024 monsters
+  //   '2024'  — hide 2014 monsters
+  // Applied as the initial filter when the monster browser is opened
+  // from this campaign's context. DMs can still toggle the filter in UI.
+  default_ruleset_version?: '2014' | '2024' | null;
+
   // v2.96.0 — Phase D: combat state machine settings
   combat_automation_settings?: CombatAutomationSettings;
 }

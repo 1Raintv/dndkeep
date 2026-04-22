@@ -22,14 +22,27 @@ interface MonsterBrowserProps {
   compact?: boolean;
   /** v2.94.0 — Phase B: filter to show only SRD, only homebrew, or both */
   initialSourceFilter?: 'all' | 'srd' | 'homebrew';
+  /** v2.142.0 — Phase M pt 5: initial ruleset filter. Callers from a
+   *  campaign context should pass the campaign's `default_ruleset_version`
+   *  so the DM sees their preferred ruleset by default. Null/undefined
+   *  means no initial filter — all rulesets visible. */
+  initialRulesetFilter?: '2014' | '2024' | null;
 }
 
-export default function MonsterBrowser({ onAddToCombat, compact = false, initialSourceFilter = 'all' }: MonsterBrowserProps) {
+export default function MonsterBrowser({
+  onAddToCombat, compact = false,
+  initialSourceFilter = 'all',
+  initialRulesetFilter = null,
+}: MonsterBrowserProps) {
   const { monsters } = useMonsters();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'srd' | 'homebrew'>(initialSourceFilter);
+  // v2.142.0 — Phase M pt 5: ruleset filter. 'all' = no restriction.
+  const [rulesetFilter, setRulesetFilter] = useState<'all' | '2014' | '2024'>(
+    initialRulesetFilter ?? 'all'
+  );
   const [crMin, setCrMin] = useState('');
   const [crMax, setCrMax] = useState('');
   const [selected, setSelected] = useState<MonsterData | null>(null);
@@ -49,6 +62,13 @@ export default function MonsterBrowser({ onAddToCombat, compact = false, initial
           if (sourceFilter === 'homebrew' && !isHomebrew) return false;
           if (sourceFilter === 'srd' && isHomebrew) return false;
         }
+        // v2.142.0 — Phase M pt 5: ruleset filter. A monster with null
+        // ruleset_version (homebrew without a declared version) is shown
+        // regardless of filter so legitimate homebrew content isn't
+        // accidentally hidden.
+        if (rulesetFilter !== 'all') {
+          if (m.ruleset_version && m.ruleset_version !== rulesetFilter) return false;
+        }
         if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
         if (crMin) {
           const minIdx = CR_ORDER.indexOf(crMin);
@@ -61,7 +81,7 @@ export default function MonsterBrowser({ onAddToCombat, compact = false, initial
         return true;
       })
       .sort(crSort);
-  }, [monsters, search, typeFilter, sizeFilter, sourceFilter, crMin, crMax]);
+  }, [monsters, search, typeFilter, sizeFilter, sourceFilter, rulesetFilter, crMin, crMax]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: selected && !compact ? '1fr 1fr' : '1fr', gap: 'var(--sp-6)' }}>
@@ -74,6 +94,28 @@ export default function MonsterBrowser({ onAddToCombat, compact = false, initial
             const color = id === 'homebrew' ? '#a78bfa' : id === 'srd' ? '#60a5fa' : 'var(--c-gold-l)';
             return (
               <button key={id} onClick={() => setSourceFilter(id)} style={{
+                fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+                border: active ? `1px solid ${color}` : '1px solid var(--c-border)',
+                background: active ? `${color}20` : 'transparent',
+                color: active ? color : 'var(--t-2)',
+                minHeight: 0,
+              }}>{label}</button>
+            );
+          })}
+        </div>
+
+        {/* v2.142.0 — Phase M pt 5: ruleset filter pills. Currently all 334
+            SRD rows are 2014; 2024 will return 0 until data is loaded. We
+            still show the filter so infrastructure is visible and DMs can
+            opt in when 2024 data lands. */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {([['all', 'All Rulesets'], ['2014', '2014'], ['2024', '2024']] as const).map(([id, label]) => {
+            const active = rulesetFilter === id;
+            const color = id === '2024' ? '#34d399' : id === '2014' ? '#f59e0b' : 'var(--c-gold-l)';
+            return (
+              <button key={id} onClick={() => setRulesetFilter(id)} style={{
                 fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
                 letterSpacing: '0.06em', textTransform: 'uppercase',
                 padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
@@ -227,6 +269,22 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* v2.142.0 — Phase M pt 5: ruleset badge — makes it visible
+                at a glance which edition the stat block comes from.
+                Amber for 2014, green for 2024, grey for null (homebrew
+                without declared version). */}
+            {m.ruleset_version && (() => {
+              const rv = m.ruleset_version;
+              const rvColor = rv === '2024' ? '#34d399' : '#f59e0b';
+              return (
+                <span style={{
+                  fontWeight: 800, fontSize: 10, color: rvColor,
+                  background: `${rvColor}18`, border: `1px solid ${rvColor}55`,
+                  borderRadius: 999, padding: '2px 8px',
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                }}>{rv}</span>
+              );
+            })()}
             <span style={{ fontWeight: 800, fontSize: 12, color: 'var(--c-gold-l)', background: 'rgba(201,146,42,0.15)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '2px 10px' }}>CR {formatCR(m.cr)}</span>
             <span style={{ fontSize: 11, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 8px' }}>{xpLabel} XP</span>
             {onAddToCombat && (
