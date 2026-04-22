@@ -217,10 +217,28 @@ export async function syncEncumbranceCondition(
   }
   if (!variant || variant === 'off') return;
 
-  const shouldBeEncumbered = isEncumbered(
+  // v2.147.0 — Phase N pt 5: determine which tier applies, not just
+  // a boolean. Under 'base' (2024 RAW), only Encumbered exists at one
+  // threshold (>15× STR). Under 'variant' (optional 2014 3-tier),
+  // tier 1 ('encumbered' status, >5× STR) → Encumbered, tier 2
+  // ('heavy' or 'over_max', >10× STR) → HeavilyEncumbered.
+  const status = encumbranceStatus(
     input.character,
     variant === 'variant' ? 'variant' : 'base',
-  );
+  ).status;
+
+  // Which condition name we WANT to be active (or null if unencumbered)
+  let wantCondition: 'Encumbered' | 'HeavilyEncumbered' | null;
+  if (variant === 'variant') {
+    if (status === 'encumbered') wantCondition = 'Encumbered';
+    else if (status === 'heavy' || status === 'over_max') wantCondition = 'HeavilyEncumbered';
+    else wantCondition = null;
+  } else {
+    // base rule: single-tier Encumbered when over capacity, nothing otherwise
+    wantCondition = (status === 'encumbered' || status === 'heavy' || status === 'over_max')
+      ? 'Encumbered'
+      : null;
+  }
 
   // Find the character's active combat participant, if any.
   const { data: part } = await supabase
@@ -235,27 +253,48 @@ export async function syncEncumbranceCondition(
 
   const conditions: string[] = (part.active_conditions ?? []) as string[];
   const sources = (part.condition_sources ?? {}) as Record<string, { source?: string }>;
-  const hasEncumbered = conditions.includes('Encumbered');
-  const currentSource = sources['Encumbered']?.source;
 
-  if (shouldBeEncumbered && !hasEncumbered) {
-    const { applyCondition } = await import('./conditions');
+  // Check both possible tags and their sources. We only manage tags we
+  // previously applied (source='encumbrance') — never clobber a DM-set
+  // Encumbered or HeavilyEncumbered tag.
+  const hasEnc = conditions.includes('Encumbered');
+  const hasHeavy = conditions.includes('HeavilyEncumbered');
+  const encSource = sources['Encumbered']?.source;
+  const heavySource = sources['HeavilyEncumbered']?.source;
+
+  const { applyCondition, removeCondition } = await import('./conditions');
+  const campaignId = (part.campaign_id ?? input.campaignId) as string | undefined;
+  const encounterId = (part.encounter_id ?? input.encounterId) as string | null | undefined;
+
+  // Remove any ENC-managed tag that no longer matches the desired state.
+  if (wantCondition !== 'Encumbered' && hasEnc && encSource === 'encumbrance') {
+    await removeCondition({
+      participantId: part.id as string,
+      conditionName: 'Encumbered',
+      campaignId, encounterId,
+    });
+  }
+  if (wantCondition !== 'HeavilyEncumbered' && hasHeavy && heavySource === 'encumbrance') {
+    await removeCondition({
+      participantId: part.id as string,
+      conditionName: 'HeavilyEncumbered',
+      campaignId, encounterId,
+    });
+  }
+  // Apply the desired tag if it isn't already there.
+  if (wantCondition === 'Encumbered' && !hasEnc) {
     await applyCondition({
       participantId: part.id as string,
       conditionName: 'Encumbered',
       source: 'encumbrance',
-      campaignId: (part.campaign_id ?? input.campaignId) as string | undefined,
-      encounterId: (part.encounter_id ?? input.encounterId) as string | null | undefined,
+      campaignId, encounterId,
     });
-  } else if (!shouldBeEncumbered && hasEncumbered && currentSource === 'encumbrance') {
-    // Only remove if WE set it. Leaves DM/homebrew tags alone.
-    const { removeCondition } = await import('./conditions');
-    await removeCondition({
+  } else if (wantCondition === 'HeavilyEncumbered' && !hasHeavy) {
+    await applyCondition({
       participantId: part.id as string,
-      conditionName: 'Encumbered',
-      campaignId: (part.campaign_id ?? input.campaignId) as string | undefined,
-      encounterId: (part.encounter_id ?? input.encounterId) as string | null | undefined,
+      conditionName: 'HeavilyEncumbered',
+      source: 'encumbrance',
+      campaignId, encounterId,
     });
   }
-  // else: already in the correct state, no-op
 }

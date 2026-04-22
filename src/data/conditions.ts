@@ -51,6 +51,16 @@ export const CONDITIONS: ConditionMechanic[] = [
   // attackDisadvantage flag here is a broad approximation (covers
   // non-STR-based attacks too) — DM adjudicates finesse weapons etc.
   { name: 'Encumbered', description: "Overburdened. Speed halved, disadvantage on STR/DEX/CON rolls.", effects: ["Speed halved.", "Disadvantage on attacks.", "Disadvantage on STR/DEX/CON checks + saves."], attackDisadvantage: true, savingThrowDisadvantage: ['strength','dexterity','constitution'], speedHalved: true, color: '#a16207', icon: '' },
+  // v2.147.0 — Phase N pt 5: distinct tier-2 condition for the optional
+  // 3-tier variant rule (campaigns.encumbrance_variant='variant'). Tier 1
+  // uses Encumbered above, tier 2 (over 10× STR) uses HeavilyEncumbered.
+  // Mechanics are identical to Encumbered for implementation simplicity —
+  // the visible difference is the deeper red-orange color so the DM can
+  // tell at a glance which tier a character is in. RAW 2014 DMG variant
+  // tier 2 specifies an additional −10 ft flat penalty beyond tier 1's
+  // −10 ft; we approximate both tiers with "speed halved" until a future
+  // ship adds flat speed-penalty support to the condition system.
+  { name: 'HeavilyEncumbered', description: "Overburdened beyond tier 1 (variant rule). Speed halved, disadvantage on STR/DEX/CON rolls.", effects: ["Speed halved.", "Disadvantage on attacks.", "Disadvantage on STR/DEX/CON checks + saves."], attackDisadvantage: true, savingThrowDisadvantage: ['strength','dexterity','constitution'], speedHalved: true, color: '#dc2626', icon: '' },
 ];
 
 export const CONDITION_MAP: Record<string, ConditionMechanic> = Object.fromEntries(
