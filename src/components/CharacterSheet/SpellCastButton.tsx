@@ -13,7 +13,9 @@ import BuffTargetPickerModal from '../Combat/BuffTargetPickerModal';
 import DeclareSpellCastModal from '../Combat/DeclareSpellCastModal';
 import SpellTargetPickerModal from '../Combat/SpellTargetPickerModal';
 import MultiAttackPickerModal from '../Combat/MultiAttackPickerModal';
+import SpellHealPickerModal from '../Combat/SpellHealPickerModal';
 import { findMultiAttackSpell, computeDefaultAttackCount } from '../../lib/multiAttackSpells';
+import { findHealSpell, type HealSpellDef } from '../../lib/healSpells';
 import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
@@ -111,6 +113,16 @@ export default function SpellCastButton({
    slotLevel: number;
    damageDice: string;
    attackCount: number;
+ } | null>(null);
+
+ // v2.150.0 — Phase O pt 3: heal target picker (Cure Wounds, Healing
+ // Word, Mass Cure Wounds, etc.). Doesn't create pending_attacks rows
+ // — applies HP directly via applyHealToParticipant. Slot burn +
+ // concentration in onDeclared as usual.
+ const [healPicker, setHealPicker] = useState<{
+   slotLevel: number;
+   healDice: string;
+   def: HealSpellDef;
  } | null>(null);
 
  function flashCast(slotLevel: number) {
@@ -888,14 +900,35 @@ export default function SpellCastButton({
  </button>
  )}
 
- {/* Heal dice */}
- {mechanics.healDice && (
- <button onClick={rollHeal}
- style={{ ...btnBase, background: 'rgba(52,211,153,0.12)',
- border: '1px solid rgba(52,211,153,0.4)', color: '#34d399' }}>
- {mechanics.healDice}
- </button>
- )}
+ {/* Heal dice. v2.150.0 — Phase O pt 3: in combat, open
+     SpellHealPickerModal to pick target(s) and apply HP directly.
+     Out of combat (no campaignId, no encounter), fall through to the
+     existing rollHeal path (local dice + action log, no HP mutation —
+     DM applies manually). */}
+ {mechanics.healDice && (() => {
+   const healDef = findHealSpell(spell.name);
+   const canRoute = !!(healDef && campaignId);
+   return (
+     <button
+       onClick={() => {
+         if (canRoute) {
+           const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+           const hasl = (spell as any).heal_at_slot_level as Record<string, string> | undefined;
+           const effDice = hasl?.[String(effSlot)] ?? mechanics.healDice!;
+           setHealPicker({ slotLevel: effSlot, healDice: effDice, def: healDef! });
+           return;
+         }
+         rollHeal();
+       }}
+       title={canRoute
+         ? `Pick up to ${healDef!.maxTargets} target${healDef!.maxTargets === 1 ? '' : 's'} to heal. Applies HP directly.`
+         : `Roll ${mechanics.healDice} healing (out of combat — DM applies HP manually).`}
+       style={{ ...btnBase, background: 'rgba(52,211,153,0.12)',
+       border: '1px solid rgba(52,211,153,0.4)', color: '#34d399' }}>
+       {canRoute ? `+ ${mechanics.healDice} HP` : mechanics.healDice}
+     </button>
+   );
+ })()}
 
  {/* Slot picker modal — v2.55.0/2.57.0: matches the upcast modal layout.
      Width 560 max with 16px viewport gutter, dvh-based height for iOS Safari,
@@ -1274,6 +1307,29 @@ export default function SpellCastButton({
  onDeclared={() => {
  if (!isCantrip) spendSlot(multiAttackPicker.slotLevel);
  flashCast(multiAttackPicker.slotLevel);
+ onLeveledSpellCast?.(isBonusActionCast);
+ if (spell.concentration) onConcentrationCast?.();
+ }}
+ />
+ )}
+ {/* v2.150.0 — Phase O pt 3: heal picker. Direct HP application via
+     applyHealToParticipant — no pending_attacks rows since there's no
+     hit/miss/save to resolve. Mass heals share one roll across targets
+     per RAW 2024. */}
+ {healPicker && campaignId && (
+ <SpellHealPickerModal
+ open={true}
+ onClose={() => setHealPicker(null)}
+ spell={spell}
+ slotLevel={healPicker.slotLevel}
+ healDef={healPicker.def}
+ effectiveHealDice={healPicker.healDice}
+ spellMod={spellMod}
+ character={character}
+ campaignId={campaignId}
+ onDeclared={() => {
+ if (!isCantrip) spendSlot(healPicker.slotLevel);
+ flashCast(healPicker.slotLevel);
  onLeveledSpellCast?.(isBonusActionCast);
  if (spell.concentration) onConcentrationCast?.();
  }}
