@@ -12,6 +12,8 @@ import PlayerAttackButton from '../Combat/PlayerAttackButton';
 import BuffTargetPickerModal from '../Combat/BuffTargetPickerModal';
 import DeclareSpellCastModal from '../Combat/DeclareSpellCastModal';
 import SpellTargetPickerModal from '../Combat/SpellTargetPickerModal';
+import MultiAttackPickerModal from '../Combat/MultiAttackPickerModal';
+import { findMultiAttackSpell, computeDefaultAttackCount } from '../../lib/multiAttackSpells';
 import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
@@ -100,6 +102,15 @@ export default function SpellCastButton({
  const [aoePicker, setAoePicker] = useState<{
    slotLevel: number;
    damageDice: string;
+ } | null>(null);
+
+ // v2.149.0 — Phase O pt 2: multi-beam attack spell picker (Scorching
+ // Ray, Eldritch Blast). Parallel to aoePicker but routes through N
+ // separate declareAttack calls with attackKind='attack_roll'.
+ const [multiAttackPicker, setMultiAttackPicker] = useState<{
+   slotLevel: number;
+   damageDice: string;
+   attackCount: number;
  } | null>(null);
 
  function flashCast(slotLevel: number) {
@@ -722,30 +733,56 @@ export default function SpellCastButton({
  {mechanics.damageDice} {mechanics.damageType}
  </button>
  )}
- {/* v2.101.0 — Phase F: in-combat single-target spell attack. Renders
-     null when out of combat so the existing two-button flow is
-     preserved. Uses the effective upcast dice so higher slots scale
-     correctly when forceSlotLevel is set. */}
- {character.id && mechanics.damageDice && (() => {
+ {/* v2.101.0 — Phase F: in-combat single-target spell attack.
+     v2.149.0 — Phase O pt 2: for multi-beam attack spells (Scorching
+     Ray, Eldritch Blast), branch to MultiAttackPickerModal which
+     creates one pending_attacks row per beam via declareAttack. Single-
+     target attack spells (Fire Bolt, Guiding Bolt, Ray of Frost, etc.)
+     keep the existing PlayerAttackButton path unchanged. */}
+ {character.id && campaignId && mechanics.damageDice && (() => {
  const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
  const dice = upcast.extraDice
  ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
  : mechanics.damageDice!;
+ // Registry lookup — multi-beam spells open the beam-assignment picker.
+ const multi = findMultiAttackSpell(spell.name);
+ if (multi) {
+   const beamCount = computeDefaultAttackCount(multi, effSlot, character.level ?? 1);
+   return (
+     <button
+       onClick={() => setMultiAttackPicker({
+         slotLevel: effSlot,
+         damageDice: multi.perBeamDice ?? mechanics.damageDice!,
+         attackCount: beamCount,
+       })}
+       title={`${beamCount} beam${beamCount === 1 ? '' : 's'} · attack +${spellAttack} · ${multi.perBeamDice ?? mechanics.damageDice} ${mechanics.damageType ?? ''} each. Click to assign targets.`}
+       style={{
+         ...btnBase,
+         background: 'rgba(251,191,36,0.15)',
+         border: '1px solid rgba(251,191,36,0.5)',
+         color: '#fbbf24', fontWeight: 700,
+       }}
+     >
+       ⚔ {beamCount} beam{beamCount === 1 ? '' : 's'} +{spellAttack}
+     </button>
+   );
+ }
+ // Single-target attack spell: existing PlayerAttackButton path.
  return (
- <PlayerAttackButton
- characterId={character.id}
- attackKind="attack_roll"
- attackBonus={spellAttack}
- damageDice={dice}
- damageType={mechanics.damageType ?? ''}
- attackName={spell.name}
- source="spell"
- compact
- onDeclared={() => {
- if (!isCantrip) spendSlot(effSlot);
- flashCast(effSlot);
- }}
- />
+   <PlayerAttackButton
+     characterId={character.id}
+     attackKind="attack_roll"
+     attackBonus={spellAttack}
+     damageDice={dice}
+     damageType={mechanics.damageType ?? ''}
+     attackName={spell.name}
+     source="spell"
+     compact
+     onDeclared={() => {
+       if (!isCantrip) spendSlot(effSlot);
+       flashCast(effSlot);
+     }}
+   />
  );
  })()}
  </>
@@ -1215,6 +1252,28 @@ export default function SpellCastButton({
  onDeclared={() => {
  if (!isCantrip) spendSlot(aoePicker.slotLevel);
  flashCast(aoePicker.slotLevel);
+ onLeveledSpellCast?.(isBonusActionCast);
+ if (spell.concentration) onConcentrationCast?.();
+ }}
+ />
+ )}
+ {/* v2.149.0 — Phase O pt 2: multi-beam attack spell picker. Fires N
+     independent declareAttack calls; each beam rolls its own d20 +
+     damage per RAW 2024 "Make a ranged spell attack for each ray." */}
+ {multiAttackPicker && campaignId && (
+ <MultiAttackPickerModal
+ open={true}
+ onClose={() => setMultiAttackPicker(null)}
+ spell={spell}
+ slotLevel={multiAttackPicker.slotLevel}
+ defaultAttackCount={multiAttackPicker.attackCount}
+ perBeamDice={multiAttackPicker.damageDice}
+ attackBonus={spellAttack}
+ character={character}
+ campaignId={campaignId}
+ onDeclared={() => {
+ if (!isCantrip) spendSlot(multiAttackPicker.slotLevel);
+ flashCast(multiAttackPicker.slotLevel);
  onLeveledSpellCast?.(isBonusActionCast);
  if (spell.concentration) onConcentrationCast?.();
  }}
