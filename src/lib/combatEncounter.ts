@@ -185,6 +185,37 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
   // 3. Compute turn_order for any that have initiative set
   await recomputeTurnOrder(encounter.id);
 
+  // v2.143.0 — Phase N pt 1: fire encumbrance sync for every character
+  // participant. Without this, a character that was over-capacity when
+  // combat started wouldn't pick up Encumbered until they next touched
+  // inventory/currency/strength. Fire-and-forget so it never blocks
+  // combat initiation. The sync itself no-ops when campaign
+  // encumbrance_variant is 'off' (default), so this is a 0-cost call
+  // for campaigns that haven't opted in.
+  const characterSeeds = participants.filter(p => p.participant_type === 'character' && !!p.entity_id);
+  if (characterSeeds.length > 0) {
+    import('./encumbrance').then(async ({ syncEncumbranceCondition }) => {
+      for (const p of characterSeeds) {
+        try {
+          const { data: charRow } = await supabase
+            .from('characters')
+            .select('*')
+            .eq('id', p.entity_id as string)
+            .maybeSingle();
+          if (!charRow) continue;
+          await syncEncumbranceCondition({
+            characterId: p.entity_id as string,
+            character: charRow as any,
+            campaignId: opts.campaignId,
+            encounterId: encounter.id,
+          });
+        } catch {
+          /* swallow — encumbrance sync must never break combat start */
+        }
+      }
+    }).catch(() => { /* dynamic import failure is non-fatal */ });
+  }
+
   // 4. Emit combat_started + initiative_rolled events
   const chainId = newChainId();
   const events: Parameters<typeof emitCombatEventChain>[0] = [];

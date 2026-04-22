@@ -1418,17 +1418,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const immobilized = (character.active_conditions ?? []).some(
  c => CONDITION_MAP[c]?.speedZero || CONDITION_MAP[c]?.cantMove
  );
- // v2.136.0 — Phase L pt 4: Encumbered halves base Speed before Dash.
- // Mirrors lib/movement.ts ordering (zero check → exhaustion → halving →
- // Dash doubling). Exhaustion isn't applied here because the local
- // character row doesn't carry exhaustion_level via this code path; the
- // canonical effective speed for combat-time movement gating is in
- // lib/movement.ts canMove(). This display value is for the action-economy
- // strip readout only.
+ // v2.143.0 — Phase N pt 1: full canonical math mirror, matching
+ // lib/movement.ts canMove() order: zero check (wins) → exhaustion
+ // (−5ft per level, clamped at 0) → halve if Encumbered → double if
+ // Dashing. Prior v2.136 version skipped exhaustion per a stale
+ // comment; character.exhaustion_level has always been on the
+ // Character type (types/index.ts line 233).
+ const exhaustionLvl = character.exhaustion_level ?? 0;
+ const speedAfterExhaustion = Math.max(0, baseSpeed - 5 * exhaustionLvl);
  const halved = (character.active_conditions ?? []).some(
  c => CONDITION_MAP[c]?.speedHalved
  );
- const speedAfterHalving = halved ? Math.floor(baseSpeed / 2) : baseSpeed;
+ const speedAfterHalving = halved ? Math.floor(speedAfterExhaustion / 2) : speedAfterExhaustion;
  // v2.88.0: Dashing doubles your effective Speed for the turn per 2024 PHB
  // ("you gain extra Movement equal to your Speed for the current turn").
  // Applied after the immobilized check so a paralyzed character can't Dash

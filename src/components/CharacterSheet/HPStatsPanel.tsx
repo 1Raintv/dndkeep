@@ -92,18 +92,32 @@ export default function HPStatsPanel({
       // zero check so a Restrained character still shows 0 (zero wins).
       const halvedSources = activeConditions.filter(c => CONDITION_MAP[c]?.speedHalved);
       const isHalved = halvedSources.length > 0;
+      // v2.143.0 — Phase N pt 1: mirror the canonical canMove() math from
+      // lib/movement.ts so the Speed chip doesn't drift from actual
+      // combat behavior. Order: zero → exhaustion (−5 per level) → halve.
+      // Dash doubling is combat-only and doesn't apply to this display.
+      const speedAfterExhaustion = Math.max(0, character.speed - 5 * exhaustionLevel);
       const displaySpeed = isImmobilized
         ? 0
-        : (isHalved ? Math.floor(character.speed / 2) : character.speed);
+        : (isHalved ? Math.floor(speedAfterExhaustion / 2) : speedAfterExhaustion);
+      const hasExhaustionPenalty = exhaustionLevel > 0 && !isImmobilized;
+      // Build tooltip pieces describing what's been applied, in order.
+      const tooltipPieces: string[] = [];
+      if (isImmobilized) tooltipPieces.push(`Speed 0 — ${speedZeroSources.join(', ')}`);
+      else {
+        if (hasExhaustionPenalty) tooltipPieces.push(`−${5 * exhaustionLevel}ft from Exhaustion ${exhaustionLevel}`);
+        if (isHalved) tooltipPieces.push(`Halved by ${halvedSources.join(', ')}`);
+      }
+      const tooltip = tooltipPieces.length > 0
+        ? `${tooltipPieces.join(' · ')}. Base speed ${character.speed}ft.`
+        : 'To change Speed, use Settings → Edit Stats.';
+      // Color: red if immobilized, amber if anything reduces it, else default.
+      const reduced = isHalved || hasExhaustionPenalty;
       return {
         label: 'Speed',
         value: isImmobilized ? '0ft' : `${displaySpeed}ft`,
-        color: isImmobilized ? 'var(--c-red-l)' : (isHalved ? '#fbbf24' : 'var(--t-2)'),
-        tooltip: isImmobilized
-          ? `Speed 0 — ${speedZeroSources.join(', ')}. Base speed ${character.speed}ft.`
-          : (isHalved
-            ? `Speed halved (${displaySpeed}ft) — ${halvedSources.join(', ')}. Base speed ${character.speed}ft.`
-            : 'To change Speed, use Settings → Edit Stats.'),
+        color: isImmobilized ? 'var(--c-red-l)' : (reduced ? '#fbbf24' : 'var(--t-2)'),
+        tooltip,
       };
     })(),
     { label: 'Proficiency', value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
