@@ -40,7 +40,12 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
         event: 'INSERT', schema: 'public', table: 'campaign_chat',
         filter: `campaign_id=eq.${campaignId}`,
       }, payload => {
-        setMessages(prev => [...prev, payload.new as ChatMessage]);
+        // v2.164.0 — Phase Q.0 pt 5: skip notification message_types.
+        // Realtime postgres_changes filter doesn't support compound
+        // filters across columns, so we filter client-side.
+        const row = payload.new as ChatMessage;
+        if (row.message_type !== 'text') return;
+        setMessages(prev => [...prev, row]);
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
       })
       .subscribe();
@@ -49,10 +54,17 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
   }, [campaignId]);
 
   async function loadMessages() {
+    // v2.164.0 — Phase Q.0 pt 5: filter to message_type='text'.
+    // The campaign_chat table is also used as a transport for
+    // notifications (announcement, save_prompt, check_prompt,
+    // player_down, etc.) which are JSON-encoded payloads. Without
+    // this filter, those rows render as raw JSON gibberish in the
+    // chat bubble, making the whole panel look broken.
     const { data } = await supabase
       .from('campaign_chat')
       .select('*')
       .eq('campaign_id', campaignId)
+      .eq('message_type', 'text')
       .order('created_at', { ascending: true })
       .limit(100);
     if (data) setMessages(data as ChatMessage[]);

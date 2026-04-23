@@ -124,7 +124,11 @@ function total(evt: CombatEventRow): number | null {
   return typeof t === 'number' && t > 0 ? t : null;
 }
 
-export default function CombatEventLog({ campaignId, characterId, mode = 'campaign', maxHeight = 560 }: Props) {
+// v2.164.0 — Phase Q.0 pt 5: bumped default maxHeight from 560 → 720
+// for better DM-screen readability. Combined with the 8/9/10 → 11/12/13
+// font-size bumps, the log is now actually scannable from across the
+// table during a session.
+export default function CombatEventLog({ campaignId, characterId, mode = 'campaign', maxHeight = 720 }: Props) {
   const [events, setEvents] = useState<CombatEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actorFilter, setActorFilter] = useState<ActorFilter>('all');
@@ -210,7 +214,7 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
                 key={f}
                 onClick={() => setActorFilter(f)}
                 style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                  fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 700,
                   letterSpacing: '0.06em', textTransform: 'uppercase',
                   padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
                   border: active ? `1px solid ${color}` : '1px solid var(--c-border)',
@@ -236,7 +240,7 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
                 key={f}
                 onClick={() => setEventFilter(f)}
                 style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+                  fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
                   letterSpacing: '0.06em', textTransform: 'uppercase',
                   padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
                   border: active ? '1px solid var(--c-gold-l)' : '1px solid var(--c-border)',
@@ -250,7 +254,7 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
             );
           })}
         </div>
-        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
+        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
           {filtered.length} entries
         </span>
       </div>
@@ -265,7 +269,7 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
             border: `1px solid ${visualForEvent(flash.event_type).color}50`,
             borderRadius: 'var(--r-md)',
             fontFamily: 'var(--ff-body)',
-            fontSize: 'var(--fs-xs)',
+            fontSize: 13,
             color: visualForEvent(flash.event_type).color,
           }}
         >
@@ -279,7 +283,8 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
         ref={listRef}
         style={{
           maxHeight, overflowY: 'auto',
-          display: 'flex', flexDirection: 'column', gap: 3, paddingRight: 2,
+          // v2.164.0: bumped gap 3 → 6 to give larger text breathing room
+          display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 2,
         }}
       >
         {filtered.length === 0 ? (
@@ -288,7 +293,7 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
             fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)',
           }}>
             No events match these filters.<br />
-            <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}>Events appear here in real-time as players and DMs act.</span>
+            <span style={{ fontSize: 13, opacity: 0.7 }}>Events appear here in real-time as players and DMs act.</span>
           </div>
         ) : filtered.map((evt) => <EventRow key={evt.id} evt={evt} showActor={mode === 'campaign'} />)}
       </div>
@@ -314,14 +319,14 @@ function EventRow({ evt, showActor }: { evt: CombatEventRow; showActor: boolean 
     }}>
       <div style={{ padding: 'var(--sp-2) var(--sp-3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', flexShrink: 0, minWidth: 48 }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', flexShrink: 0, minWidth: 48 }}>
             {formatTime(evt.created_at)}
           </span>
 
           {/* Actor-type chip (campaign view only) */}
           {showActor && (
             <span style={{
-              fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
               letterSpacing: '0.06em', textTransform: 'uppercase',
               padding: '1px 6px', borderRadius: 3,
               color: ACTOR_COLORS[evt.actor_type],
@@ -332,23 +337,23 @@ function EventRow({ evt, showActor }: { evt: CombatEventRow; showActor: boolean 
             </span>
           )}
 
-          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-xs)', color: visual.color }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: visual.color }}>
             {visual.icon} {evt.actor_name}
           </span>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)' }}>
             {summary}
           </span>
           {evt.target_name && (
             <>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>→</span>
-              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', fontWeight: 700 }}>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)' }}>→</span>
+              <span style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--c-gold-l)', fontWeight: 700 }}>
                 {evt.target_name}
               </span>
             </>
           )}
           {hit && (
             <span style={{
-              fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
               letterSpacing: '0.06em', textTransform: 'uppercase',
               padding: '1px 5px', borderRadius: 3,
               color: isCrit ? 'var(--c-gold-l)' : isMiss ? 'var(--c-red-l)' : 'var(--hp-full)',
@@ -365,14 +370,14 @@ function EventRow({ evt, showActor }: { evt: CombatEventRow; showActor: boolean 
         </div>
 
         {rolls && (
-          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)', marginTop: 2, marginLeft: 56 }}>
+          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', marginTop: 2, marginLeft: 56 }}>
             {rolls}
           </div>
         )}
 
         {evt.visibility === 'hidden_from_players' && (
           <div style={{
-            fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700,
+            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
             letterSpacing: '0.06em', textTransform: 'uppercase',
             marginTop: 3, marginLeft: 56,
             color: '#f87171',

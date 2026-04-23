@@ -321,7 +321,10 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
       {/* Create poll modal */}
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          {/* v2.164.0 — Phase Q.0 pt 5: bumped maxWidth 520 → 760.
+              The 14 proposed-date pills wrap into many cramped rows
+              at 520px; 760px lets them breathe and stay scannable. */}
+          <div className="modal" style={{ maxWidth: 760, width: '92vw' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ marginBottom: 'var(--sp-4)' }}>New Scheduling Poll</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div>
