@@ -192,7 +192,13 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal"
-        style={{ maxWidth: 640, width: '92vw' }}
+        // v2.168.0 — bumped from 640→720 and added inline padding. The
+        // .modal class has `overflow: hidden` with no inner padding, so
+        // prior to this the h3 title ("Campaign Settings") sat flush to
+        // the left edge (clipping the "C") and the Close button ran off
+        // the right. Matches the pattern used by SessionScheduler (760)
+        // after v2.164. Keeps width:92vw for mobile.
+        style={{ maxWidth: 720, width: '92vw', padding: '20px 24px' }}
         onClick={e => e.stopPropagation()}
       >
         <h3 style={{ marginBottom: 4 }}>Campaign Settings</h3>

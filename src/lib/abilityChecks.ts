@@ -20,7 +20,12 @@ import { abilityModifier, proficiencyBonus } from './gameUtils';
 
 export type CheckTarget =
   | { kind: 'skill'; name: string }    // e.g. "Stealth"
-  | { kind: 'ability'; ability: AbilityKey };
+  | { kind: 'ability'; ability: AbilityKey }
+  // v2.168.0 — Phase Q.0 pt 9: save variant. Used by the DM
+  // ChecksPanel to show per-character saving-throw modifiers and roll
+  // them secretly. Broadcast save prompts still use the existing
+  // save_prompt message_type (see ChecksPanel.promptPlayer).
+  | { kind: 'save'; ability: AbilityKey };
 
 export interface CheckRollResult {
   d20: number;
@@ -53,6 +58,20 @@ export function checkModifier(
     return {
       mod: abilityModifier(score),
       proficient: false,
+      expert: false,
+      ability: target.ability,
+    };
+  }
+
+  // v2.168.0 — save variant. Save modifier = ability mod + PB if the
+  // character is proficient in that save. No expertise on saves.
+  if (target.kind === 'save') {
+    const score = character[target.ability] ?? 10;
+    const mod = abilityModifier(score);
+    const proficient = (character.saving_throw_proficiencies ?? []).includes(target.ability);
+    return {
+      mod: mod + (proficient ? pb : 0),
+      proficient,
       expert: false,
       ability: target.ability,
     };
@@ -101,6 +120,7 @@ export function rollCheck(
   const total = d20 + mod;
   const label =
     target.kind === 'skill' ? target.name :
+    target.kind === 'save' ? `${target.ability.slice(0, 3).toUpperCase()} save` :
     `${target.ability.slice(0, 3).toUpperCase()} check`;
 
   return {

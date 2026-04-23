@@ -13,7 +13,7 @@
 // timer. Dismissed early with a click on the X button.
 
 import { useEffect, useState, useCallback } from 'react';
-import { messageTypeLabel } from '../../lib/notifications';
+import { messageTypeLabel, formatNotificationBody } from '../../lib/notifications';
 
 export interface ToastItem {
   id: string;
@@ -102,7 +102,7 @@ export default function NotificationToast({ latest }: Props) {
                 {messageTypeLabel(t.message_type)}
               </div>
               <div style={{ fontSize: 13, color: 'var(--t-1)', lineHeight: 1.5 }}>
-                {t.message}
+                {formatNotificationBody(t.message_type, t.message)}
               </div>
             </div>
             <button

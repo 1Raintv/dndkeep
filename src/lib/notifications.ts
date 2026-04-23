@@ -84,3 +84,52 @@ export function messageTypeLabel(t: string): string {
     default: return t.replace(/_/g, ' ');
   }
 }
+
+// v2.168.0 — Phase Q.0 pt 9: shared notification-body formatter.
+//
+// Several message_types wrap a JSON payload inside the `message` column
+// (save_prompt = {ability,dc}, check_prompt = {target,kind,dc,adv,dis},
+// short_rest_prompt = {kind:'short'}). Rendering the raw JSON in the
+// NotificationToast popup was ugly — e.g. the user saw the literal
+// string `{"target":"Arcana","kind":"skill"}` under the toast header.
+//
+// Previously NotificationsButton had its own private formatCheckPrompt
+// / formatSavePrompt helpers, so the inbox rendered nicely but the
+// toast did not. This function centralizes the logic so both consumers
+// stay in sync.
+//
+// Always returns a human-readable string; falls back to the raw message
+// when the payload is not valid JSON for that type (e.g. announcement).
+export function formatNotificationBody(messageType: string, message: string): string {
+  try {
+    switch (messageType) {
+      case 'save_prompt': {
+        const p = JSON.parse(message);
+        const ability = String(p.ability ?? '').toUpperCase();
+        const dc = p.dc ? ` · DC ${p.dc}` : '';
+        return `${ability} save${dc}`;
+      }
+      case 'check_prompt': {
+        const p = JSON.parse(message);
+        const target = String(p.target ?? '');
+        const dc = p.dc ? ` · DC ${p.dc}` : '';
+        const adv = p.advantage ? ' · ADV' : p.disadvantage ? ' · DIS' : '';
+        // Use just the target name ("Arcana") or "STR check" style.
+        // The messageTypeLabel already says "Ability Check" in the
+        // header, so don't duplicate the word "check" when the target
+        // is a skill.
+        return `${target}${dc}${adv}`;
+      }
+      case 'short_rest_prompt':
+        return 'The DM called for a short rest.';
+      case 'long_rest_completed':
+        // Already plain prose — pass through.
+        return message;
+      case 'announcement':
+      default:
+        return message;
+    }
+  } catch {
+    return message;
+  }
+}

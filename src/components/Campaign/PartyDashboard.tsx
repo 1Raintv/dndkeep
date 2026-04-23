@@ -6,7 +6,7 @@ import { xpToLevel, xpForNextLevel, computeStats, abilityModifier, proficiencyBo
 import { SPELLS } from '../../data/spells';
 import { SKILLS } from '../../data/skills';
 import {
-  rollCheck, encodeCheckPrompt,
+  rollCheck, checkModifier, encodeCheckPrompt,
   type CheckTarget, type CheckRollResult,
 } from '../../lib/abilityChecks';
 import { useDiceRoll } from '../../context/DiceRollContext';
@@ -1155,22 +1155,26 @@ function PassivePerceptionChip({ character: c, dcInput }: { character: Character
 
 // ── ChecksPanel ──────────────────────────────────────────────────────
 // v2.163.0 — Phase Q.0 pt 4: ability check tooling for the DM.
+// v2.168.0 — Phase Q.0 pt 9: restructured into three sections
+//   (Skills / Raw check / Saving throws), every option now displays
+//   the character's live modifier so the DM can see at-a-glance what
+//   this character is good at. Saves added as a first-class section
+//   with proficiency markers; kind:'save' targets roll secretly via
+//   rollCheck and prompt via the existing save_prompt message_type.
 //
 // DM workflow:
-//   1. Pick a skill from the dropdown (defaults to Perception — the
-//      most common DM use case).
+//   1. Pick a skill (dropdown), raw ability (button), or save (button).
+//      Each option shows the character's modifier inline, so the DM
+//      doesn't have to flip to a sheet to see that this rogue has
+//      Stealth +11.
 //   2. Optionally toggle Advantage / Disadvantage / DC.
 //   3. Click "🎲 Roll Secret" to roll on the player's behalf and see
 //      the result inline. No broadcast — the player has no idea the
 //      DM rolled. Useful for hidden Perception, secret Insight, etc.
-//   4. Click "📨 Prompt Player" to send a check_prompt message that
-//      surfaces in the player's notification inbox. Player rolls on
-//      their own dice tray.
-//
-// The Roll Secret result also visually rolls in the DM's own 3D dice
-// tray (so DM sees a satisfying d20 roll), but importantly does NOT
-// broadcast to the player. This is enforced by NOT writing to
-// campaign_chat — the dice roll is purely client-side for the DM.
+//   4. Click "📨 Prompt Player" to send a notification that surfaces
+//      the roll in the player's dice tray. Check/raw-check targets
+//      send check_prompt; save targets send save_prompt so the player
+//      sees the proper save banner.
 
 function ChecksPanel({ character: c, campaignId }: {
   character: Character;
@@ -1210,29 +1214,67 @@ function ChecksPanel({ character: c, campaignId }: {
 
   async function promptPlayer() {
     const dcVal = parseInt(dc);
-    const payload = encodeCheckPrompt({
-      target: target.kind === 'skill' ? target.name : target.ability.slice(0, 3).toUpperCase(),
-      kind: target.kind,
-      dc: !isNaN(dcVal) && dcVal > 0 ? dcVal : undefined,
-      advantage: advantage || undefined,
-      disadvantage: disadvantage || undefined,
-    });
-    await supabase.from('campaign_chat').insert({
-      campaign_id: campaignId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
-      character_name: 'DM',
-      message: payload,
-      message_type: 'check_prompt',
-    });
+    const dcParam = !isNaN(dcVal) && dcVal > 0 ? dcVal : undefined;
+
+    // v2.168.0 — saves go through save_prompt (existing party-wide
+    // banner). Checks still go through check_prompt. We route by
+    // target.kind so the player sees the right UI on their end.
+    if (target.kind === 'save') {
+      // save_prompt requires a DC (player UI shows "needs X more to
+      // succeed"). Default to 10 if DM didn't set one.
+      const effectiveDc = dcParam ?? 10;
+      const abilityFull = target.ability.charAt(0).toUpperCase() + target.ability.slice(1);
+      await supabase.from('campaign_chat').insert({
+        campaign_id: campaignId,
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+        character_name: 'DM',
+        message: JSON.stringify({ ability: abilityFull, dc: effectiveDc }),
+        message_type: 'save_prompt',
+      });
+    } else {
+      const payload = encodeCheckPrompt({
+        target: target.kind === 'skill' ? target.name : target.ability.slice(0, 3).toUpperCase(),
+        kind: target.kind,
+        dc: dcParam,
+        advantage: advantage || undefined,
+        disadvantage: disadvantage || undefined,
+      });
+      await supabase.from('campaign_chat').insert({
+        campaign_id: campaignId,
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+        character_name: 'DM',
+        message: payload,
+        message_type: 'check_prompt',
+      });
+    }
     setPromptSent(true);
     setTimeout(() => setPromptSent(false), 2000);
   }
 
-  // Compute live mod for display
+  // Live preview mod for the currently-selected target (header strip).
   const previewMod = (() => {
     const r = rollCheck(c, target, {});
     return r.modifier;
   })();
+
+  // v2.168.0: precompute modifiers for every option so every button /
+  // dropdown entry shows e.g. "STR -1" or "Stealth (+6) ★". Keeps the
+  // DM informed without having to click through each one first.
+  const abilityKeys: AbilityKey[] = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
+  const rawMods = abilityKeys.map(a => ({
+    ability: a,
+    ...checkModifier(c, { kind: 'ability', ability: a }),
+  }));
+  const saveMods = abilityKeys.map(a => ({
+    ability: a,
+    ...checkModifier(c, { kind: 'save', ability: a }),
+  }));
+  const skillMods = SKILLS.map(s => ({
+    name: s.name,
+    ...checkModifier(c, { kind: 'skill', name: s.name }),
+  }));
+
+  const fmtMod = (m: number) => `${m >= 0 ? '+' : ''}${m}`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1240,43 +1282,81 @@ function ChecksPanel({ character: c, campaignId }: {
         Ability Checks
       </div>
 
-      {/* Target picker */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', minWidth: 40, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Skill</label>
-          <select
-            value={target.kind === 'skill' ? target.name : ''}
-            onChange={e => setTarget({ kind: 'skill', name: e.target.value })}
-            style={{ flex: 1, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
-          >
-            <option value="" disabled>Pick a skill…</option>
-            {SKILLS.map(s => (
-              <option key={s.name} value={s.name}>
-                {s.name} ({s.ability.slice(0, 3).toUpperCase()})
-              </option>
-            ))}
-          </select>
+      {/* ─── Skills section ─── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
+          Skills
         </div>
+        <select
+          value={target.kind === 'skill' ? target.name : ''}
+          onChange={e => setTarget({ kind: 'skill', name: e.target.value })}
+          style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+        >
+          <option value="" disabled>Pick a skill…</option>
+          {skillMods.map(s => (
+            <option key={s.name} value={s.name}>
+              {s.name} ({fmtMod(s.mod)}){s.expert ? ' ★★' : s.proficient ? ' ★' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        {/* Raw ability buttons */}
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', minWidth: 40, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Or</span>
-          {(['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as AbilityKey[]).map(ab => {
-            const selected = target.kind === 'ability' && target.ability === ab;
+      {/* ─── Raw check section ─── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
+          Raw check
+        </div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {rawMods.map(r => {
+            const selected = target.kind === 'ability' && target.ability === r.ability;
             return (
               <button
-                key={ab}
-                onClick={() => setTarget({ kind: 'ability', ability: ab })}
+                key={r.ability}
+                onClick={() => setTarget({ kind: 'ability', ability: r.ability })}
                 style={{
-                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', minHeight: 0,
+                  fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 5, cursor: 'pointer', minHeight: 0,
                   border: selected ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
                   background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                  color: selected ? 'var(--c-gold-l)' : 'var(--t-3)',
+                  color: selected ? 'var(--c-gold-l)' : 'var(--t-2)',
                   textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+                  fontFamily: 'var(--ff-stat)',
                 }}
-                title={`Raw ${ab} check (no proficiency)`}
+                title={`Raw ${r.ability} check (no proficiency)`}
               >
-                {ab.slice(0, 3)}
+                {r.ability.slice(0, 3)} {fmtMod(r.mod)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Saving throws section ─── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
+          Saving throws
+        </div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {saveMods.map(s => {
+            const selected = target.kind === 'save' && target.ability === s.ability;
+            return (
+              <button
+                key={s.ability}
+                onClick={() => setTarget({ kind: 'save', ability: s.ability })}
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 5, cursor: 'pointer', minHeight: 0,
+                  border: selected
+                    ? '1px solid var(--c-gold-bdr)'
+                    : s.proficient
+                      ? '1px solid rgba(167,139,250,0.5)'
+                      : '1px solid var(--c-border-m)',
+                  background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                  color: selected ? 'var(--c-gold-l)' : s.proficient ? '#a78bfa' : 'var(--t-2)',
+                  textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+                  fontFamily: 'var(--ff-stat)',
+                }}
+                title={`${s.ability} save${s.proficient ? ' (proficient)' : ''}`}
+              >
+                {s.ability.slice(0, 3)} {fmtMod(s.mod)}{s.proficient ? ' ★' : ''}
               </button>
             );
           })}
@@ -1303,7 +1383,7 @@ function ChecksPanel({ character: c, campaignId }: {
           />
         </div>
         <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)', fontFamily: 'var(--ff-body)' }}>
-          mod {previewMod >= 0 ? '+' : ''}{previewMod}
+          mod {fmtMod(previewMod)}
         </span>
       </div>
 
@@ -1327,7 +1407,9 @@ function ChecksPanel({ character: c, campaignId }: {
             fontSize: 11, fontWeight: 700, padding: '7px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
             border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.1)', color: '#60a5fa',
           }}
-          title="Sends a notification to the player asking them to roll."
+          title={target.kind === 'save'
+            ? "Sends a save_prompt so the player sees the save banner on their sheet."
+            : "Sends a check_prompt so the player sees the check banner on their sheet."}
         >
           📨 Prompt Player
         </button>
