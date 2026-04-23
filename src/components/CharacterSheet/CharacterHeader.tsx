@@ -243,20 +243,12 @@ export default function CharacterHeader({
  </div>
  )}
 
- {/* Death saves strip — only shown when HP = 0; sits above the gradient bar */}
- {character.current_hp <= 0 && (
- <div style={{ position: 'absolute', bottom: 3, left: 0, right: 0, padding: '6px 24px', borderTop: '1px solid rgba(229,57,53,0.3)', background: 'rgba(229,57,53,0.06)', display: 'flex', gap: 16, alignItems: 'center' }}>
- <span style={{ fontSize: 10, fontWeight: 700, color: '#ff8a80', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Death Saves</span>
- <div style={{ display: 'flex', gap: 3 }}>
- {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #34d399', background: i < (character.death_saves_successes ?? 0) ? '#34d399' : 'transparent' }} />)}
- </div>
- <span style={{ fontSize: 10, color: 'var(--t-2)' }}>Successes</span>
- <div style={{ display: 'flex', gap: 3 }}>
- {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #e53935', background: i < (character.death_saves_failures ?? 0) ? '#e53935' : 'transparent' }} />)}
- </div>
- <span style={{ fontSize: 10, color: 'var(--t-2)' }}>Failures</span>
- </div>
- )}
+ {/* v2.162.0 — Phase Q.0 pt 3: removed the duplicate Death Saves
+     strip that lived here. The big in-content panel
+     (CharacterSheet/DeathSaves.tsx) is now the single source of
+     truth for death save UI — it has a Roll button, square boxes,
+     and full RAW resolution. The header strip duplicated state
+     visually with no interaction, which only created confusion. */}
  </div>
  );
 }

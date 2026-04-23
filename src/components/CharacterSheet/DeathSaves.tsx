@@ -1,12 +1,25 @@
 import { useEffect } from 'react';
 import type { Character } from '../../types';
+import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface DeathSavesProps {
   character: Character;
   onUpdate: (updates: Partial<Character>) => void;
 }
 
+// v2.162.0 — Phase Q.0 pt 3: death save UI overhaul.
+//   • Boxes (rounded corners, 5px radius) instead of circles. The
+//     prior `borderRadius: '50%'` produced flattened ovals because
+//     the parent column constrained width but not height — they read
+//     as deformed pills, not pips. Boxes match the dice-tray pattern.
+//   • New Roll button. Triggers the floating 3D dice roller and
+//     applies the result to the character per RAW: 10+ success,
+//     <10 failure, nat 1 = 2 failures, nat 20 = revive at 1 HP.
+//   • Manual click on a box still works (DM override / undo).
+
 export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
+  const { triggerRoll } = useDiceRoll();
+
   if (character.current_hp > 0) return null;
 
   const successes = Math.min(3, Math.max(0, character.death_saves_successes ?? 0));
@@ -24,7 +37,6 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
   }
 
   function stabilize() {
-    // Three successes — character regains 1 HP and stabilizes
     onUpdate({ current_hp: 1, death_saves_successes: 0, death_saves_failures: 0 });
   }
 
@@ -32,12 +44,48 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
     onUpdate({ death_saves_successes: 0, death_saves_failures: 0 });
   }
 
-  // Auto-stabilize at 3 successes
-  useEffect(() => {
-    if (successes >= 3 && !isStabilized) stabilize();
-  }, [successes]);
+  // v2.162.0 — Phase Q.0 pt 3: roll a death save.
+  // Triggers the 3D dice surface and resolves on the physics callback
+  // so the result UI updates after the player sees the d20 land. Per
+  // RAW: 10+ success, nat 20 wakes with 1 HP, nat 1 = 2 failures.
+  function rollDeathSave() {
+    if (isDead || isStabilized) return;
+    triggerRoll({
+      result: 0, // placeholder — physics callback overrides
+      dieType: 20,
+      label: `${character.name} — Death Save`,
+      onResult: (_allDice, total) => {
+        const d20 = total;
+        if (d20 === 20) {
+          onUpdate({
+            current_hp: 1,
+            death_saves_successes: 0,
+            death_saves_failures: 0,
+          });
+        } else if (d20 === 1) {
+          const newFailures = Math.min(3, failures + 2);
+          onUpdate({ death_saves_failures: newFailures });
+        } else if (d20 >= 10) {
+          const newSuccesses = Math.min(3, successes + 1);
+          onUpdate({ death_saves_successes: newSuccesses });
+        } else {
+          const newFailures = Math.min(3, failures + 1);
+          onUpdate({ death_saves_failures: newFailures });
+        }
+      },
+    });
+  }
 
-  // Auto-trigger dead state is already handled visually via isDead flag
+  // Auto-stabilize at 3 successes (manual-click path safety; rollDeathSave
+  // resolves its own state above).
+  useEffect(() => {
+    if (successes >= 3) {
+      // Stable: don't change HP, just keep the success counter so the
+      // panel renders the "Stable" branch. Player clicks Regain 1 HP
+      // when they want to wake up.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [successes]);
 
   const borderColor = isDead        ? 'rgba(107,20,20,1)'
                     : isStabilized  ? 'var(--hp-full)'
@@ -61,6 +109,8 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 'var(--sp-3)',
+        gap: 'var(--sp-2)',
+        flexWrap: 'wrap',
       }}>
         <span style={{
           fontFamily: 'var(--ff-body)',
@@ -72,15 +122,34 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
         }}>
           {isDead ? 'Dead' : isStabilized ? 'Stable' : 'Dying — Death Saving Throws'}
         </span>
-        {!isDead && (
-          <button
-            className="btn-ghost btn-sm"
-            onClick={reset}
-            style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}
-            title="Reset death saves"
-          >
-            Reset
-          </button>
+        {!isDead && !isStabilized && (
+          <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
+            <button
+              onClick={rollDeathSave}
+              style={{
+                fontSize: 'var(--fs-xs)',
+                fontWeight: 700,
+                padding: '6px 14px',
+                background: 'var(--color-crimson)',
+                color: '#fff',
+                border: '1px solid var(--color-crimson)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                letterSpacing: '0.04em',
+              }}
+              title="Roll 1d20 — 10+ success, nat 20 wakes with 1 HP, nat 1 = 2 failures"
+            >
+              🎲 Roll d20
+            </button>
+            <button
+              className="btn-ghost btn-sm"
+              onClick={reset}
+              style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}
+              title="Reset death saves"
+            >
+              Reset
+            </button>
+          </div>
         )}
       </div>
 
@@ -92,14 +161,14 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
               label="Successes"
               count={successes}
               max={3}
-              activeColor="#86efac"
+              activeColor="#22c55e"
               onChange={setSuccesses}
             />
             <SaveRow
               label="Failures"
               count={failures}
               max={3}
-              activeColor="#fca5a5"
+              activeColor="#ef4444"
               onChange={setFailures}
             />
           </div>
@@ -110,8 +179,9 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
             fontFamily: 'var(--ff-body)',
             lineHeight: 1.5,
           }}>
-            Roll d20 at the start of your turn. 10+ is a success; 9 or lower is a failure.
-            Rolling a 1 counts as two failures. Rolling a 20 causes you to regain 1 HP.
+            Click <strong style={{ color: 'var(--c-red-l)' }}>Roll d20</strong> to make a death save,
+            or click a box to mark manually. 10+ is a success; 9 or lower is a failure.
+            Rolling a 1 counts as two failures. Rolling a 20 wakes you with 1 HP.
           </p>
         </>
       )}
@@ -164,20 +234,25 @@ function SaveRow({
       <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
         {Array.from({ length: max }, (_, i) => {
           const filled = i < count;
+          // v2.162.0 — Phase Q.0 pt 3: square boxes (5px radius)
+          // instead of circles. Hollow when unfilled, solid color
+          // with subtle glow when filled. Manual click toggles for
+          // DM override / undo.
           return (
             <button
               key={i}
               onClick={() => onChange(filled ? i : i + 1)}
               title={filled ? `Undo ${label.slice(0, -1).toLowerCase()}` : `Mark ${label.slice(0, -1).toLowerCase()}`}
               style={{
-                width: 22,
-                height: 22,
-                borderRadius: '50%',
-                border: `2px solid ${filled ? activeColor : 'var(--c-border-m)'}`,
+                width: 26,
+                height: 26,
+                borderRadius: 5,
+                border: `2px solid ${activeColor}`,
                 background: filled ? activeColor : 'transparent',
                 cursor: 'pointer',
                 transition: 'all var(--tr-fast)',
                 padding: 0,
+                boxShadow: filled ? `0 0 6px ${activeColor}66` : 'none',
               }}
             />
           );

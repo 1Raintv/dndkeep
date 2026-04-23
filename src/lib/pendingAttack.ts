@@ -1095,13 +1095,50 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       const hpBefore = tgt.current_hp ?? 0;
       let hpAfter = Math.max(0, hpBefore - dmgToHP);
 
-      // 2024: damage ≥ max_hp at 0 HP = instant death
+      // v2.162.0 — Phase Q.0 pt 3: massive damage instant death (PHB
+      // 2014 + 2024 RAW). When damage reduces a character to 0 HP AND
+      // the remaining damage equals or exceeds their HP maximum, they
+      // die outright — no death saves. Example: 30 max HP at 5 HP
+      // takes 40 damage → 5 absorbs to 0, remaining 35 ≥ 30 max →
+      // instant death.
+      //
+      // Order of checks matters: massive damage applies BEFORE the
+      // existing "damage at 0 HP = failed save" branch, because a
+      // creature that gets dropped this turn shouldn't also accrue a
+      // death save failure from the same hit.
       let isDead = tgt.is_dead;
       let deathFailures = tgt.death_save_failures ?? 0;
       let isStable = tgt.is_stable;
 
+      const wentDownThisHit = hpBefore > 0 && hpAfter === 0;
+      const damageOverflow = wentDownThisHit ? Math.max(0, dmgToHP - hpBefore) : 0;
+      const massiveDamageDeath =
+        wentDownThisHit && damageOverflow >= (tgt.max_hp ?? 0);
+
+      if (massiveDamageDeath) {
+        isDead = true;
+        deathFailures = 3;
+        await emitCombatEvent({
+          campaignId: atk.campaign_id,
+          encounterId: atk.encounter_id,
+          chainId: atk.chain_id,
+          sequence: 4,
+          actorType: 'system',
+          actorName: 'System',
+          targetType: tgt.participant_type === 'monster' ? 'monster' : 'character',
+          targetName: tgt.name,
+          eventType: 'massive_damage_death',
+          payload: {
+            hp_before: hpBefore,
+            damage_to_hp: dmgToHP,
+            overflow: damageOverflow,
+            max_hp: tgt.max_hp,
+          },
+        });
+      }
+
       if (hpBefore === 0 && !isDead) {
-        // Damage at 0 HP = 1 failure (2 on a melee crit — we'll track crit separately later)
+        // Damage at 0 HP = 1 failure (2 on a melee crit per RAW)
         const isCrit = atk.hit_result === 'crit';
         deathFailures = Math.min(3, deathFailures + (isCrit ? 2 : 1));
         if (deathFailures >= 3) isDead = true;

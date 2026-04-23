@@ -43,6 +43,7 @@ export type CombatEventType =
   | 'death_save_turn_prompt'
   | 'death_save_rolled'
   | 'damage_at_0_hp_failure_added'
+  | 'massive_damage_death'
   | 'stabilized'
   | 'revived'
   | 'died'
