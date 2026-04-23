@@ -75,6 +75,7 @@ export function messageTypeLabel(t: string): string {
   switch (t) {
     case 'announcement': return 'DM Announcement';
     case 'save_prompt':  return 'Save Prompt';
+    case 'check_prompt': return 'Ability Check';
     case 'player_down':  return 'Player Down';
     case 'player_revived': return 'Player Revived';
     case 'player_dead':  return 'Player Dead';

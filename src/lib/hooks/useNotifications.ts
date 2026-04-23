@@ -30,7 +30,7 @@ import {
   type NotificationMessage,
 } from '../notifications';
 
-const NOTIF_TYPES = ['announcement', 'save_prompt', 'player_down', 'player_revived', 'player_dead'];
+const NOTIF_TYPES = ['announcement', 'save_prompt', 'check_prompt', 'player_down', 'player_revived', 'player_dead'];
 const BACKFILL_LIMIT = 50;
 
 interface UseNotificationsResult {

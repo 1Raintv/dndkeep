@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { Character } from '../../types';
+import type { Character, AbilityKey } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { xpToLevel, xpForNextLevel, computeStats, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
 import { SPELLS } from '../../data/spells';
+import { SKILLS } from '../../data/skills';
+import {
+  rollCheck, encodeCheckPrompt,
+  type CheckTarget, type CheckRollResult,
+} from '../../lib/abilityChecks';
+import { useDiceRoll } from '../../context/DiceRollContext';
 
 interface PartyDashboardProps {
   campaignId: string;
@@ -537,6 +543,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
             character={char}
             isDM={isOwner}
             perceptionDC={perceptionDC}
+            campaignId={campaignId}
             onUpdate={patch => updateChar(char.id, patch)}
           />
         ))}
@@ -547,15 +554,16 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
 
 // ── Per-character card with DM controls ──────────────────────────────
 
-function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
+function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: {
   character: Character;
   isDM: boolean;
   perceptionDC: string;
+  campaignId: string;
   onUpdate: (patch: Partial<Character>) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hpInput, setHpInput] = useState('');
-  const [activePanel, setActivePanel] = useState<'hp' | 'conditions' | 'spells' | 'inventory' | null>(null);
+  const [activePanel, setActivePanel] = useState<'hp' | 'conditions' | 'checks' | 'inventory' | null>(null);
 
   const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
   const col = hpColor(c.current_hp, c.max_hp);
@@ -703,7 +711,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
 
             {/* Control tabs */}
             <div style={{ display: 'flex', gap: 4 }}>
-              {(['hp', 'conditions', 'spells', 'inventory'] as const).map(panel => (
+              {(['hp', 'conditions', 'checks', 'inventory'] as const).map(panel => (
                 <button
                   key={panel}
                   onClick={() => setActivePanel(activePanel === panel ? null : panel)}
@@ -714,7 +722,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
                     color: activePanel === panel ? 'var(--c-gold-l)' : 'var(--t-3)',
                   }}
                 >
-                  {panel === 'hp' ? 'Hit Points' : panel === 'conditions' ? 'Conditions' : panel === 'spells' ? 'Spell Slots' : 'Inventory'}
+                  {panel === 'hp' ? 'Hit Points' : panel === 'conditions' ? 'Conditions' : panel === 'checks' ? 'Checks' : 'Inventory'}
                 </button>
               ))}
             </div>
@@ -835,63 +843,22 @@ function PlayerCard({ character: c, isDM, perceptionDC, onUpdate }: {
             )}
 
             {/* ── SPELL SLOTS PANEL ── */}
-            {activePanel === 'spells' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Spell Slots & Spells</div>
-                {hasSlots ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {[1,2,3,4,5,6,7,8,9].map(lvl => {
-                      const slot = slots[`level_${lvl}`];
-                      if (!slot?.total) return null;
-                      const remaining = slot.total - (slot.used ?? 0);
-                      return (
-                        <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--c-raised)', borderRadius: 8 }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t-2)', minWidth: 40 }}>Lv {lvl}</span>
-                          <div style={{ display: 'flex', gap: 3 }}>
-                            {Array.from({ length: slot.total }).map((_, i) => (
-                              <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid var(--c-gold-bdr)', background: i < remaining ? 'var(--c-gold)' : 'transparent' }} />
-                            ))}
-                          </div>
-                          <span style={{ fontSize: 10, color: remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)', fontFamily: 'var(--ff-stat)', marginLeft: 2 }}>{remaining}/{slot.total}</span>
-                          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                            <button onClick={() => useSlot(lvl)} disabled={remaining <= 0} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, cursor: remaining > 0 ? 'pointer' : 'not-allowed', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', opacity: remaining <= 0 ? 0.4 : 1 }}>Use</button>
-                            <button onClick={() => resetSlotLevel(lvl)} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>Restore</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <button
-                      onClick={() => {
-                        const newSlots = { ...(c.spell_slots ?? {}) };
-                        Object.keys(newSlots).forEach(k => { newSlots[k] = { ...newSlots[k], used: 0 }; });
-                        onUpdate({ spell_slots: newSlots as Character['spell_slots'] });
-                      }}
-                      style={{ alignSelf: 'flex-start', fontSize: 10, fontWeight: 600, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}
-                    >
-                      Restore all slots
-                    </button>
-                  </div>
-                ) : <div style={{ fontSize: 12, color: 'var(--t-3)' }}>No spell slots.</div>}
-
-                {/* Known spells — DM can remove */}
-                {knownSpells.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 6 }}>Known Spells — click to remove</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
-                      {knownSpells.map(spell => (
-                        <button
-                          key={spell.id}
-                          onClick={() => removeSpell(spell.id)}
-                          title={`Remove ${spell.name}`}
-                          style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(248,113,113,0.2)', background: 'rgba(248,113,113,0.06)', color: 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 4 }}
-                        >
-                          {spell.name} <span style={{ color: 'var(--stat-str)', fontSize: 9 }}>✕</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+            {/* v2.163.0 — Phase Q.0 pt 4: Checks panel.
+                Replaced the prior "Spell Slots" panel — DMs rarely
+                manage spell slots manually (players do that on their
+                own sheet). The Checks panel lets the DM either:
+                  • Roll Secret — DM rolls on the player's behalf and
+                    sees the result inline. Useful for hidden checks
+                    like Perception that the player shouldn't know
+                    they failed.
+                  • Prompt Player — broadcasts a check_prompt message
+                    so the player gets a popup + entry in their
+                    notifications inbox.
+                Skill picker covers all 18 PHB skills; raw ability
+                buttons (STR/DEX/CON/INT/WIS/CHA) handle the
+                non-skill cases like a raw STR check to break a door. */}
+            {activePanel === 'checks' && (
+              <ChecksPanel character={c} campaignId={campaignId} />
             )}
 
             {/* ── INVENTORY PANEL ── */}
@@ -994,6 +961,223 @@ function PassivePerceptionChip({ character: c, dcInput }: { character: Character
       }}>
         {passivePerc}{meetsCheck ? ' ✓' : failsCheck ? ' ✗' : ''}
       </span>
+    </div>
+  );
+}
+
+// ── ChecksPanel ──────────────────────────────────────────────────────
+// v2.163.0 — Phase Q.0 pt 4: ability check tooling for the DM.
+//
+// DM workflow:
+//   1. Pick a skill from the dropdown (defaults to Perception — the
+//      most common DM use case).
+//   2. Optionally toggle Advantage / Disadvantage / DC.
+//   3. Click "🎲 Roll Secret" to roll on the player's behalf and see
+//      the result inline. No broadcast — the player has no idea the
+//      DM rolled. Useful for hidden Perception, secret Insight, etc.
+//   4. Click "📨 Prompt Player" to send a check_prompt message that
+//      surfaces in the player's notification inbox. Player rolls on
+//      their own dice tray.
+//
+// The Roll Secret result also visually rolls in the DM's own 3D dice
+// tray (so DM sees a satisfying d20 roll), but importantly does NOT
+// broadcast to the player. This is enforced by NOT writing to
+// campaign_chat — the dice roll is purely client-side for the DM.
+
+function ChecksPanel({ character: c, campaignId }: {
+  character: Character;
+  campaignId: string;
+}) {
+  const { triggerRoll } = useDiceRoll();
+  const [target, setTarget] = useState<CheckTarget>({ kind: 'skill', name: 'Perception' });
+  const [advantage, setAdvantage] = useState(false);
+  const [disadvantage, setDisadvantage] = useState(false);
+  const [dc, setDc] = useState<string>('');
+  const [lastResult, setLastResult] = useState<CheckRollResult | null>(null);
+  const [promptSent, setPromptSent] = useState(false);
+
+  function setAdv(v: boolean) {
+    setAdvantage(v);
+    if (v) setDisadvantage(false);
+  }
+  function setDis(v: boolean) {
+    setDisadvantage(v);
+    if (v) setAdvantage(false);
+  }
+
+  function rollSecret() {
+    const result = rollCheck(c, target, { advantage, disadvantage });
+    setLastResult(result);
+    // Surface visually in DM's 3D dice tray. No broadcast.
+    triggerRoll({
+      result: result.d20,
+      dieType: 20,
+      modifier: result.modifier,
+      total: result.total,
+      label: `${c.name} — ${result.label} (secret)`,
+      advantage,
+      disadvantage,
+    });
+  }
+
+  async function promptPlayer() {
+    const dcVal = parseInt(dc);
+    const payload = encodeCheckPrompt({
+      target: target.kind === 'skill' ? target.name : target.ability.slice(0, 3).toUpperCase(),
+      kind: target.kind,
+      dc: !isNaN(dcVal) && dcVal > 0 ? dcVal : undefined,
+      advantage: advantage || undefined,
+      disadvantage: disadvantage || undefined,
+    });
+    await supabase.from('campaign_chat').insert({
+      campaign_id: campaignId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      character_name: 'DM',
+      message: payload,
+      message_type: 'check_prompt',
+    });
+    setPromptSent(true);
+    setTimeout(() => setPromptSent(false), 2000);
+  }
+
+  // Compute live mod for display
+  const previewMod = (() => {
+    const r = rollCheck(c, target, {});
+    return r.modifier;
+  })();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>
+        Ability Checks
+      </div>
+
+      {/* Target picker */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', minWidth: 40, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Skill</label>
+          <select
+            value={target.kind === 'skill' ? target.name : ''}
+            onChange={e => setTarget({ kind: 'skill', name: e.target.value })}
+            style={{ flex: 1, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+          >
+            <option value="" disabled>Pick a skill…</option>
+            {SKILLS.map(s => (
+              <option key={s.name} value={s.name}>
+                {s.name} ({s.ability.slice(0, 3).toUpperCase()})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Raw ability buttons */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', minWidth: 40, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Or</span>
+          {(['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as AbilityKey[]).map(ab => {
+            const selected = target.kind === 'ability' && target.ability === ab;
+            return (
+              <button
+                key={ab}
+                onClick={() => setTarget({ kind: 'ability', ability: ab })}
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', minHeight: 0,
+                  border: selected ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
+                  background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                  color: selected ? 'var(--c-gold-l)' : 'var(--t-3)',
+                  textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+                }}
+                title={`Raw ${ab} check (no proficiency)`}
+              >
+                {ab.slice(0, 3)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Advantage / Disadvantage / DC */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--t-2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={advantage} onChange={e => setAdv(e.target.checked)} />
+          Adv
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--t-2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={disadvantage} onChange={e => setDis(e.target.checked)} />
+          Dis
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <label style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>DC</label>
+          <input
+            type="number" min={1} max={30}
+            value={dc} onChange={e => setDc(e.target.value)}
+            placeholder="—"
+            style={{ width: 40, fontSize: 11, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '2px 4px', borderRadius: 5, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+          />
+        </div>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t-3)', fontFamily: 'var(--ff-body)' }}>
+          mod {previewMod >= 0 ? '+' : ''}{previewMod}
+        </span>
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={rollSecret}
+          style={{
+            flex: 1,
+            fontSize: 11, fontWeight: 700, padding: '7px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+            border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+          }}
+          title="DM rolls on the player's behalf. Result is private — the player isn't notified."
+        >
+          🎲 Roll Secret
+        </button>
+        <button
+          onClick={promptPlayer}
+          style={{
+            flex: 1,
+            fontSize: 11, fontWeight: 700, padding: '7px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+            border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.1)', color: '#60a5fa',
+          }}
+          title="Sends a notification to the player asking them to roll."
+        >
+          📨 Prompt Player
+        </button>
+      </div>
+
+      {promptSent && (
+        <div style={{ fontSize: 10, color: '#4ade80', fontWeight: 700, textAlign: 'center' }}>
+          Prompt sent
+        </div>
+      )}
+
+      {/* Last result */}
+      {lastResult && (
+        <div style={{
+          padding: '8px 10px', borderRadius: 7,
+          background: 'var(--c-raised)', border: '1px solid var(--c-border)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{
+            fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 18,
+            color: lastResult.d20 === 20 ? '#4ade80' : lastResult.d20 === 1 ? '#ef4444' : 'var(--c-gold-l)',
+            minWidth: 28, textAlign: 'center',
+          }}>
+            {lastResult.total}
+          </div>
+          <div style={{ flex: 1, fontSize: 10, color: 'var(--t-2)', lineHeight: 1.3 }}>
+            <div style={{ fontWeight: 700, color: 'var(--t-1)' }}>
+              {lastResult.label}
+              {lastResult.proficient && <span style={{ color: 'var(--c-gold-l)', marginLeft: 4 }}>★</span>}
+              {lastResult.expert && <span style={{ color: '#a78bfa', marginLeft: 2 }}>★</span>}
+            </div>
+            <div>
+              d20: {lastResult.d20Rolls.join(', ')} → {lastResult.d20}
+              {' '}{lastResult.modifier >= 0 ? '+' : ''}{lastResult.modifier} = {lastResult.total}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

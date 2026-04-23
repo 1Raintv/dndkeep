@@ -64,6 +64,7 @@ import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts';
 import { useCampaign } from '../../context/CampaignContext';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { SKILLS as SKILL_LIST_STATIC } from '../../data/skills';
 import { useScreenFlash } from '../../context/ScreenFlashContext';
 import { resolveAutomation } from '../../lib/automations';
 
@@ -119,6 +120,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ── DM Announcements & Save Prompts ────────────────────────────
  const [dmAnnouncement, setDmAnnouncement] = useState<string | null>(null);
  const [savePrompt, setSavePrompt] = useState<{ ability: string; dc: number } | null>(null);
+ // v2.163.0 — Phase Q.0 pt 4: ability check prompts. Mirrors save_prompt
+ // but for skill / ability checks. Player can dismiss; the entry also
+ // lives in the notifications inbox.
+ const [checkPrompt, setCheckPrompt] = useState<{
+   target: string; kind: 'skill' | 'ability'; dc?: number;
+   advantage?: boolean; disadvantage?: boolean;
+ } | null>(null);
 
  useEffect(() => {
  if (!character.campaign_id) return;
@@ -137,6 +145,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setTimeout(() => setDmAnnouncement(null), 5000);
  } else if (row.message_type === 'save_prompt') {
  try { setSavePrompt(JSON.parse(row.message)); } catch {}
+ } else if (row.message_type === 'check_prompt') {
+ // v2.163.0 — Phase Q.0 pt 4: DM-requested ability check.
+ try { setCheckPrompt(JSON.parse(row.message)); } catch {}
  }
  })
  .subscribe();
@@ -1544,6 +1555,81 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <button
  onClick={() => setSavePrompt(null)}
  style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa' }}>
+ Dismiss
+ </button>
+ </div>
+ </div>
+ );
+ })()}
+
+ {/* v2.163.0 — Phase Q.0 pt 4: ability check prompt from DM.
+     Mirrors save_prompt visually but uses purple accent so it's
+     visually distinct. Includes a Roll button that triggers the
+     3D dice roller with the appropriate modifier baked in. */}
+ {checkPrompt && (() => {
+ const isSkill = checkPrompt.kind === 'skill';
+ // Map the abbreviated ability code back to the AbilityKey if needed
+ const abilityMap: Record<string, keyof typeof character> = {
+   STR: 'strength', DEX: 'dexterity', CON: 'constitution',
+   INT: 'intelligence', WIS: 'wisdom', CHA: 'charisma',
+ };
+ let mod = 0;
+ let proficient = false;
+ if (isSkill) {
+   const skillTarget = SKILL_LIST_STATIC.find(s => s.name === checkPrompt.target);
+   if (skillTarget) {
+     const score = (character[skillTarget.ability as keyof typeof character] as number) ?? 10;
+     mod = Math.floor((score - 10) / 2);
+     proficient = (character.skill_proficiencies ?? []).includes(checkPrompt.target);
+     if (proficient) mod += (computed.proficiencyBonus ?? 2);
+     const expert = (character.skill_expertises ?? []).includes(checkPrompt.target);
+     if (expert) mod += (computed.proficiencyBonus ?? 2);
+   }
+ } else {
+   const ability = abilityMap[checkPrompt.target];
+   if (ability) {
+     const score = (character[ability] as number) ?? 10;
+     mod = Math.floor((score - 10) / 2);
+   }
+ }
+ const accent = '#a78bfa';
+ const rollLabel = isSkill ? checkPrompt.target : `${checkPrompt.target} check`;
+ return (
+ <div style={{
+ padding: '12px 16px', borderRadius: 10,
+ background: 'rgba(167,139,250,0.08)', border: `1px solid ${accent}`,
+ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+ }}>
+ <div style={{ flex: 1 }}>
+ <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: accent, marginBottom: 4 }}>
+ Ability Check Requested
+ </div>
+ <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>
+ {rollLabel}{checkPrompt.dc != null ? ` — DC ${checkPrompt.dc}` : ''}
+ {checkPrompt.advantage && <span style={{ color: '#4ade80', marginLeft: 6, fontSize: 10 }}>ADV</span>}
+ {checkPrompt.disadvantage && <span style={{ color: '#f87171', marginLeft: 6, fontSize: 10 }}>DIS</span>}
+ </div>
+ <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
+ Your modifier: {mod >= 0 ? '+' : ''}{mod}{proficient ? ' (proficient)' : ''}
+ </div>
+ </div>
+ <div style={{ display: 'flex', gap: 6 }}>
+ <button
+ onClick={() => {
+ const advantage = !!checkPrompt.advantage && !checkPrompt.disadvantage;
+ const disadvantage = !!checkPrompt.disadvantage && !checkPrompt.advantage;
+ triggerRoll({
+ result: 0, dieType: 20, modifier: mod, label: rollLabel,
+ advantage, disadvantage,
+ });
+ setCheckPrompt(null);
+ }}
+ style={{ fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: `1px solid ${accent}`, background: accent, color: '#fff' }}>
+ 🎲 Roll
+ </button>
+ <button
+ onClick={() => setCheckPrompt(null)}
+ style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(167,139,250,0.3)', background: 'rgba(167,139,250,0.08)', color: accent }}>
  Dismiss
  </button>
  </div>

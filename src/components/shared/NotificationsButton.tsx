@@ -159,7 +159,9 @@ export default function NotificationsButton({ campaignId, onNewArrival }: Props)
                       </span>
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--t-1)', lineHeight: 1.5 }}>
-                      {m.message_type === 'save_prompt' ? formatSavePrompt(m.message) : m.message}
+                      {m.message_type === 'save_prompt' ? formatSavePrompt(m.message)
+                       : m.message_type === 'check_prompt' ? formatCheckPrompt(m.message)
+                       : m.message}
                     </div>
                     {m.character_name && m.character_name !== 'DM' && (
                       <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 3 }}>
@@ -191,6 +193,18 @@ function formatSavePrompt(json: string): string {
   try {
     const parsed = JSON.parse(json);
     return `${String(parsed.ability ?? '').toUpperCase()} save · DC ${parsed.dc}`;
+  } catch {
+    return json;
+  }
+}
+
+function formatCheckPrompt(json: string): string {
+  try {
+    const parsed = JSON.parse(json);
+    const target = String(parsed.target ?? '');
+    const dcPart = parsed.dc ? ` · DC ${parsed.dc}` : '';
+    const advPart = parsed.advantage ? ' · ADV' : parsed.disadvantage ? ' · DIS' : '';
+    return `${target} check${dcPart}${advPart}`;
   } catch {
     return json;
   }
