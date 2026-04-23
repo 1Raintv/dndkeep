@@ -725,6 +725,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  // Short rest: roll hit dice to recover HP
  const [shortRestHpGained, setShortRestHpGained] = useState(0);
+ // v2.170.0 — how many hit dice the player wants to spend this cycle.
+ // Empty string = default 1 when roll fires.
+ const [hitDiceToSpend, setHitDiceToSpend] = useState<string>('');
  const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'|'limited'>('all');
  // v2.34.1: Content-type filter for Actions tab. Empty set = show all categories.
  type ContentKind = 'weapon' | 'spell' | 'ability' | 'item';
@@ -776,18 +779,53 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // vertical space — 10 cards were overwhelming for something rarely used.
  const [standardActionsOpen, setStandardActionsOpen] = useState(false);
 
- function rollHitDie() {
+ // v2.170.0 — Phase Q.0 pt 11: roll multiple hit dice at once.
+ // Previously only rolled one die per click, which is fine RAW but
+ // slow at the table (a level-10 fighter recovering from near-zero
+ // might spend all 10 hit dice — 10 clicks). New UX: DM or player
+ // picks how many to spend, then clicks once and all rolls animate
+ // together in the 3D tray (via allDice). The strategic element
+ // (gamble fewer dice hoping for high rolls vs bank all your dice)
+ // is preserved — the count input is user-controlled.
+ function rollHitDice(count: number) {
  const cls = CLASS_MAP[character.class_name];
  if (!cls) return;
  const hitDie = cls.hit_die;
  const conMod = abilityModifier(character.constitution);
- const roll = rollDie(hitDie);
- const gained = Math.max(1, roll + conMod);
- const newHp = Math.min(character.max_hp, character.current_hp + gained);
- const newSpent = (character.hit_dice_spent ?? 0) + 1;
- setShortRestHpGained(prev => prev + (newHp - character.current_hp));
- applyUpdate({ current_hp: newHp, hit_dice_spent: newSpent }, true);
+ const spent = character.hit_dice_spent ?? 0;
+ const available = Math.max(0, character.level - spent);
+ const useCount = Math.max(1, Math.min(count, available));
+ if (useCount === 0) return;
+ // Roll `useCount` physical dice
+ const dice: { die: number; value: number }[] = [];
+ let diceSum = 0;
+ for (let i = 0; i < useCount; i++) {
+ const r = rollDie(hitDie);
+ dice.push({ die: hitDie, value: r });
+ diceSum += r;
  }
+ // RAW: CON mod applies per die spent, not once per rest. Minimum
+ // total HP recovered is 1 per die even if dice + CON would round
+ // below zero (important for low-CON characters).
+ const total = Math.max(useCount, diceSum + conMod * useCount);
+ const newHp = Math.min(character.max_hp, character.current_hp + total);
+ const gained = newHp - character.current_hp;
+ const newSpent = spent + useCount;
+ setShortRestHpGained(prev => prev + gained);
+ applyUpdate({ current_hp: newHp, hit_dice_spent: newSpent }, true);
+ // Animate via 3D tray
+ triggerRoll({
+ result: diceSum, dieType: hitDie,
+ allDice: dice,
+ flatBonus: conMod * useCount,
+ total,
+ expression: `${useCount}d${hitDie}${conMod >= 0 ? '+' : ''}${conMod * useCount}`,
+ label: `Hit Dice — ${useCount}d${hitDie}`,
+ logHistory: { characterId: character.id, userId },
+ });
+ }
+ // Back-compat shim: anything still calling rollHitDie() rolls one.
+ function rollHitDie() { rollHitDice(1); }
 
  function finishShortRest() {
  const newSlots = character.class_name === 'Warlock'
@@ -1385,7 +1423,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {showRest && (
  <ModalPortal>
  <div className="modal-overlay" onClick={() => { setShortRestHpGained(0); setShowRest(false); setShortRestPromptedByDM(false); }}>
- <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+ {/* v2.170.0 — Phase Q.0 pt 11: bumped 420→600 and added inline
+     padding (same fix as Campaign Settings v2.168). Title was
+     previously truncating against the left edge. */}
+ <div className="modal" style={{ maxWidth: 600, width: '92vw', padding: '20px 24px' }} onClick={e => e.stopPropagation()}>
  <h2 style={{ marginBottom: 'var(--sp-2)' }}>
  Take a Rest
  {shortRestPromptedByDM && (
@@ -1443,15 +1484,40 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  )}
 
- <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+ {/* v2.170.0 — Phase Q.0 pt 11: pick how many dice to spend, then
+     roll them all at once. Lets players gamble fewer dice hoping
+     for high rolls, or burn more to guarantee recovery. Input is
+     clamped 1..available. Rolls all dice in a single 3D animation
+     via allDice / flatBonus for the CON modifier. */}
+ <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' as const }}>
+ <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-2)' }}>
+ Spend
+ </label>
+ <input
+ type="number"
+ min={1}
+ max={available}
+ value={hitDiceToSpend}
+ onChange={e => setHitDiceToSpend(e.target.value)}
+ placeholder="1"
+ disabled={available === 0 || atMax}
+ style={{ width: 50, fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '6px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+ />
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
+ / {available}
+ </span>
  <button
  className="btn-gold"
- onClick={rollHitDie}
+ onClick={() => {
+ const n = Math.max(1, Math.min(parseInt(hitDiceToSpend) || 1, available));
+ rollHitDice(n);
+ setHitDiceToSpend('');
+ }}
  disabled={available === 0 || atMax}
- style={{ flex: 1, justifyContent: 'center' }}
- title={available === 0 ? 'No hit dice remaining' : atMax ? 'Already at max HP' : `Roll 1d${hitDie}${conMod >= 0 ? '+' : ''}${conMod} to recover HP`}
+ style={{ flex: 1, justifyContent: 'center', minWidth: 180 }}
+ title={available === 0 ? 'No hit dice remaining' : atMax ? 'Already at max HP' : 'Rolls all selected dice in one go'}
  >
- Roll Hit Die (d{hitDie}{conMod >= 0 ? '+' : ''}{conMod})
+ Roll Hit Dice (d{hitDie}{conMod >= 0 ? '+' : ''}{conMod})
  </button>
  <button
  className="btn-secondary"
@@ -1680,11 +1746,37 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {' · '}Need to roll {Math.max(1, Math.min(20, needsToRoll))}+ on d20
  </div>
  </div>
+ {/* v2.170.0 — Phase Q.0 pt 11: Dismiss button removed per playtest
+     feedback. A DM-required save is not optional; the player must
+     roll it. Roll button synthesizes 2d20 if adv/dis is set in the
+     future (save_prompt schema doesn't carry adv/dis today, but the
+     structure is ready). Pass/fail is surfaced via the Character
+     History log on settle (RAW result = d20 + mod vs DC). */}
  <div style={{ display: 'flex', gap: 6 }}>
  <button
- onClick={() => setSavePrompt(null)}
- style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa' }}>
- Dismiss
+ onClick={() => {
+ const dc = savePrompt.dc;
+ triggerRoll({
+ result: 0, dieType: 20, modifier: total,
+ label: `${savePrompt.ability} Save (DC ${dc})`,
+ logHistory: { characterId: character.id, userId },
+ onResult: (dice, rolledTotal) => {
+ const pass = rolledTotal >= dc;
+ // Fire a persistent history row so the Roll & Action
+ // log shows whether the save succeeded.
+ logHistoryEvent({
+ characterId: character.id,
+ userId,
+ eventType: 'save',
+ description: `${savePrompt.ability} save DC ${dc}: ${dice.map(d=>d.value).join(',')} + ${total >= 0 ? '+' : ''}${total} = ${rolledTotal} — ${pass ? 'SUCCESS' : 'FAIL'}`,
+ newValue: rolledTotal,
+ }).catch(() => {});
+ },
+ });
+ setSavePrompt(null);
+ }}
+ style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid #60a5fa', background: '#60a5fa', color: '#fff' }}>
+ 🎲 Roll Save
  </button>
  </div>
  </div>
@@ -1745,12 +1837,63 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <div style={{ display: 'flex', gap: 6 }}>
  <button
  onClick={() => {
+ // v2.170.0 — Phase Q.0 pt 11: when adv or dis is set, pre-roll
+ // 2d20 programmatically and hand both to the 3D tray via
+ // allDice. The tray then animates TWO physical dice and
+ // visually dims the one NOT used (dropped flag). Fixes the
+ // "advantage isn't rolling twice" bug — previously only a
+ // single die appeared even with adv/dis marked.
  const advantage = !!checkPrompt.advantage && !checkPrompt.disadvantage;
  const disadvantage = !!checkPrompt.disadvantage && !checkPrompt.advantage;
+ const hasAdvDis = advantage || disadvantage;
+ if (hasAdvDis) {
+ const r1 = Math.floor(Math.random() * 20) + 1;
+ const r2 = Math.floor(Math.random() * 20) + 1;
+ const keep = advantage ? Math.max(r1, r2) : Math.min(r1, r2);
+ const dice = [
+ { die: 20, value: r1, dropped: advantage ? r1 < r2 : r1 > r2 },
+ { die: 20, value: r2, dropped: advantage ? r2 < r1 : r2 > r1 },
+ ] as any[];
+ // If r1 === r2, neither is dropped (tie).
+ if (r1 === r2) { dice[0].dropped = false; dice[1].dropped = false; }
+ const total = keep + mod;
+ triggerRoll({
+ result: keep, dieType: 20, modifier: mod,
+ allDice: dice, flatBonus: mod, total,
+ expression: `2d20${advantage ? 'kh1' : 'kl1'}${mod >= 0 ? '+' : ''}${mod}`,
+ label: `${rollLabel} · ${advantage ? 'ADV' : 'DIS'}`,
+ logHistory: { characterId: character.id, userId },
+ onResult: (_d, rolledTotal) => {
+ if (checkPrompt.dc != null) {
+ const pass = rolledTotal >= checkPrompt.dc;
+ logHistoryEvent({
+ characterId: character.id, userId,
+ eventType: 'check',
+ description: `${rollLabel} DC ${checkPrompt.dc}: 2d20 ${advantage ? 'kh1' : 'kl1'} (${r1}, ${r2}) → kept ${keep} ${mod >= 0 ? '+' : ''}${mod} = ${rolledTotal} — ${pass ? 'SUCCESS' : 'FAIL'}`,
+ newValue: rolledTotal,
+ }).catch(() => {});
+ }
+ },
+ });
+ } else {
  triggerRoll({
  result: 0, dieType: 20, modifier: mod, label: rollLabel,
- advantage, disadvantage,
+ advantage: false, disadvantage: false,
+ logHistory: { characterId: character.id, userId },
+ onResult: (dice, rolledTotal) => {
+ if (checkPrompt.dc != null) {
+ const pass = rolledTotal >= checkPrompt.dc;
+ const d20 = dice.find(d => d.die === 20)?.value ?? 0;
+ logHistoryEvent({
+ characterId: character.id, userId,
+ eventType: 'check',
+ description: `${rollLabel} DC ${checkPrompt.dc}: d20(${d20}) ${mod >= 0 ? '+' : ''}${mod} = ${rolledTotal} — ${pass ? 'SUCCESS' : 'FAIL'}`,
+ newValue: rolledTotal,
+ }).catch(() => {});
+ }
+ },
  });
+ }
  setCheckPrompt(null);
  }}
  style={{ fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: `1px solid ${accent}`, background: accent, color: '#fff' }}>

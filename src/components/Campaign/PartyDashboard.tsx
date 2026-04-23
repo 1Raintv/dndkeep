@@ -315,7 +315,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
               { id: 'aoe',      label: 'AoE Damage' },
               { id: 'rest',     label: 'Party Rest' },
               { id: 'announce', label: 'Announcement' },
-              { id: 'save',     label: 'Call for Save' },
+              { id: 'save',     label: 'Party Saving Throw' },
               { id: 'xp',       label: 'Award XP' },
               { id: 'loot',     label: 'Distribute Loot' },
             ] as const).map(({ id, label }) => (
@@ -583,7 +583,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           {dmPanel === 'save' && (
             <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#60a5fa' }}>
-                Call for Saving Throw — players see the DC and their modifier on their sheet
+                Party Saving Throw — players see the DC and their modifier on their sheet
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={saveAbility} onChange={e => setSaveAbility(e.target.value)}
@@ -723,8 +723,12 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
         </div>
       )}
 
-      {/* Character cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 'var(--sp-3)' }}>
+      {/* v2.170.0 — Phase Q.0 pt 11: grid bumped 340→420px minimum so a
+          party of 4 visibly fits 2-per-line on a standard laptop screen.
+          With DM Controls expanded, cards simply grow taller inside the
+          2-column layout rather than jumping to full row width (the
+          v2.169 gridColumn: 1/-1 hack was too disruptive). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 'var(--sp-3)' }}>
         {characters.map(char => (
           <PlayerCard
             key={char.id}
@@ -751,8 +755,11 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hpInput, setHpInput] = useState('');
-  // v2.169.0 — shared amount input for currency panel. Empty → 1.
+  // v2.170.0 — currency panel: amount + coin selector + Apply button.
   const [currencyAmount, setCurrencyAmount] = useState('');
+  const [currencyCoin, setCurrencyCoin] = useState<'pp'|'gp'|'ep'|'sp'|'cp'>('gp');
+  // v2.170.0 — conditions panel dropdown selection (applied via button).
+  const [conditionToAdd, setConditionToAdd] = useState<string>('');
   const [activePanel, setActivePanel] = useState<'hp' | 'conditions' | 'checks' | 'inventory' | null>(null);
 
   const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
@@ -858,11 +865,8 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
     <div style={{
       border: `1px solid ${isDowned ? 'rgba(220,38,38,0.4)' : col + '30'}`,
       borderRadius: 'var(--r-xl)', background: isDowned ? 'rgba(220,38,38,0.03)' : 'var(--c-card)', overflow: 'hidden',
-      // v2.169.0 — When DM Controls are expanded, break the card out
-      // of the 2-column grid and span the full row. Fixes the Checks
-      // panel button wrapping and gives currency / conditions more
-      // breathing room. Collapsed cards still tile normally.
-      ...(expanded && isDM ? { gridColumn: '1 / -1' } : {}),
+      // v2.170.0 — no longer span full row on expand. Grid is 2-col at
+      // ~420px min, which comfortably fits all DM Controls content.
     }}>
       {/* HP bar top accent */}
       <div style={{ height: 3, background: col, width: `${hpPct * 100}%`, transition: 'width 0.4s' }} />
@@ -963,18 +967,11 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                   <button onClick={() => applyHPInput('damage')} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)' }}>Damage</button>
                   <button onClick={() => applyHPInput('heal')} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>Heal</button>
                 </div>
-                {/* v2.169.0: heal-only quick buttons. Negative deltas
-                    (-20/-10/-5/-1) removed per user feedback — always
-                    go through the typed Damage input so the exact
-                    damage amount is intentional. Quick buttons are
-                    for fast healing during combat (potion, spell). */}
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {[1, 5, 10, 20].map(v => (
-                    <button key={v} onClick={() => applyHP(v)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>
-                      +{v}
-                    </button>
-                  ))}
-                </div>
+                {/* v2.170.0 — Phase Q.0 pt 11: all quick HP buttons
+                    removed per playtest feedback. Damage/heal must go
+                    through the typed input above — forces intentional
+                    amount entry. The Full HP / Set to 0 / Inspiration
+                    row below still serves fast common cases. */}
                 {/* Set exact HP */}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button onClick={() => onUpdate({ current_hp: c.max_hp })} style={{ fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>Full HP</button>
@@ -1034,32 +1031,102 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
             )}
 
             {/* ── CONDITIONS PANEL ── */}
+            {/* v2.170.0 — Phase Q.0 pt 11: redesigned per playtest. The
+                previous layout was a toggle-grid of 15 condition pills
+                which made it hard to see WHICH conditions were actually
+                applied. New layout: active conditions listed at top
+                (click × to remove), dropdown + Apply button at the
+                bottom for adding new ones. Cleaner visual hierarchy. */}
             {activePanel === 'conditions' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>
-                  Apply / Remove Conditions
+                  Conditions
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {CONDITIONS.map(cond => {
-                    const active = (c.active_conditions ?? []).includes(cond.name as any);
-                    return (
-                      <button
-                        key={cond.name}
-                        onClick={() => toggleCondition(cond.name as any)}
-                        title={cond.description}
-                        style={{
-                          fontSize: 10, fontWeight: active ? 700 : 500, padding: '3px 9px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                          border: `1px solid ${active ? cond.color : 'var(--c-border-m)'}`,
-                          background: active ? `${cond.color}18` : 'var(--c-raised)',
-                          color: active ? cond.color : 'var(--t-3)',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {cond.icon} {cond.name}
-                      </button>
-                    );
-                  })}
+
+                {/* Active conditions (or empty state) */}
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--t-3)', marginBottom: 5 }}>
+                    Active
+                  </div>
+                  {(c.active_conditions ?? []).length === 0 ? (
+                    <div style={{ fontSize: 11, color: 'var(--t-3)', fontStyle: 'italic' }}>
+                      No conditions applied.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {(c.active_conditions ?? []).map((name: any) => {
+                        const cond = CONDITION_MAP[name as keyof typeof CONDITION_MAP];
+                        const color = cond?.color ?? 'var(--c-gold-l)';
+                        return (
+                          <span
+                            key={name}
+                            title={cond?.description ?? ''}
+                            style={{
+                              fontSize: 11, fontWeight: 700,
+                              padding: '4px 4px 4px 10px', borderRadius: 999,
+                              border: `1px solid ${color}`,
+                              background: `${color}18`, color,
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}
+                          >
+                            {cond?.icon ?? '•'} {name}
+                            <button
+                              onClick={() => toggleCondition(name as any)}
+                              style={{
+                                fontSize: 11, color, background: 'none', border: 'none',
+                                cursor: 'pointer', padding: '0 4px', lineHeight: 1,
+                                fontWeight: 800,
+                              }}
+                              title={`Remove ${name}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+
+                {/* Add a condition — dropdown + Apply */}
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--t-3)', marginBottom: 5 }}>
+                    Add condition
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select
+                      value={conditionToAdd}
+                      onChange={e => setConditionToAdd(e.target.value)}
+                      style={{ flex: 1, fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                    >
+                      <option value="">Pick a condition…</option>
+                      {CONDITIONS
+                        .filter(cond => !(c.active_conditions ?? []).includes(cond.name as any))
+                        .map(cond => (
+                          <option key={cond.name} value={cond.name}>
+                            {cond.icon} {cond.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (conditionToAdd) {
+                          toggleCondition(conditionToAdd);
+                          setConditionToAdd('');
+                        }
+                      }}
+                      disabled={!conditionToAdd}
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+                        border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                        opacity: conditionToAdd ? 1 : 0.4,
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+
                 {(c.active_conditions?.length ?? 0) > 0 && (
                   <button onClick={() => onUpdate({ active_conditions: [] })} style={{ alignSelf: 'flex-start', fontSize: 10, color: 'var(--stat-str)', background: 'none', border: '1px solid var(--stat-str-bdr)', padding: '3px 10px', borderRadius: 6, cursor: 'pointer' }}>
                     Clear all conditions
@@ -1092,51 +1159,78 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Inventory & Gold</div>
 
-                {/* v2.169.0 — Currency panel redesigned. Previously the
-                    only controls were +/- 1 buttons, which made it
-                    functionally impossible to add 50gp quest rewards
-                    (50 clicks). Now there's an amount input at the
-                    top; clicking a coin's +/- button applies that
-                    amount. Empty input falls back to 1 so fast single
-                    adjustments still work. */}
+                {/* v2.170.0 — Phase Q.0 pt 11: currency panel completely
+                    rebuilt per playtest feedback. Previous design had
+                    per-coin +/- buttons which reportedly didn't work
+                    reliably (likely because the realtime round-trip
+                    wasn't visibly confirming the write). New design:
+                    one amount input + one coin dropdown + one Apply
+                    button. Single-click, single-write, single-refresh
+                    — explicit and unambiguous. Current totals shown
+                    above for reference. */}
                 <div style={{ background: 'var(--c-raised)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)' }}>
-                      Currency
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>
-                        Amount
-                      </label>
-                      <input
-                        type="number" min={1}
-                        value={currencyAmount}
-                        onChange={e => setCurrencyAmount(e.target.value)}
-                        placeholder="1"
-                        style={{ width: 52, fontSize: 11, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '3px 4px', borderRadius: 5, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)' }}
-                      />
-                    </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 8 }}>
+                    Currency
                   </div>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+
+                  {/* Current totals — read-only display */}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10, justifyContent: 'space-between' }}>
                     {(['pp', 'gp', 'ep', 'sp', 'cp'] as const).map(coin => {
                       const colors: Record<string, string> = { pp: '#a78bfa', gp: 'var(--c-gold-l)', ep: '#34d399', sp: '#94a3b8', cp: '#fb923c' };
                       const val = (c.currency as any)?.[coin] ?? 0;
-                      const amount = Math.max(1, parseInt(currencyAmount) || 1);
                       return (
-                        <div key={coin} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 52 }}>
+                        <div key={coin} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                           <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', color: colors[coin] }}>{coin}</span>
-                          <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 14, color: colors[coin] }}>{val}</span>
-                          <div style={{ display: 'flex', gap: 3 }}>
-                            <button onClick={() => adjustCurrency(coin, -amount)} disabled={val <= 0} style={{ fontSize: 10, minWidth: 22, height: 20, borderRadius: 4, border: `1px solid ${colors[coin]}55`, background: `${colors[coin]}15`, color: colors[coin], cursor: val > 0 ? 'pointer' : 'not-allowed', minHeight: 0, padding: '0 4px', fontWeight: 800, opacity: val <= 0 ? 0.3 : 1 }} title={`Subtract ${amount} ${coin.toUpperCase()}`}>
-                              −
-                            </button>
-                            <button onClick={() => adjustCurrency(coin, amount)} style={{ fontSize: 10, minWidth: 22, height: 20, borderRadius: 4, border: `1px solid ${colors[coin]}55`, background: `${colors[coin]}15`, color: colors[coin], cursor: 'pointer', minHeight: 0, padding: '0 4px', fontWeight: 800 }} title={`Add ${amount} ${coin.toUpperCase()}`}>
-                              +
-                            </button>
-                          </div>
+                          <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 16, color: colors[coin] }}>{val}</span>
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Amount input + coin selector + Apply */}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      value={currencyAmount}
+                      onChange={e => setCurrencyAmount(e.target.value)}
+                      placeholder="Amount"
+                      min={0}
+                      style={{ flex: 1, fontSize: 12, fontFamily: 'var(--ff-stat)', fontWeight: 700, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)' }}
+                    />
+                    <select
+                      value={currencyCoin}
+                      onChange={e => setCurrencyCoin(e.target.value as typeof currencyCoin)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '5px 6px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)' }}
+                    >
+                      <option value="gp">GP</option>
+                      <option value="pp">PP</option>
+                      <option value="ep">EP</option>
+                      <option value="sp">SP</option>
+                      <option value="cp">CP</option>
+                    </select>
+                    <button
+                      onClick={() => {
+                        const amt = parseInt(currencyAmount);
+                        if (!isNaN(amt) && amt !== 0) {
+                          adjustCurrency(currencyCoin, amt);
+                          setCurrencyAmount('');
+                        }
+                      }}
+                      disabled={!currencyAmount || isNaN(parseInt(currencyAmount)) || parseInt(currencyAmount) === 0}
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+                        border: '1px solid var(--c-gold-bdr)',
+                        background: 'var(--c-gold-bg)',
+                        color: 'var(--c-gold-l)',
+                        opacity: (!currencyAmount || isNaN(parseInt(currencyAmount)) || parseInt(currencyAmount) === 0) ? 0.4 : 1,
+                      }}
+                      title="Positive = add, negative = subtract"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 5 }}>
+                    Enter a positive number to add, negative to subtract (e.g. −10 to take away).
                   </div>
                 </div>
 
