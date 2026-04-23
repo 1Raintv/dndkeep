@@ -18,6 +18,7 @@ const LobbyPage      = lazy(() => import('./components/pages/LobbyPage'));
 const SharePage      = lazy(() => import('./components/pages/SharePage'));
 const CharacterPage  = lazy(() => import('./components/pages/CharacterPage'));
 const SpellsPage     = lazy(() => import('./components/pages/SpellsPage'));
+const MagicItemsPage = lazy(() => import('./components/pages/MagicItemsPage'));
 const CombatPage     = lazy(() => import('./components/pages/CombatPage'));
 const HomebrewPage   = lazy(() => import('./components/pages/HomebrewPage'));
 const BestiaryPage   = lazy(() => import('./components/pages/BestiaryPage'));
@@ -120,6 +121,11 @@ const Icons = {
 
 const NAV_ITEMS = [
   { to: '/bestiary',  label: 'Bestiary',   icon: Icons.bestiary },
+  { to: '/spells',    label: 'Spells',     icon: '✨' },
+  // v2.159.0 — Phase P pt 7: Magic Items browser. Lives between
+  // Spells and Classes to group the three "canonical reference"
+  // pages together.
+  { to: '/magic-items', label: 'Magic Items', icon: '🧪' },
   { to: '/homebrew',  label: 'Homebrew',   icon: Icons.homebrew, pro: true },
   { to: '/compendium', label: 'Classes & Subclasses', icon: '📖' },
 ];
@@ -353,6 +359,7 @@ function AppRoutes() {
             <Route path="/compendium"            element={<ProtectedRoute><Suspense fallback={<div style={{padding:32,color:'var(--t-3)'}}>Loading...</div>}><ClassCompendiumPage /></Suspense></ProtectedRoute>} />
             <Route path="/compendium/:className" element={<ProtectedRoute><Suspense fallback={<div style={{padding:32,color:'var(--t-3)'}}>Loading...</div>}><ClassCompendiumPage /></Suspense></ProtectedRoute>} />
             <Route path="/spells"         element={<ProtectedRoute><SpellsPage /></ProtectedRoute>} />
+            <Route path="/magic-items"    element={<ProtectedRoute><MagicItemsPage /></ProtectedRoute>} />
             <Route path="/combat"         element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
             <Route path="/dice"           element={<ProtectedRoute><DicePage /></ProtectedRoute>} />
             <Route path="/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
