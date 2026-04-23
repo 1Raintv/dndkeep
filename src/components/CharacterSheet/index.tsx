@@ -2471,21 +2471,58 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </span>
  </button>
  {standardActionsOpen && (
- <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+ <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+ {/* v2.182.0 — Phase Q.0 pt 23: standard actions rebuilt as a
+     compact pill grid + detail panel. Previously each of the 10
+     actions rendered as its own full-width card (name + badge +
+     Use button + chevron + description = 4 lines per card, 10
+     cards = huge vertical footprint for something used rarely).
+     Now: wrap-flex row of small buttons; click one to expand a
+     single detail panel below showing the long description and
+     a Use button. Clicking the same pill again collapses it. The
+     'Use' execution path is unchanged — same handleUse wired to
+     the Use button in the expanded panel. */}
+ <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
  {STANDARD_ACTIONS.map(action => {
  const isExpanded = expandedStandardAction === action.id;
  const isFlashing = justUsedStandardAction === action.id;
+ return (
+ <button
+ key={action.id}
+ onClick={() => setExpandedStandardAction(isExpanded ? null : action.id)}
+ style={{
+ fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+ padding: '6px 14px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+ border: isFlashing
+ ? '1px solid #34d399'
+ : isExpanded
+ ? '1px solid rgba(96,165,250,0.7)'
+ : '1px solid rgba(96,165,250,0.35)',
+ background: isFlashing
+ ? '#34d399'
+ : isExpanded
+ ? 'rgba(96,165,250,0.22)'
+ : 'rgba(96,165,250,0.08)',
+ color: isFlashing ? '#000' : '#60a5fa',
+ transition: 'all 0.15s',
+ }}
+ title={action.shortDescription}
+ >
+ {isFlashing ? `${action.name} ✓` : action.name}
+ </button>
+ );
+ })}
+ </div>
+
+ {/* Detail panel for the currently-expanded action */}
+ {expandedStandardAction && (() => {
+ const action = STANDARD_ACTIONS.find(a => a.id === expandedStandardAction);
+ if (!action) return null;
+ const isFlashing = justUsedStandardAction === action.id;
  const handleUse = () => {
- // Lock out for turn (same mechanism spells use).
  setSpellCastThisTurn(true);
- // v2.88.0: Automate the two Standard Actions with mechanical effects.
- //  - Dash: set dashingThisTurn so Turn Economy doubles your Speed this turn.
- //  - Dodge: set dodgingThisTurn so the DODGING badge shows on your sheet
- //    (reminder to DM that attacks against you have Disadvantage).
- // Both clear on End Turn via onNewTurn in ActionEconomy.
  if (action.id === 'dash') setDashingThisTurn(true);
  if (action.id === 'dodge') setDodgingThisTurn(true);
- // Broadcast to campaign action log so DM + party see it in real time.
  import('../shared/ActionLog').then(({ logAction }) => {
  logAction({
  campaignId: character.campaign_id ?? null,
@@ -2496,14 +2533,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  notes: action.shortDescription,
  });
  }).catch(() => {});
- // Log to personal character history for audit trail.
  logHistoryEvent({
  characterId: character.id,
  userId: character.user_id,
  eventType: 'other',
  description: `Took ${action.name} action`,
  });
- // Flash "Used!" feedback for 1.8s.
  setJustUsedStandardAction(action.id);
  window.setTimeout(() => {
  setJustUsedStandardAction(curr => curr === action.id ? null : curr);
@@ -2511,84 +2546,68 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  };
  return (
  <div
- key={action.id}
+ className="animate-fade-in"
  style={{
  background: 'var(--c-surface)',
- border: '1px solid rgba(96,165,250,0.18)',
+ border: '1px solid rgba(96,165,250,0.25)',
  borderLeft: '3px solid #60a5fa',
  borderRadius: 'var(--r-md)',
- overflow: 'hidden',
+ padding: '12px 16px',
+ display: 'flex', flexDirection: 'column' as const, gap: 10,
  }}
  >
- {/* Header row — name + action tag + Use button + chevron */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: '1 1 auto', minWidth: 100 }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 15, color: 'var(--t-1)' }}>
  {action.name}
  </span>
  <span style={{
  fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
  color: '#60a5fa', background: 'rgba(96,165,250,0.15)',
  border: '1px solid rgba(96,165,250,0.4)',
- borderRadius: 999, padding: '2px 7px', flexShrink: 0,
+ borderRadius: 999, padding: '2px 7px',
  }}>
- Action
+ ACTION
  </span>
+ <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
  <button
  onClick={handleUse}
  style={{
- padding: '4px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ padding: '6px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  background: isFlashing ? '#34d399' : 'rgba(96,165,250,0.15)',
  border: `1px solid ${isFlashing ? '#34d399' : 'rgba(96,165,250,0.5)'}`,
  color: isFlashing ? '#000' : '#60a5fa',
- fontFamily: 'var(--ff-body)', fontWeight: isFlashing ? 800 : 700, fontSize: 11,
+ fontFamily: 'var(--ff-body)', fontWeight: isFlashing ? 800 : 700, fontSize: 12,
  letterSpacing: '0.04em',
  transition: 'background 0.2s, color 0.2s, border-color 0.2s',
- flexShrink: 0, minHeight: 0,
- minWidth: 64, textAlign: 'center' as const,
+ minHeight: 0, minWidth: 80,
  }}
  >
  {isFlashing ? 'Used!' : 'Use'}
  </button>
  <button
- onClick={() => setExpandedStandardAction(isExpanded ? null : action.id)}
- title={isExpanded ? 'Collapse details' : 'Expand details'}
- aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+ onClick={() => setExpandedStandardAction(null)}
+ title="Close"
+ aria-label="Close"
  style={{
- background: 'transparent', border: 'none', padding: 0,
- cursor: 'pointer', color: 'var(--t-3)', fontSize: 12,
- width: 20, height: 20, minHeight: 0, minWidth: 0,
- display: 'flex', alignItems: 'center', justifyContent: 'center',
- flexShrink: 0,
- transition: 'transform 0.2s',
- transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+ background: 'transparent', border: '1px solid var(--c-border)',
+ borderRadius: 'var(--r-md)', padding: '6px 10px', cursor: 'pointer',
+ color: 'var(--t-3)', fontSize: 12, fontWeight: 700,
+ minHeight: 0,
  }}
  >
- ▼
+ ✕
  </button>
+ </span>
  </div>
- {/* Short description — always visible */}
  <div style={{
- padding: '0 14px 10px 14px',
- fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
- lineHeight: 1.5,
- }}>
- {action.shortDescription}
- </div>
- {/* Long description — expanded on chevron click */}
- {isExpanded && (
- <div style={{
- padding: '8px 14px 12px 14px',
- borderTop: '1px solid var(--c-border)',
- background: 'var(--c-raised)',
- fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)',
  lineHeight: 1.6, whiteSpace: 'pre-wrap' as const,
  }}>
- {action.longDescription}
+ {action.longDescription || action.shortDescription}
  </div>
- )}
  </div>
  );
- })}
+ })()}
  </div>
  )}
  </div>
