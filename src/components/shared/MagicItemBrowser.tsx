@@ -148,6 +148,11 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
                 background: isExpanded ? rarityColor + '06' : 'var(--c-card)',
                 overflow: 'hidden',
                 transition: 'border-color var(--tr-fast)',
+                // v2.177.2 HOTFIX — flexShrink:0 prevents the scroll
+                // container's flex-column from compressing 110 cards
+                // into the 520px maxHeight. Without this, each card
+                // collapses to ~5px and becomes an unreadable line.
+                flexShrink: 0,
               }}
             >
               {/* Collapsed row — matched to weapons list proportions */}
