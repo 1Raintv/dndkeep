@@ -41,12 +41,30 @@ interface UseNotificationsResult {
   markRead: () => void;
 }
 
-export function useNotifications(campaignId: string | null): UseNotificationsResult {
+export function useNotifications(campaignId: string | null, characterId: string | null = null): UseNotificationsResult {
   const [messages, setMessages] = useState<NotificationMessage[]>([]);
   const [latestArrival, setLatestArrival] = useState<NotificationMessage | null>(null);
   // unreadCount is computed from messages + lastReadAt; we trigger a
   // re-derivation by bumping a tick when markRead is called.
   const [readTick, setReadTick] = useState(0);
+
+  // v2.173.0 — Phase Q.0 pt 14: announcement targeting filter.
+  // DM announcements can now carry a `{text, targets: string[]}`
+  // payload when the DM restricts them to a subset of characters. On
+  // the player side we drop any announcement whose `targets` list
+  // doesn't include this character's ID. Plain-text announcements
+  // (legacy shape, "send to all") always pass through.
+  function announcementVisibleTo(row: NotificationMessage): boolean {
+    if (row.message_type !== 'announcement') return true;
+    if (!characterId) return true; // no character context → show all
+    try {
+      const p = JSON.parse(row.message);
+      if (p && Array.isArray(p.targets) && p.targets.length > 0) {
+        return p.targets.includes(characterId);
+      }
+    } catch { /* plain text, fall through to "all" */ }
+    return true;
+  }
 
   // Backfill on mount / campaign change
   useEffect(() => {
@@ -66,10 +84,11 @@ export function useNotifications(campaignId: string | null): UseNotificationsRes
         if (cancelled || !data) return;
         // Reverse so oldest-first matches accumulation order, then we
         // present newest-first in the UI by sorting at render time.
-        setMessages(data as NotificationMessage[]);
+        const rows = (data as NotificationMessage[]).filter(announcementVisibleTo);
+        setMessages(rows);
       });
     return () => { cancelled = true; };
-  }, [campaignId]);
+  }, [campaignId, characterId]);
 
   // Realtime subscription
   useEffect(() => {

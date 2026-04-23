@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { Character, AbilityKey } from '../../types';
+import type { Character, AbilityKey, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { xpToLevel, xpForNextLevel, computeStats, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
 import { SPELLS } from '../../data/spells';
@@ -19,6 +19,13 @@ import { buildDefaultResources } from '../../data/classResources';
 interface PartyDashboardProps {
   campaignId: string;
   isOwner: boolean; // DM = true, player = false
+  /**
+   * v2.173.0 — the full Campaign row. Used to read feature flags
+   * such as award_xp_enabled. Optional for backward-compat with
+   * callers that haven't been updated yet; when absent we default
+   * to the "XP disabled" behavior.
+   */
+  campaign?: Campaign;
 }
 
 function hpColor(current: number, max: number) {
@@ -39,12 +46,24 @@ function hpLabel(current: number, max: number) {
   return { label: 'Downed', color: '#dc2626' };
 }
 
-export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardProps) {
+export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyDashboardProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [xpInput, setXpInput] = useState('');
   const [xpNote, setXpNote] = useState('');
-  const [lootGold, setLootGold] = useState('');
+  // v2.173.0 — Phase Q.0 pt 14: per-character selection for targeted
+  // actions (XP / Announcements / Loot). A null Set means "all
+  // characters" (default). A non-null Set with explicit IDs means
+  // "send to only these". Each panel manages its own target set.
+  const [xpTargets, setXpTargets] = useState<Set<string> | null>(null);
+  const [announceTargets, setAnnounceTargets] = useState<Set<string> | null>(null);
+  const [lootTargets, setLootTargets] = useState<Set<string> | null>(null);
+  // Loot: per-coin amounts instead of just GP.
+  const [lootPp, setLootPp] = useState('');
+  const [lootGp, setLootGp] = useState('');
+  const [lootEp, setLootEp] = useState('');
+  const [lootSp, setLootSp] = useState('');
+  const [lootCp, setLootCp] = useState('');
   const [lootItem, setLootItem] = useState('');
   const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | 'aoe' | 'rest' | 'announce' | 'save' | null>(null);
   // AoE
@@ -75,12 +94,20 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
     return () => { supabase.removeChannel(channel); };
   }, [campaignId]);
 
+  // v2.173.0 — Phase Q.0 pt 14: award XP to a selected subset or the
+  // whole party. xpTargets === null means "all characters"; a Set
+  // means "only these". Split is even across the selected group (NOT
+  // across the whole party), so giving 600 XP to 2 people = 300 each.
   async function awardXP() {
     const amount = parseInt(xpInput);
     if (isNaN(amount) || amount <= 0 || characters.length === 0) return;
-    const perPlayer = Math.floor(amount / characters.length);
-    const remainder = amount % characters.length;
-    await Promise.all(characters.map((c, i) => {
+    const targets = xpTargets === null
+      ? characters
+      : characters.filter(c => xpTargets.has(c.id));
+    if (targets.length === 0) return;
+    const perPlayer = Math.floor(amount / targets.length);
+    const remainder = amount % targets.length;
+    await Promise.all(targets.map((c, i) => {
       const gain = perPlayer + (i < remainder ? 1 : 0);
       const newXP = (c.experience_points ?? 0) + gain;
       return supabase.from('characters').update({ experience_points: newXP }).eq('id', c.id);
@@ -89,32 +116,57 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
     setXpNote('');
   }
 
+  // v2.173.0 — Phase Q.0 pt 14: distribute all 5 coin types + an
+  // optional item across the selected subset. Each coin column splits
+  // evenly (with remainders going to the first N targets). An item
+  // name, if provided, gives each selected player one copy. Targets
+  // default to all characters.
   async function distributeLoot() {
-    const gold = parseInt(lootGold) || 0;
+    const coins = {
+      pp: parseInt(lootPp) || 0,
+      gp: parseInt(lootGp) || 0,
+      ep: parseInt(lootEp) || 0,
+      sp: parseInt(lootSp) || 0,
+      cp: parseInt(lootCp) || 0,
+    };
     const item = lootItem.trim();
-    if (!gold && !item) return;
+    const hasCoins = coins.pp + coins.gp + coins.ep + coins.sp + coins.cp > 0;
+    if (!hasCoins && !item) return;
 
-    const perPlayer = characters.length > 0 ? Math.floor(gold / characters.length) : 0;
-    const remainder = gold % Math.max(characters.length, 1);
+    const targets = lootTargets === null
+      ? characters
+      : characters.filter(c => lootTargets.has(c.id));
+    if (targets.length === 0) return;
 
-    await Promise.all(characters.map((c, i) => {
+    await Promise.all(targets.map((c, i) => {
       const patch: Partial<Character> = {};
-      // Distribute gold evenly (first players get +1 remainder GP)
-      if (gold > 0) {
+      if (hasCoins) {
         const curr: any = { ...(c.currency ?? { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 }) };
-        curr.gp = (curr.gp ?? 0) + perPlayer + (i < remainder ? 1 : 0);
+        (['pp', 'gp', 'ep', 'sp', 'cp'] as const).forEach(k => {
+          const total = coins[k];
+          const perPlayer = Math.floor(total / targets.length);
+          const remainder = total % targets.length;
+          curr[k] = (curr[k] ?? 0) + perPlayer + (i < remainder ? 1 : 0);
+        });
         patch.currency = curr;
       }
-      // Give each player a copy of the item
       if (item) {
-        const newItem = { id: `loot-${Date.now()}-${i}`, name: item, quantity: 1, weight: 0, description: '', equipped: false };
+        // v2.173.0 — more complete item shape so it renders correctly
+        // in the player's Inventory tab (previously missing category
+        // and equipped, which made the row look empty).
+        const newItem = {
+          id: `loot-${Date.now()}-${i}`,
+          name: item, quantity: 1, weight: 0,
+          description: '', equipped: false,
+          category: 'Other' as const,
+        };
         patch.inventory = [...(c.inventory ?? []), newItem];
       }
       return Object.keys(patch).length
         ? supabase.from('characters').update(patch).eq('id', c.id)
         : Promise.resolve();
     }));
-    setLootGold('');
+    setLootPp(''); setLootGp(''); setLootEp(''); setLootSp(''); setLootCp('');
     setLootItem('');
   }
 
@@ -230,14 +282,25 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
 
   async function broadcastAnnouncement() {
     if (!announceText.trim()) return;
+    // v2.173.0 — Phase Q.0 pt 14: embed target character IDs in the
+    // message payload when the DM picked a subset. For "all players"
+    // (announceTargets === null) we send plain text for backward
+    // compatibility with older clients. Player-side useNotifications
+    // + formatNotificationBody parse the JSON shape and filter /
+    // display accordingly.
+    const targeted = announceTargets !== null && announceTargets.size > 0 && announceTargets.size < characters.length;
+    const payload = targeted
+      ? JSON.stringify({ text: announceText.trim(), targets: Array.from(announceTargets!) })
+      : announceText.trim();
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getUser()).data.user?.id,
       character_name: 'DM',
-      message: announceText.trim(),
+      message: payload,
       message_type: 'announcement',
     });
     setAnnounceText('');
+    setAnnounceTargets(null);
     setDmPanel(null);
   }
 
@@ -320,15 +383,18 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
       {isOwner && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {/* Panel toggle buttons */}
+          {/* v2.173.0 — Phase Q.0 pt 14: XP tab gated behind
+              campaign.award_xp_enabled. Most tables use milestone
+              leveling and don't want the XP panel in their way. */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {([
+            {(([
               { id: 'aoe',      label: 'AoE Damage' },
               { id: 'rest',     label: 'Party Rest' },
               { id: 'announce', label: 'Announcement' },
               { id: 'save',     label: 'Party Saving Throw' },
-              { id: 'xp',       label: 'Award XP' },
+              ...(campaign?.award_xp_enabled ? [{ id: 'xp' as const, label: 'Award XP' }] : []),
               { id: 'loot',     label: 'Distribute Loot' },
-            ] as const).map(({ id, label }) => (
+            ]) as ReadonlyArray<{ id: 'aoe'|'rest'|'announce'|'save'|'xp'|'loot'; label: string }>).map(({ id, label }) => (
               <button
                 key={id}
                 onClick={() => { setDmPanel(dmPanel === id ? null : id); setAoeApplied(null); }}
@@ -558,8 +624,18 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           {dmPanel === 'announce' && (
             <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(212,160,23,0.4)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
-                DM Announcement — appears as a banner on all player sheets
+                DM Announcement — banner on selected player sheets
               </div>
+              {/* v2.173.0 — Phase Q.0 pt 14: per-player targeting. When a
+                  subset is selected, only those characters receive the
+                  banner + inbox entry. The DM can still reveal secrets
+                  to one player without the whole party seeing it. */}
+              <TargetPicker
+                characters={characters}
+                value={announceTargets}
+                onChange={setAnnounceTargets}
+                accent="var(--c-gold-l)"
+              />
               <textarea
                 value={announceText}
                 onChange={e => setAnnounceText(e.target.value)}
@@ -572,7 +648,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                   style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                     border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
                     opacity: !announceText.trim() ? 0.4 : 1 }}>
-                  Send to All Players
+                  {announceTargets === null ? 'Send to All' : `Send to ${announceTargets.size} Player${announceTargets.size === 1 ? '' : 's'}`}
                 </button>
                 <span style={{ fontSize: 11, color: 'var(--t-3)', alignSelf: 'center' }}>Dismissible after 30 seconds</span>
               </div>
@@ -637,9 +713,24 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           {/* XP Award panel */}
           {dmPanel === 'xp' && (
             <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
-                Award XP to Party — splits evenly among {characters.length} player{characters.length !== 1 ? 's' : ''}
-              </div>
+              {/* v2.173.0 — Phase Q.0 pt 14: target-aware. The amount is
+                  split evenly among the SELECTED characters, not the
+                  whole party, so a DM can reward one player (e.g. a
+                  solo scouting session) or the full group. */}
+              {(() => {
+                const n = xpTargets === null ? characters.length : xpTargets.size;
+                return (
+                  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
+                    Award XP — splits evenly among {n} selected player{n !== 1 ? 's' : ''}
+                  </div>
+                );
+              })()}
+              <TargetPicker
+                characters={characters}
+                value={xpTargets}
+                onChange={setXpTargets}
+                accent="var(--c-gold-l)"
+              />
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   type="number" value={xpInput} onChange={e => setXpInput(e.target.value)}
@@ -647,12 +738,15 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                   onKeyDown={e => e.key === 'Enter' && awardXP()}
                   style={{ flex: 1, fontSize: 14, fontFamily: 'var(--ff-stat)', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
                 />
-                {xpInput && parseInt(xpInput) > 0 && characters.length > 0 && (
-                  <span style={{ fontSize: 11, color: 'var(--t-3)', whiteSpace: 'nowrap' }}>
-                    = {Math.floor(parseInt(xpInput) / characters.length)} XP each
-                  </span>
-                )}
-                <button onClick={awardXP} disabled={!xpInput || parseInt(xpInput) <= 0}
+                {(() => {
+                  const targetCount = xpTargets === null ? characters.length : xpTargets.size;
+                  return xpInput && parseInt(xpInput) > 0 && targetCount > 0 ? (
+                    <span style={{ fontSize: 11, color: 'var(--t-3)', whiteSpace: 'nowrap' }}>
+                      = {Math.floor(parseInt(xpInput) / targetCount)} XP each
+                    </span>
+                  ) : null;
+                })()}
+                <button onClick={awardXP} disabled={!xpInput || parseInt(xpInput) <= 0 || (xpTargets !== null && xpTargets.size === 0)}
                   style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                     border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
                     opacity: (!xpInput || parseInt(xpInput) <= 0) ? 0.4 : 1 }}>
@@ -663,8 +757,10 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
               {characters.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {characters.map(c => {
-                    const gain = xpInput && parseInt(xpInput) > 0
-                      ? Math.floor(parseInt(xpInput) / characters.length)
+                    const isTarget = xpTargets === null || xpTargets.has(c.id);
+                    const targetCount = xpTargets === null ? characters.length : xpTargets.size;
+                    const gain = xpInput && parseInt(xpInput) > 0 && isTarget && targetCount > 0
+                      ? Math.floor(parseInt(xpInput) / targetCount)
                       : 0;
                     const newXP = (c.experience_points ?? 0) + gain;
                     const currentLevel = xpToLevel(c.experience_points ?? 0);
@@ -675,7 +771,9 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                       <div key={c.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6,
                         background: willLevelUp ? 'var(--c-gold-bg)' : 'var(--c-raised)',
                         border: `1px solid ${willLevelUp ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
-                        color: willLevelUp ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
+                        color: willLevelUp ? 'var(--c-gold-l)' : isTarget ? 'var(--t-2)' : 'var(--t-3)',
+                        opacity: isTarget ? 1 : 0.4,
+                      }}>
                         {c.name}: {c.experience_points ?? 0}{gain > 0 ? ` → ${newXP}` : ''} / {nextXP} XP
                         {willLevelUp && ' ⬆ LVL UP!'}
                       </div>
@@ -689,35 +787,102 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           {/* Loot Distribution panel */}
           {dmPanel === 'loot' && (
             <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
-                Distribute Loot — each player receives a copy
+              {/* v2.173.0 — Phase Q.0 pt 14: full rebuild.
+                  • All 5 coin types (pp / gp / ep / sp / cp) — previously
+                    only GP worked
+                  • Target picker — "All Players" default, or pick specific
+                  • Coin totals split evenly across selected targets
+                  • Item gives each selected player one copy, now with
+                    complete item shape (category / equipped) so it
+                    renders correctly in their Inventory tab */}
+              {(() => {
+                const n = lootTargets === null ? characters.length : lootTargets.size;
+                return (
+                  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
+                    Distribute Loot — split evenly among {n} selected player{n !== 1 ? 's' : ''}
+                  </div>
+                );
+              })()}
+              <TargetPicker
+                characters={characters}
+                value={lootTargets}
+                onChange={setLootTargets}
+                accent="var(--c-gold-l)"
+              />
+
+              {/* 5-coin total inputs */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+                {([
+                  { key: 'pp', label: 'PP', value: lootPp, set: setLootPp, color: '#a78bfa' },
+                  { key: 'gp', label: 'GP', value: lootGp, set: setLootGp, color: 'var(--c-gold-l)' },
+                  { key: 'ep', label: 'EP', value: lootEp, set: setLootEp, color: '#34d399' },
+                  { key: 'sp', label: 'SP', value: lootSp, set: setLootSp, color: '#94a3b8' },
+                  { key: 'cp', label: 'CP', value: lootCp, set: setLootCp, color: '#fb923c' },
+                ] as const).map(coin => (
+                  <div key={coin.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <label style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: coin.color, textAlign: 'center' }}>
+                      {coin.label}
+                    </label>
+                    <input
+                      type="number" value={coin.value}
+                      onChange={e => coin.set(e.target.value)}
+                      placeholder="0" min={0}
+                      style={{ fontSize: 13, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '5px 4px', borderRadius: 6, border: `1px solid ${coin.color}55`, background: 'var(--c-raised)', color: coin.color }}
+                    />
+                  </div>
+                ))}
               </div>
+
+              {/* Item + distribute button */}
               <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <input
-                    type="number" value={lootGold} onChange={e => setLootGold(e.target.value)}
-                    placeholder="Gold to split (GP)…" min={0}
-                    style={{ fontSize: 13, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
-                  />
-                  <input
-                    value={lootItem} onChange={e => setLootItem(e.target.value)}
-                    placeholder="Item name (each player gets one)…"
-                    onKeyDown={e => e.key === 'Enter' && distributeLoot()}
-                    style={{ fontSize: 13, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
-                  />
-                </div>
-                <button onClick={distributeLoot} disabled={!lootGold && !lootItem.trim()}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0, alignSelf: 'stretch',
+                <input
+                  value={lootItem} onChange={e => setLootItem(e.target.value)}
+                  placeholder="Item name (each selected player gets one, optional)…"
+                  onKeyDown={e => e.key === 'Enter' && distributeLoot()}
+                  style={{ flex: 1, fontSize: 13, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                />
+                <button onClick={distributeLoot}
+                  disabled={
+                    (lootTargets !== null && lootTargets.size === 0) ||
+                    (!lootPp && !lootGp && !lootEp && !lootSp && !lootCp && !lootItem.trim())
+                  }
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                     border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
-                    opacity: (!lootGold && !lootItem.trim()) ? 0.4 : 1 }}>
+                    opacity: (
+                      (lootTargets !== null && lootTargets.size === 0) ||
+                      (!lootPp && !lootGp && !lootEp && !lootSp && !lootCp && !lootItem.trim())
+                    ) ? 0.4 : 1 }}>
                   Distribute
                 </button>
               </div>
-              {lootGold && parseInt(lootGold) > 0 && characters.length > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
-                  {Math.floor(parseInt(lootGold) / characters.length)} GP each ({parseInt(lootGold) % characters.length > 0 ? `${parseInt(lootGold) % characters.length} leftover GP to first player` : 'splits evenly'})
-                </div>
-              )}
+
+              {/* Per-coin split preview */}
+              {(() => {
+                const n = lootTargets === null ? characters.length : lootTargets.size;
+                if (n === 0) return null;
+                const coins = [
+                  { label: 'PP', val: parseInt(lootPp) || 0, color: '#a78bfa' },
+                  { label: 'GP', val: parseInt(lootGp) || 0, color: 'var(--c-gold-l)' },
+                  { label: 'EP', val: parseInt(lootEp) || 0, color: '#34d399' },
+                  { label: 'SP', val: parseInt(lootSp) || 0, color: '#94a3b8' },
+                  { label: 'CP', val: parseInt(lootCp) || 0, color: '#fb923c' },
+                ].filter(c => c.val > 0);
+                if (coins.length === 0) return null;
+                return (
+                  <div style={{ fontSize: 10, color: 'var(--t-3)', display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                    <span>Each player:</span>
+                    {coins.map(c => {
+                      const each = Math.floor(c.val / n);
+                      const rem = c.val % n;
+                      return (
+                        <span key={c.label} style={{ color: c.color, fontWeight: 700 }}>
+                          {each}{c.label}{rem > 0 ? ` (+${rem} extra to first ${rem})` : ''}
+                        </span>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1263,6 +1428,66 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// v2.173.0 — Phase Q.0 pt 14: reusable per-character target picker
+// for the DM panels (Announcement / Award XP / Distribute Loot).
+// `value === null` means "all characters" (the implicit default). A
+// Set means "only these IDs". Toggling "All" collapses to null. This
+// avoids the silly-case where a DM manually ticks every checkbox and
+// the payload still carries a target list (which matters for the
+// announcement shape — null → plain-text backward-compat).
+function TargetPicker({
+  characters, value, onChange, accent,
+}: {
+  characters: Character[];
+  value: Set<string> | null;
+  onChange: (next: Set<string> | null) => void;
+  accent: string;
+}) {
+  const allSelected = value === null;
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--t-3)' }}>
+        To
+      </span>
+      <button
+        onClick={() => onChange(null)}
+        style={{
+          fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+          border: `1px solid ${allSelected ? accent : 'var(--c-border-m)'}`,
+          background: allSelected ? `${accent}1f` : 'var(--c-raised)',
+          color: allSelected ? accent : 'var(--t-3)',
+          textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+        }}
+      >
+        All Players
+      </button>
+      {characters.map(c => {
+        const sel = !allSelected && value!.has(c.id);
+        return (
+          <button
+            key={c.id}
+            onClick={() => {
+              const next = new Set(value ?? []);
+              if (sel) next.delete(c.id); else next.add(c.id);
+              // Empty set collapses to null so the UI always shows
+              // "All Players" if the DM un-selected everyone.
+              onChange(next.size === 0 ? null : next);
+            }}
+            style={{
+              fontSize: 10, fontWeight: sel ? 700 : 500, padding: '3px 10px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+              border: `1px solid ${sel ? accent : 'var(--c-border-m)'}`,
+              background: sel ? `${accent}1f` : 'var(--c-raised)',
+              color: sel ? accent : 'var(--t-3)',
+            }}
+          >
+            {sel ? '✓ ' : ''}{c.name}
+          </button>
+        );
+      })}
     </div>
   );
 }

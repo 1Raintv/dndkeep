@@ -12,12 +12,20 @@ import { messageTypeLabel, formatNotificationBody } from '../../lib/notification
 
 interface Props {
   campaignId: string | null;
+  /**
+   * v2.173.0 — Phase Q.0 pt 14: character context for targeted
+   * announcement filtering. When the DM sends an announcement to a
+   * subset of players, the payload carries `targets: string[]` and
+   * only matching characters see the row. Null (no character) means
+   * "show all" — useful for DM view, admin tools, etc.
+   */
+  characterId?: string | null;
   /** Called when a NEW notification arrives. Used by parent to drive a transient toast. */
   onNewArrival?: (msg: { id: string; message: string; message_type: string; character_name: string | null }) => void;
 }
 
-export default function NotificationsButton({ campaignId, onNewArrival }: Props) {
-  const { messages, unreadCount, latestArrival, markRead } = useNotifications(campaignId);
+export default function NotificationsButton({ campaignId, characterId = null, onNewArrival }: Props) {
+  const { messages, unreadCount, latestArrival, markRead } = useNotifications(campaignId, characterId);
   const [open, setOpen] = useState(false);
   const lastSeenIdRef = useRef<string | null>(null);
 

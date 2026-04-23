@@ -558,6 +558,11 @@ export interface Campaign {
 
   // v2.96.0 — Phase D: combat state machine settings
   combat_automation_settings?: CombatAutomationSettings;
+
+  // v2.173.0 — Phase Q.0 pt 14: per-campaign toggle for the Award XP
+  // panel. When false, the "Award XP" tab is hidden from DM Controls
+  // entirely. Milestone-leveling tables don't need the clutter.
+  award_xp_enabled?: boolean;
 }
 
 export interface CombatAutomationSettings {

@@ -98,6 +98,26 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
   const [savingEnc, setSavingEnc] = useState(false);
   const [encSaved, setEncSaved] = useState(false);
 
+  // v2.173.0 — Phase Q.0 pt 14: Award XP toggle
+  const [awardXpEnabled, setAwardXpEnabled] = useState<boolean>(!!campaign.award_xp_enabled);
+  const [savingXp, setSavingXp] = useState(false);
+  const [xpSaved, setXpSaved] = useState(false);
+
+  async function saveAwardXpEnabled(next: boolean) {
+    setSavingXp(true);
+    setAwardXpEnabled(next);
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ award_xp_enabled: next })
+      .eq('id', campaign.id);
+    setSavingXp(false);
+    if (!error) {
+      onUpdated({ award_xp_enabled: next });
+      setXpSaved(true);
+      setTimeout(() => setXpSaved(false), 2000);
+    }
+  }
+
   async function saveEncumbranceVariant(next: 'off' | 'base' | 'variant') {
     setSavingEnc(true);
     setEncumbranceVariant(next);
@@ -450,6 +470,58 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* v2.173.0 — Phase Q.0 pt 14: Award XP toggle. Gates the
+                  XP panel in the Party Dashboard. Most tables run on
+                  milestone leveling and don't want the XP clutter, so
+                  this defaults OFF. Enable here to surface it. */}
+              <div style={{ padding: '14px 16px', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', background: 'var(--c-surface-1)' }}>
+                <div style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                  color: 'var(--c-gold-l)', marginBottom: 8,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  XP Leveling
+                  {savingXp && <span style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 400 }}>Saving…</span>}
+                  {xpSaved && <span style={{ fontSize: 9, color: '#34d399', fontWeight: 400 }}>✓ Saved</span>}
+                </div>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 12 }}>
+                  Enable the Award XP panel in the Party Dashboard DM Controls. Leave off for milestone leveling — the panel stays hidden and the tab disappears from the DM bar.
+                </p>
+                <div
+                  onClick={() => saveAwardXpEnabled(!awardXpEnabled)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                    border: `1px solid ${awardXpEnabled ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
+                    background: awardXpEnabled ? 'rgba(212,160,23,0.06)' : 'var(--c-raised)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 20, borderRadius: 999, flexShrink: 0,
+                    background: awardXpEnabled ? 'var(--c-gold-l)' : 'var(--c-border-m)',
+                    position: 'relative' as const, transition: 'background 0.15s',
+                  }}>
+                    <div style={{
+                      position: 'absolute' as const, top: 2, left: awardXpEnabled ? 18 : 2,
+                      width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.15s',
+                    }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: awardXpEnabled ? 'var(--t-1)' : 'var(--t-2)' }}>
+                      {awardXpEnabled ? 'Award XP enabled' : 'Award XP disabled (milestone leveling)'}
+                    </div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
+                      {awardXpEnabled
+                        ? 'DM can award XP to the party or specific players from the Party Dashboard.'
+                        : 'XP panel hidden from DM Controls. Levels advance via milestones set by the DM.'}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -410,7 +410,7 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 
         {/* Party tab — real-time HP/conditions for all members */}
         {activeTab === 'party' && (
-          <PartyDashboard campaignId={campaign.id} isOwner={isOwner} />
+          <PartyDashboard campaignId={campaign.id} isOwner={isOwner} campaign={campaign} />
         )}
 
         {/* Log tab */}

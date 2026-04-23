@@ -112,6 +112,7 @@ export default function CharacterPage() {
                 (notification stream is per-campaign). */}
             <NotificationsButton
               campaignId={character.campaign_id ?? null}
+              characterId={character.id}
               onNewArrival={msg => setToastItem(msg)}
             />
           </span>

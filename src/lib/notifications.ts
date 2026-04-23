@@ -133,7 +133,17 @@ export function formatNotificationBody(messageType: string, message: string): st
       case 'long_rest_completed':
         // Already plain prose — pass through.
         return message;
-      case 'announcement':
+      case 'announcement': {
+        // v2.173.0 — Phase Q.0 pt 14: announcements can now carry a
+        // `{text, targets: string[]}` payload when the DM sends to a
+        // specific subset of players. For backward compat, a plain
+        // non-JSON message is still "send to all".
+        try {
+          const p = JSON.parse(message);
+          if (p && typeof p.text === 'string') return p.text;
+        } catch { /* fallthrough */ }
+        return message;
+      }
       default:
         return message;
     }
