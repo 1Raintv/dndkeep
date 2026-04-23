@@ -127,6 +127,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    target: string; kind: 'skill' | 'ability'; dc?: number;
    advantage?: boolean; disadvantage?: boolean;
  } | null>(null);
+ // v2.167.0 — Phase Q.0 pt 8: DM-initiated rest signals.
+ // shortRestPromptedByDM tags the rest modal as DM-initiated so the
+ // header reads "DM called a Short Rest" instead of generic.
+ // longRestCompleted shows a transient banner after the DM applies
+ // a party long rest server-side.
+ const [shortRestPromptedByDM, setShortRestPromptedByDM] = useState(false);
+ const [longRestCompleted, setLongRestCompleted] = useState(false);
 
  useEffect(() => {
  if (!character.campaign_id) return;
@@ -148,6 +155,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  } else if (row.message_type === 'check_prompt') {
  // v2.163.0 — Phase Q.0 pt 4: DM-requested ability check.
  try { setCheckPrompt(JSON.parse(row.message)); } catch {}
+ } else if (row.message_type === 'short_rest_prompt') {
+ // v2.167.0 — Phase Q.0 pt 8: DM called for a short rest.
+ // Auto-open the existing rest modal so the player can spend
+ // hit dice individually. Also flag the prompt so the modal
+ // header can show a "DM-initiated" badge.
+ setShortRestPromptedByDM(true);
+ setShowRest(true);
+ } else if (row.message_type === 'long_rest_completed') {
+ // v2.167.0 — Phase Q.0 pt 8: DM applied a party long rest.
+ // The character's row was already updated server-side; the
+ // realtime character subscription will refresh state. We
+ // surface a banner so the player notices.
+ setLongRestCompleted(true);
+ setTimeout(() => setLongRestCompleted(false), 8000);
  }
  })
  .subscribe();
@@ -707,6 +728,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  applyUpdate({ spell_slots: newSlots, class_resources: newResources, feature_uses: newFeatureUses }, true);
  setShortRestHpGained(0);
  setShowRest(false);
+ setShortRestPromptedByDM(false);
  }
 
  function doLongRest() {
@@ -1269,9 +1291,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* Rest modal */}
  {showRest && (
  <ModalPortal>
- <div className="modal-overlay" onClick={() => { setShortRestHpGained(0); setShowRest(false); }}>
+ <div className="modal-overlay" onClick={() => { setShortRestHpGained(0); setShowRest(false); setShortRestPromptedByDM(false); }}>
  <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
- <h2 style={{ marginBottom: 'var(--sp-2)' }}>Take a Rest</h2>
+ <h2 style={{ marginBottom: 'var(--sp-2)' }}>
+ Take a Rest
+ {shortRestPromptedByDM && (
+ <span style={{
+ marginLeft: 8, fontSize: 10, fontWeight: 800,
+ padding: '3px 9px', borderRadius: 999,
+ background: 'rgba(96,165,250,0.15)', color: '#60a5fa',
+ border: '1px solid rgba(96,165,250,0.4)',
+ textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+ verticalAlign: 'middle',
+ }}>
+ DM called Short Rest
+ </span>
+ )}
+ </h2>
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
  {/* Short rest panel */}
@@ -1364,7 +1400,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  <button
  className="btn-ghost btn-sm"
- onClick={() => { setShortRestHpGained(0); setShowRest(false); }}
+ onClick={() => { setShortRestHpGained(0); setShowRest(false); setShortRestPromptedByDM(false); }}
  style={{ marginTop: 'var(--sp-4)' }}
  >
  Cancel
@@ -1636,6 +1672,30 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  );
  })()}
+
+ {/* v2.167.0 — Phase Q.0 pt 8: long rest applied banner.
+     Auto-dismisses after 8s; the inbox preserves the entry. */}
+ {longRestCompleted && (
+ <div style={{
+ padding: '10px 14px', borderRadius: 10,
+ background: 'rgba(212,160,23,0.1)', border: '1px solid var(--c-gold-bdr)',
+ display: 'flex', alignItems: 'center', gap: 10,
+ }}>
+ <span style={{ fontSize: 18, flexShrink: 0 }}>🌙</span>
+ <div style={{ flex: 1 }}>
+ <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 2 }}>
+ Long Rest Completed
+ </div>
+ <div style={{ fontSize: 12, color: 'var(--t-1)' }}>
+ The DM applied a party long rest. HP, spell slots, hit dice, and class resources have been restored.
+ </div>
+ </div>
+ <button onClick={() => setLongRestCompleted(false)}
+ style={{ fontSize: 11, color: 'var(--t-3)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: '0 4px' }}>
+ ✕
+ </button>
+ </div>
+ )}
 
  {/* ── Your Turn banner ── */}
  {combatActive && (

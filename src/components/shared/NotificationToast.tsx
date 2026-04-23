@@ -71,6 +71,8 @@ export default function NotificationToast({ latest }: Props) {
           t.message_type === 'player_revived' ? '#4ade80' :
           t.message_type === 'check_prompt' ? '#a78bfa' :
           t.message_type === 'save_prompt' ? '#60a5fa' :
+          t.message_type === 'short_rest_prompt' ? '#60a5fa' :
+          t.message_type === 'long_rest_completed' ? 'var(--c-gold-l)' :
           'var(--c-gold-l)';
         return (
           <div

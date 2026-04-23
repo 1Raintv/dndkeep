@@ -14,6 +14,7 @@ import {
   DAMAGE_TYPES, labelForDamageType, DAMAGE_TYPE_COLORS,
   applyDamageTypeModifiers, type DamageModifier,
 } from '../../lib/damageModifiers';
+import { buildDefaultResources } from '../../data/classResources';
 
 interface PartyDashboardProps {
   campaignId: string;
@@ -145,6 +146,24 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
     setAoeDamageType(null);
   }
 
+  // v2.167.0 — Phase Q.0 pt 8: Party Rest split into Short / Long.
+  //
+  // partyLongRest now mirrors the per-character doLongRest semantics
+  // — previous version covered HP / slots / hit dice / conditions /
+  // death saves but skipped class_resources and feature_uses, leaving
+  // Action Surge, Channel Divinity, Bardic Inspiration, etc. unspent
+  // after a long rest. Fixed by calling buildDefaultResources for
+  // each character + clearing feature_uses (matching the player-side
+  // doLongRest in CharacterSheet/index.tsx).
+  //
+  // Hit dice: keeps RAW recovery of floor(level/2) (min 1).
+  //
+  // partyShortRest broadcasts a `short_rest_prompt` campaign_chat
+  // message. Players see a popup linking to their existing rest
+  // modal where they can roll hit dice individually. This matches
+  // the prompt-then-player-rolls pattern used by save_prompt and
+  // check_prompt — the DM doesn't roll hit dice on the players'
+  // behalf because each player decides how many to spend.
   async function partyLongRest() {
     await Promise.all(characters.map(c => {
       const recoveredSlots = Object.fromEntries(
@@ -152,8 +171,24 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
       );
       const recoveredHD = Math.max(1, Math.floor(c.level / 2));
       const newSpent = Math.max(0, (c.hit_dice_spent ?? 0) - recoveredHD);
-      // Remove Exhaustion from conditions
+      // Remove Exhaustion from conditions (2024: long rest fully removes
+      // unless you were at 0 HP during the rest — we don't track that
+      // edge case; remove unconditionally is the common-table behavior).
       const newConditions = (c.active_conditions ?? []).filter((x: string) => x !== 'Exhaustion');
+      // v2.167.0 — Phase Q.0 pt 8: full class_resources reset + feature_uses
+      // wipe on long rest. Mirrors the CharacterSheet doLongRest path so
+      // long rests started by the DM aren't second-class citizens.
+      const abilityScores = {
+        strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
+        intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
+      };
+      const newResources = buildDefaultResources(c.class_name, c.level, abilityScores);
+      // Preserve non-numeric resources (e.g. arrays, objects) since
+      // buildDefaultResources only emits numerics.
+      const existingRes = (c.class_resources ?? {}) as Record<string, unknown>;
+      for (const [key, val] of Object.entries(existingRes)) {
+        if (typeof val !== 'number') (newResources as any)[key] = val;
+      }
       return supabase.from('characters').update({
         current_hp: c.max_hp,
         temp_hp: 0,
@@ -163,8 +198,33 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
         death_saves_failures: 0,
         hit_dice_spent: newSpent,
         concentration_spell: '',
+        class_resources: newResources,
+        feature_uses: {},
       }).eq('id', c.id);
     }));
+    // Notify players so the inbox / toast surfaces what just happened
+    await supabase.from('campaign_chat').insert({
+      campaign_id: campaignId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      character_name: 'DM',
+      message: 'The party takes a long rest. HP, spell slots, hit dice (half), and class resources restored. Exhaustion cleared.',
+      message_type: 'long_rest_completed',
+    });
+    setDmPanel(null);
+  }
+
+  // v2.167.0 — Phase Q.0 pt 8: short rest broadcast.
+  // Doesn't touch character state directly — players spend hit dice
+  // themselves in their existing CharacterSheet rest modal. This
+  // function just sends the prompt and a notification.
+  async function partyShortRest() {
+    await supabase.from('campaign_chat').insert({
+      campaign_id: campaignId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      character_name: 'DM',
+      message: JSON.stringify({ kind: 'short' }),
+      message_type: 'short_rest_prompt',
+    });
     setDmPanel(null);
   }
 
@@ -253,7 +313,7 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {([
               { id: 'aoe',      label: 'AoE Damage' },
-              { id: 'rest',     label: 'Party Long Rest' },
+              { id: 'rest',     label: 'Party Rest' },
               { id: 'announce', label: 'Announcement' },
               { id: 'save',     label: 'Call for Save' },
               { id: 'xp',       label: 'Award XP' },
@@ -432,25 +492,65 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
 
           {/* ── PARTY LONG REST PANEL ── */}
           {dmPanel === 'rest' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
-                Party Long Rest — all {characters.length} characters
+                Party Rest — {characters.length} character{characters.length !== 1 ? 's' : ''}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>
-                All characters: full HP, all spell slots restored, half spent hit dice recovered, conditions cleared, death saves reset.
+
+              {/* Two side-by-side rest cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {/* SHORT REST */}
+                <div style={{ padding: '12px 14px', background: 'var(--c-raised)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: '#60a5fa' }}>
+                    Short Rest
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                    Each player gets a popup to spend hit dice and recover short-rest abilities (Action Surge, Channel Divinity, Warlock slots, etc.).
+                  </div>
+                  <button
+                    onClick={partyShortRest}
+                    style={{
+                      fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                      border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.12)', color: '#60a5fa',
+                    }}
+                  >
+                    📨 Prompt Short Rest
+                  </button>
+                </div>
+
+                {/* LONG REST */}
+                <div style={{ padding: '12px 14px', background: 'var(--c-raised)', border: '1px solid var(--c-gold-bdr)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: 'var(--c-gold-l)' }}>
+                    Long Rest
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                    Auto-applies to all party: full HP, all spell slots, half spent hit dice, conditions cleared, death saves reset, class resources restored.
+                  </div>
+                  <button
+                    onClick={partyLongRest}
+                    style={{
+                      fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                      border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                    }}
+                  >
+                    🌙 Apply Long Rest
+                  </button>
+                </div>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {characters.map(c => (
-                  <span key={c.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-2)' }}>
-                    {c.name}: {c.current_hp}/{c.max_hp} → {c.max_hp}/{c.max_hp} HP
-                  </span>
-                ))}
+
+              {/* Per-character HP preview (long rest target state) */}
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--t-3)', marginBottom: 5 }}>
+                  Long rest preview
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {characters.map(c => (
+                    <span key={c.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-2)' }}>
+                      {c.name}: {c.current_hp}/{c.max_hp} → {c.max_hp}/{c.max_hp}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <button onClick={partyLongRest}
-                style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 700, padding: '7px 20px', borderRadius: 8, cursor: 'pointer', minHeight: 0,
-                  border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}>
-                Start Long Rest for Party
-              </button>
             </div>
           )}
 
