@@ -2222,35 +2222,35 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return true;
  });
  const inventoryAsWeapons = inventoryWeapons.map((item: any) => {
- // v2.180.0 — Phase Q.0 pt 21: damage string resolution cascade.
- // Try these fields in order until we find one that parses:
- //   1. item.damage        — canonical field (e.g. "1d8 piercing"),
- //                           set by the equipment catalogue for most
- //                           weapons and by the Magic Items browser
- //                           for v2.181+ items.
- //   2. item.description   — catalogue description, often contains
- //                           dice for items where `damage` wasn't
- //                           filled in (e.g. Greatclub has "1d8
- //                           bludgeoning · two-handed" here).
- //   3. item.notes         — free-form notes, sometimes set by the
- //                           equipment builder.
- //   4. catalogue.baseDamageDice — v2.181.0: for pre-v2.181 magic
- //                           items already in a player's inventory
- //                           (e.g. a Luck Blade added weeks ago),
- //                           the local row has no damage string, but
- //                           the magic_item_id still links to the
- //                           catalogue which now carries canonical
- //                           base dice. This catches them without
- //                           requiring a DB backfill of player data.
+ // v2.184.0 — Phase Q.0 pt 25: damage resolution cascade reorder.
+ //
+ // Previous order (v2.180-v2.183) was:
+ //   item.damage || item.description || item.notes || catalogue
+ //
+ // Bug: a Luck Blade's `description` is fluff ("[LEGENDARY — Requires
+ // Attunement] +1 attack/damage. 1 luck point to reroll...") — truthy,
+ // no dice. The `||` cascade stopped there and never reached the
+ // catalogue's baseDamageDice ("1d8 slashing"). Result: 1d4 fallback
+ // with a stray +1 parsed from "+1 attack/damage" wording, producing
+ // "1d4+2 bludgeoning" instead of "1d8 slashing" on the Actions tab.
+ //
+ // Fix: pick the first candidate that CONTAINS parseable dice
+ // (\d+d\d+). If none do, fall back to whichever was truthy so the
+ // regex below still has something to try for bonus/type extraction.
+ // This means catalogue baseDamageDice wins for Luck Blade / Flame
+ // Tongue / etc., while non-magic weapons (Greatclub has dice in
+ // description, no catalogue link) still resolve correctly.
  const catalogueEntry = item.magic_item_id
  ? getMagicItemById(item.magic_item_id)
  : undefined;
- const dmgStr: string =
- item.damage ||
- item.description ||
- item.notes ||
- catalogueEntry?.baseDamageDice ||
- '';
+ const candidates = [
+ item.damage,
+ catalogueEntry?.baseDamageDice,
+ item.description,
+ item.notes,
+ ].filter((s): s is string => typeof s === 'string' && s.length > 0);
+ const DICE_RE = /\d+d\d+/;
+ const dmgStr = candidates.find(s => DICE_RE.test(s)) ?? candidates[0] ?? '';
  const diceMatch = dmgStr.match(/(\d+d\d+)/);
  const bonusMatch = dmgStr.match(/[+\-]\d+/);
  const typeMatch = dmgStr.match(/(slashing|piercing|bludgeoning|fire|cold|lightning|poison|acid|necrotic|radiant|psychic|thunder|force)/i);
