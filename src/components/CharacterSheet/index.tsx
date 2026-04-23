@@ -24,6 +24,7 @@ import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
+import { itemRequiresAttunement } from '../../lib/attunement';
 
 import CharacterHeader from './CharacterHeader';
 import AbilityScores from './AbilityScores';
@@ -2177,13 +2178,34 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* ── COMBAT: Weapons & Attacks only ── */}
  {activeTab === 'actions' && (() => {
- // v2.82.0: Potions are never weapons — even if legacy data has is_weapon=true
- // or the item was equipped before we blocked that UI. They go in the
- // Potions & Consumables section with a Use button that heals, not attacks.
- const inventoryWeapons = (character.inventory ?? []).filter((item: any) =>
- item.category !== 'Potion' &&
- item.equipped && (item.damage || item.is_weapon || item.category?.toLowerCase() === 'weapon' || item.category?.toLowerCase() === 'weapons')
- );
+ // v2.179.0 — Phase Q.0 pt 20: equip-auto-attack.
+ // Inventory items promote to attacks on the Actions tab when:
+ //   1. Not a potion (potions use the Use button in Consumables).
+ //   2. Equipped (the player is actually wielding it).
+ //   3. Has weapon characteristics: a damage string, or the
+ //      category is 'Weapon', or the legacy is_weapon flag is set.
+ //   4. If the item requires attunement (magic item catalogue says
+ //      so), the player must also be attuned. A +1 sword sitting
+ //      equipped but not attuned is a shiny stick — per RAW you
+ //      can swing it, but none of its magical benefits apply; and
+ //      RAW also says most such items "don't function" without
+ //      attunement. We take the stricter reading here: if the
+ //      catalogue requires attunement, the item doesn't appear
+ //      as an attack until attuned. Non-magic weapons (longsword,
+ //      dagger, etc.) are unaffected by this gate — they have no
+ //      magic_item_id so itemRequiresAttunement returns false.
+ const inventoryWeapons = (character.inventory ?? []).filter((item: any) => {
+ if (item.category === 'Potion') return false;
+ if (!item.equipped) return false;
+ const looksLikeWeapon =
+ item.damage ||
+ item.is_weapon ||
+ item.category?.toLowerCase() === 'weapon' ||
+ item.category?.toLowerCase() === 'weapons';
+ if (!looksLikeWeapon) return false;
+ if (itemRequiresAttunement(item) && !item.attuned) return false;
+ return true;
+ });
  const inventoryAsWeapons = inventoryWeapons.map((item: any) => {
  // Parse damage string like "1d6 piercing", "1d4+1 slashing", "2d6 fire"
  const dmgStr: string = item.damage ?? '';

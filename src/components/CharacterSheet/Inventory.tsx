@@ -972,19 +972,16 @@ function ItemDetailModal({ item, onClose, onToggle, onRemove, onUpdate, onRoll }
  {item.armorType ? (item.equipped ? ' Unequip' : ' Equip') : (item.equipped ? 'Unequip' : ' Equip')}
  </button>
  )}
- {/* Mark as weapon — shows in Actions tab attack list. Potions excluded
-     (they are not attacks; they heal). */}
- {!item.armorType && item.category !== 'Potion' && (
- <button
- onClick={() => onUpdate(item.id, { is_weapon: !item.is_weapon })}
- title={item.is_weapon ? 'Remove from Actions attack list' : 'Show this item as an attack in the Actions tab'}
- style={{ padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
- border: item.is_weapon ? '1px solid rgba(167,139,250,0.4)' : '1px solid var(--c-border)',
- background: item.is_weapon ? 'rgba(167,139,250,0.12)' : 'var(--c-raised)',
- color: item.is_weapon ? '#a78bfa' : 'var(--t-3)' }}>
- {item.is_weapon ? ' In Actions' : ' Use as Attack'}
- </button>
- )}
+ {/* v2.179.0 — Phase Q.0 pt 20: removed the "Use as Attack" / "In
+     Actions" toggle button. The Actions tab now auto-detects
+     weapon-class items and promotes them to attacks whenever the
+     item is equipped (and, for attunement-required magic items,
+     attuned). A separate button was redundant UX — equipping a
+     sword has only one reasonable meaning: you're wielding it to
+     attack. The is_weapon flag stays in the schema as a legacy
+     override for edge cases (e.g., a Staff of the Magi you want
+     to treat as a weapon even though the catalogue doesn't mark
+     it as one). */}
  <button onClick={() => { onRemove(item.id); onClose(); }}
  style={{ padding: '9px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
  border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(220,38,38,0.08)', color: 'var(--c-red-l)' }}>
