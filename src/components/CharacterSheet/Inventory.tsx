@@ -14,12 +14,19 @@ import {
   ATTUNEMENT_SLOT_MAX,
 } from '../../lib/attunement';
 import { recomputeAC, describeACBreakdown } from '../../lib/armorClass';
+import { drinkPotion, isPotionByType } from '../../lib/potions';
+import { useMagicItems } from '../../lib/hooks/useMagicItems';
 
 interface InventoryProps {
  character: Character;
  onUpdateInventory: (items: InventoryItem[]) => void;
  onUpdateCurrency: (currency: Character['currency']) => void;
  onUpdateAC?: (ac: number) => void;
+ // v2.158.0 — Phase P pt 6: potion drink flow applies healing to
+ // character.current_hp. Optional to preserve the existing call
+ // sites that mount Inventory without this capability (the add-
+ // at-mount-site change in CharacterSheet provides it).
+ onUpdateHP?: (hp: number) => void;
 }
 
 import { CATALOGUE, ALL_CATEGORIES, type CatalogueItem, type ItemCategory } from '../../data/equipment';
@@ -410,11 +417,15 @@ function CurrencyDisplay({ currency, onUpdate }: {
 }
 
 // ── Main Inventory Component ───────────────────────────────────────
-export default function Inventory({ character, onUpdateInventory, onUpdateCurrency, onUpdateAC }: InventoryProps) {
+export default function Inventory({ character, onUpdateInventory, onUpdateCurrency, onUpdateAC, onUpdateHP }: InventoryProps) {
  const [showPicker, setShowPicker] = useState(false);
  const [search, setSearch] = useState('');
 
  const { triggerRoll } = useDiceRoll();
+ // v2.158.0 — Phase P pt 6: need the catalogue map so each row can
+ // tell if it's a potion via magic_item_id lookup without another
+ // per-row hook call. Using itemMap (id → MagicItem) keeps it sync.
+ const { itemMap: magicItemMap } = useMagicItems();
  const inventory = character.inventory;
  // v2.134.0 — Phase L pt 2: delegate to encumbrance library so coin weight
  // is included and tier thresholds come from one source of truth.
@@ -525,6 +536,45 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  const newAC = recomputeAC(character, updated);
  onUpdateAC(newAC);
  }
+ }
+
+ // v2.158.0 — Phase P pt 6: drink potion flow.
+ //   • Healing potions: roll dice, apply to character.current_hp
+ //     (capped at max_hp), emit log line.
+ //   • Non-healing potions: decrement quantity + emit a descriptive
+ //     log line. Actual buff effect tracking isn't handled here —
+ //     buffs live on combat_participants, not on character, so a
+ //     Potion of Speed drunk out of combat has no durable home. DM
+ //     + player track duration manually. Known buff mappings live
+ //     in lib/potions.ts POTION_TO_BUFF_NAME for future wiring.
+ //   • Either way: quantity -= 1, and if the count hits 0 the item
+ //     is removed from the inventory entirely.
+ function handleDrinkPotion(id: string) {
+ const item = inventory.find(i => i.id === id);
+ if (!item) return;
+ if ((item.quantity ?? 1) <= 0) return;
+ const result = drinkPotion(item, character);
+
+ // Apply heal if any
+ if (result.healApplied > 0 && onUpdateHP) {
+ onUpdateHP(Math.min(character.max_hp, character.current_hp + result.healApplied));
+ }
+
+ // Decrement quantity / remove from inventory
+ let updated: InventoryItem[];
+ if (result.removeFromInventory) {
+ updated = inventory.filter(i => i.id !== id);
+ } else {
+ updated = inventory.map(i =>
+ i.id === id ? { ...i, quantity: (i.quantity ?? 1) - 1 } : i
+ );
+ }
+ onUpdateInventory(updated);
+
+ // Surface the outcome. Event log integration (combat_events) can
+ // plug in later — for now console is the audit trail.
+ // eslint-disable-next-line no-console
+ console.log('[potion]', result.message);
  }
 
  function rollItemExpression(item: InventoryItem) {
@@ -644,7 +694,16 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  Equipped
  </div>
  {equipped.map(item => (
- <InventoryRow key={item.id} item={item} onToggle={toggleEquippedWithAC} onRemove={removeItem} onUpdate={updateItem} onRoll={rollItemExpression} />
+ <InventoryRow
+   key={item.id}
+   item={item}
+   onToggle={toggleEquippedWithAC}
+   onRemove={removeItem}
+   onUpdate={updateItem}
+   onRoll={rollItemExpression}
+   isPotion={!!item.magic_item_id && isPotionByType(magicItemMap[item.magic_item_id]?.type)}
+   onDrink={handleDrinkPotion}
+ />
  ))}
  </div>
  )}
@@ -709,7 +768,16 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  </div>
  )}
  {carried.map(item => (
- <InventoryRow key={item.id} item={item} onToggle={toggleEquippedWithAC} onRemove={removeItem} onUpdate={updateItem} onRoll={rollItemExpression} />
+ <InventoryRow
+   key={item.id}
+   item={item}
+   onToggle={toggleEquippedWithAC}
+   onRemove={removeItem}
+   onUpdate={updateItem}
+   onRoll={rollItemExpression}
+   isPotion={!!item.magic_item_id && isPotionByType(magicItemMap[item.magic_item_id]?.type)}
+   onDrink={handleDrinkPotion}
+ />
  ))}
  </div>
  )}
@@ -953,12 +1021,17 @@ function parseNoteChips(notes: string): string[] {
 }
 
 // ── Inventory Row ──────────────────────────────────────────────────
-function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll }: {
+function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, onDrink }: {
  item: InventoryItem;
  onToggle: (id: string) => void;
  onRemove: (id: string) => void;
  onUpdate: (id: string, updates: Partial<InventoryItem>) => void;
  onRoll: (item: InventoryItem) => void;
+ // v2.158.0 — Phase P pt 6: optional so legacy call sites don't
+ // break. When isPotion is true and onDrink is provided, a Drink
+ // button renders on the row.
+ isPotion?: boolean;
+ onDrink?: (id: string) => void;
 }) {
  const [showDetail, setShowDetail] = useState(false);
  const typeBadge = itemTypeBadge(item);
@@ -1059,6 +1132,26 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll }: {
  title="Restore 1 charge"
  >+</button>
  </div>
+ )}
+
+ {/* v2.158.0 — Phase P pt 6: Drink button for potions.
+     Only renders when the item's catalogue entry is type='potion'
+     (detected via the magic_item_id lookup in the parent). Click
+     routes through handleDrinkPotion → parses heal dice, applies
+     to character HP, decrements quantity. Stops event propagation
+     so it doesn't also expand the detail modal. */}
+ {isPotion && onDrink && (
+ <span
+ onClick={e => { e.stopPropagation(); onDrink(item.id); }}
+ title="Drink potion"
+ style={{
+ fontSize: 10, fontWeight: 700, color: '#4ade80',
+ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.4)',
+ borderRadius: 99, padding: '2px 9px', cursor: 'pointer', flexShrink: 0,
+ display: 'flex', alignItems: 'center', gap: 3,
+ }}>
+ 🧪 Drink
+ </span>
  )}
 
  {/* Roll button */}

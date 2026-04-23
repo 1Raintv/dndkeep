@@ -2718,7 +2718,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── INVENTORY ── */}
  {activeTab === 'inventory' && (
  <div style={{ maxWidth: 900 }}>
- <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)} />
+ <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)} onUpdateHP={hp => applyUpdate({ current_hp: hp }, true)} />
  </div>
  )}
 
