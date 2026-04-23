@@ -41,16 +41,30 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
 
   function addToInventory(item: MagicItem) {
     if (!onAddToInventory) return;
-    // v2.154.0 — Phase P pt 2: propagate structured mechanical bonus
-    // fields onto the InventoryItem so computeActiveBonuses (for
-    // attack/damage/save) and recomputeAC (for AC) can read them
-    // directly. The description prefix is preserved for human display.
-    // v2.155.0 — Phase P pt 3: also link magic_item_id so the
-    // attunement gate can look up requires_attunement from the
-    // catalogue at bonus-aggregation time.
-    // v2.157.0 — Phase P pt 5: copy charges metadata from the
-    // catalogue so the item arrives at full capacity and the long-
-    // rest recharge pass can see its recharge schedule.
+    // v2.180.0 — Phase Q.0 pt 21: when adding a magic item of type
+    // 'weapon', also set category: 'Weapon' on the inventory row.
+    // This lets the Actions-tab filter (which looks for
+    // item.category === 'weapon' || item.damage) auto-promote the
+    // item to an attack on equip/attune. Previously magic weapons
+    // lived in limbo — the catalogue knew they were weapons but the
+    // inventory instance didn't, so equipping Luck Blade or Flame
+    // Tongue did nothing visible on the Actions tab. Same logic for
+    // type 'armor' → category 'Armor' for symmetry, though the armor
+    // AC auto-calc uses armorType not category.
+    const typeToCategory: Record<string, string | undefined> = {
+      weapon: 'Weapon',
+      armor: 'Armor',
+      potion: 'Potion',
+      ring: 'Ring',
+      rod: 'Wondrous',
+      scroll: 'Scroll',
+      staff: 'Weapon',        // staves can be swung as quarterstaves per RAW
+      wand: 'Wondrous',
+      wondrous: 'Wondrous',
+      ammunition: 'Ammunition',
+    };
+    const category = typeToCategory[item.type];
+
     const invItem: InventoryItem = {
       id: uuidv4(),
       name: item.name,
@@ -60,13 +74,14 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       equipped: false,
       magical: true,
       magic_item_id: item.id,
+      ...(category           ? { category }                         : {}),
       ...(item.acBonus     !== undefined ? { acBonus:     item.acBonus     } : {}),
       ...(item.saveBonus   !== undefined ? { saveBonus:   item.saveBonus   } : {}),
       ...(item.attackBonus !== undefined ? { attackBonus: item.attackBonus } : {}),
       ...(item.damageBonus !== undefined ? { damageBonus: item.damageBonus } : {}),
       ...(item.maxCharges  !== undefined ? {
         charges_max:     item.maxCharges,
-        charges_current: item.maxCharges, // start at full capacity
+        charges_current: item.maxCharges,
         ...(item.recharge     ? { recharge:      item.recharge     } : {}),
         ...(item.rechargeDice ? { recharge_dice: item.rechargeDice } : {}),
       } : {}),
