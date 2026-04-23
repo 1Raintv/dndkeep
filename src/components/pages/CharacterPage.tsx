@@ -128,6 +128,7 @@ export default function CharacterPage() {
         realtimeEnabled={isPro}
         isPro={isPro}
         userId={user?.id ?? ''}
+        onLocalToast={setToastItem}
       />
     </div>
   );

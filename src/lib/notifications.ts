@@ -81,6 +81,14 @@ export function messageTypeLabel(t: string): string {
     case 'player_down':  return 'Player Down';
     case 'player_revived': return 'Player Revived';
     case 'player_dead':  return 'Player Dead';
+    // v2.169.0 — Phase Q.0 pt 10: local-only toast types pushed by
+    // CharacterSheet's realtime handler, not present in campaign_chat.
+    // Surface a short, clear header so the toast reads correctly.
+    case 'damage_applied': return 'Damage Taken';
+    case 'healing_applied': return 'Healed';
+    case 'temp_hp_granted': return 'Temp HP';
+    case 'inspiration_granted': return 'Inspiration';
+    case 'inspiration_used': return 'Inspiration';
     default: return t.replace(/_/g, ' ');
   }
 }

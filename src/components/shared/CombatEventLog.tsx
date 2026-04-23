@@ -316,6 +316,12 @@ function EventRow({ evt, showActor }: { evt: CombatEventRow; showActor: boolean 
       background: '#080d14',
       borderLeft: `3px solid ${visual.color}`,
       overflow: 'hidden',
+      // v2.169.0 — Phase Q.0 pt 10: without flexShrink:0 these rows
+      // collapse to zero height when the list's intrinsic content
+      // exceeds its maxHeight inside a flex-column parent. Manifests
+      // as the History tab's Combat Events section looking empty
+      // even though 100+ events are in the DOM. Smoke-test bug #2.
+      flexShrink: 0,
     }}>
       <div style={{ padding: 'var(--sp-2) var(--sp-3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>

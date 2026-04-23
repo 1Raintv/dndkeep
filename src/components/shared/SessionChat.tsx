@@ -12,12 +12,26 @@ export default function SessionChat({ campaignId, characterName, userId, avatarU
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase.from('campaign_chat').select('*').eq('campaign_id', campaignId).order('created_at', { ascending: true }).limit(50)
+    // v2.169.0 — Phase Q.0 pt 10: filter to message_type='text'. The
+    // campaign_chat table is also the transport for notifications
+    // (announcement, save_prompt, check_prompt, short_rest_prompt,
+    // long_rest_completed, etc.). Without this filter, those rows —
+    // most of which are JSON-encoded payloads — rendered as raw
+    // gibberish bubbles in the player's chat, drowning out the
+    // actual text messages the DM sent. Matches the filter PartyChat
+    // already had from v2.164.
+    supabase.from('campaign_chat').select('*').eq('campaign_id', campaignId).eq('message_type', 'text').order('created_at', { ascending: true }).limit(50)
       .then(({ data }) => setMsgs(data ?? []));
 
     const ch = supabase.channel(`chat-${campaignId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'campaign_chat', filter: `campaign_id=eq.${campaignId}` },
-        ({ new: m }) => setMsgs(prev => [...prev, m as ChatMsg])
+        ({ new: m }) => {
+          // Realtime postgres_changes doesn't support compound filters,
+          // so drop non-text rows here to keep the pipe clean.
+          const row = m as ChatMsg;
+          if (row.message_type && row.message_type !== 'text') return;
+          setMsgs(prev => [...prev, row]);
+        }
       ).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [campaignId]);

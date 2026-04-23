@@ -90,9 +90,21 @@ interface CharacterSheetProps {
  realtimeEnabled?: boolean;
  isPro?: boolean;
  userId?: string;
+ /**
+  * v2.169.0 — optional callback to push a transient toast to the
+  * parent's NotificationToast stack. Used by the realtime handler
+  * to surface DM-driven HP / inspiration changes so the player
+  * actually notices. If unset (standalone usage), the detection
+  * still runs but no toast appears.
+  */
+ onLocalToast?: (toast: { id: string; message_type: string; message: string; character_name: string | null }) => void;
 }
 
-export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '' }: CharacterSheetProps) {
+export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '', onLocalToast }: CharacterSheetProps) {
+ // Bundle props into a single ref we can read inside the realtime
+ // closure below without re-subscribing every time the callback
+ // identity shifts.
+ const props = { onLocalToast };
  const [character, setCharacter] = useState<Character>(initialCharacter);
  const [activeTab, setActiveTab] = useState<Tab>('actions');
 
@@ -253,11 +265,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }, payload => {
  const updated = payload.new as Record<string, unknown>;
  if (!updated) return;
- // Fields that can be written by external sources (BattleMap, DM actions)
+ // v2.169.0 — Phase Q.0 pt 10: added inspiration + several resource
+ // fields to the realtime-syncable allowlist. Previously these were
+ // excluded, so DM-side updates like "Give Inspiration" or awarding
+ // XP silently landed in the DB but never surfaced on the character
+ // sheet until the player reloaded. This caused the inspiration
+ // button to appear broken — it was a client-sync gap, not a write
+ // failure.
  const externalFields = [
  'current_hp', 'temp_hp', 'active_conditions', 'concentration_spell',
  'concentration_rounds_remaining',
  'spell_slots', 'death_saves_successes', 'death_saves_failures',
+ // v2.169.0:
+ 'inspiration',
+ 'hit_dice_spent', 'class_resources', 'feature_uses',
+ 'currency', 'inventory', 'experience_points',
  ] as const;
  const patch: Partial<Character> = {};
  const current = characterRef.current as Record<string, unknown>;
@@ -278,6 +300,77 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (oldConcSpell && newConcSpell === '' && newConcSpell !== oldConcSpell) {
  // Most common cause from external sync = round timer ran out via DM tick
  showConcentrationLossToast(oldConcSpell, 'duration timer expired');
+ }
+ // v2.169.0 — Phase Q.0 pt 10: externally-driven HP / inspiration
+ // toasts. When the DM applies damage / heal / gives inspiration
+ // from the Party panel, realtime pushes the change here. Detect
+ // the delta and fire a local toast so the player actually notices
+ // something happened (previously the sheet silently re-rendered
+ // to new numbers with zero acknowledgement).
+ //
+ // Not routed through campaign_chat because:
+ //   (a) every player would see every player's damage, which is
+ //       too noisy
+ //   (b) the ground truth IS the HP delta on this row
+ //   (c) no new message_type / RLS surface needed
+ //
+ // The toast pushes a synthetic ToastItem up to CharacterPage via
+ // onLocalToast so it renders in the same top-center stack as
+ // real notifications. Unique id per event to dedupe re-renders.
+ const emit = props.onLocalToast;
+ if (emit) {
+ const oldHP = (current['current_hp'] as number) ?? 0;
+ const oldTemp = (current['temp_hp'] as number) ?? 0;
+ const newHP = (patch['current_hp'] !== undefined ? (patch['current_hp'] as number) : oldHP);
+ const newTemp = (patch['temp_hp'] !== undefined ? (patch['temp_hp'] as number) : oldTemp);
+ // Total change = (HP lost + temp lost) vs (HP gained + temp gained).
+ // We report the NET change, signed, with unique text per direction.
+ const hpDelta = newHP - oldHP;
+ const tempDelta = newTemp - oldTemp;
+ const totalDamage = Math.max(0, -hpDelta) + Math.max(0, -tempDelta);
+ const totalHeal = Math.max(0, hpDelta);
+ const tempGained = Math.max(0, tempDelta);
+ if (totalDamage > 0) {
+ emit({
+ id: `hp-dmg-${Date.now()}`,
+ message_type: 'damage_applied',
+ message: `Took ${totalDamage} damage`,
+ character_name: 'DM',
+ });
+ } else if (totalHeal > 0) {
+ emit({
+ id: `hp-heal-${Date.now()}`,
+ message_type: 'healing_applied',
+ message: `Healed ${totalHeal} HP`,
+ character_name: 'DM',
+ });
+ } else if (tempGained > 0) {
+ emit({
+ id: `hp-temp-${Date.now()}`,
+ message_type: 'temp_hp_granted',
+ message: `Gained ${tempGained} temp HP`,
+ character_name: 'DM',
+ });
+ }
+ // Inspiration: toggled externally. RAW 2024 inspiration is a
+ // binary flag; fire a message distinguishing gain vs use/clear.
+ const oldInsp = !!current['inspiration'];
+ const newInsp = patch['inspiration'] !== undefined ? !!patch['inspiration'] : oldInsp;
+ if (!oldInsp && newInsp) {
+ emit({
+ id: `insp-gained-${Date.now()}`,
+ message_type: 'inspiration_granted',
+ message: 'You gained Inspiration!',
+ character_name: 'DM',
+ });
+ } else if (oldInsp && !newInsp) {
+ emit({
+ id: `insp-used-${Date.now()}`,
+ message_type: 'inspiration_used',
+ message: 'Inspiration used or cleared',
+ character_name: 'DM',
+ });
+ }
  }
  // v2.56.0: External damage trigger — when the DM (or BattleMap) reduces
  // our HP via realtime sync, the local handleUpdateHP path is bypassed

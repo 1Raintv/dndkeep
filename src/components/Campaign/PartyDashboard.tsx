@@ -751,6 +751,8 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hpInput, setHpInput] = useState('');
+  // v2.169.0 — shared amount input for currency panel. Empty → 1.
+  const [currencyAmount, setCurrencyAmount] = useState('');
   const [activePanel, setActivePanel] = useState<'hp' | 'conditions' | 'checks' | 'inventory' | null>(null);
 
   const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
@@ -760,11 +762,38 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
 
   const [concDC, setConcDC] = useState<number | null>(null);
 
+  // v2.169.0 — Phase Q.0 pt 10: apply damage against temp_hp first
+  // per 2024 RAW. Previously we only adjusted current_hp, so a PC
+  // with 5 temp HP + 20 current HP who took 10 damage would drop
+  // to 10 current HP with 5 temp HP untouched — which is both wrong
+  // and confusing. Now damage bleeds through temp first, then
+  // current; healing goes directly to current_hp (temp HP is not
+  // affected by healing, again per RAW — they're independent pools).
   function applyHP(delta: number) {
-    const newHP = Math.max(0, Math.min(c.max_hp, c.current_hp + delta));
-    onUpdate({ current_hp: newHP });
+    const oldHP = c.current_hp;
+    const oldTemp = c.temp_hp ?? 0;
+    let newHP = oldHP;
+    let newTemp = oldTemp;
+
+    if (delta < 0) {
+      // Damage — eat temp HP first
+      const damage = -delta;
+      const absorbed = Math.min(oldTemp, damage);
+      newTemp = oldTemp - absorbed;
+      const remaining = damage - absorbed;
+      newHP = Math.max(0, oldHP - remaining);
+    } else {
+      // Healing — regular HP only, capped at max
+      newHP = Math.min(c.max_hp, oldHP + delta);
+    }
+
+    const patch: Partial<Character> = { current_hp: newHP };
+    if (newTemp !== oldTemp) patch.temp_hp = newTemp;
+    onUpdate(patch);
     setHpInput('');
-    // If damage and concentrating, compute DC
+
+    // If damage and concentrating, compute DC from the *total* damage dealt
+    // (RAW: DC = max(10, floor(damage/2))). Temp HP absorption still counts.
     if (delta < 0 && c.concentration_spell) {
       setConcDC(Math.max(10, Math.floor(Math.abs(delta) / 2)));
     } else {
@@ -829,6 +858,11 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
     <div style={{
       border: `1px solid ${isDowned ? 'rgba(220,38,38,0.4)' : col + '30'}`,
       borderRadius: 'var(--r-xl)', background: isDowned ? 'rgba(220,38,38,0.03)' : 'var(--c-card)', overflow: 'hidden',
+      // v2.169.0 — When DM Controls are expanded, break the card out
+      // of the 2-column grid and span the full row. Fixes the Checks
+      // panel button wrapping and gives currency / conditions more
+      // breathing room. Collapsed cards still tile normally.
+      ...(expanded && isDM ? { gridColumn: '1 / -1' } : {}),
     }}>
       {/* HP bar top accent */}
       <div style={{ height: 3, background: col, width: `${hpPct * 100}%`, transition: 'width 0.4s' }} />
@@ -929,11 +963,15 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                   <button onClick={() => applyHPInput('damage')} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)' }}>Damage</button>
                   <button onClick={() => applyHPInput('heal')} style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>Heal</button>
                 </div>
-                {/* Quick buttons */}
+                {/* v2.169.0: heal-only quick buttons. Negative deltas
+                    (-20/-10/-5/-1) removed per user feedback — always
+                    go through the typed Damage input so the exact
+                    damage amount is intentional. Quick buttons are
+                    for fast healing during combat (potion, spell). */}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {[-20,-10,-5,-1,1,5,10,20].map(v => (
-                    <button key={v} onClick={() => applyHP(v)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: `1px solid ${v < 0 ? 'var(--stat-str-bdr)' : 'var(--stat-dex-bdr)'}`, background: v < 0 ? 'var(--stat-str-bg)' : 'var(--stat-dex-bg)', color: v < 0 ? 'var(--stat-str)' : 'var(--stat-dex)' }}>
-                      {v > 0 ? `+${v}` : v}
+                  {[1, 5, 10, 20].map(v => (
+                    <button key={v} onClick={() => applyHP(v)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)' }}>
+                      +{v}
                     </button>
                   ))}
                 </div>
@@ -1054,20 +1092,47 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Inventory & Gold</div>
 
-                {/* Currency */}
+                {/* v2.169.0 — Currency panel redesigned. Previously the
+                    only controls were +/- 1 buttons, which made it
+                    functionally impossible to add 50gp quest rewards
+                    (50 clicks). Now there's an amount input at the
+                    top; clicking a coin's +/- button applies that
+                    amount. Empty input falls back to 1 so fast single
+                    adjustments still work. */}
                 <div style={{ background: 'var(--c-raised)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 6 }}>Currency</div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)' }}>
+                      Currency
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>
+                        Amount
+                      </label>
+                      <input
+                        type="number" min={1}
+                        value={currencyAmount}
+                        onChange={e => setCurrencyAmount(e.target.value)}
+                        placeholder="1"
+                        style={{ width: 52, fontSize: 11, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '3px 4px', borderRadius: 5, border: '1px solid var(--c-border-m)', background: 'var(--c-card)', color: 'var(--t-1)' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     {(['pp', 'gp', 'ep', 'sp', 'cp'] as const).map(coin => {
                       const colors: Record<string, string> = { pp: '#a78bfa', gp: 'var(--c-gold-l)', ep: '#34d399', sp: '#94a3b8', cp: '#fb923c' };
                       const val = (c.currency as any)?.[coin] ?? 0;
+                      const amount = Math.max(1, parseInt(currencyAmount) || 1);
                       return (
-                        <div key={coin} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                        <div key={coin} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 52 }}>
                           <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', color: colors[coin] }}>{coin}</span>
                           <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 14, color: colors[coin] }}>{val}</span>
-                          <div style={{ display: 'flex', gap: 2 }}>
-                            <button onClick={() => adjustCurrency(coin, -1)} disabled={val <= 0} style={{ fontSize: 9, width: 16, height: 16, borderRadius: '50%', border: `1px solid ${colors[coin]}40`, background: `${colors[coin]}10`, color: colors[coin], cursor: val > 0 ? 'pointer' : 'not-allowed', minHeight: 0, padding: 0, opacity: val <= 0 ? 0.3 : 1 }}>−</button>
-                            <button onClick={() => adjustCurrency(coin, 1)} style={{ fontSize: 9, width: 16, height: 16, borderRadius: '50%', border: `1px solid ${colors[coin]}40`, background: `${colors[coin]}10`, color: colors[coin], cursor: 'pointer', minHeight: 0, padding: 0 }}>+</button>
+                          <div style={{ display: 'flex', gap: 3 }}>
+                            <button onClick={() => adjustCurrency(coin, -amount)} disabled={val <= 0} style={{ fontSize: 10, minWidth: 22, height: 20, borderRadius: 4, border: `1px solid ${colors[coin]}55`, background: `${colors[coin]}15`, color: colors[coin], cursor: val > 0 ? 'pointer' : 'not-allowed', minHeight: 0, padding: '0 4px', fontWeight: 800, opacity: val <= 0 ? 0.3 : 1 }} title={`Subtract ${amount} ${coin.toUpperCase()}`}>
+                              −
+                            </button>
+                            <button onClick={() => adjustCurrency(coin, amount)} style={{ fontSize: 10, minWidth: 22, height: 20, borderRadius: 4, border: `1px solid ${colors[coin]}55`, background: `${colors[coin]}15`, color: colors[coin], cursor: 'pointer', minHeight: 0, padding: '0 4px', fontWeight: 800 }} title={`Add ${amount} ${coin.toUpperCase()}`}>
+                              +
+                            </button>
                           </div>
                         </div>
                       );

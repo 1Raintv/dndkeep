@@ -220,7 +220,11 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
       {/* NPC Form Modal */}
       {editing && (
         <div className="modal-overlay" onClick={() => setEditing(null)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          {/* v2.169.0 — same fix as Campaign Settings v2.168. The
+              .modal class has overflow:hidden with no inner padding,
+              which clipped the NPC form's h3 and Save button against
+              the edges. Bumped 520→720 and added inline padding. */}
+          <div className="modal" style={{ maxWidth: 720, width: '92vw', padding: '20px 24px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(editing as NPC).id ? 'Edit' : 'New'} NPC</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div><label>Name *</label><input value={editing.name ?? ''} onChange={e => setEditing(f => ({ ...f, name: e.target.value }))} autoFocus /></div>

@@ -73,6 +73,12 @@ export default function NotificationToast({ latest }: Props) {
           t.message_type === 'save_prompt' ? '#60a5fa' :
           t.message_type === 'short_rest_prompt' ? '#60a5fa' :
           t.message_type === 'long_rest_completed' ? 'var(--c-gold-l)' :
+          // v2.169.0 — local (non-DB) toast types pushed by CharacterSheet
+          t.message_type === 'damage_applied' ? '#ef4444' :
+          t.message_type === 'healing_applied' ? '#4ade80' :
+          t.message_type === 'temp_hp_granted' ? '#60a5fa' :
+          t.message_type === 'inspiration_granted' ? 'var(--c-gold-l)' :
+          t.message_type === 'inspiration_used' ? 'var(--t-3)' :
           'var(--c-gold-l)';
         return (
           <div
