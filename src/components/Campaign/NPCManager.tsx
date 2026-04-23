@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getActiveEncounter, npcToSeed, addParticipantToEncounter } from '../../lib/combatEncounter';
 
 interface NPC {
   id: string;
@@ -14,6 +15,14 @@ interface NPC {
   notes: string;
   last_seen: string;
   is_alive: boolean;
+  // v2.175.0 — Phase Q.0 pt 16: combat stats (already present in the
+  // `npcs` DB table with sensible defaults). Exposed so the new
+  // "Add to Combat" button has HP/AC to seed the participant row.
+  ac?: number;
+  hp?: number;
+  max_hp?: number;
+  dex?: number;
+  speed?: number;
 }
 
 interface NPCManagerProps {
@@ -49,6 +58,13 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   const [editing, setEditing] = useState<Partial<NPC> | null>(null);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // v2.175.0 — Phase Q.0 pt 16: transient state for the Add to Combat
+  // button. addingNpcId disables the button while the request is
+  // in-flight; addToCombatStatus holds post-result feedback keyed by
+  // NPC id ('added' flashes for 3s; 'no-encounter' sticks until the
+  // DM starts combat or clicks again).
+  const [addingNpcId, setAddingNpcId] = useState<string | null>(null);
+  const [addToCombatStatus, setAddToCombatStatus] = useState<Record<string, 'added' | 'no-encounter' | 'error'>>({});
 
   useEffect(() => { load(); }, [campaignId]);
 
@@ -80,6 +96,49 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   async function deleteNPC(id: string) {
     await supabase.from('npcs').delete().eq('id', id);
     setNpcs(prev => prev.filter(n => n.id !== id));
+  }
+
+  // v2.175.0 — Phase Q.0 pt 16: add an NPC row as a participant in the
+  // currently active encounter. Resolves the campaign's active
+  // encounter first; if none exists, surfaces a "no encounter" state
+  // on the button so the DM knows they need to start combat. On
+  // success, initiative is auto-rolled and turn order recomputed via
+  // addParticipantToEncounter. The DM can add the same NPC multiple
+  // times if they want multiple combatants of that stat block — no
+  // dedupe (RAW, an encounter can have 3 bandits with identical
+  // stats). Each insert gets its own participant_id via
+  // gen_random_uuid.
+  async function addToCombat(npc: NPC) {
+    setAddingNpcId(npc.id);
+    try {
+      const enc = await getActiveEncounter(campaignId);
+      if (!enc) {
+        setAddToCombatStatus(prev => ({ ...prev, [npc.id]: 'no-encounter' }));
+        setTimeout(() => setAddToCombatStatus(prev => {
+          const copy = { ...prev };
+          delete copy[npc.id];
+          return copy;
+        }), 4000);
+        return;
+      }
+      const seed = npcToSeed(npc, /* hiddenFromPlayers */ false);
+      const participant = await addParticipantToEncounter(
+        enc.id, campaignId, seed,
+        enc.initiative_mode as 'auto_all' | 'player_agency',
+      );
+      if (!participant) {
+        setAddToCombatStatus(prev => ({ ...prev, [npc.id]: 'error' }));
+        return;
+      }
+      setAddToCombatStatus(prev => ({ ...prev, [npc.id]: 'added' }));
+      setTimeout(() => setAddToCombatStatus(prev => {
+        const copy = { ...prev };
+        delete copy[npc.id];
+        return copy;
+      }), 3000);
+    } finally {
+      setAddingNpcId(null);
+    }
   }
 
   const filtered = npcs.filter(n => {
@@ -186,7 +245,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                         </div>
                       )}
                       {isOwner && (
-                        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'center' }}>
                           <button className="btn-secondary btn-sm" onClick={() => setEditing(npc)}>Edit</button>
                           <button
                             className="btn-secondary btn-sm"
@@ -195,6 +254,32 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                           >
                             {npc.is_alive ? 'Mark Dead' : 'Revive'}
                           </button>
+                          {/* v2.175.0 — Phase Q.0 pt 16: add this NPC to
+                              the active encounter. Checks for an active
+                              encounter first; if none exists we tell the
+                              DM they need to start combat (button does
+                              not silently fail). Dead NPCs cannot be
+                              added (RAW — dead things don't roll init).
+                              Feedback is inline: flash the button label
+                              on success, keep error state visible. */}
+                          {npc.is_alive && (
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={() => addToCombat(npc)}
+                              disabled={addingNpcId === npc.id}
+                              style={{
+                                color: addToCombatStatus[npc.id] === 'added' ? 'var(--hp-full)'
+                                     : addToCombatStatus[npc.id] === 'no-encounter' ? 'var(--c-red-l)'
+                                     : 'var(--c-gold-l)',
+                              }}
+                              title="Adds this NPC to the active combat encounter. Initiative is rolled automatically."
+                            >
+                              {addingNpcId === npc.id ? 'Adding…'
+                               : addToCombatStatus[npc.id] === 'added' ? '✓ In Combat'
+                               : addToCombatStatus[npc.id] === 'no-encounter' ? 'No Active Encounter'
+                               : '⚔ Add to Combat'}
+                            </button>
+                          )}
                           <button className="btn-ghost btn-sm" onClick={() => deleteNPC(npc.id)} style={{ color: 'var(--c-red-l)', marginLeft: 'auto' }}>
                             Delete
                           </button>

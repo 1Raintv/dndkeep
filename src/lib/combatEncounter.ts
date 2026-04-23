@@ -69,6 +69,91 @@ export function characterToSeed(c: Character): SeedSource {
   };
 }
 
+// v2.175.0 — Phase Q.0 pt 16: seed an NPC row as a combat participant.
+// The dm_npc_roster (called `npcs` in the DB) already carries HP, AC,
+// ability scores, speed, etc. — everything startEncounter needs. This
+// helper lets DMs add named recurring allies/enemies directly from
+// the NPC manager into ongoing combat without re-entering stats.
+export function npcToSeed(n: {
+  id: string; name: string; ac?: number; hp?: number; max_hp?: number;
+  dex?: number; speed?: number;
+}, hiddenFromPlayers = false): SeedSource {
+  return {
+    type: 'npc',
+    entityId: n.id,
+    name: n.name,
+    ac: n.ac ?? null,
+    hp: n.hp ?? n.max_hp ?? null,
+    maxHp: n.max_hp ?? null,
+    dexMod: abilityModifier(n.dex ?? 10),
+    initiativeBonus: 0,
+    hiddenFromPlayers,
+    maxSpeedFt: n.speed ?? 30,
+  };
+}
+
+// v2.175.0 — Phase Q.0 pt 16: add a single seed to an already-running
+// encounter. Used for late arrivals — e.g. DM sends in reinforcements
+// three rounds into combat — where startEncounter is the wrong tool
+// (it creates a new encounter row). Rolls initiative only if the
+// encounter is in auto_all mode; otherwise the participant sits with
+// null initiative until the DM rolls manually. Turn order is
+// recomputed after insert so the new participant slots in correctly.
+export async function addParticipantToEncounter(
+  encounterId: string,
+  campaignId: string,
+  seed: SeedSource,
+  initiativeMode: 'auto_all' | 'player_agency' = 'auto_all',
+): Promise<CombatParticipant | null> {
+  const shouldAutoRoll =
+    initiativeMode === 'auto_all' ||
+    seed.type !== 'character'; // NPCs and monsters always auto-roll
+
+  const shouldRollHidden = seed.hiddenFromPlayers ? false : true;
+
+  let initiative: number | null = null;
+  if (shouldAutoRoll && shouldRollHidden) {
+    initiative = rollInitiativeFor(seed.dexMod, seed.initiativeBonus).total;
+  }
+
+  const row = {
+    encounter_id: encounterId,
+    campaign_id: campaignId,
+    participant_type: seed.type,
+    entity_id: seed.entityId,
+    name: seed.name,
+    initiative,
+    initiative_tiebreaker: seed.dexMod,
+    turn_order: 999, // placeholder — recomputed below
+    ac: seed.ac,
+    current_hp: seed.hp,
+    max_hp: seed.maxHp,
+    hidden_from_players: seed.hiddenFromPlayers ?? false,
+    max_speed_ft: seed.maxSpeedFt ?? 30,
+    legendary_resistance: seed.legendaryResistance ?? null,
+    legendary_resistance_used: (seed.legendaryResistance ?? 0) > 0 ? 0 : null,
+  };
+
+  const { data, error } = await supabase
+    .from('combat_participants')
+    .insert([row])
+    .select()
+    .single();
+
+  if (error || !data) {
+    // eslint-disable-next-line no-console
+    console.error('[addParticipantToEncounter] insert failed:', error?.message);
+    return null;
+  }
+
+  // Recompute turn_order so the new participant sorts into the correct
+  // position by initiative. Without this, the placeholder 999 would
+  // push them to the end of the strip regardless of their roll.
+  await recomputeTurnOrder(encounterId);
+
+  return data as CombatParticipant;
+}
+
 export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSource {
   return {
     type: 'monster',

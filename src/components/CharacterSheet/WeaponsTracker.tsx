@@ -536,7 +536,10 @@ export default function WeaponsTracker({
  className="modal"
  onClick={e => e.stopPropagation()}
  style={{
- maxWidth: 480, width: 'calc(100vw - 16px)',
+ // v2.174.0 — bumped 480→560 for comfortable line length now
+ // that descriptions wrap (previously they overflowed in a
+ // single nowrap line, so width didn't matter as much).
+ maxWidth: 560, width: 'calc(100vw - 16px)',
  maxHeight: 'calc(100dvh - 32px)',
  display: 'flex', flexDirection: 'column' as const,
  padding: 20,
@@ -555,6 +558,15 @@ export default function WeaponsTracker({
  </div>
 
  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, marginBottom: 14 }}>
+ {/* v2.174.0 — Phase Q.0 pt 15: each mode button was inheriting the
+     global `button { display: flex; flex-direction: row }` style,
+     which forced the label <div> and description <div> to render
+     side-by-side instead of stacked. Combined with `white-space:
+     nowrap` on children, this clipped the Grapple/Shove labels on
+     the left and truncated descriptions on the right — the "small
+     window with broken buttons" playtest report. Fix: explicitly
+     override to column + allow description text to wrap. */}
+
  {/* Damage — the existing attack flow */}
  <button
  onClick={() => {
@@ -571,12 +583,13 @@ export default function WeaponsTracker({
  background: 'rgba(248,113,113,0.1)',
  color: 'var(--c-red-l)',
  minHeight: 0,
+ display: 'flex', flexDirection: 'column' as const, alignItems: 'stretch',
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Damage
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
  Roll to hit ({modStr(unarmedModal.attackBonus)}), then {modStr(unarmedModal.damageBonus)} bludgeoning on hit.
  </div>
  </button>
@@ -592,12 +605,13 @@ export default function WeaponsTracker({
  background: 'rgba(96,165,250,0.1)',
  color: '#60a5fa',
  minHeight: 0,
+ display: 'flex', flexDirection: 'column' as const, alignItems: 'stretch',
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Grapple
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
  Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target is Grappled.
  </div>
  </button>
@@ -613,12 +627,13 @@ export default function WeaponsTracker({
  background: 'rgba(167,139,250,0.1)',
  color: '#a78bfa',
  minHeight: 0,
+ display: 'flex', flexDirection: 'column' as const, alignItems: 'stretch',
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Shove — Push 5 ft
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
  Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: push target 5 feet.
  </div>
  </button>
@@ -634,12 +649,13 @@ export default function WeaponsTracker({
  background: 'rgba(167,139,250,0.1)',
  color: '#a78bfa',
  minHeight: 0,
+ display: 'flex', flexDirection: 'column' as const, alignItems: 'stretch',
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 2 }}>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Shove — Knock Prone
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)' }}>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
  Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target has the Prone condition.
  </div>
  </button>
