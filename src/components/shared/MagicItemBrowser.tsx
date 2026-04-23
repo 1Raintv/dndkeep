@@ -134,68 +134,105 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
           info-dense row was unreadable. Standardized on comfortable
           12/16 padding + 15px name + 11px badges + gap 6 between rows
           to match the weapon row feel. */}
+      {/* v2.178.0 — Phase Q.0 pt 19: structural rewrite to mirror the
+          character-sheet Spells tab row pattern (SpellsTab.tsx line 546).
+          The spell row uses a DDB-style table grid:
+            [90px type] [3px color stripe] [1fr name+sub] [badges...] [button] [chevron]
+          which makes the columns visually aligned across rows. Magic
+          Items now uses the same grid so a DM scanning the list can
+          scan down rather than across. Previous flexbox layout had
+          everything jammed on one line and then flex-wrap made column
+          positions jitter between rows. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: compact ? 320 : 520, overflowY: 'auto' }}>
         {filtered.map(item => {
           const rarityColor = RARITY_COLORS[item.rarity as MagicItemRarity] ?? '#c4c4c4';
           const isExpanded = expanded === item.id;
           const wasAdded = added.has(item.id);
+          const typeLabel = TYPE_LABELS[item.type as MagicItemType] ?? item.type;
           return (
             <div
               key={item.id}
               style={{
-                borderRadius: 'var(--r-md)',
+                borderRadius: 8,
                 border: `1px solid ${isExpanded ? rarityColor + '40' : 'var(--c-border)'}`,
                 background: isExpanded ? rarityColor + '06' : 'var(--c-card)',
                 overflow: 'hidden',
                 transition: 'border-color var(--tr-fast)',
-                // v2.177.2 HOTFIX — flexShrink:0 prevents the scroll
-                // container's flex-column from compressing 110 cards
-                // into the 520px maxHeight. Without this, each card
-                // collapses to ~5px and becomes an unreadable line.
                 flexShrink: 0,
               }}
             >
-              {/* Collapsed row — matched to weapons list proportions */}
+              {/* Collapsed row — spell-tab grid layout */}
               <div
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 16px', cursor: 'pointer', minHeight: 56,
+                  display: 'grid',
+                  gridTemplateColumns: '90px 3px 1fr auto auto auto 16px',
+                  alignItems: 'center', gap: '0 10px',
+                  padding: '9px 12px', cursor: 'pointer', minHeight: 48,
                 }}
                 onClick={() => setExpanded(isExpanded ? null : item.id)}
               >
-                {/* Left: name + badges */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--t-1)', flex: '0 1 auto' }}>
-                      {item.name}
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: rarityColor, padding: '2px 7px', borderRadius: 4, border: `1px solid ${rarityColor}50`, background: `${rarityColor}12`, whiteSpace: 'nowrap', flexShrink: 0, textTransform: 'capitalize' as const }}>
-                      {item.rarity}
-                    </span>
-                    {item.requiresAttunement && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--c-amber-l)', background: 'rgba(245,200,66,0.08)', padding: '2px 7px', borderRadius: 4, border: '1px solid rgba(245,200,66,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                        Attunement
-                      </span>
-                    )}
-                    <span style={{ fontSize: 10, color: 'var(--t-3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {TYPE_LABELS[item.type as MagicItemType] ?? item.type}
-                    </span>
+                {/* Col 0: Type label (mirrors "AT WILL" column) */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{
+                    fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+                    color: rarityColor, letterSpacing: '0.04em',
+                    textTransform: 'uppercase' as const, textAlign: 'center', lineHeight: 1.2,
+                  }}>
+                    {typeLabel}
+                  </span>
+                </div>
+
+                {/* Col 1: rarity color stripe */}
+                <div style={{ width: 3, height: 28, background: rarityColor, borderRadius: 2 }} />
+
+                {/* Col 2: name + description */}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)', lineHeight: 1.3 }}>
+                    {item.name}
                   </div>
                   {!isExpanded && (
-                    <div style={{ fontSize: 12, color: 'var(--t-3)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', lineHeight: 1.4 }}>
+                    <div style={{
+                      fontSize: 11, color: 'var(--t-3)', marginTop: 2,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
+                      maxWidth: '100%', lineHeight: 1.35,
+                    }}>
                       {item.description}
                     </div>
                   )}
                 </div>
 
-                {/* Right: add button + expand chevron */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                  {onAddToInventory && (
+                {/* Col 3: rarity pill */}
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: rarityColor,
+                  padding: '2px 8px', borderRadius: 4,
+                  border: `1px solid ${rarityColor}50`, background: `${rarityColor}12`,
+                  whiteSpace: 'nowrap' as const, textTransform: 'capitalize' as const,
+                }}>
+                  {item.rarity}
+                </span>
+
+                {/* Col 4: attunement pill (or empty spacer) */}
+                <span style={{ minWidth: 90, display: 'flex', justifyContent: 'center' }}>
+                  {item.requiresAttunement ? (
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, color: 'var(--c-amber-l)',
+                      background: 'rgba(245,200,66,0.08)',
+                      padding: '2px 8px', borderRadius: 4,
+                      border: '1px solid rgba(245,200,66,0.3)', whiteSpace: 'nowrap' as const,
+                    }}>
+                      Attunement
+                    </span>
+                  ) : null}
+                </span>
+
+                {/* Col 5: Add button */}
+                <div>
+                  {onAddToInventory ? (
                     <button
                       onClick={e => { e.stopPropagation(); addToInventory(item); }}
                       style={{
-                        fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 6,
-                        cursor: 'pointer', minHeight: 0,
+                        fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 6,
+                        cursor: 'pointer', minHeight: 0, minWidth: 70,
                         border: wasAdded ? '1px solid var(--c-border-m)' : `1px solid ${rarityColor}50`,
                         background: wasAdded ? 'var(--c-raised)' : `${rarityColor}12`,
                         color: wasAdded ? 'var(--t-3)' : rarityColor,
@@ -204,14 +241,20 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
                     >
                       {wasAdded ? '✓ Added' : '+ Add'}
                     </button>
-                  )}
-                  <span style={{ fontSize: 12, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)' }}>▼</span>
+                  ) : null}
                 </div>
+
+                {/* Col 6: chevron */}
+                <span style={{
+                  fontSize: 11, color: 'var(--t-3)',
+                  transform: isExpanded ? 'rotate(180deg)' : 'none',
+                  transition: 'transform var(--tr-fast)', textAlign: 'center' as const,
+                }}>▼</span>
               </div>
 
               {/* Expanded description */}
               {isExpanded && (
-                <div className="animate-fade-in" style={{ padding: '0 16px 14px', borderTop: `1px solid ${rarityColor}20` }}>
+                <div className="animate-fade-in" style={{ padding: '0 16px 14px 105px', borderTop: `1px solid ${rarityColor}20` }}>
                   <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '10px 0' }}>
                     {item.description}
                   </p>
