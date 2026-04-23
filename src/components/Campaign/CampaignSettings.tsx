@@ -155,25 +155,39 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
     saveQuickRules(updated);
   }
 
+  // v2.171.0 — Phase Q.0 pt 12: delete path simplified + hardened.
+  // Previously we ran an explicit `characters.update({campaign_id: null})`
+  // pre-step to "detach" characters. That pre-step can fail silently
+  // under RLS (DM doesn't own player characters, so update returns 0
+  // rows but no error), but also is redundant — the `characters_campaign_id_fkey`
+  // FK is ON DELETE SET NULL, so characters are preserved automatically
+  // when the campaign row is deleted. Dropping the pre-step removes the
+  // silent-fail surface area.
+  //
+  // Also: if the delete returns `error`, we now surface the full
+  // Supabase message (code + hint + details) so a broken delete is
+  // visible instead of "Failed to delete campaign".
   async function deleteCampaign() {
-    if (confirmText !== campaign.name) return;
+    // Case-insensitive + trimmed name match — the intent check is
+    // "did you type this on purpose", not "can you match capitalization".
+    if (confirmText.trim().toLowerCase() !== campaign.name.trim().toLowerCase()) return;
     setDeleting(true);
     setDeleteError(null);
     try {
-      // Detach characters from campaign first so they aren't lost
-      // by the cascade.
-      await supabase
-        .from('characters')
-        .update({ campaign_id: null })
-        .eq('campaign_id', campaign.id);
-
-      // Delete campaign (cascades via FK to members, logs, etc.)
       const { error } = await supabase
         .from('campaigns')
         .delete()
         .eq('id', campaign.id);
 
-      if (error) throw error;
+      if (error) {
+        // Surface as much detail as Supabase gives us.
+        const parts = [error.message, error.code && `(code: ${error.code})`, error.hint && `hint: ${error.hint}`].filter(Boolean);
+        throw new Error(parts.join(' '));
+      }
+      // Reset modal state before navigating so we don't flash stale
+      // confirmation UI if the parent remounts us.
+      setConfirmDelete(false);
+      setConfirmText('');
       onDeleted();
     } catch (e: any) {
       setDeleteError(e.message ?? 'Failed to delete campaign');
@@ -489,7 +503,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                     onChange={e => setConfirmText(e.target.value)}
                     placeholder={`Type "${campaign.name}" to confirm`}
                     autoFocus
-                    style={{ fontSize: 13, borderColor: confirmText === campaign.name ? 'rgba(239,68,68,0.5)' : undefined }}
+                    style={{ fontSize: 13, borderColor: confirmText.trim().toLowerCase() === campaign.name.trim().toLowerCase() ? 'rgba(239,68,68,0.5)' : undefined }}
                     onKeyDown={e => { if (e.key === 'Escape') { setConfirmDelete(false); setConfirmText(''); } }}
                   />
                   {deleteError && (
@@ -506,14 +520,14 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                       Cancel
                     </button>
                     <button
-                      disabled={confirmText !== campaign.name || deleting}
+                      disabled={confirmText.trim().toLowerCase() !== campaign.name.trim().toLowerCase() || deleting}
                       onClick={deleteCampaign}
                       style={{
                         flex: 1, fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12,
-                        padding: '7px 14px', borderRadius: 'var(--r-md)', cursor: confirmText === campaign.name ? 'pointer' : 'not-allowed',
+                        padding: '7px 14px', borderRadius: 'var(--r-md)', cursor: confirmText.trim().toLowerCase() === campaign.name.trim().toLowerCase() ? 'pointer' : 'not-allowed',
                         border: '1px solid rgba(239,68,68,0.4)',
-                        background: confirmText === campaign.name ? 'rgba(239,68,68,0.2)' : 'transparent',
-                        color: confirmText === campaign.name ? 'var(--c-red-l)' : 'var(--t-3)',
+                        background: confirmText.trim().toLowerCase() === campaign.name.trim().toLowerCase() ? 'rgba(239,68,68,0.2)' : 'transparent',
+                        color: confirmText.trim().toLowerCase() === campaign.name.trim().toLowerCase() ? 'var(--c-red-l)' : 'var(--t-3)',
                         opacity: deleting ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       }}
                     >

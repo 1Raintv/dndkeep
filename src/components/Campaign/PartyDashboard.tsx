@@ -288,6 +288,16 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
       {/* Party summary */}
       <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)' }}>
         <SummaryChip label="Party" value={characters.length} color="var(--t-1)" />
+        {/* v2.171.0 — Phase Q.0 pt 12: level chip. Shows "Lv 5" if the
+            whole party is the same level, else "Avg Lv X" using floor
+            average (matches what the DM would intuit when eyeballing
+            encounter difficulty). Hidden with 0 characters. */}
+        {characters.length > 0 && (() => {
+          const levels = characters.map(c => c.level ?? 1);
+          const same = new Set(levels).size === 1;
+          const avg = Math.floor(levels.reduce((a, b) => a + b, 0) / levels.length);
+          return <SummaryChip label={same ? 'Level' : 'Avg Level'} value={same ? levels[0] : avg} color="var(--c-gold-l)" />;
+        })()}
         <SummaryChip label="Total HP" value={`${totalHp}/${totalMaxHp}`} color={hpColor(totalHp, totalMaxHp)} />
         {downedCount > 0 && <SummaryChip label="Downed" value={downedCount} color="#dc2626" />}
         <SummaryChip label="Conditions" value={characters.reduce((s, c) => s + (c.active_conditions?.length ?? 0), 0)} color={characters.some(c => (c.active_conditions?.length ?? 0) > 0) ? '#f59e0b' : 'var(--t-2)'} />
@@ -385,42 +395,36 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                   per RAW. "Untyped" disables type-based modifiers entirely
                   (useful for raw HP loss like falling damage where the DM
                   doesn't want resistance to apply). */}
+              {/* v2.171.0 — Phase Q.0 pt 12: damage type is a dropdown
+                  instead of a pill row. 14 pills was visually noisy;
+                  a single select is cleaner and faster to scan. The
+                  selected type's RAW color renders in the select
+                  itself for visual continuity with the result badges. */}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--t-3)' }}>
                   Type
                 </span>
-                <button
-                  onClick={() => { setAoeDamageType(null); setAoeApplied(null); }}
-                  style={{
-                    fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                    border: aoeDamageType === null ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
-                    background: aoeDamageType === null ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                    color: aoeDamageType === null ? 'var(--c-gold-l)' : 'var(--t-3)',
-                    textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+                <select
+                  value={aoeDamageType ?? ''}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setAoeDamageType(v === '' ? null : v as any);
+                    setAoeApplied(null);
                   }}
-                  title="Untyped damage — no resistance/vulnerability/immunity applies"
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+                    border: `1px solid ${aoeDamageType ? (DAMAGE_TYPE_COLORS[aoeDamageType] ?? 'var(--c-border-m)') : 'var(--c-border-m)'}`,
+                    background: aoeDamageType ? `${DAMAGE_TYPE_COLORS[aoeDamageType] ?? 'var(--c-gold)'}18` : 'var(--c-raised)',
+                    color: aoeDamageType ? (DAMAGE_TYPE_COLORS[aoeDamageType] ?? 'var(--t-1)') : 'var(--t-2)',
+                    textTransform: 'capitalize' as const,
+                  }}
+                  title="Damage type — untyped ignores resistance/vulnerability"
                 >
-                  Untyped
-                </button>
-                {DAMAGE_TYPES.map(t => {
-                  const selected = aoeDamageType === t;
-                  const color = DAMAGE_TYPE_COLORS[t] ?? 'var(--c-gold)';
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => { setAoeDamageType(t); setAoeApplied(null); }}
-                      style={{
-                        fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
-                        border: `1px solid ${selected ? color : 'var(--c-border-m)'}`,
-                        background: selected ? `${color}1f` : 'var(--c-raised)',
-                        color: selected ? color : 'var(--t-3)',
-                        textTransform: 'uppercase' as const, letterSpacing: '0.04em',
-                      }}
-                    >
-                      {labelForDamageType(t)}
-                    </button>
-                  );
-                })}
+                  <option value="">Untyped</option>
+                  {DAMAGE_TYPES.map(t => (
+                    <option key={t} value={t}>{labelForDamageType(t)}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Preview — type-aware per-target damage breakdown */}
@@ -445,7 +449,11 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                         background: newHP <= 0 ? 'rgba(220,38,38,0.12)' : 'rgba(248,113,113,0.08)',
                         border: `1px solid ${newHP <= 0 ? 'rgba(220,38,38,0.4)' : 'rgba(248,113,113,0.2)'}`,
                         color: newHP <= 0 ? '#dc2626' : '#f87171' }}>
-                        {c.name}: {c.current_hp} → {newHP}
+                        {/* v2.171.0 — lead with damage dealt (what matters) and
+                            show HP transition as supporting detail. Previously
+                            read "ghj: 4 → 0" which obscured the fact that the
+                            DM dealt 40 damage and overkilled by 36. */}
+                        {c.name} takes {dmg} <span style={{ color: 'var(--t-3)', fontWeight: 400 }}>({c.current_hp}→{newHP})</span>
                         {modBadge && <span style={{ color: modColor, marginLeft: 4, fontWeight: 800 }}>{modBadge}</span>}
                         {newHP <= 0 ? ' ☠' : ''}{c.concentration_spell && dmg > 0 ? ' ⚠ Conc.' : ''}
                       </span>
@@ -538,19 +546,11 @@ export default function PartyDashboard({ campaignId, isOwner }: PartyDashboardPr
                 </div>
               </div>
 
-              {/* Per-character HP preview (long rest target state) */}
-              <div>
-                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--t-3)', marginBottom: 5 }}>
-                  Long rest preview
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {characters.map(c => (
-                    <span key={c.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'var(--c-raised)', border: '1px solid var(--c-border)', color: 'var(--t-2)' }}>
-                      {c.name}: {c.current_hp}/{c.max_hp} → {c.max_hp}/{c.max_hp}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              {/* v2.171.0 — Phase Q.0 pt 12: Long Rest preview block
+                  removed per playtest feedback. It just listed every
+                  character's HP transition to full, which is obvious
+                  (that's what a long rest does) and added noise to a
+                  panel that's trying to be a quick two-click action. */}
             </div>
           )}
 
@@ -868,8 +868,10 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
       // v2.170.0 — no longer span full row on expand. Grid is 2-col at
       // ~420px min, which comfortably fits all DM Controls content.
     }}>
-      {/* HP bar top accent */}
-      <div style={{ height: 3, background: col, width: `${hpPct * 100}%`, transition: 'width 0.4s' }} />
+      {/* v2.171.0 — Phase Q.0 pt 12: removed the 3px colored top-accent
+          strip that duplicated the labeled HP bar below. Two bars for
+          the same stat was confusing DMs scanning the party tab. The
+          proper HP bar (with label + "62/62" readout) stays. */}
 
       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Name row */}
