@@ -276,11 +276,15 @@ export default function WeaponsTracker({
  already surface attack results; the banner was a duplicate that sat above the
  attack rows and shifted layout on every roll. */}
 
- {/* Weapon rows */}
- {/* ACTIONS section header — DDB style */}
+ {/* v2.183.0 — Phase Q.0 pt 24: renamed section from "ATTACKS" to
+     "WEAPON ATTACKS" to distinguish from spell attacks (which have
+     their own section under the Spells tab) and from the overall
+     Actions tab (which includes Standard Actions and Class
+     Abilities). "Weapon Attacks" is unambiguous — if it's here,
+     it's something you swing, shoot, or throw. */}
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 6 }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
- ATTACKS
+ WEAPON ATTACKS
  </span>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
  Attacks per Action: 1

@@ -75,7 +75,12 @@ type Tab = 'actions' | 'abilities' | 'features' | 'spells' | 'inventory' | 'bio'
 
 const TABS: { id: Tab; label: string }[] = [
  { id: 'actions', label: ' Actions' },
- { id: 'abilities', label: 'Abilities' },
+ // v2.183.0 — Phase Q.0 pt 24: the 'abilities' tab has always shown
+ // the skills grid (Acrobatics, Arcana, Athletics, etc.). Renamed
+ // the user-facing label to match what the tab actually contains.
+ // The internal id stays 'abilities' because renaming it would
+ // touch ~20 `activeTab === 'abilities'` checks for no gain.
+ { id: 'abilities', label: 'Skills' },
  { id: 'features', label: 'Features' },
  { id: 'spells', label: 'Spells' },
  { id: 'inventory', label: 'Inventory' },
