@@ -2937,8 +2937,61 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
  {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>No Slots</span>}
  </div>
- <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
- {spell.school}{spell.ritual ? ' · Ritual' : ''}
+ <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 5 }}>
+ <span>{spell.school}{spell.ritual ? ' · Ritual' : ''}</span>
+ {/* v2.172.0 — Phase Q.0 pt 13: effect-type tag. Mirrors the
+     "DAMAGE · GRAPPLE · SHOVE" style tags under Unarmed Strike
+     in the Actions tab so players can see at a glance whether a
+     spell is Utility / Attack / Save / AoE. The mechanics resolver
+     already computes the categories — we just surface them. AoE is
+     called out because strategic value differs. Priority: AoE >
+     Save > Attack > Utility to avoid cluttering with >1 tag. */}
+ {(() => {
+ const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;
+ if (aoe) {
+ return (
+ <span style={{
+ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+ color: '#fb923c', background: 'rgba(251,146,60,0.12)',
+ border: '1px solid rgba(251,146,60,0.4)',
+ padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
+ }} title={`Area of Effect — ${aoe.size}ft ${aoe.type}`}>AoE</span>
+ );
+ }
+ if (mechanics.isSave) {
+ const saveAb = (mechanics.saveType ?? '').toUpperCase();
+ const col = saveAb === 'STR' ? '#ef4444' : saveAb === 'DEX' ? '#34d399' : saveAb === 'CON' ? '#f59e0b' : saveAb === 'INT' ? '#60a5fa' : saveAb === 'WIS' ? '#22c55e' : saveAb === 'CHA' ? '#ec4899' : '#60a5fa';
+ return (
+ <span style={{
+ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+ color: col, background: `${col}20`,
+ border: `1px solid ${col}55`,
+ padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
+ }} title={`${saveAb} saving throw`}>{saveAb} Save</span>
+ );
+ }
+ if (mechanics.isAttack) {
+ return (
+ <span style={{
+ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+ color: '#fbbf24', background: 'rgba(251,191,36,0.12)',
+ border: '1px solid rgba(251,191,36,0.4)',
+ padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
+ }} title="Spell attack roll">Attack</span>
+ );
+ }
+ if (mechanics.isUtility) {
+ return (
+ <span style={{
+ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+ color: '#a78bfa', background: 'rgba(167,139,250,0.12)',
+ border: '1px solid rgba(167,139,250,0.4)',
+ padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
+ }} title="Utility / buff spell">Utility</span>
+ );
+ }
+ return null;
+ })()}
  </div>
  </div>
 
@@ -2995,7 +3048,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
 
  {/* Col 7: Cast action buttons (fixed 170px, right-justified so Cast sits at far right) */}
- <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+ {/* v2.172.0 — Phase Q.0 pt 13: dead-zone fix. Previously this
+     wrapper had `onClick={e => e.stopPropagation()}` which blocked
+     the parent row-expand handler for ALL clicks landing in the
+     170px column — including the whitespace between the chevron
+     and the Cast button. Users complained they couldn't expand a
+     spell by clicking anywhere near the right side. New logic:
+     propagation only stops when the click lands on an actual
+     <button> (via closest('button')). Whitespace clicks bubble up
+     and expand the row as expected. */}
+ <div onClick={e => {
+ const target = e.target as HTMLElement;
+ if (target.closest('button')) e.stopPropagation();
+ }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
  <SpellCastButton
  spell={spell}
  character={character}

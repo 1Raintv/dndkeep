@@ -629,7 +629,19 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
 
  return (
  <section>
- <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+ {/* v2.172.0 — Phase Q.0 pt 13: coin purse moved to the very top of
+     the Inventory tab per playtest feedback. Previously it sat
+     below the Inventory header, so users scanning top-down saw
+     "Inventory" → weight chip → + Add Item BEFORE their money.
+     New order: money first, then Inventory (with its Add Item
+     control). Matches how users intuitively think — "what have
+     I got?" starts with gold. */}
+ <div className="section-header" style={{ marginBottom: 'var(--sp-2)' }}>
+ Coin Purse
+ </div>
+ <CurrencyDisplay currency={character.currency} onUpdate={onUpdateCurrency} />
+
+ <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--sp-5)' }}>
  <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none', flex: 1 }}>
  Inventory
  </div>
@@ -663,8 +675,6 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  </div>
  </div>
  <div style={{ borderBottom: '1px solid var(--c-gold-bdr)', marginBottom: 'var(--sp-4)' }} />
-
- <CurrencyDisplay currency={character.currency} onUpdate={onUpdateCurrency} />
 
  {/* Search bar — only show when there are items */}
  {inventory.length > 4 && (

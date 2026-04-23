@@ -665,10 +665,20 @@ export default function SpellCastButton({
 
  const dmgColor = DAMAGE_COLORS[mechanics.damageType ?? ''] ?? '#94a3b8';
  const saveColor = SAVE_COLORS[mechanics.saveType ?? ''] ?? '#94a3b8';
+ // v2.172.0 — Phase Q.0 pt 13: spell buttons redesigned to visually
+ // match the Actions tab (WeaponsTracker). Previously these were
+ // fully rounded pills (borderRadius: 999) with 2×7 padding — a
+ // different shape and a smaller footprint than the rectangular
+ // 5×10 rounded-rect buttons used by weapons. Synced to match:
+ // same border-radius, same padding, same overall weight. Colors
+ // stay purple (spells semantic) vs gold (weapons) so players can
+ // still glance-differentiate the two at a row level.
  const btnBase: React.CSSProperties = {
- fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
+ fontSize: 11, fontWeight: 700, padding: '5px 10px',
+ borderRadius: 'var(--r-md)',
  cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
  fontFamily: 'var(--ff-body)',
+ minHeight: 0,
  };
 
  return (
