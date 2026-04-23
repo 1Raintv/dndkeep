@@ -20,6 +20,13 @@ export interface MagicItem {
   maxCharges?: number;
   recharge?: 'dawn' | 'dusk' | 'long_rest' | 'short_rest';
   rechargeDice?: string;
+  // v2.181.0 — Phase Q.0 pt 22: canonical base damage for weapon-type
+  // items, e.g. "1d8 slashing" for a Luck Blade (SRD longsword base).
+  // Copied into InventoryItem.damage at add time so the Actions tab
+  // weapon mapper can parse dice + type without special-casing magic
+  // items. Undefined for non-weapons and for generic "Weapon, +N"
+  // entries where the user should pick a concrete weapon instead.
+  baseDamageDice?: string;
 }
 
 export const MAGIC_ITEMS: MagicItem[] = [
@@ -57,21 +64,23 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'ring-invisibility', name: 'Ring of Invisibility', type: 'ring', rarity: 'legendary', requiresAttunement: true, description: 'Become invisible at will as long as you wear it. Ends if you attack, cast a spell, or remove the ring.', weight: 0 },
   { id: 'ring-three-wishes', name: 'Ring of Three Wishes', type: 'ring', rarity: 'legendary', requiresAttunement: false, description: 'Cast Wish up to 3 times. When the third wish is made, the ring loses its magic.', weight: 0 },
 
-  // Weapons
-  { id: 'sword-plus-1', name: 'Sword, +1', type: 'weapon', rarity: 'uncommon', requiresAttunement: false, description: '+1 bonus to attack and damage rolls made with this magic weapon.', weight: 3 },
-  { id: 'sword-plus-2', name: 'Sword, +2', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+2 bonus to attack and damage rolls made with this magic weapon.', weight: 3 },
-  { id: 'sword-plus-3', name: 'Sword, +3', type: 'weapon', rarity: 'very rare', requiresAttunement: false, description: '+3 bonus to attack and damage rolls made with this magic weapon.', weight: 3 },
+  // Weapons — v2.181.0: baseDamageDice set to canonical SRD dice
+  // for each item. Generic "Weapon, +N" intentionally omits dice;
+  // pick a concrete weapon from the equipment catalogue instead.
+  { id: 'sword-plus-1', name: 'Sword, +1', type: 'weapon', rarity: 'uncommon', requiresAttunement: false, description: '+1 bonus to attack and damage rolls made with this magic weapon.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'sword-plus-2', name: 'Sword, +2', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+2 bonus to attack and damage rolls made with this magic weapon.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'sword-plus-3', name: 'Sword, +3', type: 'weapon', rarity: 'very rare', requiresAttunement: false, description: '+3 bonus to attack and damage rolls made with this magic weapon.', weight: 3, baseDamageDice: '1d8 slashing' },
   { id: 'weapon-plus-1', name: 'Weapon, +1', type: 'weapon', rarity: 'uncommon', requiresAttunement: false, description: '+1 bonus to attack and damage rolls made with this magic weapon.', weight: 2 },
   { id: 'weapon-plus-2', name: 'Weapon, +2', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+2 bonus to attack and damage rolls made with this magic weapon.', weight: 2 },
   { id: 'weapon-plus-3', name: 'Weapon, +3', type: 'weapon', rarity: 'very rare', requiresAttunement: false, description: '+3 bonus to attack and damage rolls made with this magic weapon.', weight: 2 },
-  { id: 'flame-tongue', name: 'Flame Tongue', type: 'weapon', rarity: 'rare', requiresAttunement: true, description: 'Command word ignites or extinguishes the blade. While lit: +2d6 fire damage, sheds bright light in 40 ft.', weight: 3 },
-  { id: 'frost-brand', name: 'Frost Brand', type: 'weapon', rarity: 'very rare', requiresAttunement: true, description: '+1d6 cold damage, resistance to fire. When drawn in freezing temps, shed bright light 10 ft. 1/hour extinguish nearby fires.', weight: 3 },
-  { id: 'dragon-slayer', name: 'Dragon Slayer', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+1 attack/damage. Against dragons, +3d6 extra damage.', weight: 3 },
-  { id: 'giant-slayer', name: 'Giant Slayer', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+1 attack/damage. Against giants, +2d6 extra damage and target must succeed DC 15 STR save or be knocked prone.', weight: 3 },
-  { id: 'holy-avenger', name: 'Holy Avenger', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: 'Paladin only. +3 to attack and damage. Radiant damage vs undead and fiends. Aura of protection (saves) within 10 ft.', weight: 3 },
-  { id: 'luck-blade', name: 'Luck Blade', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+1 attack/damage. 1 luck point to reroll. May have 1-3 Wish spells (DM determines).', weight: 3 },
-  { id: 'vorpal-sword', name: 'Vorpal Sword', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+3 attack/damage, slashing. Ignores resistance. On 20, decapitates if creature has neck.', weight: 3 },
-  { id: 'thundering-blade', name: 'Thundering Blade', type: 'weapon', rarity: 'uncommon', requiresAttunement: false, description: 'On hit, 1d6 thunder damage. On 20, target is deafened until start of its next turn.', weight: 2 },
+  { id: 'flame-tongue', name: 'Flame Tongue', type: 'weapon', rarity: 'rare', requiresAttunement: true, description: 'Command word ignites or extinguishes the blade. While lit: +2d6 fire damage, sheds bright light in 40 ft.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'frost-brand', name: 'Frost Brand', type: 'weapon', rarity: 'very rare', requiresAttunement: true, description: '+1d6 cold damage, resistance to fire. When drawn in freezing temps, shed bright light 10 ft. 1/hour extinguish nearby fires.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'dragon-slayer', name: 'Dragon Slayer', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+1 attack/damage. Against dragons, +3d6 extra damage.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'giant-slayer', name: 'Giant Slayer', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+1 attack/damage. Against giants, +2d6 extra damage and target must succeed DC 15 STR save or be knocked prone.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'holy-avenger', name: 'Holy Avenger', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: 'Paladin only. +3 to attack and damage. Radiant damage vs undead and fiends. Aura of protection (saves) within 10 ft.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'luck-blade', name: 'Luck Blade', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+1 attack/damage. 1 luck point to reroll. May have 1-3 Wish spells (DM determines).', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'vorpal-sword', name: 'Vorpal Sword', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+3 attack/damage, slashing. Ignores resistance. On 20, decapitates if creature has neck.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'thundering-blade', name: 'Thundering Blade', type: 'weapon', rarity: 'uncommon', requiresAttunement: false, description: 'On hit, 1d6 thunder damage. On 20, target is deafened until start of its next turn.', weight: 2, baseDamageDice: '1d8 slashing' },
 
   // Armor
   { id: 'armor-plus-1', name: 'Armor, +1', type: 'armor', rarity: 'rare', requiresAttunement: false, description: '+1 bonus to AC. Applies on top of the armor\'s normal AC.', weight: 65 },
@@ -133,11 +142,11 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'wand-of-magic-missiles', name: 'Wand of Magic Missiles', type: 'wand', rarity: 'uncommon', requiresAttunement: false, description: '7 charges. Expend 1-3 charges to cast Magic Missile (1 charge = 3 missiles, +1 missile per extra charge). Regains 1d6+1 at dawn.', weight: 1 },
   { id: 'wand-of-polymorph', name: 'Wand of Polymorph', type: 'wand', rarity: 'very rare', requiresAttunement: true, description: '7 charges. Cast Polymorph (DC 15). Regains 1d6+1 at dawn.', weight: 1 },
   { id: 'wand-of-secrets', name: 'Wand of Secrets', type: 'wand', rarity: 'uncommon', requiresAttunement: false, description: '3 charges. Detect secret doors and traps within 30 ft. Regains 1d3 at dawn.', weight: 1 },
-  { id: 'staff-of-fire', name: 'Staff of Fire', type: 'staff', rarity: 'very rare', requiresAttunement: true, description: 'Druid/Sorcerer/Warlock/Wizard only. 10 charges: Burning Hands (1), Fireball (3), Wall of Fire (4). Regains 1d6+4 at dawn.', weight: 4 },
-  { id: 'staff-of-healing', name: 'Staff of Healing', type: 'staff', rarity: 'rare', requiresAttunement: true, description: 'Bard/Cleric/Druid only. 10 charges: Cure Wounds (1+/slot level), Lesser Restoration (2), Mass Cure Wounds (5). Regains 1d6+4 at dawn.', weight: 4 },
-  { id: 'staff-of-power', name: 'Staff of Power', type: 'staff', rarity: 'very rare', requiresAttunement: true, description: 'Sorcerer/Warlock/Wizard only. +2 AC, attack, saves. 20 charges, many spells. Retributive Strike.', weight: 4 },
-  { id: 'staff-of-swarming-insects', name: 'Staff of Swarming Insects', type: 'staff', rarity: 'rare', requiresAttunement: true, description: 'Bard/Cleric/Druid/Shaman/Warlock/Wizard only. 10 charges. Fly Plague, Giant Insect, Insect Plague.', weight: 4 },
-  { id: 'staff-of-thunder-lightning', name: 'Staff of Thunder and Lightning', type: 'staff', rarity: 'very rare', requiresAttunement: true, description: '+2 attack/damage. Lightning (2d6), Thunder (2d6+knockback), Lightning Strike, Thunderclap, Thunder and Lightning. All recharge at dawn.', weight: 4 },
+  { id: 'staff-of-fire', name: 'Staff of Fire', type: 'staff', rarity: 'very rare', requiresAttunement: true, description: 'Druid/Sorcerer/Warlock/Wizard only. 10 charges: Burning Hands (1), Fireball (3), Wall of Fire (4). Regains 1d6+4 at dawn.', weight: 4, baseDamageDice: '1d6 bludgeoning' },
+  { id: 'staff-of-healing', name: 'Staff of Healing', type: 'staff', rarity: 'rare', requiresAttunement: true, description: 'Bard/Cleric/Druid only. 10 charges: Cure Wounds (1+/slot level), Lesser Restoration (2), Mass Cure Wounds (5). Regains 1d6+4 at dawn.', weight: 4, baseDamageDice: '1d6 bludgeoning' },
+  { id: 'staff-of-power', name: 'Staff of Power', type: 'staff', rarity: 'very rare', requiresAttunement: true, description: 'Sorcerer/Warlock/Wizard only. +2 AC, attack, saves. 20 charges, many spells. Retributive Strike.', weight: 4, baseDamageDice: '1d6 bludgeoning' },
+  { id: 'staff-of-swarming-insects', name: 'Staff of Swarming Insects', type: 'staff', rarity: 'rare', requiresAttunement: true, description: 'Bard/Cleric/Druid/Shaman/Warlock/Wizard only. 10 charges. Fly Plague, Giant Insect, Insect Plague.', weight: 4, baseDamageDice: '1d6 bludgeoning' },
+  { id: 'staff-of-thunder-lightning', name: 'Staff of Thunder and Lightning', type: 'staff', rarity: 'very rare', requiresAttunement: true, description: '+2 attack/damage. Lightning (2d6), Thunder (2d6+knockback), Lightning Strike, Thunderclap, Thunder and Lightning. All recharge at dawn.', weight: 4, baseDamageDice: '1d6 bludgeoning' },
 
   // Rods
   { id: 'rod-of-absorption', name: 'Rod of Absorption', type: 'rod', rarity: 'very rare', requiresAttunement: true, description: 'Reaction: absorb a spell targeting only you. Stores spell levels to cast from later.', weight: 2 },

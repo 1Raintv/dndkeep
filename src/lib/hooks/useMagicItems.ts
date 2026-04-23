@@ -37,13 +37,11 @@ interface DbMagicItemRow {
   max_charges: number | null;
   recharge: string | null;
   recharge_dice: string | null;
+  // v2.181.0 — Phase Q.0 pt 22
+  base_damage_dice: string | null;
 }
 
 function rowToMagicItem(r: DbMagicItemRow): MagicItem {
-  // v2.157.0 — Phase P pt 5: narrow the recharge string to the
-  // catalogue-type literal union. DB CHECK constraint guarantees it's
-  // one of these four, but TypeScript doesn't know that from a string
-  // column, so we cast after validation.
   const rechargeNarrowed =
     r.recharge === 'dawn' || r.recharge === 'dusk' ||
     r.recharge === 'long_rest' || r.recharge === 'short_rest'
@@ -65,6 +63,7 @@ function rowToMagicItem(r: DbMagicItemRow): MagicItem {
     ...(r.max_charges !== null ? { maxCharges: r.max_charges } : {}),
     ...(rechargeNarrowed ? { recharge: rechargeNarrowed } : {}),
     ...(r.recharge_dice !== null ? { rechargeDice: r.recharge_dice } : {}),
+    ...(r.base_damage_dice !== null ? { baseDamageDice: r.base_damage_dice } : {}),
   };
   return out;
 }
@@ -72,7 +71,7 @@ function rowToMagicItem(r: DbMagicItemRow): MagicItem {
 async function fetchMagicItemsFromDb(): Promise<MagicItem[]> {
   const { data, error } = await supabase
     .from('magic_items')
-    .select('id, name, item_type, rarity, requires_attunement, description, weight, ac_bonus, save_bonus, attack_bonus, damage_bonus, max_charges, recharge, recharge_dice')
+    .select('id, name, item_type, rarity, requires_attunement, description, weight, ac_bonus, save_bonus, attack_bonus, damage_bonus, max_charges, recharge, recharge_dice, base_damage_dice')
     .order('rarity', { ascending: true })
     .order('name',   { ascending: true });
   if (error) {

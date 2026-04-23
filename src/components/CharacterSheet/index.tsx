@@ -2221,36 +2221,39 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Try these fields in order until we find one that parses:
  //   1. item.damage        — canonical field (e.g. "1d8 piercing"),
  //                           set by the equipment catalogue for most
- //                           weapons.
+ //                           weapons and by the Magic Items browser
+ //                           for v2.181+ items.
  //   2. item.description   — catalogue description, often contains
  //                           dice for items where `damage` wasn't
  //                           filled in (e.g. Greatclub has "1d8
  //                           bludgeoning · two-handed" here).
  //   3. item.notes         — free-form notes, sometimes set by the
  //                           equipment builder.
- // The regex is intentionally greedy about the dice expression and
- // lenient about damage-type detection so variant descriptions like
- // "1d8/1d10 slashing" still parse (picks the first die group).
+ //   4. catalogue.baseDamageDice — v2.181.0: for pre-v2.181 magic
+ //                           items already in a player's inventory
+ //                           (e.g. a Luck Blade added weeks ago),
+ //                           the local row has no damage string, but
+ //                           the magic_item_id still links to the
+ //                           catalogue which now carries canonical
+ //                           base dice. This catches them without
+ //                           requiring a DB backfill of player data.
+ const catalogueEntry = item.magic_item_id
+ ? getMagicItemById(item.magic_item_id)
+ : undefined;
  const dmgStr: string =
  item.damage ||
  item.description ||
  item.notes ||
+ catalogueEntry?.baseDamageDice ||
  '';
  const diceMatch = dmgStr.match(/(\d+d\d+)/);
  const bonusMatch = dmgStr.match(/[+\-]\d+/);
  const typeMatch = dmgStr.match(/(slashing|piercing|bludgeoning|fire|cold|lightning|poison|acid|necrotic|radiant|psychic|thunder|force)/i);
  const strMod = computed.modifiers.strength ?? 0;
  const dexMod = computed.modifiers.dexterity ?? 0;
- // Use higher of STR/DEX for finesse weapons
  const isFinesse = item.properties?.toLowerCase().includes('finesse');
  const atkMod = isFinesse ? Math.max(strMod, dexMod) : strMod;
  const pb = computed.proficiency_bonus ?? 2;
- // v2.180.0 — stack magic item attack/damage bonuses from the
- // catalogue (attackBonus, damageBonus set at add time from
- // magic_items.attack_bonus / damage_bonus) on top of the ability
- // + proficiency baseline. Only applied when equipped, which is
- // already enforced by the filter above, AND — for attunement-
- // required items — only when attuned (also enforced by filter).
  const magicAtkBonus = typeof item.attackBonus === 'number' ? item.attackBonus : 0;
  const magicDmgBonus = typeof item.damageBonus === 'number' ? item.damageBonus : 0;
  return {

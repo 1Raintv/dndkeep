@@ -75,6 +75,14 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       magical: true,
       magic_item_id: item.id,
       ...(category           ? { category }                         : {}),
+      // v2.181.0 — Phase Q.0 pt 22: copy canonical base damage into
+      // the InventoryItem.damage field at add time. The Actions-tab
+      // weapon mapper already parses this field first (before
+      // description/notes fallback), so a Luck Blade will now roll
+      // 1d8 slashing +1 instead of falling back to 1d4. Undefined
+      // when the catalogue doesn't have dice (e.g. generic Weapon,+N
+      // entries) — the mapper's existing fallback handles that.
+      ...(item.baseDamageDice ? { damage: item.baseDamageDice } : {}),
       ...(item.acBonus     !== undefined ? { acBonus:     item.acBonus     } : {}),
       ...(item.saveBonus   !== undefined ? { saveBonus:   item.saveBonus   } : {}),
       ...(item.attackBonus !== undefined ? { attackBonus: item.attackBonus } : {}),
