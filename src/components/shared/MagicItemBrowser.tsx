@@ -134,16 +134,18 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
           info-dense row was unreadable. Standardized on comfortable
           12/16 padding + 15px name + 11px badges + gap 6 between rows
           to match the weapon row feel. */}
-      {/* v2.178.0 — Phase Q.0 pt 19: structural rewrite to mirror the
-          character-sheet Spells tab row pattern (SpellsTab.tsx line 546).
-          The spell row uses a DDB-style table grid:
-            [90px type] [3px color stripe] [1fr name+sub] [badges...] [button] [chevron]
-          which makes the columns visually aligned across rows. Magic
-          Items now uses the same grid so a DM scanning the list can
-          scan down rather than across. Previous flexbox layout had
-          everything jammed on one line and then flex-wrap made column
-          positions jitter between rows. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: compact ? 320 : 520, overflowY: 'auto' }}>
+      {/* v2.178.1 — Phase Q.0 pt 19 fix: remove the 520px maxHeight
+          constraint from the non-compact (full-page) mode. The list
+          was trapped in a tiny scrollbox inside the page, forcing the
+          user to scroll inside a window-within-a-window even though
+          the page itself had tons of vertical room. Compact mode
+          (used if this component is ever embedded in a sidebar / card)
+          still caps at 320 so it doesn't blow out its container. */}
+      <div style={
+        compact
+          ? { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }
+          : { display: 'flex', flexDirection: 'column', gap: 6 }
+      }>
         {filtered.map(item => {
           const rarityColor = RARITY_COLORS[item.rarity as MagicItemRarity] ?? '#c4c4c4';
           const isExpanded = expanded === item.id;
