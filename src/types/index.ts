@@ -114,7 +114,19 @@ export interface InventoryItem {
   attackBonus?: number;
   damageBonus?: number;
   saveBonus?: number;
-  // v2.155.0 — Phase P pt 3 will add: attuned?: boolean, magic_item_id?: string
+  // v2.155.0 — Phase P pt 3: attunement.
+  //   magic_item_id — links the inventory instance back to a catalogue
+  //     row in public.magic_items. Lets computeActiveBonuses look up
+  //     requires_attunement at bonus-aggregation time. Absent for
+  //     legacy / homebrew items entered by hand — those fall back to
+  //     the permissive "equipped && magical" gate.
+  //   attuned — RAW 2024 attunement flag. Only meaningful when
+  //     catalogue says the item requires attunement. Max 3 attuned
+  //     items at a time per RAW. Surviving an unequip preserves
+  //     attunement (you can still be attuned to a ring in your pack);
+  //     bonuses only apply when BOTH attuned AND equipped.
+  magic_item_id?: string;
+  attuned?: boolean;
   // v2.157.0 — Phase P pt 5 will add: charges_current?: number, charges_max?: number, recharge?: 'dawn' | 'dusk' | 'long_rest'
 }
 

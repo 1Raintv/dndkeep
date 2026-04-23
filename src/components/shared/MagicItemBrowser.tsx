@@ -45,6 +45,9 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
     // fields onto the InventoryItem so computeActiveBonuses (for
     // attack/damage/save) and recomputeAC (for AC) can read them
     // directly. The description prefix is preserved for human display.
+    // v2.155.0 — Phase P pt 3: also link magic_item_id so the
+    // attunement gate can look up requires_attunement from the
+    // catalogue at bonus-aggregation time.
     const invItem: InventoryItem = {
       id: uuidv4(),
       name: item.name,
@@ -53,6 +56,7 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       description: `[${item.rarity.toUpperCase()}${item.requiresAttunement ? ' — Requires Attunement' : ''}] ${item.description}`,
       equipped: false,
       magical: true,
+      magic_item_id: item.id,
       ...(item.acBonus     !== undefined ? { acBonus:     item.acBonus     } : {}),
       ...(item.saveBonus   !== undefined ? { saveBonus:   item.saveBonus   } : {}),
       ...(item.attackBonus !== undefined ? { attackBonus: item.attackBonus } : {}),

@@ -1,6 +1,7 @@
 import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
 import { CLASS_MAP } from '../data/classes';
+import { itemBonusesActive } from './attunement';
 
 /** PHB formula: floor((score - 10) / 2) */
 export function abilityModifier(score: number): number {
@@ -286,18 +287,16 @@ export function computeActiveBonuses(activeBufss: any[], inventory?: any[]): {
   // InventoryItem.{attackBonus,damageBonus,saveBonus}. Magic items
   // contribute to attack/damage/save here; AC has its own dedicated
   // helper (lib/armorClass.ts) that handles the more complex armor +
-  // shield + item-bonus stacking. Attunement gate is permissive until
-  // v2.155 adds the attuned flag — for now "equipped AND magical"
-  // is the signal.
+  // shield + item-bonus stacking.
+  //
+  // v2.155.0 — Phase P pt 3: gated through itemBonusesActive which
+  // enforces the RAW "equipped + (attuned OR doesn't require
+  // attunement)" rule. Legacy items with no magic_item_id fall through
+  // the non-attuning branch — same permissive behavior as pre-v2.155.
   if (inventory) {
     for (const item of inventory) {
-      if (!item?.equipped) continue;
-      // Non-magical items contribute nothing through this path — weapon
-      // attack bonuses for mundane weapons are computed in
-      // WeaponsTracker from item.rollExpression + proficiency.
-      if (!item.magical) continue;
-      // v2.155 will gate this on item.attuned when the item requires
-      // attunement. Permissive default until then.
+      if (!item?.magical) continue;
+      if (!itemBonusesActive(item)) continue;
       attackBonus += item.attackBonus ?? 0;
       damageBonus += item.damageBonus ?? 0;
       saveBonus   += item.saveBonus ?? 0;

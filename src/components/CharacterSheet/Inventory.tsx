@@ -9,6 +9,11 @@ import {
   canAfford, parseCurrencyString, subtractCurrency,
 } from '../../lib/currency';
 import { currentWeightLbs, encumbranceStatus } from '../../lib/encumbrance';
+import {
+  itemRequiresAttunement, countAttunedItems, hasAttunementSlotAvailable,
+  ATTUNEMENT_SLOT_MAX,
+} from '../../lib/attunement';
+import { recomputeAC, describeACBreakdown } from '../../lib/armorClass';
 
 interface InventoryProps {
  character: Character;
@@ -479,27 +484,46 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  const updated = inventory.map(i => i.id === id ? { ...i, equipped: newEquipped } : i);
  onUpdateInventory(updated);
 
- // If this is armor that affects AC, recalculate
- if (item.armorType && item.baseAC !== undefined && onUpdateAC) {
- const dexMod = Math.floor((character.dexterity - 10) / 2);
- if (newEquipped) {
- // Unequip other armor of same type first (can't wear two chest pieces)
- const newAC = calcArmorAC(item as any, dexMod);
+ // v2.156.0 — Phase P pt 4: AC recompute now covers the full stack.
+ // Before v2.156 this branch only fired for armorType items and
+ // computed AC from a single piece of armor + Dex. Now we fire for
+ // ANY equip/unequip and let recomputeAC sum armor + shield + all
+ // +AC magic items that pass the attunement gate. This is the
+ // write-on-equip model: the persisted character.armor_class is
+ // always an up-to-date equipment-only snapshot.
+ if (onUpdateAC) {
+ const newAC = recomputeAC(character, updated);
  onUpdateAC(newAC);
- } else {
- // Revert to unarmored or next equipped armor
- const remaining = updated.filter(i => i.equipped && i.armorType && i.baseAC !== undefined && i.id !== id);
- if (remaining.length > 0) {
- const best = remaining.reduce((a, b) => {
- const aAC = calcArmorAC(a as any, dexMod);
- const bAC = calcArmorAC(b as any, dexMod);
- return bAC > aAC ? b : a;
- });
- onUpdateAC(calcArmorAC(best as any, dexMod));
- } else {
- onUpdateAC(10 + dexMod); // unarmored
  }
  }
+
+ // v2.155.0 — Phase P pt 3: attunement toggle with RAW 3-slot cap.
+ // Only items that require attunement (per catalogue lookup) can
+ // be toggled. Attempting to attune when already at cap is blocked
+ // UI-side (button disabled); this function is defensive and also
+ // refuses at the logic layer so programmatic callers can't exceed
+ // the cap either.
+ //
+ // v2.156.0 — Phase P pt 4: also fires recomputeAC so a Ring of
+ // Protection (+1 AC) immediately updates the character's AC the
+ // moment attunement toggles. Without this, the +1 would only
+ // appear after the user manually re-equipped the item. The gate
+ // means AC recomputes even when the attuned item has no acBonus
+ // (cheap no-op) rather than threading the check through this
+ // function.
+ function toggleAttunement(id: string) {
+ const item = inventory.find(i => i.id === id);
+ if (!item) return;
+ if (!itemRequiresAttunement(item)) return; // non-attuning items — no-op
+ const turningOn = !item.attuned;
+ if (turningOn && !hasAttunementSlotAvailable(inventory)) return;
+ const updated = inventory.map(i =>
+ i.id === id ? { ...i, attuned: turningOn } : i
+ );
+ onUpdateInventory(updated);
+ if (onUpdateAC) {
+ const newAC = recomputeAC(character, updated);
+ onUpdateAC(newAC);
  }
  }
 
@@ -538,10 +562,13 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  });
  }
 
- // Get the equipped armor item for AC tooltip
- const equippedArmor = inventory.find(i => i.equipped && i.armorType && i.baseAC !== undefined);
- const dexMod = Math.floor((character.dexterity - 10) / 2);
- const acTooltip = acBreakdown(equippedArmor as any ?? null, dexMod);
+ // v2.156.0 — Phase P pt 4: acTooltip now built from describeACBreakdown
+ // so if/when a future caller wires this into a visible tooltip, it
+ // shows the full stack (armor + Dex + shield + magic items) instead
+ // of the narrower armor-only legacy helper. Today this variable is
+ // not rendered anywhere — kept for readiness, not a behavioral change.
+ // eslint-disable-next-line @typescript-eslint/no-unused-vars
+ const acTooltip = describeACBreakdown(character, inventory);
 
  const filtered = search.trim()
  ? inventory.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
@@ -621,31 +648,54 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  ))}
  </div>
  )}
- {/* Attunement — magic items that are equipped */}
+ {/* v2.155.0 — Phase P pt 3: real attunement.
+     Replaced the pre-v2.155 display that treated any equipped
+     magical item as attuned. Now we show only items that require
+     attunement per catalogue, a real toggle, and hard enforcement
+     of the RAW 2024 3-slot cap. */}
  {(() => {
- const attuned = filtered.filter(i => i.magical && i.equipped);
- const attunementMax = 3;
- if (attuned.length === 0) return null;
+ const attunable = filtered.filter(itemRequiresAttunement);
+ if (attunable.length === 0) return null;
+ const attunedCount = countAttunedItems(inventory);
+ const atCap = attunedCount >= ATTUNEMENT_SLOT_MAX;
  return (
  <div style={{ marginBottom: 'var(--sp-2)', padding: '8px 12px', borderRadius: 'var(--r-md)', background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.2)' }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
  <div style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--ff-body)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#a78bfa' }}>
  Attunement
  </div>
- <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--ff-stat)', color: attuned.length >= attunementMax ? '#ef4444' : '#a78bfa', background: attuned.length >= attunementMax ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)', border: `1px solid ${attuned.length >= attunementMax ? 'rgba(239,68,68,0.4)' : 'rgba(167,139,250,0.4)'}`, borderRadius: 999, padding: '1px 7px' }}>
- {attuned.length}/{attunementMax}
+ <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--ff-stat)', color: atCap ? '#ef4444' : '#a78bfa', background: atCap ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)', border: `1px solid ${atCap ? 'rgba(239,68,68,0.4)' : 'rgba(167,139,250,0.4)'}`, borderRadius: 999, padding: '1px 7px' }}>
+ {attunedCount}/{ATTUNEMENT_SLOT_MAX}
  </span>
  </div>
  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
- {attuned.map(item => (
- <span key={item.id} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', color: '#c084fc' }}>
- {item.name}
- </span>
- ))}
+ {attunable.map(item => {
+ const isAttuned = item.attuned === true;
+ const canAttune = isAttuned || !atCap;
+ return (
+ <button
+ key={item.id}
+ onClick={() => toggleAttunement(item.id)}
+ disabled={!canAttune}
+ title={isAttuned ? 'Click to break attunement' : atCap ? 'Attunement cap reached — break another attunement first' : 'Click to attune'}
+ style={{
+ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+ cursor: canAttune ? 'pointer' : 'not-allowed',
+ background: isAttuned ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.03)',
+ border: `1px solid ${isAttuned ? 'rgba(167,139,250,0.5)' : 'var(--c-border)'}`,
+ color: isAttuned ? '#c084fc' : 'var(--t-3)',
+ opacity: canAttune ? 1 : 0.5,
+ fontFamily: 'inherit',
+ }}
+ >
+ {isAttuned ? '✦ ' : ''}{item.name}
+ </button>
+ );
+ })}
  </div>
- {attuned.length >= attunementMax && (
+ {atCap && (
  <div style={{ fontSize: 10, color: '#ef4444', marginTop: 5, fontFamily: 'var(--ff-body)' }}>
- Maximum attunement reached — remove an item before attuning another
+ Maximum attunement reached — break an attunement before attuning another
  </div>
  )}
  </div>

@@ -38,8 +38,16 @@ export const COMMON_BUFFS: Omit<ActiveBuff, 'id' | 'duration'>[] = [
     name: 'Mage Armor',
     icon: '🛡️',
     color: '#8b5cf6',
-    effects: ['AC = 13 + Dex modifier (overrides unarmored AC)'],
-    acBonus: 3, // approx bonus over base 10
+    // v2.156.0 — Phase P pt 4: Mage Armor is RAW an OVERRIDE, not an
+    // additive bonus. While the target is unarmored, AC becomes
+    // 13 + Dex modifier. Wearing armor? Mage Armor has no effect.
+    // The flat acBonus: 3 below only works cleanly for unarmored
+    // wizards / sorcerers (base AC 10 + Dex → 13 + Dex). For a
+    // character with 16 Dex wearing Studded Leather (AC 15 + Dex =
+    // 18), applying +3 would incorrectly give 21. DM should remove
+    // this buff when casting on armored targets.
+    effects: ['AC = 13 + Dex modifier (only if unarmored — has no effect in armor)'],
+    acBonus: 3,
   },
   {
     name: 'Shield of Faith',
@@ -47,6 +55,20 @@ export const COMMON_BUFFS: Omit<ActiveBuff, 'id' | 'duration'>[] = [
     color: '#3b82f6',
     effects: ['+2 AC bonus'],
     acBonus: 2,
+  },
+  {
+    // v2.156.0 — Phase P pt 4: Shield is a 1st-level reaction spell
+    // (Sorcerer/Wizard). Cast in response to being hit or targeted
+    // by Magic Missile — +5 AC until the start of your next turn,
+    // and Magic Missile auto-misses. Applies retroactively to the
+    // triggering attack — RAW the +5 can turn a hit into a miss.
+    // Pure additive bonus, no override semantics, fits the acBonus
+    // pipeline perfectly.
+    name: 'Shield',
+    icon: '🛡',
+    color: '#38bdf8',
+    effects: ['+5 AC until start of next turn', 'Auto-miss on all Magic Missiles this turn'],
+    acBonus: 5,
   },
   {
     name: 'Bardic Inspiration',

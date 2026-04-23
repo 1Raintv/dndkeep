@@ -33,6 +33,7 @@
 // Inventory component's equip toggle path.
 
 import type { Character, InventoryItem } from '../types';
+import { itemBonusesActive } from './attunement';
 
 export interface RecomputeACOptions {
   /** When false (default), returns the current armor_class unchanged.
@@ -94,14 +95,16 @@ export function recomputeAC(
   // Shield
   const shieldAC = equippedShield ? (equippedShield.baseAC ?? 0) : 0;
 
-  // Magic item +AC bonuses. Sum acBonus from every equipped item.
-  // v2.155 gates on attuned for items flagged requires_attunement;
-  // until then the gate is "equipped + magical + has acBonus".
+  // Magic item +AC bonuses. Sum acBonus from every equipped item
+  // whose bonuses are currently active per attunement rules.
+  // itemBonusesActive handles the equipped + (attuned OR not-required)
+  // RAW gate. For items with no magic_item_id (legacy), this falls
+  // through the non-attuning branch and returns true when equipped.
   let itemAC = 0;
   for (const item of inventory) {
-    if (!item.equipped) continue;
     if (!item.magical) continue;
     if (typeof item.acBonus !== 'number') continue;
+    if (!itemBonusesActive(item)) continue;
     itemAC += item.acBonus;
   }
 
@@ -156,11 +159,87 @@ export function describeACBreakdown(
   }
 
   for (const item of inventory) {
-    if (!item.equipped || !item.magical) continue;
+    if (!item.magical) continue;
     if (typeof item.acBonus !== 'number' || item.acBonus === 0) continue;
+    if (!itemBonusesActive(item)) continue;
     parts.push(`${item.name} ${item.acBonus >= 0 ? '+' : ''}${item.acBonus}`);
     total += item.acBonus;
   }
 
   return `${parts.join(' · ')} = ${total}`;
+}
+
+// ─── Combat-time AC layer ────────────────────────────────────────────
+// v2.156.0 — Phase P pt 4. Buffs live on combat_participants.active_buffs
+// as a jsonb array. Some of those buffs grant a flat +N AC bonus
+// (Shield, Shield of Faith, Haste). Per RAW these stack on top of the
+// character's base AC — they are NOT persisted on character.armor_class
+// because they have durations and can drop (concentration break,
+// Shield expiring at start of next turn, etc.).
+//
+// The correct time to layer them is at combat read time: when the
+// attack resolver is comparing a d20 + to-hit against the target's AC.
+// Prior to v2.156 the resolver used only the snapshot AC (equipment-
+// only), so Shield of Faith and similar buffs had zero effect on hit
+// rolls — a well-documented bug before Phase P but hidden because no
+// one had yet audited that code path.
+//
+// Buff shape (lib/buffs.ts ActiveBuff): `{ name, acBonus?: number, ... }`.
+// We accept a loose shape here because the caller (pendingAttack)
+// reads `active_buffs` jsonb which may contain custom DM-added buffs.
+
+export interface ActiveBuffLike {
+  name?: string;
+  acBonus?: number;
+}
+
+/**
+ * Layer temporary-buff AC bonuses on top of a base AC value.
+ *
+ * Caller passes the character's persisted AC (the equipment-derived
+ * number from `recomputeAC` or `character.armor_class`) along with
+ * whatever ActiveBuff[] the target currently has in combat. Returns
+ * the effective AC that attack rolls should be compared against.
+ *
+ * Note: this function handles ONLY additive acBonus values. Override-
+ * style spells that SET AC to a floor (Mage Armor when wearing armor,
+ * Barkskin's AC=16) are NOT handled here — those need their own
+ * semantics and will fall to the DM to apply manually for now.
+ */
+export function effectiveCombatAC(
+  baseAC: number,
+  activeBuffs: ActiveBuffLike[] | null | undefined,
+): number {
+  if (!activeBuffs || activeBuffs.length === 0) return baseAC;
+  let total = baseAC;
+  for (const b of activeBuffs) {
+    if (!b) continue;
+    const bonus = b.acBonus;
+    if (typeof bonus !== 'number' || bonus === 0) continue;
+    total += bonus;
+  }
+  return total;
+}
+
+/**
+ * Human-readable combat-AC breakdown for tooltips and attack resolution
+ * displays. Shows the base AC + each contributing buff so a player can
+ * see, e.g., "18 = 17 + Shield of Faith +2 + Shield +5".
+ */
+export function describeCombatACBreakdown(
+  baseAC: number,
+  activeBuffs: ActiveBuffLike[] | null | undefined,
+): string {
+  const effective = effectiveCombatAC(baseAC, activeBuffs);
+  if (!activeBuffs || activeBuffs.length === 0 || effective === baseAC) {
+    return `AC ${baseAC}`;
+  }
+  const parts = [`${baseAC}`];
+  for (const b of activeBuffs) {
+    if (!b) continue;
+    const bonus = b.acBonus;
+    if (typeof bonus !== 'number' || bonus === 0) continue;
+    parts.push(`${b.name ?? 'buff'} ${bonus >= 0 ? '+' : ''}${bonus}`);
+  }
+  return `${parts.join(' + ')} = ${effective}`;
 }

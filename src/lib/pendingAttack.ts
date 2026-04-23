@@ -28,6 +28,7 @@ import {
 import type { ActiveBuff } from './buffs';
 import { resolveAutomation } from './automations';
 import { CONDITION_MAP } from '../data/conditions';
+import { effectiveCombatAC } from './armorClass';
 import type { PendingAttack, HitResult } from '../types';
 
 // ─── Dice helpers ────────────────────────────────────────────────
@@ -312,9 +313,17 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   // v2.110.0 — Phase H: condition-aware advantage/disadvantage.
   // Load both combatants' active_conditions + token positions, compute the
   // net state, then roll 2d20 with take-higher or take-lower as appropriate.
+  //
+  // v2.156.0 — Phase P pt 4: also load target's active_buffs so the AC
+  // comparison includes temporary bonuses like Shield of Faith (+2),
+  // Haste (+2), and Shield (+5). Layered at hit-resolution time via
+  // effectiveCombatAC — buff AC is NEVER persisted to
+  // character.armor_class because buffs have durations and drop on
+  // concentration break / next turn.
   let attackerConditions: string[] = [];
   let targetConditions: string[] = [];
   let attackerBuffs: ActiveBuff[] = [];
+  let targetBuffs: ActiveBuff[] = [];
   let attackerExhaustion = 0;
   let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
   if (atk.attacker_participant_id && atk.target_participant_id) {
@@ -326,13 +335,14 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
         .maybeSingle(),
       supabase
         .from('combat_participants')
-        .select('active_conditions, entity_id, participant_type, name')
+        .select('active_conditions, active_buffs, entity_id, participant_type, name')
         .eq('id', atk.target_participant_id)
         .maybeSingle(),
     ]);
     attackerConditions = ((aRes.data?.active_conditions as string[] | null) ?? []);
     targetConditions = ((tRes.data?.active_conditions as string[] | null) ?? []);
     attackerBuffs = ((aRes.data?.active_buffs as ActiveBuff[] | null) ?? []);
+    targetBuffs = ((tRes.data?.active_buffs as ActiveBuff[] | null) ?? []);
     attackerExhaustion = ((aRes.data?.exhaustion_level as number | null) ?? 0);
 
     // Attempt distance lookup via the campaign's active battle map tokens.
@@ -401,9 +411,18 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   // Nat 20 still crits through half / three-quarters cover (RAW crit bypasses
   // AC comparison). Total cover is a hard gate: the attack never reaches a
   // valid target, so even a nat 20 misses.
+  //
+  // v2.156.0 — Phase P pt 4: also fold in buff AC bonuses from target's
+  // active_buffs (Shield +5, Shield of Faith +2, Haste +2). These stack
+  // on top of the snapshot AC and cover bonus. Only pure additive
+  // acBonus buffs apply; override-style spells (Mage Armor wearing
+  // armor, Barkskin AC-floor) require DM manual handling — those
+  // semantics aren't supported yet.
   const coverLevel = (atk.cover_level ?? 'none') as 'none' | 'half' | 'three_quarters' | 'total';
   const coverAcBonus = coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0;
-  const effectiveAc = (atk.target_ac ?? 10) + coverAcBonus;
+  const baseAc = atk.target_ac ?? 10;
+  const buffAc = effectiveCombatAC(baseAc, targetBuffs) - baseAc;
+  const effectiveAc = baseAc + coverAcBonus + buffAc;
 
   // v2.110.0 — Phase H: auto-crit when target is Paralyzed/Unconscious and
   // attacker is within 5 ft melee range. Still bypassed by total cover.
