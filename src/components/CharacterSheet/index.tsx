@@ -131,7 +131,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const row = payload.new as any;
  if (row.message_type === 'announcement') {
  setDmAnnouncement(row.message);
- setTimeout(() => setDmAnnouncement(null), 30000);
+ // v2.161.0 — Phase Q.0 pt 2: shortened from 30s → 5s. The new
+ // NotificationsButton inbox preserves history, so the in-content
+ // banner only needs to flash long enough to grab attention.
+ setTimeout(() => setDmAnnouncement(null), 5000);
  } else if (row.message_type === 'save_prompt') {
  try { setSavePrompt(JSON.parse(row.message)); } catch {}
  }

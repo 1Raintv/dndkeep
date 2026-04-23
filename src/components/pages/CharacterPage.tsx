@@ -4,6 +4,8 @@ import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getCharacter, subscribeToCharacter, supabase } from '../../lib/supabase';
 import CharacterSheet from '../CharacterSheet';
+import NotificationsButton from '../shared/NotificationsButton';
+import NotificationToast, { type ToastItem } from '../shared/NotificationToast';
 
 export default function CharacterPage() {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +14,10 @@ export default function CharacterPage() {
   const [character, setCharacter] = useState<Character | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // v2.161.0 — Phase Q.0 pt 2: notification toast state. Driven by
+  // NotificationsButton.onNewArrival callback when a new realtime
+  // notification lands.
+  const [toastItem, setToastItem] = useState<ToastItem | null>(null);
 
   const handleRealtimeUpdate = useCallback((updated: Character) => {
     // Only accept updates for the right character
@@ -94,14 +100,28 @@ export default function CharacterPage() {
             marginLeft: 'auto',
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--sp-1)',
+            gap: 'var(--sp-2)',
             color: 'var(--c-gold)',
           }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--hp-full)', display: 'inline-block' }} />
-            Live sync active
+            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--hp-full)', display: 'inline-block' }} />
+              Live sync active
+            </span>
+            {/* v2.161.0 — Phase Q.0 pt 2: notifications button.
+                Only renders when the character is in a campaign
+                (notification stream is per-campaign). */}
+            <NotificationsButton
+              campaignId={character.campaign_id ?? null}
+              onNewArrival={msg => setToastItem(msg)}
+            />
           </span>
         )}
       </div>
+
+      {/* v2.161.0 — Phase Q.0 pt 2: transient toast for new
+          notifications. Sits above all other content with
+          pointer-events scoped to its own elements. */}
+      <NotificationToast latest={toastItem} />
 
       <CharacterSheet
         initialCharacter={character}
