@@ -187,8 +187,7 @@ export default function SpellsPage() {
 }
 
 function SpellDetail({
-  spell, characters, addingTo, addSuccess,
-  onAddStart, onAddCancel, onAddConfirm,
+  spell, characters, addSuccess, onAddConfirm,
 }: {
   spell: SpellData;
   characters: Character[];
@@ -198,8 +197,6 @@ function SpellDetail({
   onAddCancel: () => void;
   onAddConfirm: (characterId: string, spellId: string) => void;
 }) {
-  const isPickingChar = addingTo === spell.id;
-
   return (
     <div className="card card-gold animate-fade-in" style={{ position: 'sticky', top: 72 }}>
       {/* Header */}
@@ -250,48 +247,125 @@ function SpellDetail({
         {spell.classes.map(c => <span key={c} className="badge badge-muted">{c}</span>)}
       </div>
 
-      {/* Add to character */}
+      {/* v2.177.0 — Phase Q.0 pt 18: direct per-character add buttons
+          with eligibility gating. Previously, a generic "Add to
+          Character" button opened a picker that let you add ANY spell
+          to ANY character regardless of class/level access — users
+          were putting Fireball on their Fighter. Now each character
+          gets a dedicated button, disabled with a reason tooltip when
+          ineligible:
+            • Class not on spell.classes     → "Not on [Class] spell list"
+            • Cantrip (level 0)              → always OK if class matches
+            • Leveled spell                  → character needs a spell
+                                               slot of that level or higher
+            • Already known                  → disabled with ✓ indicator
+          Known limitation: subclass-granted access (Eldritch Knight,
+          Arcane Trickster, Artificer infusions) isn't checked — those
+          require a subclass-specific spell-list fetch that's out of
+          scope. Fall-through is restrictive (disallow), which is the
+          correct conservative default. */}
       <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-4)' }}>
         {addSuccess ? (
           <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--hp-full)' }}>
             {addSuccess}
           </p>
-        ) : isPickingChar ? (
+        ) : characters.length === 0 ? (
+          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-3)', fontStyle: 'italic' as const }}>
+            Create a character first to add spells.
+          </p>
+        ) : (
           <div>
-            <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-2)' }}>
-              Add to which character?
+            <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 'var(--sp-2)' }}>
+              Add to Character
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-              {characters.map(c => (
-                <button
-                  key={c.id}
-                  className="btn-secondary"
-                  onClick={() => onAddConfirm(c.id, spell.id)}
-                  style={{ justifyContent: 'space-between' }}
-                >
-                  <span>{c.name}</span>
-                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
-                    Lv {c.level} {c.class_name}
-                    {c.known_spells.includes(spell.id) ? ' — already known' : ''}
-                  </span>
-                </button>
-              ))}
-              <button className="btn-ghost btn-sm" onClick={onAddCancel} style={{ alignSelf: 'flex-start' }}>
-                Cancel
-              </button>
+              {characters.map(c => {
+                const elig = getSpellEligibility(c, spell);
+                const already = c.known_spells.includes(spell.id);
+                const disabled = !elig.eligible || already;
+                const tooltip =
+                  already ? `${c.name} already knows this spell`
+                  : !elig.eligible ? elig.reason
+                  : `Add ${spell.name} to ${c.name}`;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => !disabled && onAddConfirm(c.id, spell.id)}
+                    disabled={disabled}
+                    title={tooltip}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 'var(--sp-3)',
+                      padding: '10px 14px', borderRadius: 'var(--r-md)',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      minHeight: 0,
+                      border: `1px solid ${disabled ? 'var(--c-border)' : 'rgba(212,160,23,0.45)'}`,
+                      background: disabled ? 'var(--c-raised)' : 'rgba(212,160,23,0.08)',
+                      color: disabled ? 'var(--t-3)' : 'var(--t-1)',
+                      opacity: disabled ? 0.55 : 1,
+                      textAlign: 'left' as const,
+                      transition: 'all var(--tr-fast)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start', gap: 2, minWidth: 0, flex: 1 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: disabled ? 'var(--t-2)' : 'var(--c-gold-l)' }}>
+                        {already ? '✓ ' : '+ Add to '}{c.name}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--t-3)', fontWeight: 500 }}>
+                        Level {c.level} {c.class_name}
+                        {already && ' — already known'}
+                        {!already && !elig.eligible && ` — ${elig.reason}`}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        ) : (
-          <button
-            className="btn-gold"
-            onClick={onAddStart}
-            disabled={characters.length === 0}
-            title={characters.length === 0 ? 'Create a character first' : ''}
-          >
-            Add to Character
-          </button>
         )}
       </div>
     </div>
   );
+}
+
+// v2.177.0 — Phase Q.0 pt 18: check whether a character can currently
+// learn/prepare a given spell from the browser.
+//
+// Rules (RAW 2024, simplified):
+//   1. The character's class must be on spell.classes (case-insensitive).
+//   2. For cantrips (level 0), rule 1 is sufficient.
+//   3. For leveled spells, the character needs at least one spell slot
+//      at that level (meaning: their class progression has advanced
+//      far enough to cast this level of spell). We check
+//      spell_slots[String(level)].total > 0.
+//
+// Known gaps (flagged as debt, not a blocker):
+//   • Subclass-granted access — Eldritch Knight can learn Abjuration
+//     & Evocation wizard spells; Arcane Trickster can learn
+//     Enchantment & Illusion. Not currently modeled.
+//   • Artificer infusions, Warlock Pact of the Tome, etc. — same.
+//   • 2024 half-casters (Paladin, Ranger) get spell lists at level 2;
+//     at level 1 spell_slots will be empty, which correctly disallows
+//     learning leveled spells. This is RAW.
+function getSpellEligibility(
+  char: Character,
+  spell: SpellData,
+): { eligible: true } | { eligible: false; reason: string } {
+  const charClass = (char.class_name ?? '').trim().toLowerCase();
+  const spellClasses = (spell.classes ?? []).map(c => c.toLowerCase());
+  if (!charClass) {
+    return { eligible: false, reason: 'Character has no class set' };
+  }
+  if (!spellClasses.includes(charClass)) {
+    return { eligible: false, reason: `Not on ${char.class_name} spell list` };
+  }
+  if (spell.level === 0) {
+    return { eligible: true }; // cantrip — class check is enough
+  }
+  const slotKey = String(spell.level);
+  const slot = char.spell_slots?.[slotKey];
+  if (!slot || slot.total <= 0) {
+    return { eligible: false, reason: `No Level ${spell.level} slots at this level` };
+  }
+  return { eligible: true };
 }

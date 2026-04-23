@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useMonsters } from '../../lib/hooks/useMonsters';
 import { formatCR } from '../../lib/monsterUtils';
-import { abilityModifier } from '../../lib/gameUtils';
-import type { MonsterData } from '../../types';
+import { abilityModifier, rollDiceExpression } from '../../lib/gameUtils';
+import { supabase } from '../../lib/supabase';
+import type { MonsterData, Character } from '../../types';
 
 const CR_ORDER = ['0', '1/8', '1/4', '1/2', ...Array.from({ length: 30 }, (_, i) => String(i + 1))];
 const SIZES = ['All', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
@@ -22,30 +23,118 @@ interface MonsterBrowserProps {
   compact?: boolean;
   /** v2.94.0 — Phase B: filter to show only SRD, only homebrew, or both */
   initialSourceFilter?: 'all' | 'srd' | 'homebrew';
-  /** v2.142.0 — Phase M pt 5: initial ruleset filter. Callers from a
-   *  campaign context should pass the campaign's `default_ruleset_version`
-   *  so the DM sees their preferred ruleset by default. Null/undefined
-   *  means no initial filter — all rulesets visible. */
+  /** v2.142.0 — Phase M pt 5: initial ruleset filter. */
   initialRulesetFilter?: '2014' | '2024' | null;
+  /** v2.177.0 — Phase Q.0 pt 18: when provided, the damage dice and
+   *  save DC pills in action rows become clickable buttons. Clicking
+   *  a damage pill opens a PC target picker; Apply rolls the dice and
+   *  applies damage. Clicking a DC pill broadcasts a save_prompt chat
+   *  message (same flow as PartyDashboard's Party Saving Throw). */
+  campaignId?: string | null;
 }
 
 export default function MonsterBrowser({
   onAddToCombat, compact = false,
   initialSourceFilter = 'all',
   initialRulesetFilter = null,
+  campaignId = null,
 }: MonsterBrowserProps) {
   const { monsters } = useMonsters();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'srd' | 'homebrew'>(initialSourceFilter);
-  // v2.142.0 — Phase M pt 5: ruleset filter. 'all' = no restriction.
   const [rulesetFilter, setRulesetFilter] = useState<'all' | '2014' | '2024'>(
     initialRulesetFilter ?? 'all'
   );
   const [crMin, setCrMin] = useState('');
   const [crMax, setCrMax] = useState('');
   const [selected, setSelected] = useState<MonsterData | null>(null);
+
+  // v2.177.0 — Phase Q.0 pt 18: DM-mode interactive keyword state.
+  // `partyChars` is only populated when campaignId is provided, which
+  // is the trigger for rendering the clickable damage/DC pills.
+  // `kwPicker` holds an in-flight target-picker session: null when
+  // closed, {kind, dice/dc/type, chosenIds, source} when open.
+  const [partyChars, setPartyChars] = useState<Character[]>([]);
+  const [kwPicker, setKwPicker] = useState<
+    | null
+    | { kind: 'damage'; dice: string; dmgType?: string; actionName: string; targets: Set<string> }
+    | { kind: 'save'; dc: number; saveType: string; actionName: string; targets: Set<string> }
+  >(null);
+  const [kwFlash, setKwFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!campaignId) { setPartyChars([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: members } = await supabase
+        .from('campaign_members').select('user_id').eq('campaign_id', campaignId);
+      if (!members?.length || cancelled) return;
+      const userIds = members.map((m: any) => m.user_id);
+      const { data: chars } = await supabase
+        .from('characters')
+        .select('id,name,level,class_name,current_hp,max_hp,temp_hp,armor_class,strength,dexterity,constitution,intelligence,wisdom,charisma')
+        .in('user_id', userIds).eq('campaign_id', campaignId);
+      if (!cancelled) setPartyChars((chars ?? []) as any);
+    })();
+    return () => { cancelled = true; };
+  }, [campaignId]);
+
+  // v2.177.0 — Phase Q.0 pt 18: apply damage from a damage-pill click.
+  // Rolls the dice expression, subtracts from current_hp (after
+  // temp_hp absorption per RAW), and updates the row. Temp HP absorbs
+  // first: `damage = total_damage - temp_hp; temp_hp = max(0, temp_hp - total)`.
+  async function applyKeywordDamage() {
+    if (!kwPicker || kwPicker.kind !== 'damage' || kwPicker.targets.size === 0) return;
+    let rolled: { total: number; rolls: number[] } | null = null;
+    try {
+      rolled = rollDiceExpression(kwPicker.dice);
+    } catch {
+      rolled = null;
+    }
+    if (!rolled) return;
+    const totalDmg = rolled.total;
+    const targets = partyChars.filter(c => kwPicker.targets.has(c.id));
+    await Promise.all(targets.map(c => {
+      const temp = c.temp_hp ?? 0;
+      const absorbed = Math.min(temp, totalDmg);
+      const remaining = totalDmg - absorbed;
+      const newTemp = temp - absorbed;
+      const newHp = Math.max(0, (c.current_hp ?? c.max_hp) - remaining);
+      return supabase.from('characters')
+        .update({ current_hp: newHp, temp_hp: newTemp })
+        .eq('id', c.id);
+    }));
+    setKwFlash(`Applied ${totalDmg}${kwPicker.dmgType ? ` ${kwPicker.dmgType}` : ''} to ${targets.length} target${targets.length === 1 ? '' : 's'}`);
+    setTimeout(() => setKwFlash(null), 3000);
+    setKwPicker(null);
+  }
+
+  // v2.177.0 — Phase Q.0 pt 18: broadcast a save prompt from a DC-pill
+  // click. Mirrors PartyDashboard's broadcastSavePrompt but targets a
+  // subset of characters via the v2.173 targeted-announcement payload
+  // pattern. The save prompt schema doesn't carry targets, so we
+  // encode them inline in the message JSON.
+  async function broadcastKeywordSave() {
+    if (!kwPicker || kwPicker.kind !== 'save' || kwPicker.targets.size === 0) return;
+    const payload = JSON.stringify({
+      ability: kwPicker.saveType,
+      dc: kwPicker.dc,
+      source: kwPicker.actionName,
+      targets: Array.from(kwPicker.targets),
+    });
+    await supabase.from('campaign_chat').insert({
+      campaign_id: campaignId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      character_name: 'DM',
+      message: payload,
+      message_type: 'save_prompt',
+    });
+    setKwFlash(`Sent DC ${kwPicker.dc} ${kwPicker.saveType} save to ${kwPicker.targets.size} target${kwPicker.targets.size === 1 ? '' : 's'}`);
+    setTimeout(() => setKwFlash(null), 3000);
+    setKwPicker(null);
+  }
 
   const TYPES = useMemo(
     () => ['All', ...Array.from(new Set(monsters.map(m => m.type))).sort()],
@@ -218,21 +307,158 @@ export default function MonsterBrowser({
       {/* Right: stat block */}
       {selected && !compact && (
         <div key={selected.id} className="animate-fade-in">
-          <StatBlock monster={selected} onAddToCombat={onAddToCombat} />
+          <StatBlock
+            monster={selected}
+            onAddToCombat={onAddToCombat}
+            campaignId={campaignId}
+            partyChars={partyChars}
+            onKwDamage={(dice, dmgType, actionName) => setKwPicker({ kind: 'damage', dice, dmgType, actionName, targets: new Set() })}
+            onKwSave={(dc, saveType, actionName) => setKwPicker({ kind: 'save', dc, saveType, actionName, targets: new Set() })}
+          />
         </div>
       )}
 
       {/* Compact mode: inline stat block below */}
       {selected && compact && (
         <div key={selected.id} className="animate-fade-in" style={{ gridColumn: '1 / -1' }}>
-          <StatBlock monster={selected} onAddToCombat={onAddToCombat} />
+          <StatBlock
+            monster={selected}
+            onAddToCombat={onAddToCombat}
+            campaignId={campaignId}
+            partyChars={partyChars}
+            onKwDamage={(dice, dmgType, actionName) => setKwPicker({ kind: 'damage', dice, dmgType, actionName, targets: new Set() })}
+            onKwSave={(dc, saveType, actionName) => setKwPicker({ kind: 'save', dc, saveType, actionName, targets: new Set() })}
+          />
+        </div>
+      )}
+
+      {/* v2.177.0 — Phase Q.0 pt 18: interactive keyword target picker.
+          Modal is shared between damage and save flows since the UI is
+          the same (pick targets, click Apply/Send). The difference is
+          the confirm handler. */}
+      {kwPicker && (
+        <div
+          onClick={() => setKwPicker(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16, gridColumn: '1 / -1',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--c-card)', borderRadius: 12,
+              border: `1px solid ${kwPicker.kind === 'damage' ? 'rgba(248,113,113,0.5)' : 'rgba(167,139,250,0.5)'}`,
+              maxWidth: 560, width: '100%', padding: 20,
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: kwPicker.kind === 'damage' ? '#f87171' : '#a78bfa', marginBottom: 4 }}>
+                {kwPicker.kind === 'damage' ? 'Apply Damage' : 'Broadcast Save Prompt'} — {kwPicker.actionName}
+              </div>
+              <h3 style={{ margin: 0, fontSize: 18, color: 'var(--t-1)' }}>
+                {kwPicker.kind === 'damage'
+                  ? `${kwPicker.dice}${kwPicker.dmgType ? ` ${kwPicker.dmgType}` : ''} damage`
+                  : `DC ${kwPicker.dc} ${kwPicker.saveType} save`}
+              </h3>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
+                {kwPicker.kind === 'damage'
+                  ? 'Damage is rolled when you click Apply. Temp HP absorbs first per RAW, then current HP reduces. This is a "just apply it" shortcut — use Full Combat for attack rolls, saves, resistances.'
+                  : 'Sends a save prompt only to the selected players. Their sheets show the DC + their modifier + Roll button. Results route through the standard save-roll pipeline.'}
+              </p>
+            </div>
+
+            {/* Target chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+              {partyChars.map(c => {
+                const sel = kwPicker.targets.has(c.id);
+                const accent = kwPicker.kind === 'damage' ? '#f87171' : '#a78bfa';
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      const next = new Set(kwPicker.targets);
+                      if (sel) next.delete(c.id); else next.add(c.id);
+                      setKwPicker({ ...kwPicker, targets: next });
+                    }}
+                    style={{
+                      fontSize: 11, fontWeight: sel ? 700 : 500, padding: '5px 12px', borderRadius: 999,
+                      cursor: 'pointer', minHeight: 0,
+                      border: `1px solid ${sel ? accent : 'var(--c-border-m)'}`,
+                      background: sel ? `${accent}1f` : 'var(--c-raised)',
+                      color: sel ? accent : 'var(--t-2)',
+                    }}
+                  >
+                    {sel ? '✓ ' : ''}{c.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <button
+                onClick={() => setKwPicker(null)}
+                style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                  border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-2)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => kwPicker.kind === 'damage' ? applyKeywordDamage() : broadcastKeywordSave()}
+                disabled={kwPicker.targets.size === 0}
+                style={{
+                  fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: kwPicker.targets.size === 0 ? 'not-allowed' : 'pointer', minHeight: 0,
+                  border: `1px solid ${kwPicker.kind === 'damage' ? 'rgba(248,113,113,0.5)' : 'rgba(167,139,250,0.5)'}`,
+                  background: kwPicker.kind === 'damage' ? 'rgba(248,113,113,0.15)' : 'rgba(167,139,250,0.15)',
+                  color: kwPicker.kind === 'damage' ? '#f87171' : '#a78bfa',
+                  opacity: kwPicker.targets.size === 0 ? 0.4 : 1,
+                }}
+              >
+                {kwPicker.kind === 'damage'
+                  ? `Roll & Apply to ${kwPicker.targets.size || 'N'}`
+                  : `Send Save to ${kwPicker.targets.size || 'N'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v2.177.0 — flash toast for keyword feedback */}
+      {kwFlash && (
+        <div style={{
+          position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 210,
+          padding: '10px 18px', borderRadius: 8,
+          background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.45)',
+          color: '#4ade80', fontSize: 13, fontWeight: 700,
+          gridColumn: '1 / -1',
+        }}>
+          {kwFlash}
         </div>
       )}
     </div>
   );
 }
 
-function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddToCombat?: (m: MonsterData) => void }) {
+function StatBlock({
+  monster: m, onAddToCombat,
+  campaignId, partyChars, onKwDamage, onKwSave,
+}: {
+  monster: MonsterData;
+  onAddToCombat?: (m: MonsterData) => void;
+  // v2.177.0 — Phase Q.0 pt 18: interactive keyword props. When
+  // campaignId + partyChars are provided, damage/DC pills become
+  // clickable buttons that invoke the parent's target-picker
+  // callbacks. Undefined = plain display pills (bestiary for
+  // players, or DM without a campaign).
+  campaignId?: string | null;
+  partyChars?: Character[];
+  onKwDamage?: (dice: string, dmgType: string | undefined, actionName: string) => void;
+  onKwSave?: (dc: number, saveType: string, actionName: string) => void;
+}) {
   const xpLabel = m.xp >= 1000 ? `${(m.xp / 1000).toFixed(1)}k` : String(m.xp);
   const speedStr = [
     m.speed ? `${m.speed} ft.` : '',
@@ -379,19 +605,49 @@ function StatBlock({ monster: m, onAddToCombat }: { monster: MonsterData; onAddT
                     </span>
                   )}
                   {a.damage_dice && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      {a.damage_dice} {a.damage_type}
-                    </span>
+                    campaignId && partyChars && partyChars.length > 0 && onKwDamage ? (
+                      <button
+                        onClick={() => onKwDamage(a.damage_dice!, a.damage_type, a.name)}
+                        title={`Apply ${a.damage_dice}${a.damage_type ? ` ${a.damage_type}` : ''} to party members`}
+                        style={{ fontSize: 10, fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.5)', borderRadius: 999, padding: '2px 8px', cursor: 'pointer', minHeight: 0 }}
+                      >
+                        ⚔ {a.damage_dice} {a.damage_type}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 999, padding: '1px 6px' }}>
+                        {a.damage_dice} {a.damage_type}
+                      </span>
+                    )
                   )}
                   {a.bonus_damage_dice && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#fb923c', background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      +{a.bonus_damage_dice} {a.bonus_damage_type}
-                    </span>
+                    campaignId && partyChars && partyChars.length > 0 && onKwDamage ? (
+                      <button
+                        onClick={() => onKwDamage(a.bonus_damage_dice!, a.bonus_damage_type, `${a.name} (rider)`)}
+                        title={`Apply ${a.bonus_damage_dice}${a.bonus_damage_type ? ` ${a.bonus_damage_type}` : ''} rider damage`}
+                        style={{ fontSize: 10, fontWeight: 700, color: '#fb923c', background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.5)', borderRadius: 999, padding: '2px 8px', cursor: 'pointer', minHeight: 0 }}
+                      >
+                        ⚔ +{a.bonus_damage_dice} {a.bonus_damage_type}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#fb923c', background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)', borderRadius: 999, padding: '1px 6px' }}>
+                        +{a.bonus_damage_dice} {a.bonus_damage_type}
+                      </span>
+                    )
                   )}
                   {a.dc_type && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 999, padding: '1px 6px' }}>
-                      DC {a.dc_value} {a.dc_type}
-                    </span>
+                    campaignId && partyChars && partyChars.length > 0 && onKwSave && a.dc_value ? (
+                      <button
+                        onClick={() => onKwSave(a.dc_value!, a.dc_type!, a.name)}
+                        title={`Prompt party for DC ${a.dc_value} ${a.dc_type} save`}
+                        style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.5)', borderRadius: 999, padding: '2px 8px', cursor: 'pointer', minHeight: 0 }}
+                      >
+                        🎲 DC {a.dc_value} {a.dc_type}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 999, padding: '1px 6px' }}>
+                        DC {a.dc_value} {a.dc_type}
+                      </span>
+                    )
                   )}
                   {a.usage && <span style={{ fontSize: 9, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '1px 5px' }}>{a.usage}</span>}
                 </div>

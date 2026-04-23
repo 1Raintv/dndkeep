@@ -127,7 +127,14 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       </div>
 
       {/* Item list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: compact ? 320 : 520, overflowY: 'auto' }}>
+      {/* v2.177.0 — Phase Q.0 pt 18: row sizing matched to the Attacks
+          table in the Actions tab. Previous sizing (8px padding, 40px
+          min height, 9-11px badges) was visually cramped — we were
+          compressing vertically to "fit more on one screen" but every
+          info-dense row was unreadable. Standardized on comfortable
+          12/16 padding + 15px name + 11px badges + gap 6 between rows
+          to match the weapon row feel. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: compact ? 320 : 520, overflowY: 'auto' }}>
         {filtered.map(item => {
           const rarityColor = RARITY_COLORS[item.rarity as MagicItemRarity] ?? '#c4c4c4';
           const isExpanded = expanded === item.id;
@@ -143,46 +150,46 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
                 transition: 'border-color var(--tr-fast)',
               }}
             >
-              {/* Collapsed row — always readable, min height guaranteed */}
+              {/* Collapsed row — matched to weapons list proportions */}
               <div
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 12px', cursor: 'pointer', minHeight: 40,
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 16px', cursor: 'pointer', minHeight: 56,
                 }}
                 onClick={() => setExpanded(isExpanded ? null : item.id)}
               >
                 {/* Left: name + badges */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflow: 'hidden' }}>
-                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--t-1)', flex: '0 1 auto' }}>
                       {item.name}
                     </span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: rarityColor, padding: '1px 5px', borderRadius: 3, border: `1px solid ${rarityColor}50`, background: `${rarityColor}12`, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: rarityColor, padding: '2px 7px', borderRadius: 4, border: `1px solid ${rarityColor}50`, background: `${rarityColor}12`, whiteSpace: 'nowrap', flexShrink: 0, textTransform: 'capitalize' as const }}>
                       {item.rarity}
                     </span>
                     {item.requiresAttunement && (
-                      <span style={{ fontSize: 9, color: 'var(--c-amber-l)', background: 'rgba(245,200,66,0.08)', padding: '1px 5px', borderRadius: 3, border: '1px solid rgba(245,200,66,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--c-amber-l)', background: 'rgba(245,200,66,0.08)', padding: '2px 7px', borderRadius: 4, border: '1px solid rgba(245,200,66,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         Attunement
                       </span>
                     )}
-                    <span style={{ fontSize: 9, color: 'var(--t-3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, color: 'var(--t-3)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       {TYPE_LABELS[item.type as MagicItemType] ?? item.type}
                     </span>
                   </div>
                   {!isExpanded && (
-                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                    <div style={{ fontSize: 12, color: 'var(--t-3)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', lineHeight: 1.4 }}>
                       {item.description}
                     </div>
                   )}
                 </div>
 
                 {/* Right: add button + expand chevron */}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                   {onAddToInventory && (
                     <button
                       onClick={e => { e.stopPropagation(); addToInventory(item); }}
                       style={{
-                        fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+                        fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 6,
                         cursor: 'pointer', minHeight: 0,
                         border: wasAdded ? '1px solid var(--c-border-m)' : `1px solid ${rarityColor}50`,
                         background: wasAdded ? 'var(--c-raised)' : `${rarityColor}12`,
@@ -190,21 +197,21 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
                         transition: 'all var(--tr-fast)',
                       }}
                     >
-                      {wasAdded ? '✓' : '+ Add'}
+                      {wasAdded ? '✓ Added' : '+ Add'}
                     </button>
                   )}
-                  <span style={{ fontSize: 10, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)' }}>▼</span>
+                  <span style={{ fontSize: 12, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform var(--tr-fast)' }}>▼</span>
                 </div>
               </div>
 
               {/* Expanded description */}
               {isExpanded && (
-                <div className="animate-fade-in" style={{ padding: '0 12px 12px', borderTop: `1px solid ${rarityColor}20` }}>
-                  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '8px 0' }}>
+                <div className="animate-fade-in" style={{ padding: '0 16px 14px', borderTop: `1px solid ${rarityColor}20` }}>
+                  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '10px 0' }}>
                     {item.description}
                   </p>
                   {item.weight !== undefined && item.weight > 0 && (
-                    <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 4 }}>Weight: {item.weight} lb</div>
+                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 4 }}>Weight: {item.weight} lb</div>
                   )}
                 </div>
               )}

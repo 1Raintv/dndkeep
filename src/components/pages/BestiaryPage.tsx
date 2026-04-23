@@ -4,7 +4,7 @@
 // and creating/editing personal homebrew. Read-only for SRD, full CRUD for
 // the current user's own homebrew.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useMonsters, invalidateMonstersCache } from '../../lib/hooks/useMonsters';
 import { supabase } from '../../lib/supabase';
@@ -21,6 +21,33 @@ export default function BestiaryPage() {
   const [tab, setTab] = useState<Tab>('browse');
   const [editing, setEditing] = useState<MonsterData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<MonsterData | null>(null);
+  // v2.177.0 — Phase Q.0 pt 18: DMs viewing the bestiary while running
+  // a campaign get interactive damage + DC pills in monster action
+  // rows. We auto-pick the DM's first owned active campaign on mount
+  // so the feature lights up without any extra config. If the user
+  // owns zero campaigns, the feature cleanly degrades to plain pills.
+  // A picker for multi-campaign DMs is TODO.
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [activeCampaignName, setActiveCampaignName] = useState<string | null>(null);
+  const [ownedCampaigns, setOwnedCampaigns] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    supabase
+      .from('campaigns')
+      .select('id, name')
+      .eq('owner_id', user.id)
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .then(({ data }) => {
+        if (cancelled || !data || data.length === 0) return;
+        setOwnedCampaigns(data);
+        setActiveCampaignId(data[0].id);
+        setActiveCampaignName(data[0].name);
+      });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const myHomebrew = monsters.filter(m =>
     (m.source === 'homebrew' || m.license_key === 'homebrew') &&
@@ -68,6 +95,42 @@ export default function BestiaryPage() {
         ))}
       </div>
 
+      {/* v2.177.0 — Phase Q.0 pt 18: campaign context banner. Visible
+          only when the user owns 2+ active campaigns; single-campaign
+          DMs don't need a picker, the one they own is auto-selected. */}
+      {ownedCampaigns.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const,
+          padding: '8px 12px', borderRadius: 8,
+          background: 'rgba(212,160,23,0.06)', border: '1px solid rgba(212,160,23,0.3)',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+            DM Mode
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
+            Damage &amp; save DC pills are interactive —
+            click to apply to party of&nbsp;
+          </span>
+          {ownedCampaigns.length === 1 ? (
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--t-1)' }}>{activeCampaignName}</span>
+          ) : (
+            <select
+              value={activeCampaignId ?? ''}
+              onChange={e => {
+                const next = ownedCampaigns.find(c => c.id === e.target.value);
+                setActiveCampaignId(next?.id ?? null);
+                setActiveCampaignName(next?.name ?? null);
+              }}
+              style={{ fontSize: 12, fontWeight: 700, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+            >
+              {ownedCampaigns.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <div style={{ padding: 'var(--sp-6)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)', fontSize: 13 }}>
@@ -75,7 +138,7 @@ export default function BestiaryPage() {
         </div>
       ) : (
         <>
-          {tab === 'browse' && <MonsterBrowser />}
+          {tab === 'browse' && <MonsterBrowser campaignId={activeCampaignId} />}
 
           {tab === 'homebrew' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

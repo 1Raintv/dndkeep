@@ -48,6 +48,7 @@ import ModalPortal from '../shared/ModalPortal';
 import WeaponsTracker from './WeaponsTracker';
 import RollHistory from './RollHistory';
 import CharacterHistory from './CharacterHistory';
+import UnifiedHistory from './UnifiedHistory';
 import ActiveBuffsPanel from './ActiveBuffsPanel';
 import LevelUpWizard from './LevelUpWizard';
 import LevelUpBanner from './LevelUpBanner';
@@ -3229,51 +3230,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {activeTab === 'history' && (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 900 }}>
 
- {/* v2.75.0: Character History — append-only audit log of every field
-     change, spell slot use, condition toggle, setting edit, etc. Rows
-     persist forever (RLS blocks delete; only cascades when character
-     is deleted). This sits above the existing roll/action log to make
-     it the primary view of "what happened to this character". */}
+ {/* v2.176.0 — Phase Q.0 pt 17: unified history feed. Replaces the
+     prior 3-section layout (CharacterHistory + CombatEventLog +
+     RollHistory / ActionLog) with a single filter-capable timeline
+     that merges character_history, combat_events, and DM prompts
+     from campaign_chat. Secret rolls are excluded per spec. The old
+     components still exist in src/ — kept for possible future drill-
+     down views — but no longer mounted on the History tab. */}
  <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
- Character History
+ Character Timeline
  </div>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
- Permanent log · every edit, spell slot, condition, setting change
+ DM prompts · HP · rolls · conditions · spells · newest first
  </span>
  </div>
- <CharacterHistory characterId={character.id} maxHeight={400} />
- </section>
-
- {/* v2.93.0 — Phase A: unified Combat Events log for this character */}
- <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
- Combat Events
- </div>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
- Unified log · filter by event type
- </span>
- </div>
- <CombatEventLog characterId={character.id} mode="character" maxHeight={360} />
- </section>
-
- {/* Roll & action log — rolls, attacks, saves, etc. */}
- <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
- Roll &amp; Action History
- </div>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
- {character.campaign_id ? 'Showing campaign rolls + solo rolls · newest first' : 'Showing solo rolls · newest first'}
- </span>
- </div>
- {character.campaign_id ? (
- <ActionLog campaignId={character.campaign_id} characterId={character.id} mode="character" maxHeight={400} />
- ) : (
- <RollHistory characterId={character.id} userId={userId} />
- )}
+ <UnifiedHistory characterId={character.id} campaignId={character.campaign_id ?? null} maxHeight={560} />
  </section>
 
  </div>
