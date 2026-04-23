@@ -14,6 +14,12 @@ export interface MagicItem {
   saveBonus?: number;
   attackBonus?: number;
   damageBonus?: number;
+  // v2.157.0 — Phase P pt 5: charges metadata from the DB.
+  // Populated by the useMagicItems hook from the magic_items row.
+  // maxCharges omitted or undefined = not a charged item.
+  maxCharges?: number;
+  recharge?: 'dawn' | 'dusk' | 'long_rest' | 'short_rest';
+  rechargeDice?: string;
 }
 
 export const MAGIC_ITEMS: MagicItem[] = [

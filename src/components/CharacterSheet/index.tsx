@@ -6,6 +6,7 @@ import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { useSpells } from '../../lib/hooks/useSpells';
+import { rechargeOnLongRest } from '../../lib/charges';
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import ReactionPromptModal from '../Combat/ReactionPromptModal';
@@ -728,6 +729,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  .forEach(c => conditionsToRemove.add(c));
  }
  const newConditions = (character.active_conditions ?? []).filter(c => !conditionsToRemove.has(c));
+
+ // v2.157.0 — Phase P pt 5: magic-item charge recharge.
+ // Wands, staves, and daily-use items regain charges on a long rest
+ // per their recharge schedule. We log individual recharge events so
+ // the player can see, e.g., "Wand of Fireballs: +4 charges (rolled
+ // 1d6+1) → 7/7" in the rest summary.
+ const { inventory: rechargedInventory, events: chargeEvents } =
+   rechargeOnLongRest(character.inventory ?? []);
+ if (chargeEvents.length > 0) {
+   // eslint-disable-next-line no-console
+   console.log('[long rest] item recharge:\n  ' + chargeEvents.join('\n  '));
+ }
+
  applyUpdate({
  current_hp: character.max_hp,
  temp_hp: 0,
@@ -739,6 +753,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  hit_dice_spent: newSpent,
  class_resources: newResources,
  feature_uses: {}, // All per-rest feature uses reset on long rest
+ inventory: rechargedInventory,
  }, true);
  setConcentration(null);
  setShortRestHpGained(0);

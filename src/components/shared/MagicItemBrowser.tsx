@@ -48,6 +48,9 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
     // v2.155.0 — Phase P pt 3: also link magic_item_id so the
     // attunement gate can look up requires_attunement from the
     // catalogue at bonus-aggregation time.
+    // v2.157.0 — Phase P pt 5: copy charges metadata from the
+    // catalogue so the item arrives at full capacity and the long-
+    // rest recharge pass can see its recharge schedule.
     const invItem: InventoryItem = {
       id: uuidv4(),
       name: item.name,
@@ -61,6 +64,12 @@ export default function MagicItemBrowser({ onAddToInventory, compact = false }: 
       ...(item.saveBonus   !== undefined ? { saveBonus:   item.saveBonus   } : {}),
       ...(item.attackBonus !== undefined ? { attackBonus: item.attackBonus } : {}),
       ...(item.damageBonus !== undefined ? { damageBonus: item.damageBonus } : {}),
+      ...(item.maxCharges  !== undefined ? {
+        charges_max:     item.maxCharges,
+        charges_current: item.maxCharges, // start at full capacity
+        ...(item.recharge     ? { recharge:      item.recharge     } : {}),
+        ...(item.rechargeDice ? { recharge_dice: item.rechargeDice } : {}),
+      } : {}),
     };
     onAddToInventory(invItem);
     setAdded(prev => new Set([...prev, item.id]));

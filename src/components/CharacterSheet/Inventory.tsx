@@ -1007,6 +1007,60 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll }: {
  <span style={{ fontSize: 11, color: 'var(--c-gold-l)', fontWeight: 700, flexShrink: 0 }}>×{item.quantity}</span>
  )}
 
+ {/* v2.157.0 — Phase P pt 5: charges counter.
+     Renders for any item that has a charges system (typeof
+     charges_max === 'number'). Player can tap − to spend a
+     charge, + to restore one (DM override / item interactions).
+     Stays visible even when charges_current === 0 so the player
+     can see the depleted state and remember to rest. */}
+ {typeof item.charges_max === 'number' && (
+ <div
+ onClick={e => e.stopPropagation()}
+ style={{
+ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0,
+ fontSize: 10, fontWeight: 700,
+ background: 'rgba(168,85,247,0.1)',
+ border: '1px solid rgba(168,85,247,0.35)',
+ borderRadius: 99, padding: '1px 2px 1px 7px',
+ color: (item.charges_current ?? 0) === 0 ? '#f87171' : '#c084fc',
+ }}
+ title={`${item.charges_current ?? 0}/${item.charges_max} charges${item.recharge ? ` · recharges on ${String(item.recharge).replace('_', ' ')}${item.recharge_dice ? ` (${item.recharge_dice})` : ' (full)'}` : ''}`}
+ >
+ <span>{item.charges_current ?? 0}/{item.charges_max}</span>
+ <button
+ onClick={() => {
+ const cur = item.charges_current ?? 0;
+ if (cur <= 0) return;
+ onUpdate(item.id, { charges_current: cur - 1 });
+ }}
+ disabled={(item.charges_current ?? 0) <= 0}
+ style={{
+ background: 'none', border: 'none', color: 'inherit',
+ fontSize: 12, lineHeight: 1, padding: '0 4px',
+ cursor: (item.charges_current ?? 0) > 0 ? 'pointer' : 'not-allowed',
+ opacity: (item.charges_current ?? 0) > 0 ? 1 : 0.4,
+ }}
+ title="Spend 1 charge"
+ >−</button>
+ <button
+ onClick={() => {
+ const cur = item.charges_current ?? 0;
+ const max = item.charges_max ?? 0;
+ if (cur >= max) return;
+ onUpdate(item.id, { charges_current: cur + 1 });
+ }}
+ disabled={(item.charges_current ?? 0) >= (item.charges_max ?? 0)}
+ style={{
+ background: 'none', border: 'none', color: 'inherit',
+ fontSize: 12, lineHeight: 1, padding: '0 4px',
+ cursor: (item.charges_current ?? 0) < (item.charges_max ?? 0) ? 'pointer' : 'not-allowed',
+ opacity: (item.charges_current ?? 0) < (item.charges_max ?? 0) ? 1 : 0.4,
+ }}
+ title="Restore 1 charge"
+ >+</button>
+ </div>
+ )}
+
  {/* Roll button */}
  {item.rollExpression && (
  <span

@@ -127,7 +127,25 @@ export interface InventoryItem {
   //     bonuses only apply when BOTH attuned AND equipped.
   magic_item_id?: string;
   attuned?: boolean;
-  // v2.157.0 — Phase P pt 5 will add: charges_current?: number, charges_max?: number, recharge?: 'dawn' | 'dusk' | 'long_rest'
+  // v2.157.0 — Phase P pt 5: charges.
+  //   charges_current — charges the item has right now. Decremented
+  //     when the player spends one (e.g., firing a wand). Initialized
+  //     to charges_max when added to inventory from the catalogue.
+  //   charges_max — charge capacity. Copied from the catalogue
+  //     `max_charges` column at add time so it's trivially readable
+  //     here without another DB lookup.
+  //   recharge — when the item regains charges: 'dawn' / 'dusk' /
+  //     'long_rest' / 'short_rest'. DNDKeep treats 'dawn' and
+  //     'long_rest' as equivalent triggers on a long rest, matching
+  //     how most tables play.
+  //   recharge_dice — dice expression rolled to determine how many
+  //     charges recover on the trigger. Formats: 'XdY' (e.g. '1d3'),
+  //     'XdY+N' (e.g. '1d6+1'), or null/absent which means "full
+  //     recharge" (set charges_current to charges_max).
+  charges_current?: number;
+  charges_max?: number;
+  recharge?: 'dawn' | 'dusk' | 'long_rest' | 'short_rest';
+  recharge_dice?: string;
 }
 
 export interface WeaponItem {
