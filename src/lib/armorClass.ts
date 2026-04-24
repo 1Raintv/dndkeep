@@ -169,6 +169,80 @@ export function describeACBreakdown(
   return `${parts.join(' · ')} = ${total}`;
 }
 
+// v2.186.0 — Phase Q.0 pt 27: structured AC breakdown for the click-to-
+// inspect popover on the character sheet's AC chip. Same logic as
+// describeACBreakdown above, but returns an array of {label, value}
+// rows plus a total — easier to render as a column of stat lines than
+// parsing the dot-separated string. Both functions stay in sync because
+// any change to the AC formula must update both.
+export interface ACBreakdownRow {
+  label: string;
+  /** Signed integer for visual emphasis (e.g. "+1", "-1", "10"). */
+  value: number;
+  /** Optional helper text shown in muted color under the label. */
+  detail?: string;
+}
+
+export interface ACBreakdown {
+  rows: ACBreakdownRow[];
+  total: number;
+}
+
+export function describeACBreakdownRows(
+  character: Pick<Character, 'dexterity'>,
+  inventory: InventoryItem[],
+): ACBreakdown {
+  const dexMod = Math.floor(((character.dexterity ?? 10) - 10) / 2);
+  const armor = inventory.find(
+    i => i.equipped && i.armorType && i.armorType !== 'shield' && typeof i.baseAC === 'number',
+  );
+  const shield = inventory.find(
+    i => i.equipped && i.armorType === 'shield' && typeof i.baseAC === 'number',
+  );
+
+  const rows: ACBreakdownRow[] = [];
+  let total = 0;
+
+  if (armor) {
+    const base = armor.baseAC ?? 10;
+    rows.push({ label: armor.name, value: base, detail: `Base armor` });
+    total += base;
+    if (armor.addDexMod) {
+      const cap = armor.maxDexBonus;
+      const dex = typeof cap === 'number' ? Math.min(dexMod, cap) : dexMod;
+      rows.push({
+        label: 'DEX modifier',
+        value: dex,
+        detail: typeof cap === 'number' ? `Capped at +${cap} by armor` : undefined,
+      });
+      total += dex;
+    }
+  } else {
+    rows.push({ label: 'Unarmored base', value: 10, detail: 'No armor equipped' });
+    rows.push({ label: 'DEX modifier', value: dexMod });
+    total += 10 + dexMod;
+  }
+
+  if (shield) {
+    rows.push({ label: shield.name, value: shield.baseAC ?? 0, detail: 'Shield' });
+    total += shield.baseAC ?? 0;
+  }
+
+  for (const item of inventory) {
+    if (!item.magical) continue;
+    if (typeof item.acBonus !== 'number' || item.acBonus === 0) continue;
+    if (!itemBonusesActive(item)) continue;
+    rows.push({
+      label: item.name,
+      value: item.acBonus,
+      detail: 'Magic item bonus',
+    });
+    total += item.acBonus;
+  }
+
+  return { rows, total };
+}
+
 // ─── Combat-time AC layer ────────────────────────────────────────────
 // v2.156.0 — Phase P pt 4. Buffs live on combat_participants.active_buffs
 // as a jsonb array. Some of those buffs grant a flat +N AC bonus

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
+import { describeACBreakdownRows } from '../../lib/armorClass';
 import ConditionPickerModal from './ConditionPickerModal';
 import { CONDITION_MAP } from '../../data/conditions';
 import type { Character, ComputedStats, ConditionName } from '../../types';
@@ -82,7 +83,19 @@ export default function HPStatsPanel({
     // v2.75.0: Labels spelled out fully ("AC" → "Armor Class", etc.) per user
     // request. The label <div> uppercases via CSS, so source text stays readable.
     // maxWidth bumped 80→110 and label fontSize 7→8 to fit longer words.
-    { label: 'Armor Class', value: character.armor_class,                                            color: 'var(--c-gold-l)', tooltip: acTooltip ?? 'To change AC, equip armor in the Inventory tab or use Settings → Edit Stats (override).' },
+    // v2.186.0 — Phase Q.0 pt 27: AC chip now opens a popover showing
+    // the line-itemized breakdown (base armor, DEX, shield, magic
+    // bonuses). Tooltip becomes a hint at the click affordance; the
+    // detailed text moved into the popover where it has room to be
+    // structured rather than mashed into one line.
+    {
+      label: 'Armor Class',
+      value: character.armor_class,
+      color: 'var(--c-gold-l)',
+      clickable: true,
+      onClick: () => setStatPopover(p => p === 'ac' ? null : 'ac'),
+      tooltip: 'Click to see the breakdown',
+    },
     { label: 'Initiative',  value: initMod >= 0 ? `+${initMod}` : String(initMod),                  color: '#60a5fa',         clickable: true,  onClick: rollInitiative },
     // v2.53.0: SPEED reflects condition automatically — Grappled/Restrained/Paralyzed/Stunned/
     // Unconscious/Petrified set effective speed to 0. Tooltip explains which condition is responsible.
@@ -177,6 +190,113 @@ export default function HPStatsPanel({
           We use a portal-free approach because this needs to render
           inline relative to the chip — fancy popper.js positioning
           would be overkill for a single click target. */}
+      {statPopover === 'ac' && (() => {
+        // v2.186.0 — Phase Q.0 pt 27: AC popover. Reads inventory off
+        // character to compute the breakdown via the same helper used
+        // for the AC tooltip, so the popover always matches the
+        // displayed total. If the persisted character.armor_class
+        // disagrees with the computed total (override via Settings →
+        // Edit Stats), we surface that as a warning row so the player
+        // knows the chip number isn't from the equipment math.
+        const breakdown = describeACBreakdownRows(character, character.inventory ?? []);
+        const persistedAC = character.armor_class;
+        const overridden = persistedAC !== breakdown.total;
+        return (
+          <>
+            <div
+              onClick={() => setStatPopover(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'transparent' }}
+            />
+            <div
+              role="dialog"
+              aria-label="Armor Class breakdown"
+              style={{
+                position: 'absolute', top: 64, left: 8, zIndex: 51,
+                background: 'var(--c-card)',
+                border: '1px solid var(--c-gold-bdr)',
+                borderLeft: '3px solid var(--c-gold-l)',
+                borderRadius: 'var(--r-md)',
+                padding: '12px 14px',
+                minWidth: 280, maxWidth: 360,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-l)' }}>
+                  Armor Class
+                </span>
+                <button
+                  onClick={() => setStatPopover(null)}
+                  aria-label="Close"
+                  style={{
+                    background: 'transparent', border: 'none', color: 'var(--t-3)',
+                    cursor: 'pointer', fontSize: 14, lineHeight: 1,
+                    padding: 0, minWidth: 0, minHeight: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{
+                background: 'var(--c-raised)', borderRadius: 'var(--r-md)',
+                padding: '8px 10px',
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                {breakdown.rows.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                      <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-1)', fontWeight: 600, lineHeight: 1.2 }}>
+                        {row.label}
+                      </div>
+                      {row.detail && (
+                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', lineHeight: 1.2, marginTop: 2 }}>
+                          {row.detail}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{
+                      fontFamily: 'var(--ff-stat)', fontSize: 14, fontWeight: 700,
+                      color: row.value >= 0 ? 'var(--c-gold-l)' : 'var(--c-red-l)',
+                      flexShrink: 0,
+                    }}>
+                      {row.value >= 0 ? `+${row.value}` : String(row.value)}
+                    </div>
+                  </div>
+                ))}
+                <div style={{
+                  borderTop: '1px solid var(--c-border)',
+                  paddingTop: 6, marginTop: 2,
+                  display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                }}>
+                  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)' }}>
+                    Total
+                  </span>
+                  <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 18, fontWeight: 800, color: 'var(--c-gold-l)' }}>
+                    {breakdown.total}
+                  </span>
+                </div>
+              </div>
+              {overridden && (
+                <div style={{
+                  marginTop: 8, padding: '8px 10px',
+                  background: 'rgba(245,158,11,0.08)',
+                  border: '1px solid rgba(245,158,11,0.3)',
+                  borderRadius: 'var(--r-md)',
+                  fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5,
+                }}>
+                  <strong style={{ color: '#f59e0b' }}>Override active.</strong> Your sheet
+                  shows AC {persistedAC}, but the equipped gear adds up to {breakdown.total}.
+                  Edit in Settings → Edit Stats to reconcile.
+                </div>
+              )}
+              <div style={{ marginTop: 8, fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
+                Equip armor / shield / magic items in the Inventory tab to change your AC.
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {statPopover === 'proficiency' && (() => {
         const lvl = character.level;
         const tier = Math.ceil(Math.max(1, Math.min(20, lvl)) / 4);

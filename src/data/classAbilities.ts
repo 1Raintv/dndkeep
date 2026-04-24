@@ -454,6 +454,78 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       minLevel: 1,
       isPool: true,
     },
+    // v2.187.0 — Phase Q.0 pt 28: Subtle Telekinesis is a base Psion class
+    // feature (not subclass). Cast Mage Hand at-will but invisible. No PED
+    // cost. Surfaces here so the player can see + click "Use" to log it.
+    {
+      name: 'Subtle Telekinesis',
+      actionType: 'action',
+      description: 'Cast Mage Hand at will. The hand is invisible.',
+      descriptionLong: 'You can cast Mage Hand without expending a spell slot or material components, and the spectral hand is invisible. The hand can interact with objects, push or pull, and carry items as normal — but onlookers see only the items moving on their own. Useful for stealth, infiltration, or unsettling NPCs.',
+      minLevel: 1,
+    },
+    // ─── Psi Warper subclass features (v2.187.0) ───────────────────────
+    // All 5 active/usable Psi Warper features inserted here so they render
+    // under PSION ABILITIES on the Actions tab. We do NOT subclass-gate
+    // these because (a) Psion currently has only one subclass in published
+    // material (Psi Warper, UA), and (b) ClassAbilitiesSection has no
+    // subclass filter — adding one would touch the renderer for one class.
+    // If/when other subclasses ship (Metamorph, Psykinetic, Telepath),
+    // we'll need to add a `subclass?: string` field to ClassAbility and
+    // gate at filter time. For now: the user's character ghj is Psi
+    // Warper, so this is correct in practice.
+    //
+    // Free Misty Step + PED-restoration mechanic isn't auto-tracked yet
+    // (no schema for "feature uses remaining"). That's v2.188 work.
+    // Today the player tracks it manually via Use button → action log.
+    {
+      name: 'Free Misty Step (Teleportation)',
+      actionType: 'bonus',
+      description: 'Cast Misty Step without a spell slot. Once per Long Rest. Restore by spending 1 Psionic Energy Die.',
+      descriptionLong: 'Cast Misty Step without expending a spell slot. Once you use this feature, you can\'t do so again until you finish a Long Rest, OR until you spend 1 Psionic Energy Die (no action required) to restore the use.\n\nAt level 6+ this combines with Teleporter Combat: after the Misty Step bonus action, you may immediately cast a Psion cantrip with an Action casting time as part of the same Bonus Action.',
+      minLevel: 3,
+    },
+    {
+      name: 'Warp Propel',
+      actionType: 'special',
+      description: 'When a target fails the save vs Telekinetic Propel, teleport it to an unoccupied space within 30 ft instead of pushing.',
+      descriptionLong: 'Modifies your Telekinetic Propel feature. When a target fails the saving throw against Telekinetic Propel, you can choose to teleport the target to an unoccupied space you can see within 30 ft of where it was, instead of pushing it. The teleported target lands prone.\n\nCombines with Mass Teleportation at level 14.',
+      minLevel: 3,
+    },
+    {
+      name: 'Warp Space',
+      actionType: 'action',
+      description: 'Cast Shatter, spend 1 PED to expand radius to 20 ft and pull failing creatures toward the center.',
+      descriptionLong: 'When you cast Shatter, you can spend 1 Psionic Energy Die. The spell\'s radius expands from 10 ft to 20 ft, and creatures that fail the Constitution saving throw are pulled up to 10 ft toward the spell\'s point of origin in addition to taking damage.\n\nThis is an alternate cast of Shatter (which remains separately available in your spell list); Warp Space costs both a 2nd-level spell slot AND 1 Psionic Energy Die.',
+      minLevel: 6,
+      isPool: true,
+      psionicDie: true,
+    },
+    {
+      name: 'Teleporter Combat',
+      actionType: 'bonus',
+      description: 'After casting Misty Step, immediately cast a Psion cantrip (action casting time) as part of the same Bonus Action.',
+      descriptionLong: 'When you cast Misty Step (whether via spell slot or via your Free Misty Step feature), you may immediately cast one Psion cantrip with an Action casting time as part of the same Bonus Action — without taking a separate Action.\n\nThis effectively lets you teleport and attack in the same turn while keeping your Action free for Dash, Dodge, or another use.',
+      minLevel: 6,
+    },
+    {
+      name: 'Duplicitous Target',
+      actionType: 'reaction',
+      description: 'Reaction: when attacked, spend 1 PED to swap places with a willing ally within 30 ft. Attack hits them instead.',
+      descriptionLong: 'When a creature you can see attacks you, you can use your Reaction and spend 1 Psionic Energy Die to swap places with a willing ally within 30 ft. The ally takes the attack instead of you.\n\nThe ally must be willing — you can\'t involuntarily swap with an unwilling target. Both you and the ally must have line of sight to each other and there must be no full cover between you.',
+      minLevel: 10,
+      isPool: true,
+      psionicDie: true,
+    },
+    {
+      name: 'Mass Teleportation',
+      actionType: 'action',
+      description: 'Magic action: spend 4 PED. Teleport up to INT mod creatures within 30 ft to spaces within 150 ft. Unwilling targets WIS save.',
+      descriptionLong: 'Take a Magic action and spend 4 Psionic Energy Dice. Choose up to a number of creatures equal to your Intelligence modifier (minimum 1) within 30 ft of you. You teleport each chosen creature to an unoccupied space you can see within 150 ft.\n\nWilling targets are simply moved. Unwilling targets must succeed on a Wisdom saving throw against your spell save DC or be teleported anyway.\n\nYou may include yourself among the chosen targets.',
+      minLevel: 14,
+      isPool: true,
+      psionicDie: true,
+    },
   ],
 };
 
