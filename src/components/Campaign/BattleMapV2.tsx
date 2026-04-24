@@ -19,11 +19,16 @@
 // already have one in the current scene (linked by character_id).
 // Idempotent re-click. Tokens commit to DB and propagate via
 // Realtime so all players see their party appear at once.
+// v2.221.0 — Phase Q.1 pt 14: Live HP bar on tokens linked to a
+// player character. Color-graded (green/yellow/red/gray) bar pinned
+// below the token. Updates whenever the parent's playerCharacters
+// prop changes (i.e. whenever a character's HP updates anywhere in
+// the app). No DB or realtime additions; pure derived rendering.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
@@ -517,10 +522,17 @@ function TokenLayer(props: {
   // v2.218 — when the ruler is active, ALL token interactions are
   // suppressed so the ruler gesture owns the pointer exclusively.
   rulerActive?: boolean;
+  // v2.221 — character HP lookup for live HP bars on PC tokens.
+  // Map<characterId, { current, max }>. Tokens whose characterId
+  // matches an entry get an HP bar rendered underneath. Pure data
+  // flow — store does not own this; it's derived from the
+  // playerCharacters prop on every render.
+  characterHpMap?: Map<string, { current: number; max: number }>;
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive,
+    characterHpMap,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -546,6 +558,11 @@ function TokenLayer(props: {
     // remote user is dragging this token. Kept separate from `circle`
     // so we can toggle its visibility cheaply without redraws.
     lockRing: Graphics | null;
+    // v2.221: HP bar — a thin pill rendered under the token when the
+    // token is linked to a known character. Lazily created on first
+    // bar draw, redrawn when HP values change. null if the token has
+    // no characterId or the linked character isn't in characterHpMap.
+    hpBar: Graphics | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
@@ -604,6 +621,7 @@ function TokenLayer(props: {
           container, circle, initials,
           sprite: null, mask: null, currentPath: null, loadGen: 0,
           lockRing: null,
+          hpBar: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -821,8 +839,63 @@ function TokenLayer(props: {
         }
         currentEntry.lockRing = null;
       }
+
+      // v2.221 — HP bar. Only renders when the token is linked to a
+      // character we have HP data for. Bar sits below the token at
+      // a constant offset; width scales with token radius so Tiny vs
+      // Gargantuan both look proportional. Color shifts from green
+      // (full) → yellow (50%) → red (25%) for at-a-glance status.
+      const hpInfo = token.characterId && characterHpMap
+        ? characterHpMap.get(token.characterId)
+        : null;
+      if (hpInfo && hpInfo.max > 0) {
+        let bar = currentEntry.hpBar;
+        if (!bar || bar.destroyed) {
+          bar = new Graphics();
+          container.addChild(bar);
+          currentEntry.hpBar = bar;
+        }
+        // Width is 80% of token diameter, capped so it stays readable
+        // on small tokens without floating off larger ones.
+        const barWidth = Math.max(28, Math.min(r * 1.6, 96));
+        const barHeight = 5;
+        const barY = r + 6; // 6px below token rim
+        const barX = -barWidth / 2;
+        const ratio = Math.max(0, Math.min(1, hpInfo.current / hpInfo.max));
+
+        // Color thresholds — match conventional VTT semantics.
+        let fillColor: number;
+        if (ratio > 0.5) fillColor = 0x34d399;       // green
+        else if (ratio > 0.25) fillColor = 0xfbbf24; // yellow
+        else if (ratio > 0) fillColor = 0xf87171;    // red
+        else fillColor = 0x6b7280;                   // gray (0 HP / dropped)
+
+        bar.clear();
+        // Background pill (dim, full width).
+        bar.setFillStyle({ color: 0x0f1012, alpha: 0.85 });
+        bar.roundRect(barX, barY, barWidth, barHeight, barHeight / 2);
+        bar.fill();
+        // Filled portion.
+        if (ratio > 0) {
+          bar.setFillStyle({ color: fillColor, alpha: 0.95 });
+          bar.roundRect(barX, barY, barWidth * ratio, barHeight, barHeight / 2);
+          bar.fill();
+        }
+        // Outline for definition against busy backgrounds.
+        bar.setStrokeStyle({ color: 0x000000, width: 1, alpha: 0.5 });
+        bar.roundRect(barX, barY, barWidth, barHeight, barHeight / 2);
+        bar.stroke();
+      } else if (currentEntry.hpBar) {
+        // Token is no longer linked / character data unavailable —
+        // remove the bar.
+        if (!currentEntry.hpBar.destroyed) {
+          container.removeChild(currentEntry.hpBar);
+          currentEntry.hpBar.destroy();
+        }
+        currentEntry.hpBar = null;
+      }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -1955,6 +2028,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     setCurrentScene(prev => prev && prev.id === id ? null : prev);
   }, []);
 
+  // v2.221 — derive characterId → HP lookup for the HP-bar overlay
+  // on PC tokens. Memoized on playerCharacters identity so we don't
+  // rebuild every BattleMapV2 render. The map is recreated whenever
+  // playerCharacters changes (which happens whenever a character's
+  // HP updates, since CampaignDashboard owns the characters state).
+  const characterHpMap = useMemo(() => {
+    const map = new Map<string, { current: number; max: number }>();
+    for (const c of props.playerCharacters) {
+      map.set(c.id, { current: c.current_hp, max: c.max_hp });
+    }
+    return map;
+  }, [props.playerCharacters]);
+
   const handleRequestMapUpload = useCallback(() => {
     if (!currentScene) return;
     mapInputRef.current?.click();
@@ -2224,6 +2310,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onDragMove={handleDragMove}
                     onDragEnd={handleDragEnd}
                     rulerActive={rulerActive}
+                    characterHpMap={characterHpMap}
                   />
                   {/* v2.218 — rendered last so the ruler's Graphics +
                       label appear on top of tokens. Internally addChild's
