@@ -2514,37 +2514,30 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      character_history for the player's personal audit trail, and marks
      Action as used so Turn Economy flips and leveled spells get locked
      out for the turn.
-     v2.87.0: Hidden on 'limited' filter — standard actions are unlimited. */}
+     v2.87.0: Hidden on 'limited' filter — standard actions are unlimited.
+     v2.198.0 — Phase Q.0 pt 39: collapse toggle removed. Now that
+     v2.182's pill-grid layout makes the section visually compact (one
+     row of 10 small pills instead of 10 stacked cards), there's no
+     reason to hide it by default. Always-visible cuts an extra click
+     out of every Dash/Dodge/Hide decision and keeps DASHING/DODGING
+     active-effect chips visible without needing to expand the section. */}
  {(combatFilter === 'all' || combatFilter === 'action') && (
  <div>
- {/* v2.88.0: Header is now a clickable toggle. Collapsed by default (10
-     cards were too much vertical noise for something used rarely). When
-     closed, shows a tiny preview + chevron; when open, the full card
-     grid renders below. Active effects (DASHING/DODGING) show on the
-     header even when collapsed so the player remembers they're active. */}
- <button
- onClick={() => setStandardActionsOpen(o => !o)}
+ {/* Static header — no longer a clickable toggle. Active-effect
+     chips (DASHING/DODGING) live inline with the title. */}
+ <div
  style={{
  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
- borderWidth: 0, borderBottomWidth: 1, borderStyle: 'solid', borderColor: 'var(--c-border)',
- background: 'transparent',
- marginBottom: standardActionsOpen ? 8 : 0, marginTop: 4,
- cursor: 'pointer', textAlign: 'left' as const, padding: '0 0 5px 0',
- minHeight: 0,
+ borderBottom: '1px solid var(--c-border)',
+ marginBottom: 8, marginTop: 4,
+ padding: '0 0 5px 0',
  }}
- title={standardActionsOpen ? 'Collapse Standard Actions' : 'Expand Standard Actions (Dash, Dodge, Hide, Help, etc.)'}
  >
  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
- <span style={{
- fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
- letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)',
- transition: 'transform 0.2s',
- transform: standardActionsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
- }}>▶</span>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
  Standard Actions
  </span>
- {/* Active-effect chips — persist on the header when collapsed */}
+ {/* Active-effect chips — same as before */}
  {dashingThisTurn && (
  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', padding: '2px 7px', borderRadius: 999, color: '#60a5fa', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.4)' }}>
  DASHING +{character.speed ?? 30}FT
@@ -2557,21 +2550,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
  </span>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
- {standardActionsOpen ? 'broadcasts to party · uses your Action' : `${STANDARD_ACTIONS.length} actions · tap to expand`}
+ broadcasts to party · uses your Action
  </span>
- </button>
- {standardActionsOpen && (
+ </div>
  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
  {/* v2.182.0 — Phase Q.0 pt 23: standard actions rebuilt as a
-     compact pill grid + detail panel. Previously each of the 10
-     actions rendered as its own full-width card (name + badge +
-     Use button + chevron + description = 4 lines per card, 10
-     cards = huge vertical footprint for something used rarely).
-     Now: wrap-flex row of small buttons; click one to expand a
-     single detail panel below showing the long description and
-     a Use button. Clicking the same pill again collapses it. The
-     'Use' execution path is unchanged — same handleUse wired to
-     the Use button in the expanded panel. */}
+     compact pill grid + detail panel. Click a pill to expand its
+     description + Use button below. Only one detail panel open at a
+     time. */}
  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
  {STANDARD_ACTIONS.map(action => {
  const isExpanded = expandedStandardAction === action.id;
@@ -2699,7 +2685,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  );
  })()}
  </div>
- )}
  </div>
  )}
 

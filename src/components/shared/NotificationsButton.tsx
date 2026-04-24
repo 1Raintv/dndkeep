@@ -72,20 +72,29 @@ export default function NotificationsButton({ campaignId, characterId = null, on
         {unreadCount > 0 && (
           <span style={{
             position: 'absolute',
-            top: -4,
-            right: -4,
-            minWidth: 16,
-            height: 16,
-            borderRadius: 8,
+            // v2.198.0 — Phase Q.0 pt 39: badge sized to fit 2-digit
+            // counts. Previous (16x16, fontSize 9) cropped the second
+            // digit when count >= 10 because padding 4+4=8 left only
+            // 8px for the text — fine for "1", "9" but cut off on "10",
+            // "23", etc. Bump to 20x20 with fontSize 10 + tighter
+            // padding gives ~14px text width, enough for "99".
+            // Repositioned slightly inward so the larger badge still
+            // sits ON the bell rather than escaping to the right.
+            top: -6,
+            right: -6,
+            minWidth: 20,
+            height: 20,
+            borderRadius: 10,
             background: '#ef4444',
             color: '#fff',
-            fontSize: 9,
+            fontSize: 10,
             fontWeight: 800,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '0 4px',
+            padding: '0 5px',
             border: '1px solid var(--c-card)',
+            lineHeight: 1,
           }}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
