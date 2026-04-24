@@ -11,14 +11,18 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.43.1",
+    "@pixi/react": "^8.0.5",
     "@stripe/stripe-js": "^3.5.0",
+    "@supabase/supabase-js": "^2.43.1",
+    "cannon-es": "^0.20.0",
+    "pixi-viewport": "^6.0.3",
+    "pixi.js": "^8.18.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^6.23.1",
-    "uuid": "^10.0.0",
     "three": "^0.163.0",
-    "cannon-es": "^0.20.0"
+    "uuid": "^10.0.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
