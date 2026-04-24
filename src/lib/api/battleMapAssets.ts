@@ -82,3 +82,64 @@ export async function uploadTokenPortrait(
   }
   return path;
 }
+
+// -----------------------------------------------------------------------
+// v2.217 — Scene background image helpers.
+//
+// Same bucket (`battlemap-assets`), same size/MIME gates. Paths use the
+// scenes/ sub-tree with the sceneId for traceability:
+//   {userId}/scenes/{sceneId}-{Date.now()}.{ext}
+// The timestamp suffix acts as a cache-bust key identical to the portrait
+// upload pattern.
+//
+// Backgrounds can be larger / wider aspect than portraits. Bucket limit
+// is 5 MB; a typical 2048×2048 PNG landmark is 2-4 MB, which fits fine.
+// DMs who need larger maps can paid-tier-upgrade Supabase storage, but
+// we should add a "downscale to fit" path in a future ship.
+
+/** Returns the browser-facing public URL for a background path — same
+ *  function body as getPortraitUrl but semantically distinct; keeps the
+ *  caller sites explicit about which asset type they're rendering. */
+export function getSceneBackgroundUrl(path: string | null | undefined): string | null {
+  return getPortraitUrl(path); // identical bucket + format → reuse
+}
+
+/** Upload a scene background. Returns stored path on success, null on
+ *  error. Caller updates scenes.background_storage_path via the scenes
+ *  API. */
+export async function uploadSceneBackground(
+  file: File,
+  userId: string,
+  sceneId: string
+): Promise<string | null> {
+  if (!file) return null;
+  if (!ACCEPTED_PORTRAIT_MIME.includes(file.type)) {
+    console.error('[battleMapAssets] scene bg rejected MIME', file.type);
+    return null;
+  }
+  if (file.size > MAX_PORTRAIT_BYTES) {
+    console.error('[battleMapAssets] scene bg file too large', file.size, 'bytes');
+    return null;
+  }
+
+  const extFromMime: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  };
+  const ext = extFromMime[file.type] ?? 'png';
+  const path = `${userId}/scenes/${sceneId}-${Date.now()}.${ext}`;
+
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    cacheControl: '31536000',
+    upsert: false,
+    contentType: file.type,
+  });
+
+  if (error) {
+    console.error('[battleMapAssets] scene bg upload failed', error);
+    return null;
+  }
+  return path;
+}

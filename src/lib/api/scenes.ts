@@ -104,10 +104,10 @@ export async function deleteScene(sceneId: string): Promise<boolean> {
   return true;
 }
 
-/** Update mutable scene fields (name, grid settings, published state). */
+/** Update mutable scene fields (name, grid settings, background, published state). */
 export async function updateScene(
   sceneId: string,
-  patch: Partial<Pick<Scene, 'name' | 'isPublished' | 'dmNotes' | 'gridSizePx' | 'widthCells' | 'heightCells'>>
+  patch: Partial<Pick<Scene, 'name' | 'isPublished' | 'dmNotes' | 'gridSizePx' | 'widthCells' | 'heightCells' | 'backgroundStoragePath'>>
 ): Promise<boolean> {
   const dbPatch: Record<string, any> = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -116,6 +116,8 @@ export async function updateScene(
   if (patch.gridSizePx !== undefined) dbPatch.grid_size_px = patch.gridSizePx;
   if (patch.widthCells !== undefined) dbPatch.width_cells = patch.widthCells;
   if (patch.heightCells !== undefined) dbPatch.height_cells = patch.heightCells;
+  // v2.217: allow explicit null (remove background); undefined means "leave alone".
+  if (patch.backgroundStoragePath !== undefined) dbPatch.background_storage_path = patch.backgroundStoragePath;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scenes').update(dbPatch).eq('id', sceneId);
   if (error) {

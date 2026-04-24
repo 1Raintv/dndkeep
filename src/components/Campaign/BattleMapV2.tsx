@@ -6,34 +6,23 @@
 // v2.213.0 — Phase Q.1 pt 6: scene persistence — scene picker, DB hydration.
 // v2.214.0 — Phase Q.1 pt 7: Realtime multiplayer sync via Postgres Changes.
 // v2.215.0 — Phase Q.1 pt 8: portrait upload + Pixi Sprite rendering.
-// v2.216.0 — Phase Q.1 pt 9: live drag previews + drag-locks. During a
-// drag, the dragging client broadcasts position updates at ~20Hz via
-// Supabase Realtime Broadcast; other clients see the token slide across
-// the grid in real time. Supabase Presence tracks "who is dragging
-// what" so duplicate drags are prevented (two users can't grab the same
-// token simultaneously) and a visual ring indicator shows remote-held
-// locks. On drag release the final commit still goes through the DB
-// (Postgres Changes from v2.214 syncs the snapped position authoritatively).
+// v2.216.0 — Phase Q.1 pt 9: live drag previews + drag-locks via Broadcast+Presence.
+// v2.217.0 — Phase Q.1 pt 10: scene background image upload + render.
+// The biggest visual transformation in the Phase Q.1 arc: instead of
+// grid-on-black, DMs can upload a map PNG/JPG and see it render
+// beneath the grid and tokens. Uses the existing v2.215 assets bucket
+// with a new `scenes/` path prefix. Changes propagate via the v2.214
+// scenes Realtime channel so all connected clients see the map appear.
 //
-// Commit strategy (unchanged from v2.214):
-//   - Optimistic local store update first
-//   - Broadcast mid-drag positions to peers (ephemeral, bypasses DB)
-//   - On release: DB write → Postgres Changes syncs snapped position
-//     to all clients including the originator (idempotent upsert)
-//
-// Drag-lock lifecycle:
-//   - pointerdown → refuse if remoteDragLocks[tokenId] != currentUserId
-//   - Start drag → channel.track({ userId, draggingTokenId: tokenId })
-//   - pointerup  → channel.track({ userId, draggingTokenId: null }) +
-//                  locally clear remoteDragLocks[tokenId] for immediate
-//                  feedback (presence 'sync' event arrives shortly after
-//                  to confirm).
-//   - Disconnect → Presence auto-cleans (Phoenix Tracker CRDT)
+// Layer order inside viewport (back to front):
+//   1. BackgroundLayer — uploaded Sprite, stretched to world bounds
+//   2. GridOverlay     — grid lines
+//   3. TokenLayer      — Container-per-token with Sprite/Graphics + Text
 //
 // Next ships:
-//   v2.217 — Scene delete/rename UI, confirm-on-delete for tokens,
-//            toast system to replace alerts/prompts.
-//   v2.218 — walls + doors + static fog of war (Phase 3 of the plan)
+//   v2.218 — Scene settings panel (rename, grid size, width/height, delete)
+//   v2.219 — Walls + doors (Phase 3 of the plan, drawing tools)
+//   v2.220 — Per-player vision + fog of war (Phase 4)
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -176,6 +165,96 @@ function ViewportHost(props: {
   }, [screenWidth, screenHeight, worldWidth, worldHeight]);
 
   return <>{children(viewport)}</>;
+}
+
+/**
+ * v2.217 — Scene background image layer.
+ *
+ * When the scene has a backgroundStoragePath, we load the texture and
+ * render a Sprite that fills the world (0,0) → (worldWidth, worldHeight).
+ * The sprite is the lowest child of the viewport (below grid + tokens),
+ * so grid lines and tokens always render on top.
+ *
+ * Design decisions:
+ *  - Stretch-to-world rather than preserving aspect. Rationale: the
+ *    DM knows their image's aspect and is expected to configure scene
+ *    dimensions to match. v2.218 can add aspect-preserving helpers.
+ *  - Texture loads are async via Pixi Assets; we show nothing during
+ *    load (grid renders on transparent, which is fine on the dark bg).
+ *  - Like TokenLayer's portrait loader, a loadGen counter guards
+ *    against stale resolutions when the path changes rapidly.
+ *  - On path=null (removed): destroy sprite, no draw.
+ */
+function BackgroundLayer(props: {
+  viewport: Viewport | null;
+  backgroundPath: string | null;
+  worldWidth: number;
+  worldHeight: number;
+}) {
+  const { viewport, backgroundPath, worldWidth, worldHeight } = props;
+  const spriteRef = useRef<Sprite | null>(null);
+  const loadGenRef = useRef(0);
+  const currentPathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!viewport) return;
+
+    // If path matches what we already have loaded and world dims
+    // changed, just resize in place — avoid a reload.
+    if (backgroundPath === currentPathRef.current && spriteRef.current && !spriteRef.current.destroyed) {
+      spriteRef.current.width = worldWidth;
+      spriteRef.current.height = worldHeight;
+      return;
+    }
+
+    // Path changed (or first render) — tear down the old sprite.
+    loadGenRef.current += 1;
+    const thisGen = loadGenRef.current;
+    currentPathRef.current = backgroundPath;
+
+    if (spriteRef.current) {
+      if (!spriteRef.current.destroyed) {
+        viewport.removeChild(spriteRef.current);
+        spriteRef.current.destroy();
+      }
+      spriteRef.current = null;
+    }
+
+    if (!backgroundPath) return; // nothing to render
+
+    const url = assetsApi.getSceneBackgroundUrl(backgroundPath);
+    if (!url) return;
+
+    Assets.load<Texture>(url).then(texture => {
+      if (loadGenRef.current !== thisGen) return;
+      if (!viewport || viewport.destroyed) return;
+
+      const sprite = new Sprite(texture);
+      sprite.x = 0;
+      sprite.y = 0;
+      sprite.width = worldWidth;
+      sprite.height = worldHeight;
+      // v2.217: put background at the LOWEST z-index so grid + tokens
+      // render above it. viewport's addChildAt(sprite, 0) inserts at
+      // the front of the children array.
+      viewport.addChildAt(sprite, 0);
+      spriteRef.current = sprite;
+    }).catch(err => {
+      console.error('[BackgroundLayer] texture load failed', backgroundPath, err);
+    });
+  }, [viewport, backgroundPath, worldWidth, worldHeight]);
+
+  // Cleanup on unmount or viewport change.
+  useEffect(() => {
+    return () => {
+      if (spriteRef.current && !spriteRef.current.destroyed) {
+        spriteRef.current.destroy();
+        spriteRef.current = null;
+      }
+    };
+  }, []);
+
+  return null;
 }
 
 function GridOverlay(props: {
@@ -1234,6 +1313,66 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     setCurrentScene(scene);
   }, [campaignId, userId, scenes.length]);
 
+  // v2.217 — scene background upload. Separate from portrait uploads:
+  // own hidden <input>, own in-flight state, own commit path.
+  const mapInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingMap, setUploadingMap] = useState(false);
+
+  const handleRequestMapUpload = useCallback(() => {
+    if (!currentScene) return;
+    mapInputRef.current?.click();
+  }, [currentScene]);
+
+  const handleMapFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so re-picking the same file re-fires
+    if (!file || !currentScene) return;
+
+    if (!assetsApi.ACCEPTED_PORTRAIT_MIME.includes(file.type)) {
+      alert(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`);
+      return;
+    }
+    if (file.size > assetsApi.MAX_PORTRAIT_BYTES) {
+      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`);
+      return;
+    }
+
+    setUploadingMap(true);
+    try {
+      const path = await assetsApi.uploadSceneBackground(file, userId, currentScene.id);
+      if (!path) {
+        alert('Map upload failed. Check the browser console for details.');
+        return;
+      }
+      // Optimistic local update — update both the scenes list + currentScene.
+      setScenes(prev => prev.map(s => s.id === currentScene.id
+        ? { ...s, backgroundStoragePath: path }
+        : s));
+      setCurrentScene(prev => prev && prev.id === currentScene.id
+        ? { ...prev, backgroundStoragePath: path }
+        : prev);
+      scenesApi.updateScene(currentScene.id, { backgroundStoragePath: path }).catch(err =>
+        console.error('[BattleMapV2] scene bg commit failed', err)
+      );
+    } finally {
+      setUploadingMap(false);
+    }
+  }, [userId, currentScene]);
+
+  const handleRemoveMap = useCallback(() => {
+    if (!currentScene?.backgroundStoragePath) return;
+    if (!window.confirm('Remove the current map image? The grid will render on a plain background.')) return;
+    setScenes(prev => prev.map(s => s.id === currentScene.id
+      ? { ...s, backgroundStoragePath: null }
+      : s));
+    setCurrentScene(prev => prev && prev.id === currentScene.id
+      ? { ...prev, backgroundStoragePath: null }
+      : prev);
+    scenesApi.updateScene(currentScene.id, { backgroundStoragePath: null }).catch(err =>
+      console.error('[BattleMapV2] scene bg remove commit failed', err)
+    );
+  }, [currentScene]);
+
   const handleContextMenu = useCallback((state: ContextMenuState) => {
     setContextMenu(state);
   }, []);
@@ -1406,6 +1545,12 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               vpRef.current = vp;
               return (
                 <>
+                  <BackgroundLayer
+                    viewport={vp}
+                    backgroundPath={currentScene?.backgroundStoragePath ?? null}
+                    worldWidth={WORLD_WIDTH}
+                    worldHeight={WORLD_HEIGHT}
+                  />
                   <GridOverlay
                     viewport={vp}
                     widthCells={widthCells}
@@ -1452,6 +1597,46 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               display: 'flex', gap: 6,
             }}
           >
+            <button
+              onClick={handleRequestMapUpload}
+              title={currentScene.backgroundStoragePath
+                ? 'Replace the current map image'
+                : 'Upload a map image as the scene background'}
+              style={{
+                padding: '5px 12px',
+                background: 'rgba(96,165,250,0.18)',
+                border: '1px solid rgba(96,165,250,0.5)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: '#60a5fa',
+                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.3)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.18)'; }}
+            >
+              {currentScene.backgroundStoragePath ? 'Change Map' : 'Upload Map'}
+            </button>
+            {currentScene.backgroundStoragePath && (
+              <button
+                onClick={handleRemoveMap}
+                title="Remove the current map image"
+                style={{
+                  padding: '5px 12px',
+                  background: 'rgba(248,113,113,0.15)',
+                  border: '1px solid rgba(248,113,113,0.4)',
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: '#f87171',
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.28)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.15)'; }}
+              >
+                Remove Map
+              </button>
+            )}
             <button
               onClick={addToken}
               title="Add a token at viewport center"
@@ -1539,6 +1724,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           onChange={handleFileSelected}
         />
 
+        {/* v2.217 hidden file input for scene background uploads. */}
+        <input
+          ref={mapInputRef}
+          type="file"
+          accept={assetsApi.ACCEPTED_PORTRAIT_MIME.join(',')}
+          style={{ display: 'none' }}
+          onChange={handleMapFileSelected}
+        />
+
         {/* v2.215 upload status banner — appears while uploading. */}
         {uploadingTokenId && (
           <div
@@ -1554,6 +1748,24 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             }}
           >
             UPLOADING PORTRAIT…
+          </div>
+        )}
+
+        {/* v2.217 upload status banner for map. */}
+        {uploadingMap && (
+          <div
+            style={{
+              position: 'absolute', top: 44, left: 12,
+              padding: '4px 10px',
+              background: 'rgba(15,16,18,0.85)',
+              border: '1px solid rgba(96,165,250,0.5)',
+              borderRadius: 'var(--r-sm, 4px)',
+              fontFamily: 'var(--ff-body)', fontSize: 10,
+              fontWeight: 700, letterSpacing: '0.04em',
+              color: '#60a5fa', pointerEvents: 'none' as const,
+            }}
+          >
+            UPLOADING MAP IMAGE…
           </div>
         )}
       </div>
