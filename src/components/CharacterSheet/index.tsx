@@ -2740,6 +2740,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      applyUpdate({
        feature_uses: { ...fu, [key]: 1 },
      }, true);
+     // v2.203.0 — Phase Q.0 pt 43: auto-trigger Concentration when the
+     // free-cast spell requires it (e.g. Darkness for Infernal Tiefling
+     // at L5). Without this, the player got the "Cast Free" button to
+     // work but had to remember to manually mark concentration on the
+     // Spells tab — easy to forget mid-combat. Looks the spell up by
+     // name in spellMap (Object.values walk; the map is small) and
+     // calls setConcentration with the resolved id. Per RAW (and
+     // matching the Spells-tab cast pipeline), starting a new
+     // concentration spell auto-breaks any existing one — no confirm
+     // modal, just like onConcentrationCast for slot-cast spells.
+     const castSpell = Object.values(spellMap).find(s => s?.name === spellName);
+     const requiresConc = castSpell && (castSpell as any).concentration === true;
+     if (castSpell && requiresConc) {
+       setConcentration(castSpell.id);
+     }
      import('../shared/ActionLog').then(({ logAction }) => {
        logAction({
          campaignId: character.campaign_id ?? null,
@@ -2747,7 +2762,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
          characterName: character.name,
          actionType: 'spell',
          actionName: `${spellName} (Fiendish Legacy — Free)`,
-         notes: 'Cast without a spell slot via Tiefling Fiendish Legacy. Refreshes on Long Rest.',
+         notes: requiresConc
+           ? 'Cast without a spell slot via Tiefling Fiendish Legacy. Concentration started. Refreshes on Long Rest.'
+           : 'Cast without a spell slot via Tiefling Fiendish Legacy. Refreshes on Long Rest.',
        });
      }).catch(() => {});
      emitCombatEvent({
@@ -2761,6 +2778,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
          source: 'tiefling-legacy',
          free_cast: true,
          no_slot_consumed: true,
+         concentration_started: !!requiresConc,
        },
      }).catch(() => {});
    }
