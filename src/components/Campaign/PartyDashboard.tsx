@@ -232,19 +232,26 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     // the History tab showed the long_rest_completed chat banner but
     // not a per-character "Long Rest" row alongside player-initiated
     // rests, breaking continuity in the unified timeline.
-    const restDeltas = characters.map(c => ({
-      id: c.id,
-      name: c.name,
-      hd_recovered: Math.max(1, Math.floor(c.level / 2)),
-      exhaustion_before: (c as any).exhaustion_level ?? 0,
-      // partyLongRest only filters Exhaustion from active_conditions
-      // (the legacy binary tracker), it doesn't decrement exhaustion_level.
-      // For the event payload we report exhaustion_after = before since
-      // the DM-side flow today doesn't decrement the numeric tracker.
-      // The per-character path does decrement; aligning the two is a
-      // separate ship.
-      exhaustion_after: (c as any).exhaustion_level ?? 0,
-    }));
+    //
+    // v2.202.0 — Phase Q.0 pt 42: the DM-side path now actually
+    // decrements exhaustion_level per RAW (long rest reduces by 1).
+    // Previously this branch only filtered the legacy "Exhaustion"
+    // string from active_conditions and left exhaustion_level alone,
+    // so DM-initiated rests didn't reduce a player's accumulated
+    // exhaustion. The per-character doLongRest in CharacterSheet
+    // already does this — now both paths align. Rest events emit
+    // with the real before/after values so the History tab shows
+    // a meaningful "Exh 2→1" delta instead of a no-op "Exh 2→2".
+    const restDeltas = characters.map(c => {
+      const exhBefore = (c as any).exhaustion_level ?? 0;
+      return {
+        id: c.id,
+        name: c.name,
+        hd_recovered: Math.max(1, Math.floor(c.level / 2)),
+        exhaustion_before: exhBefore,
+        exhaustion_after: Math.max(0, exhBefore - 1),
+      };
+    });
     await Promise.all(characters.map(c => {
       const recoveredSlots = Object.fromEntries(
         Object.entries(c.spell_slots ?? {}).map(([k, s]) => [k, { ...(s as object), used: 0 }])
@@ -255,6 +262,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       // unless you were at 0 HP during the rest — we don't track that
       // edge case; remove unconditionally is the common-table behavior).
       const newConditions = (c.active_conditions ?? []).filter((x: string) => x !== 'Exhaustion');
+      // v2.202.0 — RAW: long rest reduces exhaustion_level by 1 (clamped at 0).
+      const exhBefore = (c as any).exhaustion_level ?? 0;
+      const newExhaustion = Math.max(0, exhBefore - 1);
       // v2.167.0 — Phase Q.0 pt 8: full class_resources reset + feature_uses
       // wipe on long rest. Mirrors the CharacterSheet doLongRest path so
       // long rests started by the DM aren't second-class citizens.
@@ -274,6 +284,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         temp_hp: 0,
         spell_slots: recoveredSlots,
         active_conditions: newConditions,
+        exhaustion_level: newExhaustion,
         death_saves_successes: 0,
         death_saves_failures: 0,
         hit_dice_spent: newSpent,
