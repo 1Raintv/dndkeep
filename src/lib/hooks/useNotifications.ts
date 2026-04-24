@@ -49,22 +49,29 @@ export function useNotifications(campaignId: string | null, characterId: string 
   const [readTick, setReadTick] = useState(0);
 
   // v2.173.0 — Phase Q.0 pt 14: announcement targeting filter.
-  // DM announcements can now carry a `{text, targets: string[]}`
-  // payload when the DM restricts them to a subset of characters. On
-  // the player side we drop any announcement whose `targets` list
-  // doesn't include this character's ID. Plain-text announcements
-  // (legacy shape, "send to all") always pass through.
-  function announcementVisibleTo(row: NotificationMessage): boolean {
-    if (row.message_type !== 'announcement') return true;
+  // v2.192.0 — Phase Q.0 pt 33: extended to save_prompt and check_prompt.
+  // The DM can now restrict any of these prompt-style messages to a
+  // subset of characters by embedding `targets: string[]` in the JSON
+  // payload. Player-side: drop the message if targets is set AND the
+  // current character isn't in the list. If targets is missing/empty,
+  // the message is broadcast-to-all (legacy / "send to everyone" mode).
+  // Always-visible types (long_rest_completed, player_down, etc.) bypass
+  // this filter — they're informational, not directed at one player.
+  const TARGETED_TYPES = new Set(['announcement', 'save_prompt', 'check_prompt']);
+  function visibleToCharacter(row: NotificationMessage): boolean {
+    if (!TARGETED_TYPES.has(row.message_type)) return true;
     if (!characterId) return true; // no character context → show all
     try {
       const p = JSON.parse(row.message);
       if (p && Array.isArray(p.targets) && p.targets.length > 0) {
         return p.targets.includes(characterId);
       }
-    } catch { /* plain text, fall through to "all" */ }
+    } catch { /* legacy plain-text payload, fall through to "all" */ }
     return true;
   }
+  // Back-compat alias — old name still used by realtime subscription
+  // handler below; same impl.
+  const announcementVisibleTo = visibleToCharacter;
 
   // Backfill on mount / campaign change
   useEffect(() => {

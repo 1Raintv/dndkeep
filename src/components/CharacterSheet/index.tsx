@@ -158,6 +158,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  useEffect(() => {
  if (!character.campaign_id) return;
+ // v2.192.0 — Phase Q.0 pt 33: targeted prompt filter. A DM can now
+ // restrict save_prompt / check_prompt to specific characters by
+ // including `targets: string[]` in the payload. We must drop the
+ // popup trigger for characters not in the list — otherwise EVERY
+ // player sees a popup the DM intended only for one. Same shape as
+ // the announcement targets filter (v2.173). Empty/missing targets
+ // = broadcast to all (legacy behavior preserved).
+ function isTargetedAtMe(rawMessage: string): boolean {
+ try {
+ const p = JSON.parse(rawMessage);
+ if (p && Array.isArray(p.targets) && p.targets.length > 0) {
+ return p.targets.includes(character.id);
+ }
+ } catch { /* legacy plain-text payload, fall through to "all" */ }
+ return true;
+ }
  const ch = supabase
  .channel(`dm-broadcast-${character.campaign_id}`)
  .on('postgres_changes', {
@@ -166,15 +182,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }, payload => {
  const row = payload.new as any;
  if (row.message_type === 'announcement') {
+ if (!isTargetedAtMe(row.message)) return;
  setDmAnnouncement(row.message);
  // v2.161.0 — Phase Q.0 pt 2: shortened from 30s → 5s. The new
  // NotificationsButton inbox preserves history, so the in-content
  // banner only needs to flash long enough to grab attention.
  setTimeout(() => setDmAnnouncement(null), 5000);
  } else if (row.message_type === 'save_prompt') {
+ if (!isTargetedAtMe(row.message)) return;
  try { setSavePrompt(JSON.parse(row.message)); } catch {}
  } else if (row.message_type === 'check_prompt') {
  // v2.163.0 — Phase Q.0 pt 4: DM-requested ability check.
+ if (!isTargetedAtMe(row.message)) return;
  try { setCheckPrompt(JSON.parse(row.message)); } catch {}
  } else if (row.message_type === 'short_rest_prompt') {
  // v2.167.0 — Phase Q.0 pt 8: DM called for a short rest.
@@ -194,7 +213,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  })
  .subscribe();
  return () => { supabase.removeChannel(ch); };
- }, [character.campaign_id]);
+ }, [character.campaign_id, character.id]);
 
  // ── Track last damage type from action log for sound/flash effect ──
  useEffect(() => {

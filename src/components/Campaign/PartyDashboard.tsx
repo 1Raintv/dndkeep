@@ -57,6 +57,12 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // "send to only these". Each panel manages its own target set.
   const [xpTargets, setXpTargets] = useState<Set<string> | null>(null);
   const [announceTargets, setAnnounceTargets] = useState<Set<string> | null>(null);
+  // v2.192.0 — Phase Q.0 pt 33: per-feature targeting for save prompts.
+  // null = "send to all players" (legacy default).
+  // Set of character ids = restrict the popup to those players.
+  // Emits `targets: string[]` in the JSON payload, parsed by the
+  // player-side filter in CharacterSheet/index.tsx + useNotifications.
+  const [saveTargets, setSaveTargets] = useState<Set<string> | null>(null);
   const [lootTargets, setLootTargets] = useState<Set<string> | null>(null);
   // Loot: per-coin amounts instead of just GP.
   const [lootPp, setLootPp] = useState('');
@@ -307,14 +313,24 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   async function broadcastSavePrompt() {
     const dc = parseInt(saveDC);
     if (isNaN(dc) || dc <= 0) return;
+    // v2.192.0 — Phase Q.0 pt 33: embed target character IDs when the
+    // DM picked a subset. Same logic as broadcastAnnouncement (v2.173):
+    // null OR full-party = no targets in payload (broadcast-to-all
+    // fallback path), partial = explicit targets array. Player-side
+    // filter (in CharacterSheet's dm-broadcast handler + useNotifications
+    // visibleToCharacter) drops the popup for non-listed characters.
+    const isPartial = saveTargets !== null && saveTargets.size > 0 && saveTargets.size < characters.length;
+    const payload: any = { ability: saveAbility, dc };
+    if (isPartial) payload.targets = Array.from(saveTargets!);
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getUser()).data.user?.id,
       character_name: 'DM',
-      message: JSON.stringify({ ability: saveAbility, dc }),
+      message: JSON.stringify(payload),
       message_type: 'save_prompt',
     });
     setSaveDC('');
+    setSaveTargets(null);
     setDmPanel(null);
   }
 
@@ -658,9 +674,22 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
           {/* ── SAVE PROMPT PANEL ── */}
           {dmPanel === 'save' && (
             <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#60a5fa' }}>
-                Party Saving Throw — players see the DC and their modifier on their sheet
-              </div>
+              {/* v2.192.0 — Phase Q.0 pt 33: dynamic label reflects
+                  target count, mirroring the XP/Loot panel pattern. */}
+              {(() => {
+                const n = saveTargets === null ? characters.length : saveTargets.size;
+                return (
+                  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#60a5fa' }}>
+                    Party Saving Throw — sends to {n} player{n !== 1 ? 's' : ''}
+                  </div>
+                );
+              })()}
+              <TargetPicker
+                characters={characters}
+                value={saveTargets}
+                onChange={setSaveTargets}
+                accent="#60a5fa"
+              />
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={saveAbility} onChange={e => setSaveAbility(e.target.value)}
                   style={{ fontSize: 13, fontWeight: 700, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(96,165,250,0.3)', background: 'var(--c-raised)', color: '#60a5fa', cursor: 'pointer' }}>
@@ -687,9 +716,11 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               {/* Preview what players will see */}
               {saveDC && parseInt(saveDC) > 0 && characters.length > 0 && (
                 <div style={{ padding: '8px 10px', background: 'rgba(96,165,250,0.05)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', marginBottom: 4 }}>Preview — players will see:</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', marginBottom: 4 }}>Preview — selected players will see:</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {characters.map(c => {
+                    {characters
+                      .filter(c => saveTargets === null || saveTargets.has(c.id))
+                      .map(c => {
                       const abilityMap: Record<string, keyof typeof c> = {
                         Strength: 'strength', Dexterity: 'dexterity', Constitution: 'constitution',
                         Intelligence: 'intelligence', Wisdom: 'wisdom', Charisma: 'charisma',
@@ -1605,6 +1636,14 @@ function ChecksPanel({ character: c, campaignId }: {
     // v2.168.0 — saves go through save_prompt (existing party-wide
     // banner). Checks still go through check_prompt. We route by
     // target.kind so the player sees the right UI on their end.
+    // v2.192.0 — Phase Q.0 pt 33: ChecksPanel is per-character (one
+    // panel per row in the DM dashboard), so the DM clicking "Prompt
+    // Player" here intends ONLY this player. Embed `targets: [c.id]`
+    // in the payload so other players don't see the popup. Without
+    // this, every save/check prompt initiated from any character row
+    // popped on every player's sheet — annoying for solo skill checks
+    // and confusing for save-vs-trap scenarios where only one player
+    // is in the trap's area.
     if (target.kind === 'save') {
       // save_prompt requires a DC (player UI shows "needs X more to
       // succeed"). Default to 10 if DM didn't set one.
@@ -1614,17 +1653,29 @@ function ChecksPanel({ character: c, campaignId }: {
         campaign_id: campaignId,
         user_id: (await supabase.auth.getUser()).data.user?.id,
         character_name: 'DM',
-        message: JSON.stringify({ ability: abilityFull, dc: effectiveDc }),
+        message: JSON.stringify({ ability: abilityFull, dc: effectiveDc, targets: [c.id] }),
         message_type: 'save_prompt',
       });
     } else {
-      const payload = encodeCheckPrompt({
+      // check_prompt payload has its own encoder; we extend it inline
+      // by parsing the encoded JSON, attaching targets, and re-stringifying.
+      // The encoder doesn't know about targets — adding it in here
+      // keeps the encoder shape stable for older clients.
+      const baseEncoded = encodeCheckPrompt({
         target: target.kind === 'skill' ? target.name : target.ability.slice(0, 3).toUpperCase(),
         kind: target.kind,
         dc: dcParam,
         advantage: advantage || undefined,
         disadvantage: disadvantage || undefined,
       });
+      let payload: string;
+      try {
+        const parsed = JSON.parse(baseEncoded);
+        parsed.targets = [c.id];
+        payload = JSON.stringify(parsed);
+      } catch {
+        payload = baseEncoded;
+      }
       await supabase.from('campaign_chat').insert({
         campaign_id: campaignId,
         user_id: (await supabase.auth.getUser()).data.user?.id,
