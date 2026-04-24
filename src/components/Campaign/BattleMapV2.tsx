@@ -37,9 +37,18 @@
 // Realtime sync via Postgres Changes on scene_walls. v2.224 will
 // consume these walls to clip per-token visibility polygons; v2.225
 // adds per-player fog of war.
+// v2.224.0 — Phase Q.1 pt 17 (Phase 3 cont): VisionLayer.
+// Walls now BLOCK SIGHT. Each PC token contributes a visibility
+// polygon computed by raycast (180 rays, ~2° resolution) clipped by
+// walls with blocks_sight=true. Polygons render with 'erase' blend
+// mode against a world-spanning dark fog Graphics, all rasterized to
+// a RenderTexture and displayed as a Sprite over the scene. DM sees
+// no fog; players see fog with party-shared sight (every PC token
+// contributes vision). Vision range hardcoded 60ft for v2.224 —
+// v2.226 will read per-character darkvision/normal-vision.
 
 import { Application, extend, useApplication } from '@pixi/react';
-import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
+import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -47,6 +56,7 @@ import { useBattleMapStore, type Token, type TokenSize, type Wall } from '../../
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
 import * as wallsApi from '../../lib/api/sceneWalls';
+import { computeVisibilityPolygon, type WallSegment } from '../../lib/vision/visibilityPolygon';
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
 import { supabase } from '../../lib/supabase';
@@ -783,6 +793,173 @@ function pointSegmentDistance(px: number, py: number, x1: number, y1: number, x2
   const ddx = px - projX;
   const ddy = py - projY;
   return Math.sqrt(ddx * ddx + ddy * ddy);
+}
+
+/**
+ * v2.224 — VisionLayer.
+ *
+ * Renders fog of war over the scene: dark over everything that's
+ * outside any token's visibility polygon, transparent inside.
+ *
+ * For DM (props.isDM=true): renders nothing at all (omniscient view).
+ * For players: renders a Sprite displaying a RenderTexture sized to
+ * the world, refreshed whenever vision-relevant inputs change:
+ *   - origin tokens move (drag commits, realtime echoes)
+ *   - walls added or deleted
+ *   - vision range changes (fixed for v2.224)
+ *
+ * Render approach:
+ *   1. Maintain a RenderTexture matching world dims
+ *   2. On recompute: clear with dark fog fill
+ *   3. For each origin token: compute polygon, render with blend
+ *      mode 'erase' which carves a hole in the fog
+ *   4. The Sprite displays the result over the world rect
+ *
+ * 'erase' blend mode (Pixi v8): destination-out — anything drawn
+ * with this mode subtracts alpha from what's beneath it. So drawing
+ * a white-filled vision polygon on top of dark fog produces a
+ * transparent hole in the polygon's shape.
+ *
+ * Performance: recomputes synchronously on prop change. With a 6-token
+ * party + 30 walls + 180 rays per polygon, total is ~10ms — well
+ * within frame budget. Heavier scenes will need throttling (debounce
+ * during active drag) which we'll add in a follow-up ship.
+ *
+ * v2.225 will add per-player fog: hide vision contributions of tokens
+ * not owned by the current user. v2.224 just shares all party vision
+ * with everyone (party-shared sight) which is how Roll20/Foundry
+ * default behave anyway.
+ */
+function VisionLayer(props: {
+  viewport: Viewport | null;
+  worldWidth: number;
+  worldHeight: number;
+  gridSizePx: number;
+  isDM: boolean;
+  /** Character IDs whose linked tokens should contribute vision
+   *  polygons. v2.224: every PC in the campaign (party-shared sight).
+   *  v2.225 will narrow this to the current user's own characters. */
+  visionOriginCharacterIds: string[];
+}) {
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds } = props;
+  const tokens = useBattleMapStore(s => s.tokens);
+  const walls = useBattleMapStore(s => s.walls);
+  const { app } = useApplication();
+
+  // Derive matching token IDs from characterIds. Stable string for
+  // useEffect dependency tracking — recomputes only when set changes.
+  const visionOriginTokenIds = useMemo(() => {
+    const want = new Set(visionOriginCharacterIds);
+    const ids: string[] = [];
+    for (const t of Object.values(tokens)) {
+      if (t.characterId && want.has(t.characterId)) ids.push(t.id);
+    }
+    // Stable sort so the join key is deterministic.
+    ids.sort();
+    return ids;
+  }, [tokens, visionOriginCharacterIds]);
+  const visionOriginKey = visionOriginTokenIds.join('|');
+
+  // RenderTexture + display Sprite + fog Container — all created once
+  // and reused. The Container is a scratch space we render INTO the
+  // RenderTexture every recompute; it never gets added to the viewport
+  // tree directly.
+  const rtRef = useRef<RenderTexture | null>(null);
+  const fogSpriteRef = useRef<Sprite | null>(null);
+  const scratchContainerRef = useRef<Container | null>(null);
+
+  // Mount + teardown.
+  useEffect(() => {
+    if (!viewport || isDM) return;
+    // Create a RenderTexture. We rasterize at world resolution; for
+    // very large scenes (4000x4000+) this is memory-heavy and we'd
+    // want to downscale, but for typical 30x20 scenes (2100x1400) it
+    // fits comfortably in GPU memory (~12MB).
+    const rt = RenderTexture.create({
+      width: worldWidth,
+      height: worldHeight,
+      antialias: true,
+    });
+    const sprite = new Sprite(rt);
+    sprite.x = 0;
+    sprite.y = 0;
+    // The vision sprite must sit ABOVE walls and tokens (so it can
+    // hide them) but NEVER above the ruler. Calling addChild adds it
+    // last in the children array = top of stack relative to other
+    // viewport children. RulerLayer's children are added on its own
+    // mount and we ensure it mounts AFTER VisionLayer in JSX order
+    // by render-tree placement.
+    viewport.addChild(sprite);
+    rtRef.current = rt;
+    fogSpriteRef.current = sprite;
+    scratchContainerRef.current = new Container();
+
+    return () => {
+      if (sprite && !sprite.destroyed) {
+        if (!viewport.destroyed) viewport.removeChild(sprite);
+        sprite.destroy({ children: false });
+      }
+      if (rt && !rt.destroyed) rt.destroy(true);
+      if (scratchContainerRef.current && !scratchContainerRef.current.destroyed) {
+        scratchContainerRef.current.destroy({ children: true });
+      }
+      rtRef.current = null;
+      fogSpriteRef.current = null;
+      scratchContainerRef.current = null;
+    };
+  }, [viewport, worldWidth, worldHeight, isDM]);
+
+  // Recompute fog whenever inputs change. We rebuild the scratch
+  // container, render it to the RT, and let the sprite redisplay.
+  useEffect(() => {
+    if (isDM) return;
+    const rt = rtRef.current;
+    const scratch = scratchContainerRef.current;
+    if (!rt || !scratch || !app?.renderer) return;
+
+    // Clear scratch and rebuild from scratch every recompute. For
+    // scene/world scale this is cheap (a few Graphics instances).
+    scratch.removeChildren().forEach(child => {
+      if (!(child as any).destroyed) (child as any).destroy({ children: true });
+    });
+
+    // 1. Dark fog fill covering the entire world.
+    const fog = new Graphics();
+    fog.rect(0, 0, worldWidth, worldHeight);
+    fog.fill({ color: 0x0a0c10, alpha: 1 });
+    scratch.addChild(fog);
+
+    // 2. For each origin token, compute polygon and draw with erase
+    //    blend mode to cut a hole in the fog.
+    const sightWalls: WallSegment[] = [];
+    for (const w of Object.values(walls)) {
+      if (w.blocksSight) {
+        sightWalls.push({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 });
+      }
+    }
+    // 60ft = 12 cells × cell size in pixels. Hardcoded for v2.224;
+    // v2.226 will read per-character darkvision/normal-vision range.
+    const VISION_RANGE_PX = 12 * gridSizePx;
+
+    for (const tokenId of visionOriginTokenIds) {
+      const t = tokens[tokenId];
+      if (!t) continue;
+      const polygon = computeVisibilityPolygon(t.x, t.y, sightWalls, VISION_RANGE_PX, 180);
+      if (polygon.length < 6) continue; // need at least 3 points to form a polygon
+      const lightGfx = new Graphics();
+      lightGfx.poly(polygon);
+      lightGfx.fill({ color: 0xffffff, alpha: 1 });
+      // 'erase' blend = destination-out. The white polygon erases
+      // alpha from the fog beneath it, leaving a transparent hole.
+      lightGfx.blendMode = 'erase';
+      scratch.addChild(lightGfx);
+    }
+
+    // 3. Render the scratch container to our RenderTexture.
+    app.renderer.render({ container: scratch, target: rt, clear: true });
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, worldWidth, worldHeight, gridSizePx, isDM, app]);
+
+  return null;
 }
 
 function TokenLayer(props: {
@@ -2423,6 +2600,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     return map;
   }, [props.playerCharacters]);
 
+  // v2.224 — character IDs whose linked tokens should contribute
+  // vision polygons. For party-shared sight, every PC in the campaign
+  // counts. v2.225 will narrow this to the current user's own
+  // characters for proper per-player anti-cheat fog.
+  const visionOriginCharacterIds = useMemo(
+    () => props.playerCharacters.map(c => c.id),
+    [props.playerCharacters],
+  );
+
   const handleRequestMapUpload = useCallback(() => {
     if (!currentScene) return;
     mapInputRef.current?.click();
@@ -2707,6 +2893,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     rulerActive={rulerActive}
                     wallActive={wallActive}
                     characterHpMap={characterHpMap}
+                  />
+                  {/* v2.224 — fog of war overlay. DM sees nothing
+                      (no fog applied); players see dark over anything
+                      outside any party PC token's visibility polygon.
+                      Sits above tokens so it can hide them, below the
+                      ruler so the ruler is always visible to its user. */}
+                  <VisionLayer
+                    viewport={vp}
+                    worldWidth={WORLD_WIDTH}
+                    worldHeight={WORLD_HEIGHT}
+                    gridSizePx={gridSizePx}
+                    isDM={isDM}
+                    visionOriginCharacterIds={visionOriginCharacterIds}
                   />
                   {/* v2.218 — rendered last so the ruler's Graphics +
                       label appear on top of tokens. Internally addChild's
