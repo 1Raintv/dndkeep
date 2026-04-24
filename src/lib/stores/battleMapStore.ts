@@ -1,16 +1,19 @@
 // v2.211.0 — Phase Q.1 pt 4: Zustand store for BattleMap V2 token state.
 // v2.213.0 — Phase Q.1 pt 6: scene-awareness (currentSceneId, loading,
 // bulk hydrate) so BattleMapV2 can load/save tokens to Supabase.
+// v2.216.0 — Phase Q.1 pt 9: remoteDragLocks for mid-drag exclusivity
+// via Supabase Presence. When another user is dragging a token, we
+// refuse to start a local drag on it AND render a visual indicator.
 //
 // Hydration flow: on scene change BattleMapV2 calls resetForScene(newId)
 // → fetches tokens via lib/api/sceneTokens.listTokens → calls
 // setTokensBulk with the results. Writes use optimistic local update
 // first, then fire-and-forget API call (see BattleMapV2 commit helpers).
 //
-// For now this is otherwise local (no multiplayer sync). v2.215 will add
-// Supabase Realtime Broadcast for drag previews + Postgres Changes for
-// committed positions, mirroring the architecture from the Phase Q.1
-// research plan.
+// Realtime (v2.214 Postgres Changes, v2.216 Broadcast + Presence):
+//   - Postgres Changes sync committed token/scene state after drag release
+//   - Broadcast streams mid-drag positions at ~20Hz (preview only, no DB)
+//   - Presence tracks who's currently dragging what (drag-lock)
 //
 // Why Zustand over React Context:
 //   - Subscribers can select slices without re-rendering on unrelated
@@ -51,15 +54,23 @@ export interface Token {
 
 interface BattleMapStore {
   tokens: Record<string, Token>;
-  /** True iff a token is currently being dragged. Subscribed to by the
-   *  viewport so it can temporarily disable plugins like decelerate
-   *  during a drag (prevents rubber-band after a fast release). */
+  /** True iff a token is currently being dragged LOCALLY. Subscribed
+   *  to by the viewport so it can temporarily disable plugins like
+   *  decelerate during a drag (prevents rubber-band after a fast
+   *  release). */
   dragging: string | null;
+  /** v2.216: remote drag locks — map of tokenId → userId of whoever
+   *  is currently dragging it (via Supabase Presence). Cleared
+   *  automatically when the remote client disconnects (Phoenix
+   *  Tracker CRDT semantics). Used to:
+   *    (a) refuse to initiate a local drag on a remotely-locked token
+   *    (b) render a visual "being dragged by someone" indicator
+   *  Does NOT include the current user's own drags — those go in
+   *  `dragging`. */
+  remoteDragLocks: Record<string, string>;
   /** v2.213: currently-hydrated scene id. Null means no scene selected. */
   currentSceneId: string | null;
-  /** v2.213: true while tokens are being fetched for the current scene.
-   *  UI uses this to render a skeleton / avoid showing "empty scene"
-   *  flash before the DB query returns. */
+  /** v2.213: true while tokens are being fetched for the current scene. */
   loading: boolean;
 
   addToken: (token: Token) => void;
@@ -67,18 +78,20 @@ interface BattleMapStore {
   updateTokenFields: (id: string, patch: Partial<Token>) => void;
   setDragging: (id: string | null) => void;
   removeToken: (id: string) => void;
-  /** v2.213: replace the whole token set in one shot (used by
-   *  hydration — call after fetching tokens from the API). */
   setTokensBulk: (tokens: Token[]) => void;
   setCurrentSceneId: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
-  /** v2.215 will replace this with realtime hydration from scene_tokens. */
+  /** v2.216: bulk-replace the remote drag locks. Called from the
+   *  Supabase Presence 'sync' event handler which rebuilds the map
+   *  from the current presence state. */
+  setRemoteDragLocks: (locks: Record<string, string>) => void;
   resetForScene: (sceneId: string | null) => void;
 }
 
 export const useBattleMapStore = create<BattleMapStore>((set) => ({
   tokens: {},
   dragging: null,
+  remoteDragLocks: {},
   currentSceneId: null,
   loading: false,
 
@@ -88,7 +101,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   updateTokenPosition: (id, x, y) =>
     set((s) => {
       const t = s.tokens[id];
-      if (!t) return s; // stale drag → no-op
+      if (!t) return s;
       return { tokens: { ...s.tokens, [id]: { ...t, x, y } } };
     }),
 
@@ -118,14 +131,14 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
 
   setLoading: (loading) => set({ loading }),
 
+  setRemoteDragLocks: (locks) => set({ remoteDragLocks: locks }),
+
   resetForScene: (sceneId) =>
     set((s) => {
-      // Drop every token not belonging to the new scene. When the
-      // sceneId is null we clear everything (unmount path).
       const kept: Record<string, Token> = {};
       for (const [id, t] of Object.entries(s.tokens)) {
         if (t.sceneId === sceneId) kept[id] = t;
       }
-      return { tokens: kept, dragging: null, currentSceneId: sceneId };
+      return { tokens: kept, dragging: null, remoteDragLocks: {}, currentSceneId: sceneId };
     }),
 }));

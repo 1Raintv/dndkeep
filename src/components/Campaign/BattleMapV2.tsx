@@ -4,26 +4,36 @@
 // v2.211.0 — Phase Q.1 pt 4: Zustand store + first draggable token.
 // v2.212.0 — Phase Q.1 pt 5: multi-token + initials + "Add Token" + context menu.
 // v2.213.0 — Phase Q.1 pt 6: scene persistence — scene picker, DB hydration.
-// v2.214.0 — Phase Q.1 pt 7: Realtime multiplayer sync via Supabase Postgres
-// Changes. When any client commits a token or scene change, all connected
-// clients in the same campaign see the update within ~100ms. RLS gates
-// who sees what. No drag previews yet (mid-drag positions not broadcast) —
-// that's v2.215 via Supabase Realtime Broadcast.
+// v2.214.0 — Phase Q.1 pt 7: Realtime multiplayer sync via Postgres Changes.
+// v2.215.0 — Phase Q.1 pt 8: portrait upload + Pixi Sprite rendering.
+// v2.216.0 — Phase Q.1 pt 9: live drag previews + drag-locks. During a
+// drag, the dragging client broadcasts position updates at ~20Hz via
+// Supabase Realtime Broadcast; other clients see the token slide across
+// the grid in real time. Supabase Presence tracks "who is dragging
+// what" so duplicate drags are prevented (two users can't grab the same
+// token simultaneously) and a visual ring indicator shows remote-held
+// locks. On drag release the final commit still goes through the DB
+// (Postgres Changes from v2.214 syncs the snapped position authoritatively).
 //
-// Commit strategy (unchanged from v2.213):
-//   - Optimistic local store update first (instant visual feedback)
-//   - Fire-and-forget API call writes to DB
-//   - Postgres Changes event fires for all subscribers including the
-//     originator (idempotent no-op for them since addToken is an upsert)
-//   - Moves commit ONCE on drag release (not per pointermove — would be
-//     hundreds of writes per drag AND hundreds of realtime events for
-//     every other client). v2.215's Broadcast adds mid-drag previews
-//     without hitting the DB.
+// Commit strategy (unchanged from v2.214):
+//   - Optimistic local store update first
+//   - Broadcast mid-drag positions to peers (ephemeral, bypasses DB)
+//   - On release: DB write → Postgres Changes syncs snapped position
+//     to all clients including the originator (idempotent upsert)
+//
+// Drag-lock lifecycle:
+//   - pointerdown → refuse if remoteDragLocks[tokenId] != currentUserId
+//   - Start drag → channel.track({ userId, draggingTokenId: tokenId })
+//   - pointerup  → channel.track({ userId, draggingTokenId: null }) +
+//                  locally clear remoteDragLocks[tokenId] for immediate
+//                  feedback (presence 'sync' event arrives shortly after
+//                  to confirm).
+//   - Disconnect → Presence auto-cleans (Phoenix Tracker CRDT)
 //
 // Next ships:
-//   v2.215 — portrait upload + Pixi Sprite rendering (Storage bucket)
-//   v2.216 — Broadcast drag previews + Presence drag-locks
-//   v2.217 — walls + doors + static fog of war (Phase 3 of the plan)
+//   v2.217 — Scene delete/rename UI, confirm-on-delete for tokens,
+//            toast system to replace alerts/prompts.
+//   v2.218 — walls + doors + static fog of war (Phase 3 of the plan)
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -235,28 +245,34 @@ function TokenLayer(props: {
   worldWidth: number;
   worldHeight: number;
   gridSizePx: number;
+  // v2.216 — Realtime drag callbacks + identity.
+  currentUserId: string;
+  onDragStart?: (tokenId: string) => void;
+  onDragMove?: (tokenId: string, x: number, y: number) => void;
+  onDragEnd?: (tokenId: string) => void;
 }) {
-  const { viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx } = props;
+  const {
+    viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
+    currentUserId, onDragStart, onDragMove, onDragEnd,
+  } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
   const setDragging = useBattleMapStore(s => s.setDragging);
+  const remoteDragLocks = useBattleMapStore(s => s.remoteDragLocks);
 
   interface TokenGfx {
     container: Container;
     circle: Graphics;
     initials: Text;
     // v2.215: sprite + mask. Added lazily when a portrait loads.
-    // currentPath: the imageStoragePath for whatever texture is currently
-    // rendered or being loaded. Used to detect "portrait changed" across
-    // reconciles and trigger a reload. null = no portrait.
     sprite: Sprite | null;
     mask: Graphics | null;
     currentPath: string | null;
-    // Version counter for cancelling stale texture loads. If the path
-    // changes 3 times in rapid succession, only the latest load's
-    // resolution should modify the display. We compare this counter
-    // against the value captured at load-start time.
     loadGen: number;
+    // v2.216: lock indicator ring. Added as a top-most child when a
+    // remote user is dragging this token. Kept separate from `circle`
+    // so we can toggle its visibility cheaply without redraws.
+    lockRing: Graphics | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
@@ -314,6 +330,7 @@ function TokenLayer(props: {
         entry = {
           container, circle, initials,
           sprite: null, mask: null, currentPath: null, loadGen: 0,
+          lockRing: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -335,6 +352,13 @@ function TokenLayer(props: {
           if (event.button !== 0) return;
           event.stopPropagation();
           const tid = (container as any).__tokenId as string;
+          // v2.216: refuse to start drag if a different user is
+          // currently dragging this token (stale lock from their
+          // in-flight drag). Silently ignore the press — no toast yet.
+          const locks = useBattleMapStore.getState().remoteDragLocks;
+          if (locks[tid] && locks[tid] !== currentUserId) {
+            return;
+          }
           const t = useBattleMapStore.getState().tokens[tid];
           if (!t) return;
           const worldPoint = viewport.toWorld(event.global.x, event.global.y);
@@ -346,6 +370,8 @@ function TokenLayer(props: {
           setDragging(tid);
           container.cursor = 'grabbing';
           container.alpha = 0.75;
+          // v2.216: claim the lock + notify peers.
+          onDragStart?.(tid);
         });
       }
       const { container, circle, initials } = entry!;
@@ -485,11 +511,49 @@ function TokenLayer(props: {
           currentEntry.mask.fill(0xffffff);
         }
       }
+
+      // v2.216 — lock ring for tokens being dragged by a remote user.
+      // We render a thicker purple outline outside the circle so it's
+      // visually distinct from the normal token rim. When the lock
+      // clears (user released), we remove the ring on the next
+      // reconcile cycle.
+      const lockerId = remoteDragLocks[token.id];
+      const shouldShowLockRing = Boolean(lockerId) && lockerId !== currentUserId;
+      if (shouldShowLockRing) {
+        let ring = currentEntry.lockRing;
+        if (!ring || ring.destroyed) {
+          ring = new Graphics();
+          container.addChild(ring);
+          currentEntry.lockRing = ring;
+        }
+        ring.clear();
+        // Outer glow ring, 5px outside the token's rim.
+        ring.setStrokeStyle({ color: 0xa78bfa, width: 3, alpha: 0.85 });
+        ring.circle(0, 0, r + 5);
+        ring.stroke();
+        // Inner soft halo for emphasis.
+        ring.setStrokeStyle({ color: 0xa78bfa, width: 1, alpha: 0.4 });
+        ring.circle(0, 0, r + 8);
+        ring.stroke();
+      } else if (currentEntry.lockRing) {
+        // Not locked — tear down the ring.
+        if (!currentEntry.lockRing.destroyed) {
+          container.removeChild(currentEntry.lockRing);
+          currentEntry.lockRing.destroy();
+        }
+        currentEntry.lockRing = null;
+      }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
+
+    // v2.216 — throttle drag_move broadcasts to ~20Hz (50ms) so a
+    // 60fps pointermove doesn't flood the Realtime channel. Leading-
+    // edge: send immediately on the first movement after the window
+    // elapses. The final position is covered by onPointerUp below.
+    let lastBroadcastMs = 0;
 
     function onPointerMove(e: PointerEvent) {
       const drag = dragRef.current;
@@ -498,7 +562,16 @@ function TokenLayer(props: {
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPoint = viewport.toWorld(screenX, screenY);
-      updatePos(drag.id, worldPoint.x - drag.offsetX, worldPoint.y - drag.offsetY);
+      const newX = worldPoint.x - drag.offsetX;
+      const newY = worldPoint.y - drag.offsetY;
+      updatePos(drag.id, newX, newY);
+
+      // Throttled broadcast to peers.
+      const now = performance.now();
+      if (now - lastBroadcastMs >= 50) {
+        onDragMove?.(drag.id, newX, newY);
+        lastBroadcastMs = now;
+      }
     }
 
     function onPointerUp() {
@@ -510,6 +583,9 @@ function TokenLayer(props: {
         const clampedX = Math.max(0, Math.min(worldWidth, snapped.x));
         const clampedY = Math.max(0, Math.min(worldHeight, snapped.y));
         updatePos(drag.id, clampedX, clampedY);
+        // v2.216: send one final broadcast at the snapped position so
+        // peers see the snap even before the DB round-trip completes.
+        onDragMove?.(drag.id, clampedX, clampedY);
         // v2.213 commit — single DB write on release.
         tokensApi.updateTokenPos(drag.id, clampedX, clampedY).catch(err =>
           console.error('[BattleMapV2] pos commit failed', err)
@@ -520,6 +596,10 @@ function TokenLayer(props: {
         entry.container.cursor = 'grab';
         entry.container.alpha = 1;
       }
+      // v2.216: release the lock — whether or not the commit succeeds,
+      // we're done locally. Stale commits are rare; stale locks would
+      // block the UI.
+      onDragEnd?.(drag.id);
       dragRef.current = null;
       setDragging(null);
     }
@@ -530,7 +610,7 @@ function TokenLayer(props: {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd]);
 
   return null;
 }
@@ -974,6 +1054,97 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [campaignId]);
 
+  // v2.216.0 — Phase Q.1 pt 9: drag channel (Broadcast + Presence).
+  //
+  // One Realtime channel per scene, carrying two kinds of traffic:
+  //   (a) Broadcast `drag_move` events at ~20Hz with {tokenId, x, y,
+  //       senderId}. Peers apply to their Zustand store as preview;
+  //       senders ignore their own echo to avoid self-feedback loops.
+  //   (b) Presence state `{ userId, draggingTokenId }` tracking who's
+  //       currently mid-drag on which token. Receivers rebuild a
+  //       `remoteDragLocks` map (tokenId → userId) on 'sync' events.
+  //       Presence auto-cleans on disconnect (Phoenix Tracker CRDT).
+  //
+  // The channel is rebuilt on scene change; presence state from the
+  // previous scene doesn't carry over. userId is stable across
+  // scenes, so we track() fresh on each subscription.
+  const dragChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  useEffect(() => {
+    if (!currentScene?.id || !userId) return;
+    const sceneId = currentScene.id;
+    const channel = supabase.channel(`battle_map:scene_drag:${sceneId}`, {
+      config: {
+        presence: { key: userId },
+      },
+    });
+
+    channel.on('broadcast', { event: 'drag_move' }, (msg: any) => {
+      const payload = msg?.payload;
+      if (!payload) return;
+      // Ignore our own echoes — we already updated the local store
+      // optimistically in the drag handler.
+      if (payload.senderId === userId) return;
+      if (typeof payload.tokenId !== 'string') return;
+      if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
+      useBattleMapStore.getState().updateTokenPosition(payload.tokenId, payload.x, payload.y);
+    });
+
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const locks: Record<string, string> = {};
+      for (const presences of Object.values(state) as any[]) {
+        for (const p of presences) {
+          if (p?.draggingTokenId && typeof p.userId === 'string') {
+            locks[p.draggingTokenId] = p.userId;
+          }
+        }
+      }
+      useBattleMapStore.getState().setRemoteDragLocks(locks);
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        // Initial presence entry — no drag yet.
+        await channel.track({ userId, draggingTokenId: null });
+      }
+    });
+
+    dragChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      dragChannelRef.current = null;
+    };
+  }, [currentScene?.id, userId]);
+
+  // Callbacks passed down to TokenLayer. Each one pokes the channel —
+  // no-op if the channel isn't yet subscribed.
+  const handleDragStart = useCallback((tokenId: string) => {
+    dragChannelRef.current?.track({ userId, draggingTokenId: tokenId });
+  }, [userId]);
+
+  const handleDragMove = useCallback((tokenId: string, x: number, y: number) => {
+    dragChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'drag_move',
+      payload: { tokenId, x, y, senderId: userId },
+    });
+  }, [userId]);
+
+  const handleDragEnd = useCallback((tokenId: string) => {
+    // Clear the drag lock. We keep our presence entry itself so other
+    // users still see us as connected; just update draggingTokenId.
+    dragChannelRef.current?.track({ userId, draggingTokenId: null });
+    // Also clear locally in case the presence 'sync' event is slow —
+    // otherwise the indicator might persist until the next sync.
+    useBattleMapStore.setState((s) => {
+      if (s.remoteDragLocks[tokenId]) {
+        const { [tokenId]: _, ...rest } = s.remoteDragLocks;
+        return { remoteDragLocks: rest };
+      }
+      return s;
+    });
+  }, [userId]);
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -1248,6 +1419,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     worldWidth={WORLD_WIDTH}
                     worldHeight={WORLD_HEIGHT}
                     gridSizePx={gridSizePx}
+                    currentUserId={userId}
+                    onDragStart={handleDragStart}
+                    onDragMove={handleDragMove}
+                    onDragEnd={handleDragEnd}
                   />
                 </>
               );
