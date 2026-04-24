@@ -24,11 +24,16 @@
 // below the token. Updates whenever the parent's playerCharacters
 // prop changes (i.e. whenever a character's HP updates anywhere in
 // the app). No DB or realtime additions; pure derived rendering.
+// v2.222.0 — Phase Q.1 pt 15: "View Character Sheet" right-click
+// action on linked tokens. Token context menu gets a navigate-jump
+// to the linked character's full sheet via the existing
+// /character/:id route. Tiny ship; massive DM utility during prep.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
@@ -970,8 +975,11 @@ function TokenContextMenu(props: {
   state: ContextMenuState;
   onClose: () => void;
   onRequestUpload: (tokenId: string) => void;
+  // v2.222 — when set, the menu shows a "View Character Sheet" item
+  // for tokens linked to a character. Caller handles the navigate.
+  onOpenCharacter?: (characterId: string) => void;
 }) {
-  const { state, onClose, onRequestUpload } = props;
+  const { state, onClose, onRequestUpload, onOpenCharacter } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
@@ -1105,6 +1113,30 @@ function TokenContextMenu(props: {
       <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
         {token.name || 'Token'}
       </div>
+      {/* v2.222 — quick-jump to the linked character sheet. Only
+          renders when the token is bound to a character via
+          characterId AND the parent provided a navigate handler.
+          Visually offset (purple, separator) so it reads as a
+          navigation action vs the edit ops below. */}
+      {token.characterId && onOpenCharacter && (
+        <div
+          style={{
+            ...itemStyle,
+            color: '#a78bfa',
+            borderBottom: '1px solid var(--c-border)',
+            marginBottom: 4,
+            paddingBottom: 8,
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          onClick={() => {
+            onOpenCharacter(token.characterId!);
+            onClose();
+          }}
+        >
+          View Character Sheet
+        </div>
+      )}
       {[
         { label: 'Rename…', onClick: () => {
           const next = window.prompt('Token name', token.name);
@@ -1488,6 +1520,14 @@ function SceneSettingsModal(props: {
 
 export default function BattleMapV2(props: BattleMapV2Props) {
   const { isDM, campaignId, userId } = props;
+
+  // v2.222 — navigate to a linked character's full sheet from a token's
+  // right-click menu. Uses the same /character/:id route the character
+  // creator/lobby use. Memoized to keep TokenContextMenu props stable.
+  const navigate = useNavigate();
+  const handleOpenCharacter = useCallback((characterId: string) => {
+    navigate(`/character/${characterId}`);
+  }, [navigate]);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [dims, setDims] = useState({ width: 800, height: 600 });
@@ -2522,6 +2562,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             state={contextMenu}
             onClose={() => setContextMenu(null)}
             onRequestUpload={handleRequestUpload}
+            onOpenCharacter={handleOpenCharacter}
           />
         )}
 
