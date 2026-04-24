@@ -2492,21 +2492,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* v2.34.1: content-filter helpers. empty set = show all kinds. */}
  {(() => null)()}
 
- {/* Weapons — merged from weapons list + equipped inventory */}
- {combatFilter === 'all' && (contentFilters.size === 0 || contentFilters.has('weapon')) && (
- <WeaponsTracker
- weapons={allWeapons}
- onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
- characterId={userId}
- historyCharacterId={character.id}
- userId={character.user_id}
- characterName={character.name}
- campaignId={character.campaign_id}
- activeConditions={character.active_conditions}
- activeBufss={(character as any).active_buffs ?? []}
- />
- )}
-
  {/* v2.86.0: Standard Actions — 2024 PHB universal actions every
      character can take (Dash, Disengage, Dodge, Help, Hide, Influence,
      Ready, Search, Study, Utilize). Each click broadcasts to the action
@@ -2686,6 +2671,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  })()}
  </div>
  </div>
+ )}
+
+ {/* Weapons — merged from weapons list + equipped inventory */}
+ {combatFilter === 'all' && (contentFilters.size === 0 || contentFilters.has('weapon')) && (
+ <WeaponsTracker
+ weapons={allWeapons}
+ onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
+ characterId={userId}
+ historyCharacterId={character.id}
+ userId={character.user_id}
+ characterName={character.name}
+ campaignId={character.campaign_id}
+ activeConditions={character.active_conditions}
+ activeBufss={(character as any).active_buffs ?? []}
+ />
  )}
 
  {/* Class Abilities — with DDB-style section labels */}
