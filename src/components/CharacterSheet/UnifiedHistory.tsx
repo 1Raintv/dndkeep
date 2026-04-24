@@ -321,7 +321,42 @@ export default function UnifiedHistory({ characterId, campaignId, maxHeight = 56
       });
 
       merged.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-      setEvents(merged);
+
+      // v2.199.0 — Phase Q.0 pt 40: HP-row deduplication.
+      // The same HP change is logged to both character_history (legacy
+      // path, writes 'hp_change' rows) AND combat_events (Phase A
+      // unified log, writes 'hp_changed' rows with richer payload).
+      // Result: two near-identical rows side by side on the History
+      // tab for every damage / heal. We drop the character_history
+      // row when a combat_events row of the same kind exists within
+      // a narrow time window, preferring the combat one because:
+      //   1. payload is structured (from_hp / to_hp / delta) instead
+      //      of free-text "HP 12 → 7 (-5)" so future filtering /
+      //      grouping can use the data;
+      //   2. it carries actor + cause when known (damage source,
+      //      condition trigger, etc.) which character_history doesn't;
+      //   3. emissions are in active development, while
+      //      character_history is the legacy path being phased out.
+      //
+      // Window: 3 seconds. Both writes happen in the same tick of the
+      // damage / heal handler so the timestamps are usually within
+      // ~50ms; 3s is a generous buffer for slow DB latency.
+      const DEDUP_WINDOW_MS = 3000;
+      const combatHpTimestamps: number[] = [];
+      for (const e of merged) {
+        if (e.source === 'combat' && e.kind === 'hp') {
+          combatHpTimestamps.push(new Date(e.at).getTime());
+        }
+      }
+      const dedupedMerged = merged.filter(e => {
+        if (e.source !== 'history') return true;
+        if (e.kind !== 'hp') return true;
+        const t = new Date(e.at).getTime();
+        // Drop history HP row if a combat HP row exists within window
+        return !combatHpTimestamps.some(ct => Math.abs(ct - t) <= DEDUP_WINDOW_MS);
+      });
+
+      setEvents(dedupedMerged);
       setLoading(false);
     });
 
