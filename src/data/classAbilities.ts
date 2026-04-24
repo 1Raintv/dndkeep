@@ -28,6 +28,15 @@ export interface ClassAbility {
    *    - has neither → free to use, just logs the action
    *  Examples: Warp Space pedCost: 1, Mass Teleportation pedCost: 4. */
   pedCost?: number;
+  /** v2.190.0 — Phase Q.0 pt 31: PED-restore cost for once-per-rest
+   *  features that can be refreshed mid-rest by spending Psionic Energy
+   *  Dice. When set, a "Restore (N PED)" sibling button appears next to
+   *  the Use button — but only when the feature is depleted (used ≥ max)
+   *  AND the player has enough PEDs. Clicking it deducts N dice from
+   *  the pool and decrements feature_uses by 1.
+   *  Today: Free Misty Step (1 PED). Future: any subclass feature with
+   *  RAW text "spend N [resource] to regain a use of this feature." */
+  pedRestoreCost?: number;
 }
 
 function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
@@ -496,10 +505,12 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       descriptionLong: 'Cast Misty Step without expending a spell slot. Once you use this feature, you can\'t do so again until you finish a Long Rest, OR until you spend 1 Psionic Energy Die (no action required) to restore the use.\n\nAt level 6+ this combines with Teleporter Combat: after the Misty Step bonus action, you may immediately cast a Psion cantrip with an Action casting time as part of the same Bonus Action.',
       minLevel: 3,
       // v2.189.0 — once per Long Rest. Tracked via feature_uses; reset
-      // by doLongRest. PED-restore mechanic isn't auto-wired (would
-      // need a second button "Restore via PED" — that's its own ship).
+      // by doLongRest.
       maxUsesFn: () => 1,
       rest: 'long',
+      // v2.190.0 — Phase Q.0 pt 31: spend 1 PED to refresh mid-rest.
+      // Triggers the "Restore (1 PED)" button when feature is depleted.
+      pedRestoreCost: 1,
     },
     {
       name: 'Warp Propel',

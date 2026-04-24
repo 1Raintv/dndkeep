@@ -141,6 +141,40 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // v2.80.0: which ability card is expanded (click chevron to open detail panel)
  const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
 
+ // v2.190.0 — Phase Q.0 pt 31: refresh a depleted once-per-rest feature
+ // by spending Psionic Energy Dice. The "Restore (N PED)" button only
+ // renders when the feature is depleted AND the pool has enough dice
+ // (see button render around the Use button). This handler does both
+ // the deduction and the feature_uses decrement in one update, then
+ // logs to the action log so the DM + party see it.
+ async function restoreUseFromPed(ability: ClassAbility) {
+ const restoreCost = (ability as any).pedRestoreCost as number | undefined;
+ if (typeof restoreCost !== 'number' || restoreCost <= 0) return;
+ const resources = (character.class_resources as Record<string, number> | null) ?? {};
+ const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
+ if (currentDice < restoreCost) {
+ alert(`Not enough Psionic Energy Dice. Need ${restoreCost}, have ${currentDice}.`);
+ return;
+ }
+ const fu = ((character.feature_uses as Record<string, number>) ?? {});
+ const used = fu[ability.name] ?? 0;
+ if (used <= 0) return; // nothing to restore
+ onUpdate({
+ class_resources: { ...resources, 'psionic-energy-dice': currentDice - restoreCost },
+ feature_uses: { ...fu, [ability.name]: Math.max(0, used - 1) },
+ });
+ await logAction({
+ campaignId: campaignId ?? null,
+ characterId: character.id,
+ characterName: character.name,
+ actionType: 'roll',
+ actionName: `Restored ${ability.name} (spent ${restoreCost} PED)`,
+ notes: `Refreshed feature use mid-rest. ${currentDice - restoreCost} PED remaining.`,
+ });
+ setJustUsed(`restore:${ability.name}`);
+ setTimeout(() => setJustUsed(curr => curr === `restore:${ability.name}` ? null : curr), 1800);
+ }
+
  async function handleUseAbility(ability: ClassAbility, cost?: number) {
  // v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost gate.
  // Abilities with `pedCost: N` (Warp Space=1, Mass Teleport=4, etc.)
@@ -399,6 +433,57 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }}
  >
  {isFlashing ? 'Used!' : restingLabel}
+ </button>
+ );
+ })()}
+
+ {/* v2.190.0 — Phase Q.0 pt 31: Restore-from-PED button. Only visible
+     when (a) ability has pedRestoreCost set, (b) the feature is depleted
+     (used >= max), and (c) the player has enough PEDs. Hidden otherwise.
+     Today: Free Misty Step. Future: any subclass feature that says
+     "spend N [resource] to regain a use of this feature". */}
+ {(ability as any).pedRestoreCost !== undefined && maxUses !== undefined && (() => {
+ const restoreCost = (ability as any).pedRestoreCost as number;
+ const used = ((character.feature_uses as Record<string, number>) ?? {})[ability.name] ?? 0;
+ if (used < maxUses) return null; // not depleted, hide
+ const resources = (character.class_resources as Record<string, number> | null) ?? {};
+ const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
+ const insufficient = currentDice < restoreCost;
+ const flashKey = `restore:${ability.name}`;
+ const isFlashing = justUsed === flashKey;
+ return (
+ <button
+ onClick={() => restoreUseFromPed(ability)}
+ disabled={insufficient}
+ title={insufficient
+ ? `Need ${restoreCost} Psionic Energy Die${restoreCost === 1 ? '' : 's'} (have ${currentDice})`
+ : `Spend ${restoreCost} PED to refresh this feature mid-rest`}
+ style={{
+ padding: '4px 12px', borderRadius: 'var(--r-md)',
+ cursor: insufficient ? 'not-allowed' : 'pointer',
+ background: isFlashing
+ ? '#34d399'
+ : insufficient
+ ? 'var(--c-raised)'
+ : 'rgba(232,121,249,0.12)',
+ border: `1px solid ${
+ isFlashing ? '#34d399' :
+ insufficient ? 'var(--c-border)' :
+ 'rgba(232,121,249,0.45)'
+ }`,
+ color: isFlashing
+ ? '#000'
+ : insufficient
+ ? 'var(--t-3)'
+ : '#e879f9',
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+ letterSpacing: '0.04em',
+ transition: 'background 0.2s, color 0.2s, border-color 0.2s',
+ flexShrink: 0, minHeight: 0,
+ opacity: insufficient ? 0.55 : 1,
+ }}
+ >
+ {isFlashing ? 'Restored!' : `Restore (${restoreCost} PED)`}
  </button>
  );
  })()}
