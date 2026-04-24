@@ -14,6 +14,7 @@ import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal
 import DeathSavePromptModal from '../Combat/DeathSavePromptModal';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
+import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, type TieflingLegacy } from '../../data/speciesChoices';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
@@ -2635,6 +2636,182 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  campaignId={character.campaign_id}
  />
  )}
+
+ {/* v2.188.0 — Phase Q.0 pt 29: SPECIES section.
+     Today only Tiefling has actionable per-species choices (Fiendish
+     Legacy → unlocks 3 spells across levels 1/3/5). The section
+     auto-hides for species with no actionable choices, so a Human
+     character sees nothing here. When other species gain similar
+     mechanics (Aasimar revelations, Dragonborn ancestries with
+     unique cantrips, etc.), they get added here as additional
+     branches inside the same section. */}
+ {(combatFilter === 'all' || combatFilter === 'action' || combatFilter === 'reaction') &&
+  (contentFilters.size === 0 || contentFilters.has('ability')) &&
+  character.species === 'Tiefling' && (() => {
+   const choices = (character.species_choices as any) ?? {};
+   const currentLegacyId = choices.tieflingLegacy as TieflingLegacy | undefined;
+   const legacy = getTieflingLegacy(currentLegacyId);
+   const activeSpells = getActiveLegacySpells(legacy, character.level);
+
+   function pickLegacy(id: TieflingLegacy) {
+     const next = { ...choices, tieflingLegacy: id };
+     applyUpdate({ species_choices: next }, true);
+   }
+
+   return (
+     <div style={{ marginTop: 'var(--sp-3)' }}>
+       <div style={{
+         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+       }}>
+         <span style={{
+           fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
+           letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+           color: '#f97316',
+         }}>
+           Species — Tiefling
+         </span>
+         {legacy && (
+           <span style={{
+             fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+             textTransform: 'uppercase' as const,
+             color: '#f97316', background: 'rgba(249,115,22,0.1)',
+             border: '1px solid rgba(249,115,22,0.4)',
+             borderRadius: 999, padding: '2px 8px',
+           }}>
+             {legacy.name} Legacy
+           </span>
+         )}
+       </div>
+
+       {/* Legacy picker — shown when no legacy chosen, OR as a small
+           "change" affordance below the spell list. */}
+       {!legacy && (
+         <div style={{
+           padding: '12px 14px', borderRadius: 'var(--r-md)',
+           background: 'rgba(249,115,22,0.04)',
+           border: '1px solid rgba(249,115,22,0.25)',
+           marginBottom: 8,
+         }}>
+           <div style={{
+             fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+             marginBottom: 10, lineHeight: 1.5,
+           }}>
+             <strong style={{ color: 'var(--t-1)' }}>Fiendish Legacy.</strong>{' '}
+             Choose your heritage to unlock granted spells (cantrip at level 1,
+             1st-level at 3, 2nd-level at 5).
+           </div>
+           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+             {TIEFLING_LEGACIES.map(opt => (
+               <button
+                 key={opt.id}
+                 onClick={() => pickLegacy(opt.id)}
+                 style={{
+                   flex: '1 1 200px',
+                   padding: '10px 12px', borderRadius: 'var(--r-md)',
+                   background: 'var(--c-card)',
+                   border: '1px solid rgba(249,115,22,0.3)',
+                   cursor: 'pointer', textAlign: 'left' as const,
+                   minHeight: 0,
+                   transition: 'all var(--tr-fast)',
+                 }}
+                 onMouseEnter={e => {
+                   (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(249,115,22,0.7)';
+                   (e.currentTarget as HTMLButtonElement).style.background = 'rgba(249,115,22,0.08)';
+                 }}
+                 onMouseLeave={e => {
+                   (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(249,115,22,0.3)';
+                   (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-card)';
+                 }}
+               >
+                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 13, color: '#f97316', marginBottom: 4 }}>
+                   {opt.name}
+                 </div>
+                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4, marginBottom: 6 }}>
+                   {opt.flavor}
+                 </div>
+                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', lineHeight: 1.5 }}>
+                   {opt.spells.map(s => `L${s.unlockLevel}: ${s.spellName}`).join(' · ')}
+                 </div>
+               </button>
+             ))}
+           </div>
+         </div>
+       )}
+
+       {/* Granted-spells list — one row per unlocked spell. Each row
+           is informational right now (clicking it doesn't auto-cast,
+           since the cast pipeline lives on the Spells tab). The user
+           wanted these visible on the Actions tab as a reminder of
+           what's available. Future ship: wire onClick to actually
+           open the spell's cast modal from here. */}
+       {legacy && activeSpells.length > 0 && (
+         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+           {activeSpells.map(grant => (
+             <div
+               key={grant.spellName}
+               style={{
+                 display: 'flex', alignItems: 'center', gap: 10,
+                 padding: '8px 12px', borderRadius: 'var(--r-md)',
+                 border: '1px solid rgba(249,115,22,0.2)',
+                 background: 'rgba(249,115,22,0.03)',
+               }}
+             >
+               <span style={{
+                 fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
+                 color: '#f97316', background: 'rgba(249,115,22,0.12)',
+                 border: '1px solid rgba(249,115,22,0.4)',
+                 borderRadius: 4, padding: '2px 6px',
+                 minWidth: 32, textAlign: 'center' as const,
+               }}>
+                 L{grant.unlockLevel}
+               </span>
+               <div style={{ flex: 1, minWidth: 0 }}>
+                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+                   {grant.spellName}
+                 </div>
+                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>
+                   {grant.unlockLevel === 1
+                     ? 'Cantrip · cast at will'
+                     : grant.unlockLevel === 3
+                       ? 'Once per Long Rest without a slot · or expend a spell slot'
+                       : 'Once per Long Rest without a slot · or expend a spell slot'}
+                 </div>
+               </div>
+               <span style={{
+                 fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)',
+                 fontStyle: 'italic' as const,
+               }}>
+                 See Spells tab to cast
+               </span>
+             </div>
+           ))}
+
+           {/* Subtle "change legacy" link at the end. Confirms before
+               wiping (legacy choice in 2024 PHB is permanent at character
+               creation, but app users may want to fix typos). */}
+           <button
+             onClick={() => {
+               if (!confirm(`Change Fiendish Legacy from ${legacy.name}? You will keep your old spells in your spell list — this only swaps which legacy is active for the SPECIES section.`)) return;
+               const next = { ...choices };
+               delete next.tieflingLegacy;
+               applyUpdate({ species_choices: next }, true);
+             }}
+             style={{
+               marginTop: 4, alignSelf: 'flex-start' as const,
+               background: 'transparent', border: 'none',
+               color: 'var(--t-3)', cursor: 'pointer',
+               fontSize: 10, fontFamily: 'var(--ff-body)',
+               textDecoration: 'underline', padding: '4px 0',
+               minHeight: 0,
+             }}
+           >
+             Change legacy
+           </button>
+         </div>
+       )}
+     </div>
+   );
+ })()}
 
  {/* Health Potions — consumables that are actions on your turn */}
  {(combatFilter === 'all' || combatFilter === 'action') && (contentFilters.size === 0 || contentFilters.has('item')) && (() => {

@@ -190,6 +190,12 @@ export interface Character {
   // Identity
   name: string;
   species: string;
+  /** v2.188.0 — per-species sub-choices (Tiefling legacy, Dragonborn
+   *  ancestry, etc.). Shape: { tieflingLegacy?: 'abyssal'|'chthonic'|
+   *  'infernal' }. Always present (default '{}' from DB), but may be
+   *  empty if the species has no actionable choices or the player
+   *  hasn't picked yet. */
+  species_choices?: Record<string, string>;
   class_name: string;
   subclass: string | null;
   background: string;
