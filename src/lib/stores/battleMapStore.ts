@@ -1,6 +1,13 @@
 // v2.211.0 — Phase Q.1 pt 4: Zustand store for BattleMap V2 token state.
+// v2.213.0 — Phase Q.1 pt 6: scene-awareness (currentSceneId, loading,
+// bulk hydrate) so BattleMapV2 can load/save tokens to Supabase.
 //
-// For now this is local-only (no multiplayer sync). v2.215 will add
+// Hydration flow: on scene change BattleMapV2 calls resetForScene(newId)
+// → fetches tokens via lib/api/sceneTokens.listTokens → calls
+// setTokensBulk with the results. Writes use optimistic local update
+// first, then fire-and-forget API call (see BattleMapV2 commit helpers).
+//
+// For now this is otherwise local (no multiplayer sync). v2.215 will add
 // Supabase Realtime Broadcast for drag previews + Postgres Changes for
 // committed positions, mirroring the architecture from the Phase Q.1
 // research plan.
@@ -45,11 +52,23 @@ interface BattleMapStore {
    *  viewport so it can temporarily disable plugins like decelerate
    *  during a drag (prevents rubber-band after a fast release). */
   dragging: string | null;
+  /** v2.213: currently-hydrated scene id. Null means no scene selected. */
+  currentSceneId: string | null;
+  /** v2.213: true while tokens are being fetched for the current scene.
+   *  UI uses this to render a skeleton / avoid showing "empty scene"
+   *  flash before the DB query returns. */
+  loading: boolean;
 
   addToken: (token: Token) => void;
   updateTokenPosition: (id: string, x: number, y: number) => void;
+  updateTokenFields: (id: string, patch: Partial<Token>) => void;
   setDragging: (id: string | null) => void;
   removeToken: (id: string) => void;
+  /** v2.213: replace the whole token set in one shot (used by
+   *  hydration — call after fetching tokens from the API). */
+  setTokensBulk: (tokens: Token[]) => void;
+  setCurrentSceneId: (id: string | null) => void;
+  setLoading: (loading: boolean) => void;
   /** v2.215 will replace this with realtime hydration from scene_tokens. */
   resetForScene: (sceneId: string | null) => void;
 }
@@ -57,6 +76,8 @@ interface BattleMapStore {
 export const useBattleMapStore = create<BattleMapStore>((set) => ({
   tokens: {},
   dragging: null,
+  currentSceneId: null,
+  loading: false,
 
   addToken: (token) =>
     set((s) => ({ tokens: { ...s.tokens, [token.id]: token } })),
@@ -68,6 +89,13 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       return { tokens: { ...s.tokens, [id]: { ...t, x, y } } };
     }),
 
+  updateTokenFields: (id, patch) =>
+    set((s) => {
+      const t = s.tokens[id];
+      if (!t) return s;
+      return { tokens: { ...s.tokens, [id]: { ...t, ...patch } } };
+    }),
+
   setDragging: (id) => set({ dragging: id }),
 
   removeToken: (id) =>
@@ -75,6 +103,17 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       const { [id]: _, ...rest } = s.tokens;
       return { tokens: rest };
     }),
+
+  setTokensBulk: (tokens) =>
+    set(() => {
+      const map: Record<string, Token> = {};
+      for (const t of tokens) map[t.id] = t;
+      return { tokens: map };
+    }),
+
+  setCurrentSceneId: (id) => set({ currentSceneId: id }),
+
+  setLoading: (loading) => set({ loading }),
 
   resetForScene: (sceneId) =>
     set((s) => {
@@ -84,6 +123,6 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       for (const [id, t] of Object.entries(s.tokens)) {
         if (t.sceneId === sceneId) kept[id] = t;
       }
-      return { tokens: kept, dragging: null };
+      return { tokens: kept, dragging: null, currentSceneId: sceneId };
     }),
 }));
