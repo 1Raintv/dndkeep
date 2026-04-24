@@ -46,6 +46,16 @@
 // no fog; players see fog with party-shared sight (every PC token
 // contributes vision). Vision range hardcoded 60ft for v2.224 —
 // v2.226 will read per-character darkvision/normal-vision.
+// v2.225.0 — HOTFIX: ViewportHost effect dep-array bug. The effect
+// that creates the Pixi Viewport and adds it to the stage was missing
+// `app` from its dependency list. Pixi v8's Application init is async,
+// so first render returns app:null → effect bails early → effect never
+// re-fires when init completes → stage stays empty → canvas renders
+// pure black. Symptom: v2 map area completely blank for everyone.
+// Fix: depend on the Pixi app + `isInitialised` flag, gate viewport
+// creation on `isReady`. Latent bug since v2.210; v2.224's heavier
+// component tree pushed initial render order such that the bug became
+// reliable. No feature changes in this ship.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -153,12 +163,23 @@ function ViewportHost(props: {
   children: (viewport: Viewport | null) => ReactNode;
 }) {
   const { screenWidth, screenHeight, worldWidth, worldHeight, children } = props;
-  const app = useApplication();
+  const appState = useApplication();
   const [viewport, setViewport] = useState<Viewport | null>(null);
 
+  // v2.225 fix — Pixi v8's Application init is async. useApplication
+  // returns an ApplicationState object whose `isInitialised` flag goes
+  // true once the renderer is ready. Earlier versions of this effect
+  // omitted `appState` from the dep array, which meant the effect ran
+  // ONCE at mount with `app.renderer` still undefined → bailed early →
+  // never re-fired → viewport never got created → stage stayed empty.
+  // Symptom: black canvas, nothing draws. Including appState (and
+  // gating on isInitialised) makes the effect re-fire as soon as Pixi
+  // is ready.
+  const pixiApp = (appState as any)?.app ?? appState;
+  const isReady = !!(appState as any)?.isInitialised || !!pixiApp?.renderer;
+
   useEffect(() => {
-    const pixiApp = (app as any)?.app ?? app;
-    if (!pixiApp || !pixiApp.renderer) return;
+    if (!pixiApp || !pixiApp.renderer || !isReady) return;
 
     const vp = new Viewport({
       screenWidth,
@@ -183,12 +204,16 @@ function ViewportHost(props: {
     setViewport(vp);
 
     return () => {
-      pixiApp.stage.removeChild(vp);
-      vp.destroy({ children: true });
+      if (!vp.destroyed) {
+        if (pixiApp.stage && !pixiApp.stage.destroyed) {
+          pixiApp.stage.removeChild(vp);
+        }
+        vp.destroy({ children: true });
+      }
       setViewport(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screenWidth, screenHeight, worldWidth, worldHeight]);
+  }, [screenWidth, screenHeight, worldWidth, worldHeight, pixiApp, isReady]);
 
   return <>{children(viewport)}</>;
 }
