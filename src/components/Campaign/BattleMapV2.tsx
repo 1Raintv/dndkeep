@@ -1,35 +1,32 @@
 // v2.208.0 — Phase Q.1 pt 1: BattleMap V2 foundation shell.
 // v2.209.0 — Phase Q.1 pt 2: PixiJS Application mounted, first rendered pixels.
-// v2.210.0 — Phase Q.1 pt 3: pixi-viewport wired (drag/pinch/wheel/decelerate),
-// square grid rendered in world coordinates, snap-to-grid math helpers
-// available for v2.211's token drag.
+// v2.210.0 — Phase Q.1 pt 3: pixi-viewport wired + square grid + snap helper.
+// v2.211.0 — Phase Q.1 pt 4: Zustand store for token state + first draggable
+// token. One seed token at (350, 350); left-click and drag to move; snaps
+// to grid on release. Multiplayer sync deferred to v2.215; this ship is
+// pure local state with the same Token shape the multiplayer layer will
+// consume.
 //
-// Integration notes for @pixi/react v8 + pixi-viewport v6:
-//   The declarative <pixiViewport> JSX approach is viable (per the
-//   pixi-react docs) but brittle — the library team itself acknowledges
-//   it's "the most common integration issue" (pixijs/pixi-react#590).
-//   Imperative instantiation inside a useEffect is more reliable:
-//   we reach into the parent Application via useApplication(), build
-//   the Viewport with the renderer's events handle, wire plugins, add
-//   it as a child of the stage, and return it for child components to
-//   render into via a portal-style ref pattern.
+// Drag architecture:
+//   The token drag uses `window` pointer events rather than Pixi's
+//   event system. Reasons: (1) pointer-out-of-canvas handling is easier
+//   with DOM events — Pixi's globalpointermove doesn't fire when the
+//   pointer leaves the canvas bounds mid-drag, leading to "stuck token"
+//   bugs; (2) coord conversion via `viewport.toWorld(screen)` works
+//   against any canvas-relative screen point we compute from
+//   event.clientX/Y - canvas.getBoundingClientRect(). The Pixi event
+//   fires only the initial `pointerdown` to start the drag.
 //
-//   The ViewportHost helper component owns the Viewport lifecycle.
-//   Its children are a render-prop that receives the live Viewport
-//   instance so the grid + future tokens can addChild into it.
-//
-// Next up:
-//   v2.211 — Zustand store + first draggable token
-//   v2.212 — multi-token + size categories + portrait loading
-//   v2.213 — DM-only scene create/list UI
+//   Left-mouse is reserved for token drag (not viewport pan — viewport
+//   pans on middle/right since v2.210). So there's no conflict between
+//   the two drag systems; no plugin pausing needed.
 
 import { Application, extend, useApplication } from '@pixi/react';
-import { Container, Graphics } from 'pixi.js';
+import { Container, FederatedPointerEvent, Graphics } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 
-// Register Pixi classes as JSX components (@pixi/react v8 API).
-// Called at module scope — extend is idempotent so re-importing is safe.
 extend({ Container, Graphics });
 
 interface BattleMapV2Props {
@@ -56,8 +53,7 @@ interface BattleMapV2Props {
   }>;
 }
 
-// v2.210 hardcoded scene config — 30x20 cells at 70px = 2100x1400 world px.
-// v2.213 will load these from the `scenes` table + DM edit UI.
+// v2.213 will load scene config from the scenes table.
 const SCENE_CONFIG = {
   gridSizePx: 70,
   widthCells: 30,
@@ -67,32 +63,41 @@ const WORLD_WIDTH = SCENE_CONFIG.gridSizePx * SCENE_CONFIG.widthCells;
 const WORLD_HEIGHT = SCENE_CONFIG.gridSizePx * SCENE_CONFIG.heightCells;
 
 const BG_COLOR = 0x0f1012;
-const GRID_MINOR_COLOR = 0x2a2d31; // every cell
-const GRID_MAJOR_COLOR = 0x404449; // every 5th cell
-const GRID_EDGE_COLOR = 0x6b7280; // world bounds
+const GRID_MINOR_COLOR = 0x2a2d31;
+const GRID_MAJOR_COLOR = 0x404449;
+const GRID_EDGE_COLOR = 0x6b7280;
 
-/**
- * Snap a world-pixel coordinate to the nearest grid cell corner.
- * Exported so v2.211's token-drop handler can reuse the same math.
- */
-export function snapToGrid(worldX: number, worldY: number, cellSize = SCENE_CONFIG.gridSizePx) {
+/** v2.213 will reference this from the size category + grid size. */
+function tokenRadiusForSize(size: TokenSize, cellSize: number): number {
+  // 5e size categories in cells:
+  //   tiny = 0.5  (rendered at 0.4 for visual breathing room)
+  //   small = 1 (slightly smaller than a cell so the grid shows)
+  //   medium = 1
+  //   large = 2
+  //   huge = 3
+  //   gargantuan = 4+
+  // We center the token; radius = half cell span × 0.85 to leave a
+  // visual gap. For v2.211 we're hardcoding medium.
+  const cellSpan: Record<TokenSize, number> = {
+    tiny: 0.4, small: 0.85, medium: 0.85,
+    large: 1.85, huge: 2.85, gargantuan: 3.85,
+  };
+  return (cellSpan[size] * cellSize) / 2;
+}
+
+/** Snap to the nearest grid cell CENTER (not corner) — tokens render
+ *  centered on cells so a move clicks cleanly into the middle of a
+ *  square. For a 70px grid, center of cell (2,3) is (2×70+35, 3×70+35).
+ *  Exported for v2.215's drop-commit handler. */
+export function snapToCellCenter(worldX: number, worldY: number, cellSize = SCENE_CONFIG.gridSizePx) {
+  const col = Math.floor(worldX / cellSize);
+  const row = Math.floor(worldY / cellSize);
   return {
-    x: Math.round(worldX / cellSize) * cellSize,
-    y: Math.round(worldY / cellSize) * cellSize,
+    x: col * cellSize + cellSize / 2,
+    y: row * cellSize + cellSize / 2,
   };
 }
 
-/**
- * ViewportHost — mounts pixi-viewport imperatively inside the parent
- * Application. Children are passed a render-prop callback receiving
- * the live Viewport instance, so the grid + tokens can addChild into
- * its world-coordinate space.
- *
- * Imperative ownership avoids the fragile <pixiViewport> JSX approach
- * (see pixijs/pixi-react#590). The useApplication hook only works
- * inside the Application subtree, which is why this component exists
- * as a child of <Application>.
- */
 function ViewportHost(props: {
   screenWidth: number;
   screenHeight: number;
@@ -103,10 +108,8 @@ function ViewportHost(props: {
   const { screenWidth, screenHeight, worldWidth, worldHeight, children } = props;
   const app = useApplication();
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const viewportRef = useRef<Viewport | null>(null);
 
   useEffect(() => {
-    // useApplication returns { app, isInitialized } in v8 — guard both.
     const pixiApp = (app as any)?.app ?? app;
     if (!pixiApp || !pixiApp.renderer) return;
 
@@ -116,73 +119,44 @@ function ViewportHost(props: {
       worldWidth,
       worldHeight,
       events: pixiApp.renderer.events,
-      // passiveWheel:false lets wheel events be preventDefault'd so
-      // zooming doesn't also scroll the page. Per pixi-viewport docs
-      // this is the standard configuration for embedded canvases.
       passiveWheel: false,
     });
-
     vp
-      .drag({ mouseButtons: 'middle-right' }) // left reserved for token drag later
+      .drag({ mouseButtons: 'middle-right' })
       .pinch()
       .wheel({ smooth: 8 })
       .decelerate({ friction: 0.92 })
       .clampZoom({ minScale: 0.25, maxScale: 4 })
       .clamp({ direction: 'all', underflow: 'center' });
-
-    // Start centered on the scene.
     vp.moveCenter(worldWidth / 2, worldHeight / 2);
-    // Start at a zoom that fits the whole scene into view with a bit
-    // of margin. If the scene is bigger than the screen, scale down.
-    const fitScale = Math.min(
-      screenWidth / worldWidth,
-      screenHeight / worldHeight,
-    ) * 0.9;
+    const fitScale = Math.min(screenWidth / worldWidth, screenHeight / worldHeight) * 0.9;
     if (fitScale < 1) vp.setZoom(fitScale, true);
 
     pixiApp.stage.addChild(vp);
-    viewportRef.current = vp;
     setViewport(vp);
 
     return () => {
       pixiApp.stage.removeChild(vp);
       vp.destroy({ children: true });
-      viewportRef.current = null;
       setViewport(null);
     };
-    // screen/world size changes → rebuild. Expensive but rare (only
-    // on wrapper resize via the outer ResizeObserver). We could
-    // update in place via vp.resize() + vp.worldWidth = ..., but
-    // rebuild is simpler and keeps plugin state consistent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenWidth, screenHeight, worldWidth, worldHeight]);
 
   return <>{children(viewport)}</>;
 }
 
-/**
- * GridOverlay — draws the square grid into a Pixi Graphics object
- * that's added as a child of the provided Viewport. A separate
- * Graphics per major/minor line set would be more efficient with
- * v8 batching, but for a 30x20 grid the single-Graphics approach
- * is plenty fast (fewer than 100 line operations per redraw).
- */
 function GridOverlay(props: { viewport: Viewport | null }) {
   const { viewport } = props;
-  const graphicsRef = useRef<Graphics | null>(null);
-
   useEffect(() => {
     if (!viewport) return;
     const g = new Graphics();
     viewport.addChild(g);
-    graphicsRef.current = g;
 
-    // Outer scene bounds (slightly brighter).
     g.setStrokeStyle({ color: GRID_EDGE_COLOR, width: 2, alpha: 0.8 });
     g.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     g.stroke();
 
-    // Minor grid lines — every cell.
     g.setStrokeStyle({ color: GRID_MINOR_COLOR, width: 1, alpha: 0.6 });
     for (let x = 0; x <= SCENE_CONFIG.widthCells; x++) {
       const px = x * SCENE_CONFIG.gridSizePx;
@@ -196,7 +170,6 @@ function GridOverlay(props: { viewport: Viewport | null }) {
     }
     g.stroke();
 
-    // Major grid lines — every 5th cell (reading anchors for the DM).
     g.setStrokeStyle({ color: GRID_MAJOR_COLOR, width: 1.5, alpha: 0.9 });
     for (let x = 0; x <= SCENE_CONFIG.widthCells; x += 5) {
       const px = x * SCENE_CONFIG.gridSizePx;
@@ -211,13 +184,186 @@ function GridOverlay(props: { viewport: Viewport | null }) {
     g.stroke();
 
     return () => {
-      if (graphicsRef.current && viewport) {
-        viewport.removeChild(graphicsRef.current);
-        graphicsRef.current.destroy();
-        graphicsRef.current = null;
-      }
+      if (viewport && !viewport.destroyed) viewport.removeChild(g);
+      g.destroy();
     };
   }, [viewport]);
+
+  return null;
+}
+
+/**
+ * TokenLayer — imperative Pixi Graphics management for tokens, driven
+ * by the Zustand store. Each store token gets a Graphics child of the
+ * viewport. When the store changes, we reconcile: create/update/remove.
+ *
+ * The drag handler attaches to each token's pointerdown via Pixi's
+ * event system (to get the initial press with the correct target),
+ * then switches to window-level pointermove/pointerup for reliability
+ * (Pixi's globalpointermove stops firing when the pointer leaves the
+ * canvas bounds — DOM events don't have that limitation).
+ */
+function TokenLayer(props: { viewport: Viewport | null; canvasEl: HTMLCanvasElement | null }) {
+  const { viewport, canvasEl } = props;
+  const tokens = useBattleMapStore(s => s.tokens);
+  const updatePos = useBattleMapStore(s => s.updateTokenPosition);
+  const setDragging = useBattleMapStore(s => s.setDragging);
+
+  // Map of token.id → live Graphics instance for reconcile efficiency.
+  const tokenGfxRef = useRef<Map<string, Graphics>>(new Map());
+  // Active drag state, held in a ref so the pointermove callback sees
+  // fresh values without re-binding.
+  const dragRef = useRef<{
+    id: string;
+    offsetX: number; // pointer offset from token center in world coords
+    offsetY: number;
+  } | null>(null);
+
+  // Container to hold all token Graphics. Separate container so we can
+  // cleanly destroy the whole layer on unmount without hunting children.
+  const containerRef = useRef<Container | null>(null);
+  useEffect(() => {
+    if (!viewport) return;
+    const c = new Container();
+    viewport.addChild(c);
+    containerRef.current = c;
+    return () => {
+      if (viewport && !viewport.destroyed) viewport.removeChild(c);
+      c.destroy({ children: true });
+      containerRef.current = null;
+      tokenGfxRef.current.clear();
+    };
+  }, [viewport]);
+
+  // Reconcile Graphics with store tokens.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !viewport) return;
+    const gfxMap = tokenGfxRef.current;
+
+    // Remove Graphics for tokens that no longer exist in the store.
+    for (const [id, g] of gfxMap) {
+      if (!tokens[id]) {
+        container.removeChild(g);
+        g.destroy();
+        gfxMap.delete(id);
+      }
+    }
+
+    // Add/update Graphics for each current token.
+    for (const token of Object.values(tokens)) {
+      let g = gfxMap.get(token.id);
+      const isNew = !g;
+      if (isNew) {
+        g = new Graphics();
+        g.eventMode = 'static';
+        g.cursor = 'grab';
+        container.addChild(g);
+        gfxMap.set(token.id, g);
+      }
+      const gfx = g!;
+      // Position.
+      gfx.position.set(token.x, token.y);
+      // Redraw (cheap for a circle). For v2.212 sprite path, we'd
+      // swap to a Sprite + Texture and avoid per-update redraws.
+      gfx.clear();
+      const r = tokenRadiusForSize(token.size, SCENE_CONFIG.gridSizePx);
+      // Ring (outline) + fill.
+      gfx.setFillStyle({ color: token.color, alpha: 0.92 });
+      gfx.circle(0, 0, r);
+      gfx.fill();
+      gfx.setStrokeStyle({ color: 0x0f1012, width: 2, alpha: 0.9 });
+      gfx.circle(0, 0, r);
+      gfx.stroke();
+      gfx.setStrokeStyle({ color: 0xffffff, width: 1, alpha: 0.35 });
+      gfx.circle(0, 0, r - 2);
+      gfx.stroke();
+      // Hit area — a circle matching the token radius. Pixi defaults
+      // the hit area to the rendered bounds but being explicit is
+      // cheaper because Graphics bounds scanning can be O(n) across
+      // draw calls.
+      (gfx as any).hitArea = null; // let Pixi compute from Graphics geometry
+
+      // Event wiring. `removeAllListeners` keeps this idempotent across
+      // reconciles (since the closures capture token.id, but the id
+      // doesn't change per Graphics instance, just the position — in
+      // practice we only need to wire once. Using setData stores id
+      // as a Graphics property we can read from the closure.
+      if (isNew) {
+        (gfx as any).__tokenId = token.id;
+        gfx.on('pointerdown', (event: FederatedPointerEvent) => {
+          if (!viewport) return;
+          // Only primary pointer (left mouse) starts drag. Pixi v8's
+          // `button` is 0 = left, 1 = middle, 2 = right.
+          if (event.button !== 0) return;
+          event.stopPropagation();
+          const tid = (gfx as any).__tokenId as string;
+          const t = useBattleMapStore.getState().tokens[tid];
+          if (!t) return;
+          // Convert pointer screen coords to world coords so we can
+          // compute the offset from the token's current center. Using
+          // toWorld rather than event.getLocalPosition since we want
+          // world coords regardless of parent transforms.
+          const worldPoint = viewport.toWorld(event.global.x, event.global.y);
+          dragRef.current = {
+            id: tid,
+            offsetX: worldPoint.x - t.x,
+            offsetY: worldPoint.y - t.y,
+          };
+          setDragging(tid);
+          gfx.cursor = 'grabbing';
+          // Drop shadow-ish feedback: brighten the token while dragged.
+          gfx.alpha = 0.75;
+        });
+      }
+    }
+  }, [tokens, viewport, setDragging]);
+
+  // Global pointer listeners for the drag. Window-level so out-of-
+  // canvas movement still drags, and releasing anywhere commits.
+  useEffect(() => {
+    if (!viewport || !canvasEl) return;
+
+    function onPointerMove(e: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag || !viewport || !canvasEl) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPoint = viewport.toWorld(screenX, screenY);
+      // Raw position (no snap during drag — snap happens on release).
+      updatePos(drag.id, worldPoint.x - drag.offsetX, worldPoint.y - drag.offsetY);
+    }
+
+    function onPointerUp() {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const t = useBattleMapStore.getState().tokens[drag.id];
+      if (t) {
+        // Snap to cell center on release.
+        const snapped = snapToCellCenter(t.x, t.y);
+        // Clamp to world bounds so tokens can't be left off-map.
+        const clampedX = Math.max(0, Math.min(WORLD_WIDTH, snapped.x));
+        const clampedY = Math.max(0, Math.min(WORLD_HEIGHT, snapped.y));
+        updatePos(drag.id, clampedX, clampedY);
+      }
+      // Restore cursor on the dragged token's graphics.
+      const gfx = tokenGfxRef.current.get(drag.id);
+      if (gfx) {
+        gfx.cursor = 'grab';
+        gfx.alpha = 1;
+      }
+      dragRef.current = null;
+      setDragging(null);
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [viewport, canvasEl, updatePos, setDragging]);
 
   return null;
 }
@@ -225,11 +371,11 @@ function GridOverlay(props: { viewport: Viewport | null }) {
 export default function BattleMapV2(_props: BattleMapV2Props) {
   void _props; // unused until v2.212
 
-  // Measure the wrapper so the Pixi canvas matches the surrounding
-  // flex layout. Lower-bounded so the renderer never gets 0x0 sizing
-  // (which would crash Pixi's WebGL context creation).
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [dims, setDims] = useState({ width: 800, height: 600 });
+  // Track the actual <canvas> element PixiJS mounts so the drag
+  // handler can compute pointer-relative-to-canvas coords for toWorld.
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -237,7 +383,6 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
     const ro = new ResizeObserver(entries => {
       for (const e of entries) {
         const w = Math.max(300, Math.floor(e.contentRect.width));
-        // 16:9ish, capped so unbounded flex parents don't blow up.
         const h = Math.min(700, Math.max(400, Math.floor(e.contentRect.width * 0.5625)));
         setDims({ width: w, height: h });
       }
@@ -246,9 +391,50 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
     return () => ro.disconnect();
   }, []);
 
-  // Zoom buttons (fallback for trackpads without pinch, and for
-  // accessibility). Operate on the currently-mounted viewport via
-  // a ref that the ViewportHost populates.
+  // Find the canvas once the wrapper mounts. Pixi's Application
+  // appends a <canvas> as a child of the <pixi-application> DOM node
+  // @pixi/react renders. We query for it after first paint.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    // poll briefly — Pixi's canvas is appended asynchronously on init
+    let attempts = 0;
+    const id = setInterval(() => {
+      const canvas = el.querySelector('canvas');
+      if (canvas) {
+        setCanvasEl(canvas as HTMLCanvasElement);
+        clearInterval(id);
+      } else if (++attempts > 30) {
+        // 30 × 50ms = 1.5s cutoff; after that something's wrong.
+        clearInterval(id);
+      }
+    }, 50);
+    return () => clearInterval(id);
+  }, [dims.width, dims.height]);
+
+  // Seed a test token the first time the component mounts. v2.213
+  // replaces this with scene-hydrated tokens from scene_tokens.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    const state = useBattleMapStore.getState();
+    // If tokens already exist (e.g. hot reload) skip.
+    if (Object.keys(state.tokens).length === 0) {
+      const testToken: Token = {
+        id: 'test-token-1',
+        sceneId: null,
+        x: SCENE_CONFIG.gridSizePx * 5 + SCENE_CONFIG.gridSizePx / 2, // center of cell (5,5)
+        y: SCENE_CONFIG.gridSizePx * 5 + SCENE_CONFIG.gridSizePx / 2,
+        size: 'medium',
+        rotation: 0,
+        name: 'Test',
+        color: 0xa78bfa, // app purple
+      };
+      state.addToken(testToken);
+    }
+    seededRef.current = true;
+  }, []);
+
   const vpRef = useRef<Viewport | null>(null);
   const zoomIn = useCallback(() => {
     if (!vpRef.current) return;
@@ -260,10 +446,7 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
   }, []);
   const zoomFit = useCallback(() => {
     if (!vpRef.current) return;
-    const fitScale = Math.min(
-      dims.width / WORLD_WIDTH,
-      dims.height / WORLD_HEIGHT,
-    ) * 0.9;
+    const fitScale = Math.min(dims.width / WORLD_WIDTH, dims.height / WORLD_HEIGHT) * 0.9;
     vpRef.current.setZoom(fitScale, true);
     vpRef.current.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
   }, [dims.width, dims.height]);
@@ -293,16 +476,17 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
           worldHeight={WORLD_HEIGHT}
         >
           {vp => {
-            // Side-channel the viewport to the outer component's ref
-            // for zoom-button handlers. Runs on every render, cheap.
             vpRef.current = vp;
-            return <GridOverlay viewport={vp} />;
+            return (
+              <>
+                <GridOverlay viewport={vp} />
+                <TokenLayer viewport={vp} canvasEl={canvasEl} />
+              </>
+            );
           }}
         </ViewportHost>
       </Application>
 
-      {/* Status overlay — top-left. pointerEvents:none so canvas
-          keeps input coverage. */}
       <div
         style={{
           position: 'absolute', top: 8, left: 12,
@@ -318,9 +502,6 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
         BATTLE MAP v2 · {SCENE_CONFIG.widthCells}×{SCENE_CONFIG.heightCells} GRID · {SCENE_CONFIG.gridSizePx}PX
       </div>
 
-      {/* Zoom controls — bottom-right. Keyboard-accessible fallbacks
-          for users who can't pinch-zoom or whose trackpad maps wheel
-          to page scroll. */}
       <div
         style={{
           position: 'absolute', bottom: 12, right: 12,
@@ -353,8 +534,6 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
         ))}
       </div>
 
-      {/* Pan/zoom hint — bottom-left, faded. Hide after the user
-          interacts (future polish; right now it's always visible). */}
       <div
         style={{
           position: 'absolute', bottom: 12, left: 12,
@@ -367,7 +546,7 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
           letterSpacing: '0.02em',
         }}
       >
-        Right/middle drag to pan · wheel to zoom · pinch on trackpad
+        Drag tokens with left-click · right/middle drag to pan · wheel to zoom
       </div>
     </div>
   );
