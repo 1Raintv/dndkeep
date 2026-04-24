@@ -19,6 +19,7 @@ import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
+import BattleMapV2 from './BattleMapV2';
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import StartCombatButton from '../Combat/StartCombatButton';
@@ -490,23 +491,76 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         )}
 
         {/* v2.95.0 — Phase C: one unified Battle Map for everyone.
-            DM gets full controls; players get view-all + drag-own-token-only via myCharacterId. */}
-        {activeTab === 'map' && (
-          <BattleMap
-            campaignId={campaign.id}
-            isDM={isOwner}
-            userId={user?.id ?? ''}
-            myCharacterId={characters.find(c => c.user_id === user?.id)?.id ?? null}
-            playerCharacters={characters.map(c => ({
+            DM gets full controls; players get view-all + drag-own-token-only via myCharacterId.
+            v2.208.0 — Phase Q.1 pt 1: feature-flag toggle between v1 (the
+            existing primitive map) and v2 (the PixiJS rewrite). The toggle
+            is localStorage-scoped to the campaign+user so switching here
+            doesn't affect other campaigns or other players. v1 remains the
+            default until v2 reaches feature parity. */}
+        {activeTab === 'map' && (() => {
+          const flagKey = `dndkeep:battlemap_v2:${campaign.id}:${user?.id ?? 'anon'}`;
+          const useV2 = (typeof window !== 'undefined' && localStorage.getItem(flagKey) === '1');
+          const toggleV2 = () => {
+            if (typeof window === 'undefined') return;
+            if (useV2) localStorage.removeItem(flagKey);
+            else localStorage.setItem(flagKey, '1');
+            // Force re-render — simplest path, avoids threading state up.
+            setActiveTab('map_refresh' as any);
+            setTimeout(() => setActiveTab('map'), 0);
+          };
+          const commonProps = {
+            campaignId: campaign.id,
+            isDM: isOwner,
+            userId: user?.id ?? '',
+            myCharacterId: characters.find(c => c.user_id === user?.id)?.id ?? null,
+            playerCharacters: characters.map(c => ({
               id: c.id, name: c.name, class_name: c.class_name, level: c.level,
               current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
               active_conditions: c.active_conditions ?? [],
               strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
               intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
               speed: c.speed,
-            }))}
-          />
-        )}
+            })),
+          };
+          return (
+            <div>
+              {/* v2 toggle — available to everyone in the campaign for
+                  testing. When v2 matures enough to be the default, this
+                  toggle can flip polarity (v1 becomes the opt-in legacy). */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', marginBottom: 12,
+                background: useV2 ? 'rgba(167,139,250,0.08)' : 'var(--c-raised)',
+                border: `1px solid ${useV2 ? 'rgba(167,139,250,0.4)' : 'var(--c-border)'}`,
+                borderRadius: 'var(--r-md)',
+              }}>
+                <span style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)',
+                  letterSpacing: '0.02em',
+                }}>
+                  Battle Map renderer: <strong style={{ color: 'var(--t-1)' }}>{useV2 ? 'v2 (preview)' : 'v1 (stable)'}</strong>
+                </span>
+                <button
+                  onClick={toggleV2}
+                  style={{
+                    padding: '4px 12px', borderRadius: 'var(--r-md)',
+                    background: useV2 ? 'var(--c-raised)' : 'rgba(167,139,250,0.15)',
+                    border: `1px solid ${useV2 ? 'var(--c-border)' : 'rgba(167,139,250,0.4)'}`,
+                    color: useV2 ? 'var(--t-2)' : '#a78bfa',
+                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title={useV2
+                    ? 'Switch back to the stable v1 battle map'
+                    : 'Try the v2 preview — a ground-up rewrite with dynamic lighting, walls, and more. Not yet feature-complete.'}
+                >
+                  {useV2 ? 'Use v1 (stable)' : 'Try v2 (preview)'}
+                </button>
+              </div>
+              {useV2 ? <BattleMapV2 {...commonProps} /> : <BattleMap {...commonProps} />}
+            </div>
+          );
+        })()}
 
         {activeTab === 'discord' && isOwner && (
           <div>
