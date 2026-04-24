@@ -17,6 +17,17 @@ export interface ClassAbility {
   /** If true, it's a resource pool (uses cost, not limited total uses) */
   isPool?: boolean;
   psionicDie?: boolean;  // rolls correct die size on spend
+  /** v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost for
+   *  abilities that consume PEDs. When set, the Use button deducts this
+   *  many dice from the PED pool (and refuses if insufficient). When
+   *  unset, the ability either:
+   *    - has `isPool: true` AND `psionicDie: true` → user is rolling a
+   *      die from the pool itself (the existing PED-roll flow, costs 1)
+   *    - has `isPool: true` only → ambient resource indicator, no auto-
+   *      deduct (e.g. the PED row itself, which has its own Spend button)
+   *    - has neither → free to use, just logs the action
+   *  Examples: Warp Space pedCost: 1, Mass Teleportation pedCost: 4. */
+  pedCost?: number;
 }
 
 function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
@@ -484,6 +495,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Cast Misty Step without a spell slot. Once per Long Rest. Restore by spending 1 Psionic Energy Die.',
       descriptionLong: 'Cast Misty Step without expending a spell slot. Once you use this feature, you can\'t do so again until you finish a Long Rest, OR until you spend 1 Psionic Energy Die (no action required) to restore the use.\n\nAt level 6+ this combines with Teleporter Combat: after the Misty Step bonus action, you may immediately cast a Psion cantrip with an Action casting time as part of the same Bonus Action.',
       minLevel: 3,
+      // v2.189.0 — once per Long Rest. Tracked via feature_uses; reset
+      // by doLongRest. PED-restore mechanic isn't auto-wired (would
+      // need a second button "Restore via PED" — that's its own ship).
+      maxUsesFn: () => 1,
+      rest: 'long',
     },
     {
       name: 'Warp Propel',
@@ -498,8 +514,10 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Cast Shatter, spend 1 PED to expand radius to 20 ft and pull failing creatures toward the center.',
       descriptionLong: 'When you cast Shatter, you can spend 1 Psionic Energy Die. The spell\'s radius expands from 10 ft to 20 ft, and creatures that fail the Constitution saving throw are pulled up to 10 ft toward the spell\'s point of origin in addition to taking damage.\n\nThis is an alternate cast of Shatter (which remains separately available in your spell list); Warp Space costs both a 2nd-level spell slot AND 1 Psionic Energy Die.',
       minLevel: 6,
-      isPool: true,
-      psionicDie: true,
+      // v2.189.0 — explicit pedCost replaces the old isPool/psionicDie
+      // flags which only deducted 1 die generically. New flow: Use
+      // button checks pool ≥ pedCost, deducts, broadcasts.
+      pedCost: 1,
     },
     {
       name: 'Teleporter Combat',
@@ -514,8 +532,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Reaction: when attacked, spend 1 PED to swap places with a willing ally within 30 ft. Attack hits them instead.',
       descriptionLong: 'When a creature you can see attacks you, you can use your Reaction and spend 1 Psionic Energy Die to swap places with a willing ally within 30 ft. The ally takes the attack instead of you.\n\nThe ally must be willing — you can\'t involuntarily swap with an unwilling target. Both you and the ally must have line of sight to each other and there must be no full cover between you.',
       minLevel: 10,
-      isPool: true,
-      psionicDie: true,
+      pedCost: 1,
     },
     {
       name: 'Mass Teleportation',
@@ -523,8 +540,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Magic action: spend 4 PED. Teleport up to INT mod creatures within 30 ft to spaces within 150 ft. Unwilling targets WIS save.',
       descriptionLong: 'Take a Magic action and spend 4 Psionic Energy Dice. Choose up to a number of creatures equal to your Intelligence modifier (minimum 1) within 30 ft of you. You teleport each chosen creature to an unoccupied space you can see within 150 ft.\n\nWilling targets are simply moved. Unwilling targets must succeed on a Wisdom saving throw against your spell save DC or be teleported anyway.\n\nYou may include yourself among the chosen targets.',
       minLevel: 14,
-      isPool: true,
-      psionicDie: true,
+      pedCost: 4,
     },
   ],
 };

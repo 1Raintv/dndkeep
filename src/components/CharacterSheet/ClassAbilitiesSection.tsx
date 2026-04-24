@@ -142,6 +142,25 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
 
  async function handleUseAbility(ability: ClassAbility, cost?: number) {
+ // v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost gate.
+ // Abilities with `pedCost: N` (Warp Space=1, Mass Teleport=4, etc.)
+ // require N dice in the pool; insufficient pool aborts with an alert
+ // rather than silently deducting and going negative. Pool deduction
+ // happens here in one shot rather than in the legacy isPool branch
+ // below (which always deducted exactly 1, regardless of cost).
+ const pedCost = (ability as any).pedCost as number | undefined;
+ if (typeof pedCost === 'number' && pedCost > 0) {
+ const resources = (character.class_resources as Record<string, number> | null) ?? {};
+ const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
+ if (currentDice < pedCost) {
+ // Insufficient pool — bail before logging or flashing.
+ alert(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`);
+ return;
+ }
+ const nextResources = { ...resources, 'psionic-energy-dice': currentDice - pedCost };
+ onUpdate({ class_resources: nextResources });
+ }
+
  // Mark as used if it has limited uses
  if (cost !== undefined) {
  const current = ((character.feature_uses as Record<string, number>) ?? {})[ability.name] ?? 0;
@@ -149,8 +168,12 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [ability.name]: current + 1 }
  });
  }
- // Deduct from class_resources if pool-based
- if (ability.id === 'psionic-energy-dice' || (ability as any).isPool) {
+ // v2.189.0 — Legacy isPool deduction: still fires for the
+ // Psionic Energy Dice row itself (which has isPool but no
+ // pedCost — clicking Spend Die on that row deducts exactly 1
+ // and rolls). For abilities with pedCost set, we skip this
+ // branch since deduction already happened above.
+ if (typeof pedCost !== 'number' && (ability.id === 'psionic-energy-dice' || (ability as any).isPool)) {
  const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
  if (resources['psionic-energy-dice'] !== undefined) {
  resources['psionic-energy-dice'] = Math.max(0, (resources['psionic-energy-dice'] as number) - 1);
@@ -344,7 +367,15 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      when it briefly swaps to "Used!" the width stays constant — visual
      feedback without layout reflow of the parent row. */}
  {ability.actionType !== 'free' && (() => {
+ // v2.189.0 — Phase Q.0 pt 30: button label includes PED cost when set.
+ //   - pedCost: N → "Use (N PED)" (tells player the cost up front)
+ //   - reaction → "Trigger" (legacy)
+ //   - psionicDie ROW (the PED resource itself) → "Spend Die (1dN)"
+ //   - isPool only → "Spend Die" (legacy fallback for old discipline shape)
+ //   - everything else → "Use"
+ const ped = (ability as any).pedCost as number | undefined;
  const restingLabel =
+ typeof ped === 'number' && ped > 0 ? `Use (${ped} PED)` :
  ability.actionType === 'reaction' ? 'Trigger' :
  (ability as any).psionicDie ? `Spend Die (1${getPsionicDieSize(character.level)})` :
  (ability as any).isPool ? 'Spend Die' : 'Use';
