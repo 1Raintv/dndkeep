@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense, type FormEvent } from 'react';
 import type { Campaign, Character, CampaignMember } from '../../types';
 import { useCampaign } from '../../context/CampaignContext';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +19,11 @@ import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 import BattleMap from './BattleMap';
-import BattleMapV2 from './BattleMapV2';
+// v2.210.0 — Phase Q.1 pt 3: BattleMapV2 is lazy-loaded so Pixi
+// (~500KB) only downloads when a user actually opens the map tab AND
+// flips the v2 toggle. Keeps the main-bundle cost zero for anyone
+// who never touches the preview feature.
+const BattleMapV2 = lazy(() => import('./BattleMapV2'));
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import StartCombatButton from '../Combat/StartCombatButton';
@@ -557,7 +561,21 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
                   {useV2 ? 'Use v1 (stable)' : 'Try v2 (preview)'}
                 </button>
               </div>
-              {useV2 ? <BattleMapV2 {...commonProps} /> : <BattleMap {...commonProps} />}
+              {useV2 ? (
+                <Suspense fallback={
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    minHeight: 400, padding: 'var(--sp-6, 32px)',
+                    background: 'var(--c-card)', border: '1px solid var(--c-border)',
+                    borderRadius: 'var(--r-lg, 12px)',
+                    fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
+                  }}>
+                    Loading Battle Map v2…
+                  </div>
+                }>
+                  <BattleMapV2 {...commonProps} />
+                </Suspense>
+              ) : <BattleMap {...commonProps} />}
             </div>
           );
         })()}
