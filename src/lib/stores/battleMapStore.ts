@@ -31,6 +31,25 @@ import { create } from 'zustand';
 
 export type TokenSize = 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan';
 
+/** v2.223 — wall segment.
+ *  Endpoints live in world pixel coordinates. Drawing tool snaps to
+ *  cell CORNERS (not centers like tokens) but free-placement is
+ *  schema-valid for future curve approximations. */
+export interface Wall {
+  id: string;
+  sceneId: string | null;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** Blocks line-of-sight for vision polygon (v2.224). */
+  blocksSight: boolean;
+  /** Blocks token movement (future ship). */
+  blocksMovement: boolean;
+  /** NULL = regular wall. Door states come from the DB CHECK set. */
+  doorState: 'closed' | 'open' | 'locked' | null;
+}
+
 export interface Token {
   id: string;
   sceneId: string | null; // null = ephemeral / pre-sync
@@ -74,6 +93,10 @@ interface BattleMapStore {
    *  Does NOT include the current user's own drags — those go in
    *  `dragging`. */
   remoteDragLocks: Record<string, string>;
+  /** v2.223: wall segments for the current scene. Same hydration
+   *  pattern as tokens — listWalls on scene change → setWallsBulk.
+   *  Realtime channel echoes inserts/deletes. */
+  walls: Record<string, Wall>;
   /** v2.213: currently-hydrated scene id. Null means no scene selected. */
   currentSceneId: string | null;
   /** v2.213: true while tokens are being fetched for the current scene. */
@@ -91,6 +114,11 @@ interface BattleMapStore {
    *  Supabase Presence 'sync' event handler which rebuilds the map
    *  from the current presence state. */
   setRemoteDragLocks: (locks: Record<string, string>) => void;
+  // v2.223 wall mutators — parallel to token mutators. Realtime adds
+  // call addWall/removeWall; hydration calls setWallsBulk.
+  addWall: (wall: Wall) => void;
+  removeWall: (id: string) => void;
+  setWallsBulk: (walls: Wall[]) => void;
   resetForScene: (sceneId: string | null) => void;
 }
 
@@ -98,6 +126,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   tokens: {},
   dragging: null,
   remoteDragLocks: {},
+  walls: {},
   currentSceneId: null,
   loading: false,
 
@@ -139,12 +168,38 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
 
   setRemoteDragLocks: (locks) => set({ remoteDragLocks: locks }),
 
+  addWall: (wall) =>
+    set((s) => ({ walls: { ...s.walls, [wall.id]: wall } })),
+
+  removeWall: (id) =>
+    set((s) => {
+      const { [id]: _, ...rest } = s.walls;
+      return { walls: rest };
+    }),
+
+  setWallsBulk: (walls) =>
+    set(() => {
+      const map: Record<string, Wall> = {};
+      for (const w of walls) map[w.id] = w;
+      return { walls: map };
+    }),
+
   resetForScene: (sceneId) =>
     set((s) => {
       const kept: Record<string, Token> = {};
       for (const [id, t] of Object.entries(s.tokens)) {
         if (t.sceneId === sceneId) kept[id] = t;
       }
-      return { tokens: kept, dragging: null, remoteDragLocks: {}, currentSceneId: sceneId };
+      const keptWalls: Record<string, Wall> = {};
+      for (const [id, w] of Object.entries(s.walls)) {
+        if (w.sceneId === sceneId) keptWalls[id] = w;
+      }
+      return {
+        tokens: kept,
+        walls: keptWalls,
+        dragging: null,
+        remoteDragLocks: {},
+        currentSceneId: sceneId,
+      };
     }),
 }));

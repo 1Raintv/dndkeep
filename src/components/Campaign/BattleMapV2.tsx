@@ -28,15 +28,25 @@
 // action on linked tokens. Token context menu gets a navigate-jump
 // to the linked character's full sheet via the existing
 // /character/:id route. Tiny ship; massive DM utility during prep.
+// v2.223.0 — Phase Q.1 pt 16 (Phase 3 begin): scene_walls schema +
+// click-to-place wall drawing tool + static WallLayer rendering.
+// Walls are line segments between cell corners. DM-only drawing
+// (RLS-enforced). Chain mode: each click sets a new start so DMs
+// can rapidly lay down connected segments. Right-click within wall
+// mode deletes the nearest wall. Escape cancels a pending start.
+// Realtime sync via Postgres Changes on scene_walls. v2.224 will
+// consume these walls to clip per-token visibility polygons; v2.225
+// adds per-player fog of war.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
+import { useBattleMapStore, type Token, type TokenSize, type Wall } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
+import * as wallsApi from '../../lib/api/sceneWalls';
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
 import { supabase } from '../../lib/supabase';
@@ -512,6 +522,269 @@ function RulerLayer(props: {
   return null;
 }
 
+/**
+ * v2.223 — WallLayer.
+ *
+ * Renders wall segments (scene_walls) as Graphics line segments in the
+ * viewport. Also hosts the wall drawing + delete tool when active.
+ *
+ * Draw flow (click-click sequence):
+ *   1. User enters wall mode via toolbar toggle (active=true)
+ *   2. First left-click on canvas: snap to nearest cell corner, store
+ *      as pending start point + render an indicator dot
+ *   3. Second left-click: snap to nearest cell corner, commit the
+ *      segment to DB + local store
+ *   4. Escape or switching modes cancels a pending start
+ *
+ * Delete flow:
+ *   - Right-click on canvas while wall mode is active → find nearest
+ *     wall segment within hit-threshold → delete it
+ *
+ * Rendering:
+ *   - Walls drawn with purple stroke (matches DM/editor tool palette),
+ *     3px width, 85% alpha.
+ *   - Pending-start indicator: small circle at the pending endpoint +
+ *     dashed preview line to cursor (rubber-band).
+ *
+ * v2.224 will invisibly consume these walls for vision polygon clipping.
+ * For this ship, walls are always visible to everyone for testing.
+ */
+function WallLayer(props: {
+  viewport: Viewport | null;
+  canvasEl: HTMLCanvasElement | null;
+  active: boolean;
+  isDM: boolean;
+  gridSizePx: number;
+  currentSceneId: string | null;
+}) {
+  const { viewport, canvasEl, active, isDM, gridSizePx, currentSceneId } = props;
+  const walls = useBattleMapStore(s => s.walls);
+
+  // Display graphics for existing walls (one Graphics object, redrawn
+  // wholesale on any change — wall count is typically small and lines
+  // are cheap).
+  const wallGfxRef = useRef<Graphics | null>(null);
+  // Pending-start indicator + rubber-band preview (only during drawing).
+  const previewGfxRef = useRef<Graphics | null>(null);
+  // Pending start point in WORLD coords, or null when no drag in progress.
+  const pendingStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Current cursor world position for rubber-band preview.
+  const cursorWorldRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Mount + teardown the display tree on viewport change.
+  useEffect(() => {
+    if (!viewport) return;
+    const wallGfx = new Graphics();
+    const previewGfx = new Graphics();
+    viewport.addChild(wallGfx);
+    viewport.addChild(previewGfx);
+    wallGfxRef.current = wallGfx;
+    previewGfxRef.current = previewGfx;
+
+    return () => {
+      if (!wallGfx.destroyed && !viewport.destroyed) viewport.removeChild(wallGfx);
+      if (!wallGfx.destroyed) wallGfx.destroy();
+      if (!previewGfx.destroyed && !viewport.destroyed) viewport.removeChild(previewGfx);
+      if (!previewGfx.destroyed) previewGfx.destroy();
+      wallGfxRef.current = null;
+      previewGfxRef.current = null;
+      pendingStartRef.current = null;
+      cursorWorldRef.current = null;
+    };
+  }, [viewport]);
+
+  // Redraw the existing walls whenever the walls dict changes.
+  useEffect(() => {
+    const gfx = wallGfxRef.current;
+    if (!gfx || gfx.destroyed) return;
+    gfx.clear();
+    // Style: thin purple lines. When active mode is ON we intensify
+    // slightly so the DM gets visual feedback that walls are editable.
+    const alpha = active ? 0.95 : 0.85;
+    const width = 3;
+    gfx.setStrokeStyle({ color: 0xa78bfa, width, alpha });
+    for (const w of Object.values(walls)) {
+      gfx.moveTo(w.x1, w.y1);
+      gfx.lineTo(w.x2, w.y2);
+    }
+    gfx.stroke();
+  }, [walls, active]);
+
+  // Pending-start + rubber-band preview is drawn on its own Graphics
+  // that we re-clear every time the preview changes. Driven by a small
+  // loop triggered by pointermove during drawing.
+  const redrawPreview = useCallback(() => {
+    const gfx = previewGfxRef.current;
+    if (!gfx || gfx.destroyed) return;
+    gfx.clear();
+    const start = pendingStartRef.current;
+    const cursor = cursorWorldRef.current;
+    if (!start) return;
+    // Start indicator dot.
+    gfx.setFillStyle({ color: 0xa78bfa, alpha: 0.95 });
+    gfx.circle(start.x, start.y, 5);
+    gfx.fill();
+    // Rubber-band line from start to (snapped) cursor.
+    if (cursor) {
+      const snapped = snapToGridCorner(cursor.x, cursor.y, gridSizePx);
+      gfx.setStrokeStyle({ color: 0xa78bfa, width: 2, alpha: 0.5 });
+      gfx.moveTo(start.x, start.y);
+      gfx.lineTo(snapped.x, snapped.y);
+      gfx.stroke();
+      // End indicator dot (where the next click would commit).
+      gfx.setFillStyle({ color: 0xa78bfa, alpha: 0.7 });
+      gfx.circle(snapped.x, snapped.y, 4);
+      gfx.fill();
+    }
+  }, [gridSizePx]);
+
+  // Wall drawing pointer handlers — active only when `active` AND DM.
+  // Players can't edit walls (RLS would reject the INSERT anyway).
+  useEffect(() => {
+    if (!active || !isDM || !viewport || !canvasEl || !currentSceneId) return;
+
+    function worldFromEvent(e: PointerEvent): { x: number; y: number } | null {
+      if (!viewport || !canvasEl) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      return viewport.toWorld(screenX, screenY);
+    }
+
+    function onDown(e: PointerEvent) {
+      // Only intercept events targeting the canvas.
+      if (e.target !== canvasEl) return;
+
+      // Right-click = delete nearest wall (within threshold).
+      if (e.button === 2) {
+        const world = worldFromEvent(e);
+        if (!world) return;
+        const THRESHOLD = Math.max(6, gridSizePx * 0.25);
+        let best: { id: string; dist: number } | null = null;
+        for (const w of Object.values(useBattleMapStore.getState().walls)) {
+          if (w.sceneId !== currentSceneId) continue;
+          const d = pointSegmentDistance(world.x, world.y, w.x1, w.y1, w.x2, w.y2);
+          if (d < THRESHOLD && (!best || d < best.dist)) {
+            best = { id: w.id, dist: d };
+          }
+        }
+        if (best) {
+          // Optimistic local remove + async DB delete.
+          useBattleMapStore.getState().removeWall(best.id);
+          wallsApi.deleteWall(best.id).catch(err =>
+            console.error('[WallLayer] deleteWall failed', err)
+          );
+        }
+        e.preventDefault();
+        return;
+      }
+
+      // Left click = place/commit endpoint.
+      if (e.button !== 0) return;
+      const world = worldFromEvent(e);
+      if (!world) return;
+      const snapped = snapToGridCorner(world.x, world.y, gridSizePx);
+
+      const start = pendingStartRef.current;
+      if (!start) {
+        // First click — set pending start.
+        pendingStartRef.current = snapped;
+        cursorWorldRef.current = snapped;
+        redrawPreview();
+      } else {
+        // Second click — commit wall. Skip zero-length segments.
+        if (Math.abs(start.x - snapped.x) < 0.5 && Math.abs(start.y - snapped.y) < 0.5) {
+          return;
+        }
+        const wall: Wall = {
+          id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `wall-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          sceneId: currentSceneId,
+          x1: start.x,
+          y1: start.y,
+          x2: snapped.x,
+          y2: snapped.y,
+          blocksSight: true,
+          blocksMovement: true,
+          doorState: null,
+        };
+        // Optimistic insert; realtime echoes back (idempotent).
+        useBattleMapStore.getState().addWall(wall);
+        wallsApi.createWall(wall).catch(err =>
+          console.error('[WallLayer] createWall failed', err)
+        );
+        // Chain mode: keep the endpoint we just clicked as the new
+        // start so the DM can rapidly lay down contiguous walls with
+        // one-click-per-vertex. Escape or exiting mode cancels.
+        pendingStartRef.current = snapped;
+        redrawPreview();
+      }
+    }
+
+    function onMove(e: PointerEvent) {
+      if (!pendingStartRef.current) return;
+      const world = worldFromEvent(e);
+      if (!world) return;
+      cursorWorldRef.current = world;
+      redrawPreview();
+    }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        pendingStartRef.current = null;
+        cursorWorldRef.current = null;
+        redrawPreview();
+      }
+    }
+
+    canvasEl.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      canvasEl.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('keydown', onKey);
+      // Also clear pending state and preview on mode exit.
+      pendingStartRef.current = null;
+      cursorWorldRef.current = null;
+      redrawPreview();
+    };
+  }, [active, isDM, viewport, canvasEl, gridSizePx, currentSceneId, redrawPreview]);
+
+  return null;
+}
+
+/** Snap world coords to the nearest cell corner. v2.210 exports
+ *  snapToGrid which already does this (unlike snapToCellCenter).
+ *  Using a dedicated alias here keeps call-sites self-documenting. */
+function snapToGridCorner(x: number, y: number, cellSize: number): { x: number; y: number } {
+  return {
+    x: Math.round(x / cellSize) * cellSize,
+    y: Math.round(y / cellSize) * cellSize,
+  };
+}
+
+/** Perpendicular distance from point (px, py) to line segment
+ *  (x1, y1)-(x2, y2). Used for wall hit-detection during delete. */
+function pointSegmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 0.0001) {
+    // Degenerate segment (should never happen for walls but defensive)
+    const ddx = px - x1;
+    const ddy = py - y1;
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+  // Clamp t to [0,1] so we measure to the segment, not the infinite line.
+  let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  const ddx = px - projX;
+  const ddy = py - projY;
+  return Math.sqrt(ddx * ddx + ddy * ddy);
+}
+
 function TokenLayer(props: {
   viewport: Viewport | null;
   canvasEl: HTMLCanvasElement | null;
@@ -527,6 +800,8 @@ function TokenLayer(props: {
   // v2.218 — when the ruler is active, ALL token interactions are
   // suppressed so the ruler gesture owns the pointer exclusively.
   rulerActive?: boolean;
+  // v2.223 — same pattern for wall-drawing mode.
+  wallActive?: boolean;
   // v2.221 — character HP lookup for live HP bars on PC tokens.
   // Map<characterId, { current, max }>. Tokens whose characterId
   // matches an entry get an HP bar rendered underneath. Pure data
@@ -536,7 +811,7 @@ function TokenLayer(props: {
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
-    currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive,
+    currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     characterHpMap,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
@@ -549,6 +824,9 @@ function TokenLayer(props: {
   // into a ref that updates every render.
   const rulerActiveRef = useRef(false);
   useEffect(() => { rulerActiveRef.current = !!rulerActive; }, [rulerActive]);
+  // v2.223: same mechanism for wall-drawing mode.
+  const wallActiveRef = useRef(false);
+  useEffect(() => { wallActiveRef.current = !!wallActive; }, [wallActive]);
 
   interface TokenGfx {
     container: Container;
@@ -638,6 +916,8 @@ function TokenLayer(props: {
           // here — the window-level pointerdown in RulerLayer needs to
           // see the event.
           if (rulerActiveRef.current) return;
+          // v2.223: same for wall-drawing mode.
+          if (wallActiveRef.current) return;
           if (event.button === 2) {
             event.stopPropagation();
             event.preventDefault();
@@ -1628,6 +1908,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     if (!currentScene) {
       store.resetForScene(null);
       store.setTokensBulk([]);
+      store.setWallsBulk([]);
       return;
     }
     let cancelled = false;
@@ -1635,10 +1916,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     store.resetForScene(currentScene.id);
     tokensApi.listTokens(currentScene.id).then(list => {
       if (cancelled) return;
-      // Snap all hydrated positions in case DB has pre-snap data from
-      // an earlier draft state. Cheap, defensive.
       useBattleMapStore.getState().setTokensBulk(list);
       useBattleMapStore.getState().setLoading(false);
+    });
+    // v2.223 — walls hydration runs in parallel with tokens. No
+    // loading gate for walls specifically; they populate when ready.
+    wallsApi.listWalls(currentScene.id).then(list => {
+      if (cancelled) return;
+      useBattleMapStore.getState().setWallsBulk(list);
     });
     return () => { cancelled = true; };
   }, [currentScene]);
@@ -1688,6 +1973,45 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             const oldRow = payload.old;
             if (oldRow?.id) {
               store.removeToken(oldRow.id);
+            }
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentScene?.id]);
+
+  // v2.223.0 — Phase Q.1 pt 16: Realtime sync for scene_walls.
+  // Same pattern as scene_tokens. INSERTs (wall drawn) fire addWall on
+  // all subscribers; DELETEs fire removeWall. No UPDATE handler in
+  // this ship — walls are currently immutable (draw + delete, no edit).
+  // v2.226+ door-state changes will add UPDATE handling.
+  useEffect(() => {
+    if (!currentScene?.id) return;
+    const sceneId = currentScene.id;
+    const channel = supabase
+      .channel(`battle_map:scene_walls:${sceneId}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scene_walls',
+          filter: `scene_id=eq.${sceneId}`,
+        },
+        (payload: any) => {
+          const store = useBattleMapStore.getState();
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const wall = wallsApi.dbRowToWall(payload.new);
+            // addWall is upsert semantics — safe for the originator's
+            // own echo (idempotent) and for remote inserts alike.
+            store.addWall(wall);
+          } else if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old;
+            if (oldRow?.id) {
+              store.removeWall(oldRow.id);
             }
           }
         }
@@ -2049,6 +2373,24 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // canvas draws a measurement line instead of dragging tokens.
   const [rulerActive, setRulerActive] = useState(false);
 
+  // v2.223 — wall drawing mode. Mutually exclusive with ruler mode —
+  // enabling one disables the other so tool intent is unambiguous.
+  const [wallActive, setWallActive] = useState(false);
+  const toggleRuler = useCallback(() => {
+    setRulerActive(a => {
+      const next = !a;
+      if (next) setWallActive(false);
+      return next;
+    });
+  }, []);
+  const toggleWallMode = useCallback(() => {
+    setWallActive(a => {
+      const next = !a;
+      if (next) setRulerActive(false);
+      return next;
+    });
+  }, []);
+
   // v2.219 — scene settings modal open state.
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -2338,6 +2680,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     heightCells={heightCells}
                     gridSizePx={gridSizePx}
                   />
+                  {/* v2.223 — walls render above grid but below tokens
+                      so tokens overlap walls at their edges (correct
+                      depth cue). The drawing tool's rubber-band preview
+                      lives on its own Graphics inside WallLayer and
+                      also sits in this z-plane. */}
+                  <WallLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    active={wallActive}
+                    isDM={isDM}
+                    gridSizePx={gridSizePx}
+                    currentSceneId={currentScene?.id ?? null}
+                  />
                   <TokenLayer
                     viewport={vp}
                     canvasEl={canvasEl}
@@ -2350,6 +2705,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onDragMove={handleDragMove}
                     onDragEnd={handleDragEnd}
                     rulerActive={rulerActive}
+                    wallActive={wallActive}
                     characterHpMap={characterHpMap}
                   />
                   {/* v2.218 — rendered last so the ruler's Graphics +
@@ -2516,7 +2872,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           }}
         >
           <button
-            onClick={() => setRulerActive(a => !a)}
+            onClick={toggleRuler}
             title={rulerActive ? 'Click-drag on the map to measure · click again to exit ruler' : 'Enter ruler mode — click-drag on the map to measure distance'}
             style={{
               padding: '4px 10px',
@@ -2538,6 +2894,37 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           >
             📏 {rulerActive ? 'Exit Ruler' : 'Ruler'}
           </button>
+          {/* v2.223 — wall drawing tool. DM-only (insert/delete RLS
+              would reject players anyway). Click-click vertex placement;
+              Escape cancels pending start. Right-click deletes nearest
+              wall within a small hit threshold. */}
+          {isDM && (
+            <button
+              onClick={toggleWallMode}
+              title={wallActive
+                ? 'Click to place wall vertices · right-click to delete · Esc to cancel · click again to exit'
+                : 'Enter wall drawing mode — click to place vertices, build walls that (in v2.224) will block vision'}
+              style={{
+                padding: '4px 10px',
+                background: wallActive ? 'rgba(167,139,250,0.28)' : 'rgba(15,16,18,0.85)',
+                border: `1px solid ${wallActive ? 'rgba(167,139,250,0.7)' : 'rgba(167,139,250,0.35)'}`,
+                borderRadius: 'var(--r-sm, 4px)',
+                color: wallActive ? '#a78bfa' : 'var(--t-2)',
+                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+              onMouseEnter={(e) => {
+                if (!wallActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)';
+              }}
+              onMouseLeave={(e) => {
+                if (!wallActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.85)';
+              }}
+            >
+              🧱 {wallActive ? 'Exit Walls' : 'Walls'}
+            </button>
+          )}
         </div>
 
         <div
@@ -2552,9 +2939,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             letterSpacing: '0.02em',
           }}
         >
-          {rulerActive
-            ? 'Click-drag to measure · right/middle drag pans · wheel zooms'
-            : 'Drag tokens · right-click for options · right/middle drag pans · wheel zooms'}
+          {wallActive
+            ? 'Click to place wall vertices · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
+            : rulerActive
+              ? 'Click-drag to measure · right/middle drag pans · wheel zooms'
+              : 'Drag tokens · right-click for options · right/middle drag pans · wheel zooms'}
         </div>
 
         {contextMenu && (
