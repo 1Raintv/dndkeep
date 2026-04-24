@@ -132,6 +132,24 @@ export function getSpeciesGrantedSpellIds(
   return ids;
 }
 
+/** v2.201.0 — Phase Q.0 pt 41: feature_uses key for tracking once-per-LR
+    legacy spell casts. RAW (2024 PHB) Tiefling: each legacy spell at L3+
+    can be cast once per long rest WITHOUT a spell slot, OR with a slot
+    like a normal spell. The free path increments this key; doLongRest
+    wipes feature_uses so the free cast auto-refreshes.
+
+    Key shape `legacy:<spell-id>` namespaces under "legacy:" so it
+    won't collide with class feature_uses entries (e.g. "Action Surge")
+    which are keyed by ability name. */
+export function legacySpellFeatureKey(spellName: string): string {
+  const id = spellName
+    .toLowerCase()
+    .replace(/['']/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `legacy:${id}`;
+}
+
 /** v2.191.0 — full set of spell ids that COULD be granted across
     every legacy/choice for a species, regardless of which one the
     player picked. Used by the spell-grant effect to detect stale

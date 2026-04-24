@@ -14,7 +14,7 @@ import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal
 import DeathSavePromptModal from '../Combat/DeathSavePromptModal';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
-import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, type TieflingLegacy } from '../../data/speciesChoices';
+import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, legacySpellFeatureKey, type TieflingLegacy } from '../../data/speciesChoices';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
@@ -2727,6 +2727,44 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      applyUpdate({ species_choices: next }, true);
    }
 
+   // v2.201.0 — Phase Q.0 pt 41: free-cast handler for L3+ legacy
+   // spells. RAW: 1 free cast per long rest per spell (no slot
+   // consumed). Increments feature_uses; doLongRest already wipes
+   // feature_uses so the free cast auto-refreshes. Logs to action
+   // log + emits a spell_cast combat_event with payload.free_cast=true
+   // so the History tab distinguishes free vs slot-cast.
+   function castFreeLegacy(spellName: string) {
+     const key = legacySpellFeatureKey(spellName);
+     const fu = ((character.feature_uses as Record<string, number>) ?? {});
+     if ((fu[key] ?? 0) >= 1) return; // already used this long rest
+     applyUpdate({
+       feature_uses: { ...fu, [key]: 1 },
+     }, true);
+     import('../shared/ActionLog').then(({ logAction }) => {
+       logAction({
+         campaignId: character.campaign_id ?? null,
+         characterId: character.id,
+         characterName: character.name,
+         actionType: 'spell',
+         actionName: `${spellName} (Fiendish Legacy — Free)`,
+         notes: 'Cast without a spell slot via Tiefling Fiendish Legacy. Refreshes on Long Rest.',
+       });
+     }).catch(() => {});
+     emitCombatEvent({
+       campaignId: character.campaign_id ?? null,
+       actorType: 'player',
+       actorId: character.id,
+       actorName: character.name,
+       eventType: 'spell_cast',
+       payload: {
+         spell_name: spellName,
+         source: 'tiefling-legacy',
+         free_cast: true,
+         no_slot_consumed: true,
+       },
+     }).catch(() => {});
+   }
+
    return (
      <div style={{ marginTop: 'var(--sp-3)' }}>
        <div style={{
@@ -2807,53 +2845,96 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
          </div>
        )}
 
-       {/* Granted-spells list — one row per unlocked spell. Each row
-           is informational right now (clicking it doesn't auto-cast,
-           since the cast pipeline lives on the Spells tab). The user
-           wanted these visible on the Actions tab as a reminder of
-           what's available. Future ship: wire onClick to actually
-           open the spell's cast modal from here. */}
+       {/* Granted-spells list — one row per unlocked spell.
+           v2.201.0 — Phase Q.0 pt 41: L3+ rows now offer a "Cast Free"
+           button that consumes the once-per-LR free cast (no spell
+           slot deducted). Cantrip (L1) row keeps the original
+           "Auto-added to Spells tab" tail since it's at-will and
+           doesn't need tracking. After the free cast is used, the
+           button flips to a "Used (LR)" badge until long rest. */}
        {legacy && activeSpells.length > 0 && (
          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
-           {activeSpells.map(grant => (
-             <div
-               key={grant.spellName}
-               style={{
-                 display: 'flex', alignItems: 'center', gap: 10,
-                 padding: '8px 12px', borderRadius: 'var(--r-md)',
-                 border: '1px solid rgba(249,115,22,0.2)',
-                 background: 'rgba(249,115,22,0.03)',
-               }}
-             >
-               <span style={{
-                 fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
-                 color: '#f97316', background: 'rgba(249,115,22,0.12)',
-                 border: '1px solid rgba(249,115,22,0.4)',
-                 borderRadius: 4, padding: '2px 6px',
-                 minWidth: 32, textAlign: 'center' as const,
-               }}>
-                 L{grant.unlockLevel}
-               </span>
-               <div style={{ flex: 1, minWidth: 0 }}>
-                 <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
-                   {grant.spellName}
-                 </div>
-                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>
-                   {grant.unlockLevel === 1
-                     ? 'Cantrip · cast at will'
-                     : grant.unlockLevel === 3
-                       ? 'Once per Long Rest without a slot · or expend a spell slot'
+           {activeSpells.map(grant => {
+             const isCantrip = grant.unlockLevel === 1;
+             const featureKey = legacySpellFeatureKey(grant.spellName);
+             const used = ((character.feature_uses as Record<string, number>) ?? {})[featureKey] ?? 0;
+             const freeAvailable = !isCantrip && used < 1;
+             return (
+               <div
+                 key={grant.spellName}
+                 style={{
+                   display: 'flex', alignItems: 'center', gap: 10,
+                   padding: '8px 12px', borderRadius: 'var(--r-md)',
+                   border: '1px solid rgba(249,115,22,0.2)',
+                   background: 'rgba(249,115,22,0.03)',
+                 }}
+               >
+                 <span style={{
+                   fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
+                   color: '#f97316', background: 'rgba(249,115,22,0.12)',
+                   border: '1px solid rgba(249,115,22,0.4)',
+                   borderRadius: 4, padding: '2px 6px',
+                   minWidth: 32, textAlign: 'center' as const,
+                 }}>
+                   L{grant.unlockLevel}
+                 </span>
+                 <div style={{ flex: 1, minWidth: 0 }}>
+                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+                     {grant.spellName}
+                   </div>
+                   <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>
+                     {isCantrip
+                       ? 'Cantrip · cast at will'
                        : 'Once per Long Rest without a slot · or expend a spell slot'}
+                   </div>
                  </div>
+                 {/* Tail widget — varies by row state */}
+                 {isCantrip ? (
+                   <span style={{
+                     fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)',
+                     fontStyle: 'italic' as const,
+                   }}>
+                     Auto-added to Spells tab
+                   </span>
+                 ) : freeAvailable ? (
+                   <button
+                     onClick={() => castFreeLegacy(grant.spellName)}
+                     title={`Cast ${grant.spellName} for free (refreshes on Long Rest). Slot-cast still available from Spells tab.`}
+                     style={{
+                       padding: '5px 12px', borderRadius: 'var(--r-md)',
+                       cursor: 'pointer', minHeight: 0,
+                       background: 'rgba(167,139,250,0.15)',
+                       border: '1px solid rgba(167,139,250,0.5)',
+                       color: '#a78bfa',
+                       fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                       letterSpacing: '0.04em',
+                       flexShrink: 0,
+                       transition: 'background 0.15s',
+                     }}
+                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.25)'; }}
+                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.15)'; }}
+                   >
+                     Cast Free
+                   </button>
+                 ) : (
+                   <span
+                     title="Free cast already used this Long Rest. You can still cast from Spells tab using a spell slot."
+                     style={{
+                       fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                       textTransform: 'uppercase' as const,
+                       color: 'var(--t-3)',
+                       background: 'var(--c-raised)',
+                       border: '1px solid var(--c-border)',
+                       borderRadius: 4, padding: '4px 8px',
+                       flexShrink: 0,
+                     }}
+                   >
+                     Used · LR
+                   </span>
+                 )}
                </div>
-               <span style={{
-                 fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)',
-                 fontStyle: 'italic' as const,
-               }}>
-                 Auto-added to Spells tab
-               </span>
-             </div>
-           ))}
+             );
+           })}
 
            {/* Subtle "change legacy" link at the end. Confirms before
                wiping (legacy choice in 2024 PHB is permanent at character
