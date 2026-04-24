@@ -82,3 +82,74 @@ export function getActiveLegacySpells(
   if (!legacy) return [];
   return legacy.spells.filter(s => characterLevel >= s.unlockLevel);
 }
+
+/** v2.191.0 — Phase Q.0 pt 32: convert a spell display name to the
+    canonical kebab-case id used in src/data/spells.ts. We do this
+    rather than storing ids in the legacy table because the legacy
+    table is human-edited (DM facing), while ids are an implementation
+    detail. Mismatches between species data and the spell catalogue
+    surface as a missing-spell warning rather than a silent grant
+    failure (caller can console.warn when lookup fails).
+
+    The mapping rule is: lowercase, replace spaces with hyphens,
+    strip apostrophes/quotes. Same convention as bestiary monster ids. */
+function spellNameToId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/['']/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** v2.191.0 — top-level resolver: given a character's species,
+    species_choices, and level, return the spell ids that should be
+    auto-granted from species traits. Called by the spell-grant effect
+    in CharacterSheet/index.tsx alongside subclass + class grants.
+
+    Today only Tiefling has a per-level spell-grant trait; future
+    species (Aasimar, Dragonborn ancestry-tied cantrips, Genasi
+    elemental cantrips) plug in here as additional branches. */
+export function getSpeciesGrantedSpellIds(
+  species: string | undefined,
+  speciesChoices: Record<string, string> | undefined,
+  characterLevel: number,
+): string[] {
+  if (!species) return [];
+  const ids: string[] = [];
+
+  if (species === 'Tiefling') {
+    const legacyId = speciesChoices?.tieflingLegacy;
+    const legacy = getTieflingLegacy(legacyId);
+    if (legacy) {
+      for (const grant of legacy.spells) {
+        if (characterLevel >= grant.unlockLevel) {
+          ids.push(spellNameToId(grant.spellName));
+        }
+      }
+    }
+  }
+
+  return ids;
+}
+
+/** v2.191.0 — full set of spell ids that COULD be granted across
+    every legacy/choice for a species, regardless of which one the
+    player picked. Used by the spell-grant effect to detect stale
+    auto-grants — e.g. if a Tiefling switches from Infernal to
+    Abyssal, we need to know to strip Fire Bolt / Hellish Rebuke /
+    Darkness so they don't linger in known_spells.
+
+    Returns ALL possible species-granted spell ids for the species,
+    not gated by level or current choice. */
+export function getAllPossibleSpeciesSpellIds(species: string | undefined): string[] {
+  if (!species) return [];
+  const ids: string[] = [];
+  if (species === 'Tiefling') {
+    for (const legacy of TIEFLING_LEGACIES) {
+      for (const grant of legacy.spells) {
+        ids.push(spellNameToId(grant.spellName));
+      }
+    }
+  }
+  return ids;
+}

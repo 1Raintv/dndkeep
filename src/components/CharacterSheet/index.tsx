@@ -14,7 +14,7 @@ import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal
 import DeathSavePromptModal from '../Combat/DeathSavePromptModal';
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
-import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, type TieflingLegacy } from '../../data/speciesChoices';
+import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, type TieflingLegacy } from '../../data/speciesChoices';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
@@ -242,18 +242,43 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  // Class auto-granted cantrips (e.g. Psion Mage Hand)
  const classGranted = character.class_name === 'Psion' ? ['mage-hand'] : [];
- const allGranted = [...new Set([...subSpellIds, ...classGranted])];
+
+ // v2.191.0 — Phase Q.0 pt 32: species auto-granted spells.
+ // Today only Tiefling Fiendish Legacy contributes (Fire Bolt /
+ // Hellish Rebuke / Darkness for Infernal, etc.) — these are
+ // computed by getSpeciesGrantedSpellIds based on the chosen legacy
+ // + character level. The "stale" detection mirrors the subclass
+ // pattern: getAllPossibleSpeciesSpellIds returns every spell that
+ // COULD be granted (across all legacies), and we strip any that
+ // aren't currently granted. This handles legacy switches cleanly:
+ // if a player picks Infernal, gets Fire Bolt+Hellish Rebuke+Darkness,
+ // then switches to Chthonic, the Infernal spells are removed and
+ // Chill Touch/False Life/Ray of Enfeeblement are added.
+ const speciesGranted = getSpeciesGrantedSpellIds(
+ character.species,
+ character.species_choices,
+ character.level,
+ );
+ const allPossibleSpeciesIds = getAllPossibleSpeciesSpellIds(character.species);
+ const speciesStale = allPossibleSpeciesIds.filter(id => !speciesGranted.includes(id));
+
+ const allGranted = [...new Set([...subSpellIds, ...classGranted, ...speciesGranted])];
+ const allStale = [...stale, ...speciesStale];
 
  // Known spells: add missing granted, strip stale auto-grants
- const desiredKnown = character.known_spells.filter(id => !stale.includes(id));
+ const desiredKnown = character.known_spells.filter(id => !allStale.includes(id));
  const missingKnown = allGranted.filter(id => !desiredKnown.includes(id));
  if (missingKnown.length > 0 || desiredKnown.length !== character.known_spells.length) {
  updates.known_spells = [...desiredKnown, ...missingKnown];
  }
 
- // Prepared spells: same — auto-prepare what's currently granted, drop stale
- const desiredPrepared = character.prepared_spells.filter(id => !stale.includes(id));
- const missingPrepared = subSpellIds.filter(id => !desiredPrepared.includes(id));
+ // Prepared spells: same — auto-prepare what's currently granted, drop stale.
+ // v2.191.0 — species-granted spells go in prepared_spells too so they're
+ // immediately castable without a manual "prepare" step. RAW says these
+ // legacy spells are always prepared and don't count against the
+ // character's prepared spell count.
+ const desiredPrepared = character.prepared_spells.filter(id => !allStale.includes(id));
+ const missingPrepared = [...subSpellIds, ...speciesGranted].filter(id => !desiredPrepared.includes(id));
  if (missingPrepared.length > 0 || desiredPrepared.length !== character.prepared_spells.length) {
  updates.prepared_spells = [...desiredPrepared, ...missingPrepared];
  }
@@ -261,7 +286,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (Object.keys(updates).length > 0) {
  applyUpdate(updates, true);
  }
- }, [character.subclass, character.class_name, character.level]); // eslint-disable-line react-hooks/exhaustive-deps
+ }, [character.subclass, character.class_name, character.level, character.species, character.species_choices]); // eslint-disable-line react-hooks/exhaustive-deps
 
  useEffect(() => {
  if (!character.id) return;
@@ -2781,7 +2806,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                  fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)',
                  fontStyle: 'italic' as const,
                }}>
-                 See Spells tab to cast
+                 Auto-added to Spells tab
                </span>
              </div>
            ))}
