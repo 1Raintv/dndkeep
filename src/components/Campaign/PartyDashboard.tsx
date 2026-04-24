@@ -16,6 +16,7 @@ import {
 } from '../../lib/damageModifiers';
 import { buildDefaultResources } from '../../data/classResources';
 import { emitCombatEvent } from '../../lib/combatEvents';
+import { rechargeOnLongRest } from '../../lib/charges';
 
 interface PartyDashboardProps {
   campaignId: string;
@@ -242,16 +243,32 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     // already does this — now both paths align. Rest events emit
     // with the real before/after values so the History tab shows
     // a meaningful "Exh 2→1" delta instead of a no-op "Exh 2→2".
+    //
+    // v2.205.0 — Phase Q.0 pt 45: magic-item charge recharge now
+    // happens on DM-initiated party rest too. Previously partyLongRest
+    // didn't touch inventory at all — wands and staves stayed at
+    // depleted charges after a "party long rest", forcing players to
+    // run their own self-rest just to refresh items. Now we run
+    // rechargeOnLongRest per character (same pure helper used by
+    // doLongRest) and write the recharged inventory in the update.
+    // Per-item recharge events fan out after the parallel writes,
+    // matching the v2.204 per-item emission pattern.
     const restDeltas = characters.map(c => {
       const exhBefore = (c as any).exhaustion_level ?? 0;
+      const { inventory: rechargedInventory, events: chargeEvents } =
+        rechargeOnLongRest(c.inventory ?? []);
       return {
         id: c.id,
         name: c.name,
         hd_recovered: Math.max(1, Math.floor(c.level / 2)),
         exhaustion_before: exhBefore,
         exhaustion_after: Math.max(0, exhBefore - 1),
+        beforeInventory: c.inventory ?? [],
+        rechargedInventory,
+        chargeEventsCount: chargeEvents.length,
       };
     });
+    const rechargeMap = new Map(restDeltas.map(d => [d.id, d]));
     await Promise.all(characters.map(c => {
       const recoveredSlots = Object.fromEntries(
         Object.entries(c.spell_slots ?? {}).map(([k, s]) => [k, { ...(s as object), used: 0 }])
@@ -279,6 +296,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       for (const [key, val] of Object.entries(existingRes)) {
         if (typeof val !== 'number') (newResources as any)[key] = val;
       }
+      const recharge = rechargeMap.get(c.id);
       return supabase.from('characters').update({
         current_hp: c.max_hp,
         temp_hp: 0,
@@ -291,6 +309,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         concentration_spell: '',
         class_resources: newResources,
         feature_uses: {},
+        inventory: recharge?.rechargedInventory ?? c.inventory,
       }).eq('id', c.id);
     }));
 
@@ -299,6 +318,8 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     // actual rest moment. dm_initiated: true distinguishes these from
     // player-self-rest in the History tab payload (UnifiedHistory's
     // formatter shows "DM-called" badge when truthy).
+    // v2.205.0 — payload now carries charge_events_count for parity
+    // with the per-character doLongRest path.
     for (const d of restDeltas) {
       emitCombatEvent({
         campaignId,
@@ -312,9 +333,45 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
           hd_recovered: d.hd_recovered,
           exhaustion_before: d.exhaustion_before,
           exhaustion_after: d.exhaustion_after,
+          charge_events_count: d.chargeEventsCount,
           dm_initiated: true,
         },
       }).catch(() => {});
+
+      // v2.205.0 — per-item recharge events. Mirrors v2.204's
+      // doLongRest emission pattern: diff the inventory before/after
+      // and emit one item_used event per item that gained charges.
+      // dm_initiated: true differentiates these from self-rest
+      // recharge events in the History tab.
+      const beforeMap = new Map((d.beforeInventory as any[]).map(it => [it.id, it]));
+      for (const after of (d.rechargedInventory as any[])) {
+        if (typeof after.charges_max !== 'number') continue;
+        const before = beforeMap.get(after.id) as any;
+        const beforeCurrent = before ? (before.charges_current ?? 0) : 0;
+        const afterCurrent = after.charges_current ?? 0;
+        const regained = afterCurrent - beforeCurrent;
+        if (regained <= 0) continue;
+        emitCombatEvent({
+          campaignId,
+          actorType: 'system',
+          actorId: d.id,
+          actorName: d.name,
+          eventType: 'item_used',
+          payload: {
+            sub_type: 'charge_recharged',
+            item_name: after.name,
+            item_id: after.id,
+            magic_item_id: after.magic_item_id ?? null,
+            charges_before: beforeCurrent,
+            charges_after: afterCurrent,
+            charges_max: after.charges_max,
+            charges_regained: regained,
+            recharge_dice: after.recharge_dice ?? null,
+            recharge_trigger: 'long_rest',
+            dm_initiated: true,
+          },
+        }).catch(() => {});
+      }
     }
 
     // Notify players so the inbox / toast surfaces what just happened
@@ -396,7 +453,12 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     if (!members?.length) { setLoading(false); return; }
     const userIds = members.map((m: any) => m.user_id);
     const { data: chars } = await supabase.from('characters').select(
-      'id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs'
+      // v2.205.0 — added `inventory` (needed by partyLongRest to recharge
+      // magic-item charges) and `exhaustion_level` (needed by partyLongRest
+      // to decrement per RAW; previously cast as (c as any) and silently
+      // fell through to 0). Without these, the DM-side rest path silently
+      // no-ops on charge recharge and exhaustion reduction.
+      'id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs,inventory,exhaustion_level,feature_uses'
     ).in('user_id', userIds).eq('campaign_id', campaignId);
     setCharacters(chars ?? []);
     setLoading(false);
