@@ -33,6 +33,12 @@ export default function HPStatsPanel({
   // v2.72.0: editingAC state removed — AC is no longer quick-editable on the chip.
   // v2.77.0: editingSpeed state removed — Speed is no longer quick-editable either.
   const [showConditionModal, setShowConditionModal] = useState(false);
+  // v2.185.0 — Phase Q.0 pt 26: stat-popover state. One open at a time.
+  // Right now only Proficiency uses it; AC will reuse this same state in
+  // v2.186 by adding 'ac' to the union. Click the chip to open, click
+  // anywhere outside (handled inline below) or click the chip again to
+  // close. Read-only — these popovers explain the math, they don't edit.
+  const [statPopover, setStatPopover] = useState<null | 'proficiency' | 'ac'>(null);
   const { triggerRoll } = useDiceRoll();
 
   const editsUnlocked = !!character.advanced_edits_unlocked;
@@ -120,7 +126,17 @@ export default function HPStatsPanel({
         tooltip,
       };
     })(),
-    { label: 'Proficiency', value: `+${computed.proficiency_bonus}`,                                 color: '#a78bfa' },
+    // v2.185.0 — Phase Q.0 pt 26: Proficiency chip clickable, opens
+    // a popover showing the PHB formula: ceil(level/4) + 1. The
+    // popover is rendered below the strip with absolute positioning.
+    {
+      label: 'Proficiency',
+      value: `+${computed.proficiency_bonus}`,
+      color: '#a78bfa',
+      clickable: true,
+      onClick: () => setStatPopover(p => p === 'proficiency' ? null : 'proficiency'),
+      tooltip: 'Click to see the equation',
+    },
     // v2.45.0: PASS PERC removed — redundant with the Skills list which shows passive perception
     // alongside the live perception modifier on the left side of the sheet.
     // v2.33.3: Conditions as a compact chip — clickable to open the modal
@@ -152,7 +168,80 @@ export default function HPStatsPanel({
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
+
+      {/* v2.185.0 — Phase Q.0 pt 26: stat popover. Absolutely positioned
+          inside the panel so it stacks above whatever sits below the
+          chips strip (typically the HP bar). Click-outside dismissal is
+          handled by an invisible overlay with onClick={() => setStatPopover(null)}.
+          We use a portal-free approach because this needs to render
+          inline relative to the chip — fancy popper.js positioning
+          would be overkill for a single click target. */}
+      {statPopover === 'proficiency' && (() => {
+        const lvl = character.level;
+        const tier = Math.ceil(Math.max(1, Math.min(20, lvl)) / 4);
+        const bonus = tier + 1;
+        return (
+          <>
+            {/* Click-outside scrim */}
+            <div
+              onClick={() => setStatPopover(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'transparent' }}
+            />
+            <div
+              role="dialog"
+              aria-label="Proficiency Bonus breakdown"
+              style={{
+                position: 'absolute', top: 64, left: 8, zIndex: 51,
+                background: 'var(--c-card)',
+                border: '1px solid #a78bfa55',
+                borderLeft: '3px solid #a78bfa',
+                borderRadius: 'var(--r-md)',
+                padding: '12px 14px',
+                minWidth: 260, maxWidth: 320,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#a78bfa' }}>
+                  Proficiency Bonus
+                </span>
+                <button
+                  onClick={() => setStatPopover(null)}
+                  aria-label="Close"
+                  style={{
+                    background: 'transparent', border: 'none', color: 'var(--t-3)',
+                    cursor: 'pointer', fontSize: 14, lineHeight: 1,
+                    padding: 0, minWidth: 0, minHeight: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.6 }}>
+                Per the 2024 PHB, your proficiency bonus is determined by your
+                character level using the formula{' '}
+                <code style={{ background: 'var(--c-raised)', padding: '1px 5px', borderRadius: 4, color: 'var(--t-1)' }}>
+                  ⌈level ÷ 4⌉ + 1
+                </code>.
+              </div>
+              <div style={{
+                marginTop: 10, padding: '10px 12px',
+                background: 'var(--c-raised)', borderRadius: 'var(--r-md)',
+                fontFamily: 'var(--ff-stat)', fontSize: 14, color: 'var(--t-1)',
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                <div>Character level: <strong style={{ color: '#a78bfa' }}>{lvl}</strong></div>
+                <div>⌈{lvl} ÷ 4⌉ = <strong style={{ color: '#a78bfa' }}>{tier}</strong></div>
+                <div>{tier} + 1 = <strong style={{ color: '#a78bfa' }}>+{bonus}</strong></div>
+              </div>
+              <div style={{ marginTop: 8, fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
+                Levels 1–4: +2 · 5–8: +3 · 9–12: +4 · 13–16: +5 · 17–20: +6
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Stat chips strip — v2.45.0: defense chips render inline at the end so
           they share the same wrap row with INSP/AC/INIT/SPEED/PROF/COND.
