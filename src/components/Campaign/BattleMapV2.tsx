@@ -1,33 +1,49 @@
 // v2.208.0 — Phase Q.1 pt 1: BattleMap V2 foundation shell.
 // v2.209.0 — Phase Q.1 pt 2: PixiJS Application mounted, first rendered pixels.
 // v2.210.0 — Phase Q.1 pt 3: pixi-viewport wired + square grid + snap helper.
-// v2.211.0 — Phase Q.1 pt 4: Zustand store for token state + first draggable
-// token. One seed token at (350, 350); left-click and drag to move; snaps
-// to grid on release. Multiplayer sync deferred to v2.215; this ship is
-// pure local state with the same Token shape the multiplayer layer will
-// consume.
+// v2.211.0 — Phase Q.1 pt 4: Zustand store + first draggable token.
+// v2.212.0 — Phase Q.1 pt 5: multi-token support + token initials (centered
+// text on each circle so they're distinguishable at a glance) + DM-only
+// "Add Token" button + right-click context menu (Rename / Resize / Recolor
+// / Delete).
 //
-// Drag architecture:
-//   The token drag uses `window` pointer events rather than Pixi's
-//   event system. Reasons: (1) pointer-out-of-canvas handling is easier
-//   with DOM events — Pixi's globalpointermove doesn't fire when the
-//   pointer leaves the canvas bounds mid-drag, leading to "stuck token"
-//   bugs; (2) coord conversion via `viewport.toWorld(screen)` works
-//   against any canvas-relative screen point we compute from
-//   event.clientX/Y - canvas.getBoundingClientRect(). The Pixi event
-//   fires only the initial `pointerdown` to start the drag.
+// Architecture shift from v2.211:
+//   Tokens are now a Container-per-token (not a single Graphics). The
+//   container holds a Graphics child (the circle) and a Text child (the
+//   initials). Event handlers attach to the container so clicks on either
+//   shape or text both register. Container position IS the token position;
+//   children render at 0,0 relative (so resizing updates the Graphics
+//   radius without touching child-positioning math).
 //
-//   Left-mouse is reserved for token drag (not viewport pan — viewport
-//   pans on middle/right since v2.210). So there's no conflict between
-//   the two drag systems; no plugin pausing needed.
+// Context menu:
+//   HTML DOM menu absolute-positioned via client coords, NOT a Pixi
+//   overlay. Reasons: (a) text inputs and submenus are trivial in HTML
+//   and painful in Pixi; (b) browser context menus are native UX; (c) the
+//   menu persists above the canvas without z-index fights with Pixi's
+//   own render tree. Right-click on a token fires pointerdown with
+//   button=2 → we preventDefault on the parent wrapper's contextmenu,
+//   stopPropagation on the Pixi event (so viewport doesn't pan), and
+//   open the menu at (clientX, clientY).
+//
+// DM gating:
+//   "Add Token" button only renders when props.isDM === true. Context
+//   menu is available to anyone who can hit the token — v2.215's RLS
+//   filtering means players only see tokens they can interact with.
+//   For this local-only ship, everyone sees everything.
+//
+// Next up:
+//   v2.213 — Supabase Storage bucket + portrait upload + sprite texture
+//            rendering (replaces the Graphics circle with a Sprite)
+//   v2.214 — scene create/list UI, hydrate tokens from scene_tokens table
+//   v2.215 — multiplayer sync via Supabase Realtime
 
 import { Application, extend, useApplication } from '@pixi/react';
-import { Container, FederatedPointerEvent, Graphics } from 'pixi.js';
+import { Container, FederatedPointerEvent, Graphics, Text, TextStyle } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 
-extend({ Container, Graphics });
+extend({ Container, Graphics, Text });
 
 interface BattleMapV2Props {
   campaignId: string;
@@ -67,17 +83,27 @@ const GRID_MINOR_COLOR = 0x2a2d31;
 const GRID_MAJOR_COLOR = 0x404449;
 const GRID_EDGE_COLOR = 0x6b7280;
 
-/** v2.213 will reference this from the size category + grid size. */
+// v2.212 — token color palette. Cycled through on each "Add Token".
+// Chosen for contrast against the dark bg and clear differentiation
+// at a glance during combat. Add more when 6 isn't enough for a big
+// encounter.
+const TOKEN_COLORS = [
+  0xa78bfa, // purple (the app's accent)
+  0x60a5fa, // blue
+  0xf87171, // red
+  0x34d399, // green
+  0xfbbf24, // yellow
+  0xf472b6, // pink
+] as const;
+
+const SIZE_OPTIONS: readonly TokenSize[] = [
+  'tiny', 'small', 'medium', 'large', 'huge', 'gargantuan',
+];
+
+/** Radius in world pixels for a token of the given size, based on
+ *  5e cell-span occupancy. Medium tokens render slightly smaller than
+ *  a full cell so the grid line is still visible. */
 function tokenRadiusForSize(size: TokenSize, cellSize: number): number {
-  // 5e size categories in cells:
-  //   tiny = 0.5  (rendered at 0.4 for visual breathing room)
-  //   small = 1 (slightly smaller than a cell so the grid shows)
-  //   medium = 1
-  //   large = 2
-  //   huge = 3
-  //   gargantuan = 4+
-  // We center the token; radius = half cell span × 0.85 to leave a
-  // visual gap. For v2.211 we're hardcoding medium.
   const cellSpan: Record<TokenSize, number> = {
     tiny: 0.4, small: 0.85, medium: 0.85,
     large: 1.85, huge: 2.85, gargantuan: 3.85,
@@ -85,10 +111,30 @@ function tokenRadiusForSize(size: TokenSize, cellSize: number): number {
   return (cellSpan[size] * cellSize) / 2;
 }
 
-/** Snap to the nearest grid cell CENTER (not corner) — tokens render
- *  centered on cells so a move clicks cleanly into the middle of a
- *  square. For a 70px grid, center of cell (2,3) is (2×70+35, 3×70+35).
- *  Exported for v2.215's drop-commit handler. */
+/** Generate initials from a token name — max 2 chars. "Goblin 1" →
+ *  "G1", "Ancient Red Dragon" → "AR", "Kobold" → "K". Falls back to
+ *  "?" when name is empty (shouldn't happen via UI but defensive). */
+function tokenInitials(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '?';
+  // Prefer acronym: first letter of each word, capped at 2.
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  // Single-word: first letter + trailing digit if any (e.g. "T1" for "Token1").
+  const match = trimmed.match(/^([A-Za-z])([^A-Za-z]*\d)?/);
+  if (match) {
+    const firstChar = match[1].toUpperCase();
+    const digitGroup = (match[2] ?? '').replace(/\D/g, '');
+    if (digitGroup) return (firstChar + digitGroup[0]).slice(0, 2);
+    return firstChar;
+  }
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
+/** Snap to the nearest grid cell center. Exported for v2.215's
+ *  drop-commit handler. */
 export function snapToCellCenter(worldX: number, worldY: number, cellSize = SCENE_CONFIG.gridSizePx) {
   const col = Math.floor(worldX / cellSize);
   const row = Math.floor(worldY / cellSize);
@@ -192,118 +238,114 @@ function GridOverlay(props: { viewport: Viewport | null }) {
   return null;
 }
 
-/**
- * TokenLayer — imperative Pixi Graphics management for tokens, driven
- * by the Zustand store. Each store token gets a Graphics child of the
- * viewport. When the store changes, we reconcile: create/update/remove.
- *
- * The drag handler attaches to each token's pointerdown via Pixi's
- * event system (to get the initial press with the correct target),
- * then switches to window-level pointermove/pointerup for reliability
- * (Pixi's globalpointermove stops firing when the pointer leaves the
- * canvas bounds — DOM events don't have that limitation).
- */
-function TokenLayer(props: { viewport: Viewport | null; canvasEl: HTMLCanvasElement | null }) {
-  const { viewport, canvasEl } = props;
+interface ContextMenuState {
+  tokenId: string;
+  clientX: number;
+  clientY: number;
+}
+
+function TokenLayer(props: {
+  viewport: Viewport | null;
+  canvasEl: HTMLCanvasElement | null;
+  onContextMenu: (state: ContextMenuState) => void;
+}) {
+  const { viewport, canvasEl, onContextMenu } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
   const setDragging = useBattleMapStore(s => s.setDragging);
 
-  // Map of token.id → live Graphics instance for reconcile efficiency.
-  const tokenGfxRef = useRef<Map<string, Graphics>>(new Map());
-  // Active drag state, held in a ref so the pointermove callback sees
-  // fresh values without re-binding.
-  const dragRef = useRef<{
-    id: string;
-    offsetX: number; // pointer offset from token center in world coords
-    offsetY: number;
-  } | null>(null);
+  // Each token gets a Container (parent) that holds a Graphics (circle)
+  // + Text (initials). We track the whole container for pointer events
+  // and both children for targeted updates.
+  interface TokenGfx {
+    container: Container;
+    circle: Graphics;
+    initials: Text;
+  }
+  const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
+  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
-  // Container to hold all token Graphics. Separate container so we can
-  // cleanly destroy the whole layer on unmount without hunting children.
-  const containerRef = useRef<Container | null>(null);
+  const layerContainerRef = useRef<Container | null>(null);
   useEffect(() => {
     if (!viewport) return;
     const c = new Container();
     viewport.addChild(c);
-    containerRef.current = c;
+    layerContainerRef.current = c;
     return () => {
       if (viewport && !viewport.destroyed) viewport.removeChild(c);
       c.destroy({ children: true });
-      containerRef.current = null;
-      tokenGfxRef.current.clear();
+      layerContainerRef.current = null;
+      gfxMapRef.current.clear();
     };
   }, [viewport]);
 
-  // Reconcile Graphics with store tokens.
+  // Reconcile Pixi display tree with the store.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !viewport) return;
-    const gfxMap = tokenGfxRef.current;
+    const layer = layerContainerRef.current;
+    if (!layer || !viewport) return;
+    const gfxMap = gfxMapRef.current;
 
-    // Remove Graphics for tokens that no longer exist in the store.
-    for (const [id, g] of gfxMap) {
+    // Remove display tree for tokens no longer in the store.
+    for (const [id, entry] of gfxMap) {
       if (!tokens[id]) {
-        container.removeChild(g);
-        g.destroy();
+        layer.removeChild(entry.container);
+        entry.container.destroy({ children: true });
         gfxMap.delete(id);
       }
     }
 
-    // Add/update Graphics for each current token.
+    // Add or update each store token.
     for (const token of Object.values(tokens)) {
-      let g = gfxMap.get(token.id);
-      const isNew = !g;
+      let entry = gfxMap.get(token.id);
+      const isNew = !entry;
       if (isNew) {
-        g = new Graphics();
-        g.eventMode = 'static';
-        g.cursor = 'grab';
-        container.addChild(g);
-        gfxMap.set(token.id, g);
-      }
-      const gfx = g!;
-      // Position.
-      gfx.position.set(token.x, token.y);
-      // Redraw (cheap for a circle). For v2.212 sprite path, we'd
-      // swap to a Sprite + Texture and avoid per-update redraws.
-      gfx.clear();
-      const r = tokenRadiusForSize(token.size, SCENE_CONFIG.gridSizePx);
-      // Ring (outline) + fill.
-      gfx.setFillStyle({ color: token.color, alpha: 0.92 });
-      gfx.circle(0, 0, r);
-      gfx.fill();
-      gfx.setStrokeStyle({ color: 0x0f1012, width: 2, alpha: 0.9 });
-      gfx.circle(0, 0, r);
-      gfx.stroke();
-      gfx.setStrokeStyle({ color: 0xffffff, width: 1, alpha: 0.35 });
-      gfx.circle(0, 0, r - 2);
-      gfx.stroke();
-      // Hit area — a circle matching the token radius. Pixi defaults
-      // the hit area to the rendered bounds but being explicit is
-      // cheaper because Graphics bounds scanning can be O(n) across
-      // draw calls.
-      (gfx as any).hitArea = null; // let Pixi compute from Graphics geometry
+        const container = new Container();
+        container.eventMode = 'static';
+        container.cursor = 'grab';
+        const circle = new Graphics();
+        const initials = new Text({
+          text: tokenInitials(token.name),
+          style: new TextStyle({
+            fontFamily: 'sans-serif',
+            fontWeight: '700',
+            fontSize: 20,
+            fill: 0xffffff,
+            align: 'center',
+            stroke: { color: 0x0f1012, width: 3 },
+          }),
+        });
+        initials.anchor.set(0.5, 0.5);
+        container.addChild(circle);
+        container.addChild(initials);
+        layer.addChild(container);
+        entry = { container, circle, initials };
+        gfxMap.set(token.id, entry);
 
-      // Event wiring. `removeAllListeners` keeps this idempotent across
-      // reconciles (since the closures capture token.id, but the id
-      // doesn't change per Graphics instance, just the position — in
-      // practice we only need to wire once. Using setData stores id
-      // as a Graphics property we can read from the closure.
-      if (isNew) {
-        (gfx as any).__tokenId = token.id;
-        gfx.on('pointerdown', (event: FederatedPointerEvent) => {
+        (container as any).__tokenId = token.id;
+        container.on('pointerdown', (event: FederatedPointerEvent) => {
           if (!viewport) return;
-          // Only primary pointer (left mouse) starts drag. Pixi v8's
-          // `button` is 0 = left, 1 = middle, 2 = right.
+          // Right-click (button 2) opens the context menu, doesn't drag.
+          if (event.button === 2) {
+            event.stopPropagation();
+            event.preventDefault();
+            const tid = (container as any).__tokenId as string;
+            // Use the originalEvent's clientX/Y — Pixi's global is
+            // canvas-relative, but we want viewport-relative for the
+            // DOM menu positioned via position:fixed.
+            const oe = event.nativeEvent as MouseEvent | PointerEvent;
+            onContextMenu({
+              tokenId: tid,
+              clientX: oe.clientX,
+              clientY: oe.clientY,
+            });
+            return;
+          }
+          // Only primary button (left) starts drag.
           if (event.button !== 0) return;
           event.stopPropagation();
-          const tid = (gfx as any).__tokenId as string;
+          const tid = (container as any).__tokenId as string;
           const t = useBattleMapStore.getState().tokens[tid];
           if (!t) return;
-          // Convert pointer screen coords to world coords so we can
-          // compute the offset from the token's current center. Using
-          // toWorld rather than event.getLocalPosition since we want
-          // world coords regardless of parent transforms.
           const worldPoint = viewport.toWorld(event.global.x, event.global.y);
           dragRef.current = {
             id: tid,
@@ -311,16 +353,44 @@ function TokenLayer(props: { viewport: Viewport | null; canvasEl: HTMLCanvasElem
             offsetY: worldPoint.y - t.y,
           };
           setDragging(tid);
-          gfx.cursor = 'grabbing';
-          // Drop shadow-ish feedback: brighten the token while dragged.
-          gfx.alpha = 0.75;
+          container.cursor = 'grabbing';
+          container.alpha = 0.75;
         });
       }
-    }
-  }, [tokens, viewport, setDragging]);
+      const { container, circle, initials } = entry!;
 
-  // Global pointer listeners for the drag. Window-level so out-of-
-  // canvas movement still drags, and releasing anywhere commits.
+      // Position.
+      container.position.set(token.x, token.y);
+
+      // Redraw circle if size or color changed. For perf we could
+      // compare against cached last-draw values, but circle redraw
+      // is cheap (<0.1ms) and the reconcile is only per-render-cycle
+      // when tokens object identity changes.
+      const r = tokenRadiusForSize(token.size, SCENE_CONFIG.gridSizePx);
+      circle.clear();
+      circle.setFillStyle({ color: token.color, alpha: 0.92 });
+      circle.circle(0, 0, r);
+      circle.fill();
+      circle.setStrokeStyle({ color: 0x0f1012, width: 2, alpha: 0.9 });
+      circle.circle(0, 0, r);
+      circle.stroke();
+      circle.setStrokeStyle({ color: 0xffffff, width: 1, alpha: 0.35 });
+      circle.circle(0, 0, r - 2);
+      circle.stroke();
+
+      // Initials text — update label + size. Scale font to ~50% of
+      // token radius so Tiny (14px radius) reads "T" and Gargantuan
+      // (135px) reads proportionally big.
+      const newText = tokenInitials(token.name);
+      if (initials.text !== newText) initials.text = newText;
+      const targetFontSize = Math.max(11, Math.round(r * 0.75));
+      if (initials.style.fontSize !== targetFontSize) {
+        initials.style.fontSize = targetFontSize;
+      }
+    }
+  }, [tokens, viewport, setDragging, onContextMenu]);
+
+  // Window-level drag handlers — identical to v2.211.
   useEffect(() => {
     if (!viewport || !canvasEl) return;
 
@@ -331,7 +401,6 @@ function TokenLayer(props: { viewport: Viewport | null; canvasEl: HTMLCanvasElem
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPoint = viewport.toWorld(screenX, screenY);
-      // Raw position (no snap during drag — snap happens on release).
       updatePos(drag.id, worldPoint.x - drag.offsetX, worldPoint.y - drag.offsetY);
     }
 
@@ -340,18 +409,15 @@ function TokenLayer(props: { viewport: Viewport | null; canvasEl: HTMLCanvasElem
       if (!drag) return;
       const t = useBattleMapStore.getState().tokens[drag.id];
       if (t) {
-        // Snap to cell center on release.
         const snapped = snapToCellCenter(t.x, t.y);
-        // Clamp to world bounds so tokens can't be left off-map.
         const clampedX = Math.max(0, Math.min(WORLD_WIDTH, snapped.x));
         const clampedY = Math.max(0, Math.min(WORLD_HEIGHT, snapped.y));
         updatePos(drag.id, clampedX, clampedY);
       }
-      // Restore cursor on the dragged token's graphics.
-      const gfx = tokenGfxRef.current.get(drag.id);
-      if (gfx) {
-        gfx.cursor = 'grab';
-        gfx.alpha = 1;
+      const entry = gfxMapRef.current.get(drag.id);
+      if (entry) {
+        entry.container.cursor = 'grab';
+        entry.container.alpha = 1;
       }
       dragRef.current = null;
       setDragging(null);
@@ -368,14 +434,193 @@ function TokenLayer(props: { viewport: Viewport | null; canvasEl: HTMLCanvasElem
   return null;
 }
 
-export default function BattleMapV2(_props: BattleMapV2Props) {
-  void _props; // unused until v2.212
+/** The right-click context menu, rendered as a DOM overlay
+ *  position:fixed at the click point. Closes on any outside click
+ *  or Escape. Three actions (rename/resize/recolor/delete) — v2.214
+ *  can upgrade Rename to a proper inline input modal; for now the
+ *  native prompt() suffices. */
+function TokenContextMenu(props: {
+  state: ContextMenuState;
+  onClose: () => void;
+}) {
+  const { state, onClose } = props;
+  const token = useBattleMapStore(s => s.tokens[state.tokenId]);
+  const removeToken = useBattleMapStore(s => s.removeToken);
+  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color'>('none');
+
+  // Close on outside click.
+  useEffect(() => {
+    function handler(_e: MouseEvent) {
+      onClose();
+    }
+    function keyHandler(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    // Defer attach to next tick so the opening right-click doesn't
+    // immediately close the menu (its own mousedown bubbles up).
+    const id = setTimeout(() => {
+      window.addEventListener('mousedown', handler);
+      window.addEventListener('keydown', keyHandler);
+    }, 0);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener('mousedown', handler);
+      window.removeEventListener('keydown', keyHandler);
+    };
+  }, [onClose]);
+
+  // Guard: token may have been deleted from another path.
+  if (!token) return null;
+
+  function updateToken(patch: Partial<Token>) {
+    const current = useBattleMapStore.getState().tokens[state.tokenId];
+    if (!current) return;
+    useBattleMapStore.setState(s => ({
+      tokens: { ...s.tokens, [state.tokenId]: { ...current, ...patch } },
+    }));
+  }
+
+  // Menu positioning — clamp to viewport so menus near the edge
+  // don't overflow off-screen. Approximate width 180px, height 200px.
+  const menuWidth = 180;
+  const menuHeight = 240;
+  const leftRaw = state.clientX;
+  const topRaw = state.clientY;
+  const left = Math.min(leftRaw, (typeof window !== 'undefined' ? window.innerWidth : 1200) - menuWidth - 8);
+  const top = Math.min(topRaw, (typeof window !== 'undefined' ? window.innerHeight : 800) - menuHeight - 8);
+
+  const menuBaseStyle: React.CSSProperties = {
+    position: 'fixed',
+    left,
+    top,
+    minWidth: menuWidth,
+    background: 'var(--c-card)',
+    border: '1px solid var(--c-border)',
+    borderRadius: 'var(--r-md, 8px)',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    fontFamily: 'var(--ff-body)',
+    fontSize: 12,
+    color: 'var(--t-1)',
+    padding: 4,
+    zIndex: 9999,
+  };
+
+  const itemStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '6px 10px',
+    cursor: 'pointer',
+    borderRadius: 'var(--r-sm, 4px)',
+  };
+
+  // Swallow mousedown inside the menu so the outside-click handler
+  // doesn't fire for clicks on menu items. The onClick still works.
+  function stop(e: React.MouseEvent) {
+    e.stopPropagation();
+  }
+
+  if (submenu === 'size') {
+    return (
+      <div style={menuBaseStyle} onMouseDown={stop}>
+        <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+          Size
+        </div>
+        {SIZE_OPTIONS.map(sz => (
+          <div
+            key={sz}
+            style={{
+              ...itemStyle,
+              background: token.size === sz ? 'rgba(167,139,250,0.12)' : undefined,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = token.size === sz ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+            onClick={() => { updateToken({ size: sz }); onClose(); }}
+          >
+            <span style={{ textTransform: 'capitalize' as const }}>{sz}</span>
+            {token.size === sz && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (submenu === 'color') {
+    return (
+      <div style={menuBaseStyle} onMouseDown={stop}>
+        <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+          Color
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: 6 }}>
+          {TOKEN_COLORS.map(c => (
+            <div
+              key={c}
+              onClick={() => { updateToken({ color: c }); onClose(); }}
+              style={{
+                width: 44, height: 32,
+                background: `#${c.toString(16).padStart(6, '0')}`,
+                borderRadius: 4,
+                cursor: 'pointer',
+                border: token.color === c ? '2px solid #fff' : '2px solid transparent',
+                boxSizing: 'border-box' as const,
+              }}
+              title={`#${c.toString(16).padStart(6, '0')}`}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={menuBaseStyle} onMouseDown={stop}>
+      <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+        {token.name || 'Token'}
+      </div>
+      {[
+        { label: 'Rename…', onClick: () => {
+          // v2.214 will replace prompt() with a proper inline input.
+          const next = window.prompt('Token name', token.name);
+          if (next !== null) {
+            updateToken({ name: next.trim() || token.name });
+          }
+          onClose();
+        }},
+        { label: 'Resize ▸', onClick: () => setSubmenu('size') },
+        { label: 'Recolor ▸', onClick: () => setSubmenu('color') },
+      ].map(opt => (
+        <div
+          key={opt.label}
+          style={itemStyle}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.12)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          onClick={opt.onClick}
+        >
+          {opt.label}
+        </div>
+      ))}
+      <div
+        style={{ ...itemStyle, color: '#f87171', borderTop: '1px solid var(--c-border)', marginTop: 4, paddingTop: 8 }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(248,113,113,0.12)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+        onClick={() => {
+          removeToken(state.tokenId);
+          onClose();
+        }}
+      >
+        Delete
+      </div>
+    </div>
+  );
+}
+
+export default function BattleMapV2(props: BattleMapV2Props) {
+  const { isDM } = props;
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [dims, setDims] = useState({ width: 800, height: 600 });
-  // Track the actual <canvas> element PixiJS mounts so the drag
-  // handler can compute pointer-relative-to-canvas coords for toWorld.
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -391,13 +636,9 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
     return () => ro.disconnect();
   }, []);
 
-  // Find the canvas once the wrapper mounts. Pixi's Application
-  // appends a <canvas> as a child of the <pixi-application> DOM node
-  // @pixi/react renders. We query for it after first paint.
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    // poll briefly — Pixi's canvas is appended asynchronously on init
     let attempts = 0;
     const id = setInterval(() => {
       const canvas = el.querySelector('canvas');
@@ -405,30 +646,27 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
         setCanvasEl(canvas as HTMLCanvasElement);
         clearInterval(id);
       } else if (++attempts > 30) {
-        // 30 × 50ms = 1.5s cutoff; after that something's wrong.
         clearInterval(id);
       }
     }, 50);
     return () => clearInterval(id);
   }, [dims.width, dims.height]);
 
-  // Seed a test token the first time the component mounts. v2.213
-  // replaces this with scene-hydrated tokens from scene_tokens.
+  // Seed a test token on first mount (same as v2.211).
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current) return;
     const state = useBattleMapStore.getState();
-    // If tokens already exist (e.g. hot reload) skip.
     if (Object.keys(state.tokens).length === 0) {
       const testToken: Token = {
         id: 'test-token-1',
         sceneId: null,
-        x: SCENE_CONFIG.gridSizePx * 5 + SCENE_CONFIG.gridSizePx / 2, // center of cell (5,5)
+        x: SCENE_CONFIG.gridSizePx * 5 + SCENE_CONFIG.gridSizePx / 2,
         y: SCENE_CONFIG.gridSizePx * 5 + SCENE_CONFIG.gridSizePx / 2,
         size: 'medium',
         rotation: 0,
         name: 'Test',
-        color: 0xa78bfa, // app purple
+        color: 0xa78bfa,
       };
       state.addToken(testToken);
     }
@@ -450,6 +688,48 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
     vpRef.current.setZoom(fitScale, true);
     vpRef.current.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
   }, [dims.width, dims.height]);
+
+  // v2.212 — "Add Token" button, DM-only. Places the new token at the
+  // current viewport center (which is the DM's current focus) so they
+  // don't have to hunt for it after pressing the button. Cycles
+  // through TOKEN_COLORS by current token count.
+  const addToken = useCallback(() => {
+    const vp = vpRef.current;
+    if (!vp) return;
+    const state = useBattleMapStore.getState();
+    const existingCount = Object.keys(state.tokens).length;
+    const center = vp.center;
+    const snapped = snapToCellCenter(center.x, center.y);
+    // Clamp so it can't land outside the world.
+    const clampedX = Math.max(SCENE_CONFIG.gridSizePx / 2, Math.min(WORLD_WIDTH - SCENE_CONFIG.gridSizePx / 2, snapped.x));
+    const clampedY = Math.max(SCENE_CONFIG.gridSizePx / 2, Math.min(WORLD_HEIGHT - SCENE_CONFIG.gridSizePx / 2, snapped.y));
+    const newToken: Token = {
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `token-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      sceneId: null,
+      x: clampedX,
+      y: clampedY,
+      size: 'medium',
+      rotation: 0,
+      name: `Token ${existingCount + 1}`,
+      color: TOKEN_COLORS[existingCount % TOKEN_COLORS.length],
+    };
+    state.addToken(newToken);
+  }, []);
+
+  const handleContextMenu = useCallback((state: ContextMenuState) => {
+    setContextMenu(state);
+  }, []);
+
+  // Prevent browser's native right-click menu inside the wrapper —
+  // we have our own. Attached on the wrapper so zoom buttons etc.
+  // also suppress it.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const handler = (e: MouseEvent) => e.preventDefault();
+    el.addEventListener('contextmenu', handler);
+    return () => el.removeEventListener('contextmenu', handler);
+  }, []);
 
   return (
     <div
@@ -480,13 +760,18 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
             return (
               <>
                 <GridOverlay viewport={vp} />
-                <TokenLayer viewport={vp} canvasEl={canvasEl} />
+                <TokenLayer
+                  viewport={vp}
+                  canvasEl={canvasEl}
+                  onContextMenu={handleContextMenu}
+                />
               </>
             );
           }}
         </ViewportHost>
       </Application>
 
+      {/* Status banner — top-left */}
       <div
         style={{
           position: 'absolute', top: 8, left: 12,
@@ -502,6 +787,36 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
         BATTLE MAP v2 · {SCENE_CONFIG.widthCells}×{SCENE_CONFIG.heightCells} GRID · {SCENE_CONFIG.gridSizePx}PX
       </div>
 
+      {/* DM toolbar — top-right */}
+      {isDM && (
+        <div
+          style={{
+            position: 'absolute', top: 8, right: 12,
+            display: 'flex', gap: 6,
+          }}
+        >
+          <button
+            onClick={addToken}
+            title="Add a token at viewport center"
+            style={{
+              padding: '5px 12px',
+              background: 'rgba(167,139,250,0.2)',
+              border: '1px solid rgba(167,139,250,0.5)',
+              borderRadius: 'var(--r-sm, 4px)',
+              color: '#a78bfa',
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.32)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.2)'; }}
+          >
+            + Add Token
+          </button>
+        </div>
+      )}
+
+      {/* Zoom buttons — bottom-right */}
       <div
         style={{
           position: 'absolute', bottom: 12, right: 12,
@@ -534,6 +849,7 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
         ))}
       </div>
 
+      {/* Usage hint — bottom-left */}
       <div
         style={{
           position: 'absolute', bottom: 12, left: 12,
@@ -546,8 +862,16 @@ export default function BattleMapV2(_props: BattleMapV2Props) {
           letterSpacing: '0.02em',
         }}
       >
-        Drag tokens with left-click · right/middle drag to pan · wheel to zoom
+        Drag tokens · right-click for options · right/middle drag pans · wheel zooms
       </div>
+
+      {/* Context menu overlay */}
+      {contextMenu && (
+        <TokenContextMenu
+          state={contextMenu}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
