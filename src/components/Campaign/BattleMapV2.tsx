@@ -56,6 +56,31 @@
 // creation on `isReady`. Latent bug since v2.210; v2.224's heavier
 // component tree pushed initial render order such that the bug became
 // reliable. No feature changes in this ship.
+// v2.226.0 — Phase Q.1 pt 18: visual polish + token quick panel.
+//   1. Top-right zoom buttons now have strong contrast (white text,
+//      dark fill, halo shadow) so they read clearly over busy map
+//      backgrounds.
+//   2. Token name labels render below each token in Pixi (white bold
+//      with dark stroke) — DMs can read which token is which without
+//      relying on initials alone.
+//   3. Default zoom is 1.0× fit (was 0.9×) so tokens read at usable
+//      size out of the box.
+//   4. Left-click (without drag) on a PC token opens TokenQuickPanel:
+//      avatar/name/class/level header + HP bar + AC + Speed + 6-stat
+//      mod grid + read-only conditions + DM damage/heal/set HP
+//      controls + "Open Character Sheet" link. Closes on Escape or
+//      backdrop click. Click vs drag is detected via a screen-space
+//      5px movement threshold + 250ms time window.
+//   Deferred to v2.227+:
+//      - Inline condition apply/remove (routes through combat_
+//        participants table — different storage from characters).
+//      - NPC token roster + bulk add (mirrors PC token batch).
+//      - Drawing tools (pencil/line/rect/circle) for freehand
+//        annotations.
+//      - "Hidden from Players" toggle (DM-only fog freeze for scene
+//        setup).
+//      - Per-character darkvision range on VisionLayer (currently
+//        hardcoded 60ft).
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -197,7 +222,9 @@ function ViewportHost(props: {
       .clampZoom({ minScale: 0.25, maxScale: 4 })
       .clamp({ direction: 'all', underflow: 'center' });
     vp.moveCenter(worldWidth / 2, worldHeight / 2);
-    const fitScale = Math.min(screenWidth / worldWidth, screenHeight / worldHeight) * 0.9;
+    // v2.226 — was 0.9× (which leaves margin around the map). Use 1.0×
+    // to fully fill the available canvas; tokens read at usable size.
+    const fitScale = Math.min(screenWidth / worldWidth, screenHeight / worldHeight);
     if (fitScale < 1) vp.setZoom(fitScale, true);
 
     pixiApp.stage.addChild(vp);
@@ -1010,11 +1037,16 @@ function TokenLayer(props: {
   // flow — store does not own this; it's derived from the
   // playerCharacters prop on every render.
   characterHpMap?: Map<string, { current: number; max: number }>;
+  // v2.226 — left-click-without-drag opens the token quick-info panel.
+  // Fires only after the user releases the pointer with negligible
+  // movement (and the token wasn't dragged). Receives world-screen
+  // coordinates so the parent can place the panel near the token.
+  onTokenClick?: (tokenId: string, screenX: number, screenY: number) => void;
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    characterHpMap,
+    characterHpMap, onTokenClick,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -1048,9 +1080,22 @@ function TokenLayer(props: {
     // bar draw, redrawn when HP values change. null if the token has
     // no characterId or the linked character isn't in characterHpMap.
     hpBar: Graphics | null;
+    // v2.226: name label rendered below the token + HP bar so DMs can
+    // read which token is which without relying on initials. Lazy
+    // create on first draw; updated on token.name change.
+    nameLabel: Text | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  // v2.226 — track pointerdown screen pos + timestamp to distinguish
+  // "click" (no drag) from "drag commit" on pointerup.
+  const clickProbeRef = useRef<{
+    id: string;
+    downClientX: number;
+    downClientY: number;
+    downAtMs: number;
+    didMove: boolean;
+  } | null>(null);
 
   const layerContainerRef = useRef<Container | null>(null);
   useEffect(() => {
@@ -1107,6 +1152,7 @@ function TokenLayer(props: {
           sprite: null, mask: null, currentPath: null, loadGen: 0,
           lockRing: null,
           hpBar: null,
+          nameLabel: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -1149,6 +1195,17 @@ function TokenLayer(props: {
             id: tid,
             offsetX: worldPoint.x - t.x,
             offsetY: worldPoint.y - t.y,
+          };
+          // v2.226 — record click-probe state. If pointerup fires soon
+          // after with negligible movement, the parent gets onTokenClick
+          // instead of (or in addition to) the drag commit.
+          const oe = event.nativeEvent as PointerEvent;
+          clickProbeRef.current = {
+            id: tid,
+            downClientX: oe.clientX,
+            downClientY: oe.clientY,
+            downAtMs: performance.now(),
+            didMove: false,
           };
           setDragging(tid);
           container.cursor = 'grabbing';
@@ -1381,6 +1438,42 @@ function TokenLayer(props: {
         }
         currentEntry.hpBar = null;
       }
+
+      // v2.226 — name label below the token. Always shown when the
+      // token has a non-empty name. Position adjusts based on whether
+      // an HP bar is present (sits below it). Created lazily and
+      // updated on name change. Bold white with dark stroke for
+      // legibility over any background.
+      const showLabel = !!token.name && token.name.trim().length > 0;
+      if (showLabel) {
+        let label = currentEntry.nameLabel;
+        if (!label || label.destroyed) {
+          label = new Text({
+            text: token.name,
+            style: new TextStyle({
+              fontFamily: 'sans-serif',
+              fontWeight: '700',
+              fontSize: 12,
+              fill: 0xffffff,
+              align: 'center',
+              stroke: { color: 0x0a0c10, width: 4 },
+            }),
+          });
+          label.anchor.set(0.5, 0);
+          container.addChild(label);
+          currentEntry.nameLabel = label;
+        }
+        if (label.text !== token.name) label.text = token.name;
+        // Position below HP bar (if present) or token rim.
+        const hpBarOffset = (hpInfo && hpInfo.max > 0) ? 14 : 0;
+        label.position.set(0, r + 6 + hpBarOffset);
+      } else if (currentEntry.nameLabel) {
+        if (!currentEntry.nameLabel.destroyed) {
+          container.removeChild(currentEntry.nameLabel);
+          currentEntry.nameLabel.destroy();
+        }
+        currentEntry.nameLabel = null;
+      }
     }
   }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap]);
 
@@ -1394,6 +1487,17 @@ function TokenLayer(props: {
     let lastBroadcastMs = 0;
 
     function onPointerMove(e: PointerEvent) {
+      // v2.226 — click probe: if pointer moves > CLICK_THRESHOLD_PX
+      // in screen space, mark drag as "moved" (suppresses click).
+      const probe = clickProbeRef.current;
+      if (probe && !probe.didMove) {
+        const dx = e.clientX - probe.downClientX;
+        const dy = e.clientY - probe.downClientY;
+        if (dx * dx + dy * dy > 25) { // > 5px move
+          probe.didMove = true;
+        }
+      }
+
       const drag = dragRef.current;
       if (!drag || !viewport || !canvasEl) return;
       const rect = canvasEl.getBoundingClientRect();
@@ -1412,9 +1516,23 @@ function TokenLayer(props: {
       }
     }
 
-    function onPointerUp() {
+    function onPointerUp(e: PointerEvent) {
       const drag = dragRef.current;
-      if (!drag) return;
+      const probe = clickProbeRef.current;
+      // v2.226 — click classifier. If pointer moved < threshold AND
+      // the down→up window was short, treat as a click and fire the
+      // callback. Drag commit runs in EITHER case so the position
+      // (snapped to nearest cell) ends up consistent on the DB.
+      const wasClick = !!(
+        probe &&
+        !probe.didMove &&
+        performance.now() - probe.downAtMs < 250
+      );
+
+      if (!drag) {
+        clickProbeRef.current = null;
+        return;
+      }
       const t = useBattleMapStore.getState().tokens[drag.id];
       if (t) {
         const snapped = snapToCellCenter(t.x, t.y, gridSizePx);
@@ -1424,10 +1542,13 @@ function TokenLayer(props: {
         // v2.216: send one final broadcast at the snapped position so
         // peers see the snap even before the DB round-trip completes.
         onDragMove?.(drag.id, clampedX, clampedY);
-        // v2.213 commit — single DB write on release.
-        tokensApi.updateTokenPos(drag.id, clampedX, clampedY).catch(err =>
-          console.error('[BattleMapV2] pos commit failed', err)
-        );
+        // v2.213 commit — single DB write on release. Only commit if
+        // the position actually moved (avoid pointless DB write on click).
+        if (!wasClick) {
+          tokensApi.updateTokenPos(drag.id, clampedX, clampedY).catch(err =>
+            console.error('[BattleMapV2] pos commit failed', err)
+          );
+        }
       }
       const entry = gfxMapRef.current.get(drag.id);
       if (entry) {
@@ -1438,7 +1559,13 @@ function TokenLayer(props: {
       // we're done locally. Stale commits are rare; stale locks would
       // block the UI.
       onDragEnd?.(drag.id);
+      // v2.226: fire click callback AFTER drag teardown so the parent
+      // can rely on store/lock state being clean.
+      if (wasClick && probe) {
+        onTokenClick?.(probe.id, e.clientX, e.clientY);
+      }
       dragRef.current = null;
+      clickProbeRef.current = null;
       setDragging(null);
     }
 
@@ -1448,7 +1575,7 @@ function TokenLayer(props: {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick]);
 
   return null;
 }
@@ -2000,6 +2127,356 @@ function SceneSettingsModal(props: {
   );
 }
 
+/**
+ * v2.226 — Token Quick Panel.
+ *
+ * Compact inline panel that opens when the DM (or any user) left-clicks
+ * a token without dragging it. Shows core combat-relevant character
+ * info at a glance: HP, AC, Speed, Conditions. Provides quick actions:
+ *   - Damage / Heal / Set HP (DM only — writes to characters table)
+ *   - Open full Character Sheet (router navigate)
+ *   - Close
+ *
+ * Scope of v2.226: read-only HP/AC/Speed display + Damage/Heal/Set
+ * controls + Open Sheet link. Conditions are shown as read-only chips.
+ * v2.227+ will add inline condition apply/remove (which routes through
+ * the combat-participants table — different from the characters table
+ * that owns HP). Until then, condition changes happen on the full
+ * character sheet or via the existing combat encounter UI.
+ *
+ * For tokens NOT linked to a character (NPCs, plain markers), the
+ * panel is not opened; right-click context menu remains the way to
+ * edit those.
+ *
+ * Position: anchored near the click point, but clamped so it never
+ * goes off-screen. The panel has a fixed width and positions
+ * itself with position:fixed.
+ */
+function TokenQuickPanel(props: {
+  character: {
+    id: string;
+    name: string;
+    class_name: string;
+    level: number;
+    current_hp: number;
+    max_hp: number;
+    armor_class: number;
+    active_conditions: string[];
+    strength: number;
+    dexterity: number;
+    constitution: number;
+    intelligence: number;
+    wisdom: number;
+    charisma: number;
+    speed: number;
+  };
+  anchorX: number;
+  anchorY: number;
+  isDM: boolean;
+  onClose: () => void;
+  onOpenSheet: () => void;
+}) {
+  const { character: c, anchorX, anchorY, isDM, onClose, onOpenSheet } = props;
+  const [hpInput, setHpInput] = useState('');
+  const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
+  const [applying, setApplying] = useState(false);
+
+  // Esc closes the panel.
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  // HP percent for the bar fill.
+  const pct = c.max_hp > 0 ? Math.max(0, Math.min(1, c.current_hp / c.max_hp)) : 0;
+  const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
+
+  // Position calc: clamp inside viewport so panel doesn't fall off
+  // the bottom or right edge. Width 280, max height ~360.
+  const PANEL_W = 280;
+  const PANEL_H = 380;
+  const margin = 8;
+  let left = Math.max(margin, anchorX + 14);
+  if (typeof window !== 'undefined') {
+    if (left + PANEL_W + margin > window.innerWidth) {
+      left = Math.max(margin, anchorX - PANEL_W - 14);
+    }
+  }
+  let top = Math.max(margin, anchorY - PANEL_H / 2);
+  if (typeof window !== 'undefined') {
+    if (top + PANEL_H + margin > window.innerHeight) {
+      top = Math.max(margin, window.innerHeight - PANEL_H - margin);
+    }
+  }
+
+  // Modifier helper — D&D 5e ability modifier formula.
+  const mod = (score: number) => Math.floor((score - 10) / 2);
+  const modStr = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+
+  async function applyHp() {
+    const n = parseInt(hpInput.trim(), 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setApplying(true);
+    try {
+      let next = c.current_hp;
+      if (hpMode === 'damage') next = Math.max(0, c.current_hp - n);
+      else if (hpMode === 'heal') next = Math.min(c.max_hp, c.current_hp + n);
+      else next = Math.max(0, Math.min(c.max_hp, n));
+      const { error } = await supabase
+        .from('characters')
+        .update({ current_hp: next })
+        .eq('id', c.id);
+      if (error) {
+        console.error('[TokenQuickPanel] HP update failed', error);
+        alert('Failed to update HP. Check console for details.');
+        return;
+      }
+      setHpInput('');
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  function stop(e: React.MouseEvent) { e.stopPropagation(); }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9997,
+        // Backdrop is invisible but catches outside clicks to close.
+      }}
+      onMouseDown={onClose}
+    >
+      <div
+        style={{
+          position: 'fixed',
+          left, top,
+          width: PANEL_W,
+          maxHeight: PANEL_H,
+          overflowY: 'auto',
+          background: 'var(--c-card)',
+          border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-lg, 12px)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(167,139,250,0.25)',
+          fontFamily: 'var(--ff-body)',
+          color: 'var(--t-1)',
+          padding: 14,
+        }}
+        onMouseDown={stop}
+      >
+        {/* Header — name, class/level, close */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 14, fontWeight: 700, color: 'var(--t-1)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {c.name}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--t-3)', letterSpacing: '0.04em', marginTop: 2 }}>
+              {c.class_name} · Level {c.level}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            title="Close"
+            style={{
+              width: 24, height: 24, padding: 0,
+              background: 'transparent', border: 'none',
+              color: 'var(--t-3)', cursor: 'pointer',
+              fontSize: 16, lineHeight: 1,
+            }}
+          >×</button>
+        </div>
+
+        {/* HP bar */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>HP</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: hpColor }}>
+              {c.current_hp}<span style={{ fontSize: 10, color: 'var(--t-3)' }}>/{c.max_hp}</span>
+            </span>
+          </div>
+          <div style={{
+            height: 8, background: 'rgba(15,16,18,0.85)',
+            border: '1px solid var(--c-border)',
+            borderRadius: 4, overflow: 'hidden' as const,
+          }}>
+            <div style={{
+              width: `${pct * 100}%`, height: '100%',
+              background: hpColor, transition: 'width 0.2s, background 0.2s',
+            }} />
+          </div>
+        </div>
+
+        {/* AC + Speed */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+          {[
+            { label: 'AC', value: c.armor_class },
+            { label: 'Speed', value: `${c.speed} ft` },
+          ].map(stat => (
+            <div key={stat.label} style={{
+              padding: '6px 8px',
+              background: 'rgba(15,16,18,0.5)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 'var(--r-sm, 4px)',
+              textAlign: 'center' as const,
+            }}>
+              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                {stat.label}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--t-1)', marginTop: 2 }}>
+                {stat.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Stats row — abbreviated mods */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, marginBottom: 12 }}>
+          {[
+            ['STR', c.strength],
+            ['DEX', c.dexterity],
+            ['CON', c.constitution],
+            ['INT', c.intelligence],
+            ['WIS', c.wisdom],
+            ['CHA', c.charisma],
+          ].map(([k, v]) => {
+            const m = mod(v as number);
+            return (
+              <div key={k as string} style={{
+                padding: '4px 0',
+                background: 'rgba(15,16,18,0.5)',
+                border: '1px solid var(--c-border)',
+                borderRadius: 'var(--r-sm, 4px)',
+                textAlign: 'center' as const,
+              }}>
+                <div style={{ fontSize: 8, color: 'var(--t-3)', letterSpacing: '0.04em' }}>{k as string}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--t-1)' }}>{modStr(m)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Active conditions (read-only chips). v2.227 will add an
+            inline condition picker; for now this surfaces what's
+            already on the character. */}
+        {c.active_conditions && c.active_conditions.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+              Conditions
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+              {c.active_conditions.map(cond => (
+                <span key={cond} style={{
+                  padding: '2px 8px',
+                  background: 'rgba(248,113,113,0.15)',
+                  border: '1px solid rgba(248,113,113,0.4)',
+                  borderRadius: 999,
+                  fontSize: 10, fontWeight: 600,
+                  color: '#f87171',
+                }}>
+                  {cond}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* DM controls — damage / heal / set */}
+        {isDM && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+              DM Controls
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 6 }}>
+              {(['damage', 'heal', 'set'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setHpMode(m)}
+                  style={{
+                    padding: '6px 4px',
+                    background: hpMode === m
+                      ? (m === 'damage' ? 'rgba(248,113,113,0.25)' : m === 'heal' ? 'rgba(52,211,153,0.25)' : 'rgba(167,139,250,0.25)')
+                      : 'var(--c-raised)',
+                    border: `1px solid ${hpMode === m
+                      ? (m === 'damage' ? 'rgba(248,113,113,0.6)' : m === 'heal' ? 'rgba(52,211,153,0.6)' : 'rgba(167,139,250,0.6)')
+                      : 'var(--c-border)'}`,
+                    borderRadius: 'var(--r-sm, 4px)',
+                    color: hpMode === m
+                      ? (m === 'damage' ? '#f87171' : m === 'heal' ? '#34d399' : '#a78bfa')
+                      : 'var(--t-2)',
+                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                    textTransform: 'capitalize' as const, cursor: 'pointer',
+                  }}
+                >{m}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                type="number"
+                value={hpInput}
+                onChange={(e) => setHpInput(e.target.value)}
+                placeholder="Amount"
+                min={0}
+                style={{
+                  flex: 1,
+                  padding: '6px 8px',
+                  background: 'var(--c-raised)',
+                  border: '1px solid var(--c-border)',
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: 'var(--t-1)',
+                  fontFamily: 'var(--ff-body)', fontSize: 12,
+                  boxSizing: 'border-box' as const,
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyHp(); }}
+              />
+              <button
+                onClick={applyHp}
+                disabled={applying || !hpInput.trim()}
+                style={{
+                  padding: '6px 14px',
+                  background: 'rgba(167,139,250,0.22)',
+                  border: '1px solid rgba(167,139,250,0.5)',
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: '#a78bfa',
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                  cursor: (applying || !hpInput.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (applying || !hpInput.trim()) ? 0.5 : 1,
+                }}
+              >
+                {applying ? '…' : 'Apply'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Open full character sheet */}
+        <button
+          onClick={onOpenSheet}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'rgba(167,139,250,0.15)',
+            border: '1px solid rgba(167,139,250,0.45)',
+            borderRadius: 'var(--r-sm, 4px)',
+            color: '#a78bfa',
+            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.04em', cursor: 'pointer',
+          }}
+        >
+          Open Character Sheet →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function BattleMapV2(props: BattleMapV2Props) {
   const { isDM, campaignId, userId } = props;
 
@@ -2015,6 +2492,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const [dims, setDims] = useState({ width: 800, height: 600 });
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // v2.226 — left-click-without-drag opens the TokenQuickPanel for
+  // character-linked tokens. State holds the tokenId + screen pos
+  // so the panel can be anchored near the click.
+  const [clickedToken, setClickedToken] = useState<{
+    tokenId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // v2.215 — portrait upload state. fileInputRef drives the hidden
   // <input type="file">; uploadTargetIdRef holds which token the next
@@ -2693,6 +3178,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     setContextMenu(state);
   }, []);
 
+  // v2.226 — left-click-without-drag handler. Only opens the quick
+  // panel for tokens linked to a known character (those have rich
+  // data to show). Unlinked tokens (NPCs without character_id, plain
+  // markers) keep the right-click context menu as their primary
+  // edit affordance.
+  const handleTokenClick = useCallback((tokenId: string, screenX: number, screenY: number) => {
+    const t = useBattleMapStore.getState().tokens[tokenId];
+    if (!t || !t.characterId) return;
+    const char = props.playerCharacters.find(c => c.id === t.characterId);
+    if (!char) return;
+    setClickedToken({ tokenId, x: screenX, y: screenY });
+  }, [props.playerCharacters]);
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -2918,6 +3416,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     rulerActive={rulerActive}
                     wallActive={wallActive}
                     characterHpMap={characterHpMap}
+                    onTokenClick={handleTokenClick}
                   />
                   {/* v2.224 — fog of war overlay. DM sees nothing
                       (no fog applied); players see dark over anything
@@ -3070,15 +3569,27 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               onClick={btn.onClick}
               title={btn.title}
               style={{
-                width: 32, height: 32,
-                background: 'rgba(15,16,18,0.85)',
-                border: '1px solid rgba(167,139,250,0.35)',
+                // v2.226 — strong contrast for readability over busy map
+                // images. Dark fill + bright text + box-shadow halo so
+                // buttons "pop" against any background.
+                width: 36, height: 36,
+                background: 'rgba(15,16,18,0.95)',
+                border: '1px solid rgba(167,139,250,0.65)',
                 borderRadius: 'var(--r-sm, 4px)',
-                color: '#a78bfa',
-                fontFamily: 'var(--ff-body)', fontSize: 14, fontWeight: 700,
+                color: '#ffffff',
+                fontFamily: 'var(--ff-body)', fontSize: 18, fontWeight: 700,
                 cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 lineHeight: 1,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.5)',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.35)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.95)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.95)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.65)';
               }}
             >
               {btn.label}
@@ -3178,6 +3689,33 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             onOpenCharacter={handleOpenCharacter}
           />
         )}
+
+        {/* v2.226 — token quick info panel. Opens on left-click
+            (without drag) of a character-linked token. Anchored
+            near the click point. Backdrop click + Escape close it.
+            Re-reads the live character on each render so HP edits
+            via the panel reflect immediately (the playerCharacters
+            prop is the source of truth and updates via Realtime). */}
+        {clickedToken && (() => {
+          const t = useBattleMapStore.getState().tokens[clickedToken.tokenId];
+          const char = t?.characterId
+            ? props.playerCharacters.find(c => c.id === t.characterId)
+            : null;
+          if (!char) return null;
+          return (
+            <TokenQuickPanel
+              character={char}
+              anchorX={clickedToken.x}
+              anchorY={clickedToken.y}
+              isDM={isDM}
+              onClose={() => setClickedToken(null)}
+              onOpenSheet={() => {
+                setClickedToken(null);
+                navigate(`/character/${char.id}`);
+              }}
+            />
+          );
+        })()}
 
         {/* v2.219 scene settings modal. Rendered above the canvas via
             position:fixed backdrop so it covers the full viewport, not
