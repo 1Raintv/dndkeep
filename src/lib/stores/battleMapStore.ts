@@ -46,7 +46,13 @@ export interface Token {
   // column in scene_tokens.
   color: number; // 0xRRGGBB
   imageStoragePath: string | null; // v2.215 — Supabase Storage path
-  // v2.216 adds:
+  // v2.220: link to a player character. When set, the token represents
+  // that character on the map — used by "+ Add PC Tokens" to prevent
+  // duplicates and by future features to read live HP/AC from the
+  // character sheet. npc_id column is in the DB schema too but we
+  // don't expose it here yet.
+  characterId: string | null;
+  // Future fields (DB has them; store doesn't mirror yet):
   //   playerId: string | null    (ownership / RLS)
   //   visibleToAll: boolean
   //   zIndex: number

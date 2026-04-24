@@ -29,6 +29,7 @@ export function dbRowToToken(row: any): Token {
     name: row.name ?? '',
     color: row.color ?? 0xa78bfa,
     imageStoragePath: row.image_storage_path ?? null,
+    characterId: row.character_id ?? null,
   };
 }
 
@@ -44,6 +45,7 @@ function tokenToInsertRow(token: Token) {
     name: token.name,
     color: token.color,
     image_storage_path: token.imageStoragePath,
+    character_id: token.characterId,
   };
 }
 

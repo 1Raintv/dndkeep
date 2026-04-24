@@ -14,6 +14,11 @@
 // state, delete the scene, or auto-fit dimensions to an uploaded map
 // image's aspect. All changes propagate via the v2.214 scenes
 // Realtime channel so players see updates instantly.
+// v2.220.0 — Phase Q.1 pt 13: "+ Add PC Tokens" button. Bulk-creates
+// tokens for every player character in the campaign that doesn't
+// already have one in the current scene (linked by character_id).
+// Idempotent re-click. Tokens commit to DB and propagate via
+// Realtime so all players see their party appear at once.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -1819,12 +1824,92 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       name: `Token ${existingCount + 1}`,
       color: TOKEN_COLORS[existingCount % TOKEN_COLORS.length],
       imageStoragePath: null,
+      characterId: null,
     };
     state.addToken(newToken);
     tokensApi.createToken(newToken).catch(err =>
       console.error('[BattleMapV2] token create commit failed', err)
     );
   }, [currentScene, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT]);
+
+  // v2.220 — "+ Add PC Tokens". Bulk-creates tokens for every player
+  // character in the campaign that doesn't already have a token linked
+  // (by character_id) in the current scene. Tokens are arranged in a
+  // compact row near viewport center, named after the character, and
+  // colored from the palette.
+  //
+  // Skipping already-linked characters makes the button idempotent —
+  // clicking again when the party is already on the map does nothing
+  // (rather than duplicating everyone).
+  //
+  // Rationale: DMs running prepared adventures don't want to right-click
+  // "add token, rename, rename, rename" 6 times per scene. One click
+  // populates the entire party ready to drag into position.
+  const addPcTokens = useCallback(() => {
+    const vp = vpRef.current;
+    if (!vp || !currentScene) return;
+    const state = useBattleMapStore.getState();
+
+    // Characters already represented in this scene (by character_id).
+    // Filter by sceneId too, since the store may hold tokens from a
+    // stale hydration window.
+    const existing = new Set(
+      Object.values(state.tokens)
+        .filter(t => t.sceneId === currentScene.id && t.characterId)
+        .map(t => t.characterId as string)
+    );
+
+    const toAdd = props.playerCharacters.filter(pc => !existing.has(pc.id));
+    if (toAdd.length === 0) {
+      alert('All party characters already have tokens in this scene.');
+      return;
+    }
+
+    // Starting point: viewport center snapped. Arrange tokens in a
+    // simple row, one cell apart, centered horizontally. For parties
+    // bigger than ~5, wraps to a second row.
+    const center = vp.center;
+    const snapped = snapToCellCenter(center.x, center.y, gridSizePx);
+    const perRow = Math.min(5, toAdd.length);
+    const rows = Math.ceil(toAdd.length / perRow);
+    const startCol = Math.floor(-perRow / 2);
+    const startRow = Math.floor(-rows / 2);
+
+    const baseCount = Object.keys(state.tokens).length;
+    const newTokens: Token[] = toAdd.map((pc, idx) => {
+      const col = idx % perRow;
+      const row = Math.floor(idx / perRow);
+      const x = snapped.x + (startCol + col) * gridSizePx;
+      const y = snapped.y + (startRow + row) * gridSizePx;
+      const clampedX = Math.max(gridSizePx / 2, Math.min(WORLD_WIDTH - gridSizePx / 2, x));
+      const clampedY = Math.max(gridSizePx / 2, Math.min(WORLD_HEIGHT - gridSizePx / 2, y));
+      return {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `token-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
+        sceneId: currentScene.id,
+        x: clampedX,
+        y: clampedY,
+        size: 'medium',
+        rotation: 0,
+        name: pc.name,
+        color: TOKEN_COLORS[(baseCount + idx) % TOKEN_COLORS.length],
+        imageStoragePath: null,
+        characterId: pc.id,
+      };
+    });
+
+    // Optimistic local inserts first.
+    for (const t of newTokens) state.addToken(t);
+    // Then fire-and-forget DB inserts. We do them in sequence — the
+    // batch is small (party size) and Supabase doesn't have a
+    // first-class batch insert via the JS client; mapping to Promise.all
+    // is fine but sequential keeps error logs readable.
+    (async () => {
+      for (const t of newTokens) {
+        try { await tokensApi.createToken(t); }
+        catch (err) { console.error('[BattleMapV2] pc token create failed', t.name, err); }
+      }
+    })();
+  }, [props.playerCharacters, currentScene, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT]);
 
   // v2.213 "New Scene" — creates an empty scene with default grid,
   // auto-selects it. DM-only via RLS + UI gating.
@@ -2216,6 +2301,29 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.15)'; }}
               >
                 Remove Map
+              </button>
+            )}
+            {/* v2.220 — bulk-add tokens for all player characters that
+                don't already have one in this scene. Only renders when
+                the DM has party members to add. */}
+            {props.playerCharacters.length > 0 && (
+              <button
+                onClick={addPcTokens}
+                title="Create a token for each player character that doesn't already have one in this scene"
+                style={{
+                  padding: '5px 12px',
+                  background: 'rgba(52,211,153,0.18)',
+                  border: '1px solid rgba(52,211,153,0.5)',
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: '#34d399',
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.3)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.18)'; }}
+              >
+                + Add PC Tokens
               </button>
             )}
             <button
