@@ -3,31 +3,27 @@
 // v2.210.0 — Phase Q.1 pt 3: pixi-viewport + square grid + snap helper.
 // v2.211.0 — Phase Q.1 pt 4: Zustand store + first draggable token.
 // v2.212.0 — Phase Q.1 pt 5: multi-token + initials + "Add Token" + context menu.
-// v2.213.0 — Phase Q.1 pt 6: scene persistence — scene picker, DM-only
-// "+ New Scene" button, tokens hydrated from scene_tokens on scene change,
-// commits on drag end + discrete actions (add/delete/rename/resize/recolor).
-// No more seed test token — tokens come from the DB now.
+// v2.213.0 — Phase Q.1 pt 6: scene persistence — scene picker, DB hydration.
+// v2.214.0 — Phase Q.1 pt 7: Realtime multiplayer sync via Supabase Postgres
+// Changes. When any client commits a token or scene change, all connected
+// clients in the same campaign see the update within ~100ms. RLS gates
+// who sees what. No drag previews yet (mid-drag positions not broadcast) —
+// that's v2.215 via Supabase Realtime Broadcast.
 //
-// Commit strategy:
+// Commit strategy (unchanged from v2.213):
 //   - Optimistic local store update first (instant visual feedback)
-//   - Fire-and-forget API call (console.error on failure, no rollback UI yet)
-//   - Moves commit ONCE on drag release (not on every pointermove — would
-//     be hundreds of writes per drag). Snap happens first, then write.
-//   - Discrete ops (add / delete / rename / resize / recolor) commit
-//     immediately after the store mutation.
-//
-// Scene lifecycle:
-//   - On mount: listScenes(campaignId) → pick first if any, else empty state
-//   - On scene change: resetForScene(newId) → setLoading(true) →
-//       listTokens(newId) → setTokensBulk(result) → setLoading(false)
-//   - Camera: leave at current pan/zoom on scene switch (DM-friendly —
-//     they might be looking at a specific area across scenes). v2.214
-//     can revisit if switching feels disorienting.
+//   - Fire-and-forget API call writes to DB
+//   - Postgres Changes event fires for all subscribers including the
+//     originator (idempotent no-op for them since addToken is an upsert)
+//   - Moves commit ONCE on drag release (not per pointermove — would be
+//     hundreds of writes per drag AND hundreds of realtime events for
+//     every other client). v2.215's Broadcast adds mid-drag previews
+//     without hitting the DB.
 //
 // Next ships:
-//   v2.214 — portrait upload + Pixi Sprite rendering (Storage bucket)
-//   v2.215 — multiplayer Realtime sync (Broadcast + Postgres Changes)
-//   v2.216 — walls + doors + static fog of war (Phase 3 of the plan)
+//   v2.215 — portrait upload + Pixi Sprite rendering (Storage bucket)
+//   v2.216 — Broadcast drag previews + Presence drag-locks
+//   v2.217 — walls + doors + static fog of war (Phase 3 of the plan)
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Container, FederatedPointerEvent, Graphics, Text, TextStyle } from 'pixi.js';
@@ -36,6 +32,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
+import { dbRowToToken } from '../../lib/api/sceneTokens';
+import { supabase } from '../../lib/supabase';
 
 extend({ Container, Graphics, Text });
 
@@ -640,6 +638,143 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     });
     return () => { cancelled = true; };
   }, [currentScene]);
+
+  // v2.214.0 — Phase Q.1 pt 7: Realtime sync for scene_tokens.
+  // When any client commits a token change (add / move / edit / delete),
+  // Supabase Postgres Changes fires an event here and we apply it to the
+  // Zustand store. RLS filters — each subscriber only receives events
+  // for rows they could SELECT, so no sensitive tokens leak to players
+  // who shouldn't see them.
+  //
+  // Idempotency: the originating client also receives its own events.
+  // Since `addToken` is an upsert (spread + set by id) and the payload
+  // data matches the client's optimistic state, the re-apply is a no-op.
+  // No special filtering needed.
+  //
+  // Race window: there's a brief gap (typically <200ms) between
+  // subscription setup and listTokens resolving where a new INSERT
+  // event could be superseded by setTokensBulk's wholesale replacement.
+  // Acceptable for v2.214; v2.215 can introduce a merge strategy.
+  useEffect(() => {
+    if (!currentScene?.id) return;
+    const sceneId = currentScene.id;
+    const channel = supabase
+      .channel(`battle_map:scene_tokens:${sceneId}`)
+      .on(
+        // Supabase types lag behind runtime; cast to bypass the literal.
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scene_tokens',
+          filter: `scene_id=eq.${sceneId}`,
+        },
+        (payload: any) => {
+          const store = useBattleMapStore.getState();
+          // Ignore events for tokens belonging to a different scene —
+          // the filter should already handle this but defense-in-depth
+          // against filter semantics changing.
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const newRow = payload.new;
+            if (newRow?.scene_id !== sceneId) return;
+            store.addToken(dbRowToToken(newRow));
+          } else if (payload.eventType === 'DELETE') {
+            // For DELETE with REPLICA IDENTITY DEFAULT (Postgres default),
+            // payload.old contains only the primary key. That's all we need.
+            const oldRow = payload.old;
+            if (oldRow?.id) {
+              store.removeToken(oldRow.id);
+            }
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentScene?.id]);
+
+  // v2.214.0 — Phase Q.1 pt 7: Realtime sync for scenes.
+  // When a DM creates a new scene or publishes/unpublishes one, all
+  // campaign members see the scenes list update. Players who don't
+  // have permission via RLS silently won't receive unpublished scenes.
+  useEffect(() => {
+    if (!campaignId) return;
+    const channel = supabase
+      .channel(`battle_map:scenes:${campaignId}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scenes',
+          filter: `campaign_id=eq.${campaignId}`,
+        },
+        (payload: any) => {
+          if (payload.eventType === 'INSERT') {
+            const newRow = payload.new;
+            const scene: scenesApi.Scene = {
+              id: newRow.id,
+              campaignId: newRow.campaign_id,
+              ownerId: newRow.owner_id,
+              name: newRow.name,
+              gridType: newRow.grid_type,
+              gridSizePx: newRow.grid_size_px,
+              widthCells: newRow.width_cells,
+              heightCells: newRow.height_cells,
+              backgroundStoragePath: newRow.background_storage_path,
+              dmNotes: newRow.dm_notes,
+              isPublished: newRow.is_published,
+              createdAt: newRow.created_at,
+              updatedAt: newRow.updated_at,
+            };
+            setScenes(prev => {
+              // Avoid dupes in case the originator's state already
+              // includes this scene from its own create flow.
+              if (prev.some(s => s.id === scene.id)) return prev;
+              return [...prev, scene];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const newRow = payload.new;
+            setScenes(prev => prev.map(s => s.id === newRow.id ? {
+              ...s,
+              name: newRow.name,
+              gridSizePx: newRow.grid_size_px,
+              widthCells: newRow.width_cells,
+              heightCells: newRow.height_cells,
+              backgroundStoragePath: newRow.background_storage_path,
+              dmNotes: newRow.dm_notes,
+              isPublished: newRow.is_published,
+              updatedAt: newRow.updated_at,
+            } : s));
+            // If the currently-selected scene was renamed / retuned,
+            // reflect that in `currentScene` too.
+            setCurrentScene(prev => prev && prev.id === newRow.id ? {
+              ...prev,
+              name: newRow.name,
+              gridSizePx: newRow.grid_size_px,
+              widthCells: newRow.width_cells,
+              heightCells: newRow.height_cells,
+              backgroundStoragePath: newRow.background_storage_path,
+              dmNotes: newRow.dm_notes,
+              isPublished: newRow.is_published,
+              updatedAt: newRow.updated_at,
+            } : prev);
+          } else if (payload.eventType === 'DELETE') {
+            const oldId = payload.old?.id;
+            if (!oldId) return;
+            setScenes(prev => prev.filter(s => s.id !== oldId));
+            // If the deleted scene was selected, fall back to null;
+            // the empty-state screen or auto-select will handle recovery.
+            setCurrentScene(prev => prev && prev.id === oldId ? null : prev);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [campaignId]);
 
   useEffect(() => {
     const el = wrapperRef.current;
