@@ -829,9 +829,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  //    have Disadvantage (2024 PHB Dodge). Cleared on New Turn.
  const [dashingThisTurn, setDashingThisTurn] = useState(false);
  const [dodgingThisTurn, setDodgingThisTurn] = useState(false);
- // v2.88.0: Standard Actions section is collapsed by default to save
- // vertical space — 10 cards were overwhelming for something rarely used.
- const [standardActionsOpen, setStandardActionsOpen] = useState(false);
+ // v2.88.0: Standard Actions section was collapsed by default and gated
+ // by a `standardActionsOpen` toggle. v2.198.0 removed the toggle (the
+ // pill-grid layout from v2.182.0 was compact enough to always show).
+ // v2.206.0 — Phase Q.0 pt 46: removed the now-dead useState declaration
+ // (no readers, no setters anywhere in the file). Pure hygiene cleanup.
 
  // v2.170.0 — Phase Q.0 pt 11: roll multiple hit dice at once.
  // Previously only rolled one die per click, which is fine RAW but
