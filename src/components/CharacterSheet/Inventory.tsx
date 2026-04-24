@@ -16,6 +16,7 @@ import {
 import { recomputeAC, describeACBreakdown } from '../../lib/armorClass';
 import { drinkPotion, isPotionByType } from '../../lib/potions';
 import { useMagicItems } from '../../lib/hooks/useMagicItems';
+import { emitCombatEvent } from '../../lib/combatEvents';
 
 interface InventoryProps {
  character: Character;
@@ -506,6 +507,22 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  const newAC = recomputeAC(character, updated);
  onUpdateAC(newAC);
  }
+
+ // v2.193.0 — Phase Q.0 pt 34: emit combat_event so the unified
+ // History tab shows equipment toggles. Fire-and-forget — never
+ // block the UI on the log write.
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'player',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: newEquipped ? 'item_equipped' : 'item_unequipped',
+ payload: {
+ item_name: item.name,
+ item_id: item.id,
+ magic_item_id: item.magic_item_id ?? null,
+ },
+ }).catch(() => {});
  }
 
  // v2.155.0 — Phase P pt 3: attunement toggle with RAW 3-slot cap.
@@ -536,6 +553,47 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  const newAC = recomputeAC(character, updated);
  onUpdateAC(newAC);
  }
+
+ // v2.193.0 — Phase Q.0 pt 34: emit attunement event. Uses
+ // 'item_used' as the event type (attunement is a meaningful
+ // "use" of a magic item — establishes the bond) with payload
+ // disambiguating it from charge spends or activations.
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'player',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: 'item_used',
+ payload: {
+ sub_type: 'attunement',
+ attuned: turningOn,
+ item_name: item.name,
+ item_id: item.id,
+ magic_item_id: item.magic_item_id ?? null,
+ },
+ }).catch(() => {});
+ }
+
+ // v2.196.0 — Phase Q.0 pt 37: charge-spent emitter callback.
+ // Lives in this scope (not InventoryRow) because `character` is
+ // here. InventoryRow calls this from its inline charge-button onClick.
+ function handleChargeSpent(item: InventoryItem, chargesBefore: number) {
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'player',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: 'item_used',
+ payload: {
+ sub_type: 'charge_spent',
+ item_name: item.name,
+ item_id: item.id,
+ magic_item_id: item.magic_item_id ?? null,
+ charges_before: chargesBefore,
+ charges_after: chargesBefore - 1,
+ charges_max: item.charges_max ?? 0,
+ },
+ }).catch(() => {});
  }
 
  // v2.158.0 — Phase P pt 6: drink potion flow.
@@ -713,6 +771,7 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
    onRoll={rollItemExpression}
    isPotion={!!item.magic_item_id && isPotionByType(magicItemMap[item.magic_item_id]?.type)}
    onDrink={handleDrinkPotion}
+   onChargeSpent={handleChargeSpent}
  />
  ))}
  </div>
@@ -787,6 +846,7 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
    onRoll={rollItemExpression}
    isPotion={!!item.magic_item_id && isPotionByType(magicItemMap[item.magic_item_id]?.type)}
    onDrink={handleDrinkPotion}
+   onChargeSpent={handleChargeSpent}
  />
  ))}
  </div>
@@ -1028,7 +1088,7 @@ function parseNoteChips(notes: string): string[] {
 }
 
 // ── Inventory Row ──────────────────────────────────────────────────
-function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, onDrink }: {
+function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, onDrink, onChargeSpent }: {
  item: InventoryItem;
  onToggle: (id: string) => void;
  onRemove: (id: string) => void;
@@ -1039,6 +1099,12 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, on
  // button renders on the row.
  isPotion?: boolean;
  onDrink?: (id: string) => void;
+ // v2.196.0 — Phase Q.0 pt 37: callback fired after a charge is
+ // spent. Implemented in the parent (Inventory) where `character`
+ // is in scope so we can emit the combat_event correctly. Optional
+ // for safety — InventoryRow used to do the emit inline (v2.193)
+ // but `character` wasn't in this row's scope, breaking the build.
+ onChargeSpent?: (item: InventoryItem, chargesBefore: number) => void;
 }) {
  const [showDetail, setShowDetail] = useState(false);
  const typeBadge = itemTypeBadge(item);
@@ -1112,6 +1178,11 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, on
  const cur = item.charges_current ?? 0;
  if (cur <= 0) return;
  onUpdate(item.id, { charges_current: cur - 1 });
+ // v2.196.0 — Phase Q.0 pt 37: hand off to parent so the
+ // emit happens where `character` is in scope. Build was
+ // broken in v2.193 by trying to emit inline here without
+ // access to character — fixed by lifting the side effect.
+ onChargeSpent?.(item, cur);
  }}
  disabled={(item.charges_current ?? 0) <= 0}
  style={{

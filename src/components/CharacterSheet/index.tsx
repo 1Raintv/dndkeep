@@ -25,6 +25,7 @@ import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
+import { emitCombatEvent } from '../../lib/combatEvents';
 import { itemRequiresAttunement } from '../../lib/attunement';
 import { getMagicItemById } from '../../lib/hooks/useMagicItems';
 
@@ -913,6 +914,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setShortRestHpGained(0);
  setShowRest(false);
  setShortRestPromptedByDM(false);
+
+ // v2.193.0 — Phase Q.0 pt 34: emit rest_taken for the unified
+ // History tab. Short rests recover SR features + Warlock slots
+ // (and Psion gains 1 PED). The payload carries the kind so the
+ // History row can label it correctly.
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'player',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: 'rest_taken',
+ payload: {
+ rest_kind: 'short',
+ hp_gained: shortRestHpGained,
+ dm_initiated: shortRestPromptedByDM,
+ },
+ }).catch(() => {});
  }
 
  function doLongRest() {
@@ -978,6 +996,28 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setConcentration(null);
  setShortRestHpGained(0);
  setShowRest(false);
+
+ // v2.193.0 — Phase Q.0 pt 34: emit rest_taken (long). Includes
+ // exhaustion change in the payload since RAW long rest reduces
+ // exhaustion by 1, which is a meaningful state delta to surface
+ // in the History tab. Item recharge details are logged separately
+ // by chargeEvents above (console.log) — those would also benefit
+ // from combat_events emission but that's a follow-up scope.
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'player',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: 'rest_taken',
+ payload: {
+ rest_kind: 'long',
+ hp_restored_to_max: true,
+ hd_recovered: recoveredHD,
+ exhaustion_before: character.exhaustion_level ?? 0,
+ exhaustion_after: newExhaustion,
+ charge_events_count: chargeEvents.length,
+ },
+ }).catch(() => {});
  }
 
  // ------------------------------------------------------------------
@@ -3659,6 +3699,28 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  );
  const cleaned = newInventory.filter((it: any) => !(it.id === potionToUse.id && it.quantity <= 0));
  applyUpdate({ inventory: cleaned }, true);
+
+ // v2.193.0 — Phase Q.0 pt 34: emit potion_consumed event for the
+ // unified History tab. Includes whether the heal was self vs ally
+ // and the rolled total. Self vs ally distinction matters because
+ // an ally-given potion doesn't update the drinker's HP — only the
+ // potion stack count moves. The History row uses payload.target
+ // to distinguish the two cases visually.
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'player',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: 'potion_consumed',
+ payload: {
+ item_name: potionToUse.name,
+ item_id: potionToUse.id,
+ magic_item_id: potionToUse.magic_item_id ?? null,
+ target: target, // 'self' | 'other'
+ heal_total: physTotal,
+ dice_expression: expr,
+ },
+ }).catch(() => {});
  },
  });
  setPotionToUse(null);

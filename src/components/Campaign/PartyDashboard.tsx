@@ -15,6 +15,7 @@ import {
   applyDamageTypeModifiers, type DamageModifier,
 } from '../../lib/damageModifiers';
 import { buildDefaultResources } from '../../data/classResources';
+import { emitCombatEvent } from '../../lib/combatEvents';
 
 interface PartyDashboardProps {
   campaignId: string;
@@ -223,6 +224,27 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // check_prompt — the DM doesn't roll hit dice on the players'
   // behalf because each player decides how many to spend.
   async function partyLongRest() {
+    // v2.195.0 — Phase Q.0 pt 36: capture per-character pre-rest deltas
+    // before the parallel updates so we can emit a rest_taken event for
+    // each character with accurate `hd_recovered` / `exhaustion_*`
+    // payload matching the per-character flow in CharacterSheet's
+    // doLongRest. Without this, DM-initiated rests emitted nothing —
+    // the History tab showed the long_rest_completed chat banner but
+    // not a per-character "Long Rest" row alongside player-initiated
+    // rests, breaking continuity in the unified timeline.
+    const restDeltas = characters.map(c => ({
+      id: c.id,
+      name: c.name,
+      hd_recovered: Math.max(1, Math.floor(c.level / 2)),
+      exhaustion_before: (c as any).exhaustion_level ?? 0,
+      // partyLongRest only filters Exhaustion from active_conditions
+      // (the legacy binary tracker), it doesn't decrement exhaustion_level.
+      // For the event payload we report exhaustion_after = before since
+      // the DM-side flow today doesn't decrement the numeric tracker.
+      // The per-character path does decrement; aligning the two is a
+      // separate ship.
+      exhaustion_after: (c as any).exhaustion_level ?? 0,
+    }));
     await Promise.all(characters.map(c => {
       const recoveredSlots = Object.fromEntries(
         Object.entries(c.spell_slots ?? {}).map(([k, s]) => [k, { ...(s as object), used: 0 }])
@@ -260,6 +282,30 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         feature_uses: {},
       }).eq('id', c.id);
     }));
+
+    // v2.195.0 — fire-and-forget per-character rest_taken events.
+    // Done after the DB updates land so the timestamps reflect the
+    // actual rest moment. dm_initiated: true distinguishes these from
+    // player-self-rest in the History tab payload (UnifiedHistory's
+    // formatter shows "DM-called" badge when truthy).
+    for (const d of restDeltas) {
+      emitCombatEvent({
+        campaignId,
+        actorType: 'player',
+        actorId: d.id,
+        actorName: d.name,
+        eventType: 'rest_taken',
+        payload: {
+          rest_kind: 'long',
+          hp_restored_to_max: true,
+          hd_recovered: d.hd_recovered,
+          exhaustion_before: d.exhaustion_before,
+          exhaustion_after: d.exhaustion_after,
+          dm_initiated: true,
+        },
+      }).catch(() => {});
+    }
+
     // Notify players so the inbox / toast surfaces what just happened
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,

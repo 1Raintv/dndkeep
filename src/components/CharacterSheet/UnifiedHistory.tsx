@@ -136,6 +136,16 @@ function normalizeCombatEvent(row: any): TimelineEvent {
     et.startsWith('concentration') ? 'concentration' :
     et === 'inspiration_changed' ? 'inspiration' :
     et.startsWith('spell_') ? 'spell' :
+    // v2.193.0 — Phase Q.0 pt 34: new emission types from inventory
+    // and rest flows. We slot them into existing buckets that filter
+    // chips already understand: items go in 'other' (no dedicated
+    // chip yet), rests go in 'other' too (history's filter chips
+    // are All / DM Prompts / HP / Rolls / Conditions / Spells / Other).
+    // Adding dedicated 'item' or 'rest' chips would require a chip
+    // schema change — out of scope for this ship.
+    et === 'potion_consumed' ? 'hp' :  // potion = healing → HP bucket
+    et === 'item_equipped' || et === 'item_unequipped' || et === 'item_used' ? 'other' :
+    et === 'rest_taken' ? 'other' :
     et === 'character_field_changed' ? 'other' :
     et === 'exhaustion_changed' ? 'condition' :
     'other';
@@ -169,6 +179,41 @@ function normalizeCombatEvent(row: any): TimelineEvent {
     case 'exhaustion_changed':    title = `Exhaustion ${p.from ?? 0} → ${p.to ?? 0}`; break;
     case 'generic_roll':          title = p.label ?? 'Roll'; detail = p.total != null ? `Total ${p.total}` : undefined; break;
     case 'character_field_changed': title = p.field ? `Field changed: ${p.field}` : 'Field changed'; break;
+    // v2.193.0 — new inventory + rest events.
+    case 'potion_consumed': {
+      const itemName = p.item_name ?? 'Potion';
+      const tgt = p.target === 'self' ? '(self)' : p.target === 'other' ? '(ally)' : '';
+      title = `Drank ${itemName} ${tgt}`.trim();
+      if (typeof p.heal_total === 'number') detail = `Healed ${p.heal_total}${p.dice_expression ? ` (${p.dice_expression})` : ''}`;
+      break;
+    }
+    case 'item_equipped':   title = `Equipped: ${p.item_name ?? 'item'}`; break;
+    case 'item_unequipped': title = `Unequipped: ${p.item_name ?? 'item'}`; break;
+    case 'item_used': {
+      const sub = p.sub_type;
+      if (sub === 'attunement') {
+        title = `${p.attuned ? 'Attuned to' : 'Unattuned'} ${p.item_name ?? 'item'}`;
+      } else if (sub === 'charge_spent') {
+        title = `Spent charge: ${p.item_name ?? 'item'}`;
+        if (typeof p.charges_after === 'number' && typeof p.charges_max === 'number') {
+          detail = `${p.charges_after}/${p.charges_max} charges remaining`;
+        }
+      } else {
+        title = `Used: ${p.item_name ?? 'item'}`;
+      }
+      break;
+    }
+    case 'rest_taken': {
+      const kind = p.rest_kind === 'long' ? 'Long' : p.rest_kind === 'short' ? 'Short' : '';
+      title = `${kind} Rest`.trim();
+      const bits: string[] = [];
+      if (p.rest_kind === 'short' && typeof p.hp_gained === 'number' && p.hp_gained > 0) bits.push(`+${p.hp_gained} HP`);
+      if (p.rest_kind === 'long' && typeof p.hd_recovered === 'number') bits.push(`+${p.hd_recovered} HD`);
+      if (p.rest_kind === 'long' && p.exhaustion_before !== p.exhaustion_after) bits.push(`Exh ${p.exhaustion_before}→${p.exhaustion_after}`);
+      if (p.dm_initiated) bits.push('DM-called');
+      if (bits.length) detail = bits.join(' · ');
+      break;
+    }
     default: title = et.replace(/_/g, ' ');
   }
 

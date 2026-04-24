@@ -33,9 +33,20 @@ interface CampaignDashboardProps {
   onBack: () => void;
 }
 
-export default function CampaignDashboard({ campaign, onBack }: CampaignDashboardProps) {
+export default function CampaignDashboard({ campaign: campaignProp, onBack }: CampaignDashboardProps) {
   const { user } = useAuth();
   const { sessionState, updateSessionState } = useCampaign();
+  // v2.194.0 — Phase Q.0 pt 35: lift campaign state into the
+  // dashboard so settings updates propagate to PartyDashboard
+  // immediately. Previously the settings modal kept its own local
+  // `current` state and the parent's `campaign` prop never refreshed
+  // — flipping Award XP in Settings required a full page reload
+  // before the Party tab's DM Controls picked it up.
+  //
+  // We seed from the prop and re-sync if the prop changes (e.g. the
+  // user navigates between campaigns without unmounting the dashboard).
+  const [campaign, setCampaign] = useState(campaignProp);
+  useEffect(() => { setCampaign(campaignProp); }, [campaignProp.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [members, setMembers] = useState<(CampaignMember & { display_name: string | null; email: string })[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -224,7 +235,11 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
           </button>
           {isOwner && <StartCombatButton campaignId={campaign.id} />}
           {isOwner && (
-            <CampaignSettingsButton campaign={campaign} onBack={onBack} />
+            <CampaignSettingsButton
+              campaign={campaign}
+              onBack={onBack}
+              onCampaignUpdate={updates => setCampaign(c => ({ ...c, ...updates }))}
+            />
           )}
         </div>
       </div>
@@ -518,7 +533,24 @@ export default function CampaignDashboard({ campaign, onBack }: CampaignDashboar
 }
 
 // ── Campaign Settings Button — self-contained to avoid minifier scope issues ──
-function CampaignSettingsButton({ campaign, onBack }: { campaign: Campaign; onBack: () => void }) {
+// v2.194.0 — Phase Q.0 pt 35: accepts onCampaignUpdate callback that
+// bubbles changes up to CampaignDashboard's lifted state. The button
+// still keeps a local `current` so the modal renders with up-to-date
+// values mid-edit, but every change ALSO fires the parent callback so
+// PartyDashboard (which reads from dashboard's state) re-renders with
+// fresh settings. Without this, toggling Award XP in the modal updated
+// `current` in the modal but the parent's `campaign` prop was stale,
+// so the Party tab's DM Controls didn't surface the toggle until the
+// user reloaded the page.
+function CampaignSettingsButton({
+  campaign,
+  onBack,
+  onCampaignUpdate,
+}: {
+  campaign: Campaign;
+  onBack: () => void;
+  onCampaignUpdate?: (updates: Partial<Campaign>) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState(campaign);
   return (
@@ -535,7 +567,10 @@ function CampaignSettingsButton({ campaign, onBack }: { campaign: Campaign; onBa
           campaign={current}
           onClose={() => setOpen(false)}
           onDeleted={() => { setOpen(false); onBack(); }}
-          onUpdated={updates => setCurrent(c => ({ ...c, ...updates }))}
+          onUpdated={updates => {
+            setCurrent(c => ({ ...c, ...updates }));
+            onCampaignUpdate?.(updates);
+          }}
         />
       )}
     </>
