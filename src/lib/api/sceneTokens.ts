@@ -28,6 +28,7 @@ export function dbRowToToken(row: any): Token {
     rotation: row.rotation ?? 0,
     name: row.name ?? '',
     color: row.color ?? 0xa78bfa,
+    imageStoragePath: row.image_storage_path ?? null,
   };
 }
 
@@ -42,6 +43,7 @@ function tokenToInsertRow(token: Token) {
     rotation: token.rotation,
     name: token.name,
     color: token.color,
+    image_storage_path: token.imageStoragePath,
   };
 }
 
@@ -88,16 +90,17 @@ export async function updateTokenPos(id: string, x: number, y: number): Promise<
   return true;
 }
 
-/** Patch arbitrary fields (rename, resize, recolor). */
+/** Patch arbitrary fields (rename, resize, recolor, set portrait). */
 export async function updateToken(
   id: string,
-  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation'>>
+  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath'>>
 ): Promise<boolean> {
   const dbPatch: Record<string, any> = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
   if (patch.size !== undefined) dbPatch.size = patch.size;
   if (patch.color !== undefined) dbPatch.color = patch.color;
   if (patch.rotation !== undefined) dbPatch.rotation = patch.rotation;
+  if (patch.imageStoragePath !== undefined) dbPatch.image_storage_path = patch.imageStoragePath;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id);
   if (error) {

@@ -26,16 +26,17 @@
 //   v2.217 — walls + doors + static fog of war (Phase 3 of the plan)
 
 import { Application, extend, useApplication } from '@pixi/react';
-import { Container, FederatedPointerEvent, Graphics, Text, TextStyle } from 'pixi.js';
+import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
 import { dbRowToToken } from '../../lib/api/sceneTokens';
+import * as assetsApi from '../../lib/api/battleMapAssets';
 import { supabase } from '../../lib/supabase';
 
-extend({ Container, Graphics, Text });
+extend({ Container, Graphics, Sprite, Text });
 
 interface BattleMapV2Props {
   campaignId: string;
@@ -244,6 +245,18 @@ function TokenLayer(props: {
     container: Container;
     circle: Graphics;
     initials: Text;
+    // v2.215: sprite + mask. Added lazily when a portrait loads.
+    // currentPath: the imageStoragePath for whatever texture is currently
+    // rendered or being loaded. Used to detect "portrait changed" across
+    // reconciles and trigger a reload. null = no portrait.
+    sprite: Sprite | null;
+    mask: Graphics | null;
+    currentPath: string | null;
+    // Version counter for cancelling stale texture loads. If the path
+    // changes 3 times in rapid succession, only the latest load's
+    // resolution should modify the display. We compare this counter
+    // against the value captured at load-start time.
+    loadGen: number;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
@@ -298,7 +311,10 @@ function TokenLayer(props: {
         container.addChild(circle);
         container.addChild(initials);
         layer.addChild(container);
-        entry = { container, circle, initials };
+        entry = {
+          container, circle, initials,
+          sprite: null, mask: null, currentPath: null, loadGen: 0,
+        };
         gfxMap.set(token.id, entry);
 
         (container as any).__tokenId = token.id;
@@ -354,6 +370,121 @@ function TokenLayer(props: {
       if (initials.style.fontSize !== targetFontSize) {
         initials.style.fontSize = targetFontSize;
       }
+
+      // v2.215 portrait rendering.
+      //
+      // Goal: when token.imageStoragePath is set and differs from the
+      // path we currently have loaded, async-load the texture and on
+      // success add a masked Sprite child. Keep the color+initials
+      // fallback during load and on error.
+      //
+      // Side-effect handling in a render-reconcile is ugly but bounded:
+      // we capture loadGen at kick-off and compare on resolve to ignore
+      // outdated loads. The async chain is intentionally fire-and-forget
+      // so the reconcile loop stays synchronous.
+      const desiredPath = token.imageStoragePath;
+      const currentEntry = entry!;
+      if (desiredPath !== currentEntry.currentPath) {
+        // Bump gen so any in-flight load becomes stale.
+        currentEntry.loadGen += 1;
+        const thisGen = currentEntry.loadGen;
+        currentEntry.currentPath = desiredPath;
+
+        // Clean up any previous sprite + mask — the old texture no
+        // longer applies. Will re-add if/when the new one loads.
+        if (currentEntry.sprite) {
+          if (!currentEntry.sprite.destroyed) {
+            container.removeChild(currentEntry.sprite);
+            currentEntry.sprite.destroy();
+          }
+          currentEntry.sprite = null;
+        }
+        if (currentEntry.mask) {
+          if (!currentEntry.mask.destroyed) {
+            container.removeChild(currentEntry.mask);
+            currentEntry.mask.destroy();
+          }
+          currentEntry.mask = null;
+        }
+        initials.visible = true; // fallback re-shown while loading
+
+        if (desiredPath) {
+          const url = assetsApi.getPortraitUrl(desiredPath);
+          if (url) {
+            // Pixi's Assets.load caches by URL so re-requesting the
+            // same portrait across tokens is free after first load.
+            Assets.load<Texture>(url).then(texture => {
+              // If the token was removed, reassigned a new path, or
+              // the container got torn down while we were loading,
+              // bail silently.
+              const live = gfxMapRef.current.get(token.id);
+              if (!live || live.loadGen !== thisGen) return;
+              if (live.container.destroyed) return;
+
+              const sprite = new Sprite(texture);
+              sprite.anchor.set(0.5);
+              // Size the sprite to match the token circle, preserving
+              // the portrait's aspect ratio (the mask crops it circular
+              // regardless of source aspect).
+              const { width: tw, height: th } = texture;
+              const aspect = tw && th ? tw / th : 1;
+              const diameter = 2 * r;
+              if (aspect >= 1) {
+                sprite.height = diameter;
+                sprite.width = diameter * aspect;
+              } else {
+                sprite.width = diameter;
+                sprite.height = diameter / aspect;
+              }
+
+              // Circular mask so portraits render as circle crops.
+              const mask = new Graphics();
+              mask.circle(0, 0, r - 1);
+              mask.fill(0xffffff);
+              sprite.mask = mask;
+
+              // Insert order: mask first (so Pixi processes it), sprite
+              // above the fallback circle, initials hidden (portrait is
+              // identification enough). Outline circle stays on top of
+              // sprite for a clean rim.
+              live.container.addChild(mask);
+              // Move sprite below the circle outline? Actually we want
+              // circle on top so the rim shows. Pixi draw order = child
+              // order. So: [circle-fill, sprite, circle-outline, initials].
+              // Our circle has both fill and stroke in one Graphics,
+              // so we just put the sprite after it and hide initials.
+              live.container.addChildAt(sprite, live.container.getChildIndex(circle) + 1);
+              live.initials.visible = false;
+
+              live.sprite = sprite;
+              live.mask = mask;
+            }).catch(err => {
+              // Failure path: silently fall back. Console log for
+              // devs, token still renders fine with color+initials.
+              console.error('[BattleMapV2] texture load failed', desiredPath, err);
+            });
+          }
+        }
+      } else if (currentEntry.sprite && !currentEntry.sprite.destroyed) {
+        // Same portrait as before — just resync size (token.size may
+        // have changed via context menu resize).
+        const { width: tw, height: th } = currentEntry.sprite.texture;
+        const aspect = tw && th ? tw / th : 1;
+        const diameter = 2 * r;
+        if (aspect >= 1) {
+          currentEntry.sprite.height = diameter;
+          currentEntry.sprite.width = diameter * aspect;
+        } else {
+          currentEntry.sprite.width = diameter;
+          currentEntry.sprite.height = diameter / aspect;
+        }
+        // Redraw the mask too (r may have changed).
+        if (currentEntry.mask && !currentEntry.mask.destroyed) {
+          currentEntry.mask.clear();
+          currentEntry.mask.circle(0, 0, r - 1);
+          currentEntry.mask.fill(0xffffff);
+        }
+      }
     }
   }, [tokens, viewport, setDragging, onContextMenu, gridSizePx]);
 
@@ -407,8 +538,9 @@ function TokenLayer(props: {
 function TokenContextMenu(props: {
   state: ContextMenuState;
   onClose: () => void;
+  onRequestUpload: (tokenId: string) => void;
 }) {
-  const { state, onClose } = props;
+  const { state, onClose, onRequestUpload } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
@@ -552,6 +684,16 @@ function TokenContextMenu(props: {
         }},
         { label: 'Resize ▸', onClick: () => setSubmenu('size') },
         { label: 'Recolor ▸', onClick: () => setSubmenu('color') },
+        // v2.215: portrait upload. Closes the menu and lets the parent
+        // trigger the hidden file input for tokenId.
+        { label: token.imageStoragePath ? 'Replace portrait…' : 'Upload portrait…', onClick: () => {
+          onRequestUpload(state.tokenId);
+          onClose();
+        }},
+        ...(token.imageStoragePath ? [{ label: 'Remove portrait', onClick: () => {
+          applyPatch({ imageStoragePath: null });
+          onClose();
+        }}] : []),
       ].map(opt => (
         <div
           key={opt.label}
@@ -585,6 +727,62 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const [dims, setDims] = useState({ width: 800, height: 600 });
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // v2.215 — portrait upload state. fileInputRef drives the hidden
+  // <input type="file">; uploadTargetIdRef holds which token the next
+  // file-select applies to; uploadingTokenId gates the "UPLOADING…"
+  // banner during the async upload round-trip.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadTargetIdRef = useRef<string | null>(null);
+  const [uploadingTokenId, setUploadingTokenId] = useState<string | null>(null);
+
+  // Called by the context menu when the user picks "Upload portrait…".
+  // Records which token the resulting file will apply to and opens the
+  // native file picker.
+  const handleRequestUpload = useCallback((tokenId: string) => {
+    uploadTargetIdRef.current = tokenId;
+    fileInputRef.current?.click();
+  }, []);
+
+  // Called when the file input onChange fires. Validates, uploads,
+  // updates the token, then persists via tokensApi.updateToken. The
+  // Realtime subscription will echo the update back for this client
+  // (idempotent) and forward to all other clients in the scene.
+  const handleFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so re-picking the same file still triggers onChange.
+    e.target.value = '';
+    const tokenId = uploadTargetIdRef.current;
+    uploadTargetIdRef.current = null;
+    if (!file || !tokenId) return;
+
+    // Redundant client validation — matches the bucket's allowed list.
+    if (!assetsApi.ACCEPTED_PORTRAIT_MIME.includes(file.type)) {
+      alert(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`);
+      return;
+    }
+    if (file.size > assetsApi.MAX_PORTRAIT_BYTES) {
+      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`);
+      return;
+    }
+
+    setUploadingTokenId(tokenId);
+    try {
+      const path = await assetsApi.uploadTokenPortrait(file, userId, tokenId);
+      if (!path) {
+        alert('Upload failed. Check the browser console for details.');
+        return;
+      }
+      // Optimistic local update.
+      useBattleMapStore.getState().updateTokenFields(tokenId, { imageStoragePath: path });
+      // Commit to DB — Realtime echoes back to all clients.
+      tokensApi.updateToken(tokenId, { imageStoragePath: path }).catch(err =>
+        console.error('[BattleMapV2] portrait path commit failed', err)
+      );
+    } finally {
+      setUploadingTokenId(null);
+    }
+  }, [userId]);
 
   // v2.213: scene list + currently-selected scene. Scenes are fetched
   // on mount and on campaign change.
@@ -841,6 +1039,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       rotation: 0,
       name: `Token ${existingCount + 1}`,
       color: TOKEN_COLORS[existingCount % TOKEN_COLORS.length],
+      imageStoragePath: null,
     };
     state.addToken(newToken);
     tokensApi.createToken(newToken).catch(err =>
@@ -1150,7 +1349,37 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           <TokenContextMenu
             state={contextMenu}
             onClose={() => setContextMenu(null)}
+            onRequestUpload={handleRequestUpload}
           />
+        )}
+
+        {/* v2.215 hidden file input for portrait uploads. Triggered
+            programmatically from the context menu. accept limits the
+            native picker; we re-validate in the handler. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={assetsApi.ACCEPTED_PORTRAIT_MIME.join(',')}
+          style={{ display: 'none' }}
+          onChange={handleFileSelected}
+        />
+
+        {/* v2.215 upload status banner — appears while uploading. */}
+        {uploadingTokenId && (
+          <div
+            style={{
+              position: 'absolute', top: 44, left: 12,
+              padding: '4px 10px',
+              background: 'rgba(15,16,18,0.85)',
+              border: '1px solid rgba(167,139,250,0.4)',
+              borderRadius: 'var(--r-sm, 4px)',
+              fontFamily: 'var(--ff-body)', fontSize: 10,
+              fontWeight: 700, letterSpacing: '0.04em',
+              color: '#a78bfa', pointerEvents: 'none' as const,
+            }}
+          >
+            UPLOADING PORTRAIT…
+          </div>
         )}
       </div>
     </div>

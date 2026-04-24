@@ -37,12 +37,15 @@ export interface Token {
   rotation: number; // degrees, 0 = facing up (reserved for v2.212+)
   name: string;
   // v2.211: tokens render as solid-color circles with initials.
-  // v2.212 replaces this with image_url + sprite rendering.
+  // v2.215 adds imageStoragePath — when set, a Sprite replaces the
+  // colored circle. The color/initials still render as fallback during
+  // texture load and on error. image_storage_path maps to the same
+  // column in scene_tokens.
   color: number; // 0xRRGGBB
-  // v2.215 adds:
+  imageStoragePath: string | null; // v2.215 — Supabase Storage path
+  // v2.216 adds:
   //   playerId: string | null    (ownership / RLS)
   //   visibleToAll: boolean
-  //   imageUrl: string | null
   //   zIndex: number
 }
 
