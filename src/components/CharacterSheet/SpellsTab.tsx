@@ -451,6 +451,7 @@ export default function SpellsTab({
  grantedReason={grantedReasonMap[spell.id]}
  spellAttack={computed.spell_attack_bonus ?? undefined}
  saveDC={computed.spell_save_dc ?? undefined}
+ showInvisibleBadge={character.class_name === 'Psion' && spell.id === 'mage-hand'}
  castButton={
  <SpellCastButton
  spell={spell}
@@ -494,13 +495,20 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC }: {
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, showInvisibleBadge }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
  spellAttack?: number; saveDC?: number;
  onExpand: () => void; onTogglePrepared: () => void;
  onConcentrate: () => void; onRemove?: () => void;
+ // v2.197.0 — Phase Q.0 pt 38: Subtle Telekinesis modifier badge.
+ // When true (passed only for Psion's auto-granted Mage Hand), an
+ // INVISIBLE chip renders next to the spell name reminding the
+ // player that their version of the hand is not visible to onlookers.
+ // The cast pipeline doesn't change — this is a RAW reminder, not a
+ // mechanical modifier (no spell-data fork).
+ showInvisibleBadge?: boolean;
 }) {
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
  const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
@@ -621,6 +629,26 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
  </span>
+ {/* v2.197.0 — Phase Q.0 pt 38: Subtle Telekinesis (Psion class
+     feature) makes Mage Hand invisible. Surface as a small chip
+     next to the name so the player remembers the modifier when
+     deciding to cast (and when narrating to the DM). Only renders
+     for Psions on Mage Hand specifically. */}
+ {showInvisibleBadge && (
+ <span
+ title="Subtle Telekinesis (Psion): your Mage Hand is invisible to onlookers"
+ style={{
+ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em',
+ color: '#a78bfa',
+ background: 'rgba(167,139,250,0.12)',
+ border: '1px solid rgba(167,139,250,0.4)',
+ borderRadius: 4, padding: '1px 5px',
+ textTransform: 'uppercase' as const, flexShrink: 0,
+ }}
+ >
+ Invisible
+ </span>
+ )}
  {isConcentrating && <span style={{ fontSize: 8, fontWeight: 800, color: '#a78bfa', flexShrink: 0 }}>● CONC</span>}
  </div>
  <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
