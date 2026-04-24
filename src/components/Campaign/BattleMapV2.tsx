@@ -8,21 +8,18 @@
 // v2.215.0 — Phase Q.1 pt 8: portrait upload + Pixi Sprite rendering.
 // v2.216.0 — Phase Q.1 pt 9: live drag previews + drag-locks via Broadcast+Presence.
 // v2.217.0 — Phase Q.1 pt 10: scene background image upload + render.
-// The biggest visual transformation in the Phase Q.1 arc: instead of
-// grid-on-black, DMs can upload a map PNG/JPG and see it render
-// beneath the grid and tokens. Uses the existing v2.215 assets bucket
-// with a new `scenes/` path prefix. Changes propagate via the v2.214
-// scenes Realtime channel so all connected clients see the map appear.
+// v2.218.0 — Phase Q.1 pt 11: Measurement tool (ruler). A toolbar button
+// toggles ruler mode; when active, click-drag on the canvas draws a
+// yellow line from start cell to current cell with a floating label
+// showing distance in feet + cells. 2014/2024 PHB RAW Chebyshev
+// distance (diagonal = 1). Ruler is strictly client-local — no
+// Realtime sync.
 //
 // Layer order inside viewport (back to front):
-//   1. BackgroundLayer — uploaded Sprite, stretched to world bounds
+//   1. BackgroundLayer — uploaded Sprite
 //   2. GridOverlay     — grid lines
-//   3. TokenLayer      — Container-per-token with Sprite/Graphics + Text
-//
-// Next ships:
-//   v2.218 — Scene settings panel (rename, grid size, width/height, delete)
-//   v2.219 — Walls + doors (Phase 3 of the plan, drawing tools)
-//   v2.220 — Per-player vision + fog of war (Phase 4)
+//   3. TokenLayer      — tokens
+//   4. RulerLayer      — ruler line + label (on top of everything)
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -317,6 +314,195 @@ interface ContextMenuState {
   clientY: number;
 }
 
+/**
+ * v2.218 — RulerLayer.
+ *
+ * When rulerActive is true, a left-click-drag on the canvas draws a
+ * measurement line from the start cell to the current cursor cell.
+ * A label follows the end point showing "<feet> ft / <cells> cells".
+ *
+ * Distance model: 2014 D&D 5e PHB uses Chebyshev distance on a square
+ * grid (diagonal moves cost the same as orthogonal). That is:
+ *   cells = max(|Δcol|, |Δrow|)
+ *   feet  = cells × 5
+ * Xanathar's optional 5-10-5 alternating rule is NOT used here —
+ * default is RAW 2014 PHB / 2024 PHB consistent.
+ *
+ * Start cell = the cell the user pressed DOWN in (snapped via
+ * snapToCellCenter). End cell = the cell the cursor is currently in.
+ * The line is drawn between those two cell centers. Label anchored
+ * just below the end cell.
+ *
+ * Rendering stack uses a small Container with one Graphics + one Text
+ * added as a child of the viewport. We addChildAt the end so the
+ * ruler paints on top of tokens — a ruler obscured by tokens is
+ * useless for combat positioning.
+ *
+ * Ruler is strictly client-local. No Realtime sync — each user sees
+ * their own ruler. Future polish could broadcast ruler positions to
+ * other clients to support DM-led tactical discussions.
+ */
+function RulerLayer(props: {
+  viewport: Viewport | null;
+  canvasEl: HTMLCanvasElement | null;
+  active: boolean;
+  gridSizePx: number;
+}) {
+  const { viewport, canvasEl, active, gridSizePx } = props;
+  const containerRef = useRef<Container | null>(null);
+  const graphicsRef = useRef<Graphics | null>(null);
+  const labelRef = useRef<Text | null>(null);
+  // dragRef holds the WORLD coords of the start cell center while
+  // a measurement is in progress.
+  const dragRef = useRef<{ startX: number; startY: number } | null>(null);
+
+  // Mount/unmount the ruler display tree whenever the viewport
+  // identity or `active` flag changes.
+  useEffect(() => {
+    if (!viewport || !active) {
+      // Tear down if we had any.
+      if (containerRef.current) {
+        if (!containerRef.current.destroyed && viewport && !viewport.destroyed) {
+          viewport.removeChild(containerRef.current);
+        }
+        if (!containerRef.current.destroyed) containerRef.current.destroy({ children: true });
+        containerRef.current = null;
+        graphicsRef.current = null;
+        labelRef.current = null;
+      }
+      return;
+    }
+
+    const container = new Container();
+    container.visible = false; // hidden until mid-drag
+    const gfx = new Graphics();
+    const label = new Text({
+      text: '',
+      style: new TextStyle({
+        fontFamily: 'sans-serif',
+        fontWeight: '700',
+        fontSize: 14,
+        fill: 0xfbbf24, // yellow for high contrast over maps
+        align: 'center',
+        stroke: { color: 0x0f1012, width: 3 },
+      }),
+    });
+    label.anchor.set(0.5, 0);
+    container.addChild(gfx);
+    container.addChild(label);
+    viewport.addChild(container); // addChild puts it last = top-most
+    containerRef.current = container;
+    graphicsRef.current = gfx;
+    labelRef.current = label;
+
+    return () => {
+      if (!container.destroyed && viewport && !viewport.destroyed) {
+        viewport.removeChild(container);
+      }
+      if (!container.destroyed) container.destroy({ children: true });
+      containerRef.current = null;
+      graphicsRef.current = null;
+      labelRef.current = null;
+      dragRef.current = null;
+    };
+  }, [viewport, active]);
+
+  // Wire pointer handlers on the canvas element. Active only when
+  // ruler mode is on AND we have a viewport + canvas to anchor to.
+  useEffect(() => {
+    if (!active || !viewport || !canvasEl) return;
+
+    function worldPointFromEvent(e: PointerEvent): { x: number; y: number } | null {
+      if (!viewport || !canvasEl) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      return viewport.toWorld(screenX, screenY);
+    }
+
+    function redraw(endX: number, endY: number) {
+      const drag = dragRef.current;
+      const gfx = graphicsRef.current;
+      const label = labelRef.current;
+      const container = containerRef.current;
+      if (!drag || !gfx || !label || !container) return;
+
+      // Snap endpoint to its cell center for consistent readings.
+      const startCell = snapToCellCenter(drag.startX, drag.startY, gridSizePx);
+      const endCell = snapToCellCenter(endX, endY, gridSizePx);
+
+      gfx.clear();
+      gfx.setStrokeStyle({ color: 0xfbbf24, width: 3, alpha: 0.9 });
+      gfx.moveTo(startCell.x, startCell.y);
+      gfx.lineTo(endCell.x, endCell.y);
+      gfx.stroke();
+      // Small end cap dots for visibility.
+      gfx.setFillStyle({ color: 0xfbbf24, alpha: 0.95 });
+      gfx.circle(startCell.x, startCell.y, 4);
+      gfx.circle(endCell.x, endCell.y, 4);
+      gfx.fill();
+
+      // Chebyshev distance in cells.
+      const dCol = Math.abs(Math.round((endCell.x - startCell.x) / gridSizePx));
+      const dRow = Math.abs(Math.round((endCell.y - startCell.y) / gridSizePx));
+      const cells = Math.max(dCol, dRow);
+      const feet = cells * 5;
+
+      label.text = `${feet} ft · ${cells} ${cells === 1 ? 'cell' : 'cells'}`;
+      // Anchor label near the end of the line, biased slightly toward
+      // the ruler's midpoint so it doesn't stick off-screen at high
+      // zoom.
+      label.position.set(endCell.x, endCell.y + gridSizePx * 0.5);
+
+      container.visible = true;
+    }
+
+    function onDown(e: PointerEvent) {
+      if (e.button !== 0) return; // left-mouse only
+      // Only intercept events targeting the canvas — if the user
+      // clicked a toolbar button, browser focus is elsewhere.
+      if (e.target !== canvasEl) return;
+      const worldPoint = worldPointFromEvent(e);
+      if (!worldPoint) return;
+      dragRef.current = { startX: worldPoint.x, startY: worldPoint.y };
+      // Seed with a zero-length line so the container appears
+      // immediately (feels responsive).
+      redraw(worldPoint.x, worldPoint.y);
+      // stopPropagation would fight with Pixi's event system — but
+      // since ruler mode short-circuits TokenLayer's pointerdown via
+      // the active flag, we don't need to here.
+    }
+
+    function onMove(e: PointerEvent) {
+      if (!dragRef.current) return;
+      const worldPoint = worldPointFromEvent(e);
+      if (!worldPoint) return;
+      redraw(worldPoint.x, worldPoint.y);
+    }
+
+    function onUp() {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      const container = containerRef.current;
+      if (container) container.visible = false;
+    }
+
+    // pointerdown on the canvas (so clicks on the HTML buttons above
+    // don't start a measurement). Move/up on window so drags outside
+    // the canvas bounds still track.
+    canvasEl.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      canvasEl.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [active, viewport, canvasEl, gridSizePx]);
+
+  return null;
+}
+
 function TokenLayer(props: {
   viewport: Viewport | null;
   canvasEl: HTMLCanvasElement | null;
@@ -329,15 +515,24 @@ function TokenLayer(props: {
   onDragStart?: (tokenId: string) => void;
   onDragMove?: (tokenId: string, x: number, y: number) => void;
   onDragEnd?: (tokenId: string) => void;
+  // v2.218 — when the ruler is active, ALL token interactions are
+  // suppressed so the ruler gesture owns the pointer exclusively.
+  rulerActive?: boolean;
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
-    currentUserId, onDragStart, onDragMove, onDragEnd,
+    currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
   const setDragging = useBattleMapStore(s => s.setDragging);
   const remoteDragLocks = useBattleMapStore(s => s.remoteDragLocks);
+
+  // v2.218: pointerdown is attached once per token; to read the
+  // current rulerActive value without re-wiring listeners, mirror it
+  // into a ref that updates every render.
+  const rulerActiveRef = useRef(false);
+  useEffect(() => { rulerActiveRef.current = !!rulerActive; }, [rulerActive]);
 
   interface TokenGfx {
     container: Container;
@@ -416,6 +611,11 @@ function TokenLayer(props: {
         (container as any).__tokenId = token.id;
         container.on('pointerdown', (event: FederatedPointerEvent) => {
           if (!viewport) return;
+          // v2.218: when ruler is active, ignore all token pointer events
+          // so the ruler gesture owns the canvas. Don't stopPropagation
+          // here — the window-level pointerdown in RulerLayer needs to
+          // see the event.
+          if (rulerActiveRef.current) return;
           if (event.button === 2) {
             event.stopPropagation();
             event.preventDefault();
@@ -1318,6 +1518,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const mapInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingMap, setUploadingMap] = useState(false);
 
+  // v2.218 — ruler mode toggle. When active, clicking+dragging on the
+  // canvas draws a measurement line instead of dragging tokens.
+  const [rulerActive, setRulerActive] = useState(false);
+
   const handleRequestMapUpload = useCallback(() => {
     if (!currentScene) return;
     mapInputRef.current?.click();
@@ -1568,6 +1772,17 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onDragStart={handleDragStart}
                     onDragMove={handleDragMove}
                     onDragEnd={handleDragEnd}
+                    rulerActive={rulerActive}
+                  />
+                  {/* v2.218 — rendered last so the ruler's Graphics +
+                      label appear on top of tokens. Internally addChild's
+                      to the viewport when active, so visual z-order
+                      follows child order = top of stack. */}
+                  <RulerLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    active={rulerActive}
+                    gridSizePx={gridSizePx}
                   />
                 </>
               );
@@ -1690,6 +1905,40 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           ))}
         </div>
 
+        {/* v2.218 — tools toolbar (available to all users). Positioned
+            just above the hint text at bottom-left so it's easy to
+            reach without visually crowding the DM toolbar on the right. */}
+        <div
+          style={{
+            position: 'absolute', bottom: 40, left: 12,
+            display: 'flex', gap: 4,
+          }}
+        >
+          <button
+            onClick={() => setRulerActive(a => !a)}
+            title={rulerActive ? 'Click-drag on the map to measure · click again to exit ruler' : 'Enter ruler mode — click-drag on the map to measure distance'}
+            style={{
+              padding: '4px 10px',
+              background: rulerActive ? 'rgba(251,191,36,0.25)' : 'rgba(15,16,18,0.85)',
+              border: `1px solid ${rulerActive ? 'rgba(251,191,36,0.7)' : 'rgba(251,191,36,0.35)'}`,
+              borderRadius: 'var(--r-sm, 4px)',
+              color: rulerActive ? '#fbbf24' : 'var(--t-2)',
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+            onMouseEnter={(e) => {
+              if (!rulerActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(251,191,36,0.12)';
+            }}
+            onMouseLeave={(e) => {
+              if (!rulerActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.85)';
+            }}
+          >
+            📏 {rulerActive ? 'Exit Ruler' : 'Ruler'}
+          </button>
+        </div>
+
         <div
           style={{
             position: 'absolute', bottom: 12, left: 12,
@@ -1702,7 +1951,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             letterSpacing: '0.02em',
           }}
         >
-          Drag tokens · right-click for options · right/middle drag pans · wheel zooms
+          {rulerActive
+            ? 'Click-drag to measure · right/middle drag pans · wheel zooms'
+            : 'Drag tokens · right-click for options · right/middle drag pans · wheel zooms'}
         </div>
 
         {contextMenu && (
