@@ -198,6 +198,20 @@ function normalizeCombatEvent(row: any): TimelineEvent {
         if (typeof p.charges_after === 'number' && typeof p.charges_max === 'number') {
           detail = `${p.charges_after}/${p.charges_max} charges remaining`;
         }
+      } else if (sub === 'charge_recharged') {
+        // v2.204.0 — Phase Q.0 pt 44: per-item recharge events.
+        // Title: "Recharged: Wand of Fireballs"
+        // Detail: "+4 charges (1d6+1) → 7/7"
+        title = `Recharged: ${p.item_name ?? 'item'}`;
+        const bits: string[] = [];
+        if (typeof p.charges_regained === 'number') {
+          bits.push(`+${p.charges_regained} charges`);
+        }
+        if (p.recharge_dice) bits.push(`(${p.recharge_dice})`);
+        if (typeof p.charges_after === 'number' && typeof p.charges_max === 'number') {
+          bits.push(`→ ${p.charges_after}/${p.charges_max}`);
+        }
+        if (bits.length) detail = bits.join(' ');
       } else {
         title = `Used: ${p.item_name ?? 'item'}`;
       }

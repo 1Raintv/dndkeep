@@ -1000,9 +1000,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // v2.193.0 — Phase Q.0 pt 34: emit rest_taken (long). Includes
  // exhaustion change in the payload since RAW long rest reduces
  // exhaustion by 1, which is a meaningful state delta to surface
- // in the History tab. Item recharge details are logged separately
- // by chargeEvents above (console.log) — those would also benefit
- // from combat_events emission but that's a follow-up scope.
+ // in the History tab.
+ // v2.204.0 — Phase Q.0 pt 44: per-item charge recharge events.
+ // Previously chargeEvents only went to console.log so a wand
+ // regaining 4 charges on long rest was invisible in the History
+ // tab. Now we diff the inventory before/after rechargeOnLongRest
+ // and emit one item_used event per recharged item with sub_type
+ // 'charge_recharged'. UnifiedHistory's existing item_used switch
+ // case (added in v2.193) will need an extension to render these,
+ // but the events themselves are valuable for audit even before
+ // pretty rendering lands.
  emitCombatEvent({
  campaignId: character.campaign_id ?? null,
  actorType: 'player',
@@ -1018,6 +1025,38 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  charge_events_count: chargeEvents.length,
  },
  }).catch(() => {});
+
+ // Per-item recharge events (one per item that gained charges).
+ const beforeInventory = character.inventory ?? [];
+ const beforeMap = new Map(beforeInventory.map((it: any) => [it.id, it]));
+ for (const after of rechargedInventory) {
+ const afterAny = after as any;
+ if (typeof afterAny.charges_max !== 'number') continue;
+ const before = beforeMap.get(afterAny.id) as any;
+ const beforeCurrent = before ? (before.charges_current ?? 0) : 0;
+ const afterCurrent = afterAny.charges_current ?? 0;
+ const regained = afterCurrent - beforeCurrent;
+ if (regained <= 0) continue;
+ emitCombatEvent({
+ campaignId: character.campaign_id ?? null,
+ actorType: 'system',
+ actorId: character.id,
+ actorName: character.name,
+ eventType: 'item_used',
+ payload: {
+ sub_type: 'charge_recharged',
+ item_name: afterAny.name,
+ item_id: afterAny.id,
+ magic_item_id: afterAny.magic_item_id ?? null,
+ charges_before: beforeCurrent,
+ charges_after: afterCurrent,
+ charges_max: afterAny.charges_max,
+ charges_regained: regained,
+ recharge_dice: afterAny.recharge_dice ?? null,
+ recharge_trigger: 'long_rest',
+ },
+ }).catch(() => {});
+ }
  }
 
  // ------------------------------------------------------------------
