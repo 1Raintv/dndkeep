@@ -151,10 +151,11 @@ import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Spri
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useBattleMapStore, type Token, type TokenSize, type Wall } from '../../lib/stores/battleMapStore';
+import { useBattleMapStore, type Token, type TokenSize, type Wall, type SceneText } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
 import * as wallsApi from '../../lib/api/sceneWalls';
+import * as textsApi from '../../lib/api/sceneTexts';
 import { computeVisibilityPolygon, type WallSegment } from '../../lib/vision/visibilityPolygon';
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
@@ -1118,6 +1119,200 @@ function VisionLayer(props: {
   return null;
 }
 
+/**
+ * v2.234.0 — TextLayer.
+ *
+ * Renders text annotations (scene_texts) as Pixi Text instances inside
+ * a Container attached to the viewport. Each row in the store becomes
+ * one Pixi Text anchored at world (x,y), styled with its color +
+ * fontSize, with a black stroke for legibility over busy maps.
+ *
+ * Authoring (DM only, only when `active`):
+ *   - Left-click empty space → window.prompt for text → create + sync.
+ *   - Left-click on existing text → window.prompt to edit → update + sync.
+ *   - Right-click on existing text → confirm + delete + sync.
+ *
+ * Outside `active` mode the layer is purely visual — no event handlers
+ * fire. window.prompt is intentionally crude for v1; future ship can
+ * replace with an inline DOM input.
+ *
+ * Hit-testing uses Pixi Text bounding boxes in world coords (cheap;
+ * texts are small in count).
+ */
+function TextLayer(props: {
+  viewport: Viewport | null;
+  canvasEl: HTMLCanvasElement | null;
+  active: boolean;
+  isDM: boolean;
+  currentSceneId: string | null;
+}) {
+  const { viewport, canvasEl, active, isDM, currentSceneId } = props;
+  const texts = useBattleMapStore(s => s.texts);
+  const containerRef = useRef<Container | null>(null);
+
+  // Mount/unmount the container that holds all Text children.
+  useEffect(() => {
+    if (!viewport) return;
+    const c = new Container();
+    containerRef.current = c;
+    viewport.addChild(c);
+    return () => {
+      try { viewport.removeChild(c); } catch { /* viewport gone */ }
+      try { c.destroy({ children: true }); } catch { /* destroyed */ }
+      containerRef.current = null;
+    };
+  }, [viewport]);
+
+  // Sync visible Text children whenever store texts change. Wholesale
+  // rebuild — text counts are typically small (~tens) and the perf
+  // win from diffing isn't worth the complexity yet.
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    const old = [...c.children];
+    c.removeChildren();
+    for (const child of old) {
+      try { (child as any).destroy?.(); } catch { /* ignore */ }
+    }
+    for (const t of Object.values(texts)) {
+      if (currentSceneId && t.sceneId !== currentSceneId) continue;
+      const txt = new Text({
+        text: t.text,
+        style: new TextStyle({
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: t.fontSize,
+          fontWeight: '700',
+          fill: t.color,
+          stroke: { color: 0x000000, width: 3 },
+          align: 'center',
+        }),
+      });
+      txt.anchor.set(0.5, 0.5);
+      txt.x = t.x;
+      txt.y = t.y;
+      // Stash the SceneText id so right-click hit-testing can locate
+      // it without re-querying the store by coordinate.
+      (txt as any).__sceneTextId = t.id;
+      c.addChild(txt);
+    }
+  }, [texts, currentSceneId]);
+
+  // Left-click + right-click handlers. Only attach when `active` is
+  // true so non-text-mode interactions aren't intercepted.
+  useEffect(() => {
+    if (!active || !canvasEl || !viewport || !isDM || !currentSceneId) return;
+
+    function clientToWorld(e: MouseEvent): { x: number; y: number } | null {
+      if (!canvasEl || !viewport) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wp = viewport.toWorld(sx, sy);
+      return { x: wp.x, y: wp.y };
+    }
+
+    function findTextAt(world: { x: number; y: number }): SceneText | null {
+      const c = containerRef.current;
+      if (!c) return null;
+      // Iterate top-to-bottom (last drawn on top) for natural picking.
+      for (let i = c.children.length - 1; i >= 0; i--) {
+        const child = c.children[i];
+        const id = (child as any).__sceneTextId as string | undefined;
+        if (!id) continue;
+        // Use viewport-space bounds via getBounds (Pixi v8 returns
+        // a {minX,minY,maxX,maxY} bound box in world coords for
+        // children of the viewport).
+        const b = child.getBounds();
+        if (world.x >= b.minX && world.x <= b.maxX
+            && world.y >= b.minY && world.y <= b.maxY) {
+          const found = useBattleMapStore.getState().texts[id];
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    function onLeftClick(e: MouseEvent) {
+      // Only react to primary button; ignore middle/right/etc.
+      if (e.button !== 0) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+
+      const existing = findTextAt(w);
+      if (existing) {
+        // Edit existing text.
+        const next = window.prompt('Edit text:', existing.text);
+        if (next == null) return;
+        const trimmed = next.trim();
+        if (trimmed === existing.text) return;
+        if (trimmed === '') {
+          // Empty edit → treat as delete confirmation.
+          if (!window.confirm('Empty text — delete this annotation?')) return;
+          useBattleMapStore.getState().removeText(existing.id);
+          textsApi.deleteText(existing.id).catch(err =>
+            console.error('[TextLayer] deleteText failed', err));
+          return;
+        }
+        useBattleMapStore.getState().updateText(existing.id, { text: trimmed });
+        textsApi.updateText(existing.id, { text: trimmed }).catch(err =>
+          console.error('[TextLayer] updateText failed', err));
+        return;
+      }
+
+      // Empty space — create a new annotation.
+      const value = window.prompt('Text:');
+      if (value == null) return;
+      const trimmed = value.trim();
+      if (trimmed === '') return;
+      const id = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? crypto.randomUUID()
+        : `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      if (!currentSceneId) return;
+      const newText: SceneText = {
+        id,
+        sceneId: currentSceneId,
+        x: w.x,
+        y: w.y,
+        text: trimmed,
+        color: '#ffffff',
+        fontSize: 16,
+      };
+      // Optimistic local insert + fire-and-forget DB write. Realtime
+      // echo is idempotent (addText is upsert-by-id).
+      useBattleMapStore.getState().addText(newText);
+      textsApi.createText(newText).catch(err =>
+        console.error('[TextLayer] createText failed', err));
+    }
+
+    function onRightClick(e: MouseEvent) {
+      const w = clientToWorld(e);
+      if (!w) return;
+      const found = findTextAt(w);
+      if (!found) return;
+      // We're on top of an existing annotation — claim the event so
+      // it doesn't bubble up to the wrapper-level token context menu.
+      e.stopPropagation();
+      e.preventDefault();
+      if (!window.confirm(`Delete text "${found.text}"?`)) return;
+      useBattleMapStore.getState().removeText(found.id);
+      textsApi.deleteText(found.id).catch(err =>
+        console.error('[TextLayer] deleteText failed', err));
+    }
+
+    canvasEl.addEventListener('click', onLeftClick);
+    // Capture phase so we can intercept before the wrapper's
+    // contextmenu preventDefault that's set up at the canvas-wrapper
+    // level (which is fine for tokens; here we want our own logic).
+    canvasEl.addEventListener('contextmenu', onRightClick, true);
+    return () => {
+      canvasEl.removeEventListener('click', onLeftClick);
+      canvasEl.removeEventListener('contextmenu', onRightClick, true);
+    };
+  }, [active, canvasEl, viewport, isDM, currentSceneId]);
+
+  return null;
+}
+
 function TokenLayer(props: {
   viewport: Viewport | null;
   canvasEl: HTMLCanvasElement | null;
@@ -1135,6 +1330,10 @@ function TokenLayer(props: {
   rulerActive?: boolean;
   // v2.223 — same pattern for wall-drawing mode.
   wallActive?: boolean;
+  // v2.234 — same pattern for text annotation mode. When active, all
+  // pointer events on tokens bail out so the TextLayer's click handler
+  // can place / edit text without competing.
+  textActive?: boolean;
   // v2.221 — character HP lookup for live HP bars on PC tokens.
   // Map<characterId, { current, max }>. Tokens whose characterId
   // matches an entry get an HP bar rendered underneath. Pure data
@@ -1150,7 +1349,7 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    characterHpMap, onTokenClick,
+    textActive, characterHpMap, onTokenClick,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -1165,6 +1364,9 @@ function TokenLayer(props: {
   // v2.223: same mechanism for wall-drawing mode.
   const wallActiveRef = useRef(false);
   useEffect(() => { wallActiveRef.current = !!wallActive; }, [wallActive]);
+  // v2.234: same mechanism for text annotation mode.
+  const textActiveRef = useRef(false);
+  useEffect(() => { textActiveRef.current = !!textActive; }, [textActive]);
 
   interface TokenGfx {
     container: Container;
@@ -1270,6 +1472,8 @@ function TokenLayer(props: {
           if (rulerActiveRef.current) return;
           // v2.223: same for wall-drawing mode.
           if (wallActiveRef.current) return;
+          // v2.234: same for text annotation mode.
+          if (textActiveRef.current) return;
           if (event.button === 2) {
             event.stopPropagation();
             event.preventDefault();
@@ -3190,6 +3394,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (cancelled) return;
       useBattleMapStore.getState().setWallsBulk(list);
     });
+    // v2.234 — texts hydration parallel to walls.
+    textsApi.listTexts(currentScene.id).then(list => {
+      if (cancelled) return;
+      useBattleMapStore.getState().setTextsBulk(list);
+    });
     return () => { cancelled = true; };
   }, [currentScene]);
 
@@ -3278,6 +3487,41 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             if (oldRow?.id) {
               store.removeWall(oldRow.id);
             }
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentScene?.id]);
+
+  // v2.234.0 — Realtime sync for scene_texts. Parallel to scene_walls
+  // but with UPDATE handling because text rows DO mutate (rename via
+  // double-click edit). Idempotent: addText/updateText with the same
+  // payload is a no-op if state matches, so the originator echo is safe.
+  useEffect(() => {
+    if (!currentScene?.id) return;
+    const sceneId = currentScene.id;
+    const channel = supabase
+      .channel(`battle_map:scene_texts:${sceneId}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scene_texts',
+          filter: `scene_id=eq.${sceneId}`,
+        },
+        (payload: any) => {
+          const store = useBattleMapStore.getState();
+          if (payload.eventType === 'INSERT') {
+            store.addText(textsApi.dbRowToSceneText(payload.new));
+          } else if (payload.eventType === 'UPDATE') {
+            store.updateText(payload.new.id, textsApi.dbRowToSceneText(payload.new));
+          } else if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old;
+            if (oldRow?.id) store.removeText(oldRow.id);
           }
         }
       )
@@ -3641,17 +3885,26 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // v2.223 — wall drawing mode. Mutually exclusive with ruler mode —
   // enabling one disables the other so tool intent is unambiguous.
   const [wallActive, setWallActive] = useState(false);
+  // v2.234 — text annotation mode. Three-way mutex with ruler + walls.
+  const [textActive, setTextActive] = useState(false);
   const toggleRuler = useCallback(() => {
     setRulerActive(a => {
       const next = !a;
-      if (next) setWallActive(false);
+      if (next) { setWallActive(false); setTextActive(false); }
       return next;
     });
   }, []);
   const toggleWallMode = useCallback(() => {
     setWallActive(a => {
       const next = !a;
-      if (next) setRulerActive(false);
+      if (next) { setRulerActive(false); setTextActive(false); }
+      return next;
+    });
+  }, []);
+  const toggleTextMode = useCallback(() => {
+    setTextActive(a => {
+      const next = !a;
+      if (next) { setRulerActive(false); setWallActive(false); }
       return next;
     });
   }, []);
@@ -4143,8 +4396,20 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onDragEnd={handleDragEnd}
                     rulerActive={rulerActive}
                     wallActive={wallActive}
+                    textActive={textActive}
                     characterHpMap={characterHpMap}
                     onTokenClick={handleTokenClick}
+                  />
+                  {/* v2.234 — TextLayer renders text annotations and
+                      handles the placement/edit/delete interactions
+                      when textActive is true. Mounted above tokens
+                      so labels read on top of token graphics. */}
+                  <TextLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    active={textActive}
+                    isDM={isDM}
+                    currentSceneId={currentScene?.id ?? null}
                   />
                   {/* v2.224 — fog of war overlay. DM sees nothing
                       (no fog applied); players see dark over anything
@@ -4339,6 +4604,43 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               }}
             >
               🧱
+            </button>
+          )}
+
+          {/* v2.234 — Text annotation tool. DM only. Click on map
+              empty space to drop a label; click an existing label to
+              edit; right-click an existing label to delete. */}
+          {isDM && (
+            <button
+              onClick={toggleTextMode}
+              title={textActive
+                ? 'Text active — left-click on the map to place a label, click existing text to edit, right-click to delete. Click this button again to exit.'
+                : 'Text — drop labels on the map. DM only.'}
+              style={{
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: textActive ? 'rgba(96,165,250,0.28)' : 'transparent',
+                border: `1px solid ${textActive ? 'rgba(96,165,250,0.85)' : 'rgba(96,165,250,0.25)'}`,
+                borderRadius: 'var(--r-sm, 4px)',
+                color: textActive ? '#60a5fa' : 'var(--t-2)',
+                fontFamily: 'var(--ff-stat)', fontSize: 18, fontWeight: 800,
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+              onMouseEnter={(e) => {
+                if (!textActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.14)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.55)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!textActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.25)';
+                }
+              }}
+            >
+              T
             </button>
           )}
 

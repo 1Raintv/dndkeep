@@ -50,6 +50,22 @@ export interface Wall {
   doorState: 'closed' | 'open' | 'locked' | null;
 }
 
+/** v2.234.0 — Map text annotation. Anchored at world (x,y); rendered
+ *  by TextLayer in BattleMapV2. DM-only authoring; SELECT for party
+ *  members on published scenes (RLS in scene_texts). */
+export interface SceneText {
+  id: string;
+  sceneId: string | null;
+  /** World pixel coords (same units as Wall and Token). */
+  x: number;
+  y: number;
+  text: string;
+  /** Hex string e.g. '#ffffff'. */
+  color: string;
+  /** Pixi Text font size in pixels. */
+  fontSize: number;
+}
+
 export interface Token {
   id: string;
   sceneId: string | null; // null = ephemeral / pre-sync
@@ -97,6 +113,10 @@ interface BattleMapStore {
    *  pattern as tokens — listWalls on scene change → setWallsBulk.
    *  Realtime channel echoes inserts/deletes. */
   walls: Record<string, Wall>;
+  /** v2.234: text annotations for the current scene. Same hydration
+   *  pattern as walls — listTexts on scene change → setTextsBulk.
+   *  Realtime channel echoes inserts/updates/deletes. */
+  texts: Record<string, SceneText>;
   /** v2.213: currently-hydrated scene id. Null means no scene selected. */
   currentSceneId: string | null;
   /** v2.213: true while tokens are being fetched for the current scene. */
@@ -119,6 +139,13 @@ interface BattleMapStore {
   addWall: (wall: Wall) => void;
   removeWall: (id: string) => void;
   setWallsBulk: (walls: Wall[]) => void;
+  // v2.234 text mutators — parallel to walls. updateText is exposed
+  // because text rows mutate (rename, recolor, reposition); walls
+  // are immutable except for delete+insert, so they don't have one.
+  addText: (text: SceneText) => void;
+  updateText: (id: string, patch: Partial<SceneText>) => void;
+  removeText: (id: string) => void;
+  setTextsBulk: (texts: SceneText[]) => void;
   resetForScene: (sceneId: string | null) => void;
 }
 
@@ -127,6 +154,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   dragging: null,
   remoteDragLocks: {},
   walls: {},
+  texts: {},
   currentSceneId: null,
   loading: false,
 
@@ -184,6 +212,29 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       return { walls: map };
     }),
 
+  addText: (text) =>
+    set((s) => ({ texts: { ...s.texts, [text.id]: text } })),
+
+  updateText: (id, patch) =>
+    set((s) => {
+      const existing = s.texts[id];
+      if (!existing) return s;
+      return { texts: { ...s.texts, [id]: { ...existing, ...patch } } };
+    }),
+
+  removeText: (id) =>
+    set((s) => {
+      const { [id]: _, ...rest } = s.texts;
+      return { texts: rest };
+    }),
+
+  setTextsBulk: (texts) =>
+    set(() => {
+      const map: Record<string, SceneText> = {};
+      for (const t of texts) map[t.id] = t;
+      return { texts: map };
+    }),
+
   resetForScene: (sceneId) =>
     set((s) => {
       const kept: Record<string, Token> = {};
@@ -194,9 +245,14 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       for (const [id, w] of Object.entries(s.walls)) {
         if (w.sceneId === sceneId) keptWalls[id] = w;
       }
+      const keptTexts: Record<string, SceneText> = {};
+      for (const [id, t] of Object.entries(s.texts)) {
+        if (t.sceneId === sceneId) keptTexts[id] = t;
+      }
       return {
         tokens: kept,
         walls: keptWalls,
+        texts: keptTexts,
         dragging: null,
         remoteDragLocks: {},
         currentSceneId: sceneId,
