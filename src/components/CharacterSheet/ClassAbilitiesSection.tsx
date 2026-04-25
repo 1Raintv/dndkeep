@@ -7,6 +7,7 @@ import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
 import { computeStats } from '../../lib/gameUtils';
 import ClassAbilityResolveModal, { formatOutcomesLog, type TargetOutcome } from '../Combat/ClassAbilityResolveModal';
+import { supabase } from '../../lib/supabase';
 
 interface Props {
  character: Character;
@@ -223,14 +224,12 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // abilities still need to work outside combat (Telekinesis to
  // move an object, etc.). The modal would just show "no targets"
  // which is annoying for the common out-of-combat case.
- const { data: enc } = await import('../../lib/supabase').then(m =>
- m.supabase
+ const { data: enc } = await supabase
  .from('combat_encounters')
  .select('id')
  .eq('campaign_id', campaignId)
  .eq('status', 'active')
- .maybeSingle()
- );
+ .maybeSingle();
  if (enc?.id) {
  setResolveModal({ ability, saveDC: dc, cost });
  return;

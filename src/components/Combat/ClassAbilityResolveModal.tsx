@@ -46,6 +46,7 @@ import { supabase } from '../../lib/supabase';
 import { resolveAutomation } from '../../lib/automations';
 import { logAction } from '../shared/ActionLog';
 import { rollDie } from '../../lib/gameUtils';
+import { getTargetSaveBonus } from '../../lib/pendingAttack';
 import type { Character, Campaign, CombatParticipant } from '../../types';
 import type { ClassAbility, SaveSpec } from '../../data/classAbilities';
 
@@ -56,6 +57,11 @@ export interface TargetOutcome {
   participantName: string;
   outcome: SaveOutcome;
   d20?: number;
+  // v2.249.0 — total includes the bonus applied at roll time. Used by
+  // the action log so the line reads "(d20=12 +3 = 15)" rather than
+  // just the raw d20.
+  total?: number;
+  bonus?: number;
 }
 
 interface Props {
@@ -102,6 +108,17 @@ export default function ClassAbilityResolveModal({
   const [casterParticipantId, setCasterParticipantId] = useState<string | null>(null);
   const [targets, setTargets] = useState<CombatParticipant[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, TargetOutcome>>({});
+  // v2.249.0 — per-target save bonus. Loaded async after the targets
+  // load so the modal renders responsively (targets first, bonuses
+  // hydrate when ready). `confidence: 'low'` flags fallbacks (e.g. a
+  // STR save on an NPC whose ability scores aren't on file) — the row
+  // shows a "?" indicator and the input is auto-focusable so the
+  // player/DM can override before rolling.
+  const [saveBonuses, setSaveBonuses] = useState<Record<string, {
+    bonus: number;
+    breakdown: string;
+    confidence: 'high' | 'low';
+  }>>({});
 
   const willingFailMode = resolveAutomation('willing_ally_auto_fail', character, campaign);
 
@@ -113,6 +130,7 @@ export default function ClassAbilityResolveModal({
       setLoading(true);
       setError(null);
       setOutcomes({});
+      setSaveBonuses({});
 
       const { data: enc } = await supabase
         .from('combat_encounters')
@@ -154,33 +172,75 @@ export default function ClassAbilityResolveModal({
         outcome: 'pending' as SaveOutcome,
       }])));
       setLoading(false);
+
+      // v2.249.0 — fan-out save-bonus fetches. Each call hits two tables
+      // (combat_participants → characters | npcs) so we issue them in
+      // parallel rather than sequentially. setState is per-target so the
+      // chips populate as they arrive instead of all-or-nothing.
+      if (ability.save) {
+        const saveAbility = ability.save.ability;
+        await Promise.all(filtered.map(async p => {
+          const result = await getTargetSaveBonus(p.id, saveAbility);
+          if (cancelled) return;
+          setSaveBonuses(prev => ({
+            ...prev,
+            [p.id]: {
+              bonus: result.bonus,
+              breakdown: result.breakdown,
+              confidence: result.confidence ?? 'high',
+            },
+          }));
+        }));
+      }
     })();
     return () => { cancelled = true; };
   }, [open, campaignId, character.id, ability.save?.targetMode, ability.save?.ability]);
 
   if (!open) return null;
 
-  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number) {
+  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number) {
     setOutcomes(prev => ({
       ...prev,
       [participantId]: {
         ...prev[participantId],
         outcome,
         d20,
+        total,
+        bonus,
       },
     }));
   }
 
+  // v2.249.0 — manual bonus override. Lets the player/DM edit the
+  // computed bonus before rolling (useful for low-confidence NPC/
+  // monster rows, or when a buff/condition modifies the save in a way
+  // we don't track).
+  function setBonusOverride(participantId: string, value: number) {
+    setSaveBonuses(prev => ({
+      ...prev,
+      [participantId]: {
+        bonus: value,
+        breakdown: `${value >= 0 ? '+' : ''}${value} (manual override)`,
+        confidence: prev[participantId]?.confidence ?? 'low',
+      },
+    }));
+  }
+
+  // v2.249.0 — Roll Save: rolls d20, applies the per-target bonus, auto-
+  // resolves vs DC. Nat 1 is auto-fail and nat 20 is auto-pass per RAW
+  // — the d20 short-circuits the comparison rather than waiting for
+  // bonus + DC. Falls back gracefully when the bonus hasn't loaded yet
+  // (treats bonus as 0 with a low-confidence breakdown — same behavior
+  // the v2.247 Roll d20 button had, just labeled differently).
   function rollForTarget(p: CombatParticipant) {
     const d20 = rollDie(20);
-    // Raw d20 only — player applies their target's save bonus and
-    // clicks Mark Pass / Mark Fail. We pre-fill the outcome based
-    // purely on the d20 vs DC so the common case ("nat 20" / "nat 1")
-    // flows fast; the player can override afterward.
-    let preset: SaveOutcome = 'pending';
-    if (d20 === 20) preset = 'passed';
-    else if (d20 === 1) preset = 'failed';
-    setOutcome(p.id, preset, d20);
+    const bonus = saveBonuses[p.id]?.bonus ?? 0;
+    const total = d20 + bonus;
+    let outcome: SaveOutcome;
+    if (d20 === 20) outcome = 'passed';
+    else if (d20 === 1) outcome = 'failed';
+    else outcome = total >= saveDC ? 'passed' : 'failed';
+    setOutcome(p.id, outcome, d20, total, bonus);
   }
 
   function autoFail(p: CombatParticipant) {
@@ -292,15 +352,22 @@ export default function ClassAbilityResolveModal({
                           · {p.participant_type}
                         </span>
                       </span>
+                      {/* v2.249.0 — d20 + bonus = total chip. Replaces the
+                          v2.247 "d20: N" pill once the player has rolled. */}
                       {out?.d20 !== undefined && (
-                        <span style={{
-                          fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800,
-                          padding: '2px 6px', borderRadius: 4,
-                          background: 'rgba(167,139,250,0.15)',
-                          border: '1px solid rgba(167,139,250,0.4)',
-                          color: '#a78bfa',
-                        }}>
-                          d20: {out.d20}
+                        <span
+                          title={out.bonus !== undefined ? `d20 ${out.d20} ${out.bonus >= 0 ? '+' : ''}${out.bonus} = ${out.total ?? out.d20}` : `d20 ${out.d20}`}
+                          style={{
+                            fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800,
+                            padding: '2px 6px', borderRadius: 4,
+                            background: 'rgba(167,139,250,0.15)',
+                            border: '1px solid rgba(167,139,250,0.4)',
+                            color: '#a78bfa',
+                          }}
+                        >
+                          {out.bonus !== undefined && out.total !== undefined
+                            ? `${out.d20}${out.bonus >= 0 ? '+' : ''}${out.bonus}=${out.total}`
+                            : `d20: ${out.d20}`}
                         </span>
                       )}
                       <span style={{
@@ -326,23 +393,76 @@ export default function ClassAbilityResolveModal({
                          out?.outcome ?? 'Pending'}
                       </span>
                     </div>
-                    {/* Row 2: action buttons */}
+                    {/* v2.249.0 — Row 2: bonus indicator + editable input.
+                        Hidden when the bonus hasn't loaded yet (initial
+                        async fetch); shows a "?" badge for low-confidence
+                        rows so the DM knows the value isn't from full
+                        ability data and they may want to override. The
+                        manual-override input lets them tweak before
+                        rolling — useful for buff stacks we don't track
+                        (Bardic Inspiration, Bless if it's already been
+                        rolled separately, etc.). */}
+                    {(() => {
+                      const sb = saveBonuses[p.id];
+                      if (!sb) return null;
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          <span style={{ fontSize: 10, color: 'var(--t-3)', letterSpacing: '0.06em' }}>
+                            {ability.save?.ability} bonus:
+                          </span>
+                          <input
+                            type="number"
+                            value={sb.bonus}
+                            onChange={e => {
+                              const v = parseInt(e.target.value, 10);
+                              if (Number.isFinite(v)) setBonusOverride(p.id, v);
+                            }}
+                            title={sb.breakdown}
+                            style={{
+                              width: 56, padding: '2px 6px',
+                              fontSize: 11, fontFamily: 'var(--ff-stat)', fontWeight: 700,
+                              background: 'var(--c-card)',
+                              border: `1px solid ${sb.confidence === 'low' ? 'rgba(251,191,36,0.5)' : 'var(--c-border)'}`,
+                              borderRadius: 4,
+                              color: 'var(--t-1)',
+                              textAlign: 'center' as const,
+                            }}
+                          />
+                          {sb.confidence === 'low' && (
+                            <span
+                              title={`Low confidence: ${sb.breakdown}. Override the value if you know the target's actual ${ability.save?.ability} save bonus.`}
+                              style={{
+                                fontSize: 9, fontWeight: 800,
+                                padding: '1px 5px', borderRadius: 999,
+                                background: 'rgba(251,191,36,0.15)',
+                                border: '1px solid rgba(251,191,36,0.5)',
+                                color: '#fbbf24',
+                                letterSpacing: '0.06em',
+                              }}
+                            >
+                              ?
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* Row 3: action buttons */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         onClick={() => rollForTarget(p)}
-                        title="Roll a d20 for the target. Add their save bonus mentally and click Mark Pass / Fail."
+                        title="Roll d20 + the bonus shown. Auto-resolves vs DC. Nat 20 / nat 1 short-circuit."
                         style={btnStyle('#60a5fa')}
                       >
-                        Roll d20
+                        Roll Save
                       </button>
                       <button
-                        onClick={() => setOutcome(p.id, 'passed', out?.d20)}
+                        onClick={() => setOutcome(p.id, 'passed', out?.d20, out?.total, out?.bonus)}
                         style={btnStyle('#4ade80', out?.outcome === 'passed')}
                       >
                         Mark Pass
                       </button>
                       <button
-                        onClick={() => setOutcome(p.id, 'failed', out?.d20)}
+                        onClick={() => setOutcome(p.id, 'failed', out?.d20, out?.total, out?.bonus)}
                         style={btnStyle('#f87171', out?.outcome === 'failed')}
                       >
                         Mark Fail
@@ -419,7 +539,11 @@ function btnStyle(color: string, active = false): React.CSSProperties {
 /**
  * v2.247 — convenience formatter used by the parent's log entry.
  * Returns a one-line human summary like:
- *   "Telekinesis · DC 15 STR · Goblin 1: failed (d20=7) · Goblin 2: passed (d20=15) · Vex: willing"
+ *   "Telekinesis · DC 15 STR · Goblin 1: failed (d20=7+0=7) · Goblin 2: passed (d20=15+2=17) · Vex: willing"
+ *
+ * v2.249.0 — when the outcome carries a numeric total, the line shows
+ * d20+bonus=total. Falls back to the v2.247 d20-only format for
+ * outcomes recorded via Mark Pass/Mark Fail before any roll happened.
  */
 export function formatOutcomesLog(
   abilityName: string,
@@ -429,9 +553,12 @@ export function formatOutcomesLog(
 ): string {
   if (outcomes.length === 0) return `${abilityName} · DC ${saveDC} ${saveAbility} · no targets`;
   const parts = outcomes.map(o => {
+    const rollDetail = o.total != null && o.bonus != null && o.d20 != null
+      ? ` (d20=${o.d20}${o.bonus >= 0 ? '+' : ''}${o.bonus}=${o.total})`
+      : o.d20 != null ? ` (d20=${o.d20})` : '';
     const tag = o.outcome === 'auto-failed' ? 'willing' :
-                o.outcome === 'passed' ? `passed${o.d20 != null ? ` (d20=${o.d20})` : ''}` :
-                o.outcome === 'failed' ? `failed${o.d20 != null ? ` (d20=${o.d20})` : ''}` :
+                o.outcome === 'passed' ? `passed${rollDetail}` :
+                o.outcome === 'failed' ? `failed${rollDetail}` :
                 'pending';
     return `${o.participantName}: ${tag}`;
   });

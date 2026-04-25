@@ -1426,19 +1426,52 @@ export async function getActivePendingAttack(campaignId: string): Promise<Pendin
 // v2.102.0 — Phase F pt 3a: resolve the target's save bonus for a given
 // ability. For character targets: ability modifier + proficiency (if save
 // proficient). For monster/npc targets: 0 by default — DM overrides manually.
+//
+// v2.249.0 — extended to handle NPC participants by reading `npcs.dex`
+// (the only ability field reliably populated on the npcs table for
+// roster-spawned entries). DEX saves get a real bonus; other abilities
+// still fall back to 0 with `confidence: 'low'` so callers can flag
+// the value as unverified. Monster participants and characters with no
+// row return `confidence: 'low'` for the same reason; PC characters
+// with full data return `confidence: 'high'`.
 export async function getTargetSaveBonus(
   participantId: string,
   ability: string,   // 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'
-): Promise<{ bonus: number; breakdown: string }> {
+): Promise<{ bonus: number; breakdown: string; confidence?: 'high' | 'low' }> {
   const { data: part } = await supabase
     .from('combat_participants')
     .select('participant_type, entity_id')
     .eq('id', participantId)
     .single();
-  if (!part) return { bonus: 0, breakdown: '0 (no participant)' };
+  if (!part) return { bonus: 0, breakdown: '0 (no participant)', confidence: 'low' };
+
+  // v2.249.0 — NPC branch. Read the npcs row's `dex` column (always
+  // present in the schema; populated on named NPCs added via the full
+  // form, null on roster-spawned mooks). DEX saves derive a real mod;
+  // other saves return 0 with low confidence so the modal can show a
+  // "?" indicator and let the user override the bonus inline.
+  if (part.participant_type === 'npc') {
+    const { data: n } = await supabase
+      .from('npcs')
+      .select('dex')
+      .eq('id', part.entity_id)
+      .maybeSingle();
+    if (ability === 'DEX' && n?.dex != null) {
+      const mod = abilityModifier(n.dex as number);
+      return {
+        bonus: mod,
+        breakdown: `${mod >= 0 ? '+' : ''}${mod} (DEX, NPC)`,
+        confidence: 'high',
+      };
+    }
+    return { bonus: 0, breakdown: `0 (NPC, no ${ability} score on file)`, confidence: 'low' };
+  }
 
   if (part.participant_type !== 'character') {
-    return { bonus: 0, breakdown: 'manual entry (monster/npc)' };
+    // Monster — full data could be loaded from the monsters table, but
+    // that's a bestiary-shape lookup we can plumb in v2.250+. For now:
+    // 0 + low confidence, modal lets the user override.
+    return { bonus: 0, breakdown: 'manual entry (monster)', confidence: 'low' };
   }
 
   const { data: c } = await supabase
@@ -1446,7 +1479,7 @@ export async function getTargetSaveBonus(
     .select('level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies')
     .eq('id', part.entity_id)
     .single();
-  if (!c) return { bonus: 0, breakdown: '0 (no character)' };
+  if (!c) return { bonus: 0, breakdown: '0 (no character)', confidence: 'low' };
 
   const abilityMap: Record<string, number> = {
     STR: (c as any).strength ?? 10,
@@ -1471,7 +1504,7 @@ export async function getTargetSaveBonus(
   const breakdown = hasProf
     ? `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${bonus >= 0 ? '+' : ''}${bonus}`
     : `${mod >= 0 ? '+' : ''}${mod} (${ability}) = ${bonus >= 0 ? '+' : ''}${bonus}`;
-  return { bonus, breakdown };
+  return { bonus, breakdown, confidence: 'high' };
 }
 
 // ─── Concentration save on damage ────────────────────────────────
