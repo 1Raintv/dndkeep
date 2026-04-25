@@ -60,6 +60,7 @@ const EMPTY_DRAFT: RosterEntryDraft = {
   emoji: '',
   color: '#ef4444',
   source_monster_id: null,
+  save_proficiencies: [],
 };
 
 export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: Props) {
@@ -222,6 +223,7 @@ function entryToDraft(e: RosterEntry): RosterEntryDraft {
     description: e.description, traits: e.traits, immunities: e.immunities,
     image_url: e.image_url, emoji: e.emoji, color: e.color,
     source_monster_id: e.source_monster_id,
+    save_proficiencies: e.save_proficiencies ?? [],
   };
 }
 
@@ -427,6 +429,45 @@ function EditView({ draft, isNew, saving, onChange, onCancel, onSave }: {
                 />
               </div>
             ))}
+          </div>
+        </div>
+        {/* v2.253.0 — Save Proficiencies row. One checkbox per ability,
+            laid out in the same 6-column grid as the scores above so
+            each prof checkbox sits visually below its ability column.
+            Toggling a box adds/removes the lowercase ability key from
+            the save_proficiencies array. The proficiency bonus itself
+            isn't entered here — getTargetSaveBonus derives it from the
+            NPC's CR via crToProficiencyBonus(). */}
+        <div>
+          <label style={lblStyle}>Save Proficiencies</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+            {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(ability => {
+              const isProf = draft.save_proficiencies.includes(ability);
+              return (
+                <button
+                  key={ability}
+                  onClick={() => {
+                    const next = isProf
+                      ? draft.save_proficiencies.filter(a => a !== ability)
+                      : [...draft.save_proficiencies, ability];
+                    onChange({ save_proficiencies: next });
+                  }}
+                  title={isProf ? `Remove ${ability.toUpperCase()} save proficiency` : `Add ${ability.toUpperCase()} save proficiency`}
+                  style={{
+                    padding: '4px 0',
+                    background: isProf ? 'rgba(167,139,250,0.22)' : 'var(--c-raised)',
+                    border: `1px solid ${isProf ? 'rgba(167,139,250,0.6)' : 'var(--c-border)'}`,
+                    borderRadius: 4,
+                    color: isProf ? '#a78bfa' : 'var(--t-3)',
+                    fontSize: 10, fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isProf ? '●' : '○'}
+                </button>
+              );
+            })}
           </div>
         </div>
         {/* Attack — name / bonus / damage */}

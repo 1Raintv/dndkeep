@@ -40,6 +40,11 @@ export interface RosterEntry {
   emoji: string;         // '👹' default
   color: string;         // '#ef4444' hex string
   source_monster_id: string | null;
+  // v2.253.0 — lowercase ability keys the NPC has save proficiency in.
+  // Allowed: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'. Not modeled
+  // as a string-literal union to keep the API helpers simple — the
+  // builder UI is the only writer and it constrains to the 6 values.
+  save_proficiencies: string[];
   times_used: number;
   last_used_at: string | null;
   created_at: string;

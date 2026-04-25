@@ -63,6 +63,13 @@ export async function createNpcInstances(specs: NpcInstanceSpec[]): Promise<Arra
       wis: s.roster.wis,
       cha: s.roster.cha,
     },
+    // v2.253.0 — snapshot which saves the NPC is proficient in. Stored
+    // as a jsonb array (not a Postgres array) for symmetry with
+    // ability_scores. Empty array on legacy roster entries that
+    // pre-date the column. Read by getTargetSaveBonus, which adds the
+    // CR-derived proficiency bonus when the requested ability key
+    // appears in this list.
+    save_proficiencies: s.roster.save_proficiencies ?? [],
   }));
   const { data, error } = await supabase
     .from('npcs')

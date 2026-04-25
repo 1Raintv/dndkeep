@@ -18,7 +18,7 @@
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
-import { abilityModifier, proficiencyBonus } from './gameUtils';
+import { abilityModifier, proficiencyBonus, crToProficiencyBonus } from './gameUtils';
 import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll, clearConditionsFromConcentration } from './conditions';
 import {
   getAttackRollBonuses, getSaveBonuses, getDamageRiders,
@@ -1440,37 +1440,65 @@ export async function getTargetSaveBonus(
 ): Promise<{ bonus: number; breakdown: string; confidence?: 'high' | 'low' }> {
   const { data: part } = await supabase
     .from('combat_participants')
-    .select('participant_type, entity_id')
+    .select('participant_type, entity_id, campaign_id')
     .eq('id', participantId)
     .single();
   if (!part) return { bonus: 0, breakdown: '0 (no participant)', confidence: 'low' };
 
-  // v2.251.0 — NPC branch. Reads ability_scores jsonb on the npcs row,
-  // populated at spawn from dm_npc_roster. NPCs don't currently track
-  // save proficiencies (the dm_npc_roster table doesn't carry them
-  // either) — so this is mod-only, no proficiency bonus. That matches
-  // the simple stat-block model in the roster builder; if a DM wants
-  // a proficient save they can override the value in the modal.
-  // Falls back to 0 + low confidence when ability_scores is missing
-  // or the requested ability key isn't present (legacy rows from
-  // before v2.251 that the backfill didn't catch).
+  // v2.253.0 — NPC branch. Reads ability_scores AND save_proficiencies
+  // jsonb columns on the npcs row, both populated at spawn from
+  // dm_npc_roster. When the NPC is proficient in the requested save,
+  // the proficiency bonus is added — derived from the roster CR via
+  // crToProficiencyBonus (NPCs don't carry level). Falls back to 0
+  // + low confidence for legacy rows that pre-date v2.251.
   if (part.participant_type === 'npc') {
     const { data: n } = await supabase
       .from('npcs')
-      .select('ability_scores')
+      .select('ability_scores, save_proficiencies, name')
       .eq('id', part.entity_id)
       .maybeSingle();
     const scores = (n?.ability_scores ?? {}) as Record<string, number | undefined>;
     const score = scores[ability.toLowerCase()];
-    if (typeof score === 'number') {
-      const mod = abilityModifier(score);
+    if (typeof score !== 'number') {
+      return { bonus: 0, breakdown: `0 (NPC, ${ability} score not stored)`, confidence: 'low' };
+    }
+    const mod = abilityModifier(score);
+
+    // Walk back to dm_npc_roster to look up CR for the proficiency
+    // bonus. Snapshot model: the spawned npcs row doesn't carry CR,
+    // only the ability snapshot. For the common case (roster-spawned
+    // NPC) the row exists; for hand-created npcs (v1 NPCManager full
+    // form) the CR lookup misses and we treat as PB=2 (CR ≤4 default).
+    // The miss case still computes a save bonus, just with a
+    // conservative PB.
+    const profs = (n?.save_proficiencies ?? []) as string[];
+    const isProficient = profs.includes(ability.toLowerCase());
+    if (!isProficient) {
       return {
         bonus: mod,
         breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}, NPC)`,
         confidence: 'high',
       };
     }
-    return { bonus: 0, breakdown: `0 (NPC, ${ability} score not stored)`, confidence: 'low' };
+    // Proficient — need PB. Best-effort lookup against the roster by
+    // name + campaign. Two name shapes to try: exact ("Goblin") and
+    // disambiguated ("Goblin 3" → strip the trailing index). If both
+    // miss, default PB 2 (CR 0–4).
+    const baseName = (n?.name ?? '').replace(/ \d+$/, '');
+    const { data: rosterRow } = await supabase
+      .from('dm_npc_roster')
+      .select('cr')
+      .eq('campaign_id', part.campaign_id ?? '')
+      .in('name', [n?.name ?? '', baseName])
+      .limit(1)
+      .maybeSingle();
+    const pb = crToProficiencyBonus(rosterRow?.cr);
+    const total = mod + pb;
+    return {
+      bonus: total,
+      breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${total >= 0 ? '+' : ''}${total}`,
+      confidence: 'high',
+    };
   }
 
   if (part.participant_type !== 'character') {
