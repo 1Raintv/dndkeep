@@ -2754,9 +2754,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      character sees nothing here. When other species gain similar
      mechanics (Aasimar revelations, Dragonborn ancestries with
      unique cantrips, etc.), they get added here as additional
-     branches inside the same section. */}
+     branches inside the same section.
+
+     v2.237.0 — filter gate now includes the 'spell' content filter
+     in addition to 'ability', because species spells (Hold Person,
+     Ray of Sickness, Poison Spray) ARE spells too. Filtering by
+     spells should still surface the Tiefling section. The row
+     rendering itself (below) was rebuilt in v2.237 to match the
+     regular spell-row look so they harmonize visually. */}
  {(combatFilter === 'all' || combatFilter === 'action' || combatFilter === 'reaction') &&
-  (contentFilters.size === 0 || contentFilters.has('ability')) &&
+  (contentFilters.size === 0 || contentFilters.has('ability') || contentFilters.has('spell')) &&
   character.species === 'Tiefling' && (() => {
    const choices = (character.species_choices as any) ?? {};
    const currentLegacyId = choices.tieflingLegacy as TieflingLegacy | undefined;
@@ -2904,96 +2911,272 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
          </div>
        )}
 
-       {/* Granted-spells list — one row per unlocked spell.
-           v2.201.0 — Phase Q.0 pt 41: L3+ rows now offer a "Cast Free"
-           button that consumes the once-per-LR free cast (no spell
-           slot deducted). Cantrip (L1) row keeps the original
-           "Auto-added to Spells tab" tail since it's at-will and
-           doesn't need tracking. After the free cast is used, the
-           button flips to a "Used (LR)" badge until long rest. */}
+       {/* Granted-spells list — v2.237.0 rebuild.
+           Each row now mirrors the regular spell-row visual grammar
+           (level badge / school bar / name + effect-type tag / time
+           abbrev / range / hit-DC / chevron / Cast). The far-left
+           badge shows the SPELL'S level (Cantrip → "AT WILL"; 2nd
+           level → "Lvl 2"; etc.) instead of the old unlock level
+           (L1/L3/L5). The "granted at character level N" info moved
+           into the expanded detail panel.
+
+           Each row hosts a SpellCastButton for canonical slot-cast
+           AND, on L3+ rows, the "Free" once-per-LR affordance the
+           Tiefling feature grants (kept as a small secondary button
+           because it's a real RAW mechanic — once per long rest you
+           can cast Hold Person without spending a slot). Cantrip
+           rows just expose the SpellCastButton (at-will).
+
+           If the spell can't be resolved against spellMap (data
+           drift between speciesChoices.ts and the spell catalogue),
+           the row degrades to a small warning so the gap is visible
+           rather than silent. */}
        {legacy && activeSpells.length > 0 && (
          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
-           {activeSpells.map(grant => {
-             const isCantrip = grant.unlockLevel === 1;
-             const featureKey = legacySpellFeatureKey(grant.spellName);
-             const used = ((character.feature_uses as Record<string, number>) ?? {})[featureKey] ?? 0;
-             const freeAvailable = !isCantrip && used < 1;
-             return (
-               <div
-                 key={grant.spellName}
-                 style={{
-                   display: 'flex', alignItems: 'center', gap: 10,
-                   padding: '8px 12px', borderRadius: 'var(--r-md)',
-                   border: '1px solid rgba(249,115,22,0.2)',
-                   background: 'rgba(249,115,22,0.03)',
-                 }}
-               >
-                 <span style={{
-                   fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
-                   color: '#f97316', background: 'rgba(249,115,22,0.12)',
-                   border: '1px solid rgba(249,115,22,0.4)',
-                   borderRadius: 4, padding: '2px 6px',
-                   minWidth: 32, textAlign: 'center' as const,
-                 }}>
-                   L{grant.unlockLevel}
-                 </span>
-                 <div style={{ flex: 1, minWidth: 0 }}>
-                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
-                     {grant.spellName}
-                   </div>
-                   <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>
-                     {isCantrip
-                       ? 'Cantrip · cast at will'
-                       : 'Once per Long Rest without a slot · or expend a spell slot'}
-                   </div>
-                 </div>
-                 {/* Tail widget — varies by row state */}
-                 {isCantrip ? (
-                   <span style={{
-                     fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)',
-                     fontStyle: 'italic' as const,
+           {(() => {
+             const speciesSchoolColor: Record<string, string> = {
+               Abjuration: '#60a5fa', Conjuration: '#a78bfa', Divination: '#34d399',
+               Enchantment: '#f472b6', Evocation: '#fb923c', Illusion: '#c084fc',
+               Necromancy: '#94a3b8', Transmutation: '#4ade80',
+             };
+             return activeSpells.map(grant => {
+               const spell = Object.values(spellMap).find(s => s?.name === grant.spellName);
+               const featureKey = legacySpellFeatureKey(grant.spellName);
+               const used = ((character.feature_uses as Record<string, number>) ?? {})[featureKey] ?? 0;
+
+               // Fallback: spell missing from catalogue. Surface as a
+               // visible warning row rather than silently rendering blank.
+               if (!spell) {
+                 return (
+                   <div key={grant.spellName} style={{
+                     display: 'flex', alignItems: 'center', gap: 10,
+                     padding: '8px 12px', borderRadius: 'var(--r-md)',
+                     border: '1px solid rgba(239,68,68,0.3)',
+                     background: 'rgba(239,68,68,0.05)',
                    }}>
-                     Auto-added to Spells tab
-                   </span>
-                 ) : freeAvailable ? (
-                   <button
-                     onClick={() => castFreeLegacy(grant.spellName)}
-                     title={`Cast ${grant.spellName} for free (refreshes on Long Rest). Slot-cast still available from Spells tab.`}
+                     <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+                       {grant.spellName}
+                     </span>
+                     <span style={{ fontSize: 10, color: '#ef4444' }}>
+                       Spell not found in catalogue (granted at L{grant.unlockLevel}).
+                     </span>
+                   </div>
+                 );
+               }
+
+               const isCantrip = spell.level === 0;
+               const freeAvailable = !isCantrip && used < 1;
+               const sc = speciesSchoolColor[spell.school] ?? '#a78bfa';
+               const eff = spell.level;
+               const rowKey = `species-${spell.id}`;
+               const isExpanded = expandedActionsSpell === rowKey;
+               const mech = parseSpellMechanics(spell.description, {
+                 save_type: (spell as any).save_type,
+                 attack_type: (spell as any).attack_type,
+                 damage_dice: (spell as any).damage_dice,
+                 damage_type: (spell as any).damage_type,
+                 heal_dice: (spell as any).heal_dice,
+               });
+               const spellAttackBonus = computed.spell_attack_bonus ?? undefined;
+               const spellSaveDC = computed.spell_save_dc ?? undefined;
+               const hitDC = mech.isAttack && spellAttackBonus !== undefined
+                 ? `+${spellAttackBonus}`
+                 : mech.saveType && spellSaveDC !== undefined
+                 ? `${mech.saveType} ${spellSaveDC}`
+                 : '—';
+               const timeAbbr = (spell.casting_time ?? '')
+                 .replace('1 action', '1A').replace('1 Action', '1A')
+                 .replace('1 bonus action', '1BA').replace('Bonus Action', '1BA').replace('bonus action', '1BA')
+                 .replace('1 reaction', '1R').replace('Reaction', '1R')
+                 .replace('1 minute', '1 min').replace('10 minutes', '10 min')
+                 .replace('1 hour', '1 hr').replace('8 hours', '8 hr');
+
+               return (
+                 <div key={rowKey} style={{
+                   borderRadius: 'var(--r-md)',
+                   border: `1px solid ${isExpanded ? `${sc}45` : 'rgba(249,115,22,0.22)'}`,
+                   background: isExpanded ? `${sc}08` : 'rgba(249,115,22,0.03)',
+                   overflow: 'hidden',
+                   transition: 'all 0.15s',
+                 }}>
+                   {/* Row — same grid template as regular spell rows
+                       so the columns align visually if you scroll
+                       between the SPECIES section and SPELLS. */}
+                   <div
+                     onClick={() => setExpandedActionsSpell(isExpanded ? null : rowKey)}
                      style={{
-                       padding: '5px 12px', borderRadius: 'var(--r-md)',
-                       cursor: 'pointer', minHeight: 0,
-                       background: 'rgba(167,139,250,0.15)',
-                       border: '1px solid rgba(167,139,250,0.5)',
-                       color: '#a78bfa',
-                       fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
-                       letterSpacing: '0.04em',
-                       flexShrink: 0,
-                       transition: 'background 0.15s',
-                     }}
-                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.25)'; }}
-                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.15)'; }}
-                   >
-                     Cast Free
-                   </button>
-                 ) : (
-                   <span
-                     title="Free cast already used this Long Rest. You can still cast from Spells tab using a spell slot."
-                     style={{
-                       fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
-                       textTransform: 'uppercase' as const,
-                       color: 'var(--t-3)',
-                       background: 'var(--c-raised)',
-                       border: '1px solid var(--c-border)',
-                       borderRadius: 4, padding: '4px 8px',
-                       flexShrink: 0,
+                       display: 'grid',
+                       gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
+                       alignItems: 'center', gap: '0 8px',
+                       padding: '7px 10px', cursor: 'pointer', minHeight: 44,
                      }}
                    >
-                     Used · LR
-                   </span>
-                 )}
-               </div>
-             );
-           })}
+                     {/* Col 0: spell-level badge */}
+                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                       {eff === 0 ? (
+                         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
+                       ) : (
+                         <span style={{
+                           fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800,
+                           color: sc,
+                           padding: '3px 8px', borderRadius: 6,
+                           border: `1px solid ${sc}45`,
+                           background: `${sc}0f`,
+                           whiteSpace: 'nowrap' as const,
+                         }} title={`Level ${eff} spell`}>
+                           Lvl {eff}
+                         </span>
+                       )}
+                     </div>
+
+                     {/* Col 1: school color bar */}
+                     <div style={{ width: 3, height: 30, borderRadius: 2, background: sc, opacity: 0.75 }} />
+
+                     {/* Col 2: name + school + effect-type tag */}
+                     <div style={{ minWidth: 0 }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
+                         <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                           {spell.name}
+                         </span>
+                         {spell.concentration && (
+                           <span style={{
+                             fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+                             color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
+                             border: '1px solid rgba(251,191,36,0.35)', borderRadius: 999,
+                             padding: '1px 7px', flexShrink: 0,
+                           }} title="Concentration spell">
+                             Concentration
+                           </span>
+                         )}
+                       </div>
+                       <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 5 }}>
+                         <span>{spell.school}</span>
+                         {(() => {
+                           const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;
+                           if (aoe) {
+                             return <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: '#fb923c', background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.4)', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0 }} title={`Area of Effect — ${aoe.size}ft ${aoe.type}`}>AoE</span>;
+                           }
+                           if (mech.isSave) {
+                             const saveAb = (mech.saveType ?? '').toUpperCase();
+                             const col = saveAb === 'STR' ? '#ef4444' : saveAb === 'DEX' ? '#34d399' : saveAb === 'CON' ? '#f59e0b' : saveAb === 'INT' ? '#60a5fa' : saveAb === 'WIS' ? '#22c55e' : saveAb === 'CHA' ? '#ec4899' : '#60a5fa';
+                             return <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: col, background: `${col}20`, border: `1px solid ${col}55`, padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0 }} title={`${saveAb} saving throw`}>{saveAb} Save</span>;
+                           }
+                           if (mech.isAttack) {
+                             return <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: '#fbbf24', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0 }} title="Spell attack roll">Attack</span>;
+                           }
+                           return null;
+                         })()}
+                       </div>
+                     </div>
+
+                     {/* Col 3: time abbreviation */}
+                     <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
+
+                     {/* Col 4: range */}
+                     <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
+                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+                     </div>
+
+                     {/* Col 5: hit/DC */}
+                     <div style={{ textAlign: 'center' }}>
+                       {hitDC !== '—' ? (
+                         <span style={{
+                           fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
+                           color: mech.isAttack ? '#fbbf24' : '#94a3b8',
+                           background: mech.isAttack ? 'rgba(251,191,36,0.1)' : 'rgba(148,163,184,0.1)',
+                           border: `1px solid ${mech.isAttack ? 'rgba(251,191,36,0.3)' : 'rgba(148,163,184,0.25)'}`,
+                           borderRadius: 999, padding: '1px 6px', display: 'inline-block',
+                         }}>{hitDC}</span>
+                       ) : (
+                         <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>—</span>
+                       )}
+                     </div>
+
+                     {/* Col 6: chevron */}
+                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                       <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
+                     </div>
+
+                     {/* Col 7: cast actions. L3+ rows get a small "Free"
+                         secondary button before the canonical Cast. */}
+                     <div onClick={e => {
+                       const target = e.target as HTMLElement;
+                       if (target.closest('button')) e.stopPropagation();
+                     }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+                       {!isCantrip && (freeAvailable ? (
+                         <button
+                           onClick={() => castFreeLegacy(grant.spellName)}
+                           title={`Cast ${grant.spellName} for free (refreshes on Long Rest). Slot-cast also available via the Cast button.`}
+                           style={{
+                             padding: '5px 10px', borderRadius: 'var(--r-md)',
+                             cursor: 'pointer', minHeight: 0,
+                             background: 'rgba(249,115,22,0.15)',
+                             border: '1px solid rgba(249,115,22,0.5)',
+                             color: '#f97316',
+                             fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+                             letterSpacing: '0.04em',
+                             flexShrink: 0,
+                           }}
+                         >
+                           Free
+                         </button>
+                       ) : (
+                         <span title="Free Long-Rest cast already used. You can still cast from a slot via the Cast button." style={{
+                           fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                           textTransform: 'uppercase' as const,
+                           color: 'var(--t-3)',
+                           background: 'var(--c-raised)',
+                           border: '1px solid var(--c-border)',
+                           borderRadius: 4, padding: '3px 6px',
+                           flexShrink: 0,
+                         }}>
+                           Used·LR
+                         </span>
+                       ))}
+                       <SpellCastButton
+                         spell={spell}
+                         character={character}
+                         userId={userId ?? ''}
+                         campaignId={character.campaign_id}
+                         onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
+                         compact={true}
+                         onConcentrationCast={() => setConcentration(spell.id)}
+                       />
+                     </div>
+                   </div>
+
+                   {/* Expanded detail — mirrors the regular spell row's
+                       expanded panel (stats grid + description) and adds
+                       a footer noting the species grant level. */}
+                   {isExpanded && (
+                     <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
+                       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
+                         {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+                           <div key={k}>
+                             <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
+                             <div style={{ fontSize: 12, color: 'var(--t-1)' }}>{v}</div>
+                           </div>
+                         ) : null)}
+                       </div>
+                       {spell.description && (
+                         <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap' as const }}>
+                           {spell.description}
+                         </div>
+                       )}
+                       <div style={{
+                         marginTop: 10, paddingTop: 8,
+                         borderTop: '1px dashed rgba(249,115,22,0.25)',
+                         fontSize: 11, color: '#f97316', fontStyle: 'italic' as const,
+                       }}>
+                         Granted by Tiefling Fiendish Legacy ({legacy.name}) at character level {grant.unlockLevel}.
+                         {!isCantrip && ' Once per Long Rest you may cast it without a spell slot.'}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               );
+             });
+           })()}
 
            {/* Subtle "change legacy" link at the end. Confirms before
                wiping (legacy choice in 2024 PHB is permanent at character
