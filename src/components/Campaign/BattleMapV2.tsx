@@ -71,16 +71,27 @@
 //      controls + "Open Character Sheet" link. Closes on Escape or
 //      backdrop click. Click vs drag is detected via a screen-space
 //      5px movement threshold + 250ms time window.
-//   Deferred to v2.227+:
-//      - Inline condition apply/remove (routes through combat_
-//        participants table — different storage from characters).
+// v2.227.0 — Phase Q.1 pt 19: condition apply/remove on the panel.
+//   - Active condition chips are now interactive (DM only): click ✕
+//     to remove. Color-coded via COND_COLOR matching v1's palette.
+//   - New "Apply Condition" picker section under DM Controls lists
+//     every 5e 2024 PHB condition not already on the character;
+//     click → apply.
+//   - Both flows write directly to characters.active_conditions
+//     (same path v1 uses). Realtime UPDATE on characters table
+//     propagates back to the panel and to character sheets.
+//   - condBusy flag gates all writes to prevent double-click races.
+//   - Cascades (Unconscious → Prone + Incapacitated, etc.) are NOT
+//     applied here; same trade-off v1 makes. The cascade pipeline
+//     in src/lib/conditions.ts requires a combat_participants row
+//     and is reserved for encounter-driven condition changes.
+//   Deferred to v2.228+:
 //      - NPC token roster + bulk add (mirrors PC token batch).
-//      - Drawing tools (pencil/line/rect/circle) for freehand
-//        annotations.
-//      - "Hidden from Players" toggle (DM-only fog freeze for scene
-//        setup).
-//      - Per-character darkvision range on VisionLayer (currently
-//        hardcoded 60ft).
+//      - Drawing tools (pencil/line/rect/circle).
+//      - "Hidden from Players" toggle.
+//      - Per-character darkvision range on VisionLayer.
+//      - Combat-aware condition path (route through applyCondition()
+//        when an encounter is active so cascades + event log fire).
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -141,6 +152,26 @@ const TOKEN_COLORS = [
   0xfbbf24, // yellow
   0xf472b6, // pink
 ] as const;
+
+// v2.227 — D&D 5e 2024 PHB conditions list + per-condition palette,
+// mirrored from src/components/Campaign/BattleMap.tsx so v2's token
+// quick panel renders the same color-coded chips. Source of truth
+// for cascade rules + advantage/disadvantage state remains
+// src/lib/conditions.ts and src/data/conditions.ts; this constant is
+// just for UI labelling. Note: Exhaustion is shown as a single chip
+// here (matches v1 UX); real Exhaustion is leveled 1–6 and is best
+// adjusted on the full character sheet.
+const ALL_CONDITIONS = [
+  'Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened',
+  'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified',
+  'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious',
+] as const;
+const COND_COLOR: Record<string, string> = {
+  Blinded: '#94a3b8', Charmed: '#f472b6', Deafened: '#78716c', Exhaustion: '#a78bfa',
+  Frightened: '#fb923c', Grappled: '#84cc16', Incapacitated: '#f87171', Invisible: '#60a5fa',
+  Paralyzed: '#e879f9', Petrified: '#6b7280', Poisoned: '#4ade80', Prone: '#fbbf24',
+  Restrained: '#f97316', Stunned: '#c084fc', Unconscious: '#ef4444',
+};
 
 const SIZE_OPTIONS: readonly TokenSize[] = [
   'tiny', 'small', 'medium', 'large', 'huge', 'gargantuan',
@@ -2180,6 +2211,9 @@ function TokenQuickPanel(props: {
   const [hpInput, setHpInput] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
   const [applying, setApplying] = useState(false);
+  // v2.227 — guard for in-flight condition writes. Prevents double-click
+  // from racing two updates against an out-of-date base array.
+  const [condBusy, setCondBusy] = useState(false);
 
   // Esc closes the panel.
   useEffect(() => {
@@ -2237,6 +2271,54 @@ function TokenQuickPanel(props: {
       setHpInput('');
     } finally {
       setApplying(false);
+    }
+  }
+
+  // v2.227 — Direct write to characters.active_conditions (matches
+  // v1's approach in BattleMap.tsx). Cascade rules from
+  // src/lib/conditions.ts (Unconscious → Prone+Incapacitated, etc.)
+  // are NOT applied here — same trade-off v1 makes. Cascades only
+  // fire through the encounter pipeline (combat_participants); the
+  // map-side panel is for quick adjustments, not full event-driven
+  // condition changes. v2.228+ can route through applyCondition()
+  // when a combat encounter is active.
+  async function addCondition(cond: string) {
+    if (condBusy) return;
+    const current = c.active_conditions ?? [];
+    if (current.includes(cond)) return;
+    setCondBusy(true);
+    try {
+      const next = [...current, cond];
+      const { error } = await supabase
+        .from('characters')
+        .update({ active_conditions: next })
+        .eq('id', c.id);
+      if (error) {
+        console.error('[TokenQuickPanel] addCondition failed', error);
+        alert(`Failed to apply ${cond}. Check console for details.`);
+      }
+    } finally {
+      setCondBusy(false);
+    }
+  }
+
+  async function removeCondition(cond: string) {
+    if (condBusy) return;
+    const current = c.active_conditions ?? [];
+    if (!current.includes(cond)) return;
+    setCondBusy(true);
+    try {
+      const next = current.filter(x => x !== cond);
+      const { error } = await supabase
+        .from('characters')
+        .update({ active_conditions: next })
+        .eq('id', c.id);
+      if (error) {
+        console.error('[TokenQuickPanel] removeCondition failed', error);
+        alert(`Failed to remove ${cond}. Check console for details.`);
+      }
+    } finally {
+      setCondBusy(false);
     }
   }
 
@@ -2363,27 +2445,41 @@ function TokenQuickPanel(props: {
           })}
         </div>
 
-        {/* Active conditions (read-only chips). v2.227 will add an
-            inline condition picker; for now this surfaces what's
-            already on the character. */}
+        {/* v2.227 — Active conditions chips. DM clicks the ✕ to
+            remove; players see them read-only. Color-coded via
+            COND_COLOR matching v1's palette. Writes flow through the
+            characters table directly (same path v1 uses) — Realtime
+            propagates back to this panel and to character sheets. */}
         {c.active_conditions && c.active_conditions.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
               Conditions
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
-              {c.active_conditions.map(cond => (
-                <span key={cond} style={{
-                  padding: '2px 8px',
-                  background: 'rgba(248,113,113,0.15)',
-                  border: '1px solid rgba(248,113,113,0.4)',
-                  borderRadius: 999,
-                  fontSize: 10, fontWeight: 600,
-                  color: '#f87171',
-                }}>
-                  {cond}
-                </span>
-              ))}
+              {c.active_conditions.map(cond => {
+                const color = COND_COLOR[cond] ?? '#9ca3af';
+                return (
+                  <span
+                    key={cond}
+                    onClick={isDM ? () => removeCondition(cond) : undefined}
+                    title={isDM ? `Remove ${cond}` : cond}
+                    style={{
+                      padding: '2px 8px',
+                      background: color + '22',
+                      border: `1px solid ${color}55`,
+                      borderRadius: 999,
+                      fontSize: 10, fontWeight: 700,
+                      color,
+                      cursor: isDM ? 'pointer' : 'default',
+                      opacity: condBusy ? 0.6 : 1,
+                      pointerEvents: condBusy ? 'none' : 'auto',
+                      userSelect: 'none' as const,
+                    }}
+                  >
+                    {cond}{isDM && ' ✕'}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2455,6 +2551,50 @@ function TokenQuickPanel(props: {
             </div>
           </div>
         )}
+
+        {/* v2.227 — Apply Condition picker (DM only). Lists every
+            condition NOT already active as a clickable color chip;
+            click → write to characters.active_conditions → Realtime
+            updates the parent → this panel re-renders with the
+            condition moved into the "active" chip row above. */}
+        {isDM && (() => {
+          const activeSet = new Set(c.active_conditions ?? []);
+          const remaining = ALL_CONDITIONS.filter(cond => !activeSet.has(cond));
+          if (remaining.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+                Apply Condition
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3 }}>
+                {remaining.map(cond => {
+                  const color = COND_COLOR[cond] ?? '#9ca3af';
+                  return (
+                    <button
+                      key={cond}
+                      onClick={() => addCondition(cond)}
+                      title={`Apply ${cond}`}
+                      disabled={condBusy}
+                      style={{
+                        padding: '2px 7px',
+                        background: color + '11',
+                        border: `1px solid ${color}44`,
+                        borderRadius: 999,
+                        fontSize: 9, fontWeight: 600,
+                        color,
+                        fontFamily: 'var(--ff-body)',
+                        cursor: condBusy ? 'wait' : 'pointer',
+                        opacity: condBusy ? 0.6 : 1,
+                      }}
+                    >
+                      {cond}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Open full character sheet */}
         <button
