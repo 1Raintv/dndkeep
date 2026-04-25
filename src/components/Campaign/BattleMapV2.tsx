@@ -1611,6 +1611,351 @@ function DrawingLayer(props: {
   return null;
 }
 
+/**
+ * v2.236.0 — FxLayer.
+ *
+ * Renders ephemeral particle effects (fire, lightning, sparkles,
+ * smoke) on the map. Effects DO NOT persist — they animate for
+ * 0.5–2.3 seconds and disappear. Cross-client visibility is achieved
+ * via a Supabase Realtime broadcast channel; no schema involved.
+ *
+ * Architecture:
+ *   - Effects live in a ref (not React state) so the rAF animation
+ *     loop doesn't trigger re-renders on every frame.
+ *   - One Graphics instance is reused for all effects per frame; we
+ *     clear() and redraw each frame from the active effects list.
+ *   - Each effect has a list of FxParticle objects with their own
+ *     position, velocity, lifetime. update() advances ages; draw()
+ *     renders shapes based on the effect kind.
+ *   - Lightning is a special case: instead of N particles, it has
+ *     one cached jagged-bolt path generated at spawn (so the bolt
+ *     doesn't flicker frame-to-frame).
+ *   - The trigger callback is exposed to the parent through a
+ *     mutable ref. Parent calls triggerRef.current(kind, x, y) on
+ *     a click to fire an effect locally + broadcast it. Realtime
+ *     subscribers receive the broadcast and trigger locally too.
+ */
+
+type FxKind = 'fire' | 'lightning' | 'sparkles' | 'smoke';
+
+interface FxParticle {
+  x: number;
+  y: number;
+  /** velocity in px per ms */
+  vx: number;
+  vy: number;
+  /** total lifetime in ms */
+  life: number;
+  /** current age in ms */
+  age: number;
+  color: number;
+  size: number;
+}
+
+interface FxEffect {
+  id: number;
+  kind: FxKind;
+  originX: number;
+  originY: number;
+  particles: FxParticle[];
+  /** For lightning: cached bolt vertices so they don't re-randomize per frame. */
+  boltPath?: Array<{ x: number; y: number }>;
+  /** Total time after which the effect is considered done (any particles
+   *  past this are reaped). */
+  totalLife: number;
+}
+
+function spawnFxEffect(kind: FxKind, x: number, y: number): FxEffect {
+  const id = Date.now() + Math.random();
+  const particles: FxParticle[] = [];
+  let totalLife = 1500;
+  let boltPath: Array<{ x: number; y: number }> | undefined;
+
+  if (kind === 'fire') {
+    // Orange/red embers rising upward with horizontal jitter.
+    const palette = [0xfbbf24, 0xf97316, 0xef4444];
+    for (let i = 0; i < 30; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.7;
+      const speed = 0.04 + Math.random() * 0.06;
+      particles.push({
+        x: x + (Math.random() - 0.5) * 18,
+        y: y + (Math.random() - 0.5) * 8,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 900 + Math.random() * 600,
+        age: 0,
+        color: palette[Math.floor(Math.random() * palette.length)],
+        size: 6 + Math.random() * 7,
+      });
+    }
+    totalLife = 1600;
+  } else if (kind === 'sparkles') {
+    // Yellow/gold/white twinkles fanning outward.
+    const palette = [0xfbbf24, 0xfde047, 0xffffff];
+    for (let i = 0; i < 22; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.05 + Math.random() * 0.08;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 600 + Math.random() * 400,
+        age: 0,
+        color: palette[Math.floor(Math.random() * palette.length)],
+        size: 3 + Math.random() * 4,
+      });
+    }
+    totalLife = 1100;
+  } else if (kind === 'smoke') {
+    // Gray puffs rising slowly, expanding.
+    const palette = [0x6b7280, 0x9ca3af, 0x4b5563];
+    for (let i = 0; i < 16; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+      const speed = 0.018 + Math.random() * 0.025;
+      particles.push({
+        x: x + (Math.random() - 0.5) * 14,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1500 + Math.random() * 800,
+        age: 0,
+        color: palette[Math.floor(Math.random() * palette.length)],
+        size: 9 + Math.random() * 8,
+      });
+    }
+    totalLife = 2400;
+  } else {
+    // Lightning — one bolt with a flash. Single placeholder particle
+    // owns the lifetime; rendering uses boltPath instead of particle xy.
+    const startX = x + (Math.random() - 0.5) * 50;
+    const startY = y - 220 - Math.random() * 80;
+    const segments = 7;
+    boltPath = [{ x: startX, y: startY }];
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments;
+      const baseX = startX + (x - startX) * t;
+      const baseY = startY + (y - startY) * t;
+      // Jitter is largest mid-bolt, zero at endpoints.
+      const fade = 1 - Math.abs(t - 0.5) * 2;
+      const jitter = (Math.random() - 0.5) * 36 * fade;
+      boltPath.push({ x: baseX + jitter, y: baseY });
+    }
+    particles.push({
+      x, y, vx: 0, vy: 0,
+      life: 500, age: 0, color: 0xffffff, size: 0,
+    });
+    totalLife = 500;
+  }
+
+  return { id, kind, originX: x, originY: y, particles, boltPath, totalLife };
+}
+
+/** Returns true if the effect still has any live particles. Mutates
+ *  particle positions/ages in place. */
+function updateFxEffect(eff: FxEffect, dtMs: number): boolean {
+  let alive = false;
+  for (const p of eff.particles) {
+    p.age += dtMs;
+    if (p.age < p.life) {
+      p.x += p.vx * dtMs;
+      p.y += p.vy * dtMs;
+      // A tiny bit of upward drag for fire (counter-decelerate).
+      if (eff.kind === 'fire') {
+        p.vy *= 0.998;
+      }
+      // Sparkles drift slightly down over time.
+      if (eff.kind === 'sparkles') {
+        p.vy += 0.00006 * dtMs;
+      }
+      alive = true;
+    }
+  }
+  return alive;
+}
+
+/** Render an effect into `g`. Caller is expected to have called
+ *  g.clear() before iterating effects, and to call g.stroke()/fill()
+ *  per-shape as we do here. */
+function drawFxEffect(g: Graphics, eff: FxEffect) {
+  if (eff.kind === 'lightning') {
+    const p = eff.particles[0];
+    if (!p || p.age >= p.life || !eff.boltPath) return;
+    const t = p.age / p.life;
+    const alpha = 1 - t;
+    // Outer glow stroke (wider, softer).
+    g.setStrokeStyle({ width: 8, color: 0x60a5fa, alpha: alpha * 0.45, alignment: 0.5 });
+    g.moveTo(eff.boltPath[0].x, eff.boltPath[0].y);
+    for (let i = 1; i < eff.boltPath.length; i++) {
+      g.lineTo(eff.boltPath[i].x, eff.boltPath[i].y);
+    }
+    g.stroke();
+    // Core white stroke.
+    g.setStrokeStyle({ width: 2.5, color: 0xffffff, alpha: alpha * 0.95, alignment: 0.5 });
+    g.moveTo(eff.boltPath[0].x, eff.boltPath[0].y);
+    for (let i = 1; i < eff.boltPath.length; i++) {
+      g.lineTo(eff.boltPath[i].x, eff.boltPath[i].y);
+    }
+    g.stroke();
+    // Impact flash circle.
+    const flash = Math.max(0, 1 - t * 1.8);
+    if (flash > 0) {
+      g.circle(eff.originX, eff.originY, 60 * flash)
+        .fill({ color: 0xffffff, alpha: flash * 0.35 });
+    }
+    return;
+  }
+
+  for (const p of eff.particles) {
+    if (p.age >= p.life) continue;
+    const t = p.age / p.life;
+    const alpha = 1 - t;
+    if (eff.kind === 'sparkles') {
+      const twinkle = 0.55 + 0.45 * Math.sin(p.age * 0.045);
+      g.circle(p.x, p.y, p.size * (1 - t * 0.4))
+        .fill({ color: p.color, alpha: alpha * twinkle });
+    } else if (eff.kind === 'smoke') {
+      // Smoke expands as it ages.
+      g.circle(p.x, p.y, p.size * (1 + t * 0.7))
+        .fill({ color: p.color, alpha: alpha * 0.55 });
+    } else {
+      // Fire: shrinks slightly, fades.
+      g.circle(p.x, p.y, p.size * (1 - t * 0.5))
+        .fill({ color: p.color, alpha: alpha * 0.85 });
+    }
+  }
+}
+
+function FxLayer(props: {
+  viewport: Viewport | null;
+  canvasEl: HTMLCanvasElement | null;
+  /** Which FX kind is active, or null when no FX tool selected. */
+  activeKind: FxKind | null;
+  campaignId: string;
+  currentSceneId: string | null;
+  /** Parent sets a function on this ref so it can imperatively trigger
+   *  effects from anywhere (currently used by the canvas click handler
+   *  installed inside this component, but kept ref-shaped for future
+   *  use — e.g. attack pipeline hits → spawn fire on impact). */
+  triggerRef: React.MutableRefObject<((kind: FxKind, x: number, y: number) => void) | null>;
+}) {
+  const { viewport, canvasEl, activeKind, campaignId, currentSceneId, triggerRef } = props;
+  const gfxRef = useRef<Graphics | null>(null);
+  const effectsRef = useRef<FxEffect[]>([]);
+  const lastTimeRef = useRef<number>(0);
+  const rafRef = useRef<number>(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const activeKindRef = useRef<FxKind | null>(null);
+  useEffect(() => { activeKindRef.current = activeKind; }, [activeKind]);
+
+  // Mount Graphics + start animation loop once per viewport.
+  useEffect(() => {
+    if (!viewport) return;
+    const g = new Graphics();
+    gfxRef.current = g;
+    viewport.addChild(g);
+
+    function tick(now: number) {
+      const last = lastTimeRef.current || now;
+      const dt = Math.min(64, now - last); // clamp to avoid huge dt on tab refocus
+      lastTimeRef.current = now;
+      const gfx = gfxRef.current;
+      if (gfx) {
+        gfx.clear();
+        const live: FxEffect[] = [];
+        for (const eff of effectsRef.current) {
+          const alive = updateFxEffect(eff, dt);
+          if (alive) {
+            drawFxEffect(gfx, eff);
+            live.push(eff);
+          }
+        }
+        effectsRef.current = live;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      try { viewport.removeChild(g); } catch { /* viewport gone */ }
+      try { g.destroy(); } catch { /* destroyed */ }
+      gfxRef.current = null;
+      effectsRef.current = [];
+      lastTimeRef.current = 0;
+    };
+  }, [viewport]);
+
+  // Realtime broadcast channel — both subscribe (for remote effects)
+  // and send (for our own effects). Channel name is scene-scoped so
+  // FX in one scene don't leak to viewers of another.
+  useEffect(() => {
+    if (!currentSceneId || !campaignId) return;
+    const channel = supabase
+      .channel(`battle_map:fx:${currentSceneId}`)
+      .on('broadcast', { event: 'fx' }, (msg: any) => {
+        const payload = msg?.payload ?? {};
+        const kind = payload.kind as FxKind | undefined;
+        const x = Number(payload.x);
+        const y = Number(payload.y);
+        if (!kind || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (kind !== 'fire' && kind !== 'lightning' && kind !== 'sparkles' && kind !== 'smoke') return;
+        // Spawn locally — no broadcast back (Supabase broadcast does
+        // not echo to sender, and we don't want a loop anyway).
+        effectsRef.current.push(spawnFxEffect(kind, x, y));
+      })
+      .subscribe();
+    channelRef.current = channel;
+    return () => {
+      try { supabase.removeChannel(channel); } catch { /* ignore */ }
+      channelRef.current = null;
+    };
+  }, [currentSceneId, campaignId]);
+
+  // Expose trigger to parent. Spawning an FX = local push + broadcast.
+  useEffect(() => {
+    triggerRef.current = (kind: FxKind, x: number, y: number) => {
+      effectsRef.current.push(spawnFxEffect(kind, x, y));
+      const ch = channelRef.current;
+      if (ch) {
+        ch.send({
+          type: 'broadcast',
+          event: 'fx',
+          payload: { kind, x, y },
+        }).catch(() => { /* fire-and-forget */ });
+      }
+    };
+    return () => { triggerRef.current = null; };
+  }, [triggerRef]);
+
+  // Canvas click handler — only attached when an FX kind is active.
+  useEffect(() => {
+    if (!activeKind || !canvasEl || !viewport || !currentSceneId) return;
+    function clientToWorld(e: MouseEvent): { x: number; y: number } | null {
+      if (!canvasEl || !viewport) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wp = viewport.toWorld(sx, sy);
+      return { x: wp.x, y: wp.y };
+    }
+    function onClick(e: MouseEvent) {
+      if (e.button !== 0) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+      const fn = triggerRef.current;
+      const kind = activeKindRef.current;
+      if (!fn || !kind) return;
+      fn(kind, w.x, w.y);
+    }
+    canvasEl.addEventListener('click', onClick);
+    return () => {
+      canvasEl.removeEventListener('click', onClick);
+    };
+  }, [activeKind, canvasEl, viewport, currentSceneId, triggerRef]);
+
+  return null;
+}
+
 function TokenLayer(props: {
   viewport: Viewport | null;
   canvasEl: HTMLCanvasElement | null;
@@ -1636,6 +1981,10 @@ function TokenLayer(props: {
   // The DrawingLayer captures pointer events on the canvas; tokens
   // must yield so the user can drag through their position to draw.
   drawActive?: boolean;
+  // v2.236 — same pattern for FX particle mode. FxLayer captures
+  // single-clicks to spawn effects; tokens yield so drag-through
+  // and click-on-token don't compete with effect placement.
+  fxActive?: boolean;
   // v2.221 — character HP lookup for live HP bars on PC tokens.
   // Map<characterId, { current, max }>. Tokens whose characterId
   // matches an entry get an HP bar rendered underneath. Pure data
@@ -1651,7 +2000,7 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    textActive, drawActive, characterHpMap, onTokenClick,
+    textActive, drawActive, fxActive, characterHpMap, onTokenClick,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -1672,6 +2021,9 @@ function TokenLayer(props: {
   // v2.235: same mechanism for any active drawing tool.
   const drawActiveRef = useRef(false);
   useEffect(() => { drawActiveRef.current = !!drawActive; }, [drawActive]);
+  // v2.236: same mechanism for FX particle mode.
+  const fxActiveRef = useRef(false);
+  useEffect(() => { fxActiveRef.current = !!fxActive; }, [fxActive]);
 
   interface TokenGfx {
     container: Container;
@@ -1781,6 +2133,8 @@ function TokenLayer(props: {
           if (textActiveRef.current) return;
           // v2.235: same for any drawing tool (pencil/line/rect/circle).
           if (drawActiveRef.current) return;
+          // v2.236: same for FX particle mode.
+          if (fxActiveRef.current) return;
           if (event.button === 2) {
             event.stopPropagation();
             event.preventDefault();
@@ -4238,24 +4592,31 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // re-attach pointer listeners.
   const [drawColor, setDrawColor] = useState('#a78bfa');
   const [drawLineWidth, setDrawLineWidth] = useState(3);
+  // v2.236 — FX particle mode. Either null (no FX tool) or one of
+  // fire/lightning/sparkles/smoke. Five-way mutex with everything else.
+  const [fxActive, setFxActive] = useState<FxKind | null>(null);
+  // Imperative trigger handle owned by FxLayer; we set it via ref.
+  // Future ships (e.g. enemy attacks) can fire effects through this
+  // without going through tool-mode UI.
+  const triggerFxRef = useRef<((kind: FxKind, x: number, y: number) => void) | null>(null);
   const toggleRuler = useCallback(() => {
     setRulerActive(a => {
       const next = !a;
-      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); }
+      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); }
       return next;
     });
   }, []);
   const toggleWallMode = useCallback(() => {
     setWallActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); }
+      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); }
       return next;
     });
   }, []);
   const toggleTextMode = useCallback(() => {
     setTextActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); }
+      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); setFxActive(null); }
       return next;
     });
   }, []);
@@ -4265,7 +4626,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const toggleDrawMode = useCallback((kind: DrawingKind) => {
     setDrawActive(curr => {
       const next = curr === kind ? null : kind;
-      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); }
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setFxActive(null); }
+      return next;
+    });
+  }, []);
+  // v2.236 — toggle a specific FX kind. Same parameterized pattern.
+  const toggleFxMode = useCallback((kind: FxKind) => {
+    setFxActive(curr => {
+      const next = curr === kind ? null : kind;
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); }
       return next;
     });
   }, []);
@@ -4759,6 +5128,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     wallActive={wallActive}
                     textActive={textActive}
                     drawActive={drawActive != null}
+                    fxActive={fxActive != null}
                     characterHpMap={characterHpMap}
                     onTokenClick={handleTokenClick}
                   />
@@ -4789,6 +5159,20 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     currentSceneId={currentScene?.id ?? null}
                     color={drawColor}
                     lineWidth={drawLineWidth}
+                  />
+                  {/* v2.236 — FxLayer renders ephemeral particle
+                      effects. Mounted last (top of z-stack) so
+                      effects always read above other layers — fire
+                      on top of a token feels right. Effects are
+                      broadcast over Realtime to all clients viewing
+                      this scene; no persistence. */}
+                  <FxLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    activeKind={fxActive}
+                    campaignId={campaignId}
+                    currentSceneId={currentScene?.id ?? null}
+                    triggerRef={triggerFxRef}
                   />
                   {/* v2.224 — fog of war overlay. DM sees nothing
                       (no fog applied); players see dark over anything
@@ -5076,7 +5460,59 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               </>
             );
           })()}
-          {/* v2.236+ slot for FX particles will go here. */}
+          {/* v2.236 — FX particle effects. DM only. Four kinds:
+              fire, lightning, sparkles, smoke. Each spawns a short
+              animation at click point and broadcasts to all clients
+              via the scene's FX channel. Effects don't persist. */}
+          {isDM && (() => {
+            const fxKinds: Array<{ kind: FxKind; icon: string; label: string }> = [
+              { kind: 'fire',      icon: '🔥', label: 'Fire — orange embers rising' },
+              { kind: 'lightning', icon: '⚡', label: 'Lightning — bolt strike with flash' },
+              { kind: 'sparkles',  icon: '✨', label: 'Sparkles — gold twinkles fanning out' },
+              { kind: 'smoke',     icon: '💨', label: 'Smoke — gray puffs rising' },
+            ];
+            return (
+              <>
+                {fxKinds.map(({ kind, icon, label }) => {
+                  const active = fxActive === kind;
+                  return (
+                    <button
+                      key={kind}
+                      onClick={() => toggleFxMode(kind)}
+                      title={active
+                        ? `${label} (active) — click on the map to spawn. Click this button again to exit.`
+                        : label}
+                      style={{
+                        width: 36, height: 36,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: active ? 'rgba(34,211,238,0.28)' : 'transparent',
+                        border: `1px solid ${active ? 'rgba(34,211,238,0.85)' : 'rgba(34,211,238,0.25)'}`,
+                        borderRadius: 'var(--r-sm, 4px)',
+                        color: active ? '#22d3ee' : 'var(--t-2)',
+                        fontSize: 18,
+                        cursor: 'pointer',
+                        transition: 'background 0.12s, border-color 0.12s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(34,211,238,0.14)';
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(34,211,238,0.55)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(34,211,238,0.25)';
+                        }
+                      }}
+                    >
+                      {icon}
+                    </button>
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
 
         {/* v2.235 — Color + line-width picker. Floats next to the
