@@ -413,6 +413,43 @@ button:active:not(:disabled) { transform: scale(0.96); }
   padding: 1px 5px; border-radius: 999px;
 }
 
+/* v2.230 — Sidebar section headers. Used to group Characters /
+   DM Campaigns / Library nav items into clearly delineated sections.
+   Visually heavier than the previous tiny uppercase labels (fs 9px)
+   so they have presence comparable to the clickable nav links
+   they head, but a muted color + non-clickable cursor make it clear
+   they're labels, not links. */
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  margin-top: var(--sp-2);
+  font-family: var(--ff-body);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+}
+.sidebar-section-header:first-child { margin-top: 0; }
+.sidebar-section-header-line {
+  flex: 1;
+  height: 1px;
+  background: var(--c-border);
+}
+/* Sub-items inside a section get slightly tighter, smaller styling
+   so the section header reads as the parent and the rows as children. */
+.sidebar-link.sidebar-link-sub {
+  font-size: var(--fs-xs);
+  min-height: 30px;
+  padding: 4px var(--sp-3);
+  margin-left: var(--sp-2);
+}
+
 .sidebar-footer {
   padding: var(--sp-2) var(--sp-2) var(--sp-4);
   border-top: 1px solid var(--c-border);

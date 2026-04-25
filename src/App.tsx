@@ -132,7 +132,10 @@ const NAV_ITEMS = [
 
 function Sidebar() {
   const { user, profile, isPro } = useAuth();
-  const location = useLocation();
+  // v2.230 — `location` was previously used to mark Home active when
+  // viewing a character; the new sidebar treats Home and individual
+  // characters as distinct nav targets, so location-based active
+  // matching is unnecessary.
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem('dndkeep:sidebar-collapsed') === '1'; } catch { return false; }
   });
@@ -169,60 +172,90 @@ function Sidebar() {
 
       {/* Nav items */}
       <nav className="sidebar-nav">
-        {/* Home with submenu (always shown when sidebar expanded) */}
-        <div>
-          <NavLink
-            to="/lobby"
-            className={({ isActive }) => `sidebar-link ${isActive || location.pathname.startsWith('/character') ? 'active' : ''}`}
-            title={collapsed ? 'Home' : undefined}
-          >
-            <span className="sidebar-link-icon">{Icons.characters}</span>
-            {!collapsed && <span className="sidebar-link-label">Home</span>}
-          </NavLink>
+        {/* Home — top-level, full prominence. Path activeness covers
+            both /lobby and any /character/:id (since "Home" is where
+            you go to manage characters and create new ones). */}
+        <NavLink
+          to="/lobby"
+          className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+          title={collapsed ? 'Home' : undefined}
+        >
+          <span className="sidebar-link-icon">{Icons.characters}</span>
+          {!collapsed && <span className="sidebar-link-label">Home</span>}
+        </NavLink>
 
-          {/* Submenu */}
-          {!collapsed && (
-            <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {/* Characters section */}
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'var(--t-3)', padding: '6px 8px 3px', fontFamily: 'var(--ff-body)' }}>Characters</div>
-              <NavLink to="/lobby/new" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                style={{ fontSize: 11, padding: '4px 8px', minHeight: 0, opacity: 0.7 }}>
-                <span style={{ fontSize: 12 }}>＋</span>
-                <span className="sidebar-link-label">New Character</span>
-              </NavLink>
-              {characters.map(c => (
+        {/* v2.230 — three structured sections: Characters, DM Campaigns,
+            Library. Each has a prominent uppercase header with a divider
+            line so they read as proper sections, not afterthoughts. The
+            previous "+ New Character" entry was removed — character
+            creation lives on the Home page. */}
+
+        {/* Characters section. Always shown when expanded so users see
+            "you have no characters yet — go to Home to make one"
+            implicitly, instead of an empty header. If there are no
+            characters AND no campaigns, the sections still render so
+            the sidebar feels structured. */}
+        {!collapsed && (
+          <>
+            <div className="sidebar-section-header">
+              <span>Characters</span>
+              <span className="sidebar-section-header-line" />
+            </div>
+            {characters.length === 0 ? (
+              <div style={{
+                padding: '6px 12px', fontSize: 'var(--fs-xs)',
+                color: 'var(--t-3)', fontStyle: 'italic',
+              }}>
+                No characters yet
+              </div>
+            ) : (
+              characters.map(c => (
                 <NavLink key={c.id} to={`/character/${c.id}`}
-                  className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                  style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}>
+                  className={({ isActive }) => `sidebar-link sidebar-link-sub ${isActive ? 'active' : ''}`}
+                >
                   <span className="sidebar-link-icon" style={{ fontSize: 12, width: 16 }}>⚔</span>
                   <span className="sidebar-link-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {c.name}
                     <span style={{ color: 'var(--t-3)', fontWeight: 400, marginLeft: 4 }}>{c.class_name} {c.level}</span>
                   </span>
                 </NavLink>
-              ))}
+              ))
+            )}
+          </>
+        )}
 
-              {/* DM Campaigns section */}
-              {campaigns.length > 0 && (
-                <>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-                    color: 'var(--t-3)', padding: '6px 8px 3px', fontFamily: 'var(--ff-body)', marginTop: 4 }}>DM Campaigns</div>
-                  {campaigns.map(c => (
-                    <NavLink key={c.id} to={`/campaigns/${c.id}`}
-                      className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                      style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}>
-                      <span className="sidebar-link-icon" style={{ fontSize: 12, width: 16 }}>🗺</span>
-                      <span className="sidebar-link-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                    </NavLink>
-                  ))}
-                </>
-              )}
+        {/* DM Campaigns section — only renders if the user has any
+            campaigns (otherwise the section header would feel like
+            empty noise). Players with no DM campaigns just see
+            Characters → Library. */}
+        {!collapsed && campaigns.length > 0 && (
+          <>
+            <div className="sidebar-section-header">
+              <span>DM Campaigns</span>
+              <span className="sidebar-section-header-line" />
             </div>
-          )}
-        </div>
+            {campaigns.map(c => (
+              <NavLink key={c.id} to={`/campaigns/${c.id}`}
+                className={({ isActive }) => `sidebar-link sidebar-link-sub ${isActive ? 'active' : ''}`}
+              >
+                <span className="sidebar-link-icon" style={{ fontSize: 12, width: 16 }}>🗺</span>
+                <span className="sidebar-link-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+              </NavLink>
+            ))}
+          </>
+        )}
 
-        {/* Remaining nav items (Homebrew) */}
+        {/* Library section — reference content (Bestiary, Spells, Magic
+            Items, Homebrew, Classes & Subclasses). Previously these
+            free-floated at the bottom of the nav with no grouping.
+            Now they're grouped under a prominent header that matches
+            the visual weight of the Characters / DM Campaigns headers. */}
+        {!collapsed && (
+          <div className="sidebar-section-header">
+            <span>Library</span>
+            <span className="sidebar-section-header-line" />
+          </div>
+        )}
         {NAV_ITEMS.map(({ to, label, icon, pro }) => (
           <NavLink
             key={to}
