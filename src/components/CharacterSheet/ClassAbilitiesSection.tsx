@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
-import { CLASS_COMBAT_ABILITIES, type ClassAbility } from '../../data/classAbilities';
+import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
+import { computeStats } from '../../lib/gameUtils';
 
 interface Props {
  character: Character;
@@ -29,6 +30,20 @@ const ACTION_COLORS: Record<string, string> = {
  special: '#c084fc',
  free: 'var(--t-3)',
 };
+
+// v2.246.0 — Save chip resolver. Returns the numeric DC for an ability
+// save spec, falling through to the character's spell save DC when the
+// spec sets `dc: 'spell'`. Returns null if the ability is save-less or
+// the character isn't a spellcaster (then the chip is hidden — better
+// than showing "DC ?"). Pure function so it can be reused by the v2.247
+// target picker.
+function resolveSaveDC(save: SaveSpec | undefined, character: Character): number | null {
+ if (!save) return null;
+ if (typeof save.dc === 'number') return save.dc;
+ // 'spell' — derive from the character's spellcasting class.
+ const computed = computeStats(character);
+ return computed.spell_save_dc ?? null;
+}
 
 function UseTracker({ abilityName, max, rest, character, onUpdate }: {
  abilityName: string; max: number; rest: 'short' | 'long';
@@ -441,8 +456,40 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  {/* Col 3: reserved for future per-ability metadata */}
  <div />
 
- {/* Col 4: reserved for future per-ability metadata */}
- <div />
+ {/* Col 4: v2.246.0 — Save chip for save-bearing abilities. Renders
+     "DC X · YYY" matching the spell modal's save-pill format. Tooltip
+     shows the on-fail / on-success consequences when present. Empty
+     when the ability has no `save` field — keeps non-save abilities
+     visually identical to v2.245. */}
+ <div style={{ textAlign: 'center' }}>
+ {ability.save && (() => {
+ const dc = resolveSaveDC(ability.save, character);
+ if (dc == null) return null;
+ const tip = [
+ `DC ${dc} ${ability.save.ability} save`,
+ ability.save.onFailure ? `On fail: ${ability.save.onFailure}` : '',
+ ability.save.onSuccess ? `On save: ${ability.save.onSuccess}` : '',
+ ].filter(Boolean).join('\n');
+ return (
+ <span
+ title={tip}
+ style={{
+ display: 'inline-flex', alignItems: 'center', gap: 4,
+ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 11,
+ padding: '2px 7px', borderRadius: 999,
+ background: 'rgba(167,139,250,0.12)',
+ border: '1px solid rgba(167,139,250,0.4)',
+ color: '#a78bfa',
+ letterSpacing: '0.04em',
+ whiteSpace: 'nowrap' as const,
+ }}>
+ <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.7 }}>DC</span>
+ {dc}
+ <span style={{ fontSize: 9, opacity: 0.85 }}>{ability.save.ability}</span>
+ </span>
+ );
+ })()}
+ </div>
 
  {/* Col 5: PED cost chip OR last-rolled PED value badge.
      pedCost and psionicDie are mutually exclusive on a given

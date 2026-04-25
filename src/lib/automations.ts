@@ -78,6 +78,24 @@ export const AUTOMATIONS: readonly AutomationDef[] = [
     default: 'auto',
     allowed: ['off', 'prompt', 'auto'] as const,
   },
+  // v2.246.0 — Save-bearing class abilities: willing-ally auto-fail.
+  // RAW (PHB 2024 p.235): "A creature can voluntarily fail a saving
+  // throw." Common combo case: a Psion uses Telekinesis on a willing
+  // ally to reposition them; the ally chooses to fail the STR save so
+  // the move resolves. With this automation Auto, the v2.247 target
+  // picker shows an [Auto-Fail (willing)] button alongside [Roll Save]
+  // for ally targets, and the save is recorded as failed without
+  // dice. Prompt: button shows but a confirmation modal appears.
+  // Off: button is hidden; players who want to fail must do it via
+  // the existing roll-and-take-the-result path.
+  {
+    key: 'willing_ally_auto_fail',
+    label: 'Willing-ally auto-fail',
+    description:
+      'For class abilities that force a save on an ally target (e.g. a Psion using Telekinesis to reposition a teammate), allow the ally to voluntarily fail without rolling. Off: ally must roll the save. Prompt: confirm before recording the auto-fail. Auto: one-click Auto-Fail (willing) button on the target picker.',
+    default: 'auto',
+    allowed: ['off', 'prompt', 'auto'] as const,
+  },
   // Future automations go here. Keep key strings stable once shipped.
 ];
 

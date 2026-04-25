@@ -2,6 +2,32 @@ import type { Character } from '../types';
 
 export type ActionType = 'action' | 'bonus' | 'reaction' | 'special' | 'free';
 
+// v2.246.0 — Save-bearing class abilities. Optional structured save
+// metadata so the Actions tab can render a "DC X · YYY Save" chip on
+// abilities that force a saving throw, mirroring the spell save shape
+// in src/types/index.ts (`SpellData.save_type`). Today (v2.246) the
+// data is rendering-only — the chip surfaces the DC/ability so a player
+// or DM can read it off the row without expanding. v2.247 will wire a
+// target-picker modal that consumes this shape, with per-target [Roll
+// Save] / [Auto-Fail (willing)] buttons gated on the new
+// `willing_ally_auto_fail` automation.
+export type SaveAbility = 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA';
+export type SaveTargetMode = 'enemies' | 'allies' | 'any';
+export interface SaveSpec {
+  /** Ability the target rolls. Stored uppercase to match how the chip renders. */
+  ability: SaveAbility;
+  /** Numeric DC, or `'spell'` to resolve from the caster's spell save DC. */
+  dc: number | 'spell';
+  /** Default target gating for the v2.247 picker. Optional — defaults to 'any'
+   *  if absent. Read by the picker UX, not by the chip itself. */
+  targetMode?: SaveTargetMode;
+  /** Optional one-line consequence on a failed save. Surfaced in the chip
+   *  tooltip so the reader can hover to recall the effect. */
+  onFailure?: string;
+  /** Optional one-line consequence on a successful save. */
+  onSuccess?: string;
+}
+
 export interface ClassAbility {
   name: string;
   actionType: ActionType;
@@ -37,6 +63,11 @@ export interface ClassAbility {
    *  Today: Free Misty Step (1 PED). Future: any subclass feature with
    *  RAW text "spend N [resource] to regain a use of this feature." */
   pedRestoreCost?: number;
+  /** v2.246.0 — Saving-throw metadata. Present when the ability forces
+   *  a save on its target(s). The Actions tab renders a chip from this;
+   *  v2.247 will route through a target picker that consumes targetMode
+   *  and exposes Auto-Fail (willing) for `targetMode: 'allies'` or 'any'. */
+  save?: SaveSpec;
 }
 
 function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
@@ -473,6 +504,13 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Spend 1 Psionic Energy Die: move a creature or object up to 30 ft. Or attack with a telepathic force (INT-based).',
       minLevel: 1,
       isPool: true,
+      // v2.246.0 — first user-visible save chip. Telekinesis forces a STR
+      // save vs the caster's spell save DC when used to move a creature
+      // (objects don't save). targetMode 'any' so the v2.247 picker
+      // exposes Auto-Fail (willing) — useful for Psi Warper combos with
+      // Warp Propel where the caster wants a friendly target's "fail"
+      // to trigger the teleport-instead-of-push rider.
+      save: { ability: 'STR', dc: 'spell', targetMode: 'any' },
     },
     // v2.187.0 — Phase Q.0 pt 28: Subtle Telekinesis is a base Psion class
     // feature (not subclass). Cast Mage Hand at-will but invisible. No PED
