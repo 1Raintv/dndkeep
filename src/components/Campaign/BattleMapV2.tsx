@@ -85,13 +85,19 @@
 //     applied here; same trade-off v1 makes. The cascade pipeline
 //     in src/lib/conditions.ts requires a combat_participants row
 //     and is reserved for encounter-driven condition changes.
-//   Deferred to v2.228+:
-//      - NPC token roster + bulk add (mirrors PC token batch).
-//      - Drawing tools (pencil/line/rect/circle).
-//      - "Hidden from Players" toggle.
-//      - Per-character darkvision range on VisionLayer.
-//      - Combat-aware condition path (route through applyCondition()
-//        when an encounter is active so cascades + event log fire).
+// v2.228.0 — Phase Q.1 pt 20: DM action toolbar separation.
+//   - Map / Tokens action buttons (Change Map, Remove Map, + Add PC
+//     Tokens, + Add Token) moved out of the in-canvas top-right
+//     overlay into a dedicated solid bar above the canvas. They were
+//     near-unreadable as semi-transparent cards over busy map
+//     backgrounds.
+//   - The new bar uses var(--c-card) background + visible borders +
+//     small section labels ("Map", "Tokens") + a divider for clarity.
+//   - The Scene-name badge (top-left of canvas) and the zoom + ruler
+//     + walls toolbars stay on the canvas — they're contextual to
+//     the map itself.
+//   - No behavior changes; pure layout refactor. Canvas dims and all
+//     overlays remain the same.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -3490,6 +3496,129 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         )}
       </div>
 
+      {/* v2.228 — DM action toolbar. Moved out of the canvas overlay
+          (where the buttons sat in semi-transparent cards over the
+          map image and were hard to read) into a dedicated solid
+          bar that lives above the canvas. The Scene-name badge and
+          the zoom/ruler/walls buttons remain on the canvas itself
+          since they're contextual to the map. Renders only for the
+          DM, and only when there's a current scene to act on. */}
+      {isDM && currentScene && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 12px',
+            marginBottom: 8,
+            background: 'var(--c-card)',
+            border: '1px solid var(--c-border)',
+            borderRadius: 'var(--r-md, 8px)',
+            flexWrap: 'wrap' as const,
+          }}
+        >
+          <span style={{
+            fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+            color: 'var(--t-3)', letterSpacing: '0.08em',
+            textTransform: 'uppercase' as const,
+            marginRight: 4,
+          }}>
+            Map
+          </span>
+          <button
+            onClick={handleRequestMapUpload}
+            title={currentScene.backgroundStoragePath
+              ? 'Replace the current map image'
+              : 'Upload a map image as the scene background'}
+            style={{
+              padding: '6px 14px',
+              background: 'rgba(96,165,250,0.18)',
+              border: '1px solid rgba(96,165,250,0.6)',
+              borderRadius: 'var(--r-sm, 4px)',
+              color: '#60a5fa',
+              fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.32)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.18)'; }}
+          >
+            {currentScene.backgroundStoragePath ? 'Change Map' : 'Upload Map'}
+          </button>
+          {currentScene.backgroundStoragePath && (
+            <button
+              onClick={handleRemoveMap}
+              title="Remove the current map image"
+              style={{
+                padding: '6px 14px',
+                background: 'rgba(248,113,113,0.18)',
+                border: '1px solid rgba(248,113,113,0.55)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: '#f87171',
+                fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.3)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.18)'; }}
+            >
+              Remove Map
+            </button>
+          )}
+          <span style={{
+            width: 1, height: 22,
+            background: 'var(--c-border)',
+            margin: '0 4px',
+          }} />
+          <span style={{
+            fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+            color: 'var(--t-3)', letterSpacing: '0.08em',
+            textTransform: 'uppercase' as const,
+            marginRight: 4,
+          }}>
+            Tokens
+          </span>
+          {props.playerCharacters.length > 0 && (
+            <button
+              onClick={addPcTokens}
+              title="Create a token for each player character that doesn't already have one in this scene"
+              style={{
+                padding: '6px 14px',
+                background: 'rgba(52,211,153,0.18)',
+                border: '1px solid rgba(52,211,153,0.6)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: '#34d399',
+                fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.32)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.18)'; }}
+            >
+              + Add PC Tokens
+            </button>
+          )}
+          <button
+            onClick={addToken}
+            title="Add a token at viewport center"
+            style={{
+              padding: '6px 14px',
+              background: 'rgba(167,139,250,0.22)',
+              border: '1px solid rgba(167,139,250,0.6)',
+              borderRadius: 'var(--r-sm, 4px)',
+              color: '#a78bfa',
+              fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.34)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.22)'; }}
+          >
+            + Add Token
+          </button>
+        </div>
+      )}
+
       <div
         ref={wrapperRef}
         style={{
@@ -3602,96 +3731,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           {currentScene?.name ?? 'BATTLE MAP v2'} · {widthCells}×{heightCells} · {gridSizePx}PX
         </div>
 
-        {isDM && currentScene && (
-          <div
-            style={{
-              position: 'absolute', top: 8, right: 12,
-              display: 'flex', gap: 6,
-            }}
-          >
-            <button
-              onClick={handleRequestMapUpload}
-              title={currentScene.backgroundStoragePath
-                ? 'Replace the current map image'
-                : 'Upload a map image as the scene background'}
-              style={{
-                padding: '5px 12px',
-                background: 'rgba(96,165,250,0.18)',
-                border: '1px solid rgba(96,165,250,0.5)',
-                borderRadius: 'var(--r-sm, 4px)',
-                color: '#60a5fa',
-                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                letterSpacing: '0.04em',
-                cursor: 'pointer',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.3)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.18)'; }}
-            >
-              {currentScene.backgroundStoragePath ? 'Change Map' : 'Upload Map'}
-            </button>
-            {currentScene.backgroundStoragePath && (
-              <button
-                onClick={handleRemoveMap}
-                title="Remove the current map image"
-                style={{
-                  padding: '5px 12px',
-                  background: 'rgba(248,113,113,0.15)',
-                  border: '1px solid rgba(248,113,113,0.4)',
-                  borderRadius: 'var(--r-sm, 4px)',
-                  color: '#f87171',
-                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                  letterSpacing: '0.04em',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.28)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.15)'; }}
-              >
-                Remove Map
-              </button>
-            )}
-            {/* v2.220 — bulk-add tokens for all player characters that
-                don't already have one in this scene. Only renders when
-                the DM has party members to add. */}
-            {props.playerCharacters.length > 0 && (
-              <button
-                onClick={addPcTokens}
-                title="Create a token for each player character that doesn't already have one in this scene"
-                style={{
-                  padding: '5px 12px',
-                  background: 'rgba(52,211,153,0.18)',
-                  border: '1px solid rgba(52,211,153,0.5)',
-                  borderRadius: 'var(--r-sm, 4px)',
-                  color: '#34d399',
-                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                  letterSpacing: '0.04em',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.3)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.18)'; }}
-              >
-                + Add PC Tokens
-              </button>
-            )}
-            <button
-              onClick={addToken}
-              title="Add a token at viewport center"
-              style={{
-                padding: '5px 12px',
-                background: 'rgba(167,139,250,0.2)',
-                border: '1px solid rgba(167,139,250,0.5)',
-                borderRadius: 'var(--r-sm, 4px)',
-                color: '#a78bfa',
-                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                letterSpacing: '0.04em',
-                cursor: 'pointer',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.32)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.2)'; }}
-            >
-              + Add Token
-            </button>
-          </div>
-        )}
+        {/* v2.228 — DM action toolbar moved out to its own solid bar
+            above the canvas (see block above the wrapperRef div). The
+            in-canvas position was hard to read against busy maps. */}
 
         <div
           style={{
