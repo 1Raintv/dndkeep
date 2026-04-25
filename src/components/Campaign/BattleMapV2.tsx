@@ -166,6 +166,7 @@ import { supabase } from '../../lib/supabase';
 import ChecksPanel from './ChecksPanel';
 import type { Character } from '../../types';
 import { useToast } from '../shared/Toast';
+import { useUndoRedo } from '../../lib/hooks/useUndoRedo';
 import { useModal } from '../shared/Modal';
 import NpcRosterPickerModal, { type RosterSelection } from './NpcRosterPickerModal';
 import NpcRosterBuilderModal from './NpcRosterBuilderModal';
@@ -1185,8 +1186,16 @@ function TextLayer(props: {
   active: boolean;
   isDM: boolean;
   currentSceneId: string | null;
+  // v2.255.0 — when true (and active is false), left-mouse-drag on an
+  // existing text translates it. Right-click still deletes; left-click
+  // without a drag still does nothing in select mode (text edits
+  // happen via the text-tool flow above).
+  selectMode?: boolean;
+  // v2.255.0 — undo/redo: caller passes the record fn so create/edit/
+  // delete/move all push reverse closures onto the history stack.
+  recordUndoable?: (action: import('../../lib/hooks/useUndoRedo').UndoableAction) => void;
 }) {
-  const { viewport, canvasEl, active, isDM, currentSceneId } = props;
+  const { viewport, canvasEl, active, isDM, currentSceneId, selectMode, recordUndoable } = props;
   const texts = useBattleMapStore(s => s.texts);
   const containerRef = useRef<Container | null>(null);
   // v2.241 — non-blocking modal handles for prompts/confirms.
@@ -1199,6 +1208,9 @@ function TextLayer(props: {
   const confirmRef = useRef(confirmModal);
   useEffect(() => { promptRef.current = promptModal; }, [promptModal]);
   useEffect(() => { confirmRef.current = confirmModal; }, [confirmModal]);
+  // v2.255.0 — same ref-mirroring pattern for the new props.
+  const recordUndoableRef = useRef(recordUndoable);
+  useEffect(() => { recordUndoableRef.current = recordUndoable; }, [recordUndoable]);
 
   // Mount/unmount the container that holds all Text children.
   useEffect(() => {
@@ -1311,14 +1323,41 @@ function TextLayer(props: {
             danger: true,
           });
           if (!ok) return;
+          // v2.255.0 — undo: snapshot the full text so undo can re-add it.
+          const snapshot = { ...existing };
           useBattleMapStore.getState().removeText(existing.id);
           textsApi.deleteText(existing.id).catch(err =>
             console.error('[TextLayer] deleteText failed', err));
+          recordUndoableRef.current?.({
+            label: `delete text "${snapshot.text}"`,
+            forward: () => {
+              useBattleMapStore.getState().removeText(snapshot.id);
+              return textsApi.deleteText(snapshot.id).then(() => undefined);
+            },
+            backward: () => {
+              useBattleMapStore.getState().addText(snapshot);
+              return textsApi.createText(snapshot).then(() => undefined);
+            },
+          });
           return;
         }
+        // v2.255.0 — undo: capture before/after text for round-trip.
+        const beforeText = existing.text;
+        const afterText = trimmed;
         useBattleMapStore.getState().updateText(existing.id, { text: trimmed });
         textsApi.updateText(existing.id, { text: trimmed }).catch(err =>
           console.error('[TextLayer] updateText failed', err));
+        recordUndoableRef.current?.({
+          label: `edit text → "${afterText}"`,
+          forward: () => {
+            useBattleMapStore.getState().updateText(existing.id, { text: afterText });
+            return textsApi.updateText(existing.id, { text: afterText }).then(() => undefined);
+          },
+          backward: () => {
+            useBattleMapStore.getState().updateText(existing.id, { text: beforeText });
+            return textsApi.updateText(existing.id, { text: beforeText }).then(() => undefined);
+          },
+        });
         return;
       }
 
@@ -1349,6 +1388,18 @@ function TextLayer(props: {
       useBattleMapStore.getState().addText(newText);
       textsApi.createText(newText).catch(err =>
         console.error('[TextLayer] createText failed', err));
+      // v2.255.0 — undo: round-trip via add/delete.
+      recordUndoableRef.current?.({
+        label: `add text "${trimmed}"`,
+        forward: () => {
+          useBattleMapStore.getState().addText(newText);
+          return textsApi.createText(newText).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().removeText(newText.id);
+          return textsApi.deleteText(newText.id).then(() => undefined);
+        },
+      });
     }
 
     async function onRightClick(e: MouseEvent) {
@@ -1368,9 +1419,22 @@ function TextLayer(props: {
         danger: true,
       });
       if (!ok) return;
+      // v2.255.0 — undo: snapshot before delete so we can restore.
+      const snapshot = { ...found };
       useBattleMapStore.getState().removeText(found.id);
       textsApi.deleteText(found.id).catch(err =>
         console.error('[TextLayer] deleteText failed', err));
+      recordUndoableRef.current?.({
+        label: `delete text "${snapshot.text}"`,
+        forward: () => {
+          useBattleMapStore.getState().removeText(snapshot.id);
+          return textsApi.deleteText(snapshot.id).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().addText(snapshot);
+          return textsApi.createText(snapshot).then(() => undefined);
+        },
+      });
     }
 
     canvasEl.addEventListener('click', onLeftClick);
@@ -1383,6 +1447,121 @@ function TextLayer(props: {
       canvasEl.removeEventListener('contextmenu', onRightClick, true);
     };
   }, [active, canvasEl, viewport, isDM, currentSceneId]);
+
+  // v2.255.0 — Select-mode drag-to-reposition. Separate effect so it
+  // attaches independently of the text-tool active flag. Listens for
+  // mouse-down on a text in select mode (no tool active), tracks the
+  // drag, and commits the new position on mouseup. Records an undo
+  // entry only on actual movement (a click that doesn't drag is a
+  // no-op so we don't pollute the history).
+  useEffect(() => {
+    if (!selectMode || active || !canvasEl || !viewport || !isDM || !currentSceneId) return;
+
+    function clientToWorld(e: MouseEvent): { x: number; y: number } | null {
+      if (!canvasEl || !viewport) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wp = viewport.toWorld(sx, sy);
+      return { x: wp.x, y: wp.y };
+    }
+
+    function findTextAt(world: { x: number; y: number }): SceneText | null {
+      const c = containerRef.current;
+      if (!c) return null;
+      for (let i = c.children.length - 1; i >= 0; i--) {
+        const child = c.children[i];
+        const id = (child as any).__sceneTextId as string | undefined;
+        if (!id) continue;
+        const b = child.getBounds();
+        if (world.x >= b.minX && world.x <= b.maxX
+            && world.y >= b.minY && world.y <= b.maxY) {
+          const found = useBattleMapStore.getState().texts[id];
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    // Drag state. Starts null; populated on mousedown over a text.
+    // We snapshot the original x/y for both undo and the cancel-on-
+    // tiny-movement guard.
+    let drag: {
+      id: string;
+      startWorld: { x: number; y: number };
+      startTextX: number;
+      startTextY: number;
+    } | null = null;
+
+    function onDown(e: MouseEvent) {
+      if (e.button !== 0) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+      const hit = findTextAt(w);
+      if (!hit) return;
+      drag = {
+        id: hit.id,
+        startWorld: w,
+        startTextX: hit.x,
+        startTextY: hit.y,
+      };
+      // Don't preventDefault here — let viewport panning detection still
+      // see the down. We claim move/up only.
+    }
+
+    function onMove(e: MouseEvent) {
+      if (!drag) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+      const dx = w.x - drag.startWorld.x;
+      const dy = w.y - drag.startWorld.y;
+      useBattleMapStore.getState().updateText(drag.id, {
+        x: drag.startTextX + dx,
+        y: drag.startTextY + dy,
+      });
+    }
+
+    function onUp(e: MouseEvent) {
+      if (!drag) return;
+      const w = clientToWorld(e);
+      if (!w) { drag = null; return; }
+      const dx = w.x - drag.startWorld.x;
+      const dy = w.y - drag.startWorld.y;
+      // Threshold: < 2 world-px is "click, not drag" — bail without
+      // committing or recording undo. Pixi click handler above will
+      // fire and route to the edit-text flow.
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) { drag = null; return; }
+      const finalX = drag.startTextX + dx;
+      const finalY = drag.startTextY + dy;
+      const id = drag.id;
+      const beforeX = drag.startTextX;
+      const beforeY = drag.startTextY;
+      drag = null;
+      // Commit to DB. Local store was already updated mid-drag.
+      textsApi.updateText(id, { x: finalX, y: finalY }).catch(err =>
+        console.error('[TextLayer] drag commit failed', err));
+      recordUndoableRef.current?.({
+        label: 'move text',
+        forward: () => {
+          useBattleMapStore.getState().updateText(id, { x: finalX, y: finalY });
+          return textsApi.updateText(id, { x: finalX, y: finalY }).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().updateText(id, { x: beforeX, y: beforeY });
+          return textsApi.updateText(id, { x: beforeX, y: beforeY }).then(() => undefined);
+        },
+      });
+    }
+
+    canvasEl.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      canvasEl.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [selectMode, active, canvasEl, viewport, isDM, currentSceneId]);
 
   return null;
 }
@@ -1425,8 +1604,14 @@ function DrawingLayer(props: {
   color: string;
   /** Stroke width in pixels for new drawings. */
   lineWidth: number;
+  // v2.255.0 — same select-mode drag-to-reposition + undo plumbing as
+  // TextLayer. Drag in select mode translates the drawing (all points
+  // shifted by dx/dy); record() pushes reverse closures for create/
+  // delete/move so Cmd-Z reverts.
+  selectMode?: boolean;
+  recordUndoable?: (action: import('../../lib/hooks/useUndoRedo').UndoableAction) => void;
 }) {
-  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth } = props;
+  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth, selectMode, recordUndoable } = props;
   const drawings = useBattleMapStore(s => s.drawings);
   const containerRef = useRef<Container | null>(null);
   const previewGfxRef = useRef<Graphics | null>(null);
@@ -1443,6 +1628,9 @@ function DrawingLayer(props: {
   useEffect(() => { widthRef.current = lineWidth; }, [lineWidth]);
   const activeKindRef = useRef<DrawingKind | null>(null);
   useEffect(() => { activeKindRef.current = activeKind; }, [activeKind]);
+  // v2.255.0 — undo record fn ref, same pattern as elsewhere.
+  const recordUndoableRef = useRef(recordUndoable);
+  useEffect(() => { recordUndoableRef.current = recordUndoable; }, [recordUndoable]);
 
   // Mount/unmount drawings container (committed shapes).
   useEffect(() => {
@@ -1653,6 +1841,18 @@ function DrawingLayer(props: {
       useBattleMapStore.getState().addDrawing(drawing);
       drawingsApi.createDrawing(drawing).catch(err =>
         console.error('[DrawingLayer] createDrawing failed', err));
+      // v2.255.0 — undo: round-trip via add/delete.
+      recordUndoableRef.current?.({
+        label: `add ${drawing.kind}`,
+        forward: () => {
+          useBattleMapStore.getState().addDrawing(drawing);
+          return drawingsApi.createDrawing(drawing).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().removeDrawing(drawing.id);
+          return drawingsApi.deleteDrawing(drawing.id).then(() => undefined);
+        },
+      });
     }
 
     async function onContextMenu(e: MouseEvent) {
@@ -1670,9 +1870,22 @@ function DrawingLayer(props: {
         danger: true,
       });
       if (!ok) return;
+      // v2.255.0 — undo: snapshot the full drawing so undo can re-add it.
+      const snapshot = { ...found, points: found.points.map(p => ({ ...p })) };
       useBattleMapStore.getState().removeDrawing(found.id);
       drawingsApi.deleteDrawing(found.id).catch(err =>
         console.error('[DrawingLayer] deleteDrawing failed', err));
+      recordUndoableRef.current?.({
+        label: `delete ${snapshot.kind}`,
+        forward: () => {
+          useBattleMapStore.getState().removeDrawing(snapshot.id);
+          return drawingsApi.deleteDrawing(snapshot.id).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().addDrawing(snapshot);
+          return drawingsApi.createDrawing(snapshot).then(() => undefined);
+        },
+      });
     }
 
     canvasEl.addEventListener('pointerdown', onPointerDown);
@@ -1691,6 +1904,108 @@ function DrawingLayer(props: {
       if (g) g.clear();
     };
   }, [activeKind, canvasEl, viewport, isDM, currentSceneId]);
+
+  // v2.255.0 — Select-mode drag-to-reposition for drawings. Same shape
+  // as TextLayer's: gated on selectMode && !activeKind, mouse-down
+  // captures the hit drawing, mouse-move shifts all points, mouse-up
+  // commits + records undo. Pencil drawings translate as a unit (every
+  // sample shifts by dx/dy), preserving the freehand shape.
+  useEffect(() => {
+    if (!selectMode || activeKind || !canvasEl || !viewport || !isDM || !currentSceneId) return;
+
+    function clientToWorld(e: MouseEvent): { x: number; y: number } | null {
+      if (!canvasEl || !viewport) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wp = viewport.toWorld(sx, sy);
+      return { x: wp.x, y: wp.y };
+    }
+
+    function findDrawingAt(world: { x: number; y: number }): SceneDrawing | null {
+      const c = containerRef.current;
+      if (!c) return null;
+      for (let i = c.children.length - 1; i >= 0; i--) {
+        const child = c.children[i];
+        const id = (child as any).__drawingId as string | undefined;
+        if (!id) continue;
+        const b = child.getBounds();
+        const pad = 6;
+        if (world.x >= b.minX - pad && world.x <= b.maxX + pad
+            && world.y >= b.minY - pad && world.y <= b.maxY + pad) {
+          const found = useBattleMapStore.getState().drawings[id];
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    let drag: {
+      id: string;
+      startWorld: { x: number; y: number };
+      startPoints: { x: number; y: number }[];
+    } | null = null;
+
+    function onDown(e: MouseEvent) {
+      if (e.button !== 0) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+      const hit = findDrawingAt(w);
+      if (!hit) return;
+      drag = {
+        id: hit.id,
+        startWorld: w,
+        // Deep-copy points so the original isn't mutated mid-drag.
+        startPoints: hit.points.map(p => ({ ...p })),
+      };
+    }
+
+    function onMove(e: MouseEvent) {
+      if (!drag) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+      const dx = w.x - drag.startWorld.x;
+      const dy = w.y - drag.startWorld.y;
+      const shifted = drag.startPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+      useBattleMapStore.getState().updateDrawing(drag.id, { points: shifted });
+    }
+
+    function onUp(e: MouseEvent) {
+      if (!drag) return;
+      const w = clientToWorld(e);
+      if (!w) { drag = null; return; }
+      const dx = w.x - drag.startWorld.x;
+      const dy = w.y - drag.startWorld.y;
+      // Same 2-px deadzone as TextLayer.
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) { drag = null; return; }
+      const id = drag.id;
+      const startPoints = drag.startPoints;
+      const finalPoints = startPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+      drag = null;
+      drawingsApi.updateDrawing(id, { points: finalPoints }).catch(err =>
+        console.error('[DrawingLayer] drag commit failed', err));
+      recordUndoableRef.current?.({
+        label: 'move drawing',
+        forward: () => {
+          useBattleMapStore.getState().updateDrawing(id, { points: finalPoints });
+          return drawingsApi.updateDrawing(id, { points: finalPoints }).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().updateDrawing(id, { points: startPoints });
+          return drawingsApi.updateDrawing(id, { points: startPoints }).then(() => undefined);
+        },
+      });
+    }
+
+    canvasEl.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      canvasEl.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [selectMode, activeKind, canvasEl, viewport, isDM, currentSceneId]);
 
   return null;
 }
@@ -4304,6 +4619,12 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const [scenesLoading, setScenesLoading] = useState(true);
   const loading = useBattleMapStore(s => s.loading);
 
+  // v2.255.0 — undo/redo stack for drawings + texts. Scene-scoped
+  // (history resets on scene switch). Bound to Cmd-Z / Cmd-Shift-Z
+  // by the hook's own keyboard listener; we just consume `record`
+  // and pass it down to TextLayer + DrawingLayer.
+  const { record: recordUndoable } = useUndoRedo(currentScene?.id ?? null);
+
   // Derive world dimensions from the current scene (fallback to
   // defaults so the empty-state screen still renders a reasonable
   // placeholder grid behind the CTA).
@@ -4513,6 +4834,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           const store = useBattleMapStore.getState();
           if (payload.eventType === 'INSERT') {
             store.addDrawing(drawingsApi.dbRowToSceneDrawing(payload.new));
+          } else if (payload.eventType === 'UPDATE') {
+            // v2.255.0 — drawings are now mutable (drag-to-reposition).
+            // Project the row through the same mapper as INSERT so
+            // the local cache stays consistent with the DB shape.
+            store.updateDrawing(payload.new.id, drawingsApi.dbRowToSceneDrawing(payload.new));
           } else if (payload.eventType === 'DELETE') {
             const oldRow = payload.old;
             if (oldRow?.id) store.removeDrawing(oldRow.id);
@@ -5737,6 +6063,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     active={textActive}
                     isDM={isDM}
                     currentSceneId={currentScene?.id ?? null}
+                    selectMode={!textActive && drawActive == null}
+                    recordUndoable={recordUndoable}
                   />
                   {/* v2.235 — DrawingLayer renders pencil/line/rect/
                       circle annotations and authors new drawings via
@@ -5754,6 +6082,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     currentSceneId={currentScene?.id ?? null}
                     color={drawColor}
                     lineWidth={drawLineWidth}
+                    selectMode={!textActive && drawActive == null}
+                    recordUndoable={recordUndoable}
                   />
                   {/* v2.236 — FxLayer renders ephemeral particle
                       effects. Mounted last (top of z-stack) so
@@ -6138,7 +6468,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             }}>
               Color
             </div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               {['#a78bfa', '#f87171', '#60a5fa', '#34d399', '#fbbf24', '#ffffff'].map(hex => (
                 <button
                   key={hex}
@@ -6154,6 +6484,51 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                   }}
                 />
               ))}
+              {/* v2.255.0 — freeform hex color. Native <input type="color">
+                  acts as the visual picker (DM clicks the swatch, the OS
+                  native picker opens). The text input lets DMs paste a
+                  specific hex (e.g. from a campaign palette) without
+                  going through the picker. Both bind to the same state.
+                  Validated to #RGB or #RRGGBB shape before commit so a
+                  half-typed string doesn't clobber the active color. */}
+              <input
+                type="color"
+                value={drawColor}
+                onChange={(e) => setDrawColor(e.target.value)}
+                title="Pick any color"
+                style={{
+                  width: 22, height: 22,
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  padding: 0,
+                  background: 'transparent',
+                  marginLeft: 2,
+                }}
+              />
+              <input
+                type="text"
+                value={drawColor}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  // Permissive while typing; only commit when shape matches.
+                  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
+                    setDrawColor(v);
+                  }
+                }}
+                placeholder="#hex"
+                spellCheck={false}
+                style={{
+                  width: 70, height: 22,
+                  background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 4,
+                  color: 'var(--t-1)',
+                  fontSize: 10, fontFamily: 'monospace',
+                  padding: '0 6px',
+                  marginLeft: 2,
+                }}
+              />
             </div>
             <div style={{
               fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800,

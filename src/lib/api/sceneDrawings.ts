@@ -90,3 +90,27 @@ export async function deleteDrawing(id: string): Promise<boolean> {
   }
   return true;
 }
+
+/** v2.255.0 — patch an existing drawing. Used by drag-to-reposition
+ *  (rewrites the points array with translated coords) and would
+ *  support recolor/recoordinate later. Same fire-and-forget contract
+ *  as the rest of this module: callers update the local store first,
+ *  then call this; failures log but don't roll back. */
+export async function updateDrawing(
+  id: string,
+  patch: Partial<Pick<SceneDrawing, 'points' | 'color' | 'lineWidth'>>,
+): Promise<boolean> {
+  const row: Record<string, unknown> = {};
+  if (patch.points !== undefined) row.points = patch.points.map(p => [p.x, p.y]);
+  if (patch.color !== undefined) row.color = patch.color;
+  if (patch.lineWidth !== undefined) row.line_width = patch.lineWidth;
+  const { error } = await supabase
+    .from('scene_drawings')
+    .update(row)
+    .eq('id', id);
+  if (error) {
+    console.error('[sceneDrawings] updateDrawing failed', error);
+    return false;
+  }
+  return true;
+}

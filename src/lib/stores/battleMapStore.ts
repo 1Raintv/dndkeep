@@ -176,8 +176,12 @@ interface BattleMapStore {
   updateText: (id: string, patch: Partial<SceneText>) => void;
   removeText: (id: string) => void;
   setTextsBulk: (texts: SceneText[]) => void;
-  // v2.235 drawing mutators — drawings are immutable, so no update.
+  // v2.235 drawing mutators. v2.255 added updateDrawing for the
+  // drag-to-reposition flow — drawings can now be moved, recolored,
+  // or rewidthed in place. The data shape (jsonb points + scalar
+  // color/lineWidth) supports all of that without a schema change.
   addDrawing: (drawing: SceneDrawing) => void;
+  updateDrawing: (id: string, patch: Partial<SceneDrawing>) => void;
   removeDrawing: (id: string) => void;
   setDrawingsBulk: (drawings: SceneDrawing[]) => void;
   resetForScene: (sceneId: string | null) => void;
@@ -272,6 +276,13 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
 
   addDrawing: (drawing) =>
     set((s) => ({ drawings: { ...s.drawings, [drawing.id]: drawing } })),
+
+  updateDrawing: (id, patch) =>
+    set((s) => {
+      const existing = s.drawings[id];
+      if (!existing) return s;
+      return { drawings: { ...s.drawings, [id]: { ...existing, ...patch } } };
+    }),
 
   removeDrawing: (id) =>
     set((s) => {
