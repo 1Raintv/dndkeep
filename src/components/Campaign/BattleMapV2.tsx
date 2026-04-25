@@ -168,6 +168,7 @@ import type { Character } from '../../types';
 import { useToast } from '../shared/Toast';
 import { useModal } from '../shared/Modal';
 import NpcRosterPickerModal, { type RosterSelection } from './NpcRosterPickerModal';
+import NpcRosterBuilderModal from './NpcRosterBuilderModal';
 import NpcTokenQuickPanel from './NpcTokenQuickPanel';
 import * as npcRosterApi from '../../lib/api/npcRoster';
 import * as npcsApi from '../../lib/api/npcs';
@@ -4919,6 +4920,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // orphans (npcs rows without a matching token). Acceptable because
   // the npcs row itself is harmless (DM can delete from NPCManager).
   const [npcPickerOpen, setNpcPickerOpen] = useState(false);
+  // v2.252.0 — roster builder modal. Lifted from v1's BattleMap inline
+  // panel so the DM can add/edit/delete entries without flipping to v1
+  // and back.
+  const [rosterBuilderOpen, setRosterBuilderOpen] = useState(false);
   const addRosterTokens = useCallback(async (selections: RosterSelection[]) => {
     const vp = vpRef.current;
     if (!vp || !currentScene) return;
@@ -5593,6 +5598,31 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               + Add NPCs
             </button>
           )}
+          {/* v2.252.0 — DM-only "Manage Roster" button. Sits next to
+              "+ Add NPCs" because the two are conceptually adjacent
+              (build the roster, then place from it). Smaller and more
+              subdued visually so it doesn't compete with the primary
+              add-to-map action. */}
+          {isDM && (
+            <button
+              onClick={() => setRosterBuilderOpen(true)}
+              title="Add, edit, or delete entries in your NPC roster"
+              style={{
+                padding: '6px 10px',
+                background: 'transparent',
+                border: '1px solid rgba(239,68,68,0.4)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: 'rgba(252,165,165,0.85)',
+                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.12)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+            >
+              Manage Roster
+            </button>
+          )}
           <button
             onClick={addToken}
             title="Add a token at viewport center"
@@ -6254,6 +6284,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               setNpcPickerOpen(false);
               addRosterTokens(selections);
             }}
+          />
+        )}
+
+        {/* v2.252.0 — NPC roster builder. DM-only. Opens on "Manage
+            Roster" click in the Tokens toolbar. List + edit form for
+            dm_npc_roster entries. Closes on ✕ or Esc; saves trigger an
+            in-modal reload (no parent state to invalidate — the picker
+            re-fetches on its own open). */}
+        {rosterBuilderOpen && isDM && userId && (
+          <NpcRosterBuilderModal
+            ownerId={userId}
+            campaignId={campaignId}
+            onClose={() => setRosterBuilderOpen(false)}
           />
         )}
 

@@ -73,3 +73,77 @@ export async function bumpRosterUsage(id: string, currentTimesUsed: number): Pro
     .eq('id', id);
   if (error) console.error('[npcRoster] bumpRosterUsage failed', error);
 }
+
+// v2.252.0 — Roster builder helpers. Lifted from v1's BattleMap.tsx
+// inline supabase calls so the new v2 builder modal and the legacy v1
+// surface (still around for the deprecation window) can share one
+// implementation.
+
+/** Fields the builder UI lets the DM edit. id, owner_id, campaign_id,
+ *  times_used, last_used_at, created_at, updated_at are managed by
+ *  the helpers — the form never touches them directly. */
+export type RosterEntryDraft = Omit<
+  RosterEntry,
+  'id' | 'owner_id' | 'campaign_id' | 'times_used' | 'last_used_at' | 'created_at' | 'updated_at'
+>;
+
+/** Create or update a roster entry. When `id` is provided we UPDATE
+ *  (preserves times_used/last_used_at); otherwise we INSERT a new row
+ *  scoped to the calling DM. Returns the saved row on success. */
+export async function upsertRosterEntry(
+  ownerId: string,
+  campaignId: string,
+  draft: RosterEntryDraft,
+  id?: string,
+): Promise<RosterEntry | null> {
+  if (id) {
+    // UPDATE path — preserves times_used / last_used_at / created_at.
+    // updated_at is bumped explicitly because the DB default only fires
+    // on INSERT.
+    const { data, error } = await supabase
+      .from('dm_npc_roster')
+      .update({ ...draft, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) {
+      console.error('[npcRoster] upsertRosterEntry UPDATE failed', error);
+      return null;
+    }
+    return data as RosterEntry;
+  }
+  // INSERT path — owner_id is required; campaign_id is informational
+  // (which campaign the DM was in when they created the entry). We
+  // explicitly initialize times_used to 0 so the picker's sort-by-usage
+  // surface treats freshly-created entries consistently.
+  const { data, error } = await supabase
+    .from('dm_npc_roster')
+    .insert({
+      ...draft,
+      owner_id: ownerId,
+      campaign_id: campaignId,
+      times_used: 0,
+    })
+    .select()
+    .single();
+  if (error) {
+    console.error('[npcRoster] upsertRosterEntry INSERT failed', error);
+    return null;
+  }
+  return data as RosterEntry;
+}
+
+/** Hard-delete a roster entry. Spawned npcs rows that reference the
+ *  same data via name match are NOT touched — the snapshot model means
+ *  they keep functioning even after the source roster row is gone. */
+export async function deleteRosterEntry(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('dm_npc_roster')
+    .delete()
+    .eq('id', id);
+  if (error) {
+    console.error('[npcRoster] deleteRosterEntry failed', error);
+    return false;
+  }
+  return true;
+}
