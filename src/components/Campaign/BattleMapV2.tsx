@@ -579,9 +579,13 @@ function RulerLayer(props: {
   const containerRef = useRef<Container | null>(null);
   const graphicsRef = useRef<Graphics | null>(null);
   const labelRef = useRef<Text | null>(null);
-  // dragRef holds the WORLD coords of the start cell center while
-  // a measurement is in progress.
-  const dragRef = useRef<{ startX: number; startY: number } | null>(null);
+  // v2.256.0 — pointsRef holds the WORLD coords of every committed
+  // ruler vertex. Click 1 places the start point; subsequent clicks
+  // append segments; right-click or Esc finishes the ruler. The
+  // pendingPos cursor is the live preview between the last committed
+  // vertex and the mouse.
+  const pointsRef = useRef<{ x: number; y: number }[]>([]);
+  const pendingPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Mount/unmount the ruler display tree whenever the viewport
   // identity or `active` flag changes.
@@ -601,7 +605,7 @@ function RulerLayer(props: {
     }
 
     const container = new Container();
-    container.visible = false; // hidden until mid-drag
+    container.visible = false; // hidden until first click
     const gfx = new Graphics();
     const label = new Text({
       text: '',
@@ -630,7 +634,8 @@ function RulerLayer(props: {
       containerRef.current = null;
       graphicsRef.current = null;
       labelRef.current = null;
-      dragRef.current = null;
+      pointsRef.current = [];
+      pendingPosRef.current = null;
     };
   }, [viewport, active]);
 
@@ -639,7 +644,7 @@ function RulerLayer(props: {
   useEffect(() => {
     if (!active || !viewport || !canvasEl) return;
 
-    function worldPointFromEvent(e: PointerEvent): { x: number; y: number } | null {
+    function worldPointFromEvent(e: PointerEvent | MouseEvent): { x: number; y: number } | null {
       if (!viewport || !canvasEl) return null;
       const rect = canvasEl.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
@@ -647,83 +652,150 @@ function RulerLayer(props: {
       return viewport.toWorld(screenX, screenY);
     }
 
-    function redraw(endX: number, endY: number) {
-      const drag = dragRef.current;
+    /**
+     * v2.256.0 — render all committed segments + the pending preview
+     * leg from the last committed vertex to the mouse cursor. Distance
+     * label sums every leg in feet/cells (Chebyshev per leg) so an
+     * L-shaped path reads as the total movement, not just the
+     * end-to-end straight line.
+     */
+    function redraw() {
+      const pts = pointsRef.current;
+      const pending = pendingPosRef.current;
       const gfx = graphicsRef.current;
       const label = labelRef.current;
       const container = containerRef.current;
-      if (!drag || !gfx || !label || !container) return;
+      if (!gfx || !label || !container) return;
+      if (pts.length === 0) {
+        container.visible = false;
+        return;
+      }
 
-      // Snap endpoint to its cell center for consistent readings.
-      const startCell = snapToCellCenter(drag.startX, drag.startY, gridSizePx);
-      const endCell = snapToCellCenter(endX, endY, gridSizePx);
+      // Snap every committed vertex AND the preview cursor to cell
+      // centers — keeps readings consistent with grid-based movement.
+      const snapped = pts.map(p => snapToCellCenter(p.x, p.y, gridSizePx));
+      const previewSnapped = pending
+        ? snapToCellCenter(pending.x, pending.y, gridSizePx)
+        : null;
 
       gfx.clear();
-      gfx.setStrokeStyle({ color: 0xfbbf24, width: 3, alpha: 0.9 });
-      gfx.moveTo(startCell.x, startCell.y);
-      gfx.lineTo(endCell.x, endCell.y);
-      gfx.stroke();
-      // Small end cap dots for visibility.
+
+      // Solid line for committed segments.
+      if (snapped.length >= 2) {
+        gfx.setStrokeStyle({ color: 0xfbbf24, width: 3, alpha: 0.9 });
+        gfx.moveTo(snapped[0].x, snapped[0].y);
+        for (let i = 1; i < snapped.length; i++) {
+          gfx.lineTo(snapped[i].x, snapped[i].y);
+        }
+        gfx.stroke();
+      }
+
+      // Dashed-feel preview (just lower alpha — Pixi v8 doesn't have
+      // a setLineDash; lower alpha + slimmer width reads as "tentative").
+      if (previewSnapped) {
+        const last = snapped[snapped.length - 1];
+        gfx.setStrokeStyle({ color: 0xfbbf24, width: 2, alpha: 0.5 });
+        gfx.moveTo(last.x, last.y);
+        gfx.lineTo(previewSnapped.x, previewSnapped.y);
+        gfx.stroke();
+      }
+
+      // Vertex dots — committed in solid yellow, preview tip slightly
+      // smaller and dimmer.
       gfx.setFillStyle({ color: 0xfbbf24, alpha: 0.95 });
-      gfx.circle(startCell.x, startCell.y, 4);
-      gfx.circle(endCell.x, endCell.y, 4);
+      for (const p of snapped) gfx.circle(p.x, p.y, 4);
       gfx.fill();
+      if (previewSnapped) {
+        gfx.setFillStyle({ color: 0xfbbf24, alpha: 0.6 });
+        gfx.circle(previewSnapped.x, previewSnapped.y, 3);
+        gfx.fill();
+      }
 
-      // Chebyshev distance in cells.
-      const dCol = Math.abs(Math.round((endCell.x - startCell.x) / gridSizePx));
-      const dRow = Math.abs(Math.round((endCell.y - startCell.y) / gridSizePx));
-      const cells = Math.max(dCol, dRow);
-      const feet = cells * 5;
+      // Sum Chebyshev distance over all legs (committed + preview).
+      // Walking the path leg-by-leg gives "total path traveled" rather
+      // than "displacement from start," which is what DMs care about
+      // when measuring an L-shaped move.
+      const allPts = previewSnapped ? [...snapped, previewSnapped] : snapped;
+      let totalCells = 0;
+      for (let i = 1; i < allPts.length; i++) {
+        const dCol = Math.abs(Math.round((allPts[i].x - allPts[i - 1].x) / gridSizePx));
+        const dRow = Math.abs(Math.round((allPts[i].y - allPts[i - 1].y) / gridSizePx));
+        totalCells += Math.max(dCol, dRow);
+      }
+      const feet = totalCells * 5;
 
-      label.text = `${feet} ft · ${cells} ${cells === 1 ? 'cell' : 'cells'}`;
-      // Anchor label near the end of the line, biased slightly toward
-      // the ruler's midpoint so it doesn't stick off-screen at high
-      // zoom.
-      label.position.set(endCell.x, endCell.y + gridSizePx * 0.5);
+      label.text = `${feet} ft · ${totalCells} ${totalCells === 1 ? 'cell' : 'cells'}`;
+      const tip = previewSnapped ?? snapped[snapped.length - 1];
+      label.position.set(tip.x, tip.y + gridSizePx * 0.5);
 
       container.visible = true;
     }
 
-    function onDown(e: PointerEvent) {
-      if (e.button !== 0) return; // left-mouse only
-      // Only intercept events targeting the canvas — if the user
-      // clicked a toolbar button, browser focus is elsewhere.
-      if (e.target !== canvasEl) return;
-      const worldPoint = worldPointFromEvent(e);
-      if (!worldPoint) return;
-      dragRef.current = { startX: worldPoint.x, startY: worldPoint.y };
-      // Seed with a zero-length line so the container appears
-      // immediately (feels responsive).
-      redraw(worldPoint.x, worldPoint.y);
-      // stopPropagation would fight with Pixi's event system — but
-      // since ruler mode short-circuits TokenLayer's pointerdown via
-      // the active flag, we don't need to here.
-    }
-
-    function onMove(e: PointerEvent) {
-      if (!dragRef.current) return;
-      const worldPoint = worldPointFromEvent(e);
-      if (!worldPoint) return;
-      redraw(worldPoint.x, worldPoint.y);
-    }
-
-    function onUp() {
-      if (!dragRef.current) return;
-      dragRef.current = null;
+    function reset() {
+      pointsRef.current = [];
+      pendingPosRef.current = null;
       const container = containerRef.current;
       if (container) container.visible = false;
     }
 
-    // pointerdown on the canvas (so clicks on the HTML buttons above
-    // don't start a measurement). Move/up on window so drags outside
-    // the canvas bounds still track.
+    function onDown(e: PointerEvent) {
+      // Left-click: add a vertex. First click starts the ruler;
+      // subsequent clicks add segments.
+      if (e.button === 0 && e.target === canvasEl) {
+        const wp = worldPointFromEvent(e);
+        if (!wp) return;
+        pointsRef.current = [...pointsRef.current, wp];
+        pendingPosRef.current = null;
+        redraw();
+        return;
+      }
+      // Right-click: finish the ruler (clear all). Stop propagation so
+      // the browser context menu (and any token contextmenu fallback)
+      // doesn't fire over the canvas.
+      if (e.button === 2 && pointsRef.current.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        reset();
+        return;
+      }
+    }
+
+    function onMove(e: PointerEvent) {
+      // Only show preview once at least one vertex is committed.
+      if (pointsRef.current.length === 0) return;
+      const wp = worldPointFromEvent(e);
+      if (!wp) return;
+      pendingPosRef.current = wp;
+      redraw();
+    }
+
+    function onContextMenu(e: MouseEvent) {
+      // Suppress browser context menu while ruler is active so
+      // right-click can finish the ruler cleanly.
+      if (e.target !== canvasEl) return;
+      e.preventDefault();
+    }
+
+    function onKey(e: KeyboardEvent) {
+      // Esc cancels an in-progress ruler. Enter also finishes it (just
+      // clears the preview tip; committed vertices stay visible until
+      // the user starts a new ruler with the next click).
+      if (e.key === 'Escape' && pointsRef.current.length > 0) {
+        e.preventDefault();
+        reset();
+      }
+    }
+
     canvasEl.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    canvasEl.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('keydown', onKey);
     return () => {
       canvasEl.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      canvasEl.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('keydown', onKey);
+      reset();
     };
   }, [active, viewport, canvasEl, gridSizePx]);
 
@@ -2064,16 +2136,23 @@ interface FxEffect {
   totalLife: number;
 }
 
-function spawnFxEffect(kind: FxKind, x: number, y: number): FxEffect {
+// v2.256.0 — intensity is a multiplier (0.25–2.0) that scales the
+// particle count for fire/sparkles/smoke. Lightning ignores it (one
+// bolt is one bolt). Default 1.0 preserves the v2.236 behavior so
+// existing callers don't need to thread the value through.
+function spawnFxEffect(kind: FxKind, x: number, y: number, intensity = 1): FxEffect {
   const id = Date.now() + Math.random();
   const particles: FxParticle[] = [];
   let totalLife = 1500;
   let boltPath: Array<{ x: number; y: number }> | undefined;
+  // Clamp + round so a slider at 0.25 still spawns a few particles
+  // (otherwise CR-low effects look broken). Floor of 4 per kind.
+  const scaled = (base: number) => Math.max(4, Math.round(base * intensity));
 
   if (kind === 'fire') {
     // Orange/red embers rising upward with horizontal jitter.
     const palette = [0xfbbf24, 0xf97316, 0xef4444];
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < scaled(30); i++) {
       const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.7;
       const speed = 0.04 + Math.random() * 0.06;
       particles.push({
@@ -2091,7 +2170,7 @@ function spawnFxEffect(kind: FxKind, x: number, y: number): FxEffect {
   } else if (kind === 'sparkles') {
     // Yellow/gold/white twinkles fanning outward.
     const palette = [0xfbbf24, 0xfde047, 0xffffff];
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < scaled(22); i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 0.05 + Math.random() * 0.08;
       particles.push({
@@ -2108,7 +2187,7 @@ function spawnFxEffect(kind: FxKind, x: number, y: number): FxEffect {
   } else if (kind === 'smoke') {
     // Gray puffs rising slowly, expanding.
     const palette = [0x6b7280, 0x9ca3af, 0x4b5563];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < scaled(16); i++) {
       const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.4;
       const speed = 0.018 + Math.random() * 0.025;
       particles.push({
@@ -2236,8 +2315,11 @@ function FxLayer(props: {
    *  installed inside this component, but kept ref-shaped for future
    *  use — e.g. attack pipeline hits → spawn fire on impact). */
   triggerRef: React.MutableRefObject<((kind: FxKind, x: number, y: number) => void) | null>;
+  /** v2.256.0 — particle-count multiplier (0.25–2.0). 1.0 = legacy
+   *  v2.236 behavior. Lightning ignores this (one bolt is one bolt). */
+  intensity?: number;
 }) {
-  const { viewport, canvasEl, activeKind, campaignId, currentSceneId, triggerRef } = props;
+  const { viewport, canvasEl, activeKind, campaignId, currentSceneId, triggerRef, intensity = 1 } = props;
   const gfxRef = useRef<Graphics | null>(null);
   const effectsRef = useRef<FxEffect[]>([]);
   const lastTimeRef = useRef<number>(0);
@@ -2245,6 +2327,11 @@ function FxLayer(props: {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const activeKindRef = useRef<FxKind | null>(null);
   useEffect(() => { activeKindRef.current = activeKind; }, [activeKind]);
+  // v2.256.0 — mirror intensity into a ref so the click/realtime
+  // handlers attached in the mount effect can read the latest value
+  // without re-binding on every slider change.
+  const intensityRef = useRef(intensity);
+  useEffect(() => { intensityRef.current = intensity; }, [intensity]);
 
   // Mount Graphics + start animation loop once per viewport.
   useEffect(() => {
@@ -2298,9 +2385,14 @@ function FxLayer(props: {
         const y = Number(payload.y);
         if (!kind || !Number.isFinite(x) || !Number.isFinite(y)) return;
         if (kind !== 'fire' && kind !== 'lightning' && kind !== 'sparkles' && kind !== 'smoke') return;
+        // v2.256.0 — accept intensity from the broadcast so remote
+        // viewers see the same density the caster picked. Falls back
+        // to 1.0 for messages from older clients (no schema bump).
+        const remoteIntensity = Number.isFinite(Number(payload.intensity))
+          ? Number(payload.intensity) : 1;
         // Spawn locally — no broadcast back (Supabase broadcast does
         // not echo to sender, and we don't want a loop anyway).
-        effectsRef.current.push(spawnFxEffect(kind, x, y));
+        effectsRef.current.push(spawnFxEffect(kind, x, y, remoteIntensity));
       })
       .subscribe();
     channelRef.current = channel;
@@ -2313,13 +2405,16 @@ function FxLayer(props: {
   // Expose trigger to parent. Spawning an FX = local push + broadcast.
   useEffect(() => {
     triggerRef.current = (kind: FxKind, x: number, y: number) => {
-      effectsRef.current.push(spawnFxEffect(kind, x, y));
+      // v2.256.0 — read the live intensity from the ref so a slider
+      // change between mount and click is honored without re-binding.
+      const i = intensityRef.current;
+      effectsRef.current.push(spawnFxEffect(kind, x, y, i));
       const ch = channelRef.current;
       if (ch) {
         ch.send({
           type: 'broadcast',
           event: 'fx',
-          payload: { kind, x, y },
+          payload: { kind, x, y, intensity: i },
         }).catch(() => { /* fire-and-forget */ });
       }
     };
@@ -2472,6 +2567,37 @@ function TokenLayer(props: {
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
+
+  // v2.256.0 — Lock-ring pulse animation. A single rAF walks every
+  // active TokenGfx and breathes the lockRing's alpha+scale. Cheaper
+  // than redrawing the ring geometry every frame (we only mutate
+  // transform fields). The ring's geometry is set once when it's
+  // attached (in the per-token reconcile below); this loop just
+  // animates its top-level transform.
+  //
+  // Period: ~1200ms full breath. Math.sin keeps the easing smooth at
+  // the endpoints. Range: alpha 0.55 → 1.0, scale 1.0 → 1.08 — small
+  // enough to read as "alive" without hijacking attention from the
+  // moving token.
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    function tick(now: number) {
+      const t = (now - start) / 1200;            // 1.2s per cycle
+      const phase = (Math.sin(t * Math.PI * 2) + 1) / 2; // 0..1
+      const alpha = 0.55 + phase * 0.45;
+      const scale = 1 + phase * 0.08;
+      for (const entry of gfxMapRef.current.values()) {
+        const ring = entry.lockRing;
+        if (!ring || ring.destroyed) continue;
+        ring.alpha = alpha;
+        ring.scale.set(scale);
+      }
+      raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   // v2.226 — track pointerdown screen pos + timestamp to distinguish
   // "click" (no drag) from "drag commit" on pointerup.
   const clickProbeRef = useRef<{
@@ -5416,6 +5542,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // v2.236 — FX particle mode. Either null (no FX tool) or one of
   // fire/lightning/sparkles/smoke. Five-way mutex with everything else.
   const [fxActive, setFxActive] = useState<FxKind | null>(null);
+  // v2.256.0 — particle-density multiplier for FX effects. 1.0 is the
+  // legacy v2.236 default; the slider goes 0.25 (subtle) → 2.0 (dense).
+  // Persisted in component state only (not localStorage / DB) — the
+  // value carries across cast clicks within a session, but resets on
+  // refresh. That matches the slider's visual proximity to the FX
+  // tools and avoids surprising DMs with a stale density next session.
+  const [fxIntensity, setFxIntensity] = useState(1);
   // Imperative trigger handle owned by FxLayer; we set it via ref.
   // Future ships (e.g. enemy attacks) can fire effects through this
   // without going through tool-mode UI.
@@ -6098,6 +6231,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     campaignId={campaignId}
                     currentSceneId={currentScene?.id ?? null}
                     triggerRef={triggerFxRef}
+                    intensity={fxIntensity}
                   />
                   {/* v2.224 — fog of war overlay. DM sees nothing
                       (no fog applied); players see dark over anything
@@ -6231,8 +6365,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           <button
             onClick={toggleRuler}
             title={rulerActive
-              ? 'Ruler active — click-drag on the map to measure. Click this button again to exit.'
-              : 'Ruler — click-drag on the map to measure distance in feet/cells.'}
+              ? 'Ruler active — left-click to add segments, right-click or Esc to finish.'
+              : 'Ruler — click to drop waypoints; the running total is shown at the cursor.'}
             style={{
               width: 36, height: 36,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -6563,6 +6697,76 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           </div>
         )}
 
+        {/* v2.256.0 — FX intensity slider. Only visible when an FX
+            kind is active so it doesn't crowd the toolbar otherwise.
+            Same visual idiom as the draw-color popover above. Range
+            0.25 (subtle puff) → 2.0 (dense stage effect). The label
+            chip shows the current multiplier and a percent so DMs can
+            ballpark "twice as many particles" without doing math. */}
+        {isDM && fxActive && (
+          <div
+            style={{
+              position: 'absolute', top: 60, left: 60,
+              display: 'flex', flexDirection: 'column' as const,
+              alignItems: 'flex-start', gap: 6,
+              padding: '8px 10px',
+              background: 'rgba(15,16,18,0.92)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 'var(--r-md, 8px)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              zIndex: 5,
+              minWidth: 180,
+            }}
+          >
+            <div style={{
+              fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800,
+              letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+              color: 'var(--t-3)',
+              display: 'flex', justifyContent: 'space-between' as const, width: '100%',
+            }}>
+              <span>FX Intensity</span>
+              <span style={{ color: '#22d3ee' }}>{Math.round(fxIntensity * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min={0.25}
+              max={2}
+              step={0.05}
+              value={fxIntensity}
+              onChange={(e) => setFxIntensity(parseFloat(e.target.value))}
+              style={{ width: '100%', accentColor: '#22d3ee' }}
+            />
+            {/* Quick presets — single-click to common values. */}
+            <div style={{ display: 'flex', gap: 4, width: '100%' }}>
+              {[
+                { v: 0.5, label: 'Subtle' },
+                { v: 1.0, label: 'Normal' },
+                { v: 1.5, label: 'Dense' },
+              ].map(p => (
+                <button
+                  key={p.v}
+                  onClick={() => setFxIntensity(p.v)}
+                  style={{
+                    flex: 1,
+                    padding: '3px 4px',
+                    background: Math.abs(fxIntensity - p.v) < 0.05
+                      ? 'rgba(34,211,238,0.22)' : 'transparent',
+                    border: `1px solid ${Math.abs(fxIntensity - p.v) < 0.05
+                      ? 'rgba(34,211,238,0.7)' : 'var(--c-border)'}`,
+                    borderRadius: 4,
+                    color: Math.abs(fxIntensity - p.v) < 0.05 ? '#22d3ee' : 'var(--t-2)',
+                    fontSize: 9, fontWeight: 700,
+                    cursor: 'pointer',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div
           style={{
             position: 'absolute', bottom: 12, left: 12,
@@ -6578,7 +6782,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           {wallActive
             ? 'Click to place wall vertices · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
             : rulerActive
-              ? 'Click-drag to measure · right/middle drag pans · wheel zooms'
+              ? 'Click to add waypoints · right-click/Esc to finish · right/middle drag pans · wheel zooms'
               : 'Drag tokens · right-click for options · right/middle drag pans · wheel zooms'}
         </div>
 
