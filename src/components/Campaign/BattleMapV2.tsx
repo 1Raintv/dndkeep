@@ -167,6 +167,9 @@ import ChecksPanel from './ChecksPanel';
 import type { Character } from '../../types';
 import { useToast } from '../shared/Toast';
 import { useModal } from '../shared/Modal';
+import NpcRosterPickerModal, { type RosterSelection } from './NpcRosterPickerModal';
+import * as npcRosterApi from '../../lib/api/npcRoster';
+import * as npcsApi from '../../lib/api/npcs';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -4606,6 +4609,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       color: TOKEN_COLORS[existingCount % TOKEN_COLORS.length],
       imageStoragePath: null,
       characterId: null,
+      npcId: null,
     };
     state.addToken(newToken);
     tokensApi.createToken(newToken).catch(err =>
@@ -4675,6 +4679,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         color: TOKEN_COLORS[(baseCount + idx) % TOKEN_COLORS.length],
         imageStoragePath: null,
         characterId: pc.id,
+        npcId: null,
       };
     });
 
@@ -4691,6 +4696,144 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       }
     })();
   }, [props.playerCharacters, currentScene, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT]);
+
+  // v2.242 — Phase Q.1 pt 30: NPC roster bulk-add.
+  //
+  // The picker modal collects {entry, count} pairs. On confirm we:
+  //   1. Determine disambiguating name suffixes per roster entry,
+  //      counting existing tokens on this scene with matching base
+  //      names so consecutive bulk-adds keep numbering continuous
+  //      (Goblin 1..3 from a previous add → next batch starts at 4).
+  //   2. Batch-INSERT one row per instance into `npcs` (each gets its
+  //      own HP/conditions, in_combat=true, visible_to_players=false).
+  //   3. Build N scene_tokens linked via npc_id, arranged in a
+  //      compact grid around viewport center, with the roster's
+  //      color and emoji-as-name fallback if the entry has no avatar.
+  //   4. Optimistic local store inserts, fire-and-forget DB inserts.
+  //   5. Bump `times_used` + `last_used_at` on each used roster entry.
+  //   6. Toast on success, error if any sub-step failed.
+  //
+  // Failure handling is pragmatic for v1 — partial commits leave
+  // orphans (npcs rows without a matching token). Acceptable because
+  // the npcs row itself is harmless (DM can delete from NPCManager).
+  const [npcPickerOpen, setNpcPickerOpen] = useState(false);
+  const addRosterTokens = useCallback(async (selections: RosterSelection[]) => {
+    const vp = vpRef.current;
+    if (!vp || !currentScene) return;
+    if (selections.length === 0) return;
+
+    const state = useBattleMapStore.getState();
+
+    // Compute existing name-base counts on this scene so we can
+    // continue numbering from the next free index. We use a loose
+    // "starts with name +' '" check to catch "Goblin 1", "Goblin 2"
+    // already on the map. Tokens whose name IS exactly the base
+    // (e.g., a single un-numbered "Goblin") count too.
+    const existingNamesOnScene = Object.values(state.tokens)
+      .filter(t => t.sceneId === currentScene.id)
+      .map(t => t.name);
+    function nextStartIndex(base: string): number {
+      let max = 0;
+      const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+(\\d+))?$`, 'i');
+      for (const n of existingNamesOnScene) {
+        const m = n.match(re);
+        if (m) {
+          const num = m[1] ? parseInt(m[1], 10) : 1;
+          if (num > max) max = num;
+        }
+      }
+      return max + 1;
+    }
+
+    // Count total tokens to add up-front so the grid pattern makes
+    // sense across heterogeneous selections (e.g., 3 Goblins + 2 Orcs
+    // → 5-token cluster).
+    const totalTokens = selections.reduce((sum, s) => sum + s.count, 0);
+    const perRow = Math.min(5, totalTokens);
+    const rows = Math.ceil(totalTokens / perRow);
+    const center = vp.center;
+    const snapped = snapToCellCenter(center.x, center.y, gridSizePx);
+    const startCol = Math.floor(-perRow / 2);
+    const startRow = Math.floor(-rows / 2);
+
+    // Build the npc instance specs first, in iteration order.
+    const allSpecs: Array<npcsApi.NpcInstanceSpec & { rosterId: string }> = [];
+    for (const sel of selections) {
+      const start = nextStartIndex(sel.entry.name);
+      for (let i = 0; i < sel.count; i++) {
+        const name = `${sel.entry.name} ${start + i}`;
+        // Track this name so subsequent selections don't collide.
+        existingNamesOnScene.push(name);
+        allSpecs.push({
+          name,
+          roster: sel.entry,
+          campaignId,
+          rosterId: sel.entry.id,
+        });
+      }
+    }
+
+    // Insert npcs rows in one batch. Result is an array of
+    // {id, name} matching the spec order.
+    const created = await npcsApi.createNpcInstances(allSpecs);
+    if (!created || created.length !== allSpecs.length) {
+      showToast('Failed to create NPC instances. Check console for details.', 'error');
+      return;
+    }
+
+    // Convert hex color string '#ef4444' to 24-bit number 0xef4444
+    // for the Token.color field (Pixi expects the numeric form).
+    function hexToColor(hex: string | null | undefined): number {
+      if (!hex) return 0xef4444;
+      const trimmed = hex.replace('#', '').slice(0, 6);
+      const n = parseInt(trimmed, 16);
+      return Number.isFinite(n) ? n : 0xef4444;
+    }
+
+    // Build scene_tokens linked to the new npcs, position grid-clustered.
+    const newTokens: Token[] = allSpecs.map((spec, idx) => {
+      const npc = created[idx];
+      const col = idx % perRow;
+      const row = Math.floor(idx / perRow);
+      const x = snapped.x + (startCol + col) * gridSizePx;
+      const y = snapped.y + (startRow + row) * gridSizePx;
+      const clampedX = Math.max(gridSizePx / 2, Math.min(WORLD_WIDTH - gridSizePx / 2, x));
+      const clampedY = Math.max(gridSizePx / 2, Math.min(WORLD_HEIGHT - gridSizePx / 2, y));
+      // Map roster size string (e.g. 'Medium') to TokenSize literal.
+      const sizeRaw = (spec.roster.size ?? 'medium').toLowerCase() as TokenSize;
+      const validSizes: TokenSize[] = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
+      const tokenSize: TokenSize = validSizes.includes(sizeRaw) ? sizeRaw : 'medium';
+      return {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `token-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
+        sceneId: currentScene.id,
+        x: clampedX,
+        y: clampedY,
+        size: tokenSize,
+        rotation: 0,
+        name: spec.name,
+        color: hexToColor(spec.roster.color),
+        imageStoragePath: null,
+        characterId: null,
+        npcId: npc.id,
+      };
+    });
+
+    // Optimistic local insert + fire-and-forget batch DB insert.
+    for (const t of newTokens) state.addToken(t);
+    (async () => {
+      for (const t of newTokens) {
+        try { await tokensApi.createToken(t); }
+        catch (err) { console.error('[BattleMapV2] roster token create failed', t.name, err); }
+      }
+    })();
+
+    // Bump usage on each unique roster entry. Fire-and-forget.
+    for (const sel of selections) {
+      npcRosterApi.bumpRosterUsage(sel.entry.id, sel.entry.times_used).catch(() => {/* ignore */});
+    }
+
+    showToast(`Added ${totalTokens} token${totalTokens === 1 ? '' : 's'} to the scene.`, 'success');
+  }, [currentScene, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, campaignId, showToast]);
 
   // v2.213 "New Scene" — creates an empty scene with default grid,
   // auto-selects it. DM-only via RLS + UI gating.
@@ -5180,6 +5323,30 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(52,211,153,0.18)'; }}
             >
               + Add PC Tokens
+            </button>
+          )}
+          {/* v2.242 — DM-only "+ Add NPCs" button. Opens the roster
+              picker for bulk NPC token placement from the DM's
+              dm_npc_roster. Red-accented to distinguish from the
+              green PC button (PC = friendly, NPC = hostile by default). */}
+          {isDM && (
+            <button
+              onClick={() => setNpcPickerOpen(true)}
+              title="Add NPCs from your roster"
+              style={{
+                padding: '6px 14px',
+                background: 'rgba(239,68,68,0.18)',
+                border: '1px solid rgba(239,68,68,0.55)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: '#fca5a5',
+                fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.32)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.18)'; }}
+            >
+              + Add NPCs
             </button>
           )}
           <button
@@ -5810,6 +5977,20 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             onClose={() => setSettingsOpen(false)}
             onScenePatched={applyScenePatch}
             onSceneDeleted={handleSceneDeleted}
+          />
+        )}
+
+        {/* v2.242 — NPC roster picker. DM-only. Opens on "+ Add NPCs"
+            click in the Tokens toolbar. On confirm, calls
+            addRosterTokens which batch-creates npcs rows + scene_tokens. */}
+        {npcPickerOpen && isDM && userId && (
+          <NpcRosterPickerModal
+            ownerId={userId}
+            onClose={() => setNpcPickerOpen(false)}
+            onConfirm={(selections) => {
+              setNpcPickerOpen(false);
+              addRosterTokens(selections);
+            }}
           />
         )}
 
