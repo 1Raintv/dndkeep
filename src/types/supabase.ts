@@ -1,4 +1,4 @@
-// Auto-generated from Supabase schema introspection at v2.250.0.
+// Auto-generated from Supabase schema introspection at v2.251.0.
 // Do NOT hand-edit. Regenerate via the live schema introspection
 // query in `information_schema.columns` for project
 // `ufowdrspkprlpdnjjkaj`, then re-run /home/claude/gen/gen.py.
@@ -1431,6 +1431,7 @@ export type Database = {
           ac: number | null;
           initiative: number | null;
           conditions: string[] | null;
+          ability_scores: Json;
         };
         Insert: {
           id?: string;
@@ -1456,6 +1457,7 @@ export type Database = {
           ac?: number | null;
           initiative?: number | null;
           conditions?: string[] | null;
+          ability_scores?: Json;
         };
         Update: {
           id?: string;
@@ -1481,6 +1483,7 @@ export type Database = {
           ac?: number | null;
           initiative?: number | null;
           conditions?: string[] | null;
+          ability_scores?: Json;
         };
         Relationships: [];
       };

@@ -1445,14 +1445,31 @@ export async function getTargetSaveBonus(
     .single();
   if (!part) return { bonus: 0, breakdown: '0 (no participant)', confidence: 'low' };
 
-  // v2.249.0 → v2.250.0 — NPC branch. The npcs table doesn't actually
-  // carry ability scores; only `dm_npc_roster` does (and those scores
-  // aren't snapshotted onto the spawned npc row). So every NPC save is
-  // a low-confidence 0 fallback right now — the modal shows the "?"
-  // indicator and lets the player/DM type an override. v2.251+: copy
-  // ability scores from dm_npc_roster onto the npcs row when spawning,
-  // OR walk back through source_monster_id to look them up at save time.
+  // v2.251.0 — NPC branch. Reads ability_scores jsonb on the npcs row,
+  // populated at spawn from dm_npc_roster. NPCs don't currently track
+  // save proficiencies (the dm_npc_roster table doesn't carry them
+  // either) — so this is mod-only, no proficiency bonus. That matches
+  // the simple stat-block model in the roster builder; if a DM wants
+  // a proficient save they can override the value in the modal.
+  // Falls back to 0 + low confidence when ability_scores is missing
+  // or the requested ability key isn't present (legacy rows from
+  // before v2.251 that the backfill didn't catch).
   if (part.participant_type === 'npc') {
+    const { data: n } = await supabase
+      .from('npcs')
+      .select('ability_scores')
+      .eq('id', part.entity_id)
+      .maybeSingle();
+    const scores = (n?.ability_scores ?? {}) as Record<string, number | undefined>;
+    const score = scores[ability.toLowerCase()];
+    if (typeof score === 'number') {
+      const mod = abilityModifier(score);
+      return {
+        bonus: mod,
+        breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}, NPC)`,
+        confidence: 'high',
+      };
+    }
     return { bonus: 0, breakdown: `0 (NPC, ${ability} score not stored)`, confidence: 'low' };
   }
 

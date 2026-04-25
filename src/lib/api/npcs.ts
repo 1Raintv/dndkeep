@@ -48,6 +48,21 @@ export async function createNpcInstances(specs: NpcInstanceSpec[]): Promise<Arra
     ac: s.roster.ac,
     initiative: null,
     conditions: [],
+    // v2.251.0 — snapshot the roster's ability scores so getTargetSaveBonus
+    // can compute real save modifiers for this NPC. The npcs table doesn't
+    // carry per-ability columns (it's shared with v1's social/named NPCs);
+    // jsonb keeps it flexible. Shape: { str, dex, con, int, wis, cha }.
+    // Snapshot, not reference: if the DM later edits the roster's stats,
+    // already-spawned NPCs keep the values they were spawned with — same
+    // contract as hp/ac/etc. above.
+    ability_scores: {
+      str: s.roster.str,
+      dex: s.roster.dex,
+      con: s.roster.con,
+      int: s.roster.int,
+      wis: s.roster.wis,
+      cha: s.roster.cha,
+    },
   }));
   const { data, error } = await supabase
     .from('npcs')
