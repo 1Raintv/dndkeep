@@ -51,7 +51,11 @@ export function buildFeaturesText(
   if (sp) {
     lines.push(`=== ${sp.name} Traits ===`);
     lines.push(`Size: ${sp.size}  Speed: ${sp.speed} ft.`);
-    if (sp.darkvision > 0) lines.push(`Darkvision: ${sp.darkvision} ft.`);
+    // v2.243.1 — DO NOT emit a separate `Darkvision: X ft.` line here. Every
+    // species in species.ts that has darkvision > 0 also has an explicit
+    // `Darkvision` entry in `sp.traits` with the full RAW description, so
+    // emitting both produced duplicate Darkvision rows on the Features tab
+    // (e.g. Tiefling). The trait iteration below covers it.
     sp.traits.forEach(t => {
       lines.push('');
       lines.push(`${t.name}: ${t.description}`);

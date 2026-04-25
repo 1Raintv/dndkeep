@@ -57,8 +57,19 @@ function getCalcNote(name: string, c: Character): string {
  }
  if (name === 'Pact Magic') return `Spell DC ${8 + prof + cha} • Atk +${prof + cha}`;
  if (name === 'Spellcasting') {
- const mod = ['Wizard', 'Artificer'].includes(c.class_name) ? int_ :
- ['Cleric', 'Druid', 'Ranger', 'Monk'].includes(c.class_name) ? wis : cha;
+ // v2.243.1 — fix Psion (and any future INT caster) showing the wrong
+ // DC/Atk on the passive Spellcasting feature card. Previously Psion
+ // wasn't in either of the hard-coded class lists and silently fell
+ // through to the CHA branch, then displayed `8+prof+0 • +prof+0` (CHA
+ // 10 default). Mirrors the lookup table in HPStatsPanel.tsx so the
+ // feature chip and the stat-bar Spell DC stay in sync.
+ const SPELL_ABILITY: Record<string, 'int' | 'wis' | 'cha'> = {
+ Wizard: 'int', Artificer: 'int', Psion: 'int',
+ Cleric: 'wis', Druid: 'wis', Ranger: 'wis', Monk: 'wis',
+ Bard: 'cha', Sorcerer: 'cha', Warlock: 'cha', Paladin: 'cha',
+ };
+ const ab = SPELL_ABILITY[c.class_name] ?? 'int';
+ const mod = ab === 'int' ? int_ : ab === 'wis' ? wis : cha;
  return `Spell DC ${8 + prof + mod} • Atk +${prof + mod}`;
  }
  if (name === 'Lay on Hands') return `Pool: ${level * 5} HP`;
@@ -246,8 +257,13 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  const text = character.features_and_traits ?? '';
  const sections: { title: string; traits: { name: string; desc: string; isActive: boolean }[] }[] = [];
 
- // Extract === Section === blocks
- const blocks = [...text.matchAll(/=== ([^=\n]+) (?:Traits|Features) ===\n([\s\S]*?)(?=\n===|$)/g)];
+ // v2.243.1 — match `=== X Traits ===` blocks ONLY (no longer matching
+ // `=== X Features ===`). The class-features block emitted by
+ // buildFeaturesText was previously parsed here and rendered as a
+ // duplicate "Psion" subsection inside the Species & Background panel,
+ // duplicating the Class Features panel above. Class info now flows
+ // exclusively through CLASS_FEATURES → the class panel.
+ const blocks = [...text.matchAll(/=== ([^=\n]+) Traits ===\n([\s\S]*?)(?=\n===|$)/g)];
  for (const b of blocks) {
  const traitLines = b[2].trim().split('\n').filter(l => l.trim());
  const traits: { name: string; desc: string; isActive: boolean }[] = [];
@@ -271,7 +287,19 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  if (traits.length === 0 && traitLines.length > 0) {
  traits.push({ name: b[1].trim() + ' Traits', desc: b[2].trim(), isActive: false });
  }
- sections.push({ title: b[1].trim(), traits });
+
+ // v2.243.1 — dedupe traits by name. Older characters may have a stored
+ // `features_and_traits` text that pre-dates the buildFeaturesText fix,
+ // i.e. contains both `Darkvision: 60 ft.` AND a descriptive Darkvision
+ // trait line. Keep the entry with the longer description (the RAW one).
+ const dedup = new Map<string, { name: string; desc: string; isActive: boolean }>();
+ for (const t of traits) {
+ const existing = dedup.get(t.name);
+ if (!existing || t.desc.length > existing.desc.length) {
+ dedup.set(t.name, t);
+ }
+ }
+ sections.push({ title: b[1].trim(), traits: [...dedup.values()] });
  }
 
  // Also check for background section
