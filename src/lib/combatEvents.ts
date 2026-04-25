@@ -13,8 +13,18 @@
 
 import { supabase } from './supabase';
 
-export type ActorType = 'player' | 'dm' | 'npc' | 'monster' | 'system';
-export type TargetType = 'player' | 'monster' | 'npc' | 'object' | 'area' | 'self';
+// v2.259.0 — these unions were originally narrower than reality.
+// Several call sites (pendingAttack.ts, characterHistory.ts, etc.)
+// pass values that weren't in the original list — most notably
+// 'character' (which pendingAttack uses as its own actor/target
+// label, matching combat_participants.participant_type) and a
+// handful of newer event types added without updating this file.
+// Widening here is the conservative fix: no runtime behavior
+// changes, just the type system catching up to the data already
+// flowing through the system. A future cleanup ship can normalize
+// to one vocabulary across pendingAttack + combatEvents.
+export type ActorType = 'player' | 'character' | 'dm' | 'npc' | 'monster' | 'system';
+export type TargetType = 'player' | 'character' | 'monster' | 'npc' | 'object' | 'area' | 'self' | 'system';
 export type Visibility = 'public' | 'hidden_from_players';
 
 export type CombatEventType =
@@ -79,7 +89,35 @@ export type CombatEventType =
   // DM-only
   | 'dm_fudge'
   | 'dm_override'
-  | 'friendly_fire_acknowledged';
+  | 'friendly_fire_acknowledged'
+  // v2.259.0 — additional event types that were already being emitted
+  // by various subsystems but never added to this union. Sources:
+  // buffs.ts (buff_applied/removed/contributed), conditions.ts
+  // (exhaustion_adjusted), lair/legendary action systems, cover +
+  // resistance pipelines, counterspell + spell_declared from the
+  // reaction system, the dash/disengage standard actions, and the
+  // automation framework's skip path. Adding them in a single batch
+  // since they're all "this string is already in the data, we just
+  // forgot to type it" — same pattern as isChoice on SubclassFeature.
+  | 'automation_skipped'
+  | 'buff_applied'
+  | 'buff_contributed'
+  | 'buff_removed'
+  | 'concentration_save_prompted'
+  | 'cover_applied'
+  | 'dash'
+  | 'disengage'
+  | 'exhaustion_adjusted'
+  | 'lair_action_used'
+  | 'lair_action_window_opened'
+  | 'legendary_action_used'
+  | 'legendary_actions_refilled'
+  | 'legendary_resistance_reset'
+  | 'legendary_resistance_used'
+  | 'participant_died'
+  | 'resistance_applied'
+  | 'spell_counterspell_resolved'
+  | 'spell_declared';
 
 export interface CombatEventInsert {
   campaignId?: string | null;

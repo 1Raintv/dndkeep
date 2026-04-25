@@ -371,6 +371,22 @@ export interface SubclassFeature {
   level: number;
   name: string;
   description: string;
+  /** v2.259.0 — surfaced previously-untyped field. When true, this
+   *  feature represents a player choice (e.g. pick a fighting style,
+   *  pick a maneuver). The UI renders these with gold ⬡ accents to
+   *  distinguish them from fixed grants. Optional because most
+   *  subclass features are fixed; falsy/absent means "fixed grant". */
+  isChoice?: boolean;
+  /** v2.259.0 — categorizes what kind of choice this feature offers,
+   *  for future guided-picker UIs. 'fighting_style' / 'spells' /
+   *  'skill' / 'other'. Currently advisory only — no consumer reads
+   *  it yet, but it travels alongside isChoice in the data so the
+   *  type should reflect that. */
+  choiceType?: 'fighting_style' | 'spells' | 'skill' | 'other';
+  /** v2.259.0 — how many picks the choice offers (e.g. "choose 3
+   *  skills" → 3). Defaults to 1 conceptually when isChoice is true.
+   *  Like choiceType, advisory until a guided picker is built. */
+  choiceCount?: number;
   /** Optional: mechanics this feature provides, used by dice roller / automation */
   mechanics?: {
     type: 'spell_list' | 'resource' | 'bonus' | 'reaction' | 'passive';
