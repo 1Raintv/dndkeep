@@ -3757,8 +3757,13 @@ function InitiativeBar(props: {
  */
 function PartyVitalsBar(props: {
   characters: BattleMapV2Props['playerCharacters'];
+  /** v2.239.0 — clicking a card asks the parent to pan the map to
+   *  this character's linked token. Optional: if absent (e.g. embed
+   *  contexts where the bar is purely informational), the cards
+   *  render non-interactive. */
+  onCharacterClick?: (characterId: string) => void;
 }) {
-  const { characters } = props;
+  const { characters, onCharacterClick } = props;
   if (!characters || characters.length === 0) return null;
 
   return (
@@ -3800,6 +3805,8 @@ function PartyVitalsBar(props: {
         return (
           <div
             key={c.id}
+            onClick={onCharacterClick ? () => onCharacterClick(c.id) : undefined}
+            title={onCharacterClick ? `Pan map to ${c.name}` : undefined}
             style={{
               flexShrink: 0,
               minWidth: 160,
@@ -3810,7 +3817,17 @@ function PartyVitalsBar(props: {
               background: 'rgba(15,16,18,0.5)',
               border: '1px solid var(--c-border)',
               borderRadius: 'var(--r-sm, 4px)',
+              cursor: onCharacterClick ? 'pointer' : 'default',
+              transition: 'background 0.15s, border-color 0.15s',
             }}
+            onMouseEnter={onCharacterClick ? (e) => {
+              (e.currentTarget as HTMLDivElement).style.background = 'rgba(96,165,250,0.08)';
+              (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(96,165,250,0.4)';
+            } : undefined}
+            onMouseLeave={onCharacterClick ? (e) => {
+              (e.currentTarget as HTMLDivElement).style.background = 'rgba(15,16,18,0.5)';
+              (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--c-border)';
+            } : undefined}
           >
             <div style={{
               display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'space-between',
@@ -4446,6 +4463,43 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     vpRef.current.setZoom(fitScale, true);
     vpRef.current.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
   }, [dims.width, dims.height, WORLD_WIDTH, WORLD_HEIGHT]);
+
+  // v2.239.0 — Pan-to-token. Click a PartyVitalsBar card → camera
+  // animates to that PC's linked token on the current scene. Lifts
+  // the vitals bar from "info display" to "navigation control" with
+  // no schema, no Realtime — pure local Pixi viewport animation.
+  //
+  // Lookup: the store keeps tokens keyed by token id, but the link
+  // we have is character id. We walk Object.values once per click;
+  // token counts are typically small (<50) so the linear scan is
+  // fine. We also filter to the current scene so a PC's stale token
+  // on another scene doesn't pull the camera.
+  //
+  // If the character isn't placed on the current scene, the click
+  // is a no-op (silently). Future polish: flash a "no token placed"
+  // toast once the toast system lands.
+  //
+  // Animation: viewport.animate({position}) pans the viewport CENTER
+  // to (x, y). 400ms feels snappy but smooth; default easing reads
+  // natural. Zoom stays where the user left it — opinionated choice
+  // (forced auto-zoom is jarring when you just want to "find that
+  // PC"). If the player is zoomed way out, they'll see the token
+  // recenter without losing their orientation.
+  const panToCharacter = useCallback((characterId: string) => {
+    const vp = vpRef.current;
+    if (!vp || !currentScene) return;
+    const sceneId = currentScene.id;
+    const tokens = useBattleMapStore.getState().tokens;
+    const target = Object.values(tokens).find(
+      t => t.sceneId === sceneId && t.characterId === characterId,
+    );
+    if (!target) return; // no token on this scene for that character
+    vp.animate({
+      position: { x: target.x, y: target.y },
+      time: 400,
+      removeOnInterrupt: true,
+    });
+  }, [currentScene]);
 
   // v2.213 "Add Token" commits to DB immediately.
   const addToken = useCallback(() => {
@@ -5722,7 +5776,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           read-only at-a-glance view of every PC's HP / AC / spell
           slots. Clicks/edits go through the TokenQuickPanel (DM)
           or the player's character sheet. */}
-      <PartyVitalsBar characters={props.playerCharacters} />
+      <PartyVitalsBar
+        characters={props.playerCharacters}
+        onCharacterClick={panToCharacter}
+      />
     </div>
   );
 }
