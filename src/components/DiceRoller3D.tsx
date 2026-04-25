@@ -4,7 +4,7 @@
  * Dice naturally land on flat faces because the actual die geometry is used for collisions.
  * Floor and walls are CANNON.Plane bodies — dice roll across them like a real table.
  */
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';

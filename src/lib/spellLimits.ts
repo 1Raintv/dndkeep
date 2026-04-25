@@ -10,7 +10,7 @@
  */
 
 import type { Character } from '../types';
-import { SPELLS, SPELL_MAP } from '../data/spells';
+import { SPELL_MAP } from '../data/spells';
 import { getGrantedSpellIds } from './grantedSpells';
 import { getPreparedTable } from '../data/spellPreparedTables';
 

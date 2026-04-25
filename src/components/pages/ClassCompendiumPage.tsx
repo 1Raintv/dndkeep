@@ -2,10 +2,9 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CLASSES, CLASS_MAP } from '../../data/classes';
 import { CLASS_FEATURES } from '../../data/classFeatures';
-import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 import { getSpellSlotRow } from '../../data/spellSlots';
 import { ARTIFICER_INFUSIONS, getActiveInfusionCount } from '../../data/artificerInfusions';
-import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
+import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 
 // Class color accents
 const CLASS_COLORS: Record<string, string> = {

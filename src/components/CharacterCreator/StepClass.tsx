@@ -1,4 +1,3 @@
-import type { ClassData } from '../../types';
 import { CLASSES } from '../../data/classes';
 import { capitalize } from '../../lib/gameUtils';
 

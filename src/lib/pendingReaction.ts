@@ -78,6 +78,7 @@ REACTION_REGISTRY.push({
   triggerPoint: 'post_attack_roll',
   isEligible(ctx) {
     const { attack, reactorCharacter } = ctx;
+    if (!attack) return false;
     if (!reactorCharacter) return false;
     if (attack.attack_kind !== 'attack_roll') return false;
     if (attack.hit_result !== 'hit') return false;  // can't help crit
@@ -93,6 +94,7 @@ REACTION_REGISTRY.push({
   },
   async onAccept(ctx) {
     const { attack, offer, reactorCharacter } = ctx;
+    if (!attack) return;
     const levelUsed = (ctx.decisionPayload?.spell_level_used as number)
       ?? (reactorCharacter ? lowestAvailableSlot(reactorCharacter) : 1)
       ?? 1;
@@ -173,6 +175,7 @@ REACTION_REGISTRY.push({
   triggerPoint: 'post_damage_roll',
   isEligible(ctx) {
     const { attack, reactorCharacter } = ctx;
+    if (!attack) return false;
     if (!reactorCharacter) return false;
     if (attack.attack_kind !== 'attack_roll') return false;
     if (attack.hit_result !== 'hit' && attack.hit_result !== 'crit') return false;
@@ -187,6 +190,7 @@ REACTION_REGISTRY.push({
   },
   async onAccept(ctx) {
     const { attack, offer } = ctx;
+    if (!attack) return;
     const original = attack.damage_final ?? 0;
     const halved = Math.floor(original / 2);
 
@@ -237,6 +241,7 @@ REACTION_REGISTRY.push({
   triggerPoint: 'post_damage_roll',
   isEligible(ctx) {
     const { attack, reactorCharacter } = ctx;
+    if (!attack) return false;
     if (!reactorCharacter) return false;
     const dmgType = (attack.damage_type ?? '').toLowerCase();
     if (!ABSORB_ELEMENTS_TYPES.includes(dmgType)) return false;
@@ -252,6 +257,7 @@ REACTION_REGISTRY.push({
   },
   async onAccept(ctx) {
     const { attack, offer, reactorCharacter } = ctx;
+    if (!attack) return;
     const levelUsed = (ctx.decisionPayload?.spell_level_used as number)
       ?? (reactorCharacter ? lowestAvailableSlot(reactorCharacter) : 1)
       ?? 1;
@@ -395,6 +401,7 @@ REACTION_REGISTRY.push({
   },
   async onAccept(ctx) {
     const { attack, offer, reactorCharacter } = ctx;
+    if (!attack) return;
     const levelUsed = (ctx.decisionPayload?.spell_level_used as number)
       ?? (reactorCharacter ? lowestAvailableSlot(reactorCharacter) : 1)
       ?? 1;

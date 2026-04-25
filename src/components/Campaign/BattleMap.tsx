@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useMonsters } from '../../lib/hooks/useMonsters';
 import type { MonsterData } from '../../types';
 import { DMRollRequestPanel } from './RollRequest';
-import { logRoll } from '../CharacterSheet/QuickRoll';
 import { useCombat } from '../../context/CombatContext';
 import { computeChebyshevFt, canMove, logMovement } from '../../lib/movement';
 

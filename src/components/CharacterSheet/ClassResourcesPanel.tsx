@@ -1,6 +1,5 @@
 import type { Character } from '../../types';
 import { getCharacterResources, RECOVERY_LABELS, type ClassResourceDef } from '../../data/classResources';
-import { abilityModifier } from '../../lib/gameUtils';
 
 interface ClassResourcesPanelProps {
   character: Character;

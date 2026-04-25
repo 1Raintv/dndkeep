@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_LEVEL_PROGRESSION, hpPerLevel } from '../../data/levelProgression';
 import { SPELLS } from '../../data/spells';
-import { FEATS } from '../../data/feats';
 import FeatPicker from '../shared/FeatPicker';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import {
@@ -45,8 +44,6 @@ interface StepBuildProps {
 }
 
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
-const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
-const ABILITY_ABBREV: Record<string, string> = { strength: 'STR', dexterity: 'DEX', constitution: 'CON', intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA' };
 
 export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange }: StepBuildProps) {
   const cls = CLASS_MAP[className];

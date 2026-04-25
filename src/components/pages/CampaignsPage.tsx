@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { Campaign } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useCampaign } from '../../context/CampaignContext';
 import { joinCampaignByCode, addCampaignMember } from '../../lib/supabase';

@@ -9,7 +9,6 @@ import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
 import { declareAttack, declareMultiTargetAttack } from '../../lib/pendingAttack';
 import { emitCombatEvent } from '../../lib/combatEvents';
-import { supabase } from '../../lib/supabase';
 import { buildParticipantPositions, findParticipantsInRadius, loadActiveBattleMap, deriveCoverFromWalls } from '../../lib/battleMapGeometry';
 import type { CombatParticipant } from '../../types';
 import type { ActiveBattleMap } from '../../lib/battleMapGeometry';

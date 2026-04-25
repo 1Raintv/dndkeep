@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import BattleMap from './BattleMap';
 import { supabase } from '../../lib/supabase';
 
 interface PartyMember {

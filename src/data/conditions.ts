@@ -1,5 +1,3 @@
-import type { ConditionData } from '../types';
-
 export interface ConditionMechanic {
   name: string;
   description: string;

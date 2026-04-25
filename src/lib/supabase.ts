@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Character, Profile, Campaign, CampaignMember, RollResult, SessionState } from '../types';
+import type { Character, Profile, Campaign, SessionState } from '../types';
 import type { Database } from '../types/supabase';
 
 // =============================================================

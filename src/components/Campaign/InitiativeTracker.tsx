@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { SessionState, Combatant, ConditionName, OngoingDamage } from '../../types';
 import ConditionTooltip from '../shared/ConditionTooltip';
 import { rollDiceExpression, concentrationDC } from '../../lib/gameUtils';
-import { CONDITION_MAP } from '../../data/conditions';
 
 
 interface InitiativeTrackerProps {

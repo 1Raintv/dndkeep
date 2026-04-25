@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { Character, AbilityKey, Campaign } from '../../types';
+import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
-import { xpToLevel, xpForNextLevel, computeStats, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
+import { xpToLevel, xpForNextLevel, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
 import { SPELLS } from '../../data/spells';
-import { SKILLS } from '../../data/skills';
 import {
   rollCheck, checkModifier, encodeCheckPrompt,
   type CheckTarget, type CheckRollResult,
 } from '../../lib/abilityChecks';
-import { useDiceRoll } from '../../context/DiceRollContext';
 import {
   DAMAGE_TYPES, labelForDamageType, DAMAGE_TYPE_COLORS,
   applyDamageTypeModifiers, type DamageModifier,

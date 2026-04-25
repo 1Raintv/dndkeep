@@ -4,7 +4,7 @@ import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { FEATS } from '../../data/feats';
 import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
 import FeatPicker from '../shared/FeatPicker';
-import { xpForNextLevel, abilityModifier } from '../../lib/gameUtils';
+import { abilityModifier } from '../../lib/gameUtils';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 
 interface LevelUpWizardProps {

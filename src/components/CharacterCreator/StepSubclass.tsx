@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { SubclassData } from '../../types';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';

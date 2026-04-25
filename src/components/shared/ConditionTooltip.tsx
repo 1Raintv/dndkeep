@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { CONDITIONS } from '../../data/conditions';
-import type { ConditionData } from '../../types';
 
 interface ConditionTooltipProps {
   name: string;

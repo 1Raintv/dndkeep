@@ -1,4 +1,3 @@
-import type { BackgroundData } from '../../types';
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { capitalize } from '../../lib/gameUtils';
 

@@ -14,7 +14,6 @@ import StepSpecies from './StepSpecies';
 import StepClass from './StepClass';
 import StepBackground from './StepBackground';
 import StepAbilityScores from './StepAbilityScores';
-import StepSubclass from './StepSubclass';
 import StepBuild, { emptyBuildChoices, type BuildChoices } from './StepBuild';
 import StepReview from './StepReview';
 

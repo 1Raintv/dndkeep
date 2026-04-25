@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { Character, ComputedStats } from '../../types';
 import { SKILLS } from '../../data/skills';
 import { computeActiveBonuses } from '../../lib/gameUtils';
