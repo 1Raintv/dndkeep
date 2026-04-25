@@ -151,11 +151,12 @@ import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Spri
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useBattleMapStore, type Token, type TokenSize, type Wall, type SceneText } from '../../lib/stores/battleMapStore';
+import { useBattleMapStore, type Token, type TokenSize, type Wall, type SceneText, type SceneDrawing, type DrawingKind } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
 import * as tokensApi from '../../lib/api/sceneTokens';
 import * as wallsApi from '../../lib/api/sceneWalls';
 import * as textsApi from '../../lib/api/sceneTexts';
+import * as drawingsApi from '../../lib/api/sceneDrawings';
 import { computeVisibilityPolygon, type WallSegment } from '../../lib/vision/visibilityPolygon';
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
@@ -1313,6 +1314,303 @@ function TextLayer(props: {
   return null;
 }
 
+/**
+ * v2.235.0 — DrawingLayer.
+ *
+ * Renders all scene_drawings (pencil/line/rect/circle) as Pixi
+ * Graphics inside a Container attached to the viewport. When a
+ * drawing tool is `active`, mouse-down → drag → mouse-up authors a
+ * new drawing of the active kind. Right-click on an existing drawing
+ * deletes it (active mode only — outside active mode, right-click
+ * goes through to the normal token context-menu pipeline).
+ *
+ * Authoring shape semantics:
+ *   - pencil: append world-space samples on every pointermove during
+ *             the drag; persist the polyline on pointerup. We
+ *             intentionally do NOT decimate or simplify in the client;
+ *             counts are typically a few hundred points which is fine
+ *             for round-trip + redraw.
+ *   - line:   2 points (down → up).
+ *   - rect:   2 points (down → up; rendered as the bounding box).
+ *   - circle: 2 points (down = center, up = edge for radius).
+ *
+ * Live preview during drag uses a separate "preview" Graphics drawn
+ * with the active color/width; on pointerup the preview is committed
+ * to the store (optimistic) + sent to the DB (fire-and-forget).
+ *
+ * Color/width come from refs that mirror the parent's pickable state,
+ * so changes to the picker don't tear down the canvas listeners.
+ */
+function DrawingLayer(props: {
+  viewport: Viewport | null;
+  canvasEl: HTMLCanvasElement | null;
+  /** Which drawing kind is active, or null for "no drawing tool". */
+  activeKind: DrawingKind | null;
+  isDM: boolean;
+  currentSceneId: string | null;
+  /** Hex color string for new drawings. */
+  color: string;
+  /** Stroke width in pixels for new drawings. */
+  lineWidth: number;
+}) {
+  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth } = props;
+  const drawings = useBattleMapStore(s => s.drawings);
+  const containerRef = useRef<Container | null>(null);
+  const previewGfxRef = useRef<Graphics | null>(null);
+
+  // Mirror the picker state into refs so the pointer handlers can
+  // read them without re-attaching listeners on every color/width change.
+  const colorRef = useRef(color);
+  const widthRef = useRef(lineWidth);
+  useEffect(() => { colorRef.current = color; }, [color]);
+  useEffect(() => { widthRef.current = lineWidth; }, [lineWidth]);
+  const activeKindRef = useRef<DrawingKind | null>(null);
+  useEffect(() => { activeKindRef.current = activeKind; }, [activeKind]);
+
+  // Mount/unmount drawings container (committed shapes).
+  useEffect(() => {
+    if (!viewport) return;
+    const c = new Container();
+    containerRef.current = c;
+    viewport.addChild(c);
+    const preview = new Graphics();
+    previewGfxRef.current = preview;
+    viewport.addChild(preview);
+    return () => {
+      try { viewport.removeChild(c); } catch { /* viewport gone */ }
+      try { c.destroy({ children: true }); } catch { /* destroyed */ }
+      try { viewport.removeChild(preview); } catch { /* viewport gone */ }
+      try { preview.destroy(); } catch { /* destroyed */ }
+      containerRef.current = null;
+      previewGfxRef.current = null;
+    };
+  }, [viewport]);
+
+  // Convert hex string '#a78bfa' to a 24-bit number 0xa78bfa for Pixi.
+  function hexToNumber(hex: string): number {
+    const trimmed = hex.replace('#', '').slice(0, 6);
+    const n = parseInt(trimmed, 16);
+    return Number.isFinite(n) ? n : 0xffffff;
+  }
+
+  // Render a single SceneDrawing into a Graphics instance.
+  function drawShapeInto(g: Graphics, d: SceneDrawing) {
+    const colNum = hexToNumber(d.color);
+    g.setStrokeStyle({ width: d.lineWidth, color: colNum, alpha: 1, alignment: 0.5 });
+    if (d.kind === 'pencil') {
+      if (d.points.length >= 2) {
+        g.moveTo(d.points[0].x, d.points[0].y);
+        for (let i = 1; i < d.points.length; i++) {
+          g.lineTo(d.points[i].x, d.points[i].y);
+        }
+        g.stroke();
+      }
+    } else if (d.kind === 'line') {
+      if (d.points.length >= 2) {
+        const [a, b] = d.points;
+        g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke();
+      }
+    } else if (d.kind === 'rect') {
+      if (d.points.length >= 2) {
+        const [a, b] = d.points;
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        const w = Math.abs(b.x - a.x);
+        const h = Math.abs(b.y - a.y);
+        g.rect(x, y, w, h).stroke();
+      }
+    } else if (d.kind === 'circle') {
+      if (d.points.length >= 2) {
+        const [c, edge] = d.points;
+        const r = Math.hypot(edge.x - c.x, edge.y - c.y);
+        g.circle(c.x, c.y, r).stroke();
+      }
+    }
+  }
+
+  // Sync committed drawings to the layer container on store change.
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    const old = [...c.children];
+    c.removeChildren();
+    for (const child of old) {
+      try { (child as any).destroy?.(); } catch { /* ignore */ }
+    }
+    for (const d of Object.values(drawings)) {
+      if (currentSceneId && d.sceneId !== currentSceneId) continue;
+      const g = new Graphics();
+      drawShapeInto(g, d);
+      (g as any).__drawingId = d.id;
+      c.addChild(g);
+    }
+  }, [drawings, currentSceneId]);
+
+  // Pointer drag → author a new drawing. Only attached when a drawing
+  // tool is active.
+  useEffect(() => {
+    if (!activeKind || !canvasEl || !viewport || !isDM || !currentSceneId) return;
+
+    function clientToWorld(e: MouseEvent): { x: number; y: number } | null {
+      if (!canvasEl || !viewport) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wp = viewport.toWorld(sx, sy);
+      return { x: wp.x, y: wp.y };
+    }
+
+    let dragging = false;
+    const samples: Array<{ x: number; y: number }> = [];
+
+    function renderPreview() {
+      const g = previewGfxRef.current;
+      if (!g) return;
+      g.clear();
+      const kind = activeKindRef.current;
+      if (!kind || samples.length === 0) return;
+      const colNum = hexToNumber(colorRef.current);
+      g.setStrokeStyle({ width: widthRef.current, color: colNum, alpha: 0.85, alignment: 0.5 });
+      if (kind === 'pencil') {
+        if (samples.length >= 2) {
+          g.moveTo(samples[0].x, samples[0].y);
+          for (let i = 1; i < samples.length; i++) {
+            g.lineTo(samples[i].x, samples[i].y);
+          }
+          g.stroke();
+        }
+      } else if (kind === 'line' && samples.length >= 2) {
+        const a = samples[0];
+        const b = samples[samples.length - 1];
+        g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke();
+      } else if (kind === 'rect' && samples.length >= 2) {
+        const a = samples[0];
+        const b = samples[samples.length - 1];
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        const w = Math.abs(b.x - a.x);
+        const h = Math.abs(b.y - a.y);
+        g.rect(x, y, w, h).stroke();
+      } else if (kind === 'circle' && samples.length >= 2) {
+        const c = samples[0];
+        const edge = samples[samples.length - 1];
+        const r = Math.hypot(edge.x - c.x, edge.y - c.y);
+        if (r > 0) g.circle(c.x, c.y, r).stroke();
+      }
+    }
+
+    function findDrawingAt(world: { x: number; y: number }): SceneDrawing | null {
+      const c = containerRef.current;
+      if (!c) return null;
+      for (let i = c.children.length - 1; i >= 0; i--) {
+        const child = c.children[i];
+        const id = (child as any).__drawingId as string | undefined;
+        if (!id) continue;
+        const b = child.getBounds();
+        // Padded hit-test box so thin strokes are still pickable.
+        const pad = 6;
+        if (world.x >= b.minX - pad && world.x <= b.maxX + pad
+            && world.y >= b.minY - pad && world.y <= b.maxY + pad) {
+          const found = useBattleMapStore.getState().drawings[id];
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    function onPointerDown(e: MouseEvent) {
+      if (e.button !== 0) return; // primary only
+      const w = clientToWorld(e);
+      if (!w) return;
+      dragging = true;
+      samples.length = 0;
+      samples.push(w);
+      renderPreview();
+    }
+
+    function onPointerMove(e: MouseEvent) {
+      if (!dragging) return;
+      const w = clientToWorld(e);
+      if (!w) return;
+      const kind = activeKindRef.current;
+      if (kind === 'pencil') {
+        // Append every sample for freehand fidelity.
+        samples.push(w);
+      } else {
+        // For shape primitives, only the latest endpoint matters.
+        if (samples.length === 1) samples.push(w);
+        else samples[samples.length - 1] = w;
+      }
+      renderPreview();
+    }
+
+    function onPointerUp(_e: MouseEvent) {
+      if (!dragging) return;
+      dragging = false;
+      const kind = activeKindRef.current;
+      const g = previewGfxRef.current;
+      if (g) g.clear();
+      if (!kind || !currentSceneId) return;
+      // Need at least 2 distinct points; otherwise the user just clicked
+      // without dragging — discard.
+      if (samples.length < 2) return;
+      const first = samples[0];
+      const last = samples[samples.length - 1];
+      if (kind !== 'pencil' && first.x === last.x && first.y === last.y) return;
+
+      // Build the persisted drawing. For shape primitives we keep just
+      // the two endpoints (anchor + endpoint); for pencil we keep all
+      // samples.
+      const points = kind === 'pencil' ? samples.slice() : [first, last];
+      const id = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? crypto.randomUUID()
+        : `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const drawing: SceneDrawing = {
+        id,
+        sceneId: currentSceneId,
+        kind,
+        points,
+        color: colorRef.current,
+        lineWidth: widthRef.current,
+      };
+      useBattleMapStore.getState().addDrawing(drawing);
+      drawingsApi.createDrawing(drawing).catch(err =>
+        console.error('[DrawingLayer] createDrawing failed', err));
+    }
+
+    function onContextMenu(e: MouseEvent) {
+      const w = clientToWorld(e);
+      if (!w) return;
+      const found = findDrawingAt(w);
+      if (!found) return;
+      e.stopPropagation();
+      e.preventDefault();
+      if (!window.confirm('Delete this drawing?')) return;
+      useBattleMapStore.getState().removeDrawing(found.id);
+      drawingsApi.deleteDrawing(found.id).catch(err =>
+        console.error('[DrawingLayer] deleteDrawing failed', err));
+    }
+
+    canvasEl.addEventListener('pointerdown', onPointerDown);
+    canvasEl.addEventListener('pointermove', onPointerMove);
+    // pointerup goes on window so a drag that ends outside the canvas
+    // still terminates cleanly.
+    window.addEventListener('pointerup', onPointerUp);
+    canvasEl.addEventListener('contextmenu', onContextMenu, true);
+    return () => {
+      canvasEl.removeEventListener('pointerdown', onPointerDown);
+      canvasEl.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      canvasEl.removeEventListener('contextmenu', onContextMenu, true);
+      // Clear any in-flight preview when the layer detaches.
+      const g = previewGfxRef.current;
+      if (g) g.clear();
+    };
+  }, [activeKind, canvasEl, viewport, isDM, currentSceneId]);
+
+  return null;
+}
+
 function TokenLayer(props: {
   viewport: Viewport | null;
   canvasEl: HTMLCanvasElement | null;
@@ -1334,6 +1632,10 @@ function TokenLayer(props: {
   // pointer events on tokens bail out so the TextLayer's click handler
   // can place / edit text without competing.
   textActive?: boolean;
+  // v2.235 — same pattern for any drawing tool (pencil/line/rect/circle).
+  // The DrawingLayer captures pointer events on the canvas; tokens
+  // must yield so the user can drag through their position to draw.
+  drawActive?: boolean;
   // v2.221 — character HP lookup for live HP bars on PC tokens.
   // Map<characterId, { current, max }>. Tokens whose characterId
   // matches an entry get an HP bar rendered underneath. Pure data
@@ -1349,7 +1651,7 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    textActive, characterHpMap, onTokenClick,
+    textActive, drawActive, characterHpMap, onTokenClick,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -1367,6 +1669,9 @@ function TokenLayer(props: {
   // v2.234: same mechanism for text annotation mode.
   const textActiveRef = useRef(false);
   useEffect(() => { textActiveRef.current = !!textActive; }, [textActive]);
+  // v2.235: same mechanism for any active drawing tool.
+  const drawActiveRef = useRef(false);
+  useEffect(() => { drawActiveRef.current = !!drawActive; }, [drawActive]);
 
   interface TokenGfx {
     container: Container;
@@ -1474,6 +1779,8 @@ function TokenLayer(props: {
           if (wallActiveRef.current) return;
           // v2.234: same for text annotation mode.
           if (textActiveRef.current) return;
+          // v2.235: same for any drawing tool (pencil/line/rect/circle).
+          if (drawActiveRef.current) return;
           if (event.button === 2) {
             event.stopPropagation();
             event.preventDefault();
@@ -3399,6 +3706,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (cancelled) return;
       useBattleMapStore.getState().setTextsBulk(list);
     });
+    // v2.235 — drawings hydration parallel to walls/texts.
+    drawingsApi.listDrawings(currentScene.id).then(list => {
+      if (cancelled) return;
+      useBattleMapStore.getState().setDrawingsBulk(list);
+    });
     return () => { cancelled = true; };
   }, [currentScene]);
 
@@ -3522,6 +3834,37 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           } else if (payload.eventType === 'DELETE') {
             const oldRow = payload.old;
             if (oldRow?.id) store.removeText(oldRow.id);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentScene?.id]);
+
+  // v2.235.0 — Realtime sync for scene_drawings. Drawings are immutable
+  // (insert + delete only). Same pattern as scene_walls; no UPDATE.
+  useEffect(() => {
+    if (!currentScene?.id) return;
+    const sceneId = currentScene.id;
+    const channel = supabase
+      .channel(`battle_map:scene_drawings:${sceneId}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scene_drawings',
+          filter: `scene_id=eq.${sceneId}`,
+        },
+        (payload: any) => {
+          const store = useBattleMapStore.getState();
+          if (payload.eventType === 'INSERT') {
+            store.addDrawing(drawingsApi.dbRowToSceneDrawing(payload.new));
+          } else if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old;
+            if (oldRow?.id) store.removeDrawing(oldRow.id);
           }
         }
       )
@@ -3887,24 +4230,42 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const [wallActive, setWallActive] = useState(false);
   // v2.234 — text annotation mode. Three-way mutex with ruler + walls.
   const [textActive, setTextActive] = useState(false);
+  // v2.235 — drawing tool mode. Either null (no drawing tool), or one
+  // of pencil/line/rect/circle. Mutex with all other tools.
+  const [drawActive, setDrawActive] = useState<DrawingKind | null>(null);
+  // v2.235 — color + line width for new drawings. Single source for
+  // the picker UI; DrawingLayer reads via refs so changes don't
+  // re-attach pointer listeners.
+  const [drawColor, setDrawColor] = useState('#a78bfa');
+  const [drawLineWidth, setDrawLineWidth] = useState(3);
   const toggleRuler = useCallback(() => {
     setRulerActive(a => {
       const next = !a;
-      if (next) { setWallActive(false); setTextActive(false); }
+      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); }
       return next;
     });
   }, []);
   const toggleWallMode = useCallback(() => {
     setWallActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setTextActive(false); }
+      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); }
       return next;
     });
   }, []);
   const toggleTextMode = useCallback(() => {
     setTextActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setWallActive(false); }
+      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); }
+      return next;
+    });
+  }, []);
+  // v2.235 — toggle a specific drawing kind. Clicking the active kind
+  // turns it off; clicking a different kind switches to it (still a
+  // single-tool active state, just parameterized).
+  const toggleDrawMode = useCallback((kind: DrawingKind) => {
+    setDrawActive(curr => {
+      const next = curr === kind ? null : kind;
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); }
       return next;
     });
   }, []);
@@ -4397,6 +4758,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     rulerActive={rulerActive}
                     wallActive={wallActive}
                     textActive={textActive}
+                    drawActive={drawActive != null}
                     characterHpMap={characterHpMap}
                     onTokenClick={handleTokenClick}
                   />
@@ -4410,6 +4772,23 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     active={textActive}
                     isDM={isDM}
                     currentSceneId={currentScene?.id ?? null}
+                  />
+                  {/* v2.235 — DrawingLayer renders pencil/line/rect/
+                      circle annotations and authors new drawings via
+                      pointer drag when activeKind is non-null. Sits
+                      above tokens so drawings read on top, but below
+                      labels (which are mounted later in this list).
+                      Actually mounted AFTER TextLayer here, so labels
+                      sit above drawings — DM intent is "drawings as
+                      backdrop, labels as captions." */}
+                  <DrawingLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    activeKind={drawActive}
+                    isDM={isDM}
+                    currentSceneId={currentScene?.id ?? null}
+                    color={drawColor}
+                    lineWidth={drawLineWidth}
                   />
                   {/* v2.224 — fog of war overlay. DM sees nothing
                       (no fog applied); players see dark over anything
@@ -4645,9 +5024,138 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           )}
 
           {/* v2.234+ slot for Text annotation tool will go here. */}
-          {/* v2.235+ slot for Drawing tools will go here. */}
+          {/* v2.235 — Drawing tools. DM only. Four kinds in a stack:
+              pencil (freehand), line, rect, circle. Each button toggles
+              its kind; clicking the active kind exits drawing mode. */}
+          {isDM && (() => {
+            const drawKinds: Array<{ kind: DrawingKind; icon: string; label: string }> = [
+              { kind: 'pencil', icon: '✏️', label: 'Pencil — freehand drawing' },
+              { kind: 'line',   icon: '╱',  label: 'Line — straight line segment' },
+              { kind: 'rect',   icon: '▭',  label: 'Rectangle' },
+              { kind: 'circle', icon: '○',  label: 'Circle' },
+            ];
+            return (
+              <>
+                {drawKinds.map(({ kind, icon, label }) => {
+                  const active = drawActive === kind;
+                  return (
+                    <button
+                      key={kind}
+                      onClick={() => toggleDrawMode(kind)}
+                      title={active
+                        ? `${label} (active) — click-drag to draw, right-click to delete a drawing. Click this button again to exit.`
+                        : label}
+                      style={{
+                        width: 36, height: 36,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: active ? 'rgba(244,114,182,0.28)' : 'transparent',
+                        border: `1px solid ${active ? 'rgba(244,114,182,0.85)' : 'rgba(244,114,182,0.25)'}`,
+                        borderRadius: 'var(--r-sm, 4px)',
+                        color: active ? '#f472b6' : 'var(--t-2)',
+                        fontFamily: 'var(--ff-stat)', fontSize: 16, fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'background 0.12s, border-color 0.12s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(244,114,182,0.14)';
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.55)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
+                        }
+                      }}
+                    >
+                      {icon}
+                    </button>
+                  );
+                })}
+              </>
+            );
+          })()}
           {/* v2.236+ slot for FX particles will go here. */}
         </div>
+
+        {/* v2.235 — Color + line-width picker. Floats next to the
+            tool palette only when a drawing tool is active so it
+            doesn't crowd the canvas otherwise. Six color swatches +
+            three width buttons cover ~95% of typical use without
+            needing a full color picker. Future ship can add a
+            free-form hex input + a fill toggle. */}
+        {isDM && drawActive && (
+          <div
+            style={{
+              position: 'absolute', top: 60, left: 60,
+              display: 'flex', flexDirection: 'column' as const,
+              alignItems: 'flex-start', gap: 6,
+              padding: '8px 10px',
+              background: 'rgba(15,16,18,0.92)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 'var(--r-md, 8px)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              zIndex: 5,
+              minWidth: 130,
+            }}
+          >
+            <div style={{
+              fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800,
+              letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+              color: 'var(--t-3)',
+            }}>
+              Color
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {['#a78bfa', '#f87171', '#60a5fa', '#34d399', '#fbbf24', '#ffffff'].map(hex => (
+                <button
+                  key={hex}
+                  onClick={() => setDrawColor(hex)}
+                  title={hex}
+                  style={{
+                    width: 18, height: 18,
+                    background: hex,
+                    border: drawColor === hex ? '2px solid #fff' : '1px solid rgba(255,255,255,0.25)',
+                    borderRadius: '50%',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{
+              fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800,
+              letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+              color: 'var(--t-3)',
+              marginTop: 4,
+            }}>
+              Width
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[2, 4, 8].map(w => (
+                <button
+                  key={w}
+                  onClick={() => setDrawLineWidth(w)}
+                  title={`${w}px`}
+                  style={{
+                    width: 28, height: 18,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: drawLineWidth === w ? 'rgba(244,114,182,0.28)' : 'transparent',
+                    border: `1px solid ${drawLineWidth === w ? 'rgba(244,114,182,0.85)' : 'rgba(255,255,255,0.18)'}`,
+                    borderRadius: 'var(--r-sm, 4px)',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  <div style={{
+                    width: 16, height: w, background: drawColor, borderRadius: 1,
+                  }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div
           style={{

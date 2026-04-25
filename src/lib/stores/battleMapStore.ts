@@ -66,6 +66,27 @@ export interface SceneText {
   fontSize: number;
 }
 
+/** v2.235.0 — Drawing kinds. Pencil = freehand polyline; the others
+ *  are 2-point primitives whose meaning depends on the kind. */
+export type DrawingKind = 'pencil' | 'line' | 'rect' | 'circle';
+
+/** v2.235.0 — Map drawing annotation. World coords for points. The
+ *  semantics of `points` depend on `kind`:
+ *    - pencil: arbitrary length polyline
+ *    - line:   2 points (start, end)
+ *    - rect:   2 points (top-left, bottom-right)
+ *    - circle: 2 points (center, edge — radius computed at render) */
+export interface SceneDrawing {
+  id: string;
+  sceneId: string | null;
+  kind: DrawingKind;
+  points: Array<{ x: number; y: number }>;
+  /** Hex string e.g. '#a78bfa'. */
+  color: string;
+  /** Stroke width in pixels (world space). */
+  lineWidth: number;
+}
+
 export interface Token {
   id: string;
   sceneId: string | null; // null = ephemeral / pre-sync
@@ -117,6 +138,10 @@ interface BattleMapStore {
    *  pattern as walls — listTexts on scene change → setTextsBulk.
    *  Realtime channel echoes inserts/updates/deletes. */
   texts: Record<string, SceneText>;
+  /** v2.235: drawings (pencil/line/rect/circle) for the current scene.
+   *  Drawings are immutable (delete + create, no update); the store
+   *  reflects that with addDrawing / removeDrawing only. */
+  drawings: Record<string, SceneDrawing>;
   /** v2.213: currently-hydrated scene id. Null means no scene selected. */
   currentSceneId: string | null;
   /** v2.213: true while tokens are being fetched for the current scene. */
@@ -146,6 +171,10 @@ interface BattleMapStore {
   updateText: (id: string, patch: Partial<SceneText>) => void;
   removeText: (id: string) => void;
   setTextsBulk: (texts: SceneText[]) => void;
+  // v2.235 drawing mutators — drawings are immutable, so no update.
+  addDrawing: (drawing: SceneDrawing) => void;
+  removeDrawing: (id: string) => void;
+  setDrawingsBulk: (drawings: SceneDrawing[]) => void;
   resetForScene: (sceneId: string | null) => void;
 }
 
@@ -155,6 +184,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   remoteDragLocks: {},
   walls: {},
   texts: {},
+  drawings: {},
   currentSceneId: null,
   loading: false,
 
@@ -235,6 +265,22 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       return { texts: map };
     }),
 
+  addDrawing: (drawing) =>
+    set((s) => ({ drawings: { ...s.drawings, [drawing.id]: drawing } })),
+
+  removeDrawing: (id) =>
+    set((s) => {
+      const { [id]: _, ...rest } = s.drawings;
+      return { drawings: rest };
+    }),
+
+  setDrawingsBulk: (drawings) =>
+    set(() => {
+      const map: Record<string, SceneDrawing> = {};
+      for (const d of drawings) map[d.id] = d;
+      return { drawings: map };
+    }),
+
   resetForScene: (sceneId) =>
     set((s) => {
       const kept: Record<string, Token> = {};
@@ -249,10 +295,15 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
       for (const [id, t] of Object.entries(s.texts)) {
         if (t.sceneId === sceneId) keptTexts[id] = t;
       }
+      const keptDrawings: Record<string, SceneDrawing> = {};
+      for (const [id, d] of Object.entries(s.drawings)) {
+        if (d.sceneId === sceneId) keptDrawings[id] = d;
+      }
       return {
         tokens: kept,
         walls: keptWalls,
         texts: keptTexts,
+        drawings: keptDrawings,
         dragging: null,
         remoteDragLocks: {},
         currentSceneId: sceneId,
