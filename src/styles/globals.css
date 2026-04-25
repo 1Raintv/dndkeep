@@ -809,6 +809,7 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .toast-success { border-left: 3px solid var(--c-green-l); }
 .toast-error   { border-left: 3px solid var(--c-red-l); }
 .toast-info    { border-left: 3px solid var(--c-blue-l); }
+.toast-warn    { border-left: 3px solid var(--c-gold-l); }
 
 /* ── Skeleton loading ────────────────────────────────────────── */
 .skeleton {

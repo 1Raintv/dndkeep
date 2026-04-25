@@ -165,6 +165,7 @@ import { supabase } from '../../lib/supabase';
 // player tokens. Same component PartyDashboard renders on the Party tab.
 import ChecksPanel from './ChecksPanel';
 import type { Character } from '../../types';
+import { useToast } from '../shared/Toast';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -2793,7 +2794,7 @@ function SceneSettingsModal(props: {
   onSceneDeleted: (id: string) => void;
 }) {
   const { scene, onClose, onScenePatched, onSceneDeleted } = props;
-
+  const { showToast } = useToast();
   const [name, setName] = useState(scene.name);
   const [gridSizePx, setGridSizePx] = useState(scene.gridSizePx);
   const [widthCells, setWidthCells] = useState(scene.widthCells);
@@ -2851,15 +2852,15 @@ function SceneSettingsModal(props: {
     // Minimal validation — positive integers only. DB CHECK enforces
     // server-side but we give fast feedback here.
     if (!Number.isFinite(gridSizePx) || gridSizePx < 10 || gridSizePx > 500) {
-      alert('Grid size must be between 10 and 500 pixels.');
+      showToast('Grid size must be between 10 and 500 pixels.', 'warn');
       return;
     }
     if (!Number.isFinite(widthCells) || widthCells < 1 || widthCells > 200) {
-      alert('Width must be between 1 and 200 cells.');
+      showToast('Width must be between 1 and 200 cells.', 'warn');
       return;
     }
     if (!Number.isFinite(heightCells) || heightCells < 1 || heightCells > 200) {
-      alert('Height must be between 1 and 200 cells.');
+      showToast('Height must be between 1 and 200 cells.', 'warn');
       return;
     }
     setSaving(true);
@@ -2875,7 +2876,7 @@ function SceneSettingsModal(props: {
       onScenePatched(patch);
       const ok = await scenesApi.updateScene(scene.id, patch);
       if (!ok) {
-        alert('Failed to save. Check console for details.');
+        showToast('Failed to save. Check console for details.', 'error');
         return;
       }
       onClose();
@@ -2890,7 +2891,7 @@ function SceneSettingsModal(props: {
     try {
       const ok = await scenesApi.deleteScene(scene.id);
       if (!ok) {
-        alert('Failed to delete. Check console for details.');
+        showToast('Failed to delete. Check console for details.', 'error');
         return;
       }
       onSceneDeleted(scene.id);
@@ -3153,6 +3154,7 @@ function TokenQuickPanel(props: {
   onOpenSheet: () => void;
 }) {
   const { character: c, anchorX, anchorY, isDM, campaignId, onClose, onOpenSheet } = props;
+  const { showToast } = useToast();
   const [hpInput, setHpInput] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
   const [applying, setApplying] = useState(false);
@@ -3213,7 +3215,7 @@ function TokenQuickPanel(props: {
         .eq('id', c.id);
       if (error) {
         console.error('[TokenQuickPanel] HP update failed', error);
-        alert('Failed to update HP. Check console for details.');
+        showToast('Failed to update HP. Check console for details.', 'error');
         return;
       }
       setHpInput('');
@@ -3243,7 +3245,7 @@ function TokenQuickPanel(props: {
         .eq('id', c.id);
       if (error) {
         console.error('[TokenQuickPanel] addCondition failed', error);
-        alert(`Failed to apply ${cond}. Check console for details.`);
+        showToast(`Failed to apply ${cond}.`, 'error');
       }
     } finally {
       setCondBusy(false);
@@ -3263,7 +3265,7 @@ function TokenQuickPanel(props: {
         .eq('id', c.id);
       if (error) {
         console.error('[TokenQuickPanel] removeCondition failed', error);
-        alert(`Failed to remove ${cond}. Check console for details.`);
+        showToast(`Failed to remove ${cond}.`, 'error');
       }
     } finally {
       setCondBusy(false);
@@ -3948,6 +3950,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     navigate(`/character/${characterId}`);
   }, [navigate]);
 
+  // v2.240 — non-blocking toast handle. Used in this file to replace
+  // the chain of `window.alert()` calls left over from earlier ships
+  // with the existing toast UI (mounted at app root in App.tsx).
+  const { showToast } = useToast();
+
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [dims, setDims] = useState({ width: 800, height: 600 });
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
@@ -3991,11 +3998,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
     // Redundant client validation — matches the bucket's allowed list.
     if (!assetsApi.ACCEPTED_PORTRAIT_MIME.includes(file.type)) {
-      alert(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`);
+      showToast(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`, 'warn');
       return;
     }
     if (file.size > assetsApi.MAX_PORTRAIT_BYTES) {
-      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`);
+      showToast(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`, 'warn');
       return;
     }
 
@@ -4003,7 +4010,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     try {
       const path = await assetsApi.uploadTokenPortrait(file, userId, tokenId);
       if (!path) {
-        alert('Upload failed. Check the browser console for details.');
+        showToast('Upload failed. Check the browser console for details.', 'error');
         return;
       }
       // Optimistic local update.
@@ -4493,13 +4500,23 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     const target = Object.values(tokens).find(
       t => t.sceneId === sceneId && t.characterId === characterId,
     );
-    if (!target) return; // no token on this scene for that character
+    if (!target) {
+      // v2.240 — replace the previous silent no-op with a toast so the
+      // user knows why nothing happened. Look up the character name
+      // from the props array for a friendlier message.
+      const char = props.playerCharacters.find(c => c.id === characterId);
+      showToast(
+        `${char?.name ?? 'That character'} has no token on this scene.`,
+        'info',
+      );
+      return;
+    }
     vp.animate({
       position: { x: target.x, y: target.y },
       time: 400,
       removeOnInterrupt: true,
     });
-  }, [currentScene]);
+  }, [currentScene, props.playerCharacters, showToast]);
 
   // v2.213 "Add Token" commits to DB immediately.
   const addToken = useCallback(() => {
@@ -4558,7 +4575,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
     const toAdd = props.playerCharacters.filter(pc => !existing.has(pc.id));
     if (toAdd.length === 0) {
-      alert('All party characters already have tokens in this scene.');
+      showToast('All party characters already have tokens in this scene.', 'info');
       return;
     }
 
@@ -4617,7 +4634,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       name: name.trim() || `Scene ${scenes.length + 1}`,
     });
     if (!scene) {
-      alert('Failed to create scene. Check console for details.');
+      showToast('Failed to create scene. Check console for details.', 'error');
       return;
     }
     setScenes(prev => [...prev, scene]);
@@ -4745,11 +4762,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     if (!file || !currentScene) return;
 
     if (!assetsApi.ACCEPTED_PORTRAIT_MIME.includes(file.type)) {
-      alert(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`);
+      showToast(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`, 'warn');
       return;
     }
     if (file.size > assetsApi.MAX_PORTRAIT_BYTES) {
-      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`);
+      showToast(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`, 'warn');
       return;
     }
 
@@ -4757,7 +4774,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     try {
       const path = await assetsApi.uploadSceneBackground(file, userId, currentScene.id);
       if (!path) {
-        alert('Map upload failed. Check the browser console for details.');
+        showToast('Map upload failed. Check the browser console for details.', 'error');
         return;
       }
       // Optimistic local update — update both the scenes list + currentScene.

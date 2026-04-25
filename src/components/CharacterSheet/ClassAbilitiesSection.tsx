@@ -4,6 +4,7 @@ import { CLASS_COMBAT_ABILITIES, type ClassAbility } from '../../data/classAbili
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
+import { useToast } from '../shared/Toast';
 
 interface Props {
  character: Character;
@@ -136,6 +137,7 @@ function resolveDesc(desc: string | ((c: Character) => string), character: Chara
 }
 
 export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId }: Props) {
+ const { showToast } = useToast();
  const [justUsed, setJustUsed] = useState<string | null>(null);
  const [psionicRollHistory, setPsionicRollHistory] = useState<{ value: number; die: string }[]>([]);
  // v2.80.0: which ability card is expanded (click chevron to open detail panel)
@@ -153,7 +155,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
  const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
  if (currentDice < restoreCost) {
- alert(`Not enough Psionic Energy Dice. Need ${restoreCost}, have ${currentDice}.`);
+ showToast(`Not enough Psionic Energy Dice. Need ${restoreCost}, have ${currentDice}.`, 'warn');
  return;
  }
  const fu = ((character.feature_uses as Record<string, number>) ?? {});
@@ -188,7 +190,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
  if (currentDice < pedCost) {
  // Insufficient pool — bail before logging or flashing.
- alert(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`);
+ showToast(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`, 'warn');
  return;
  }
  const nextResources = { ...resources, 'psionic-energy-dice': currentDice - pedCost };
