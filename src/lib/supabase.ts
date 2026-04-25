@@ -1,81 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Character, Profile, Campaign, CampaignMember, RollResult, SessionState } from '../types';
+import type { Database } from '../types/supabase';
 
 // =============================================================
-// Database type map — mirrors the Supabase schema exactly
+// Database type — auto-generated from the live schema.
 // =============================================================
-// Tables marked "// stub" use permissive `any` types — they unblock the build
-// (otherwise queries collapse to `never`) but provide no column-level typing.
-// To get full typing for these, run:
-//   npx supabase gen types typescript --project-id <id> > src/types/db.types.ts
-// then merge the generated rows into this interface.
-type AnyRow = Record<string, any>;
-
-export interface Database {
-  public: {
-    Tables: {
-      profiles: {
-        Row: Profile;
-        Insert: Omit<Profile, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Profile, 'id' | 'created_at'>>;
-      };
-      characters: {
-        Row: Character;
-        Insert: Omit<Character, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Character, 'id' | 'user_id' | 'created_at'>>;
-      };
-      campaigns: {
-        Row: Campaign;
-        Insert: Omit<Campaign, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Campaign, 'id' | 'owner_id' | 'created_at'>>;
-      };
-      campaign_members: {
-        Row: CampaignMember;
-        Insert: Omit<CampaignMember, 'id' | 'joined_at'>;
-        Update: Partial<Pick<CampaignMember, 'role'>>;
-      };
-      roll_logs: {
-        Row: RollResult & {
-          id: string;
-          user_id: string;
-          character_id: string | null;
-          campaign_id: string | null;
-          rolled_at: string;
-        };
-        Insert: {
-          user_id: string;
-          character_id?: string | null;
-          campaign_id?: string | null;
-          label: string;
-          dice_expression: string;
-          individual_results: number[];
-          total: number;
-        };
-        Update: never;
-      };
-      session_states: {
-        Row: SessionState;
-        Insert: Omit<SessionState, 'id' | 'updated_at'>;
-        Update: Partial<Omit<SessionState, 'id' | 'campaign_id'>>;
-      };
-      // ── Stub tables (see comment above) ──
-      action_log_reactions: { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      action_logs:          { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      battle_maps:          { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      campaign_chat:        { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      dice_skin_unlocks:    { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      discord_integrations: { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      dm_npc_roster:        { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      homebrew_classes:     { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      npcs:                 { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      roll_requests:        { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      schedule_availability:{ Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      session_schedules:    { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      session_summaries:    { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-      token_notes:          { Row: AnyRow; Insert: AnyRow; Update: AnyRow };
-    };
-  };
-}
+// v2.250.0 — replaced the hand-rolled Database interface (with a row
+// of `AnyRow` stubs) with the full schema introspection generated to
+// `src/types/supabase.ts`. The previous version had only ~6 tables
+// typed concretely and the rest stubbed as `any`, which collapsed
+// the supabase-js builder chain to `never` everywhere except the
+// concretely-typed handful. New rule: all table typings come from
+// the generated file; domain shapes (Character, Profile, etc.) still
+// live in `src/types/index.ts` and callers cast at the boundary.
+export type { Database };
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;

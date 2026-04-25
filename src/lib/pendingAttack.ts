@@ -1445,26 +1445,15 @@ export async function getTargetSaveBonus(
     .single();
   if (!part) return { bonus: 0, breakdown: '0 (no participant)', confidence: 'low' };
 
-  // v2.249.0 — NPC branch. Read the npcs row's `dex` column (always
-  // present in the schema; populated on named NPCs added via the full
-  // form, null on roster-spawned mooks). DEX saves derive a real mod;
-  // other saves return 0 with low confidence so the modal can show a
-  // "?" indicator and let the user override the bonus inline.
+  // v2.249.0 → v2.250.0 — NPC branch. The npcs table doesn't actually
+  // carry ability scores; only `dm_npc_roster` does (and those scores
+  // aren't snapshotted onto the spawned npc row). So every NPC save is
+  // a low-confidence 0 fallback right now — the modal shows the "?"
+  // indicator and lets the player/DM type an override. v2.251+: copy
+  // ability scores from dm_npc_roster onto the npcs row when spawning,
+  // OR walk back through source_monster_id to look them up at save time.
   if (part.participant_type === 'npc') {
-    const { data: n } = await supabase
-      .from('npcs')
-      .select('dex')
-      .eq('id', part.entity_id)
-      .maybeSingle();
-    if (ability === 'DEX' && n?.dex != null) {
-      const mod = abilityModifier(n.dex as number);
-      return {
-        bonus: mod,
-        breakdown: `${mod >= 0 ? '+' : ''}${mod} (DEX, NPC)`,
-        confidence: 'high',
-      };
-    }
-    return { bonus: 0, breakdown: `0 (NPC, no ${ability} score on file)`, confidence: 'low' };
+    return { bonus: 0, breakdown: `0 (NPC, ${ability} score not stored)`, confidence: 'low' };
   }
 
   if (part.participant_type !== 'character') {

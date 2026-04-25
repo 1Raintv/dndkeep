@@ -35,10 +35,13 @@ interface NpcRow {
   hp: number | null;
   max_hp: number | null;
   ac: number | null;
-  // v2.248.0 — optional ability score, used by the panel's [Roll] init
-  // button. Roster-spawned NPCs (v2.242) leave this null; named NPCs
-  // added via NPCManager's full form may set it.
-  dex?: number | null;
+  // v2.250.0 — removed `dex` field. The `npcs` table doesn't actually
+  // carry ability scores (only `dm_npc_roster` does), so the v2.248
+  // SELECT was reading a non-existent column. Initiative roll on the
+  // panel now uses a flat d20+0 unless the DM types a manual override
+  // into the input. v2.251+ candidate: store the dex mod alongside the
+  // other combat fields when an NPC is spawned from the roster, so it
+  // travels with the token.
   conditions: string[] | null;
   visible_to_players: boolean;
   in_combat: boolean;
@@ -97,7 +100,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     (async () => {
       const { data, error } = await supabase
         .from('npcs')
-        .select('id, campaign_id, name, race, hp, max_hp, ac, dex, conditions, visible_to_players, in_combat')
+        .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat')
         .eq('id', npcId)
         .single();
       if (cancelled) return;
@@ -265,13 +268,13 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
 
   const rollInitiative = useCallback(() => {
     if (!npc || !sessionState || !onUpdateSession) return;
-    // Roll d20 + DEX mod when available. The npcs table carries `dex`
-    // for some entries (named NPCs created via NPCManager's full form);
-    // roster-spawned NPCs typically don't have it. Falls back to 0.
+    // v2.250.0 — flat d20+0. The npcs table doesn't carry ability scores
+    // (only dm_npc_roster does), so we can't derive a dex mod here. The
+    // DM can type a value into the manual input as an override before
+    // committing. v2.251+ candidate: snapshot dex from dm_npc_roster on
+    // placement so it travels with the spawned NPC.
     const d20 = Math.floor(Math.random() * 20) + 1;
-    const dexRaw = (npc as any).dex as number | undefined | null;
-    const dexMod = typeof dexRaw === 'number' ? Math.floor((dexRaw - 10) / 2) : 0;
-    const total = d20 + dexMod;
+    const total = d20;
     if (myCombatant) {
       setInitiativeValue(total);
     } else {
@@ -293,7 +296,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
         initiative_order: [...sessionState.initiative_order, newCombatant],
       });
     }
-    showToast(`Rolled ${d20}${dexMod ? ` ${dexMod >= 0 ? '+' : ''}${dexMod}` : ''} = ${total}`, 'info');
+    showToast(`Rolled ${d20}`, 'info');
   }, [npc, sessionState, onUpdateSession, myCombatant, setInitiativeValue, showToast]);
 
   const removeFromCombat = useCallback(() => {

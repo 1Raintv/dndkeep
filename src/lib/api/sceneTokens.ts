@@ -15,7 +15,11 @@
 // and v2.215 adds proper reconciliation on realtime channel events.
 
 import { supabase } from '../supabase';
+import type { TableInsert, TableUpdate } from '../../types/supabase';
 import type { Token, TokenSize } from '../stores/battleMapStore';
+
+type SceneTokenInsert = TableInsert<'scene_tokens'>;
+type SceneTokenUpdate = TableUpdate<'scene_tokens'>;
 
 /** Convert a snake_case DB row to the Zustand Token shape. */
 export function dbRowToToken(row: any): Token {
@@ -34,11 +38,13 @@ export function dbRowToToken(row: any): Token {
   };
 }
 
-/** Convert a Zustand Token to a DB INSERT payload. */
-function tokenToInsertRow(token: Token) {
+/** Convert a Zustand Token to a DB INSERT payload. The caller is
+ *  responsible for ensuring `token.sceneId` is non-null before calling
+ *  this — the createToken wrapper guards for that case. */
+function tokenToInsertRow(token: Token): SceneTokenInsert {
   return {
     id: token.id,
-    scene_id: token.sceneId,
+    scene_id: token.sceneId as string,
     x: token.x,
     y: token.y,
     size: token.size,
@@ -99,7 +105,7 @@ export async function updateToken(
   id: string,
   patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath'>>
 ): Promise<boolean> {
-  const dbPatch: Record<string, any> = {};
+  const dbPatch: SceneTokenUpdate = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
   if (patch.size !== undefined) dbPatch.size = patch.size;
   if (patch.color !== undefined) dbPatch.color = patch.color;
