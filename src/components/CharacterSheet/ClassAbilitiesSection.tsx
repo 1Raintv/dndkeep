@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import type { Character } from '../../types';
+import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
 import { computeStats } from '../../lib/gameUtils';
+import ClassAbilityResolveModal, { formatOutcomesLog, type TargetOutcome } from '../Combat/ClassAbilityResolveModal';
 
 interface Props {
  character: Character;
@@ -13,6 +14,11 @@ interface Props {
  onUpdate: (u: Partial<Character>) => void;
  userId?: string;
  campaignId?: string | null;
+ // v2.247.0 — full Campaign object enables willing-fail automation
+ // resolution in the save resolver modal. Optional so older callers
+ // (solo character pages, share view) still compile; the modal just
+ // falls back to the registry default when campaign is null.
+ campaign?: Campaign | null;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -151,12 +157,20 @@ function resolveDesc(desc: string | ((c: Character) => string), character: Chara
  return raw.replace('{{sneak_dice}}', String(Math.ceil(character.level / 2)));
 }
 
-export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId }: Props) {
+export default function ClassAbilitiesSection({ character, combatFilter, onUpdate, userId, campaignId, campaign }: Props) {
  const { showToast } = useToast();
  const [justUsed, setJustUsed] = useState<string | null>(null);
  const [psionicRollHistory, setPsionicRollHistory] = useState<{ value: number; die: string }[]>([]);
  // v2.80.0: which ability card is expanded (click chevron to open detail panel)
  const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
+ // v2.247.0 — save resolver modal. Holds the ability + computed DC at
+ // the time of the click so the modal renders consistent values even
+ // if the character's stats change while it's open. cost is the
+ // `cost` argument forwarded into finalizeUse so the existing
+ // tracker-deduction path runs identically after the modal confirms.
+ const [resolveModal, setResolveModal] = useState<{
+ ability: ClassAbility; saveDC: number; cost?: number;
+ } | null>(null);
 
  // v2.190.0 — Phase Q.0 pt 31: refresh a depleted once-per-rest feature
  // by spending Psionic Energy Dice. The "Restore (N PED)" button only
@@ -192,7 +206,50 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  setTimeout(() => setJustUsed(curr => curr === `restore:${ability.name}` ? null : curr), 1800);
  }
 
+ // v2.247.0 — Use button entry. For save-bearing abilities (`save?`
+ // present) AND an active campaign, we open the save resolver modal
+ // first. The modal calls finalizeAbilityUse on confirm, passing the
+ // per-target outcomes. Out-of-combat (no encounter) falls through to
+ // the existing direct-use path with a warning toast in the modal so
+ // the player can still log the cast manually.
+ //
+ // Non-save abilities (and abilities without an encounter context)
+ // skip the modal and run finalizeAbilityUse directly.
  async function handleUseAbility(ability: ClassAbility, cost?: number) {
+ if (ability.save && campaignId) {
+ const dc = resolveSaveDC(ability.save, character);
+ if (dc != null) {
+ // Probe for an active encounter. If none, fall through — class
+ // abilities still need to work outside combat (Telekinesis to
+ // move an object, etc.). The modal would just show "no targets"
+ // which is annoying for the common out-of-combat case.
+ const { data: enc } = await import('../../lib/supabase').then(m =>
+ m.supabase
+ .from('combat_encounters')
+ .select('id')
+ .eq('campaign_id', campaignId)
+ .eq('status', 'active')
+ .maybeSingle()
+ );
+ if (enc?.id) {
+ setResolveModal({ ability, saveDC: dc, cost });
+ return;
+ }
+ }
+ }
+ await finalizeAbilityUse(ability, cost, []);
+ }
+
+ /** v2.247.0 — Resource-deduction + log path. Called either directly
+  *  by handleUseAbility (no save / no encounter) or by the save
+  *  resolver modal's onConfirmed (with per-target outcomes). When
+  *  outcomes are present, the log entry summarizes them via
+  *  formatOutcomesLog instead of the generic "Used X" line. */
+ async function finalizeAbilityUse(
+ ability: ClassAbility,
+ cost?: number,
+ outcomes: TargetOutcome[] = [],
+ ) {
  // v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost gate.
  // Abilities with `pedCost: N` (Warp Space=1, Mass Teleport=4, etc.)
  // require N dice in the pool; insufficient pool aborts with an alert
@@ -241,6 +298,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }
  // Resolve description (may be a function)
  const desc = resolveDesc((ability as any).description ?? '', character);
+ // v2.247.0 — when outcomes are present, the log notes summarize the
+ // per-target save resolution (formatOutcomesLog) instead of the
+ // truncated description. The description is still available in the
+ // ability card for anyone who wants the full text.
+ const saveDC = ability.save ? resolveSaveDC(ability.save, character) : null;
+ const outcomeNote = (outcomes.length > 0 && ability.save && saveDC != null)
+ ? formatOutcomesLog(ability.name, saveDC, ability.save.ability, outcomes)
+ : null;
  // Log to action log
  await logAction({
  campaignId: campaignId ?? null,
@@ -257,7 +322,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  total: rollResult?.total ?? 0,
  notes: (ability as any).psionicDie
  ? `Rolled 1${getPsionicDieSize(character.level)} = ${rollResult?.total} · ${getPsionicDieCount(character.level) - 1} dice remaining`
- : desc.slice(0, 100) + (desc.length > 100 ? '…' : ''),
+ : outcomeNote ?? (desc.slice(0, 100) + (desc.length > 100 ? '…' : '')),
  });
  // Store psionic roll for inline display
  if ((ability as any).psionicDie && rollResult) {
@@ -307,6 +372,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  if (filtered.length === 0) return null;
 
  return (
+ <>
  <div style={{ marginTop: 'var(--sp-3)' }}>
  <div style={{
  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
@@ -682,5 +748,30 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  })}
  </div>
  </div>
+ {/* v2.247.0 — Save resolver modal. Mounts when handleUseAbility
+     detects a save-bearing ability + active encounter and stashes
+     the ability + DC into resolveModal. The portal lifts the modal
+     out of any nested overflow:hidden so it covers the sheet
+     properly. */}
+ {resolveModal && campaignId && (
+ <ClassAbilityResolveModal
+ open={!!resolveModal}
+ onClose={() => setResolveModal(null)}
+ ability={resolveModal.ability}
+ saveDC={resolveModal.saveDC}
+ character={character}
+ campaign={campaign ?? null}
+ campaignId={campaignId}
+ onConfirmed={(outcomes) => {
+ const m = resolveModal;
+ // Run the actual deduction + log AFTER the modal's setState
+ // settles. setResolveModal(null) is fired by the modal's
+ // onClose right after onConfirmed, so we don't need to do it
+ // here.
+ finalizeAbilityUse(m.ability, m.cost, outcomes);
+ }}
+ />
+ )}
+ </>
  );
 }

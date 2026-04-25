@@ -2744,6 +2744,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onUpdate={u => applyUpdate(u, true)}
  userId={userId}
  campaignId={character.campaign_id}
+ campaign={activeCampaign}
  />
  )}
 
