@@ -3756,17 +3756,34 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     setContextMenu(state);
   }, []);
 
-  // v2.226 — left-click-without-drag handler. Only opens the quick
-  // panel for tokens linked to a known character (those have rich
-  // data to show). Unlinked tokens (NPCs without character_id, plain
-  // markers) keep the right-click context menu as their primary
-  // edit affordance.
+  // v2.232 — left-click handler. Branches on whether the token is
+  // linked to a player character:
+  //   - PC linked → rich TokenQuickPanel (HP/AC/conditions/checks/...)
+  //   - Unlinked (NPC, plain marker) → fall through to the existing
+  //     TokenContextMenu so the user gets SOMETHING (rename / resize /
+  //     recolor / upload portrait / delete). Previously did nothing,
+  //     which read as "clicking is broken." Right-click still works
+  //     for both kinds; left-click is now equivalent for unlinked.
+  // Future: when NPC roster ships (v2.234+), unlinked tokens linked
+  // to a bestiary entry will get their own quick panel with monster
+  // stat block + attack list instead of the bare context menu.
   const handleTokenClick = useCallback((tokenId: string, screenX: number, screenY: number) => {
     const t = useBattleMapStore.getState().tokens[tokenId];
-    if (!t || !t.characterId) return;
-    const char = props.playerCharacters.find(c => c.id === t.characterId);
-    if (!char) return;
-    setClickedToken({ tokenId, x: screenX, y: screenY });
+    if (!t) return;
+    if (t.characterId) {
+      const char = props.playerCharacters.find(c => c.id === t.characterId);
+      if (!char) {
+        // Token references a character that's no longer in the prop —
+        // probably orphaned data. Fall through to context menu so the
+        // user can at least delete the orphan.
+        setContextMenu({ tokenId, clientX: screenX, clientY: screenY });
+        return;
+      }
+      setClickedToken({ tokenId, x: screenX, y: screenY });
+    } else {
+      // Unlinked token (NPC/marker) — open the context menu inline.
+      setContextMenu({ tokenId, clientX: screenX, clientY: screenY });
+    }
   }, [props.playerCharacters]);
 
   useEffect(() => {
