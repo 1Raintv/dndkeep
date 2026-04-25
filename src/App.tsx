@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
+import { ModalProvider } from './components/shared/Modal';
 import { DiceRollProvider } from './context/DiceRollContext';
 import { ScreenFlashProvider } from './context/ScreenFlashContext';
 import { CampaignProvider } from './context/CampaignContext';
@@ -415,7 +416,9 @@ export default function App() {
           <DiceRollProvider>
             <ScreenFlashProvider>
               <ToastProvider>
-                <AppRoutes />
+                <ModalProvider>
+                  <AppRoutes />
+                </ModalProvider>
               </ToastProvider>
             </ScreenFlashProvider>
           </DiceRollProvider>

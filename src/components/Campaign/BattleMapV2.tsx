@@ -166,6 +166,7 @@ import { supabase } from '../../lib/supabase';
 import ChecksPanel from './ChecksPanel';
 import type { Character } from '../../types';
 import { useToast } from '../shared/Toast';
+import { useModal } from '../shared/Modal';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -1151,6 +1152,16 @@ function TextLayer(props: {
   const { viewport, canvasEl, active, isDM, currentSceneId } = props;
   const texts = useBattleMapStore(s => s.texts);
   const containerRef = useRef<Container | null>(null);
+  // v2.241 — non-blocking modal handles for prompts/confirms.
+  const { prompt: promptModal, confirm: confirmModal } = useModal();
+  // The pointer handlers below are attached as plain MouseEvent
+  // listeners (not React events) so they can't read fresh state from
+  // closures. Mirror the modal handles into refs so the handlers
+  // always call the latest provider methods.
+  const promptRef = useRef(promptModal);
+  const confirmRef = useRef(confirmModal);
+  useEffect(() => { promptRef.current = promptModal; }, [promptModal]);
+  useEffect(() => { confirmRef.current = confirmModal; }, [confirmModal]);
 
   // Mount/unmount the container that holds all Text children.
   useEffect(() => {
@@ -1234,7 +1245,7 @@ function TextLayer(props: {
       return null;
     }
 
-    function onLeftClick(e: MouseEvent) {
+    async function onLeftClick(e: MouseEvent) {
       // Only react to primary button; ignore middle/right/etc.
       if (e.button !== 0) return;
       const w = clientToWorld(e);
@@ -1242,14 +1253,27 @@ function TextLayer(props: {
 
       const existing = findTextAt(w);
       if (existing) {
-        // Edit existing text.
-        const next = window.prompt('Edit text:', existing.text);
+        // v2.241 — edit existing text via inline modal (was window.prompt).
+        const next = await promptRef.current({
+          title: 'Edit text',
+          defaultValue: existing.text,
+          confirmLabel: 'Save',
+          // allowEmpty so we can detect empty submission and route to
+          // a follow-up delete-confirm instead of silently bailing.
+          allowEmpty: true,
+        });
         if (next == null) return;
         const trimmed = next.trim();
         if (trimmed === existing.text) return;
         if (trimmed === '') {
-          // Empty edit → treat as delete confirmation.
-          if (!window.confirm('Empty text — delete this annotation?')) return;
+          // Empty edit → treat as delete intent.
+          const ok = await confirmRef.current({
+            title: 'Delete this annotation?',
+            message: `"${existing.text}" will be removed from the map.`,
+            confirmLabel: 'Delete',
+            danger: true,
+          });
+          if (!ok) return;
           useBattleMapStore.getState().removeText(existing.id);
           textsApi.deleteText(existing.id).catch(err =>
             console.error('[TextLayer] deleteText failed', err));
@@ -1261,8 +1285,12 @@ function TextLayer(props: {
         return;
       }
 
-      // Empty space — create a new annotation.
-      const value = window.prompt('Text:');
+      // Empty space — create a new annotation. v2.241 — was window.prompt.
+      const value = await promptRef.current({
+        title: 'New text annotation',
+        placeholder: 'Type a label…',
+        confirmLabel: 'Add',
+      });
       if (value == null) return;
       const trimmed = value.trim();
       if (trimmed === '') return;
@@ -1286,7 +1314,7 @@ function TextLayer(props: {
         console.error('[TextLayer] createText failed', err));
     }
 
-    function onRightClick(e: MouseEvent) {
+    async function onRightClick(e: MouseEvent) {
       const w = clientToWorld(e);
       if (!w) return;
       const found = findTextAt(w);
@@ -1295,7 +1323,14 @@ function TextLayer(props: {
       // it doesn't bubble up to the wrapper-level token context menu.
       e.stopPropagation();
       e.preventDefault();
-      if (!window.confirm(`Delete text "${found.text}"?`)) return;
+      // v2.241 — was window.confirm.
+      const ok = await confirmRef.current({
+        title: 'Delete text annotation?',
+        message: `"${found.text}" will be removed from the map.`,
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
       useBattleMapStore.getState().removeText(found.id);
       textsApi.deleteText(found.id).catch(err =>
         console.error('[TextLayer] deleteText failed', err));
@@ -1358,6 +1393,10 @@ function DrawingLayer(props: {
   const drawings = useBattleMapStore(s => s.drawings);
   const containerRef = useRef<Container | null>(null);
   const previewGfxRef = useRef<Graphics | null>(null);
+  // v2.241 — non-blocking confirm modal (replaces window.confirm in onContextMenu).
+  const { confirm: confirmModal } = useModal();
+  const confirmRef = useRef(confirmModal);
+  useEffect(() => { confirmRef.current = confirmModal; }, [confirmModal]);
 
   // Mirror the picker state into refs so the pointer handlers can
   // read them without re-attaching listeners on every color/width change.
@@ -1579,14 +1618,21 @@ function DrawingLayer(props: {
         console.error('[DrawingLayer] createDrawing failed', err));
     }
 
-    function onContextMenu(e: MouseEvent) {
+    async function onContextMenu(e: MouseEvent) {
       const w = clientToWorld(e);
       if (!w) return;
       const found = findDrawingAt(w);
       if (!found) return;
       e.stopPropagation();
       e.preventDefault();
-      if (!window.confirm('Delete this drawing?')) return;
+      // v2.241 — was window.confirm.
+      const ok = await confirmRef.current({
+        title: 'Delete this drawing?',
+        message: `${found.kind.charAt(0).toUpperCase() + found.kind.slice(1)} will be removed from the map.`,
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
       useBattleMapStore.getState().removeDrawing(found.id);
       drawingsApi.deleteDrawing(found.id).catch(err =>
         console.error('[DrawingLayer] deleteDrawing failed', err));
@@ -2563,6 +2609,8 @@ function TokenContextMenu(props: {
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
   const [submenu, setSubmenu] = useState<'none' | 'size' | 'color'>('none');
+  // v2.241 — modal handle for the rename prompt.
+  const { prompt: promptModal } = useModal();
 
   useEffect(() => {
     function handler() {
@@ -2717,8 +2765,14 @@ function TokenContextMenu(props: {
         </div>
       )}
       {[
-        { label: 'Rename…', onClick: () => {
-          const next = window.prompt('Token name', token.name);
+        { label: 'Rename…', onClick: async () => {
+          // v2.241 — was window.prompt.
+          const next = await promptModal({
+            title: 'Rename token',
+            defaultValue: token.name,
+            placeholder: 'Token name',
+            confirmLabel: 'Save',
+          });
           if (next !== null) {
             applyPatch({ name: next.trim() || token.name });
           }
@@ -2784,8 +2838,8 @@ function TokenContextMenu(props: {
  * updates to both `scenes` array and `currentScene`. Realtime (v2.214)
  * echoes the changes to other clients.
  *
- * "Delete" uses window.confirm for now; v2.220 polish ship will replace
- * the native prompt with a proper inline confirmation pattern.
+ * "Delete" uses an inline confirm modal as of v2.241 (replaced
+ * window.confirm).
  */
 function SceneSettingsModal(props: {
   scene: scenesApi.Scene;
@@ -2795,6 +2849,7 @@ function SceneSettingsModal(props: {
 }) {
   const { scene, onClose, onScenePatched, onSceneDeleted } = props;
   const { showToast } = useToast();
+  const { confirm: confirmModal } = useModal();
   const [name, setName] = useState(scene.name);
   const [gridSizePx, setGridSizePx] = useState(scene.gridSizePx);
   const [widthCells, setWidthCells] = useState(scene.widthCells);
@@ -2886,11 +2941,18 @@ function SceneSettingsModal(props: {
   }
 
   async function doDelete() {
-    if (!window.confirm(`Delete scene "${scene.name}"? This removes all tokens in it and cannot be undone.`)) return;
+    // v2.241 — was window.confirm.
+    const ok = await confirmModal({
+      title: `Delete scene "${scene.name}"?`,
+      message: 'This removes the scene and all tokens in it. This cannot be undone.',
+      confirmLabel: 'Delete scene',
+      danger: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     try {
-      const ok = await scenesApi.deleteScene(scene.id);
-      if (!ok) {
+      const result = await scenesApi.deleteScene(scene.id);
+      if (!result) {
         showToast('Failed to delete. Check console for details.', 'error');
         return;
       }
@@ -3954,6 +4016,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // the chain of `window.alert()` calls left over from earlier ships
   // with the existing toast UI (mounted at app root in App.tsx).
   const { showToast } = useToast();
+  // v2.241 — non-blocking modal handles for prompts/confirms (replaces
+  // window.prompt and window.confirm in this file). Single-modal-at-a-
+  // time semantics; opening a second cancels the first. ModalProvider
+  // is mounted at app root in App.tsx.
+  const { prompt: promptModal, confirm: confirmModal } = useModal();
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [dims, setDims] = useState({ width: 800, height: 600 });
@@ -4627,8 +4694,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
   // v2.213 "New Scene" — creates an empty scene with default grid,
   // auto-selects it. DM-only via RLS + UI gating.
+  // v2.241 — uses inline modal prompt (replaced window.prompt).
   const createNewScene = useCallback(async () => {
-    const name = window.prompt('New scene name', `Scene ${scenes.length + 1}`);
+    const name = await promptModal({
+      title: 'New scene',
+      placeholder: 'Scene name',
+      defaultValue: `Scene ${scenes.length + 1}`,
+      confirmLabel: 'Create',
+      allowEmpty: true,
+    });
     if (name === null) return; // cancelled
     const scene = await scenesApi.createScene(campaignId, userId, {
       name: name.trim() || `Scene ${scenes.length + 1}`,
@@ -4639,7 +4713,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     }
     setScenes(prev => [...prev, scene]);
     setCurrentScene(scene);
-  }, [campaignId, userId, scenes.length]);
+  }, [campaignId, userId, scenes.length, promptModal, showToast]);
 
   // v2.217 — scene background upload. Separate from portrait uploads:
   // own hidden <input>, own in-flight state, own commit path.
@@ -4792,9 +4866,16 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     }
   }, [userId, currentScene]);
 
-  const handleRemoveMap = useCallback(() => {
+  const handleRemoveMap = useCallback(async () => {
     if (!currentScene?.backgroundStoragePath) return;
-    if (!window.confirm('Remove the current map image? The grid will render on a plain background.')) return;
+    // v2.241 — was window.confirm.
+    const ok = await confirmModal({
+      title: 'Remove map image?',
+      message: 'The grid will render on a plain background. You can re-upload the image later.',
+      confirmLabel: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
     setScenes(prev => prev.map(s => s.id === currentScene.id
       ? { ...s, backgroundStoragePath: null }
       : s));
@@ -4804,7 +4885,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     scenesApi.updateScene(currentScene.id, { backgroundStoragePath: null }).catch(err =>
       console.error('[BattleMapV2] scene bg remove commit failed', err)
     );
-  }, [currentScene]);
+  }, [currentScene, confirmModal]);
 
   const handleContextMenu = useCallback((state: ContextMenuState) => {
     setContextMenu(state);
