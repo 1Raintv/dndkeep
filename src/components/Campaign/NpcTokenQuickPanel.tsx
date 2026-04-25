@@ -35,6 +35,10 @@ interface NpcRow {
   hp: number | null;
   max_hp: number | null;
   ac: number | null;
+  // v2.248.0 — optional ability score, used by the panel's [Roll] init
+  // button. Roster-spawned NPCs (v2.242) leave this null; named NPCs
+  // added via NPCManager's full form may set it.
+  dex?: number | null;
   conditions: string[] | null;
   visible_to_players: boolean;
   in_combat: boolean;
@@ -69,9 +73,16 @@ interface Props {
   anchorY: number;
   isDM: boolean;
   onClose: () => void;
+  // v2.248.0 — initiative integration. Reads the campaign's
+  // session_state.initiative_order to find this NPC's entry (matched
+  // by Combatant.npc_id) and updates it via onUpdateSession. Optional
+  // so older callers (test harnesses, share view) still compile —
+  // when missing, the Initiative section in the panel is hidden.
+  sessionState?: import('../../types').SessionState | null;
+  onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
 }
 
-export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onClose }: Props) {
+export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onClose, sessionState, onUpdateSession }: Props) {
   const { showToast } = useToast();
   const [npc, setNpc] = useState<NpcRow | null>(null);
   const [hpInput, setHpInput] = useState('');
@@ -86,7 +97,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     (async () => {
       const { data, error } = await supabase
         .from('npcs')
-        .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat')
+        .select('id, campaign_id, name, race, hp, max_hp, ac, dex, conditions, visible_to_players, in_combat')
         .eq('id', npcId)
         .single();
       if (cancelled) return;
@@ -233,6 +244,65 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     }
   }, [npc, showToast]);
 
+  // v2.248.0 — Initiative integration. Find this NPC's Combatant entry
+  // in the campaign's session_state.initiative_order via `npc_id`. We
+  // intentionally don't fall back to a name match: legacy Combatant
+  // entries created via the InitiativeTracker's "Add Monster" form
+  // never had an npcs row, so a name collision (two "Goblin" rows)
+  // would silently bind to the wrong one. Better to require linking
+  // via the panel's "Add to Combat" button, which writes npc_id.
+  const myCombatant = (sessionState?.initiative_order ?? []).find(c => c.npc_id === npcId);
+  const inCombat = !!myCombatant;
+
+  const setInitiativeValue = useCallback((value: number) => {
+    if (!sessionState || !onUpdateSession || !myCombatant) return;
+    onUpdateSession({
+      initiative_order: sessionState.initiative_order.map(c =>
+        c.id === myCombatant.id ? { ...c, initiative: value } : c
+      ),
+    });
+  }, [sessionState, onUpdateSession, myCombatant]);
+
+  const rollInitiative = useCallback(() => {
+    if (!npc || !sessionState || !onUpdateSession) return;
+    // Roll d20 + DEX mod when available. The npcs table carries `dex`
+    // for some entries (named NPCs created via NPCManager's full form);
+    // roster-spawned NPCs typically don't have it. Falls back to 0.
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const dexRaw = (npc as any).dex as number | undefined | null;
+    const dexMod = typeof dexRaw === 'number' ? Math.floor((dexRaw - 10) / 2) : 0;
+    const total = d20 + dexMod;
+    if (myCombatant) {
+      setInitiativeValue(total);
+    } else {
+      // Auto-add to combat with the rolled initiative. Snapshots HP/AC/
+      // conditions from the npcs row at add time, matching the existing
+      // addCombatant pattern in InitiativeTracker.
+      const newCombatant: import('../../types').Combatant = {
+        id: `${Date.now()}-${Math.random()}`,
+        name: npc.name,
+        initiative: total,
+        current_hp: npc.hp ?? 0,
+        max_hp: npc.max_hp ?? (npc.hp ?? 0),
+        ac: npc.ac ?? 10,
+        is_monster: true,
+        npc_id: npc.id,
+        conditions: (npc.conditions ?? []) as any,
+      };
+      onUpdateSession({
+        initiative_order: [...sessionState.initiative_order, newCombatant],
+      });
+    }
+    showToast(`Rolled ${d20}${dexMod ? ` ${dexMod >= 0 ? '+' : ''}${dexMod}` : ''} = ${total}`, 'info');
+  }, [npc, sessionState, onUpdateSession, myCombatant, setInitiativeValue, showToast]);
+
+  const removeFromCombat = useCallback(() => {
+    if (!sessionState || !onUpdateSession || !myCombatant) return;
+    onUpdateSession({
+      initiative_order: sessionState.initiative_order.filter(c => c.id !== myCombatant.id),
+    });
+  }, [sessionState, onUpdateSession, myCombatant]);
+
   function stop(e: React.MouseEvent) { e.stopPropagation(); }
 
   // Loading state — fetch hasn't returned yet. Render a tiny stub so
@@ -373,6 +443,104 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
             </div>
           </button>
         </div>
+
+        {/* v2.248.0 — Initiative section. Reads sessionState.initiative_order
+            for this NPC's entry (matched by npc_id). DM-only controls:
+            [Roll d20] auto-adds to combat with the rolled total if not
+            present; manual input sets the value directly; [Remove] tears
+            down the entry. Hidden when no sessionState/onUpdateSession was
+            plumbed through (e.g. share view, older callers). */}
+        {isDM && sessionState && onUpdateSession && (
+          <div style={{
+            marginBottom: 12,
+            padding: '8px 10px',
+            background: inCombat ? 'rgba(212,160,23,0.06)' : 'var(--c-raised)',
+            border: `1px solid ${inCombat ? 'rgba(212,160,23,0.35)' : 'var(--c-border)'}`,
+            borderRadius: 'var(--r-sm, 4px)',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 6,
+            }}>
+              <span style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                Initiative
+              </span>
+              {inCombat && (
+                <button
+                  onClick={removeFromCombat}
+                  title="Remove this NPC from the initiative order"
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'var(--t-3)', cursor: 'pointer',
+                    fontSize: 9, fontWeight: 700, padding: 0,
+                    minHeight: 0, minWidth: 0, letterSpacing: '0.06em',
+                  }}
+                >
+                  REMOVE
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Init chip — current value or em-dash when not in combat */}
+              <div style={{
+                flexShrink: 0,
+                minWidth: 44, padding: '4px 8px',
+                background: inCombat ? 'rgba(212,160,23,0.14)' : 'transparent',
+                border: `1px solid ${inCombat ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
+                borderRadius: 4,
+                textAlign: 'center' as const,
+                fontFamily: 'var(--ff-stat)', fontSize: 16, fontWeight: 800,
+                color: inCombat ? 'var(--c-gold-l)' : 'var(--t-3)',
+              }}>
+                {myCombatant ? myCombatant.initiative : '—'}
+              </div>
+              {/* Manual override input — only enabled when in combat */}
+              <input
+                type="number"
+                disabled={!inCombat}
+                placeholder="set"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const v = parseInt((e.target as HTMLInputElement).value, 10);
+                    if (Number.isFinite(v)) {
+                      setInitiativeValue(v);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }
+                }}
+                style={{
+                  flex: 1, minWidth: 0,
+                  padding: '4px 6px',
+                  background: 'var(--c-card)',
+                  border: '1px solid var(--c-border)',
+                  borderRadius: 4,
+                  color: 'var(--t-1)', fontSize: 11,
+                  opacity: inCombat ? 1 : 0.5,
+                }}
+              />
+              {/* Roll button — auto-adds to combat if not already present */}
+              <button
+                onClick={rollInitiative}
+                title={inCombat
+                  ? 'Re-roll initiative (d20 + DEX mod if available)'
+                  : 'Roll d20 + DEX mod and add to combat'}
+                style={{
+                  flexShrink: 0,
+                  padding: '4px 10px',
+                  background: 'rgba(212,160,23,0.15)',
+                  border: '1px solid rgba(212,160,23,0.5)',
+                  borderRadius: 4,
+                  color: 'var(--c-gold-l)',
+                  fontSize: 11, fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap' as const,
+                }}
+              >
+                {inCombat ? '↻ Roll' : '+ Roll'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Active conditions chips. DM clicks ✕ to remove, "+" to open picker. */}
         <div style={{ marginBottom: 12 }}>

@@ -869,6 +869,12 @@ export interface Combatant {
   is_monster: boolean;
   monster_id?: string;
   character_id?: string;
+  // v2.248.0 — link back to the npcs row for roster-spawned NPCs. Lets
+  // the NpcTokenQuickPanel find-or-create its initiative_order entry
+  // by id rather than fragile name match. Optional because legacy
+  // entries created via the InitiativeTracker's "Add Monster" form
+  // never had a backing npcs row.
+  npc_id?: string;
   conditions: ConditionName[];
   notes?: string;
   ongoing_damage?: OngoingDamage[];

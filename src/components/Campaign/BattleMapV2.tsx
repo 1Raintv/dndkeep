@@ -6226,6 +6226,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             anchorY={clickedNpcToken.y}
             isDM={isDM}
             onClose={() => setClickedNpcToken(null)}
+            sessionState={props.sessionState ?? null}
+            onUpdateSession={props.onUpdateSession}
           />
         )}
 
