@@ -118,13 +118,33 @@
 //     handles the rare case of conditions + checks both being full.
 //   - Cast slim-character → Character at the ChecksPanel boundary
 //     (rollCheck/checkModifier only read the fields we already pass).
-//   Deferred to v2.230+:
+// v2.231.0 — Phase Q.1 pt 22: Initiative bar + Party Vitals strip.
+//   - InitiativeBar: slim horizontal strip rendered above the canvas
+//     wrapper when sessionState.combat_active is true. Shows
+//     "Round N" + each combatant as a chip in initiative order with
+//     init number, name, HP. Active combatant is gold-bordered and
+//     scaled up. PCs get blue accents, monsters red. DM gets a
+//     "Next Turn →" button that wraps + bumps round at end of order.
+//     Hidden when combat isn't active so the map isn't crowded.
+//   - PartyVitalsBar: always-on horizontal strip below the canvas
+//     wrapper. Lists every PC in the campaign as a compact card with
+//     name + AC chip + HP bar (color-graded green/yellow/red) +
+//     spell-slot pips per level (filled = remaining). Read-only;
+//     edits go through TokenQuickPanel or the player's own sheet.
+//     Hides itself if no PCs (e.g. a campaign-creation moment).
+//   - Plumbing: CampaignDashboard now passes sessionState +
+//     onUpdateSession + spell_slots through to BattleMapV2. Both
+//     props are optional so older callers still compile.
+//   - No schema changes; both bars read existing data flowing through
+//     CampaignDashboard's Realtime subscriptions.
+//   Deferred to v2.232+:
 //      - Enemy attack flow (range highlight → target picker → roll
-//        pipeline → reaction prompt → damage application). Multi-ship
-//        epic; design pass first.
+//        pipeline → reaction prompt → damage application).
 //      - NPC token roster + bulk add.
 //      - Combat-aware condition cascades.
 //      - Lighting / fog of war fix.
+//      - Click a vitals card to focus its token on the map (camera
+//        pan/zoom). Currently the strip is purely informational.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -172,7 +192,18 @@ interface BattleMapV2Props {
     saving_throw_proficiencies?: import('../../types').AbilityKey[];
     skill_proficiencies?: string[];
     skill_expertises?: string[];
+    // v2.231.0 — spell slot tally for the Party Vitals strip. Optional
+    // because not every campaign sources spell-slot data, and not every
+    // character is a caster.
+    spell_slots?: import('../../types').SpellSlots;
   }>;
+  // v2.231.0 — Initiative tracker bar at the top of the map needs the
+  // session state (initiative_order, current_turn, round, combat_active).
+  // The DM bar's "Next Turn" button calls onUpdateSession to advance.
+  // Both are optional so the map still renders for older callers that
+  // haven't been updated.
+  sessionState?: import('../../types').SessionState | null;
+  onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
 }
 
 // Default scene config used when creating new scenes. v2.214 lets the
@@ -2687,6 +2718,343 @@ function TokenQuickPanel(props: {
   );
 }
 
+/**
+ * v2.231.0 — Initiative bar.
+ *
+ * Slim horizontal strip rendered ABOVE the canvas wrapper inside
+ * BattleMapV2 when the campaign's session has combat_active = true.
+ * Hidden the rest of the time so it doesn't clutter the map.
+ *
+ * Shows: Round N · combatant chips left-to-right (initiative order) ·
+ * the active combatant has a gold border + scale-up to make it
+ * obvious whose turn it is. DMs additionally see a "Next Turn"
+ * button that advances current_turn (wrapping to 0 + round++ at
+ * the end of the round).
+ *
+ * Read-only for players. The full initiative editor lives on the
+ * Session tab (InitiativeTracker.tsx) and remains the source of
+ * truth for adding/removing/rolling combatants.
+ *
+ * Source of truth: sessionState.initiative_order (Combatant[]) and
+ * sessionState.current_turn (index). Both are kept in sync by the
+ * existing CampaignDashboard Realtime subscription on campaign_sessions.
+ */
+function InitiativeBar(props: {
+  sessionState: import('../../types').SessionState;
+  isDM: boolean;
+  onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
+}) {
+  const { sessionState, isDM, onUpdateSession } = props;
+  const order = sessionState.initiative_order ?? [];
+  const cur = sessionState.current_turn ?? 0;
+  const round = sessionState.round ?? 1;
+
+  if (!sessionState.combat_active || order.length === 0) return null;
+
+  function nextTurn() {
+    if (!onUpdateSession || order.length === 0) return;
+    const next = cur + 1;
+    if (next >= order.length) {
+      onUpdateSession({ current_turn: 0, round: round + 1 });
+    } else {
+      onUpdateSession({ current_turn: next });
+    }
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 12px',
+        marginBottom: 8,
+        background: 'var(--c-card)',
+        border: '1px solid rgba(251,191,36,0.4)',
+        borderRadius: 'var(--r-md, 8px)',
+        overflowX: 'auto' as const,
+      }}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        flexShrink: 0,
+        padding: '2px 10px',
+        background: 'rgba(251,191,36,0.15)',
+        border: '1px solid rgba(251,191,36,0.55)',
+        borderRadius: 'var(--r-sm, 4px)',
+        fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
+        letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+        color: '#fbbf24',
+      }}>
+        ⚔ Round {round}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, overflowX: 'auto' as const }}>
+        {order.map((c, i) => {
+          const active = i === cur;
+          const dead = c.current_hp <= 0;
+          return (
+            <div
+              key={c.id}
+              title={`${c.name} · Initiative ${c.initiative}${dead ? ' · DOWN' : ''}`}
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column' as const,
+                alignItems: 'center',
+                minWidth: 64,
+                padding: active ? '4px 8px' : '3px 6px',
+                background: active
+                  ? 'rgba(251,191,36,0.22)'
+                  : c.is_monster
+                    ? 'rgba(248,113,113,0.1)'
+                    : 'rgba(96,165,250,0.1)',
+                border: active
+                  ? '2px solid #fbbf24'
+                  : `1px solid ${c.is_monster ? 'rgba(248,113,113,0.4)' : 'rgba(96,165,250,0.4)'}`,
+                borderRadius: 'var(--r-sm, 4px)',
+                opacity: dead ? 0.45 : 1,
+                transform: active ? 'scale(1.04)' : 'scale(1)',
+                transition: 'transform 0.15s, background 0.15s',
+              }}
+            >
+              <div style={{
+                fontFamily: 'var(--ff-stat)',
+                fontSize: 11, fontWeight: 800,
+                color: active ? '#fbbf24' : c.is_monster ? '#f87171' : '#60a5fa',
+              }}>
+                {c.initiative}
+              </div>
+              <div style={{
+                fontFamily: 'var(--ff-body)',
+                fontSize: 10, fontWeight: 700,
+                color: 'var(--t-1)',
+                maxWidth: 80,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {c.name}
+              </div>
+              <div style={{
+                fontFamily: 'var(--ff-stat)',
+                fontSize: 9, fontWeight: 700,
+                color: c.current_hp / Math.max(1, c.max_hp) > 0.5
+                  ? '#34d399'
+                  : c.current_hp / Math.max(1, c.max_hp) > 0.25
+                    ? '#fbbf24'
+                    : '#f87171',
+              }}>
+                {c.current_hp}/{c.max_hp}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isDM && onUpdateSession && (
+        <button
+          onClick={nextTurn}
+          title="Advance to the next combatant. Wraps and bumps the round counter at the end of the order."
+          style={{
+            flexShrink: 0,
+            padding: '6px 14px',
+            background: 'rgba(251,191,36,0.22)',
+            border: '1px solid rgba(251,191,36,0.65)',
+            borderRadius: 'var(--r-sm, 4px)',
+            color: '#fbbf24',
+            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+          }}
+        >
+          Next Turn →
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * v2.231.0 — Party Vitals strip.
+ *
+ * Always-on horizontal strip rendered BELOW the canvas wrapper
+ * inside BattleMapV2. Read-only at-a-glance view: every PC in the
+ * campaign appears as a card with name + HP bar + AC chip + spell-
+ * slot pips (only for casters with at least one slot defined).
+ *
+ * No interactions — clicks/edits go through TokenQuickPanel (DM)
+ * or the character's own sheet (player). This is purely "look,
+ * don't touch" so the table stays compact and DMs can scan vitals
+ * mid-combat without opening anything.
+ *
+ * Hides itself when there are no PCs to avoid an empty bar.
+ */
+function PartyVitalsBar(props: {
+  characters: BattleMapV2Props['playerCharacters'];
+}) {
+  const { characters } = props;
+  if (!characters || characters.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 8,
+        padding: '8px 12px',
+        marginTop: 8,
+        background: 'var(--c-card)',
+        border: '1px solid var(--c-border)',
+        borderRadius: 'var(--r-md, 8px)',
+        overflowX: 'auto' as const,
+      }}
+    >
+      <div style={{
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 6px',
+        fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
+        letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+        color: 'var(--t-3)',
+        borderRight: '1px solid var(--c-border)',
+        paddingRight: 12,
+      }}>
+        Party
+      </div>
+      {characters.map(c => {
+        const pct = c.max_hp > 0 ? Math.max(0, Math.min(1, c.current_hp / c.max_hp)) : 0;
+        const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
+        // Sort slot levels 1–9 numerically; only show levels that have
+        // at least one slot defined (total > 0). Skips cantrips (level 0).
+        const slotLevels = Object.keys(c.spell_slots ?? {})
+          .map(k => parseInt(k, 10))
+          .filter(n => Number.isFinite(n) && n >= 1 && n <= 9 && (c.spell_slots![String(n)]?.total ?? 0) > 0)
+          .sort((a, b) => a - b);
+        return (
+          <div
+            key={c.id}
+            style={{
+              flexShrink: 0,
+              minWidth: 160,
+              display: 'flex',
+              flexDirection: 'column' as const,
+              gap: 4,
+              padding: '6px 10px',
+              background: 'rgba(15,16,18,0.5)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 'var(--r-sm, 4px)',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'space-between',
+            }}>
+              <span style={{
+                fontFamily: 'var(--ff-body)',
+                fontSize: 12, fontWeight: 700,
+                color: 'var(--t-1)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {c.name}
+              </span>
+              <span style={{
+                flexShrink: 0,
+                fontFamily: 'var(--ff-stat)',
+                fontSize: 10, fontWeight: 700,
+                color: 'var(--t-3)',
+                padding: '1px 6px',
+                background: 'rgba(96,165,250,0.15)',
+                border: '1px solid rgba(96,165,250,0.4)',
+                borderRadius: 'var(--r-sm, 4px)',
+              }} title="Armor Class">
+                AC {c.armor_class}
+              </span>
+            </div>
+
+            {/* HP bar */}
+            <div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                fontSize: 9, fontWeight: 700, color: 'var(--t-3)',
+                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+              }}>
+                <span>HP</span>
+                <span style={{ color: hpColor }}>{c.current_hp}<span style={{ color: 'var(--t-3)' }}>/{c.max_hp}</span></span>
+              </div>
+              <div style={{
+                height: 5,
+                background: 'rgba(15,16,18,0.85)',
+                border: '1px solid var(--c-border)',
+                borderRadius: 3,
+                overflow: 'hidden' as const,
+                marginTop: 2,
+              }}>
+                <div style={{
+                  width: `${pct * 100}%`, height: '100%',
+                  background: hpColor, transition: 'width 0.2s, background 0.2s',
+                }} />
+              </div>
+            </div>
+
+            {/* Spell slots — only renders for casters with slots */}
+            {slotLevels.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 2 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, color: 'var(--t-3)',
+                  letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+                }}>
+                  Slots
+                </div>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column' as const,
+                  gap: 1,
+                }}>
+                  {slotLevels.map(lvl => {
+                    const slot = c.spell_slots![String(lvl)];
+                    const remaining = Math.max(0, slot.total - slot.used);
+                    return (
+                      <div
+                        key={lvl}
+                        title={`Level ${lvl}: ${remaining}/${slot.total} remaining`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <span style={{
+                          fontFamily: 'var(--ff-stat)',
+                          fontSize: 9, fontWeight: 700,
+                          color: 'var(--t-3)',
+                          minWidth: 8,
+                        }}>
+                          {lvl}
+                        </span>
+                        <div style={{ display: 'flex', gap: 1 }}>
+                          {Array.from({ length: slot.total }).map((_, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                width: 8, height: 8,
+                                borderRadius: '50%',
+                                background: i < remaining ? '#a78bfa' : 'transparent',
+                                border: '1px solid rgba(167,139,250,0.55)',
+                                boxSizing: 'border-box' as const,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function BattleMapV2(props: BattleMapV2Props) {
   const { isDM, campaignId, userId } = props;
 
@@ -3683,6 +4051,16 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         </div>
       )}
 
+      {/* v2.231 — Initiative bar. Renders only when combat is active.
+          Shows turn order with active highlight + "Next Turn" for DM. */}
+      {props.sessionState && props.sessionState.combat_active && (
+        <InitiativeBar
+          sessionState={props.sessionState}
+          isDM={isDM}
+          onUpdateSession={props.onUpdateSession}
+        />
+      )}
+
       <div
         ref={wrapperRef}
         style={{
@@ -4032,6 +4410,12 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           </div>
         )}
       </div>
+
+      {/* v2.231 — Party Vitals strip across the bottom. Always-on
+          read-only at-a-glance view of every PC's HP / AC / spell
+          slots. Clicks/edits go through the TokenQuickPanel (DM)
+          or the player's character sheet. */}
+      <PartyVitalsBar characters={props.playerCharacters} />
     </div>
   );
 }

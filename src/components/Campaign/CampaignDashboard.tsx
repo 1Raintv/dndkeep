@@ -529,7 +529,14 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               saving_throw_proficiencies: c.saving_throw_proficiencies ?? [],
               skill_proficiencies: c.skill_proficiencies ?? [],
               skill_expertises: c.skill_expertises ?? [],
+              // v2.231 — needed by PartyVitalsBar to render slot pips.
+              spell_slots: c.spell_slots ?? {},
             })),
+            // v2.231 — Initiative bar at the top of the map needs the
+            // session state. CampaignDashboard already loads + Realtime-
+            // syncs this for InitiativeTracker; just plumb it through.
+            sessionState: sessionState ?? null,
+            onUpdateSession: updateSessionState,
           };
           return (
             <div>
