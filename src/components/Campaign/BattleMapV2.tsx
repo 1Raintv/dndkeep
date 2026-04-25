@@ -168,6 +168,7 @@ import type { Character } from '../../types';
 import { useToast } from '../shared/Toast';
 import { useModal } from '../shared/Modal';
 import NpcRosterPickerModal, { type RosterSelection } from './NpcRosterPickerModal';
+import NpcTokenQuickPanel from './NpcTokenQuickPanel';
 import * as npcRosterApi from '../../lib/api/npcRoster';
 import * as npcsApi from '../../lib/api/npcs';
 
@@ -4037,6 +4038,16 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     x: number;
     y: number;
   } | null>(null);
+  // v2.243 — separate state for NPC-linked token clicks. The NPC
+  // panel reads from `npcs` and is structurally different from the
+  // character TokenQuickPanel (no class/level/abilities/checks),
+  // so it gets its own state slot. Mutually exclusive with
+  // clickedToken — opening one clears the other.
+  const [clickedNpcToken, setClickedNpcToken] = useState<{
+    npcId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // v2.215 — portrait upload state. fileInputRef drives the hidden
   // <input type="file">; uploadTargetIdRef holds which token the next
@@ -5057,9 +5068,17 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         setContextMenu({ tokenId, clientX: screenX, clientY: screenY });
         return;
       }
+      // v2.243: clear any open NPC panel so panels are mutually exclusive.
+      setClickedNpcToken(null);
       setClickedToken({ tokenId, x: screenX, y: screenY });
+    } else if (t.npcId) {
+      // v2.243 — NPC-linked token (typically from v2.242 roster bulk-add).
+      // Opens the NPC quick panel anchored near the click.
+      setClickedToken(null);
+      setClickedNpcToken({ npcId: t.npcId, x: screenX, y: screenY });
     } else {
-      // Unlinked token (NPC/marker) — open the context menu inline.
+      // Truly unlinked token (manual + Add Token, or marker) — open
+      // the context menu inline.
       setContextMenu({ tokenId, clientX: screenX, clientY: screenY });
     }
   }, [props.playerCharacters]);
@@ -5967,6 +5986,21 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             />
           );
         })()}
+
+        {/* v2.243 — NPC quick panel. Opens when a token with `npcId`
+            is clicked. Mutually exclusive with the character panel
+            (handleTokenClick clears one when opening the other).
+            The panel does its own fetch + Realtime sync against
+            the npcs row by id, so we don't need to plumb data here. */}
+        {clickedNpcToken && (
+          <NpcTokenQuickPanel
+            npcId={clickedNpcToken.npcId}
+            anchorX={clickedNpcToken.x}
+            anchorY={clickedNpcToken.y}
+            isDM={isDM}
+            onClose={() => setClickedNpcToken(null)}
+          />
+        )}
 
         {/* v2.219 scene settings modal. Rendered above the canvas via
             position:fixed backdrop so it covers the full viewport, not
