@@ -147,7 +147,7 @@
 //        pan/zoom). Currently the strip is purely informational.
 
 import { Application, extend, useApplication } from '@pixi/react';
-import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
+import { Assets, ColorMatrixFilter, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -212,6 +212,19 @@ interface BattleMapV2Props {
   // haven't been updated.
   sessionState?: import('../../types').SessionState | null;
   onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
+  // v2.244.0 — NPC combat state for token visual feedback. Mirrors the
+  // playerCharacters pattern but narrower: just what the canvas needs
+  // (HP bar + condition icons + dead-state overlay). CampaignDashboard
+  // pre-filters by visible_to_players for player viewers, so this list
+  // is "everything I'm allowed to see" — no per-token RLS check needed
+  // here. Optional so older callers (e.g., test harnesses) still compile.
+  npcs?: Array<{
+    id: string;
+    name: string;
+    current_hp: number;
+    max_hp: number;
+    conditions: string[];
+  }>;
 }
 
 // Default scene config used when creating new scenes. v2.214 lets the
@@ -252,6 +265,25 @@ const COND_COLOR: Record<string, string> = {
   Frightened: '#fb923c', Grappled: '#84cc16', Incapacitated: '#f87171', Invisible: '#60a5fa',
   Paralyzed: '#e879f9', Petrified: '#6b7280', Poisoned: '#4ade80', Prone: '#fbbf24',
   Restrained: '#f97316', Stunned: '#c084fc', Unconscious: '#ef4444',
+};
+
+// v2.244 — single-glyph icon per condition, used by the canvas token
+// strip. Glyphs are intentionally simple ASCII/symbol so they render
+// crisp at small sizes across browsers without needing an emoji font.
+// Conditions not in this map are skipped on the strip (they still
+// surface as chips in the quick panel). Numeric mirror of COND_COLOR
+// for the Pixi colored circle backing each glyph.
+const COND_ICON: Record<string, string> = {
+  Stunned: 'S', Poisoned: 'P', Frightened: 'F', Prone: 'D',
+  Blinded: 'B', Charmed: 'C', Deafened: 'd', Exhaustion: 'X',
+  Grappled: 'G', Incapacitated: 'I', Invisible: 'i', Paralyzed: 'p',
+  Petrified: 'r', Restrained: 'R', Unconscious: 'U',
+};
+const COND_COLOR_HEX: Record<string, number> = {
+  Blinded: 0x94a3b8, Charmed: 0xf472b6, Deafened: 0x78716c, Exhaustion: 0xa78bfa,
+  Frightened: 0xfb923c, Grappled: 0x84cc16, Incapacitated: 0xf87171, Invisible: 0x60a5fa,
+  Paralyzed: 0xe879f9, Petrified: 0x6b7280, Poisoned: 0x4ade80, Prone: 0xfbbf24,
+  Restrained: 0xf97316, Stunned: 0xc084fc, Unconscious: 0xef4444,
 };
 
 const SIZE_OPTIONS: readonly TokenSize[] = [
@@ -2042,6 +2074,16 @@ function TokenLayer(props: {
   // flow — store does not own this; it's derived from the
   // playerCharacters prop on every render.
   characterHpMap?: Map<string, { current: number; max: number }>;
+  // v2.244 — NPC HP lookup for HP bars on roster-spawned tokens.
+  // Mirrors characterHpMap but keyed by npcId. NPC bar visibility
+  // differs: bars hide at full HP and only appear once damage has
+  // been dealt (keeps the canvas clean during pre-combat setup).
+  npcHpMap?: Map<string, { current: number; max: number }>;
+  // v2.244 — condition strip lookup. Keyed by token.id (NOT character/
+  // npc id) so the renderer doesn't have to branch. CampaignDashboard +
+  // BattleMapV2 build it by walking tokens and resolving each linked
+  // PC or NPC. Tokens not in the map render no strip.
+  tokenConditionsMap?: Map<string, string[]>;
   // v2.226 — left-click-without-drag opens the token quick-info panel.
   // Fires only after the user releases the pointer with negligible
   // movement (and the token wasn't dragged). Receives world-screen
@@ -2051,7 +2093,8 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    textActive, drawActive, fxActive, characterHpMap, onTokenClick,
+    textActive, drawActive, fxActive, characterHpMap, npcHpMap, tokenConditionsMap,
+    onTokenClick,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -2098,6 +2141,18 @@ function TokenLayer(props: {
     // read which token is which without relying on initials. Lazy
     // create on first draw; updated on token.name change.
     nameLabel: Text | null;
+    // v2.244 — dead-state visuals. When current_hp <= 0, we apply a
+    // grayscale ColorMatrixFilter to the container (washes out the
+    // sprite/initials/HP bar uniformly) and overlay a red ✖. Filter is
+    // attached/removed at the container level rather than rebuilt each
+    // tick — toggling is cheap. The ✖ is a Graphics with two strokes.
+    deadFilter: ColorMatrixFilter | null;
+    deadX: Graphics | null;
+    // v2.244 — condition icon strip below the name label. One Container
+    // owning N child icons (Graphics-backed circle + Text glyph). We
+    // tear it down + rebuild on conditions change rather than diff
+    // child-by-child; conditions are rare and the cost is trivial.
+    conditionsLayer: Container | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
@@ -2167,6 +2222,9 @@ function TokenLayer(props: {
           lockRing: null,
           hpBar: null,
           nameLabel: null,
+          deadFilter: null,
+          deadX: null,
+          conditionsLayer: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -2404,15 +2462,29 @@ function TokenLayer(props: {
         currentEntry.lockRing = null;
       }
 
-      // v2.221 — HP bar. Only renders when the token is linked to a
-      // character we have HP data for. Bar sits below the token at
-      // a constant offset; width scales with token radius so Tiny vs
-      // Gargantuan both look proportional. Color shifts from green
-      // (full) → yellow (50%) → red (25%) for at-a-glance status.
-      const hpInfo = token.characterId && characterHpMap
+      // v2.221 — HP bar. Renders for tokens linked to a known PC
+      // (always-on) or NPC (only when damaged — full-HP NPCs hide
+      // the bar to keep pre-combat setup uncluttered, per v2.244 spec).
+      // Bar sits below the token at a constant offset; width scales
+      // with token radius so Tiny vs Gargantuan both look proportional.
+      // Color shifts from green (full) → yellow (50%) → red (25%) for
+      // at-a-glance status.
+      // v2.244 — fall through to NPC HP map when token isn't linked to
+      // a PC. PCs and NPCs are mutually exclusive on a token so the
+      // priority is just for the (rare) case of a token with both ids.
+      const pcHpInfo = token.characterId && characterHpMap
         ? characterHpMap.get(token.characterId)
         : null;
-      if (hpInfo && hpInfo.max > 0) {
+      const npcHpInfo = !pcHpInfo && token.npcId && npcHpMap
+        ? npcHpMap.get(token.npcId)
+        : null;
+      const hpInfo = pcHpInfo ?? npcHpInfo ?? null;
+      // NPC bars hide at full HP. PC bars stay always-on (existing v2.221
+      // behavior; PCs read their HP bar like a personal status indicator).
+      const showHpBar = !!hpInfo && hpInfo.max > 0 && (
+        !!pcHpInfo || (npcHpInfo != null && npcHpInfo.current < npcHpInfo.max)
+      );
+      if (showHpBar && hpInfo) {
         let bar = currentEntry.hpBar;
         if (!bar || bar.destroyed) {
           bar = new Graphics();
@@ -2450,8 +2522,8 @@ function TokenLayer(props: {
         bar.roundRect(barX, barY, barWidth, barHeight, barHeight / 2);
         bar.stroke();
       } else if (currentEntry.hpBar) {
-        // Token is no longer linked / character data unavailable —
-        // remove the bar.
+        // Token is no longer linked / character data unavailable / NPC at
+        // full HP — remove the bar.
         if (!currentEntry.hpBar.destroyed) {
           container.removeChild(currentEntry.hpBar);
           currentEntry.hpBar.destroy();
@@ -2484,8 +2556,10 @@ function TokenLayer(props: {
           currentEntry.nameLabel = label;
         }
         if (label.text !== token.name) label.text = token.name;
-        // Position below HP bar (if present) or token rim.
-        const hpBarOffset = (hpInfo && hpInfo.max > 0) ? 14 : 0;
+        // Position below HP bar (if visible) or token rim. v2.244 —
+        // showHpBar drives this rather than raw hpInfo so NPC names
+        // sit closer to the token when the bar is hidden.
+        const hpBarOffset = showHpBar ? 14 : 0;
         label.position.set(0, r + 6 + hpBarOffset);
       } else if (currentEntry.nameLabel) {
         if (!currentEntry.nameLabel.destroyed) {
@@ -2494,8 +2568,125 @@ function TokenLayer(props: {
         }
         currentEntry.nameLabel = null;
       }
+
+      // v2.244 — Dead overlay. Triggered by current_hp <= 0 on the
+      // linked PC or NPC. We desaturate the entire container with a
+      // ColorMatrixFilter (washes out sprite + initials + HP bar
+      // uniformly — keeps a single visual signal of "dropped") and
+      // overlay a red ✖ centered on the token. Filter is attached at
+      // the container level so it composes with everything; the ✖ is a
+      // separate Graphics stacked above the sprite. We rebuild the ✖
+      // every reconcile (cheap — two strokes) so radius changes from
+      // resize stay accurate.
+      const isDead = !!hpInfo && hpInfo.current <= 0 && hpInfo.max > 0;
+      if (isDead) {
+        if (!currentEntry.deadFilter) {
+          const f = new ColorMatrixFilter();
+          f.desaturate();
+          currentEntry.deadFilter = f;
+        }
+        // Pixi 8: filters is an array on Container.
+        const existingFilters = (container.filters as any[]) ?? [];
+        if (!existingFilters.includes(currentEntry.deadFilter)) {
+          container.filters = [...existingFilters, currentEntry.deadFilter];
+        }
+        let xMark = currentEntry.deadX;
+        if (!xMark || xMark.destroyed) {
+          xMark = new Graphics();
+          container.addChild(xMark);
+          currentEntry.deadX = xMark;
+        }
+        const xR = r * 0.6;
+        xMark.clear();
+        xMark.setStrokeStyle({ color: 0xef4444, width: 4, alpha: 0.95, cap: 'round' });
+        xMark.moveTo(-xR, -xR);
+        xMark.lineTo(xR, xR);
+        xMark.moveTo(xR, -xR);
+        xMark.lineTo(-xR, xR);
+        xMark.stroke();
+      } else {
+        if (currentEntry.deadFilter && container.filters) {
+          const filtered = (container.filters as any[]).filter(f => f !== currentEntry.deadFilter);
+          container.filters = filtered.length ? filtered : null;
+        }
+        if (currentEntry.deadX) {
+          if (!currentEntry.deadX.destroyed) {
+            container.removeChild(currentEntry.deadX);
+            currentEntry.deadX.destroy();
+          }
+          currentEntry.deadX = null;
+        }
+      }
+
+      // v2.244 — Conditions strip. One small colored circle + glyph per
+      // active condition that has an icon mapping. Sits below the name
+      // label so it doesn't fight the HP bar for vertical space. We
+      // tear down + rebuild on every conditions change rather than
+      // diff child-by-child — conditions change rarely and the cost is
+      // a handful of cheap Graphics. Conditions without a COND_ICON
+      // entry are skipped silently (still surface as chips in the
+      // quick panel).
+      const conds = tokenConditionsMap?.get(token.id) ?? [];
+      const iconConds = conds.filter(c => c in COND_ICON);
+      const stripKey = iconConds.join('|');
+      const prevStripKey = (currentEntry.conditionsLayer as any)?.__stripKey as string | undefined;
+      if (iconConds.length === 0) {
+        if (currentEntry.conditionsLayer) {
+          if (!currentEntry.conditionsLayer.destroyed) {
+            container.removeChild(currentEntry.conditionsLayer);
+            currentEntry.conditionsLayer.destroy({ children: true });
+          }
+          currentEntry.conditionsLayer = null;
+        }
+      } else if (stripKey !== prevStripKey || !currentEntry.conditionsLayer) {
+        // Rebuild from scratch.
+        if (currentEntry.conditionsLayer) {
+          if (!currentEntry.conditionsLayer.destroyed) {
+            container.removeChild(currentEntry.conditionsLayer);
+            currentEntry.conditionsLayer.destroy({ children: true });
+          }
+          currentEntry.conditionsLayer = null;
+        }
+        const layer = new Container();
+        const ICON_SIZE = 12;            // diameter of each colored circle
+        const ICON_GAP = 2;
+        const totalWidth = iconConds.length * ICON_SIZE + (iconConds.length - 1) * ICON_GAP;
+        // Position: under the name label (which sits at r + 6 + hpBarOffset).
+        // Add a fixed 14px for the label line height.
+        const stripY = r + 6 + (showHpBar ? 14 : 0) + 14;
+        let cursorX = -totalWidth / 2 + ICON_SIZE / 2;
+        for (const cond of iconConds) {
+          const color = COND_COLOR_HEX[cond] ?? 0x94a3b8;
+          const dot = new Graphics();
+          dot.setFillStyle({ color, alpha: 0.95 });
+          dot.circle(0, 0, ICON_SIZE / 2);
+          dot.fill();
+          dot.setStrokeStyle({ color: 0x0a0c10, width: 1, alpha: 0.85 });
+          dot.circle(0, 0, ICON_SIZE / 2);
+          dot.stroke();
+          dot.position.set(cursorX, stripY);
+          layer.addChild(dot);
+          const glyph = new Text({
+            text: COND_ICON[cond],
+            style: new TextStyle({
+              fontFamily: 'sans-serif',
+              fontWeight: '800',
+              fontSize: 9,
+              fill: 0x0a0c10,
+              align: 'center',
+            }),
+          });
+          glyph.anchor.set(0.5, 0.5);
+          glyph.position.set(cursorX, stripY);
+          layer.addChild(glyph);
+          cursorX += ICON_SIZE + ICON_GAP;
+        }
+        (layer as any).__stripKey = stripKey;
+        container.addChild(layer);
+        currentEntry.conditionsLayer = layer;
+      }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -4970,6 +5161,40 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     return map;
   }, [props.playerCharacters]);
 
+  // v2.244 — npcId → HP lookup, mirror of characterHpMap. CampaignDashboard
+  // pre-filters out NPCs without numeric HP, so every entry in props.npcs
+  // is a valid bar candidate. Recreated whenever Realtime echoes a
+  // damage/heal write, same as characters.
+  const npcHpMap = useMemo(() => {
+    const map = new Map<string, { current: number; max: number }>();
+    for (const n of props.npcs ?? []) {
+      map.set(n.id, { current: n.current_hp, max: n.max_hp });
+    }
+    return map;
+  }, [props.npcs]);
+
+  // v2.244 — token.id → conditions[]. Walks the live token store and
+  // resolves each token to its linked PC (active_conditions) or NPC
+  // (conditions). Keyed by token.id rather than character/npc id so
+  // the canvas renderer doesn't have to branch on token kind. The
+  // renderer's useEffect already depends on `tokens`, so churn here
+  // tracks the same trigger.
+  const liveTokens = useBattleMapStore(s => s.tokens);
+  const tokenConditionsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const pcConds = new Map<string, string[]>();
+    for (const c of props.playerCharacters) pcConds.set(c.id, c.active_conditions ?? []);
+    const npcConds = new Map<string, string[]>();
+    for (const n of props.npcs ?? []) npcConds.set(n.id, n.conditions ?? []);
+    for (const t of Object.values(liveTokens)) {
+      const conds = (t.characterId && pcConds.get(t.characterId))
+        || (t.npcId && npcConds.get(t.npcId))
+        || null;
+      if (conds && conds.length > 0) map.set(t.id, conds);
+    }
+    return map;
+  }, [liveTokens, props.playerCharacters, props.npcs]);
+
   // v2.224 — character IDs whose linked tokens should contribute
   // vision polygons. For party-shared sight, every PC in the campaign
   // counts. v2.225 will narrow this to the current user's own
@@ -5468,6 +5693,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     drawActive={drawActive != null}
                     fxActive={fxActive != null}
                     characterHpMap={characterHpMap}
+                    npcHpMap={npcHpMap}
+                    tokenConditionsMap={tokenConditionsMap}
                     onTokenClick={handleTokenClick}
                   />
                   {/* v2.234 — TextLayer renders text annotations and

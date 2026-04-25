@@ -54,6 +54,21 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   useEffect(() => { setCampaign(campaignProp); }, [campaignProp.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [members, setMembers] = useState<(CampaignMember & { display_name: string | null; email: string })[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  // v2.244 — Phase Q.1 pt 32: NPC combat state for the BattleMap.
+  // Mirrors the `characters` state pattern: load on mount, keep live
+  // via Realtime UPDATE/INSERT/DELETE on `npcs`. We only project the
+  // canvas-relevant subset (id/hp/conditions/etc.); social-graph fields
+  // stay in NPCManager which has its own load.
+  const [npcs, setNpcs] = useState<Array<{
+    id: string;
+    name: string;
+    hp: number | null;
+    max_hp: number | null;
+    ac: number | null;
+    conditions: string[] | null;
+    is_alive: boolean | null;
+    visible_to_players: boolean | null;
+  }>>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -77,6 +92,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     loadMembers();
     loadCharacters();
     loadNotes();
+    loadNpcs();
 
     // Realtime: campaign notes
     const notesChannel = supabase
@@ -107,9 +123,45 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       })
       .subscribe();
 
+    // v2.244 — Realtime: NPC HP / conditions sync. The v2.243.1 migration
+    // added `npcs` to `supabase_realtime`, so UPDATE echoes flow here for
+    // the BattleMap to render damaged-state overlays + condition icons
+    // live as the DM works the panel. INSERT covers roster bulk-add (so
+    // newly placed NPC tokens get HP bars without a full reload), DELETE
+    // covers DM cleanup.
+    const npcsChannel = supabase
+      .channel(`campaign-npcs-${campaign.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'npcs',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { new: Record<string, unknown> }) => {
+        if (!payload.new?.id) return;
+        setNpcs(prev => prev.map(n =>
+          n.id === payload.new.id ? { ...n, ...(payload.new as any) } : n
+        ));
+      })
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'npcs',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { new: Record<string, unknown> }) => {
+        if (!payload.new?.id) return;
+        setNpcs(prev => prev.some(n => n.id === payload.new.id)
+          ? prev
+          : [...prev, payload.new as any]);
+      })
+      .on('postgres_changes', {
+        event: 'DELETE', schema: 'public', table: 'npcs',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { old: Record<string, unknown> }) => {
+        if (!payload.old?.id) return;
+        setNpcs(prev => prev.filter(n => n.id !== payload.old.id));
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(notesChannel);
       supabase.removeChannel(charsChannel);
+      supabase.removeChannel(npcsChannel);
     };
   }, [campaign.id]);
 
@@ -144,6 +196,21 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   async function loadCharacters() {
     const { data } = await getCharactersByCampaign(campaign.id);
     setCharacters(data);
+  }
+
+  // v2.244 — load just the canvas-relevant subset of npcs columns. The
+  // narrow projection avoids round-tripping social-graph fields the
+  // BattleMap doesn't use (notes, faction, last_seen, etc.).
+  async function loadNpcs() {
+    const { data, error } = await supabase
+      .from('npcs')
+      .select('id, name, hp, max_hp, ac, conditions, is_alive, visible_to_players')
+      .eq('campaign_id', campaign.id);
+    if (error) {
+      console.error('[CampaignDashboard] loadNpcs failed', error);
+      return;
+    }
+    setNpcs((data ?? []) as any);
   }
 
   async function handleInvite(e: FormEvent) {
@@ -537,6 +604,21 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
             // syncs this for InitiativeTracker; just plumb it through.
             sessionState: sessionState ?? null,
             onUpdateSession: updateSessionState,
+            // v2.244 — NPC combat state for token visual feedback (HP
+            // bars, condition icons, dead overlay). Filtered to NPCs with
+            // numeric HP so plain marker NPCs (no HP/AC) don't show empty
+            // HP bars. Players only see NPCs flagged visible_to_players;
+            // the DM sees everything regardless.
+            npcs: npcs
+              .filter(n => n.hp != null && n.max_hp != null && n.max_hp > 0)
+              .filter(n => isOwner || n.visible_to_players === true)
+              .map(n => ({
+                id: n.id,
+                name: n.name,
+                current_hp: n.hp ?? 0,
+                max_hp: n.max_hp ?? 1,
+                conditions: n.conditions ?? [],
+              })),
           };
           return (
             <div>
