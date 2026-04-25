@@ -4238,69 +4238,113 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           ))}
         </div>
 
-        {/* v2.218 — tools toolbar (available to all users). Positioned
-            just above the hint text at bottom-left so it's easy to
-            reach without visually crowding the DM toolbar on the right. */}
+        {/* v2.233 — Vertical tool palette on the LEFT edge of the canvas
+            (Roll20-inspired layout). Replaces the previous bottom-left
+            horizontal Ruler/Walls strip. Stacked icon buttons, tooltips
+            on hover, color-coded active state. Top "TOOLS" label
+            mirrors Roll20's section header. Future ships will slot
+            additional tools (Text v2.234, Drawing v2.235, FX v2.236)
+            into this same palette without re-layout work.
+
+            Position: top: 60 leaves room for the scene-name badge at
+            top: 8, and far enough from the action toolbar bar above
+            the canvas that it reads as a tool surface, not a header. */}
         <div
           style={{
-            position: 'absolute', bottom: 40, left: 12,
-            display: 'flex', gap: 4,
+            position: 'absolute', top: 60, left: 12,
+            display: 'flex', flexDirection: 'column' as const,
+            alignItems: 'center', gap: 4,
+            padding: '6px 5px',
+            background: 'rgba(15,16,18,0.92)',
+            border: '1px solid var(--c-border)',
+            borderRadius: 'var(--r-md, 8px)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 5,
           }}
         >
+          <div style={{
+            fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800,
+            letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+            color: 'var(--t-3)',
+            padding: '2px 0 4px',
+            borderBottom: '1px solid var(--c-border)',
+            width: '100%', textAlign: 'center' as const,
+            marginBottom: 2,
+          }}>
+            Tools
+          </div>
+
+          {/* Ruler — available to all users (player or DM). */}
           <button
             onClick={toggleRuler}
-            title={rulerActive ? 'Click-drag on the map to measure · click again to exit ruler' : 'Enter ruler mode — click-drag on the map to measure distance'}
+            title={rulerActive
+              ? 'Ruler active — click-drag on the map to measure. Click this button again to exit.'
+              : 'Ruler — click-drag on the map to measure distance in feet/cells.'}
             style={{
-              padding: '4px 10px',
-              background: rulerActive ? 'rgba(251,191,36,0.25)' : 'rgba(15,16,18,0.85)',
-              border: `1px solid ${rulerActive ? 'rgba(251,191,36,0.7)' : 'rgba(251,191,36,0.35)'}`,
+              width: 36, height: 36,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: rulerActive ? 'rgba(251,191,36,0.28)' : 'transparent',
+              border: `1px solid ${rulerActive ? 'rgba(251,191,36,0.85)' : 'rgba(251,191,36,0.25)'}`,
               borderRadius: 'var(--r-sm, 4px)',
               color: rulerActive ? '#fbbf24' : 'var(--t-2)',
-              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-              letterSpacing: '0.04em',
+              fontSize: 18,
               cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'background 0.12s, border-color 0.12s',
             }}
             onMouseEnter={(e) => {
-              if (!rulerActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(251,191,36,0.12)';
+              if (!rulerActive) {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(251,191,36,0.14)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(251,191,36,0.55)';
+              }
             }}
             onMouseLeave={(e) => {
-              if (!rulerActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.85)';
+              if (!rulerActive) {
+                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(251,191,36,0.25)';
+              }
             }}
           >
-            📏 {rulerActive ? 'Exit Ruler' : 'Ruler'}
+            📏
           </button>
-          {/* v2.223 — wall drawing tool. DM-only (insert/delete RLS
-              would reject players anyway). Click-click vertex placement;
-              Escape cancels pending start. Right-click deletes nearest
-              wall within a small hit threshold. */}
+
+          {/* Walls — DM only. */}
           {isDM && (
             <button
               onClick={toggleWallMode}
               title={wallActive
-                ? 'Click to place wall vertices · right-click to delete · Esc to cancel · click again to exit'
-                : 'Enter wall drawing mode — click to place vertices, build walls that (in v2.224) will block vision'}
+                ? 'Walls active — click to place vertices, right-click a wall to delete, Esc to cancel current line. Click this button again to exit.'
+                : 'Walls — draw line-of-sight blockers on the map. DM only.'}
               style={{
-                padding: '4px 10px',
-                background: wallActive ? 'rgba(167,139,250,0.28)' : 'rgba(15,16,18,0.85)',
-                border: `1px solid ${wallActive ? 'rgba(167,139,250,0.7)' : 'rgba(167,139,250,0.35)'}`,
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: wallActive ? 'rgba(167,139,250,0.28)' : 'transparent',
+                border: `1px solid ${wallActive ? 'rgba(167,139,250,0.85)' : 'rgba(167,139,250,0.25)'}`,
                 borderRadius: 'var(--r-sm, 4px)',
                 color: wallActive ? '#a78bfa' : 'var(--t-2)',
-                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                letterSpacing: '0.04em',
+                fontSize: 18,
                 cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6,
+                transition: 'background 0.12s, border-color 0.12s',
               }}
               onMouseEnter={(e) => {
-                if (!wallActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)';
+                if (!wallActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.14)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.55)';
+                }
               }}
               onMouseLeave={(e) => {
-                if (!wallActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.85)';
+                if (!wallActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.25)';
+                }
               }}
             >
-              🧱 {wallActive ? 'Exit Walls' : 'Walls'}
+              🧱
             </button>
           )}
+
+          {/* v2.234+ slot for Text annotation tool will go here. */}
+          {/* v2.235+ slot for Drawing tools will go here. */}
+          {/* v2.236+ slot for FX particles will go here. */}
         </div>
 
         <div
