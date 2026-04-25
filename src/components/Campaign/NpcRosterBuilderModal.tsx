@@ -22,7 +22,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as rosterApi from '../../lib/api/npcRoster';
+import * as srdApi from '../../lib/api/srdMonsters';
 import type { RosterEntry, RosterEntryDraft } from '../../lib/api/npcRoster';
+import type { SrdMonsterRow } from '../../lib/api/srdMonsters';
 
 interface Props {
   ownerId: string;
@@ -68,6 +70,12 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<{ entry: RosterEntry | null; draft: RosterEntryDraft } | null>(null);
   const [saving, setSaving] = useState(false);
+  // v2.254.0 — SRD picker view. When non-null, renders the picker
+  // instead of the list. Selecting a monster transitions to the edit
+  // form (entry: null, draft: derived from the monster). Cancel
+  // returns to the list.
+  const [srdMonsters, setSrdMonsters] = useState<SrdMonsterRow[] | null>(null);
+  const [showSrdPicker, setShowSrdPicker] = useState(false);
 
   // Load on open. Re-load after every save/delete so the list stays
   // consistent without us reaching into the API helpers.
@@ -84,21 +92,36 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
     return () => { cancelled = true; };
   }, [ownerId]);
 
-  // Esc closes — but only when not in the edit form (Esc there should
-  // back out to the list, not close the whole modal). The DM can still
-  // hit the X in the header to close from any view.
+  // v2.254.0 — lazy-load the SRD catalog on first picker-open. 334
+  // rows ~once per session is fine; we keep it in component state so
+  // a back-and-forth between list and picker doesn't re-hit the DB.
+  useEffect(() => {
+    if (!showSrdPicker || srdMonsters !== null) return;
+    let cancelled = false;
+    srdApi.listSrdMonsters().then(rows => {
+      if (cancelled) return;
+      setSrdMonsters(rows);
+    });
+    return () => { cancelled = true; };
+  }, [showSrdPicker, srdMonsters]);
+
+  // Esc closes — but only at the outermost view. From the SRD picker
+  // or edit form, Esc backs out one level to the list. The DM can
+  // still hit the X in the header to close from any view.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
       if (editing) {
         setEditing(null);
+      } else if (showSrdPicker) {
+        setShowSrdPicker(false);
       } else {
         onClose();
       }
     }
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editing, onClose]);
+  }, [editing, showSrdPicker, onClose]);
 
   async function handleSave() {
     if (!editing) return;
@@ -161,13 +184,17 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
               letterSpacing: '0.12em', textTransform: 'uppercase' as const,
               color: '#fca5a5',
             }}>
-              {editing ? (editing.entry ? 'Edit Roster Entry' : 'New Roster Entry') : 'Manage NPC Roster'}
+              {editing ? (editing.entry ? 'Edit Roster Entry' : 'New Roster Entry')
+                : showSrdPicker ? 'Clone from SRD'
+                : 'Manage NPC Roster'}
             </div>
             <div style={{
               fontFamily: 'var(--ff-body)', fontSize: 16, fontWeight: 800,
               color: 'var(--t-1)', marginTop: 2,
             }}>
-              {editing ? (editing.draft.name || 'Untitled') : `${roster?.length ?? 0} entries`}
+              {editing ? (editing.draft.name || 'Untitled')
+                : showSrdPicker ? `${srdMonsters?.length ?? 0} monsters`
+                : `${roster?.length ?? 0} entries`}
             </div>
           </div>
           <button
@@ -183,18 +210,8 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
           </button>
         </div>
 
-        {/* Body — list view OR edit form */}
-        {!editing ? (
-          <ListView
-            roster={roster}
-            filtered={filtered}
-            search={search}
-            setSearch={setSearch}
-            onNew={() => setEditing({ entry: null, draft: { ...EMPTY_DRAFT } })}
-            onEdit={(entry) => setEditing({ entry, draft: entryToDraft(entry) })}
-            onDelete={handleDelete}
-          />
-        ) : (
+        {/* Body — list view, SRD picker, or edit form */}
+        {editing ? (
           <EditView
             draft={editing.draft}
             isNew={!editing.entry}
@@ -202,6 +219,28 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
             onChange={(patch) => setEditing({ ...editing, draft: { ...editing.draft, ...patch } })}
             onCancel={() => setEditing(null)}
             onSave={handleSave}
+          />
+        ) : showSrdPicker ? (
+          <SrdPickerView
+            monsters={srdMonsters}
+            onCancel={() => setShowSrdPicker(false)}
+            onPick={(m) => {
+              // Seed an edit draft from the SRD monster, then drop the
+              // picker so saving lands the DM back on the list.
+              setEditing({ entry: null, draft: srdApi.monsterToRosterDraft(m) });
+              setShowSrdPicker(false);
+            }}
+          />
+        ) : (
+          <ListView
+            roster={roster}
+            filtered={filtered}
+            search={search}
+            setSearch={setSearch}
+            onNew={() => setEditing({ entry: null, draft: { ...EMPTY_DRAFT } })}
+            onCloneSrd={() => setShowSrdPicker(true)}
+            onEdit={(entry) => setEditing({ entry, draft: entryToDraft(entry) })}
+            onDelete={handleDelete}
           />
         )}
       </div>
@@ -229,11 +268,12 @@ function entryToDraft(e: RosterEntry): RosterEntryDraft {
 
 // ─── List View ────────────────────────────────────────────────────
 
-function ListView({ roster, filtered, search, setSearch, onNew, onEdit, onDelete }: {
+function ListView({ roster, filtered, search, setSearch, onNew, onCloneSrd, onEdit, onDelete }: {
   roster: RosterEntry[] | null;
   filtered: RosterEntry[];
   search: string; setSearch: (s: string) => void;
   onNew: () => void;
+  onCloneSrd: () => void;
   onEdit: (e: RosterEntry) => void;
   onDelete: (e: RosterEntry) => void;
 }) {
@@ -258,6 +298,26 @@ function ListView({ roster, filtered, search, setSearch, onNew, onEdit, onDelete
             fontSize: 12,
           }}
         />
+        {/* v2.254.0 — Clone from SRD: opens the picker over the
+            monsters table. Subdued style relative to "+ New" so it
+            doesn't compete visually but is the recommended path
+            for populating a fresh roster. */}
+        <button
+          onClick={onCloneSrd}
+          title="Clone from the SRD monster catalog (334 entries)"
+          style={{
+            padding: '6px 10px',
+            background: 'transparent',
+            border: '1px solid rgba(96,165,250,0.5)',
+            borderRadius: 4,
+            color: '#60a5fa',
+            fontSize: 11, fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap' as const,
+          }}
+        >
+          Clone from SRD
+        </button>
         <button
           onClick={onNew}
           style={{
@@ -561,6 +621,129 @@ function EditView({ draft, isNew, saving, onChange, onCancel, onSave }: {
         >
           {saving ? 'Saving…' : isNew ? 'Create' : 'Save Changes'}
         </button>
+      </div>
+    </>
+  );
+}
+
+// ─── SRD Picker View ──────────────────────────────────────────────
+
+function SrdPickerView({ monsters, onCancel, onPick }: {
+  monsters: SrdMonsterRow[] | null;
+  onCancel: () => void;
+  onPick: (m: SrdMonsterRow) => void;
+}) {
+  // Local search for the picker. Resets each time the picker is
+  // opened (the parent unmounts this component on close).
+  const [search, setSearch] = useState('');
+  const filtered = (monsters ?? []).filter(m => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return m.name.toLowerCase().includes(s) || m.type.toLowerCase().includes(s);
+  });
+
+  return (
+    <>
+      <div style={{
+        padding: '10px 16px',
+        borderBottom: '1px solid var(--c-border)',
+        display: 'flex', gap: 8, alignItems: 'center',
+      }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search SRD by name or type..."
+          autoFocus
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            background: 'var(--c-raised)',
+            border: '1px solid var(--c-border)',
+            borderRadius: 4,
+            color: 'var(--t-1)',
+            fontSize: 12,
+          }}
+        />
+        <button
+          onClick={onCancel}
+          style={{
+            padding: '6px 12px',
+            background: 'transparent',
+            border: '1px solid var(--c-border)',
+            borderRadius: 4,
+            color: 'var(--t-2)',
+            fontSize: 11, fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          ← Back
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+        {monsters === null ? (
+          <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
+            Loading SRD catalog…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
+            No results for "{search}".
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {filtered.map(m => {
+              // Compact summary chip — shows save profs only when the
+              // monster carries them, so DMs can spot which entries
+              // will land with auto-derived proficiencies. The chip
+              // itself isn't editable here; the edit form has the
+              // toggle UI from v2.253.
+              const profCount = m.saving_throws ? Object.keys(m.saving_throws).length : 0;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => onPick(m)}
+                  style={{
+                    padding: '8px 10px',
+                    background: 'var(--c-raised)',
+                    border: '1px solid var(--c-border)',
+                    borderRadius: 5,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    textAlign: 'left' as const,
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.10)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-raised)'; }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontWeight: 700, fontSize: 13, color: 'var(--t-1)',
+                      whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>{m.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--t-3)' }}>
+                      {m.type}
+                      {m.subtype ? ` (${m.subtype})` : ''}
+                      {' · '}CR {m.cr}
+                      {' · '}HP {m.hp}
+                      {' · '}AC {m.ac}
+                      {profCount > 0 && (
+                        <span style={{ color: '#a78bfa', marginLeft: 6 }}>
+                          · {profCount} prof save{profCount > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span style={{
+                    padding: '3px 8px',
+                    background: 'rgba(96,165,250,0.18)',
+                    border: '1px solid rgba(96,165,250,0.5)',
+                    borderRadius: 4,
+                    color: '#60a5fa',
+                    fontSize: 10, fontWeight: 700,
+                  }}>Clone →</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );
