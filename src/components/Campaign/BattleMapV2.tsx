@@ -98,6 +98,33 @@
 //     the map itself.
 //   - No behavior changes; pure layout refactor. Canvas dims and all
 //     overlays remain the same.
+// v2.229.0 — Phase Q.1 pt 21: ChecksPanel on TokenQuickPanel.
+//   - Extracted ChecksPanel from PartyDashboard.tsx into its own file
+//     (src/components/Campaign/ChecksPanel.tsx) so the same UI can be
+//     reused on the BattleMapV2 token quick panel. PartyDashboard now
+//     imports it; behavior on the Party tab is unchanged.
+//   - DM clicking a player token on the map now sees the same checks
+//     surface they get on the Party tab: skill picker, raw ability
+//     buttons, save buttons, advantage/disadvantage/DC controls,
+//     "Roll Secret" + "Prompt Player" actions, last-result strip.
+//   - Required widening the playerCharacters prop on BattleMapV2 with
+//     saving_throw_proficiencies, skill_proficiencies, skill_expertises
+//     so checkModifier() can compute per-skill bonuses without an
+//     extra fetch. CampaignDashboard now passes these through.
+//   - Required adding a campaignId prop to TokenQuickPanel so
+//     "Prompt Player" can route the campaign_chat insert correctly.
+//   - Panel max-height bumped 380 → 600 so the panel doesn't scroll
+//     immediately on a tall character record. overflow:auto still
+//     handles the rare case of conditions + checks both being full.
+//   - Cast slim-character → Character at the ChecksPanel boundary
+//     (rollCheck/checkModifier only read the fields we already pass).
+//   Deferred to v2.230+:
+//      - Enemy attack flow (range highlight → target picker → roll
+//        pipeline → reaction prompt → damage application). Multi-ship
+//        epic; design pass first.
+//      - NPC token roster + bulk add.
+//      - Combat-aware condition cascades.
+//      - Lighting / fog of war fix.
 
 import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
@@ -112,6 +139,10 @@ import { computeVisibilityPolygon, type WallSegment } from '../../lib/vision/vis
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
 import { supabase } from '../../lib/supabase';
+// v2.229 — shared Checks UI; used by the TokenQuickPanel for DM-clicked
+// player tokens. Same component PartyDashboard renders on the Party tab.
+import ChecksPanel from './ChecksPanel';
+import type { Character } from '../../types';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -136,6 +167,11 @@ interface BattleMapV2Props {
     wisdom: number;
     charisma: number;
     speed: number;
+    // v2.229.0 — proficiency arrays needed by ChecksPanel (skill /
+    // ability / save modifiers and "Prompt Player" routing).
+    saving_throw_proficiencies?: import('../../types').AbilityKey[];
+    skill_proficiencies?: string[];
+    skill_expertises?: string[];
   }>;
 }
 
@@ -2206,14 +2242,21 @@ function TokenQuickPanel(props: {
     wisdom: number;
     charisma: number;
     speed: number;
+    // v2.229 — proficiency arrays so ChecksPanel can compute skill /
+    // save modifiers and route Prompt Player correctly.
+    saving_throw_proficiencies?: import('../../types').AbilityKey[];
+    skill_proficiencies?: string[];
+    skill_expertises?: string[];
   };
   anchorX: number;
   anchorY: number;
   isDM: boolean;
+  // v2.229 — needed for ChecksPanel's "Prompt Player" → campaign_chat insert.
+  campaignId: string;
   onClose: () => void;
   onOpenSheet: () => void;
 }) {
-  const { character: c, anchorX, anchorY, isDM, onClose, onOpenSheet } = props;
+  const { character: c, anchorX, anchorY, isDM, campaignId, onClose, onOpenSheet } = props;
   const [hpInput, setHpInput] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
   const [applying, setApplying] = useState(false);
@@ -2237,7 +2280,10 @@ function TokenQuickPanel(props: {
   // Position calc: clamp inside viewport so panel doesn't fall off
   // the bottom or right edge. Width 280, max height ~360.
   const PANEL_W = 280;
-  const PANEL_H = 380;
+  // v2.229 — bumped from 380 to 600 because the Checks panel adds
+  // substantial content (skills + raw + saves + adv/dis/DC + actions).
+  // With overflow:auto the panel still scrolls past this if needed.
+  const PANEL_H = 600;
   const margin = 8;
   let left = Math.max(margin, anchorX + 14);
   if (typeof window !== 'undefined') {
@@ -2601,6 +2647,24 @@ function TokenQuickPanel(props: {
             </div>
           );
         })()}
+
+        {/* v2.229 — Checks panel (DM only). Same component the Party
+            tab renders, so the two surfaces stay structurally
+            identical: skill picker, raw ability buttons, save buttons,
+            adv/dis/DC controls, Roll Secret + Prompt Player. The
+            character object is passed as-is (cast to Character — the
+            slim shape from playerCharacters carries every field
+            ChecksPanel reads). Wrapped in a divider for visual
+            separation from the HP/conditions controls above. */}
+        {isDM && (
+          <div style={{
+            marginBottom: 12,
+            paddingTop: 10,
+            borderTop: '1px solid var(--c-border)',
+          }}>
+            <ChecksPanel character={c as unknown as Character} campaignId={campaignId} />
+          </div>
+        )}
 
         {/* Open full character sheet */}
         <button
@@ -3890,6 +3954,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               anchorX={clickedToken.x}
               anchorY={clickedToken.y}
               isDM={isDM}
+              campaignId={campaignId}
               onClose={() => setClickedToken(null)}
               onOpenSheet={() => {
                 setClickedToken(null);

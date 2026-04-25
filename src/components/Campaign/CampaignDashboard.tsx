@@ -524,6 +524,11 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
               intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
               speed: c.speed,
+              // v2.229 — needed by ChecksPanel (rendered in TokenQuickPanel)
+              // for skill/save modifier computation.
+              saving_throw_proficiencies: c.saving_throw_proficiencies ?? [],
+              skill_proficiencies: c.skill_proficiencies ?? [],
+              skill_expertises: c.skill_expertises ?? [],
             })),
           };
           return (
