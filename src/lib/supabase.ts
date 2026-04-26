@@ -312,9 +312,15 @@ export async function getRollLog(userId: string, limit = 50) {
 export async function getSessionState(
   campaignId: string
 ): Promise<{ data: SessionState | null; error: null | Error }> {
+  // v2.295.0 — Combat columns dropped from session_states. The
+  // table is now a 3-column shell (id / campaign_id / updated_at);
+  // it survives only to keep CampaignContext's vestigial plumbing
+  // compiling without forcing a coupled TS cleanup. Modern combat
+  // state lives on combat_encounters + combat_participants and is
+  // accessed via useCombat() / CombatProvider.
   const { data, error } = await supabase
     .from('session_states')
-    .select('id,campaign_id,initiative_order,current_turn,round,combat_active,updated_at')
+    .select('id,campaign_id,updated_at')
     .eq('campaign_id', campaignId)
     .maybeSingle();
   return { data: data as SessionState | null, error: error ? new Error(error.message) : null };

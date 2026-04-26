@@ -71,12 +71,18 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
   async function updateSessionState(updates: Partial<SessionState>) {
     if (!activeCampaign) return;
 
+    // v2.295.0 — Stripped the dead column defaults
+    // (initiative_order/current_turn/round/combat_active). They were
+    // dropped from session_states in this ship; including them in the
+    // upsert payload would now cause a schema-error 400 from
+    // PostgREST. Function itself is dead code (no live caller invokes
+    // updateSessionState() after the v2.291–v2.294 migrations); kept
+    // around so CampaignContext's typed shape survives without
+    // forcing a coupled TS cleanup of the vestigial onUpdateSession
+    // prop chain through DMScreen / DMlobby / NpcTokenQuickPanel /
+    // BattleMapV2.
     const newState: Omit<SessionState, 'id' | 'updated_at'> = {
       campaign_id: activeCampaign.id,
-      initiative_order: [],
-      current_turn: 0,
-      round: 1,
-      combat_active: false,
       ...sessionState,
       ...updates,
     };

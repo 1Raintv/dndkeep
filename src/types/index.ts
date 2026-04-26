@@ -917,13 +917,17 @@ export interface Combatant {
   attacks?: { name: string; bonus: number; damage: string; damageType: string; range: string }[];
 }
 
+// v2.295.0 — Slimmed to match the post-migration session_states
+// table shape (id / campaign_id / updated_at). The four legacy
+// combat columns (initiative_order / current_turn / round /
+// combat_active) were dropped in this ship; modern combat state
+// lives on CombatEncounter + CombatParticipant. The Combatant
+// shape below is preserved for backwards-source-compat with any
+// type imports that still reference it; no live writer produces
+// Combatant[] arrays anymore.
 export interface SessionState {
   id: string;
   campaign_id: string;
-  initiative_order: Combatant[];
-  current_turn: number;
-  round: number;
-  combat_active: boolean;
   updated_at: string;
 }
 

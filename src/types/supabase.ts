@@ -2310,31 +2310,21 @@ export type Database = {
         Relationships: [];
       };
       session_states: {
+        // v2.295.0 — Slimmed to match the post-migration table shape.
+        // The four legacy combat columns were dropped in this ship.
         Row: {
           id: string;
           campaign_id: string;
-          initiative_order: Json;
-          current_turn: number;
-          round: number;
-          combat_active: boolean;
           updated_at: string;
         };
         Insert: {
           id?: string;
           campaign_id: string;
-          initiative_order?: Json;
-          current_turn?: number;
-          round?: number;
-          combat_active?: boolean;
           updated_at?: string;
         };
         Update: {
           id?: string;
           campaign_id?: string;
-          initiative_order?: Json;
-          current_turn?: number;
-          round?: number;
-          combat_active?: boolean;
           updated_at?: string;
         };
         Relationships: [];
