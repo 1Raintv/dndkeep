@@ -113,9 +113,19 @@ export interface Token {
   // same roster origin don't share a stat block — each gets its own
   // npc row. characterId and npcId are mutually exclusive.
   npcId: string | null;
+  // v2.282: hide-from-players flag. When false, RLS strips the row
+  // from the players' SELECT result (and from realtime broadcasts),
+  // so the token is invisible to non-DM users. The DM sees every
+  // token regardless and the BattleMapV2 token render fades hidden
+  // tokens to half-alpha so they're visually distinguished from
+  // revealed ones. DM-placed tokens default to false (hidden) per
+  // the v2.282 spec; character-linked tokens stay visible because
+  // the player owning that character needs to see themselves.
+  // Maps to scene_tokens.visible_to_all (column already existed; the
+  // ship just wired the client to read/write it).
+  visibleToAll: boolean;
   // Future fields (DB has them; store doesn't mirror yet):
   //   playerId: string | null    (ownership / RLS)
-  //   visibleToAll: boolean
   //   zIndex: number
 }
 

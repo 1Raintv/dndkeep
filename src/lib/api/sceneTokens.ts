@@ -35,6 +35,12 @@ export function dbRowToToken(row: any): Token {
     imageStoragePath: row.image_storage_path ?? null,
     characterId: row.character_id ?? null,
     npcId: row.npc_id ?? null,
+    // v2.282: read visible_to_all. RLS already filters rows the user
+    // shouldn't see; this read is for the DM's own list (which sees
+    // every row) so the UI can render hidden tokens with a faded
+    // visual cue. Default true to match the DB default for any
+    // legacy rows that predate the column.
+    visibleToAll: row.visible_to_all ?? true,
   };
 }
 
@@ -54,6 +60,10 @@ function tokenToInsertRow(token: Token): SceneTokenInsert {
     image_storage_path: token.imageStoragePath,
     character_id: token.characterId,
     npc_id: token.npcId,
+    // v2.282: persist visible_to_all so DM-placed tokens that the
+    // caller marked hidden actually go to the DB hidden. Without
+    // this the DB default (true) would override the caller's intent.
+    visible_to_all: token.visibleToAll,
   };
 }
 
@@ -120,10 +130,13 @@ export async function updateTokenPos(id: string, x: number, y: number): Promise<
   return { ok: true };
 }
 
-/** Patch arbitrary fields (rename, resize, recolor, set portrait). */
+/** Patch arbitrary fields (rename, resize, recolor, set portrait,
+ *  hide-from-players). v2.282 added visibleToAll to the patch shape
+ *  so the context-menu Hide/Show toggle can write through this same
+ *  path — kept the rest of the API surface identical. */
 export async function updateToken(
   id: string,
-  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath'>>
+  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll'>>
 ): Promise<boolean> {
   const dbPatch: SceneTokenUpdate = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -131,6 +144,7 @@ export async function updateToken(
   if (patch.color !== undefined) dbPatch.color = patch.color;
   if (patch.rotation !== undefined) dbPatch.rotation = patch.rotation;
   if (patch.imageStoragePath !== undefined) dbPatch.image_storage_path = patch.imageStoragePath;
+  if (patch.visibleToAll !== undefined) dbPatch.visible_to_all = patch.visibleToAll;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id);
   if (error) {

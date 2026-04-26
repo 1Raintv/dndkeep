@@ -2743,12 +2743,18 @@ function TokenLayer(props: {
   // doesn't import the toast hook directly so it stays test-friendly
   // (rendering this layer in isolation doesn't need a ToastProvider).
   onMovementBlocked?: () => void;
+  // v2.282 — when true, hidden tokens (visibleToAll=false) render at
+  // reduced alpha so the DM can see at a glance which tokens haven't
+  // been revealed to players yet. Players never get hidden tokens
+  // (RLS strips them at SELECT), so the alpha cue only ever applies
+  // on the DM surface — players would never see a faded token.
+  isDM?: boolean;
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenConditionsMap,
-    onTokenClick, onMovementBlocked,
+    onTokenClick, onMovementBlocked, isDM,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -2995,6 +3001,20 @@ function TokenLayer(props: {
       const { container, circle, initials } = entry!;
 
       container.position.set(token.x, token.y);
+
+      // v2.282 — DM-side visual cue for hidden tokens. Players never
+      // get this code path (RLS strips visibleToAll=false rows from
+      // their SELECT), so the dim only ever shows on the DM surface.
+      // Skipped while THIS token is being dragged — the drag handler
+      // imperatively sets alpha=0.75 on grab and =1 on release, and
+      // we don't want to fight it mid-drag (the 0.75 dim is the v2.216
+      // visual contract for "I'm holding this"). On drag-end the
+      // handler resets to 1 then the very next render frame restores
+      // the visibility-correct value, so there's no flash.
+      const isThisDragging = dragRef.current?.id === token.id;
+      if (!isThisDragging) {
+        container.alpha = (isDM && !token.visibleToAll) ? 0.4 : 1;
+      }
 
       const r = tokenRadiusForSize(token.size, gridSizePx);
       circle.clear();
@@ -3544,13 +3564,20 @@ function TokenLayer(props: {
 
 function TokenContextMenu(props: {
   state: ContextMenuState;
+  // v2.282: gate Hide/Show on DM. Players who somehow trigger the
+  // menu (e.g., right-clicking their own character token, since the
+  // canvas right-click isn't currently isDM-gated) still see the
+  // menu but get a slimmer set of actions — RLS would reject most
+  // writes anyway, so showing them an action that 500s is worse
+  // than not showing it.
+  isDM: boolean;
   onClose: () => void;
   onRequestUpload: (tokenId: string) => void;
   // v2.222 — when set, the menu shows a "View Character Sheet" item
   // for tokens linked to a character. Caller handles the navigate.
   onOpenCharacter?: (characterId: string) => void;
 }) {
-  const { state, onClose, onRequestUpload, onOpenCharacter } = props;
+  const { state, isDM, onClose, onRequestUpload, onOpenCharacter } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
@@ -3711,6 +3738,22 @@ function TokenContextMenu(props: {
         </div>
       )}
       {[
+        // v2.282: Hide/Show toggle. DM-only — RLS already gates the
+        // write, but no point offering an action that will error.
+        // Eye icon flips state on click; we close the menu after so
+        // the DM gets immediate feedback (the token's alpha changes
+        // via the optimistic store update). Skipped for tokens
+        // linked to a character — the player NEEDS to see their PC,
+        // and hiding it would just re-hide on every re-render
+        // because it'd never appear in the player's RLS-filtered
+        // SELECT anyway. Hide is meaningful for monsters/NPCs/marks.
+        ...(isDM && !token.characterId ? [{
+          label: token.visibleToAll ? '👁 Hide from Players' : '👁 Reveal to Players',
+          onClick: () => {
+            applyPatch({ visibleToAll: !token.visibleToAll });
+            onClose();
+          },
+        }] : []),
         { label: 'Rename…', onClick: async () => {
           // v2.241 — was window.prompt.
           const next = await promptModal({
@@ -5826,6 +5869,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       imageStoragePath: null,
       characterId: null,
       npcId: null,
+      // v2.282: generic DM-placed tokens (the "+ Add Token" button)
+      // start hidden. The DM reveals via right-click → Show. PC and
+      // NPC bulk-add paths below override this case-by-case so
+      // characters stay visible to their owning players from t=0.
+      visibleToAll: false,
     };
     state.addToken(newToken);
     tokensApi.createToken(newToken).catch(err =>
@@ -5896,6 +5944,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         imageStoragePath: null,
         characterId: pc.id,
         npcId: null,
+        // v2.282: PCs are visible to all from creation. The owning
+        // player needs to see their own character; hiding it would
+        // be confusing UX. (The other players also see PC tokens —
+        // intended behavior, players know who's in the party.)
+        visibleToAll: true,
       };
     });
 
@@ -6035,6 +6088,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         imageStoragePath: null,
         characterId: null,
         npcId: npc.id,
+        // v2.282: NPCs from the roster bulk-add start hidden. The
+        // npcs row itself was already inserted with
+        // visible_to_players=false (per the v2.242 comment block
+        // above) so the entity-level visibility was already hidden;
+        // this aligns the token-level visibility to match. The DM
+        // reveals via right-click → Show.
+        visibleToAll: false,
       };
     });
 
@@ -6909,6 +6969,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     tokenConditionsMap={tokenConditionsMap}
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}
+                    isDM={isDM}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
@@ -7617,6 +7678,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         {contextMenu && (
           <TokenContextMenu
             state={contextMenu}
+            isDM={isDM}
             onClose={() => setContextMenu(null)}
             onRequestUpload={handleRequestUpload}
             onOpenCharacter={handleOpenCharacter}
