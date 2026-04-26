@@ -152,3 +152,43 @@ export async function deleteRosterEntry(id: string): Promise<boolean> {
   }
   return true;
 }
+
+/** v2.272.0 — Strip server-managed fields from a RosterEntry to
+ *  produce a RosterEntryDraft. Used by the "Save as Homebrew" action
+ *  on the picker and (in future) anywhere else that needs to feed a
+ *  RosterEntry through the draft-shaped APIs (e.g. clone-and-edit).
+ *
+ *  Keeps the type relationship explicit at runtime — picking only the
+ *  fields RosterEntryDraft contains. If RosterEntryDraft's Omit list
+ *  changes, this list needs to update; the test for that drift is the
+ *  RosterEntryDraft typecheck on the return value. */
+export function rosterEntryToDraft(entry: RosterEntry): RosterEntryDraft {
+  return {
+    name: entry.name,
+    type: entry.type,
+    cr: entry.cr,
+    size: entry.size,
+    hp: entry.hp,
+    max_hp: entry.max_hp,
+    ac: entry.ac,
+    speed: entry.speed,
+    str: entry.str,
+    dex: entry.dex,
+    con: entry.con,
+    int: entry.int,
+    wis: entry.wis,
+    cha: entry.cha,
+    attack_name: entry.attack_name,
+    attack_bonus: entry.attack_bonus,
+    attack_damage: entry.attack_damage,
+    xp: entry.xp,
+    description: entry.description,
+    traits: entry.traits,
+    immunities: entry.immunities,
+    image_url: entry.image_url,
+    emoji: entry.emoji,
+    color: entry.color,
+    source_monster_id: entry.source_monster_id,
+    save_proficiencies: entry.save_proficiencies,
+  };
+}

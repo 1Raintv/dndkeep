@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import * as rosterApi from '../../lib/api/npcRoster';
+import * as homebrewApi from '../../lib/api/homebrewMonsters';
 import type { RosterEntry } from '../../lib/api/npcRoster';
+import { useToast } from '../shared/Toast';
 
 /**
  * v2.242.0 — Phase Q.1 pt 30: Roster picker for bulk NPC token add.
@@ -37,6 +39,13 @@ export default function NpcRosterPickerModal({ ownerId, onClose, onConfirm }: Pr
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [search, setSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // v2.272.0 — track per-row "saving as homebrew" state so the button
+  // can show a spinner / disabled state without blocking other rows.
+  // Map of roster entry id → boolean (true while the create is in
+  // flight). We don't track per-row "just saved" here; the toast
+  // handles success/failure feedback.
+  const [savingHomebrew, setSavingHomebrew] = useState<Record<string, boolean>>({});
+  const { showToast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +84,30 @@ export default function NpcRosterPickerModal({ ownerId, onClose, onConfirm }: Pr
       else next[id] = v;
       return next;
     });
+  }
+
+  // v2.272.0 — copy a roster entry into the user's homebrew_monsters
+  // table so it can be tweaked freely without affecting the original
+  // roster row. Non-destructive (homebrew is additive); on success we
+  // toast and the picker stays open. On failure we toast an error.
+  // The same row could be promoted multiple times; that's OK — each
+  // creates a separate homebrew row, and the user can clean up dupes
+  // in the Homebrew picker tab inside the builder.
+  async function handlePromoteToHomebrew(entry: RosterEntry) {
+    if (savingHomebrew[entry.id]) return;
+    setSavingHomebrew(prev => ({ ...prev, [entry.id]: true }));
+    const draft = rosterApi.rosterEntryToDraft(entry);
+    const saved = await homebrewApi.createHomebrewFromDraft(ownerId, draft);
+    setSavingHomebrew(prev => {
+      const next = { ...prev };
+      delete next[entry.id];
+      return next;
+    });
+    if (saved) {
+      showToast(`"${entry.name}" saved to homebrew.`, 'success');
+    } else {
+      showToast(`Couldn't save "${entry.name}" to homebrew. Check console.`, 'error');
+    }
   }
 
   // Filter roster by search term (case-insensitive on name + type).
@@ -259,6 +292,37 @@ export default function NpcRosterPickerModal({ ownerId, onClose, onConfirm }: Pr
                       )}
                     </div>
                   </div>
+                  {/* v2.272.0 — Save as Homebrew. Non-destructive
+                      "promote this entry into my reusable homebrew
+                      template list" action. The roster row stays put;
+                      a copy lands in homebrew_monsters scoped to the
+                      DM. Renders next to the count stepper so it's
+                      one consistent affordance group on the right
+                      side of the row. */}
+                  <button
+                    onClick={() => handlePromoteToHomebrew(entry)}
+                    disabled={!!savingHomebrew[entry.id]}
+                    title={savingHomebrew[entry.id]
+                      ? 'Saving…'
+                      : `Save "${entry.name}" as a reusable homebrew monster (a copy you can tweak in any future campaign).`}
+                    style={{
+                      flexShrink: 0,
+                      padding: '4px 8px',
+                      borderRadius: 'var(--r-sm, 4px)',
+                      border: '1px solid rgba(167,139,250,0.4)',
+                      background: savingHomebrew[entry.id]
+                        ? 'rgba(167,139,250,0.18)'
+                        : 'rgba(167,139,250,0.08)',
+                      color: '#a78bfa',
+                      fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      cursor: savingHomebrew[entry.id] ? 'wait' : 'pointer',
+                      minHeight: 0,
+                      transition: 'background 0.12s',
+                    }}
+                  >
+                    {savingHomebrew[entry.id] ? '⏳' : '📚 Homebrew'}
+                  </button>
                   {/* Count stepper */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     <button
