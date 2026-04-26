@@ -87,17 +87,37 @@ export async function createToken(token: Token): Promise<boolean> {
   return true;
 }
 
-/** Commit a position update — called at drag end after snap. */
-export async function updateTokenPos(id: string, x: number, y: number): Promise<boolean> {
+/** Commit a position update — called at drag end after snap.
+ *
+ *  v2.275.0 — return shape extended from boolean to a discriminated
+ *  result so the caller can tell apart the wall-collision rejection
+ *  (server trigger, ERRCODE 23514 — recoverable, snap back + toast)
+ *  from any other failure (network, RLS, validation — also snap back
+ *  but possibly with a different message). The trigger was added in
+ *  the v2.275 migration; previously this function only had to deal
+ *  with network / RLS failures so a boolean was sufficient.
+ *
+ *  We don't introspect the message text — Postgres error codes are
+ *  the stable contract. 23514 is the standard SQLSTATE for
+ *  check_violation, which our trigger raises explicitly via
+ *  `USING ERRCODE = 'check_violation'`. */
+export type UpdateTokenPosResult =
+  | { ok: true }
+  | { ok: false; reason: 'wall_blocked' | 'other'; message?: string };
+
+export async function updateTokenPos(id: string, x: number, y: number): Promise<UpdateTokenPosResult> {
   const { error } = await supabase
     .from('scene_tokens')
     .update({ x, y, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) {
     console.error('[sceneTokens] updateTokenPos failed', error);
-    return false;
+    if (error.code === '23514') {
+      return { ok: false, reason: 'wall_blocked', message: error.message };
+    }
+    return { ok: false, reason: 'other', message: error.message };
   }
-  return true;
+  return { ok: true };
 }
 
 /** Patch arbitrary fields (rename, resize, recolor, set portrait). */

@@ -3480,8 +3480,34 @@ function TokenLayer(props: {
           // v2.213 commit — single DB write on release. Only commit if
           // the position actually moved (avoid pointless DB write on click).
           if (!wasClick) {
-            tokensApi.updateTokenPos(drag.id, clampedX, clampedY).catch(err =>
-              console.error('[BattleMapV2] pos commit failed', err)
+            // v2.275.0 — also handle the server-side wall trigger
+            // rejection. The client-side segmentBlockedByWall check
+            // above catches the common case (and gives instant
+            // feedback). The server trigger catches the rest:
+            //   1. wall added by another client AFTER the drag started
+            //      but BEFORE the commit hit the server (race window);
+            //   2. malicious / buggy client that skipped the local
+            //      check entirely.
+            // On rejection, snap the local store back to origin and
+            // notify (same UX as client-side rejection). Pre-existing
+            // catch() retained for unexpected exceptions (network
+            // throws etc.) — the new return shape only resolves with
+            // {ok:false} for known supabase errors.
+            tokensApi.updateTokenPos(drag.id, clampedX, clampedY).then(result => {
+              if (result.ok) return;
+              if (result.reason === 'wall_blocked') {
+                // Roll back local state to origin. The peer-broadcast
+                // we sent above (with the would-be-final position) is
+                // self-correcting: peers also see this rollback when
+                // we re-broadcast the origin position right below.
+                useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
+                onDragMove?.(drag.id, drag.originX, drag.originY);
+                onMovementBlocked?.();
+              } else {
+                console.error('[BattleMapV2] pos commit failed', result);
+              }
+            }).catch(err =>
+              console.error('[BattleMapV2] pos commit threw', err)
             );
           }
         }
