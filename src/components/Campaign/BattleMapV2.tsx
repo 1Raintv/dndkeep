@@ -1711,8 +1711,15 @@ function DrawingLayer(props: {
   // delete/move so Cmd-Z reverts.
   selectMode?: boolean;
   recordUndoable?: (action: import('../../lib/hooks/useUndoRedo').UndoableAction) => void;
+  // v2.269.0 — eraser mode. When true, this layer attaches a separate
+  // pointer effect: left-click anywhere → if the click landed on a
+  // drawing, delete it (with undo). No confirm dialog — eraser-mode
+  // is itself the explicit intent. Right-click context-menu delete
+  // (which DOES confirm) remains available outside eraser mode.
+  // Misses on empty space are silent no-ops; no toast spam.
+  eraserActive?: boolean;
 }) {
-  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth, selectMode, recordUndoable } = props;
+  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth, selectMode, recordUndoable, eraserActive } = props;
   const drawings = useBattleMapStore(s => s.drawings);
   const containerRef = useRef<Container | null>(null);
   const previewGfxRef = useRef<Graphics | null>(null);
@@ -2107,6 +2114,88 @@ function DrawingLayer(props: {
       window.removeEventListener('mouseup', onUp);
     };
   }, [selectMode, activeKind, canvasEl, viewport, isDM, currentSceneId]);
+
+  // v2.269.0 — eraser pointer effect. Independent from the draw and
+  // select-drag effects: only active when eraserActive is on. Listens
+  // for left-click anywhere on the canvas, hit-tests against the
+  // committed drawings container, and deletes the topmost hit (with
+  // undo). Right-click is left alone — the existing context-menu
+  // delete still works in any mode.
+  //
+  // Intentionally no drag / multi-erase: each click is one delete.
+  // Drag-to-erase a swath would be nice but adds significant scope
+  // (per-pointermove hit-tests + dedup so a slow drag doesn't fire
+  // a hundred deletes on the same shape). Single-click is enough for
+  // the cleanup workflow ("oops, wrong rectangle, click and gone").
+  useEffect(() => {
+    if (!eraserActive || !canvasEl || !viewport || !isDM || !currentSceneId) return;
+
+    function clientToWorld(e: MouseEvent): { x: number; y: number } | null {
+      if (!canvasEl || !viewport) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wp = viewport.toWorld(sx, sy);
+      return { x: wp.x, y: wp.y };
+    }
+
+    function findDrawingAt(world: { x: number; y: number }): SceneDrawing | null {
+      const c = containerRef.current;
+      if (!c) return null;
+      // Iterate top-down so the visually-frontmost drawing wins.
+      for (let i = c.children.length - 1; i >= 0; i--) {
+        const child = c.children[i];
+        const id = (child as any).__drawingId as string | undefined;
+        if (!id) continue;
+        const b = child.getBounds();
+        const pad = 6;
+        if (world.x >= b.minX - pad && world.x <= b.maxX + pad
+            && world.y >= b.minY - pad && world.y <= b.maxY + pad) {
+          const found = useBattleMapStore.getState().drawings[id];
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    function onPointerDown(e: MouseEvent) {
+      if (e.button !== 0) return; // primary only
+      const w = clientToWorld(e);
+      if (!w) return;
+      const found = findDrawingAt(w);
+      if (!found) {
+        // Silent miss — clicking empty space in eraser mode is a no-op.
+        // Adding a toast here would spam the user during normal scrub-
+        // looking-for-shapes behavior.
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
+      // Snapshot before delete so undo can restore it. Defensive deep-
+      // clone of points so a later in-place mutation can't corrupt the
+      // snapshot held by the undo closure.
+      const snapshot = { ...found, points: found.points.map(p => ({ ...p })) };
+      useBattleMapStore.getState().removeDrawing(found.id);
+      drawingsApi.deleteDrawing(found.id).catch(err =>
+        console.error('[DrawingLayer] eraser deleteDrawing failed', err));
+      recordUndoableRef.current?.({
+        label: `erase ${snapshot.kind}`,
+        forward: () => {
+          useBattleMapStore.getState().removeDrawing(snapshot.id);
+          return drawingsApi.deleteDrawing(snapshot.id).then(() => undefined);
+        },
+        backward: () => {
+          useBattleMapStore.getState().addDrawing(snapshot);
+          return drawingsApi.createDrawing(snapshot).then(() => undefined);
+        },
+      });
+    }
+
+    canvasEl.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      canvasEl.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [eraserActive, canvasEl, viewport, isDM, currentSceneId]);
 
   return null;
 }
@@ -2508,6 +2597,12 @@ function TokenLayer(props: {
   // single-clicks to spawn effects; tokens yield so drag-through
   // and click-on-token don't compete with effect placement.
   fxActive?: boolean;
+  // v2.269.0 — same pattern for the eraser tool. DrawingLayer owns
+  // the click handler in this mode (resolves to a delete-drawing
+  // operation), so tokens must yield so a click on a drawing
+  // overlapping a token still erases the drawing instead of
+  // selecting/dragging the token.
+  eraserActive?: boolean;
   // v2.221 — character HP lookup for live HP bars on PC tokens.
   // Map<characterId, { current, max }>. Tokens whose characterId
   // matches an entry get an HP bar rendered underneath. Pure data
@@ -2538,7 +2633,7 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    textActive, drawActive, fxActive, characterHpMap, npcHpMap, tokenConditionsMap,
+    textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenConditionsMap,
     onTokenClick, onMovementBlocked,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
@@ -2563,6 +2658,9 @@ function TokenLayer(props: {
   // v2.236: same mechanism for FX particle mode.
   const fxActiveRef = useRef(false);
   useEffect(() => { fxActiveRef.current = !!fxActive; }, [fxActive]);
+  // v2.269.0: same mechanism for eraser mode.
+  const eraserActiveRef = useRef(false);
+  useEffect(() => { eraserActiveRef.current = !!eraserActive; }, [eraserActive]);
 
   interface TokenGfx {
     container: Container;
@@ -2724,6 +2822,10 @@ function TokenLayer(props: {
           if (drawActiveRef.current) return;
           // v2.236: same for FX particle mode.
           if (fxActiveRef.current) return;
+          // v2.269.0: same for eraser mode. DrawingLayer captures the
+          // click; tokens yield so a click on a drawing overlapping a
+          // token erases the drawing instead of grabbing the token.
+          if (eraserActiveRef.current) return;
           if (event.button === 2) {
             event.stopPropagation();
             event.preventDefault();
@@ -5627,6 +5729,16 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // v2.236 — FX particle mode. Either null (no FX tool) or one of
   // fire/lightning/sparkles/smoke. Five-way mutex with everything else.
   const [fxActive, setFxActive] = useState<FxKind | null>(null);
+
+  // v2.269.0 — eraser mode. Click on a drawing → delete it. Mutex
+  // with every other tool. Held in its own boolean (rather than as a
+  // 5th DrawingKind) because:
+  //   1. DrawingKind is the persisted shape type — adding an 'eraser'
+  //      value would muddle a column that's only ever a real shape.
+  //   2. The eraser doesn't paint a preview; its lifecycle is
+  //      single-click delete, not drag-to-author. Keeping the state
+  //      separate lets DrawingLayer fork the pointer logic cleanly.
+  const [eraserActive, setEraserActive] = useState(false);
   // v2.256.0 — particle-density multiplier for FX effects. 1.0 is the
   // legacy v2.236 default; the slider goes 0.25 (subtle) → 2.0 (dense).
   // Persisted in component state only (not localStorage / DB) — the
@@ -5641,21 +5753,21 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const toggleRuler = useCallback(() => {
     setRulerActive(a => {
       const next = !a;
-      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); }
+      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
       return next;
     });
   }, []);
   const toggleWallMode = useCallback(() => {
     setWallActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); }
+      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
       return next;
     });
   }, []);
   const toggleTextMode = useCallback(() => {
     setTextActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); setFxActive(null); }
+      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
       return next;
     });
   }, []);
@@ -5665,7 +5777,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const toggleDrawMode = useCallback((kind: DrawingKind) => {
     setDrawActive(curr => {
       const next = curr === kind ? null : kind;
-      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setFxActive(null); }
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setFxActive(null); setEraserActive(false); }
       return next;
     });
   }, []);
@@ -5673,7 +5785,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const toggleFxMode = useCallback((kind: FxKind) => {
     setFxActive(curr => {
       const next = curr === kind ? null : kind;
-      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); }
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setEraserActive(false); }
+      return next;
+    });
+  }, []);
+  // v2.269.0 — eraser toggle. Same mutex pattern.
+  const toggleEraserMode = useCallback(() => {
+    setEraserActive(a => {
+      const next = !a;
+      if (next) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); }
       return next;
     });
   }, []);
@@ -6266,6 +6386,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     textActive={textActive}
                     drawActive={drawActive != null}
                     fxActive={fxActive != null}
+                    eraserActive={eraserActive}
                     characterHpMap={characterHpMap}
                     npcHpMap={npcHpMap}
                     tokenConditionsMap={tokenConditionsMap}
@@ -6282,7 +6403,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     active={textActive}
                     isDM={isDM}
                     currentSceneId={currentScene?.id ?? null}
-                    selectMode={!textActive && drawActive == null}
+                    selectMode={!textActive && drawActive == null && !eraserActive}
                     recordUndoable={recordUndoable}
                   />
                   {/* v2.235 — DrawingLayer renders pencil/line/rect/
@@ -6301,8 +6422,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     currentSceneId={currentScene?.id ?? null}
                     color={drawColor}
                     lineWidth={drawLineWidth}
-                    selectMode={!textActive && drawActive == null}
+                    selectMode={!textActive && drawActive == null && !eraserActive}
                     recordUndoable={recordUndoable}
+                    eraserActive={eraserActive}
                   />
                   {/* v2.236 — FxLayer renders ephemeral particle
                       effects. Mounted last (top of z-stack) so
@@ -6650,6 +6772,46 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               </>
             );
           })()}
+
+          {/* v2.269.0 — Eraser tool. DM only. Click on a drawing to
+              delete it (no confirm — eraser mode is the explicit
+              intent). Right-click delete with confirm still works
+              outside this mode for the cautious path. Mutex with all
+              other tools. Pink palette to match the drawing tools
+              (the eraser is a sibling of the draw tools). */}
+          {isDM && (
+            <button
+              onClick={toggleEraserMode}
+              title={eraserActive
+                ? 'Eraser active — click any drawing to delete it. Click this button again to exit.'
+                : 'Eraser — click drawings to remove them. Right-click outside this mode also deletes (with confirm).'}
+              style={{
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: eraserActive ? 'rgba(244,114,182,0.28)' : 'transparent',
+                border: `1px solid ${eraserActive ? 'rgba(244,114,182,0.85)' : 'rgba(244,114,182,0.25)'}`,
+                borderRadius: 'var(--r-sm, 4px)',
+                color: eraserActive ? '#f472b6' : 'var(--t-2)',
+                fontSize: 16,
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+              onMouseEnter={(e) => {
+                if (!eraserActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(244,114,182,0.14)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.55)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!eraserActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
+                }
+              }}
+            >
+              🧹
+            </button>
+          )}
           {/* v2.236 — FX particle effects. DM only. Four kinds:
               fire, lightning, sparkles, smoke. Each spawns a short
               animation at click point and broadcasts to all clients
@@ -6912,6 +7074,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         >
           {dmPreviewFog
             ? 'Player View ON — fog shows what players see. Click 👁 again to return to full DM view.'
+            : eraserActive
+            ? 'Eraser ON — click any drawing to delete it. Click 🧹 again to exit.'
             : wallActive
             ? 'Click to place wall vertices · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
             : rulerActive
