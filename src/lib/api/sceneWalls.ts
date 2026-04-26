@@ -81,3 +81,38 @@ export async function deleteWall(id: string): Promise<boolean> {
   }
   return true;
 }
+
+/** v2.271.0 — Update a wall's mutable fields (currently only
+ *  doorState; blocksSight / blocksMovement are reserved for future
+ *  ships and aren't surfaced in the UI yet). RLS gates DM-only
+ *  UPDATE; party members of published scenes only have SELECT.
+ *
+ *  Pass only the fields you want to change. Unspecified fields are
+ *  left alone via Postgres's default "set unchanged columns to their
+ *  current value" UPDATE semantics. */
+export async function updateWall(
+  id: string,
+  patch: Partial<Pick<Wall, 'doorState' | 'blocksSight' | 'blocksMovement'>>,
+): Promise<boolean> {
+  // Strictly typed row shape — Record<string, unknown> doesn't pass
+  // supabase-js's RejectExcessProperties guard. Use a proper interface
+  // matching the scene_walls UPDATE column subset. `'locked'` is part
+  // of the Wall.doorState union (DB CHECK set) but isn't reachable
+  // from the current toggle UI; keep it in the type so future ships
+  // adding a "lock door" affordance don't have to widen this.
+  const row: {
+    door_state?: 'open' | 'closed' | 'locked' | null;
+    blocks_sight?: boolean;
+    blocks_movement?: boolean;
+  } = {};
+  if ('doorState' in patch) row.door_state = patch.doorState ?? null;
+  if ('blocksSight' in patch) row.blocks_sight = patch.blocksSight;
+  if ('blocksMovement' in patch) row.blocks_movement = patch.blocksMovement;
+  if (Object.keys(row).length === 0) return true; // no-op
+  const { error } = await supabase.from('scene_walls').update(row).eq('id', id);
+  if (error) {
+    console.error('[sceneWalls] updateWall failed', error);
+    return false;
+  }
+  return true;
+}

@@ -879,16 +879,61 @@ function WallLayer(props: {
     const gfx = wallGfxRef.current;
     if (!gfx || gfx.destroyed) return;
     gfx.clear();
-    // Style: thin purple lines. When active mode is ON we intensify
-    // slightly so the DM gets visual feedback that walls are editable.
-    const alpha = active ? 0.95 : 0.85;
-    const width = 3;
-    gfx.setStrokeStyle({ color: 0xa78bfa, width, alpha });
-    for (const w of Object.values(walls)) {
-      gfx.moveTo(w.x1, w.y1);
-      gfx.lineTo(w.x2, w.y2);
+    // v2.271.0 — three visual states based on doorState:
+    //   - solid wall (doorState === null): purple stroke, the
+    //     existing default
+    //   - closed door (doorState === 'closed'): warm gold stroke so
+    //     it reads as "different from a wall, but still blocking" —
+    //     conceptually a wooden door
+    //   - open door (doorState === 'open'): dashed faint gold so the
+    //     DM sees the gap exists but visually it's clearly passable
+    //
+    // We render in three passes (one per state) because Pixi v8
+    // Graphics doesn't support per-segment stroke styles on a single
+    // path — a single moveTo/lineTo/stroke chain commits one style.
+    // Walls per scene are typically <50, so the three-pass cost is
+    // immaterial.
+    const baseAlpha = active ? 0.95 : 0.85;
+    const allWalls = Object.values(walls);
+    const solid = allWalls.filter(w => w.doorState === null);
+    const closedDoors = allWalls.filter(w => w.doorState === 'closed');
+    const openDoors = allWalls.filter(w => w.doorState === 'open');
+
+    // Pass 1: solid walls — purple, the existing style.
+    if (solid.length > 0) {
+      gfx.setStrokeStyle({ color: 0xa78bfa, width: 3, alpha: baseAlpha });
+      for (const w of solid) {
+        gfx.moveTo(w.x1, w.y1);
+        gfx.lineTo(w.x2, w.y2);
+      }
+      gfx.stroke();
     }
-    gfx.stroke();
+
+    // Pass 2: closed doors — warm gold, slightly thicker so they
+    // read as a noticeable interactive feature.
+    if (closedDoors.length > 0) {
+      gfx.setStrokeStyle({ color: 0xd4a017, width: 4, alpha: baseAlpha });
+      for (const w of closedDoors) {
+        gfx.moveTo(w.x1, w.y1);
+        gfx.lineTo(w.x2, w.y2);
+      }
+      gfx.stroke();
+    }
+
+    // Pass 3: open doors — faint gold "ghost" segments so the gap is
+    // visible but obviously walkable. We approximate the dashed look
+    // with a lower alpha + thinner stroke (Pixi v8 doesn't have
+    // first-class line dash support; a true dash would need to
+    // segment each door into N pieces, which is more code than
+    // value here).
+    if (openDoors.length > 0) {
+      gfx.setStrokeStyle({ color: 0xd4a017, width: 2, alpha: baseAlpha * 0.4 });
+      for (const w of openDoors) {
+        gfx.moveTo(w.x1, w.y1);
+        gfx.lineTo(w.x2, w.y2);
+      }
+      gfx.stroke();
+    }
   }, [walls, active]);
 
   // Pending-start + rubber-band preview is drawn on its own Graphics
@@ -964,6 +1009,47 @@ function WallLayer(props: {
       if (e.button !== 0) return;
       const world = worldFromEvent(e);
       if (!world) return;
+
+      // v2.271.0 — shift+left-click = cycle door state on nearest
+      // wall (within the same threshold the right-click delete uses).
+      // The cycle is: solid wall → closed door → open door → solid.
+      // Solid + closed both block sight + movement; open blocks
+      // neither. Authoring-time intent: most walls are solid; a few
+      // get cycled to closed-door at setup; mid-session the DM
+      // shift-clicks to flip closed↔open as players approach.
+      // Skips placement: when this branch fires, we don't continue
+      // into the vertex-placement flow below.
+      if (e.shiftKey) {
+        const THRESHOLD = Math.max(6, gridSizePx * 0.25);
+        let best: { id: string; dist: number } | null = null;
+        for (const w of Object.values(useBattleMapStore.getState().walls)) {
+          if (w.sceneId !== currentSceneId) continue;
+          const d = pointSegmentDistance(world.x, world.y, w.x1, w.y1, w.x2, w.y2);
+          if (d < THRESHOLD && (!best || d < best.dist)) {
+            best = { id: w.id, dist: d };
+          }
+        }
+        if (best) {
+          const wall = useBattleMapStore.getState().walls[best.id];
+          if (wall) {
+            // Cycle: null → 'closed' → 'open' → null
+            const nextState: Wall['doorState'] =
+              wall.doorState === null ? 'closed'
+              : wall.doorState === 'closed' ? 'open'
+              : null;
+            // Optimistic update + async DB patch. Realtime echo is
+            // idempotent (updateWall merges patch into existing) so
+            // the originator's echo is a no-op.
+            useBattleMapStore.getState().updateWall(best.id, { doorState: nextState });
+            wallsApi.updateWall(best.id, { doorState: nextState }).catch(err =>
+              console.error('[WallLayer] updateWall failed', err)
+            );
+          }
+        }
+        e.preventDefault();
+        return;
+      }
+
       const snapped = snapToGridCorner(world.x, world.y, gridSizePx);
 
       const start = pendingStartRef.current;
@@ -1230,11 +1316,16 @@ function VisionLayer(props: {
 
     // 2. For each origin token, compute polygon and draw with erase
     //    blend mode to cut a hole in the fog.
+    // v2.271.0 — open doors ('open' doorState) don't block sight,
+    // mirroring the same rule the movement-collision check uses. A
+    // door that's been opened by the DM creates a vision corridor.
+    // Closed doors (doorState === 'closed') and solid walls
+    // (doorState === null) both block normally.
     const sightWalls: WallSegment[] = [];
     for (const w of Object.values(walls)) {
-      if (w.blocksSight) {
-        sightWalls.push({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 });
-      }
+      if (!w.blocksSight) continue;
+      if (w.doorState === 'open') continue;
+      sightWalls.push({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 });
     }
     // 60ft = 12 cells × cell size in pixels. Hardcoded for v2.224;
     // v2.226 will read per-character darkvision/normal-vision range.
@@ -6756,8 +6847,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             <button
               onClick={toggleWallMode}
               title={wallActive
-                ? 'Walls active — click to place vertices, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls block player line-of-sight AND token movement; toggle 👁 Player View to verify sight lines.'
-                : 'Walls — block line-of-sight + token movement on the map. Players can\'t see or move past them; toggle 👁 to preview the player\'s view. DM only.'}
+                ? 'Walls active — click to place vertices, shift+click on a wall cycles solid → closed door → open door, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls/closed doors block sight + movement; open doors block neither.'
+                : 'Walls — block line-of-sight + token movement on the map. Shift+click a wall to make it a door (cycles closed/open). Players can\'t see or move past solid walls or closed doors. Toggle 👁 to preview the player\'s view. DM only.'}
               style={{
                 width: 36, height: 36,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -7236,7 +7327,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             : eraserActive
             ? 'Eraser ON — click any drawing to delete it. Click 🧹 again to exit.'
             : wallActive
-            ? 'Click to place wall vertices · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
+            ? 'Click to place wall vertices · shift+click a wall = cycle door state · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
             : rulerActive
               ? 'Click to add waypoints · right-click/Esc to finish · right/middle drag pans · wheel zooms'
               : 'Drag tokens · right-click for options · right/middle drag pans · wheel zooms'}

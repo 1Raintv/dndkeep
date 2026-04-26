@@ -166,7 +166,11 @@ interface BattleMapStore {
   setRemoteDragLocks: (locks: Record<string, string>) => void;
   // v2.223 wall mutators — parallel to token mutators. Realtime adds
   // call addWall/removeWall; hydration calls setWallsBulk.
+  // v2.271.0 — updateWall added for the door toggle. Walls were
+  // previously immutable (delete+re-insert was the only edit); now
+  // doorState mutates mid-session as the DM opens/closes doors.
   addWall: (wall: Wall) => void;
+  updateWall: (id: string, patch: Partial<Wall>) => void;
   removeWall: (id: string) => void;
   setWallsBulk: (walls: Wall[]) => void;
   // v2.234 text mutators — parallel to walls. updateText is exposed
@@ -237,6 +241,13 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
 
   addWall: (wall) =>
     set((s) => ({ walls: { ...s.walls, [wall.id]: wall } })),
+
+  updateWall: (id, patch) =>
+    set((s) => {
+      const existing = s.walls[id];
+      if (!existing) return s;
+      return { walls: { ...s.walls, [id]: { ...existing, ...patch } } };
+    }),
 
   removeWall: (id) =>
     set((s) => {
