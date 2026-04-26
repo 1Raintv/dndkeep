@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { Character } from '../../types';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { logHistoryEvent } from '../../lib/characterHistory';
 
 interface DeathSavesProps {
   character: Character;
@@ -48,6 +49,14 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
   // Triggers the 3D dice surface and resolves on the physics callback
   // so the result UI updates after the player sees the d20 land. Per
   // RAW: 10+ success, nat 20 wakes with 1 HP, nat 1 = 2 failures.
+  // v2.273.0 — also writes a character_history row capturing the
+  // outcome. Death saves are critical narrative beats and were
+  // previously absent from the History tab. We use logHistoryEvent
+  // directly inside onResult so the description carries the full
+  // resolved outcome (vs. logHistory on triggerRoll which would only
+  // capture "Death Save: d20 = X" without the success/fail
+  // interpretation). eventType: 'save' so it sorts under the Rolls
+  // filter chip alongside ability saves.
   function rollDeathSave() {
     if (isDead || isStabilized) return;
     triggerRoll({
@@ -56,21 +65,37 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
       label: `${character.name} — Death Save`,
       onResult: (_allDice, total) => {
         const d20 = total;
+        let outcome: string;
         if (d20 === 20) {
           onUpdate({
             current_hp: 1,
             death_saves_successes: 0,
             death_saves_failures: 0,
           });
+          outcome = 'NAT 20 — REVIVED at 1 HP';
         } else if (d20 === 1) {
           const newFailures = Math.min(3, failures + 2);
           onUpdate({ death_saves_failures: newFailures });
+          outcome = `NAT 1 — 2 FAILURES (now ${newFailures}/3)`;
         } else if (d20 >= 10) {
           const newSuccesses = Math.min(3, successes + 1);
           onUpdate({ death_saves_successes: newSuccesses });
+          outcome = `SUCCESS (${newSuccesses}/3${newSuccesses === 3 ? ' — STABILIZED' : ''})`;
         } else {
           const newFailures = Math.min(3, failures + 1);
           onUpdate({ death_saves_failures: newFailures });
+          outcome = `FAILURE (${newFailures}/3${newFailures === 3 ? ' — DEAD' : ''})`;
+        }
+        // Fire-and-forget history write. Non-blocking; a failed log
+        // must not interrupt the death save resolution.
+        if (character.user_id) {
+          logHistoryEvent({
+            characterId: character.id,
+            userId: character.user_id,
+            eventType: 'save',
+            description: `Death Save: d20 = ${d20} — ${outcome}`,
+            newValue: d20,
+          }).catch(() => { /* swallow */ });
         }
       },
     });

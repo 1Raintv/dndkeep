@@ -108,12 +108,24 @@ function normalizeHistory(row: any): TimelineEvent {
   const t = String(row.event_type ?? 'other');
   // Character history event types: hp_change, field_change, roll, save, check,
   // condition_add, condition_remove, spell_slot, etc. Loose string matching.
+  // v2.273.0 — Two bucket fixes:
+  //   - exhaustion_change was falling to 'other' (no 'condition' substring,
+  //     'exhaustion' not matched). Move into 'condition' to mirror the
+  //     combat_events bucketing — so the Conditions filter chip shows it.
+  //   - inspiration_change was falling to 'other' (kept matching only on
+  //     'inspiration' substring which the old chain didn't have an early
+  //     branch for; the order-of-clauses meant it never reached the
+  //     inspiration check). Now an explicit branch.
+  // Keep the substring style for spell/condition/conc since some legacy
+  // event types use prefixed/suffixed forms (e.g. condition_added,
+  // condition_removed).
   const kind: TimelineKind =
     t.includes('hp') ? 'hp' :
     t === 'roll' ? 'roll' :
     t === 'save' ? 'save' :
     t === 'check' ? 'check' :
     t.includes('condition') ? 'condition' :
+    t.includes('exhaustion') ? 'condition' :
     t.includes('spell') ? 'spell' :
     t === 'concentration' || t.includes('conc') ? 'concentration' :
     t.includes('inspiration') ? 'inspiration' :
@@ -132,6 +144,19 @@ function normalizeCombatEvent(row: any): TimelineEvent {
   const kind: TimelineKind =
     et === 'hp_changed' || et === 'temp_hp_changed' ? 'hp' :
     et === 'generic_roll' ? 'roll' :
+    // v2.273.0 — Phase A combat-event types from logAction. Previously
+    // these all fell through to 'other' and got titled "attack roll" /
+    // "damage rolled" / etc. via the underscore-replace fallback,
+    // hiding them from the Rolls filter chip and surfacing useless
+    // titles even though logAction packs rich payload (action_name,
+    // dice_expression, total, hit_result, notes). Now they bucket into
+    // their semantic kind and the switch below renders proper titles.
+    et === 'attack_roll' ? 'roll' :
+    et === 'damage_rolled' ? 'roll' :
+    et === 'healing_applied' ? 'roll' :
+    et === 'save_rolled' ? 'save' :
+    et === 'ability_check_rolled' ? 'check' :
+    et === 'standard_action_taken' ? 'other' :
     et.startsWith('condition') ? 'condition' :
     et.startsWith('concentration') ? 'concentration' :
     et === 'inspiration_changed' ? 'inspiration' :
@@ -228,6 +253,40 @@ function normalizeCombatEvent(row: any): TimelineEvent {
       if (bits.length) detail = bits.join(' · ');
       break;
     }
+    // v2.273.0 — Phase A combat events from logAction (attack_roll,
+    // damage_rolled, healing_applied, save_rolled, ability_check_rolled,
+    // standard_action_taken, spell_cast). Previously these fell to the
+    // default fallthrough and were titled "attack roll" / "spell cast"
+    // with no detail, despite carrying rich payload (action_name,
+    // dice_expression, total, hit_result, notes). Now we surface the
+    // action name as the title and pack total/dice/hit into detail.
+    case 'attack_roll':
+    case 'damage_rolled':
+    case 'healing_applied':
+    case 'save_rolled':
+    case 'ability_check_rolled':
+    case 'spell_cast':
+    case 'standard_action_taken': {
+      title = p.action_name ?? et.replace(/_/g, ' ');
+      const bits: string[] = [];
+      // total comes through as 0 for things like spell_cast where there's
+      // no dice expression; only show it when non-zero or when there's
+      // a dice expression to qualify it.
+      if (typeof p.total === 'number' && (p.total !== 0 || p.dice_expression)) {
+        bits.push(`Total ${p.total}`);
+      }
+      if (p.dice_expression && typeof p.dice_expression === 'string' && p.dice_expression.trim()) {
+        bits.push(p.dice_expression);
+      }
+      if (p.hit_result && typeof p.hit_result === 'string' && p.hit_result.trim()) {
+        bits.push(p.hit_result.toUpperCase());
+      }
+      if (p.notes && typeof p.notes === 'string' && p.notes.trim()) {
+        bits.push(p.notes);
+      }
+      if (bits.length) detail = bits.join(' · ');
+      break;
+    }
     default: title = et.replace(/_/g, ' ');
   }
 
@@ -319,16 +378,30 @@ export default function UnifiedHistory({ characterId, campaignId, maxHeight = 56
       (hr.data ?? []).forEach(row => merged.push(normalizeHistory(row)));
       (cr.data ?? []).forEach(row => merged.push(normalizeCombatEvent(row)));
 
-      // Filter targeted announcements: if the payload carries a
-      // targets array and this character isn't in it, skip.
+      // v2.273.0 — Targeted DM prompts. The DM may aim a check_prompt /
+      // save_prompt / short_rest_prompt at specific characters via a
+      // `targets: [characterId, ...]` array in the JSON message body.
+      // Previously only 'announcement' applied this filter, so a save
+      // prompt aimed at character A would appear in character B's
+      // history too. Now we apply the same filter to all DM-prompt
+      // types that may carry a targets array. If the message isn't
+      // valid JSON OR has no targets array OR targets is empty, the
+      // prompt is broadcast (everyone sees it) — same fallback as
+      // announcement.
       (chr.data ?? []).forEach(row => {
-        if (row.message_type === 'announcement') {
+        const targetable = (
+          row.message_type === 'announcement' ||
+          row.message_type === 'check_prompt' ||
+          row.message_type === 'save_prompt' ||
+          row.message_type === 'short_rest_prompt'
+        );
+        if (targetable) {
           try {
             const p = JSON.parse(row.message);
             if (p && Array.isArray(p.targets) && p.targets.length > 0 && !p.targets.includes(characterId)) {
               return; // not for this character
             }
-          } catch { /* plain text = send to all */ }
+          } catch { /* plain text / non-JSON = send to all */ }
         }
         const evt = normalizeChatEvent(row);
         if (evt) merged.push(evt);

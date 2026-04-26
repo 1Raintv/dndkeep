@@ -51,6 +51,13 @@ function mapHistoryTypeToCombat(t: HistoryEventType): CombatEventType {
     case 'inspiration_change':  return 'inspiration_changed';
     case 'spell_cast':          return 'spell_cast';
     case 'roll':                return 'generic_roll';
+    // v2.273.0 — added cases mirroring logAction's mapping. Without
+    // these, save / check history rows dual-wrote to combat_events as
+    // 'character_field_changed' which the History tab buckets into
+    // 'other' (wrong filter chip). Now they bucket as 'save' / 'check'
+    // → Rolls filter, matching their character_history bucketing.
+    case 'save':                return 'save_rolled';
+    case 'check':               return 'ability_check_rolled';
     case 'field_change':
     case 'other':
     default:
@@ -73,7 +80,9 @@ export type HistoryEventType =
   | 'level_up'            // level advanced
   | 'inspiration_change'  // gained or spent inspiration
   | 'spell_cast'          // spell casting event (logged outside applyUpdate)
-  | 'roll'                // dice roll event
+  | 'roll'                // generic dice roll event
+  | 'save'                // saving throw (DM-prompted save resolution + death saves)
+  | 'check'               // ability/skill check resolution (DM-prompted, etc.)
   | 'other';
 
 export interface HistoryEvent {
