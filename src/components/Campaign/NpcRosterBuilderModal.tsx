@@ -26,6 +26,7 @@ import * as srdApi from '../../lib/api/srdMonsters';
 import * as homebrewApi from '../../lib/api/homebrewMonsters';
 import type { RosterEntry, RosterEntryDraft } from '../../lib/api/npcRoster';
 import type { SrdMonsterRow } from '../../lib/api/srdMonsters';
+import type { HomebrewMonsterRow } from '../../lib/api/homebrewMonsters';
 
 interface Props {
   ownerId: string;
@@ -75,8 +76,14 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
   // instead of the list. Selecting a monster transitions to the edit
   // form (entry: null, draft: derived from the monster). Cancel
   // returns to the list.
+  // v2.262.0 — picker is now tabbed: 'srd' | 'homebrew'. The SRD tab
+  // is lazy-loaded on first picker-open (v2.254 behavior); the
+  // homebrew tab is lazy-loaded on first activation. Switching tabs
+  // doesn't re-fetch.
   const [srdMonsters, setSrdMonsters] = useState<SrdMonsterRow[] | null>(null);
+  const [homebrewMonsters, setHomebrewMonsters] = useState<HomebrewMonsterRow[] | null>(null);
   const [showSrdPicker, setShowSrdPicker] = useState(false);
+  const [pickerTab, setPickerTab] = useState<'srd' | 'homebrew'>('srd');
 
   // Load on open. Re-load after every save/delete so the list stays
   // consistent without us reaching into the API helpers.
@@ -105,6 +112,22 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
     });
     return () => { cancelled = true; };
   }, [showSrdPicker, srdMonsters]);
+
+  // v2.262.0 — same lazy-load pattern for homebrew. Triggers when the
+  // picker is open AND the homebrew tab is active AND we haven't
+  // loaded yet. RLS scopes to the calling user, so no userId param
+  // needed in the API call.
+  useEffect(() => {
+    if (!showSrdPicker) return;
+    if (pickerTab !== 'homebrew') return;
+    if (homebrewMonsters !== null) return;
+    let cancelled = false;
+    homebrewApi.listHomebrew().then(rows => {
+      if (cancelled) return;
+      setHomebrewMonsters(rows);
+    });
+    return () => { cancelled = true; };
+  }, [showSrdPicker, pickerTab, homebrewMonsters]);
 
   // Esc closes — but only at the outermost view. From the SRD picker
   // or edit form, Esc backs out one level to the list. The DM can
@@ -151,6 +174,12 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
     const saved = await homebrewApi.createHomebrewFromDraft(ownerId, editing.draft);
     setSaving(false);
     if (!saved) return;
+    // v2.262.0 — invalidate the picker's homebrew cache so the next
+    // picker-open re-fetches and shows the freshly-saved entry. Set
+    // to null rather than appending — the lazy-load effect handles
+    // the refetch and avoids ordering bugs (would have to re-sort
+    // alphabetically here otherwise).
+    setHomebrewMonsters(null);
     // Flash a "Saved!" indicator for 2 seconds without closing the
     // form. Keeps the DM in flow if they want to also Save to Roster.
     const savedAt = Date.now();
@@ -215,7 +244,7 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
               color: '#fca5a5',
             }}>
               {editing ? (editing.entry ? 'Edit Roster Entry' : 'New Roster Entry')
-                : showSrdPicker ? 'Clone from SRD'
+                : showSrdPicker ? (pickerTab === 'srd' ? 'Clone from SRD' : 'Clone from Homebrew')
                 : 'Manage NPC Roster'}
             </div>
             <div style={{
@@ -223,7 +252,11 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
               color: 'var(--t-1)', marginTop: 2,
             }}>
               {editing ? (editing.draft.name || 'Untitled')
-                : showSrdPicker ? `${srdMonsters?.length ?? 0} monsters`
+                : showSrdPicker ? (
+                  pickerTab === 'srd'
+                    ? `${srdMonsters?.length ?? 0} monsters`
+                    : `${homebrewMonsters?.length ?? 0} ${(homebrewMonsters?.length ?? 0) === 1 ? 'template' : 'templates'}`
+                )
                 : `${roster?.length ?? 0} entries`}
             </div>
           </div>
@@ -253,13 +286,23 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
             onSaveAsHomebrew={handleSaveAsHomebrew}
           />
         ) : showSrdPicker ? (
-          <SrdPickerView
-            monsters={srdMonsters}
+          <SourcePickerView
+            tab={pickerTab}
+            onTabChange={setPickerTab}
+            srdMonsters={srdMonsters}
+            homebrewMonsters={homebrewMonsters}
             onCancel={() => setShowSrdPicker(false)}
-            onPick={(m) => {
+            onPickSrd={(m) => {
               // Seed an edit draft from the SRD monster, then drop the
               // picker so saving lands the DM back on the list.
               setEditing({ entry: null, draft: srdApi.monsterToRosterDraft(m) });
+              setShowSrdPicker(false);
+            }}
+            onPickHomebrew={(m) => {
+              // Same flow as SRD pick, but using the homebrew mapper
+              // (which also stamps source_monster_id with the
+              // 'homebrew:<uuid>' prefix from v2.261).
+              setEditing({ entry: null, draft: homebrewApi.homebrewToRosterDraft(m) });
               setShowSrdPicker(false);
             }}
           />
@@ -333,10 +376,12 @@ function ListView({ roster, filtered, search, setSearch, onNew, onCloneSrd, onEd
         {/* v2.254.0 — Clone from SRD: opens the picker over the
             monsters table. Subdued style relative to "+ New" so it
             doesn't compete visually but is the recommended path
-            for populating a fresh roster. */}
+            for populating a fresh roster.
+            v2.262.0 — picker is now tabbed (SRD + Homebrew) so the
+            label drops the source qualifier. */}
         <button
           onClick={onCloneSrd}
-          title="Clone from the SRD monster catalog (334 entries)"
+          title="Clone from the SRD catalog (334 entries) or your homebrew templates"
           style={{
             padding: '6px 10px',
             background: 'transparent',
@@ -348,7 +393,7 @@ function ListView({ roster, filtered, search, setSearch, onNew, onCloneSrd, onEd
             whiteSpace: 'nowrap' as const,
           }}
         >
-          Clone from SRD
+          Clone…
         </button>
         <button
           onClick={onNew}
@@ -694,24 +739,93 @@ function EditView({ draft, isNew, saving, homebrewSavedAt, onChange, onCancel, o
   );
 }
 
-// ─── SRD Picker View ──────────────────────────────────────────────
+// ─── Source Picker View — SRD + Homebrew tabs ────────────────────
+//
+// v2.262.0 — was SrdPickerView (single source). Promoted to a tabbed
+// picker that handles both the SRD catalog and the user's personal
+// homebrew library. The two tabs share the same row-card visual
+// idiom but use different accent colors (blue for SRD, green for
+// homebrew) so the DM can tell at a glance which source they're
+// browsing. The pick handlers are different (different mappers) and
+// flow through to the parent.
 
-function SrdPickerView({ monsters, onCancel, onPick }: {
-  monsters: SrdMonsterRow[] | null;
+function SourcePickerView({
+  tab, onTabChange,
+  srdMonsters, homebrewMonsters,
+  onCancel, onPickSrd, onPickHomebrew,
+}: {
+  tab: 'srd' | 'homebrew';
+  onTabChange: (t: 'srd' | 'homebrew') => void;
+  srdMonsters: SrdMonsterRow[] | null;
+  homebrewMonsters: HomebrewMonsterRow[] | null;
   onCancel: () => void;
-  onPick: (m: SrdMonsterRow) => void;
+  onPickSrd: (m: SrdMonsterRow) => void;
+  onPickHomebrew: (m: HomebrewMonsterRow) => void;
 }) {
-  // Local search for the picker. Resets each time the picker is
-  // opened (the parent unmounts this component on close).
+  // Local search resets when the picker mounts but persists across
+  // tab switches — DMs often search the same term across sources
+  // ("goblin" → SRD has the canonical, homebrew has my Boss Goblin).
   const [search, setSearch] = useState('');
-  const filtered = (monsters ?? []).filter(m => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return m.name.toLowerCase().includes(s) || m.type.toLowerCase().includes(s);
-  });
+
+  // Tab-specific accent colors, used for the search bar's focus tint
+  // (subtle) and the row Clone-→ chip (the strong cue).
+  const accent = tab === 'srd'
+    ? { ring: 'rgba(96,165,250,0.5)', bg: 'rgba(96,165,250,0.18)', text: '#60a5fa', hover: 'rgba(96,165,250,0.10)' }
+    : { ring: 'rgba(34,197,94,0.5)',  bg: 'rgba(34,197,94,0.18)',  text: '#4ade80', hover: 'rgba(34,197,94,0.10)' };
 
   return (
     <>
+      {/* Tab strip — sits above the search bar so the DM picks the
+          source first, then narrows. Chosen over a dropdown because
+          the two sources have different shapes (count + workflow)
+          and a tab makes that obvious. */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid var(--c-border)',
+        background: 'var(--c-card)',
+      }}>
+        {(['srd', 'homebrew'] as const).map(t => {
+          const isActive = tab === t;
+          const count = t === 'srd'
+            ? (srdMonsters?.length ?? null)
+            : (homebrewMonsters?.length ?? null);
+          const accentText = t === 'srd' ? '#60a5fa' : '#4ade80';
+          const accentBorder = t === 'srd' ? 'rgba(96,165,250,0.7)' : 'rgba(34,197,94,0.7)';
+          return (
+            <button
+              key={t}
+              onClick={() => onTabChange(t)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: isActive ? `2px solid ${accentBorder}` : '2px solid transparent',
+                color: isActive ? accentText : 'var(--t-2)',
+                fontSize: 11, fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase' as const,
+                cursor: 'pointer',
+                marginBottom: -1, // overlap the parent border so the active underline lands on it
+              }}
+            >
+              {t === 'srd' ? 'SRD' : 'Homebrew'}
+              {count != null && (
+                <span style={{
+                  marginLeft: 6, fontSize: 9,
+                  opacity: 0.7,
+                  fontWeight: 600,
+                }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search bar + Back button. Search box is autofocused so the
+          picker is keyboard-navigable from the moment it opens. */}
       <div style={{
         padding: '10px 16px',
         borderBottom: '1px solid var(--c-border)',
@@ -720,13 +834,13 @@ function SrdPickerView({ monsters, onCancel, onPick }: {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search SRD by name or type..."
+          placeholder={tab === 'srd' ? 'Search SRD by name or type…' : 'Search your homebrew templates…'}
           autoFocus
           style={{
             flex: 1,
             padding: '6px 10px',
             background: 'var(--c-raised)',
-            border: '1px solid var(--c-border)',
+            border: `1px solid ${accent.ring}`,
             borderRadius: 4,
             color: 'var(--t-1)',
             fontSize: 12,
@@ -747,72 +861,198 @@ function SrdPickerView({ monsters, onCancel, onPick }: {
           ← Back
         </button>
       </div>
+
+      {/* Body — render the tab's data. Filter is shared between tabs
+          (same search box) but the data shape differs (SRD has subtype,
+          homebrew doesn't), so each branch has its own row template. */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-        {monsters === null ? (
-          <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
-            Loading SRD catalog…
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
-            No results for "{search}".
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {filtered.map(m => {
-              // Compact summary chip — shows save profs only when the
-              // monster carries them, so DMs can spot which entries
-              // will land with auto-derived proficiencies. The chip
-              // itself isn't editable here; the edit form has the
-              // toggle UI from v2.253.
-              const profCount = m.saving_throws ? Object.keys(m.saving_throws).length : 0;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => onPick(m)}
-                  style={{
-                    padding: '8px 10px',
-                    background: 'var(--c-raised)',
-                    border: '1px solid var(--c-border)',
-                    borderRadius: 5,
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    textAlign: 'left' as const,
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.10)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-raised)'; }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: 700, fontSize: 13, color: 'var(--t-1)',
-                      whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>{m.name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--t-3)' }}>
-                      {m.type}
-                      {m.subtype ? ` (${m.subtype})` : ''}
-                      {' · '}CR {m.cr}
-                      {' · '}HP {m.hp}
-                      {' · '}AC {m.ac}
-                      {profCount > 0 && (
-                        <span style={{ color: '#a78bfa', marginLeft: 6 }}>
-                          · {profCount} prof save{profCount > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <span style={{
-                    padding: '3px 8px',
-                    background: 'rgba(96,165,250,0.18)',
-                    border: '1px solid rgba(96,165,250,0.5)',
-                    borderRadius: 4,
-                    color: '#60a5fa',
-                    fontSize: 10, fontWeight: 700,
-                  }}>Clone →</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {tab === 'srd'
+          ? <SrdResults monsters={srdMonsters} search={search} onPick={onPickSrd} accent={accent} />
+          : <HomebrewResults monsters={homebrewMonsters} search={search} onPick={onPickHomebrew} accent={accent} />
+        }
       </div>
     </>
+  );
+}
+
+// ─── SRD results list (extracted from old SrdPickerView body) ───────
+
+function SrdResults({ monsters, search, onPick, accent }: {
+  monsters: SrdMonsterRow[] | null;
+  search: string;
+  onPick: (m: SrdMonsterRow) => void;
+  accent: { ring: string; bg: string; text: string; hover: string };
+}) {
+  if (monsters === null) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
+        Loading SRD catalog…
+      </div>
+    );
+  }
+  const filtered = monsters.filter(m => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return m.name.toLowerCase().includes(s) || m.type.toLowerCase().includes(s);
+  });
+  if (filtered.length === 0) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
+        No SRD results for "{search}".
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {filtered.map(m => {
+        // Compact summary chip — shows save profs only when the
+        // monster carries them, so DMs can spot which entries will
+        // land with auto-derived proficiencies. The chip itself isn't
+        // editable here; the edit form has the toggle UI from v2.253.
+        const profCount = m.saving_throws ? Object.keys(m.saving_throws).length : 0;
+        return (
+          <button
+            key={m.id}
+            onClick={() => onPick(m)}
+            style={{
+              padding: '8px 10px',
+              background: 'var(--c-raised)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 5,
+              display: 'flex', alignItems: 'center', gap: 8,
+              textAlign: 'left' as const,
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = accent.hover; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-raised)'; }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontWeight: 700, fontSize: 13, color: 'var(--t-1)',
+                whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{m.name}</div>
+              <div style={{ fontSize: 10, color: 'var(--t-3)' }}>
+                {m.type}
+                {m.subtype ? ` (${m.subtype})` : ''}
+                {' · '}CR {m.cr}
+                {' · '}HP {m.hp}
+                {' · '}AC {m.ac}
+                {profCount > 0 && (
+                  <span style={{ color: '#a78bfa', marginLeft: 6 }}>
+                    · {profCount} prof save{profCount > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+            <span style={{
+              padding: '3px 8px',
+              background: accent.bg,
+              border: `1px solid ${accent.ring}`,
+              borderRadius: 4,
+              color: accent.text,
+              fontSize: 10, fontWeight: 700,
+            }}>Clone →</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Homebrew results list ─────────────────────────────────────────
+//
+// v2.262.0 — parallel to SrdResults but with the leaner homebrew
+// row shape (no subtype, no saving_throws) and a richer empty state
+// that explicitly tells DMs how to populate the table (via the
+// v2.261 "Save as Homebrew" button) since this tab will be empty
+// for any DM until they author at least one.
+
+function HomebrewResults({ monsters, search, onPick, accent }: {
+  monsters: HomebrewMonsterRow[] | null;
+  search: string;
+  onPick: (m: HomebrewMonsterRow) => void;
+  accent: { ring: string; bg: string; text: string; hover: string };
+}) {
+  if (monsters === null) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
+        Loading your homebrew templates…
+      </div>
+    );
+  }
+  if (monsters.length === 0) {
+    return (
+      <div style={{
+        padding: '24px 20px',
+        textAlign: 'center' as const,
+        color: 'var(--t-3)',
+        fontSize: 12,
+        lineHeight: 1.5,
+      }}>
+        <div style={{ fontSize: 20, marginBottom: 8, opacity: 0.6 }}>📚</div>
+        <div style={{ fontWeight: 700, color: 'var(--t-2)', marginBottom: 6 }}>
+          No homebrew templates yet
+        </div>
+        <div style={{ fontSize: 11, maxWidth: 360, margin: '0 auto' }}>
+          When editing a roster entry (or after cloning from SRD),
+          click <span style={{ color: '#93c5fd', fontWeight: 700 }}>Save as Homebrew</span> to
+          add it here. Templates are reusable across all your campaigns.
+        </div>
+      </div>
+    );
+  }
+  const filtered = monsters.filter(m => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return m.name.toLowerCase().includes(s) || (m.type ?? '').toLowerCase().includes(s);
+  });
+  if (filtered.length === 0) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center' as const, color: 'var(--t-3)', fontSize: 12 }}>
+        No homebrew results for "{search}".
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {filtered.map(m => (
+        <button
+          key={m.id}
+          onClick={() => onPick(m)}
+          style={{
+            padding: '8px 10px',
+            background: 'var(--c-raised)',
+            border: '1px solid var(--c-border)',
+            borderRadius: 5,
+            display: 'flex', alignItems: 'center', gap: 8,
+            textAlign: 'left' as const,
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = accent.hover; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-raised)'; }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontWeight: 700, fontSize: 13, color: 'var(--t-1)',
+              whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{m.name}</div>
+            <div style={{ fontSize: 10, color: 'var(--t-3)' }}>
+              {m.type ?? 'Custom'}
+              {m.cr != null && ` · CR ${m.cr}`}
+              {m.hp != null && ` · HP ${m.hp}`}
+              {m.ac != null && ` · AC ${m.ac}`}
+            </div>
+          </div>
+          <span style={{
+            padding: '3px 8px',
+            background: accent.bg,
+            border: `1px solid ${accent.ring}`,
+            borderRadius: 4,
+            color: accent.text,
+            fontSize: 10, fontWeight: 700,
+          }}>Clone →</span>
+        </button>
+      ))}
+    </div>
   );
 }
