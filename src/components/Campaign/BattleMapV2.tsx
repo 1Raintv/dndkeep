@@ -208,13 +208,11 @@ interface BattleMapV2Props {
     // character is a caster.
     spell_slots?: import('../../types').SpellSlots;
   }>;
-  // v2.231.0 — Initiative tracker bar at the top of the map needs the
-  // session state (initiative_order, current_turn, round, combat_active).
-  // The DM bar's "Next Turn" button calls onUpdateSession to advance.
-  // Both are optional so the map still renders for older callers that
-  // haven't been updated.
-  sessionState?: import('../../types').SessionState | null;
-  onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
+  // v2.296.0 — sessionState/onUpdateSession dropped. session_states
+  // table dropped this ship. The "v2.231 initiative tracker bar"
+  // referenced below was retired earlier in the unification arc;
+  // the modern initiative surface is the bottom InitiativeStrip,
+  // which lives outside BattleMapV2 entirely.
   // v2.244.0 — NPC combat state for token visual feedback. Mirrors the
   // playerCharacters pattern but narrower: just what the canvas needs
   // (HP bar + condition icons + dead-state overlay). CampaignDashboard
@@ -7715,8 +7713,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             anchorY={clickedNpcToken.y}
             isDM={isDM}
             onClose={() => setClickedNpcToken(null)}
-            sessionState={props.sessionState ?? null}
-            onUpdateSession={props.onUpdateSession}
+            /* v2.296.0 — sessionState/onUpdateSession dropped. */
           />
         )}
 

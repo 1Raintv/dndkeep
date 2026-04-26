@@ -31,33 +31,23 @@
 // focused on the user-visible win.
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { SessionState, ConditionName } from '../../types';
+import type { ConditionName } from '../../types';
 import { useToast } from '../shared/Toast';
 
 interface DMlobbyProps {
   campaign: { id: string; name: string; description?: string };
-  // v2.292.0 — sessionState is no longer read by this component.
-  // applyPlayerHP/togglePlayerCondition write the `characters` table
-  // directly now (the canonical source of truth for player HP and
-  // active conditions), and the legacy initiative_order merge in
-  // livePCs is gone. Keeping the prop as-is so the existing
-  // CampaignDashboard mount keeps working unchanged; this component
-  // simply doesn't read it. Same back-compat pattern as v2.291's
-  // DMScreen migration.
-  sessionState: SessionState | null;
   playerCharacters: { id: string; name: string; current_hp: number; max_hp: number; armor_class: number; class_name: string; level: number; conditions: ConditionName[]; active_conditions?: string[]; strength?: number; dexterity?: number; constitution?: number; intelligence?: number; wisdom?: number; charisma?: number; speed?: number }[];
   members: { user_id: string; display_name?: string; email: string; role: string }[];
   isOwner: boolean;
-  // v2.292.0 — onUpdateSession is no longer called by this component
-  // (HP/condition writes go to the characters table directly). Prop
-  // stays for back-compat with the existing mount.
-  onUpdateSession: (updates: Partial<SessionState>) => void;
   // v2.286.0 — onToggleCombat dropped. The legacy "Start Combat"
   // button it drove only flipped sessionState.combat_active without
   // creating participants. Modern combat starts via the header
   // <StartCombatButton> in CampaignDashboard. Keeping the prop here
   // as optional for back-compat with any older import sites; this
   // component no longer reads it.
+  // v2.296.0 — sessionState/onUpdateSession dropped. session_states
+  // table dropped this ship; both props were no-op shims since the
+  // v2.292 HP/condition write migration to the characters table.
   onToggleCombat?: () => void;
 }
 

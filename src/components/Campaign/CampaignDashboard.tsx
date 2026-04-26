@@ -1,6 +1,10 @@
 import { useState, useEffect, lazy, Suspense, type FormEvent } from 'react';
 import type { Campaign, Character, CampaignMember } from '../../types';
-import { useCampaign } from '../../context/CampaignContext';
+// v2.296.0 — useCampaign import dropped. Was used to read the now-
+// retired sessionState/updateSessionState fields off CampaignContext;
+// after the v2.296 plumbing cleanup the dashboard no longer needs
+// any context state from CampaignContext (route params drive the
+// campaign id directly).
 import { useAuth } from '../../context/AuthContext';
 import {
   getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail, getCharacters, supabase,
@@ -53,7 +57,11 @@ interface CampaignDashboardProps {
 
 export default function CampaignDashboard({ campaign: campaignProp, onBack }: CampaignDashboardProps) {
   const { user } = useAuth();
-  const { sessionState, updateSessionState } = useCampaign();
+  // v2.296.0 — sessionState/updateSessionState removed from
+  // CampaignContext. The session_states table was dropped this ship
+  // and the prop chain that used to thread these through to DMScreen,
+  // DMlobby, NpcTokenQuickPanel, and BattleMapV2 was a no-op shim
+  // since v2.291–v2.294. Modern combat state flows via useCombat().
   // v2.283.0 — confirm modal + toast handles for the remove-player
   // flow. ModalProvider + ToastProvider are mounted at app root so
   // the hooks always resolve; calling here is safe even though the
@@ -510,7 +518,6 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           isOwner ? (
             <DMlobby
               campaign={campaign}
-              sessionState={sessionState}
               playerCharacters={characters.map(c => ({
                 id: c.id, name: c.name, current_hp: c.current_hp, max_hp: c.max_hp,
                 armor_class: c.armor_class, class_name: c.class_name,
@@ -526,10 +533,12 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               }))}
               members={members}
               isOwner={isOwner}
-              onUpdateSession={updateSessionState}
               /* v2.286.0 — onToggleCombat dropped. The legacy button
                  it drove is gone; modern combat starts via the
                  header <StartCombatButton>. */
+              /* v2.296.0 — sessionState/onUpdateSession dropped from
+                 mount. session_states table dropped this ship; the
+                 props were a no-op shim since v2.292. */
             />
           ) : (
             // v2.286.0 — Player-side session tab. Was the legacy
@@ -594,8 +603,9 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         {activeTab === 'dm' && isOwner && (
           <DMScreen
             campaign={campaign}
-            sessionState={sessionState ?? null}
-            onUpdateSession={updateSessionState}
+            /* v2.296.0 — sessionState/onUpdateSession dropped from
+               mount. session_states table dropped this ship; the
+               props were a no-op shim since v2.291. */
           />
         )}
 
@@ -658,11 +668,13 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               // v2.231 — needed by PartyVitalsBar to render slot pips.
               spell_slots: c.spell_slots ?? {},
             })),
-            // v2.231 — Initiative bar at the top of the map needs the
-            // session state. CampaignDashboard already loads + Realtime-
-            // syncs this for InitiativeTracker; just plumb it through.
-            sessionState: sessionState ?? null,
-            onUpdateSession: updateSessionState,
+            // v2.296.0 — sessionState/onUpdateSession dropped from
+            // mount. session_states table dropped this ship; the
+            // props were a no-op shim. The "v2.231 initiative bar"
+            // referenced below was retired earlier in the unification
+            // arc and never depended on session_states data anyway.
+            //   was: sessionState: sessionState ?? null,
+            //   was: onUpdateSession: updateSessionState,
             // v2.244 — NPC combat state for token visual feedback (HP
             // bars, condition icons, dead overlay). Filtered to NPCs with
             // numeric HP so plain marker NPCs (no HP/AC) don't show empty

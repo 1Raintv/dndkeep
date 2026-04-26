@@ -1,0 +1,24 @@
+-- v2.296.0 — Plumbing cleanup. Drops the session_states table.
+-- After v2.295 trimmed it to a 3-column shell (id / campaign_id /
+-- updated_at) with no live readers or writers, the table was dead
+-- weight. Modern combat lives entirely on combat_encounters +
+-- combat_participants + the satellite pending_* tables; nothing
+-- needed a per-campaign "session state" record at all.
+--
+-- CASCADE handles:
+--   - the trg_session_states_updated_at BEFORE-UPDATE trigger
+--   - the two RLS policies (campaign-members SELECT + DM ALL)
+--   - any FK references (none in current schema, but defensive)
+--
+-- The companion code cleanup in this ship deletes:
+--   - getSessionState / upsertSessionState / subscribeToSessionState
+--     from src/lib/supabase.ts
+--   - sessionState / updateSessionState from CampaignContext
+--   - the sessionState / onUpdateSession prop chain through
+--     CampaignDashboard → DMScreen / DMlobby / NpcTokenQuickPanel /
+--     BattleMapV2 (all four were no-op back-compat shims since the
+--     v2.291–v2.294 migrations)
+--   - the SessionState TypeScript interface
+--   - the session_states entry in the generated Database types
+
+DROP TABLE IF EXISTS public.session_states CASCADE;

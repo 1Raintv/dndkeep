@@ -101,15 +101,10 @@ interface Props {
   anchorY: number;
   isDM: boolean;
   onClose: () => void;
-  // v2.293.0 — sessionState/onUpdateSession kept on the prop type
-  // for back-compat with the existing BattleMapV2 mount. The
-  // Initiative section now reads from useCombat() and writes
-  // directly to combat_participants. These props are no longer
-  // consumed; the BattleMapV2 mount can drop them in a future
-  // ship without affecting behavior. Same back-compat pattern as
-  // v2.291's DMScreen and v2.292's DMlobby migrations.
-  sessionState?: import('../../types').SessionState | null;
-  onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
+  // v2.296.0 — sessionState/onUpdateSession optional props removed.
+  // session_states table dropped this ship; the BattleMapV2 mount no
+  // longer passes them. Initiative section reads from useCombat()
+  // and writes directly to combat_participants.
 }
 
 export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onClose }: Props) {

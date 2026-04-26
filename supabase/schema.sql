@@ -136,18 +136,10 @@ create table roll_logs (
   rolled_at          timestamptz not null default now()
 );
 
--- Session state: real-time combat tracker per campaign (Pro)
--- One row per campaign, upserted when combat starts
-create table session_states (
-  id              uuid primary key default uuid_generate_v4(),
-  campaign_id     uuid references campaigns(id) on delete cascade not null unique,
-  -- [{ id, name, initiative, currentHp, maxHp, ac, isMonster, conditions }]
-  initiative_order jsonb not null default '[]',
-  current_turn    integer not null default 0,
-  round           integer not null default 1,
-  combat_active   boolean not null default false,
-  updated_at      timestamptz not null default now()
-);
+-- v2.296.0 — session_states table removed. The legacy combat
+-- tracker model was retired in the v2.286–v2.295 unification arc;
+-- modern combat lives on combat_encounters + combat_participants
+-- defined in their own migrations.
 
 -- =============================================================
 -- ROW LEVEL SECURITY
@@ -158,7 +150,7 @@ alter table campaigns       enable row level security;
 alter table characters      enable row level security;
 alter table campaign_members enable row level security;
 alter table roll_logs       enable row level security;
-alter table session_states  enable row level security;
+-- v2.296.0 — session_states RLS line dropped with the table.
 
 -- profiles
 create policy "profiles: own row select"
@@ -204,15 +196,7 @@ create policy "roll_logs: campaign members can view"
     campaign_id in (select campaign_id from campaign_members where user_id = auth.uid())
   );
 
--- session_states
-create policy "session_states: campaign members can view"
-  on session_states for select using (
-    campaign_id in (select campaign_id from campaign_members where user_id = auth.uid())
-  );
-create policy "session_states: DM manages"
-  on session_states for all using (
-    campaign_id in (select id from campaigns where owner_id = auth.uid())
-  );
+-- v2.296.0 — session_states RLS policies dropped with the table.
 
 -- =============================================================
 -- FUNCTIONS & TRIGGERS
@@ -291,8 +275,8 @@ create trigger trg_campaigns_updated_at
   before update on campaigns for each row execute procedure set_updated_at();
 create trigger trg_profiles_updated_at
   before update on profiles for each row execute procedure set_updated_at();
-create trigger trg_session_states_updated_at
-  before update on session_states for each row execute procedure set_updated_at();
+-- v2.296.0 — trg_session_states_updated_at trigger dropped with
+-- the table (CASCADE in the migration handled this server-side).
 
 -- =============================================================
 -- REALTIME
@@ -301,6 +285,6 @@ create trigger trg_session_states_updated_at
 -- Run these in Supabase Dashboard > Database > Replication
 -- or via the CLI after applying the schema above.
 --
--- alter publication supabase_realtime add table session_states;
+-- v2.296.0 — session_states realtime line dropped (table gone).
 -- alter publication supabase_realtime add table characters;
 -- alter publication supabase_realtime add table roll_logs;

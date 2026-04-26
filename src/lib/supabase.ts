@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Character, Profile, Campaign, SessionState } from '../types';
+import type { Character, Profile, Campaign } from '../types';
 import type { Database } from '../types/supabase';
 
 // =============================================================
@@ -308,55 +308,15 @@ export async function getRollLog(userId: string, limit = 50) {
 // =============================================================
 // Real-time subscriptions (Pro — combat sync)
 // =============================================================
-
-export async function getSessionState(
-  campaignId: string
-): Promise<{ data: SessionState | null; error: null | Error }> {
-  // v2.295.0 — Combat columns dropped from session_states. The
-  // table is now a 3-column shell (id / campaign_id / updated_at);
-  // it survives only to keep CampaignContext's vestigial plumbing
-  // compiling without forcing a coupled TS cleanup. Modern combat
-  // state lives on combat_encounters + combat_participants and is
-  // accessed via useCombat() / CombatProvider.
-  const { data, error } = await supabase
-    .from('session_states')
-    .select('id,campaign_id,updated_at')
-    .eq('campaign_id', campaignId)
-    .maybeSingle();
-  return { data: data as SessionState | null, error: error ? new Error(error.message) : null };
-}
-
-export async function upsertSessionState(
-  state: Omit<SessionState, 'id' | 'updated_at'>
-): Promise<{ data: SessionState | null; error: null | Error }> {
-  const { data, error } = await supabase
-    .from('session_states')
-    .upsert(state, { onConflict: 'campaign_id' })
-    .select()
-    .single();
-  return { data: data as SessionState | null, error: error ? new Error(error.message) : null };
-}
-
-export function subscribeToSessionState(
-  campaignId: string,
-  onUpdate: (state: SessionState) => void
-) {
-  return supabase
-    .channel(`session:${campaignId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'session_states',
-        filter: `campaign_id=eq.${campaignId}`,
-      },
-      (payload) => {
-        if (payload.new) onUpdate(payload.new as SessionState);
-      }
-    )
-    .subscribe();
-}
+//
+// v2.296.0 — Plumbing cleanup. Removed:
+//   getSessionState         (deleted)
+//   upsertSessionState      (deleted)
+//   subscribeToSessionState (deleted)
+// All three targeted the now-dropped session_states table. Modern
+// combat state lives on combat_encounters + combat_participants and
+// is consumed via useCombat() / CombatProvider; the realtime channel
+// is owned by CombatProvider, not this module.
 
 export function subscribeToCharacter(
   characterId: string,

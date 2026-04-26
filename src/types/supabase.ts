@@ -2309,26 +2309,8 @@ export type Database = {
         };
         Relationships: [];
       };
-      session_states: {
-        // v2.295.0 — Slimmed to match the post-migration table shape.
-        // The four legacy combat columns were dropped in this ship.
-        Row: {
-          id: string;
-          campaign_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          campaign_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          campaign_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
+      // v2.296.0 — session_states block removed. Table dropped this
+      // ship after the v2.286–v2.295 unification arc retired it.
       session_summaries: {
         Row: {
           id: string;

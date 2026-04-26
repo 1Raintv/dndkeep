@@ -917,19 +917,15 @@ export interface Combatant {
   attacks?: { name: string; bonus: number; damage: string; damageType: string; range: string }[];
 }
 
-// v2.295.0 — Slimmed to match the post-migration session_states
-// table shape (id / campaign_id / updated_at). The four legacy
-// combat columns (initiative_order / current_turn / round /
-// combat_active) were dropped in this ship; modern combat state
-// lives on CombatEncounter + CombatParticipant. The Combatant
-// shape below is preserved for backwards-source-compat with any
-// type imports that still reference it; no live writer produces
-// Combatant[] arrays anymore.
-export interface SessionState {
-  id: string;
-  campaign_id: string;
-  updated_at: string;
-}
+// v2.296.0 — SessionState interface removed. The session_states
+// table was dropped in this ship after the v2.286–v2.295 combat-
+// system unification arc retired the four legacy combat columns
+// (initiative_order / current_turn / round / combat_active) one by
+// one and then dropped the now-shell table. Modern combat state
+// lives on CombatEncounter + CombatParticipant (defined elsewhere
+// in this file). The Combatant type below is preserved — it's
+// still used by EncounterBuilder and CombatPage for their own
+// internal staging shapes, unrelated to the legacy session schema.
 
 // --- Dice ---
 

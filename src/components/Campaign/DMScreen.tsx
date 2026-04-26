@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import CombatEventLog from '../shared/CombatEventLog';
-import type { Campaign, SessionState } from '../../types';
+import type { Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
 // v2.291.0 — Combat-system Phase 2a migration. DMScreen used to read
@@ -72,13 +72,10 @@ interface NPC {
 
 interface DMScreenProps {
   campaign: Campaign;
-  // v2.291.0 — sessionState/onUpdateSession kept as optional props
-  // for back-compat. DMScreen no longer reads sessionState; combat
-  // status comes from useCombat(). The mount in CampaignDashboard
-  // still passes them today, and dropping the props would force a
-  // coupled change there. They're typed but unused.
-  sessionState?: SessionState | null;
-  onUpdateSession?: (updates: Partial<SessionState>) => void;
+  // v2.296.0 — sessionState/onUpdateSession optional props removed.
+  // session_states table dropped this ship; the mount in
+  // CampaignDashboard no longer passes them. Combat status comes
+  // from useCombat() (see derivations in the component body).
 }
 
 const ROLE_COLORS: Record<string, string> = {
