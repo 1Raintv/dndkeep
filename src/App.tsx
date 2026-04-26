@@ -30,6 +30,70 @@ const AuthPage       = lazy(() => import('./components/pages/AuthPage'));
 const CreatorPage    = lazy(() => import('./components/CharacterCreator'));
 const CampaignsPage  = lazy(() => import('./components/pages/CampaignsPage'));
 
+// v2.284.0 — Last-route memory + cross-tab version detection.
+//
+// LAST-ROUTE MEMORY: opening DNDKeep in a new tab (or hitting "/")
+// after a session has been going routes the user back to where they
+// were last working — their campaign, their character page, etc. —
+// instead of dumping them on the lobby every time. The stored path
+// is validated against PERSISTABLE_ROUTE_RE so we don't accidentally
+// route through a /share/:token or /auth flow on the next visit.
+//
+// CROSS-TAB VERSION DETECTION: when a user opens a fresh tab on a
+// new deploy, the new tab writes its APP_VERSION to localStorage.
+// Older tabs of the same browser receive a `storage` event with the
+// new value and know they're stale; they show a banner prompting a
+// reload. Tabs are notified via the standard storage-event mechanism
+// (which only fires on OTHER tabs in the same origin), so the writer
+// never races itself.
+const LAST_ROUTE_KEY = 'dndkeep:last-route';
+const APP_VERSION_KEY = 'dndkeep:app-version';
+
+// Whitelist of paths that are safe to remember as a "last route".
+// Anything not matching falls through and the redirect goes to /lobby.
+// Excluded by design:
+//   - "/" itself (would create a fixed-point loop)
+//   - "/auth", "/share/:token", "/" (transient / share-public flows)
+//   - "/creator" (mid-flow; better to dump back to lobby)
+const PERSISTABLE_ROUTE_RE = /^\/(lobby|campaigns(\/[\w-]+)?|character\/[\w-]+|homebrew|bestiary|compendium(\/[\w-]+)?|spells|magic-items|combat|dice|settings|srd)\/?$/;
+
+function loadLastRoute(): string | null {
+  try {
+    const stored = localStorage.getItem(LAST_ROUTE_KEY);
+    if (stored && PERSISTABLE_ROUTE_RE.test(stored.split('?')[0])) return stored;
+  } catch { /* ignore — quota, privacy mode, etc. */ }
+  return null;
+}
+
+function useLastRouteMemory() {
+  const location = useLocation();
+  useEffect(() => {
+    if (PERSISTABLE_ROUTE_RE.test(location.pathname)) {
+      try {
+        localStorage.setItem(LAST_ROUTE_KEY, location.pathname + location.search);
+      } catch { /* ignore */ }
+    }
+  }, [location.pathname, location.search]);
+}
+
+function useCrossTabVersionDetection(): { staleVersion: string | null } {
+  const [staleVersion, setStaleVersion] = useState<string | null>(null);
+  useEffect(() => {
+    // On boot: stamp our version. If another tab boots later with a
+    // newer version, this tab's `storage` listener below will fire
+    // with the new value and we'll know we're stale.
+    try { localStorage.setItem(APP_VERSION_KEY, APP_VERSION); } catch { /* ignore */ }
+    function onStorage(e: StorageEvent) {
+      if (e.key === APP_VERSION_KEY && e.newValue && e.newValue !== APP_VERSION) {
+        setStaleVersion(e.newValue);
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  return { staleVersion };
+}
+
 function PageLoader() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 'var(--space-3)' }}>
@@ -313,7 +377,15 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return <PageLoader />;
-  if (user) return <Navigate to="/lobby" replace />;
+  if (user) {
+    // v2.284.0 — opening DNDKeep in a new tab (or refreshing "/")
+    // routes back to the last persisted location instead of
+    // unconditionally /lobby. PERSISTABLE_ROUTE_RE in loadLastRoute
+    // is the source of truth for what's a valid stored path; if it
+    // returns null we fall through to /lobby.
+    const last = loadLastRoute();
+    return <Navigate to={last ?? '/lobby'} replace />;
+  }
   return <LandingPage />;
 }
 
@@ -340,6 +412,13 @@ function AppRoutes() {
   const isAuth = location.pathname === '/auth';
   const showSidebar = !isLanding && !isShare && !isAuth && user;
 
+  // v2.284.0 — persist the last-visited path on every navigation
+  // (whitelisted to PERSISTABLE_ROUTE_RE in the hook itself), and
+  // listen for cross-tab version writes so this tab can surface a
+  // "new version" banner if a fresher deploy is open elsewhere.
+  useLastRouteMemory();
+  const { staleVersion } = useCrossTabVersionDetection();
+
   // Extract characterId from /character/:id and campaignId from /campaigns/:id
   const charMatch = location.pathname.match(/^\/character\/([\w-]+)/);
   const campMatch = location.pathname.match(/^\/campaigns\/([\w-]+)/);
@@ -357,6 +436,52 @@ function AppRoutes() {
 
   return (
     <div className={showSidebar ? 'app-layout-sidebar' : 'app-layout-full'}>
+      {/* v2.284.0 — Cross-tab version banner. Renders only when a
+          newer tab has stamped a different APP_VERSION into
+          localStorage during this session. zIndex above the combat
+          strip (9999) and toasts so it's never buried; click → hard
+          reload picks up the fresh code. The banner is sticky
+          (no auto-dismiss) because dismissing it without reloading
+          would leave the tab in an inconsistent state — stale code
+          talking to a possibly-newer DB schema. */}
+      {staleVersion && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0,
+            zIndex: 100000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 12,
+            padding: '8px 14px',
+            background: 'linear-gradient(180deg, rgba(212,160,23,0.98) 0%, rgba(180,135,18,0.98) 100%)',
+            color: '#1a1410',
+            fontFamily: 'var(--ff-body)',
+            fontSize: 13, fontWeight: 700,
+            letterSpacing: '0.02em',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+          }}
+        >
+          <span>
+            New version available (v{staleVersion}). Reload to update.
+          </span>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '4px 12px',
+              background: '#1a1410',
+              color: 'var(--c-gold-l, #f5d875)',
+              border: 'none',
+              borderRadius: 4,
+              fontFamily: 'var(--ff-body)',
+              fontWeight: 700, fontSize: 12,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+            }}
+          >
+            Reload
+          </button>
+        </div>
+      )}
       {showSidebar && <Sidebar />}
       <main className={showSidebar ? 'app-main' : 'app-main-full'}>
         {/* Mobile bottom nav — phones only */}

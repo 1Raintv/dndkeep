@@ -52,6 +52,14 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signOut() {
+  // v2.284.0 — also clear the stored last-route so the next sign-in
+  // doesn't bounce the new user (or returning user in incognito) to
+  // a path they no longer have access to. Wrapped in try/catch
+  // because localStorage can throw in restrictive contexts (Safari
+  // private mode, embedded webviews, quota exceeded). signOut should
+  // proceed regardless; missing the key removal is a minor UX wart,
+  // not a correctness break.
+  try { localStorage.removeItem('dndkeep:last-route'); } catch { /* ignore */ }
   return supabase.auth.signOut();
 }
 
