@@ -4,6 +4,28 @@ import CombatEventLog from '../shared/CombatEventLog';
 import type { Campaign, SessionState } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
+// v2.291.0 — Combat-system Phase 2a migration. DMScreen used to read
+// combat status from the legacy campaign_sessions columns
+// (combat_active, initiative_order, current_turn, round). Those four
+// columns are slated for removal in Phase 2e once every live caller
+// has been migrated. Reads now flow through useCombat() which sources
+// from combat_encounters + combat_participants — the same surface the
+// canonical InitiativeStrip uses, so the DMScreen header now agrees
+// with the bottom strip on round/active-actor at all times.
+//
+// Behavior changes from the migration:
+//   - Next-turn button calls advanceTurn() in combatEncounter.ts,
+//     same path the InitiativeStrip uses. Round increments happen
+//     server-side; no more client-computed round math.
+//   - Prev-turn button removed. The modern combat schema doesn't
+//     support rewinding turns (real combat doesn't either — undoing
+//     a turn doesn't undo damage applied during it). Consistency
+//     win with the InitiativeStrip, which never had prev-turn.
+//   - Concentration tick fires on round-number transitions detected
+//     via useEffect, replacing the in-line call from nextTurn. Has
+//     the same trigger semantics: fires once per new round.
+import { useCombat } from '../../context/CombatContext';
+import { advanceTurn } from '../../lib/combatEncounter';
 
 interface PartyMember {
   id: string;
@@ -50,8 +72,13 @@ interface NPC {
 
 interface DMScreenProps {
   campaign: Campaign;
-  sessionState: SessionState | null;
-  onUpdateSession: (updates: Partial<SessionState>) => void;
+  // v2.291.0 — sessionState/onUpdateSession kept as optional props
+  // for back-compat. DMScreen no longer reads sessionState; combat
+  // status comes from useCombat(). The mount in CampaignDashboard
+  // still passes them today, and dropping the props would force a
+  // coupled change there. They're typed but unused.
+  sessionState?: SessionState | null;
+  onUpdateSession?: (updates: Partial<SessionState>) => void;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -72,7 +99,11 @@ function passivePerc(m: PartyMember) {
   return 10 + mod + (hasExp ? pb * 2 : hasProf ? pb : 0);
 }
 
-export default function DMScreen({ campaign, sessionState, onUpdateSession }: DMScreenProps) {
+export default function DMScreen({ campaign }: DMScreenProps) {
+  // v2.291.0 — sessionState/onUpdateSession dropped from destructure.
+  // They're still in the props type for back-compat at the call site
+  // but nothing in this component reads them anymore.
+  const { encounter, participants, currentActor } = useCombat();
   const [party, setParty] = useState<PartyMember[]>([]);
   const [npcs, setNpcs] = useState<NPC[]>([]);
   const [notes, setNotes] = useState((campaign as any).notes ?? '');
@@ -84,12 +115,17 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
   const [percDC, setPercDC] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
 
-  const combatants = sessionState?.initiative_order ?? [];
-  const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
-  const currentTurn = sessionState?.current_turn ?? 0;
-  const round = sessionState?.round ?? 1;
-  const combatActive = sessionState?.combat_active ?? false;
-  const activeId = sorted[currentTurn % Math.max(sorted.length, 1)]?.id;
+  // v2.291.0 — Modern combat-state derivations. participants from
+  // useCombat() are already sorted by turn_order (the encounter row's
+  // initiative-tiebreaker-honoring authoritative order), so we render
+  // them as-is rather than re-sorting by initiative descending the way
+  // the legacy code did. Result is the same display order, but the
+  // tiebreaker (dex mod, then DM nudge) is honored consistently with
+  // the InitiativeStrip.
+  const combatActive = encounter?.status === 'active';
+  const sorted = participants;
+  const round = encounter?.round_number ?? 1;
+  const activeId = currentActor?.id ?? null;
 
   useEffect(() => {
     loadParty();
@@ -188,22 +224,45 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
     }
   }
 
-  function nextTurn() {
-    if (!sorted.length) return;
-    const next = (currentTurn + 1) % sorted.length;
-    const isNewRound = next === 0;
-    onUpdateSession({ current_turn: next, round: isNewRound ? round + 1 : round });
-    // Only tick concentration when a NEW round starts (not on every individual turn)
-    if (isNewRound) {
+  // v2.291.0 — Round-transition watcher for the concentration tick.
+  // Was previously called inline from nextTurn(); now fires from a
+  // useEffect so it runs once per actual round increment regardless
+  // of who advanced the turn (this DM, the InitiativeStrip's Next
+  // button, a teammate's tab, even an automation hook in the future).
+  // The previousRound ref guards against re-fires on unrelated
+  // encounter updates (e.g. a participant taking damage); we only
+  // tick when the round number actually went up.
+  const prevRoundRef = useState<{ value: number }>({ value: round })[0];
+  useEffect(() => {
+    if (round > prevRoundRef.value) {
       tickConcentrationTimers();
+    }
+    prevRoundRef.value = round;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [round]);
+
+  async function nextTurn() {
+    // v2.291.0 — was: client-computed (currentTurn+1)%len with
+    // round-bump math, written via onUpdateSession. Now delegates to
+    // advanceTurn() in combatEncounter.ts, the same path the
+    // InitiativeStrip uses. Round increment + concentration tick
+    // happen via the realtime update from useCombat() flowing back
+    // through the round-transition useEffect above.
+    if (!encounter || encounter.status !== 'active') return;
+    const result = await advanceTurn(encounter.id);
+    if (!result.ok) {
+      // Surface to the user — the InitiativeStrip already toasts on
+      // failure for its own buttons; DMScreen doesn't have a toast
+      // hook in scope so the console error is the diagnostic path.
+      console.error('[DMScreen] advanceTurn failed:', result.reason);
     }
   }
 
-  function prevTurn() {
-    if (!sorted.length) return;
-    const prev = (currentTurn - 1 + sorted.length) % sorted.length;
-    onUpdateSession({ current_turn: prev });
-  }
+  // v2.291.0 — prevTurn removed. The modern combat schema does not
+  // support rewinding turns: real combat doesn't either (going back
+  // a turn doesn't undo applied damage, spent resources, or expired
+  // condition durations). Brings DMScreen in line with the
+  // InitiativeStrip, which never had a prev-turn affordance.
 
   async function saveNotes() {
     setSavingNotes(true);
@@ -262,9 +321,13 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
               Round {round}
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-gold-l)' }}>
-              ▶ {sorted[currentTurn % Math.max(sorted.length, 1)]?.name ?? '—'}
+              {/* v2.291.0 — was: sorted[currentTurn % len]?.name. Now
+                  pulled from useCombat()'s currentActor, the
+                  authoritative active participant honoring tiebreakers
+                  + DM nudges (matches the InitiativeStrip exactly). */}
+              ▶ {currentActor?.name ?? '—'}
             </span>
-            <button onClick={prevTurn} style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-2)' }}>◀</button>
+            {/* v2.291.0 — prev-turn button removed (see nextTurn comment). */}
             <button onClick={nextTurn} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)' }}>Next ▶</button>
           </div>
         )}
@@ -491,12 +554,24 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!combatActive || sorted.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--t-3)', fontSize: 13 }}>
-              No active combat. Start combat from the Session tab.
+              {/* v2.291.0 — was: "Start combat from the Session tab".
+                  The Session-tab Start Combat button was retired in
+                  v2.286; combat now starts from the campaign header's
+                  ⚔ Start Combat button. */}
+              No active combat. Use the ⚔ Start Combat button in the campaign header to begin an encounter.
             </div>
-          ) : sorted.map((c, i) => {
+          ) : sorted.map((c) => {
             const isActive = c.id === activeId;
-            const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
-            const col = hpColor(c.current_hp, c.max_hp);
+            // v2.291.0 — Modern CombatParticipant fields are nullable
+            // (current_hp/max_hp/ac/initiative all `number | null`),
+            // so we coerce defensively. A monster seeded without HP
+            // (rare but legal) renders without an HP bar instead of
+            // crashing on the .max_hp > 0 comparison.
+            const cur = c.current_hp ?? 0;
+            const max = c.max_hp ?? 0;
+            const hpPct = max > 0 ? cur / max : 0;
+            const col = hpColor(cur, max);
+            const isMonster = c.participant_type === 'monster';
             return (
               <div key={c.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
@@ -507,21 +582,21 @@ export default function DMScreen({ campaign, sessionState, onUpdateSession }: DM
                 transition: 'all 0.2s',
               }}>
                 {isActive && <span style={{ fontSize: 10, color: 'var(--c-gold-l)' }}>▶</span>}
-                <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 16, color: 'var(--c-gold-l)', minWidth: 28 }}>{c.initiative}</span>
+                <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 16, color: 'var(--c-gold-l)', minWidth: 28 }}>{c.initiative ?? '—'}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: isActive ? 800 : 600, fontSize: 13, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
                     {c.name}
-                    {c.is_monster && <span style={{ marginLeft: 6, fontSize: 9, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', padding: '1px 5px', borderRadius: 3 }}>Enemy</span>}
+                    {isMonster && <span style={{ marginLeft: 6, fontSize: 9, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', padding: '1px 5px', borderRadius: 3 }}>Enemy</span>}
                   </div>
-                  {c.max_hp > 0 && (
+                  {max > 0 && (
                     <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 999, marginTop: 4, overflow: 'hidden', width: 120 }}>
                       <div style={{ height: '100%', width: `${Math.max(1, hpPct * 100)}%`, background: col, borderRadius: 999 }} />
                     </div>
                   )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 14, color: col }}>{c.current_hp}<span style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 400 }}>/{c.max_hp}</span></div>
-                  <div style={{ fontSize: 9, color: 'var(--t-3)' }}>AC {c.ac}</div>
+                  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 700, fontSize: 14, color: col }}>{cur}<span style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 400 }}>/{max}</span></div>
+                  <div style={{ fontSize: 9, color: 'var(--t-3)' }}>AC {c.ac ?? '—'}</div>
                 </div>
               </div>
             );
