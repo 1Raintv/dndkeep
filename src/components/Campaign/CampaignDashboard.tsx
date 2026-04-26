@@ -9,6 +9,12 @@ import {
 import InitiativeTracker from './InitiativeTracker';
 import DMlobby from './DMlobby';
 import CombatEventLog from '../shared/CombatEventLog';
+// v2.283.0 — confirm modal + toast for the strengthened remove-player
+// flow. Confirm is a hard requirement: removing a player is destructive
+// (deletes campaign_members row, unassigns their PCs from the campaign);
+// silent click would be a UX foot-gun.
+import { useModal } from '../shared/Modal';
+import { useToast } from '../shared/Toast';
 import PartyChat from './PartyChat';
 import DMScreen from './DMScreen';
 import SessionScheduler from './SessionScheduler';
@@ -40,6 +46,12 @@ interface CampaignDashboardProps {
 export default function CampaignDashboard({ campaign: campaignProp, onBack }: CampaignDashboardProps) {
   const { user } = useAuth();
   const { sessionState, updateSessionState } = useCampaign();
+  // v2.283.0 — confirm modal + toast handles for the remove-player
+  // flow. ModalProvider + ToastProvider are mounted at app root so
+  // the hooks always resolve; calling here is safe even though the
+  // component is also rendered inside CombatProvider further down.
+  const { confirm: confirmModal } = useModal();
+  const { showToast } = useToast();
   // v2.194.0 — Phase Q.0 pt 35: lift campaign state into the
   // dashboard so settings updates propagate to PartyDashboard
   // immediately. Previously the settings modal kept its own local
@@ -71,7 +83,16 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>('characters');
+  // v2.283.0 — Characters tab dropped. Its only unique function was
+  // letting a player assign their unassigned PC to this campaign;
+  // that flow now lives inside the Members tab as the
+  // AssignMyCharacterPanel below. The roster-of-PCs grid the
+  // Characters tab also rendered duplicated the Party tab one-to-one
+  // and was redundant. Default tab is Members for everyone — the DM
+  // arrives at the player roster (with invite code panel + remove
+  // controls), the player arrives at the assign-my-PC panel above
+  // their fellow players' list.
+  const [activeTab, setActiveTab] = useState<'members' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>('members');
   // Handle deep-link ?tab=map from character sheet Map button
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -205,8 +226,44 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
 
   async function removeMember(userId: string) {
     if (userId === campaign.owner_id) return;
-    await removeCampaignMember(campaign.id, userId);
+    // v2.283.0 — was: silent delete. Now confirms first, surfaces a
+    // toast on failure, and unassigns the player's PCs from this
+    // campaign (otherwise their character rows keep `campaign_id =
+    // this.id` and look like orphaned ghosts in the Party tab and
+    // RLS-filtered queries). Owner cannot be removed (guard above);
+    // RLS additionally enforces this server-side.
+    const m = members.find(x => x.user_id === userId);
+    const displayName = m?.display_name ?? m?.email ?? 'this player';
+    const ok = await confirmModal({
+      title: 'Remove player?',
+      message: `${displayName} will be removed from the campaign. Their character(s) will be unassigned but not deleted — they can rejoin via the invite code.`,
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
+    if (!ok) return;
+    // Unassign this user's PCs from the campaign FIRST, then drop the
+    // membership row. Reverse order would leave the membership row
+    // gone (RLS would block the character UPDATE) and orphan the PCs.
+    const { error: unassignErr } = await supabase
+      .from('characters')
+      .update({ campaign_id: null })
+      .eq('campaign_id', campaign.id)
+      .eq('user_id', userId);
+    if (unassignErr) {
+      console.error('[CampaignDashboard] PC unassign failed:', unassignErr);
+      showToast(`Couldn't remove player: ${unassignErr.message}`, 'error');
+      return;
+    }
+    const { error } = await removeCampaignMember(campaign.id, userId);
+    if (error) {
+      console.error('[CampaignDashboard] removeCampaignMember failed:', error);
+      showToast(`Couldn't remove player: ${error.message}`, 'error');
+      return;
+    }
     await loadMembers();
+    await loadCharacters();
+    showToast(`${displayName} removed from the campaign.`, 'success');
   }
 
   async function handleRefreshCode() {
@@ -295,9 +352,13 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           but no longer surfaced in the UI; planned chat surface in
           v2.288 supersedes the freeform-notes use case. */}
       <div className="tabs">
-        {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'members', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
+        {/* v2.283.0 — Characters tab removed (assign-my-PC moved to
+            Members tab). Reordered so Members leads since it's now
+            the default tab. Party stays prominent as the in-play
+            party state surface. */}
+        {(['members', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
-            members: 'Members', characters: 'Characters', session: 'Combat',
+            members: 'Members', session: 'Combat',
             party: 'Party', log: 'Log', chat: 'Chat',
             schedule: 'Schedule', npcs: 'NPCs',
             dm: 'DM Screen', discord: 'Discord', map: 'Battle Map',
@@ -391,7 +452,25 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
                   <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
                     <span className={m.role === 'dm' ? 'badge badge-gold' : 'badge badge-muted'}>{m.role.toUpperCase()}</span>
                     {isOwner && m.user_id !== campaign.owner_id && (
-                      <button className="btn-ghost btn-sm" onClick={() => removeMember(m.user_id)} style={{ color: 'var(--t-2)' }}>
+                      // v2.283.0 — was: btn-ghost btn-sm with --t-2 color
+                      // (visually muted, easy to miss). Bumped to a red-
+                      // tinted destructive style so the action's nature is
+                      // clear at a glance, matching how the Delete-token
+                      // affordance reads in the BattleMap context menu.
+                      <button
+                        onClick={() => removeMember(m.user_id)}
+                        title={`Remove ${m.display_name ?? m.email} from this campaign`}
+                        style={{
+                          fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                          padding: '4px 10px',
+                          background: 'rgba(248,113,113,0.10)',
+                          border: '1px solid rgba(248,113,113,0.35)',
+                          borderRadius: 'var(--r-sm, 4px)',
+                          color: '#f87171',
+                          cursor: 'pointer',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
                         Remove
                       </button>
                     )}
@@ -399,17 +478,19 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
                 </div>
               ))}
             </div>
-          </div>
-        )}
 
-        {/* Characters tab */}
-        {activeTab === 'characters' && (
-          <CharactersTab
-            campaignId={campaign.id}
-            userId={user?.id ?? ''}
-            characters={characters}
-            onRefresh={loadCharacters}
-          />
+            {/* v2.283.0 — Assign-my-PC panel (formerly the Characters
+                tab). For players, this is where they hook their
+                unassigned PC into the campaign and unassign it later
+                if they want to leave. The DM sees nothing here —
+                they don't have PCs to assign and the per-player
+                roster is in the Party tab. */}
+            <AssignMyCharacterPanel
+              campaignId={campaign.id}
+              userId={user?.id ?? ''}
+              onRefresh={loadCharacters}
+            />
+          </div>
         )}
 
         {/* Session tab — DM Lobby for owners, read-only tracker for players */}
@@ -648,15 +729,32 @@ function CampaignSettingsButton({
   );
 }
 
-// ── Characters Tab ────────────────────────────────────────────────────────────
-function CharactersTab({ campaignId, userId, characters, onRefresh }: {
+// ── Assign My Character Panel ────────────────────────────────────────────────
+// v2.283.0 — Rewrite of the former CharactersTab. Mounted at the
+// bottom of the Members tab. Scope is intentionally narrower than
+// the old tab:
+//   - SHOWS: the current user's PCs that are NOT yet in this campaign
+//     (with an "Assign to Campaign" button each), plus the current
+//     user's PC IF it's already assigned (with an "Unassign" button).
+//   - DROPS: the full party-roster card grid the old tab rendered.
+//     That UI duplicated the Party tab one-to-one (HP bar, AC, name,
+//     class/level) and was the main reason this surface felt
+//     redundant. Party tab remains the canonical party state view.
+//
+// Self-contained: does its own getCharacters fetch for the user's
+// own roster (independent of the dashboard's `characters` prop,
+// which only contains *assigned* PCs). The `characters` prop is no
+// longer threaded — the panel filters its self-fetched roster by
+// `campaign_id == campaignId` directly, which is more accurate
+// (the dashboard's `characters` only contains the user's *assigned*
+// PCs in this campaign anyway, but the filter is now scoped here).
+function AssignMyCharacterPanel({ campaignId, userId, onRefresh }: {
   campaignId: string;
   userId: string;
-  characters: Character[];
   onRefresh: () => void;
 }) {
   const [myChars, setMyChars] = useState<Character[]>([]);
-  const [assigning, setAssigning] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (userId) {
@@ -665,37 +763,87 @@ function CharactersTab({ campaignId, userId, characters, onRefresh }: {
   }, [userId]);
 
   async function assign(charId: string) {
-    setAssigning(charId);
+    setBusy(charId);
     await supabase.from('characters').update({ campaign_id: campaignId }).eq('id', charId);
     await onRefresh();
-    // Refresh my chars list
     const { data } = await getCharacters(userId);
     setMyChars(data ?? []);
-    setAssigning(null);
+    setBusy(null);
   }
 
   async function unassign(charId: string) {
-    setAssigning(charId);
+    setBusy(charId);
     await supabase.from('characters').update({ campaign_id: null }).eq('id', charId);
     await onRefresh();
     const { data } = await getCharacters(userId);
     setMyChars(data ?? []);
-    setAssigning(null);
+    setBusy(null);
   }
 
-  const assignedIds = new Set(characters.map(c => c.id));
-  const unassignedMyChars = myChars.filter(c => !assignedIds.has(c.id));
+  // The user's PCs split into "in this campaign" and "not yet
+  // assigned anywhere". Characters assigned to OTHER campaigns are
+  // intentionally hidden — their other campaign owns them; offering
+  // to reassign would be a footgun.
+  const myAssigned = myChars.filter(c => c.campaign_id === campaignId);
+  const myUnassigned = myChars.filter(c => c.campaign_id == null);
+
+  // No PCs to show? Render nothing — the panel is for players, not
+  // the DM, and a DM with no characters of their own shouldn't see
+  // an empty header. Players who haven't created a PC yet get a
+  // pointer to the character creator.
+  if (myAssigned.length === 0 && myUnassigned.length === 0) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* My unassigned characters — assign prompt */}
-      {unassignedMyChars.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 10 }}>
-            Assign Your Character to This Campaign
-          </div>
+    <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--c-border)' }}>
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 10 }}>
+        Your Characters
+      </div>
+
+      {myAssigned.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: myUnassigned.length > 0 ? 16 : 0 }}>
+          {myAssigned.map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--c-card)', border: '1px solid var(--c-border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: 'var(--c-gold-l)' }}>
+                {c.avatar_url ? <img src={c.avatar_url} width={36} height={36} style={{ objectFit: 'cover' }} alt="" /> : c.name[0]}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
+                  Lv {c.level} {c.class_name} · {c.species} <span style={{ marginLeft: 6, color: 'var(--c-gold-l)' }}>· In this campaign</span>
+                </div>
+              </div>
+              <button
+                onClick={() => unassign(c.id)}
+                disabled={busy === c.id}
+                title="Remove this character from the campaign (does not delete the character)"
+                style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                  padding: '4px 10px',
+                  background: 'rgba(248,113,113,0.10)',
+                  border: '1px solid rgba(248,113,113,0.35)',
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: '#f87171',
+                  cursor: 'pointer',
+                  letterSpacing: '0.04em',
+                  opacity: busy === c.id ? 0.5 : 1,
+                }}
+              >
+                {busy === c.id ? 'Unassigning…' : 'Unassign'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {myUnassigned.length > 0 && (
+        <>
+          {myAssigned.length > 0 && (
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 6 }}>
+              Available to assign
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {unassignedMyChars.map(c => (
+            {myUnassigned.map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 10 }}>
                 <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--c-raised)', border: '1px solid var(--c-border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: 'var(--c-gold-l)' }}>
                   {c.avatar_url ? <img src={c.avatar_url} width={36} height={36} style={{ objectFit: 'cover' }} alt="" /> : c.name[0]}
@@ -706,66 +854,16 @@ function CharactersTab({ campaignId, userId, characters, onRefresh }: {
                 </div>
                 <button
                   onClick={() => assign(c.id)}
-                  disabled={assigning === c.id}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)', opacity: assigning === c.id ? 0.5 : 1 }}
+                  disabled={busy === c.id}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 8, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)', opacity: busy === c.id ? 0.5 : 1 }}
                 >
-                  {assigning === c.id ? 'Assigning…' : 'Assign to Campaign'}
+                  {busy === c.id ? 'Assigning…' : 'Assign to Campaign'}
                 </button>
               </div>
             ))}
           </div>
-        </div>
+        </>
       )}
-
-      {/* Assigned characters */}
-      <div>
-        {characters.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 12 }}>
-            {unassignedMyChars.length > 0
-              ? 'Use "Assign to Campaign" above to add your character to this campaign.'
-              : 'No characters assigned yet. Each player assigns their character from this tab.'}
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--t-2)', marginBottom: 10 }}>
-              Party — {characters.length} character{characters.length !== 1 ? 's' : ''}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-              {characters.map(c => {
-                const isOwn = c.user_id === userId;
-                const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
-                const col = hpPct > 0.6 ? 'var(--hp-full)' : hpPct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
-                return (
-                  <div key={c.id} style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 10, overflow: 'hidden' }}>
-                    <div style={{ height: 3, background: col, width: `${Math.max(2, hpPct * 100)}%` }} />
-                    <div style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)' }}>{c.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--t-3)' }}>Lv {c.level} {c.class_name} · {c.species}</div>
-                        </div>
-                        {isOwn && (
-                          <button onClick={() => unassign(c.id)} disabled={assigning === c.id}
-                            style={{ fontSize: 9, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer' }}>
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 12 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: col, fontFamily: 'var(--ff-stat)' }}>{c.current_hp}/{c.max_hp} HP</span>
-                        <span style={{ fontSize: 11, color: 'var(--t-3)' }}>AC {c.armor_class}</span>
-                        {c.inspiration && <span style={{ fontSize: 11, color: 'var(--c-gold-l)' }}></span>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Campaign Settings rendered inside CampaignSettingsButton */}
     </div>
   );
 }
