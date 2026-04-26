@@ -16,7 +16,8 @@ import NPCManager from './NPCManager';
 import AISummary from './AISummary';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
-import BattleMap from './BattleMap';
+// v2.267.0 — v1 BattleMap import removed. v2 is the only renderer.
+// If a P0 rollback is needed, re-add: import BattleMap from './BattleMap';
 // v2.210.0 — Phase Q.1 pt 3: BattleMapV2 is lazy-loaded so Pixi
 // (~500KB) only downloads when a user actually opens the map tab AND
 // flips the v2 toggle. Keeps the main-bundle cost zero for anyone
@@ -562,21 +563,17 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         {/* v2.95.0 — Phase C: one unified Battle Map for everyone.
             DM gets full controls; players get view-all + drag-own-token-only via myCharacterId.
             v2.208.0 — Phase Q.1 pt 1: feature-flag toggle between v1 (the
-            existing primitive map) and v2 (the PixiJS rewrite). The toggle
-            is localStorage-scoped to the campaign+user so switching here
-            doesn't affect other campaigns or other players. v1 remains the
-            default until v2 reaches feature parity. */}
+            existing primitive map) and v2 (the PixiJS rewrite).
+            v2.267.0 — v1 is no longer reachable. v2 is the default + only
+            renderer. The localStorage flag `dndkeep:battlemap_v2:*` and the
+            toggle ribbon are removed. v1 (`<BattleMap>` import) and the
+            old PlayerBattleMap stay in the codebase as dead code so a
+            rollback ship can re-mount them if v2 hits a P0 — but they're
+            not user-reachable. v1 was missing every feature the v2 backlog
+            added (walls, fog, drawings, ruler, FX, NPC roster, attunement
+            tokens, etc.) so leaving it as the default was confusing — DMs
+            kept reporting "walls don't work" because they were on v1. */}
         {activeTab === 'map' && (() => {
-          const flagKey = `dndkeep:battlemap_v2:${campaign.id}:${user?.id ?? 'anon'}`;
-          const useV2 = (typeof window !== 'undefined' && localStorage.getItem(flagKey) === '1');
-          const toggleV2 = () => {
-            if (typeof window === 'undefined') return;
-            if (useV2) localStorage.removeItem(flagKey);
-            else localStorage.setItem(flagKey, '1');
-            // Force re-render — simplest path, avoids threading state up.
-            setActiveTab('map_refresh' as any);
-            setTimeout(() => setActiveTab('map'), 0);
-          };
           const commonProps = {
             campaignId: campaign.id,
             isDM: isOwner,
@@ -620,54 +617,19 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           };
           return (
             <div>
-              {/* v2 toggle — available to everyone in the campaign for
-                  testing. When v2 matures enough to be the default, this
-                  toggle can flip polarity (v1 becomes the opt-in legacy). */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', marginBottom: 12,
-                background: useV2 ? 'rgba(167,139,250,0.08)' : 'var(--c-raised)',
-                border: `1px solid ${useV2 ? 'rgba(167,139,250,0.4)' : 'var(--c-border)'}`,
-                borderRadius: 'var(--r-md)',
-              }}>
-                <span style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)',
-                  letterSpacing: '0.02em',
+              <Suspense fallback={
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: 400, padding: 'var(--sp-6, 32px)',
+                  background: 'var(--c-card)', border: '1px solid var(--c-border)',
+                  borderRadius: 'var(--r-lg, 12px)',
+                  fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
                 }}>
-                  Battle Map renderer: <strong style={{ color: 'var(--t-1)' }}>{useV2 ? 'v2 (preview)' : 'v1 (stable)'}</strong>
-                </span>
-                <button
-                  onClick={toggleV2}
-                  style={{
-                    padding: '4px 12px', borderRadius: 'var(--r-md)',
-                    background: useV2 ? 'var(--c-raised)' : 'rgba(167,139,250,0.15)',
-                    border: `1px solid ${useV2 ? 'var(--c-border)' : 'rgba(167,139,250,0.4)'}`,
-                    color: useV2 ? 'var(--t-2)' : '#a78bfa',
-                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                  title={useV2
-                    ? 'Switch back to the stable v1 battle map'
-                    : 'Try the v2 preview — a ground-up rewrite with dynamic lighting, walls, and more. Not yet feature-complete.'}
-                >
-                  {useV2 ? 'Use v1 (stable)' : 'Try v2 (preview)'}
-                </button>
-              </div>
-              {useV2 ? (
-                <Suspense fallback={
-                  <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    minHeight: 400, padding: 'var(--sp-6, 32px)',
-                    background: 'var(--c-card)', border: '1px solid var(--c-border)',
-                    borderRadius: 'var(--r-lg, 12px)',
-                    fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
-                  }}>
-                    Loading Battle Map v2…
-                  </div>
-                }>
-                  <BattleMapV2 {...commonProps} />
-                </Suspense>
-              ) : <BattleMap {...commonProps} />}
+                  Loading Battle Map…
+                </div>
+              }>
+                <BattleMapV2 {...commonProps} />
+              </Suspense>
             </div>
           );
         })()}

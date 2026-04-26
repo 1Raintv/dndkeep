@@ -1110,8 +1110,17 @@ function VisionLayer(props: {
    *  polygons. v2.224: every PC in the campaign (party-shared sight).
    *  v2.225 will narrow this to the current user's own characters. */
   visionOriginCharacterIds: string[];
+  /** v2.267.0 — when true, render fog for the DM too (Player View
+   *  preview). Default false; only the DM toolbar's preview button
+   *  flips this. Players never see this prop set. */
+  dmPreviewFog?: boolean;
 }) {
-  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds } = props;
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, dmPreviewFog } = props;
+  // v2.267.0 — effective "should this layer render fog" check. When
+  // the DM has enabled Player View preview, treat them like a player
+  // for the purposes of mounting + recomputing the fog texture. The
+  // DM's own walls + tokens still render normally on top.
+  const fogActive = !isDM || !!dmPreviewFog;
   const tokens = useBattleMapStore(s => s.tokens);
   const walls = useBattleMapStore(s => s.walls);
   const { app } = useApplication();
@@ -1138,9 +1147,12 @@ function VisionLayer(props: {
   const fogSpriteRef = useRef<Sprite | null>(null);
   const scratchContainerRef = useRef<Container | null>(null);
 
-  // Mount + teardown.
+  // Mount + teardown. v2.267.0 — was `if (!viewport || isDM) return`;
+  // now respects dmPreviewFog so the DM's preview button can mount
+  // the fog sprite. Effect re-runs when fogActive flips, so toggling
+  // the preview tears down or rebuilds the fog texture cleanly.
   useEffect(() => {
-    if (!viewport || isDM) return;
+    if (!viewport || !fogActive) return;
     // Create a RenderTexture. We rasterize at world resolution; for
     // very large scenes (4000x4000+) this is memory-heavy and we'd
     // want to downscale, but for typical 30x20 scenes (2100x1400) it
@@ -1177,12 +1189,14 @@ function VisionLayer(props: {
       fogSpriteRef.current = null;
       scratchContainerRef.current = null;
     };
-  }, [viewport, worldWidth, worldHeight, isDM]);
+  }, [viewport, worldWidth, worldHeight, fogActive]);
 
   // Recompute fog whenever inputs change. We rebuild the scratch
   // container, render it to the RT, and let the sprite redisplay.
+  // v2.267.0 — gate is fogActive (was isDM) so the DM's preview also
+  // recomputes when walls or tokens move while preview is on.
   useEffect(() => {
-    if (isDM) return;
+    if (!fogActive) return;
     const rt = rtRef.current;
     const scratch = scratchContainerRef.current;
     if (!rt || !scratch || !app?.renderer) return;
@@ -1192,6 +1206,20 @@ function VisionLayer(props: {
     scratch.removeChildren().forEach(child => {
       if (!(child as any).destroyed) (child as any).destroy({ children: true });
     });
+
+    // v2.267.0 — guard for the DM-preview case: if the DM toggles
+    // Player View on but no PC tokens exist on the scene, there's
+    // no vision origin to compute from. Rendering a solid-black fog
+    // would be misleading ("preview is broken!" / "the map turned
+    // black"). For DM preview, render a clear texture so the DM can
+    // see the map and understand they need PC tokens for the preview
+    // to be meaningful. For real player views, keep the solid fog —
+    // a player who can't see anything because their character isn't
+    // placed is the correct semantic state, not a UX bug.
+    if (isDM && dmPreviewFog && visionOriginTokenIds.length === 0) {
+      app.renderer.render({ container: scratch, target: rt, clear: true });
+      return;
+    }
 
     // 1. Dark fog fill covering the entire world.
     const fog = new Graphics();
@@ -1227,7 +1255,7 @@ function VisionLayer(props: {
 
     // 3. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
-  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, worldWidth, worldHeight, gridSizePx, isDM, app]);
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, app]);
 
   return null;
 }
@@ -5526,6 +5554,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // canvas draws a measurement line instead of dragging tokens.
   const [rulerActive, setRulerActive] = useState(false);
 
+  // v2.267.0 — DM-only "Player View" toggle. When on, the DM also
+  // sees the fog of war overlay computed from party-shared sight,
+  // identical to what players see. Lets the DM verify wall placement
+  // without needing a second logged-in client. Default off so the DM
+  // sees everything by default; the toggle is a momentary diagnostic.
+  // Players never see this control (it's gated by isDM at the
+  // toolbar render site).
+  const [dmPreviewFog, setDmPreviewFog] = useState(false);
+
   // v2.223 — wall drawing mode. Mutually exclusive with ruler mode —
   // enabling one disables the other so tool intent is unambiguous.
   const [wallActive, setWallActive] = useState(false);
@@ -6237,7 +6274,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                       (no fog applied); players see dark over anything
                       outside any party PC token's visibility polygon.
                       Sits above tokens so it can hide them, below the
-                      ruler so the ruler is always visible to its user. */}
+                      ruler so the ruler is always visible to its user.
+                      v2.267.0 — DM can also see fog when dmPreviewFog
+                      is on, via the toolbar 👁 Player View toggle. */}
                   <VisionLayer
                     viewport={vp}
                     worldWidth={WORLD_WIDTH}
@@ -6245,6 +6284,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     gridSizePx={gridSizePx}
                     isDM={isDM}
                     visionOriginCharacterIds={visionOriginCharacterIds}
+                    dmPreviewFog={dmPreviewFog}
                   />
                   {/* v2.218 — rendered last so the ruler's Graphics +
                       label appear on top of tokens. Internally addChild's
@@ -6399,8 +6439,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             <button
               onClick={toggleWallMode}
               title={wallActive
-                ? 'Walls active — click to place vertices, right-click a wall to delete, Esc to cancel current line. Click this button again to exit.'
-                : 'Walls — draw line-of-sight blockers on the map. DM only.'}
+                ? 'Walls active — click to place vertices, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls block player line-of-sight; toggle 👁 Player View to verify.'
+                : 'Walls — block line-of-sight on the map. Players can\'t see past them; toggle 👁 to preview the player\'s view. DM only.'}
               style={{
                 width: 36, height: 36,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -6426,6 +6466,48 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               }}
             >
               🧱
+            </button>
+          )}
+
+          {/* v2.267.0 — Player View preview toggle. DM only. When on,
+              the DM sees the same fog of war the players see (computed
+              from party-shared sight polygons). Used to verify wall +
+              token placement without needing a second logged-in client.
+              Default off so DMs see the whole map by default. The
+              fog overlay only shows up if at least one PC token exists
+              on the scene — otherwise there's no vision origin and
+              the fog covers the world solid. */}
+          {isDM && (
+            <button
+              onClick={() => setDmPreviewFog(v => !v)}
+              title={dmPreviewFog
+                ? 'Player View: ON — you are seeing fog as a player would. Click to return to full DM view.'
+                : 'Preview Player View — show the same fog of war players see, so you can verify wall placement and PC sight lines.'}
+              style={{
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: dmPreviewFog ? 'rgba(96,165,250,0.28)' : 'transparent',
+                border: `1px solid ${dmPreviewFog ? 'rgba(96,165,250,0.85)' : 'rgba(96,165,250,0.25)'}`,
+                borderRadius: 'var(--r-sm, 4px)',
+                color: dmPreviewFog ? '#60a5fa' : 'var(--t-2)',
+                fontSize: 16,
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+              onMouseEnter={(e) => {
+                if (!dmPreviewFog) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.14)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.55)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!dmPreviewFog) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.25)';
+                }
+              }}
+            >
+              👁
             </button>
           )}
 
@@ -6779,7 +6861,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             letterSpacing: '0.02em',
           }}
         >
-          {wallActive
+          {dmPreviewFog
+            ? 'Player View ON — fog shows what players see. Click 👁 again to return to full DM view.'
+            : wallActive
             ? 'Click to place wall vertices · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
             : rulerActive
               ? 'Click to add waypoints · right-click/Esc to finish · right/middle drag pans · wheel zooms'
