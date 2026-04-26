@@ -4625,6 +4625,11 @@ function InitiativeBar(props: {
  *
  * Hides itself when there are no PCs to avoid an empty bar.
  */
+// v2.270.0 — localStorage key for the floating party panel's
+// collapsed state. Per-user (not per-campaign) since the preference
+// is about UI density rather than table-specific state.
+const PARTY_PANEL_COLLAPSED_KEY = 'dndkeep:battlemap_v2:party_panel_collapsed';
+
 function PartyVitalsBar(props: {
   characters: BattleMapV2Props['playerCharacters'];
   /** v2.239.0 — clicking a card asks the parent to pan the map to
@@ -4634,34 +4639,147 @@ function PartyVitalsBar(props: {
   onCharacterClick?: (characterId: string) => void;
 }) {
   const { characters, onCharacterClick } = props;
+
+  // v2.270.0 — collapsed state, persisted across sessions. Lazy-init
+  // from localStorage so we don't flash the wrong state on mount.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(PARTY_PANEL_COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try {
+        if (next) localStorage.setItem(PARTY_PANEL_COLLAPSED_KEY, '1');
+        else localStorage.removeItem(PARTY_PANEL_COLLAPSED_KEY);
+      } catch { /* ignore quota / disabled-storage errors */ }
+      return next;
+    });
+  }, []);
+
   if (!characters || characters.length === 0) return null;
+
+  // v2.270.0 — common positioning for both collapsed handle and
+  // expanded panel. Anchored bottom-left of the parent (the canvas
+  // wrapper, which is position: relative). Bottom inset of 12px keeps
+  // it off the canvas edge; left inset matches.
+  const anchorStyle: React.CSSProperties = {
+    position: 'absolute' as const,
+    bottom: 12,
+    left: 12,
+    zIndex: 30, // above canvas, below modals (200+) and tooltips
+  };
+
+  if (collapsed) {
+    // Compact handle: just a "Party (N)" pill. Click to expand.
+    return (
+      <button
+        onClick={toggleCollapsed}
+        title="Show party vitals"
+        style={{
+          ...anchorStyle,
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 12px',
+          background: 'rgba(15,16,18,0.85)',
+          backdropFilter: 'blur(6px)',
+          border: '1px solid var(--c-border)',
+          borderRadius: 999,
+          fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+          letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+          color: 'var(--t-2)',
+          cursor: 'pointer',
+          transition: 'background 0.12s, border-color 0.12s',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.95)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-border-m)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.85)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-border)';
+        }}
+      >
+        <span>👥</span>
+        <span>Party · {characters.length}</span>
+        <span style={{ opacity: 0.6, fontSize: 9 }}>▴</span>
+      </button>
+    );
+  }
 
   return (
     <div
       style={{
+        ...anchorStyle,
+        // v2.270.0 — size to content with a max-width cap. Anchored
+        // bottom-left; the help hint sits at bottom-right and the
+        // two coexist as long as neither pushes past the other. The
+        // max-width cap (calc 100% - 240px) leaves clearance for the
+        // hint at the right; on narrow viewports the panel will
+        // scroll its cards horizontally before bleeding into the
+        // hint zone.
+        maxWidth: 'calc(100% - 240px)',
         display: 'flex',
         alignItems: 'stretch',
         gap: 8,
         padding: '8px 12px',
-        marginTop: 8,
-        background: 'var(--c-card)',
+        // Translucent background so the canvas reads through. Higher
+        // opacity than the cards inside so the panel chrome remains
+        // legible.
+        background: 'rgba(15,16,18,0.78)',
+        backdropFilter: 'blur(8px)',
         border: '1px solid var(--c-border)',
         borderRadius: 'var(--r-md, 8px)',
         overflowX: 'auto' as const,
+        boxShadow: '0 6px 24px rgba(0,0,0,0.35)',
       }}
     >
       <div style={{
         flexShrink: 0,
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column' as const,
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
         padding: '0 6px',
-        fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
-        letterSpacing: '0.12em', textTransform: 'uppercase' as const,
-        color: 'var(--t-3)',
         borderRight: '1px solid var(--c-border)',
         paddingRight: 12,
       }}>
-        Party
+        <div style={{
+          fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
+          letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+          color: 'var(--t-3)',
+        }}>
+          Party
+        </div>
+        <button
+          onClick={toggleCollapsed}
+          title="Collapse party panel"
+          style={{
+            marginTop: 4,
+            padding: '2px 8px',
+            background: 'transparent',
+            border: '1px solid var(--c-border)',
+            borderRadius: 'var(--r-sm, 4px)',
+            color: 'var(--t-3)',
+            fontSize: 10, fontWeight: 700,
+            cursor: 'pointer',
+            letterSpacing: '0.04em',
+            transition: 'background 0.12s, color 0.12s',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'var(--c-raised)';
+            (e.currentTarget as HTMLButtonElement).style.color = 'var(--t-1)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+            (e.currentTarget as HTMLButtonElement).style.color = 'var(--t-3)';
+          }}
+        >
+          ▾ Hide
+        </button>
       </div>
       {characters.map(c => {
         const pct = c.max_hp > 0 ? Math.max(0, Math.min(1, c.current_hp / c.max_hp)) : 0;
@@ -5334,12 +5452,40 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     const ro = new ResizeObserver(entries => {
       for (const e of entries) {
         const w = Math.max(300, Math.floor(e.contentRect.width));
-        const h = Math.min(700, Math.max(400, Math.floor(e.contentRect.width * 0.5625)));
+        // v2.270.0 — was: width × 0.5625 (16:9), capped at 700px max.
+        // The 700px cap was conservative — on 1440p+ desktops it left
+        // significant unused vertical space below the canvas. Now we
+        // size against the available viewport height so the canvas
+        // grows with the window, with sane min/max guards:
+        //   - Min 400px: avoids degenerate tiny canvas on short viewports
+        //   - Max 90vh: leaves room for headers/initiative bar/floating
+        //     party panel without forcing scrolling
+        // The wrapper itself is bounded by the available .app-content
+        // box so this max is effectively a "don't overflow" guard.
+        const viewportH = typeof window !== 'undefined' ? window.innerHeight : 900;
+        const targetH = Math.floor(viewportH * 0.78);
+        const h = Math.max(400, Math.min(targetH, 1100));
         setDims({ width: w, height: h });
       }
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    // v2.270.0 — also resize on window resize (ResizeObserver only
+    // fires on the wrapper's own size; window height changes don't
+    // change the wrapper's box, so we need a separate listener to
+    // recompute against the new viewport vertical.
+    const onWinResize = () => {
+      if (!el) return;
+      const w = Math.max(300, Math.floor(el.clientWidth));
+      const viewportH = window.innerHeight;
+      const targetH = Math.floor(viewportH * 0.78);
+      const h = Math.max(400, Math.min(targetH, 1100));
+      setDims({ width: w, height: h });
+    };
+    window.addEventListener('resize', onWinResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onWinResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -7062,7 +7208,12 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
         <div
           style={{
-            position: 'absolute', bottom: 12, left: 12,
+            // v2.270.0 — moved to top-right so the floating party
+            // panel can occupy the full bottom-left without collision.
+            // Top-right is otherwise unused. Reads cleanly above the
+            // viewport without competing for attention with the
+            // canvas content.
+            position: 'absolute', top: 12, right: 12,
             padding: '3px 8px',
             background: 'rgba(15,16,18,0.6)',
             border: '1px solid var(--c-border)',
@@ -7070,6 +7221,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             fontFamily: 'var(--ff-body)', fontSize: 9,
             color: 'var(--t-3)', pointerEvents: 'none' as const,
             letterSpacing: '0.02em',
+            // v2.270.0 — z-index parallel to the party panel (30) so
+            // the hint stays above the canvas but below modals.
+            zIndex: 30,
+            // Cap width so a long hint string doesn't span more than
+            // a third of the canvas width — keeps the right edge
+            // available for the toolbar overflow / future controls.
+            maxWidth: '40%',
+            textAlign: 'right' as const,
           }}
         >
           {dmPreviewFog
@@ -7231,16 +7390,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             UPLOADING MAP IMAGE…
           </div>
         )}
-      </div>
 
-      {/* v2.231 — Party Vitals strip across the bottom. Always-on
-          read-only at-a-glance view of every PC's HP / AC / spell
-          slots. Clicks/edits go through the TokenQuickPanel (DM)
-          or the player's character sheet. */}
-      <PartyVitalsBar
-        characters={props.playerCharacters}
-        onCharacterClick={panToCharacter}
-      />
+        {/* v2.270.0 — Party Vitals strip is now a hovering overlay
+            inside the canvas wrapper instead of a sibling below it.
+            Anchored bottom-left, transparent enough that the canvas
+            shows through, and collapsible (state managed inside
+            PartyVitalsBar via localStorage). Frees up the vertical
+            space the bottom strip used to occupy so the canvas can
+            grow taller. */}
+        <PartyVitalsBar
+          characters={props.playerCharacters}
+          onCharacterClick={panToCharacter}
+        />
+      </div>
     </div>
   );
 }
