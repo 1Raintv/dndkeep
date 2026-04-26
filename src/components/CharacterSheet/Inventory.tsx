@@ -699,6 +699,62 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  </div>
  <CurrencyDisplay currency={character.currency} onUpdate={onUpdateCurrency} />
 
+ {/* v2.264.0 — Attunement moved above Inventory (was inside the
+     inventory list, after the Equipped section). The attunement
+     toggles are high-attention DM/player decisions; surfacing them
+     prominently between Coin Purse and Inventory makes the cap
+     status visible at a glance instead of buried mid-list. Switched
+     from the filtered subset to the full inventory so the panel
+     shows every attuneable item regardless of search/filter state. */}
+ {(() => {
+ const attunable = inventory.filter(itemRequiresAttunement);
+ if (attunable.length === 0) return null;
+ const attunedCount = countAttunedItems(inventory);
+ const atCap = attunedCount >= ATTUNEMENT_SLOT_MAX;
+ return (
+ <div style={{ marginTop: 'var(--sp-4)', marginBottom: 'var(--sp-2)', padding: '8px 12px', borderRadius: 'var(--r-md)', background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.2)' }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+ <div style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--ff-body)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#a78bfa' }}>
+ Attunement
+ </div>
+ <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--ff-stat)', color: atCap ? '#ef4444' : '#a78bfa', background: atCap ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)', border: `1px solid ${atCap ? 'rgba(239,68,68,0.4)' : 'rgba(167,139,250,0.4)'}`, borderRadius: 999, padding: '1px 7px' }}>
+ {attunedCount}/{ATTUNEMENT_SLOT_MAX}
+ </span>
+ </div>
+ <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+ {attunable.map(item => {
+ const isAttuned = item.attuned === true;
+ const canAttune = isAttuned || !atCap;
+ return (
+ <button
+ key={item.id}
+ onClick={() => toggleAttunement(item.id)}
+ disabled={!canAttune}
+ title={isAttuned ? 'Click to break attunement' : atCap ? 'Attunement cap reached — break another attunement first' : 'Click to attune'}
+ style={{
+ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+ cursor: canAttune ? 'pointer' : 'not-allowed',
+ background: isAttuned ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.03)',
+ border: `1px solid ${isAttuned ? 'rgba(167,139,250,0.5)' : 'var(--c-border)'}`,
+ color: isAttuned ? '#c084fc' : 'var(--t-3)',
+ opacity: canAttune ? 1 : 0.5,
+ fontFamily: 'inherit',
+ }}
+ >
+ {isAttuned ? '✦ ' : ''}{item.name}
+ </button>
+ );
+ })}
+ </div>
+ {atCap && (
+ <div style={{ fontSize: 10, color: '#ef4444', marginTop: 5, fontFamily: 'var(--ff-body)' }}>
+ Maximum attunement reached — break an attunement before attuning another
+ </div>
+ )}
+ </div>
+ );
+ })()}
+
  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--sp-5)' }}>
  <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none', flex: 1 }}>
  Inventory
@@ -776,59 +832,6 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  ))}
  </div>
  )}
- {/* v2.155.0 — Phase P pt 3: real attunement.
-     Replaced the pre-v2.155 display that treated any equipped
-     magical item as attuned. Now we show only items that require
-     attunement per catalogue, a real toggle, and hard enforcement
-     of the RAW 2024 3-slot cap. */}
- {(() => {
- const attunable = filtered.filter(itemRequiresAttunement);
- if (attunable.length === 0) return null;
- const attunedCount = countAttunedItems(inventory);
- const atCap = attunedCount >= ATTUNEMENT_SLOT_MAX;
- return (
- <div style={{ marginBottom: 'var(--sp-2)', padding: '8px 12px', borderRadius: 'var(--r-md)', background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.2)' }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
- <div style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--ff-body)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#a78bfa' }}>
- Attunement
- </div>
- <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--ff-stat)', color: atCap ? '#ef4444' : '#a78bfa', background: atCap ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)', border: `1px solid ${atCap ? 'rgba(239,68,68,0.4)' : 'rgba(167,139,250,0.4)'}`, borderRadius: 999, padding: '1px 7px' }}>
- {attunedCount}/{ATTUNEMENT_SLOT_MAX}
- </span>
- </div>
- <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
- {attunable.map(item => {
- const isAttuned = item.attuned === true;
- const canAttune = isAttuned || !atCap;
- return (
- <button
- key={item.id}
- onClick={() => toggleAttunement(item.id)}
- disabled={!canAttune}
- title={isAttuned ? 'Click to break attunement' : atCap ? 'Attunement cap reached — break another attunement first' : 'Click to attune'}
- style={{
- fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
- cursor: canAttune ? 'pointer' : 'not-allowed',
- background: isAttuned ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.03)',
- border: `1px solid ${isAttuned ? 'rgba(167,139,250,0.5)' : 'var(--c-border)'}`,
- color: isAttuned ? '#c084fc' : 'var(--t-3)',
- opacity: canAttune ? 1 : 0.5,
- fontFamily: 'inherit',
- }}
- >
- {isAttuned ? '✦ ' : ''}{item.name}
- </button>
- );
- })}
- </div>
- {atCap && (
- <div style={{ fontSize: 10, color: '#ef4444', marginTop: 5, fontFamily: 'var(--ff-body)' }}>
- Maximum attunement reached — break an attunement before attuning another
- </div>
- )}
- </div>
- );
- })()}
  {carried.length > 0 && (
  <div>
  {equipped.length > 0 && (

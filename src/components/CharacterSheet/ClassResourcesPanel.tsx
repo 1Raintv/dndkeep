@@ -43,27 +43,6 @@ export default function ClassResourcesPanel({ character, onUpdate }: ClassResour
     return r.getMax(character.level, abilityScores);
   }
 
-  function use(r: ClassResourceDef) {
-    const max = getMax(r);
-    if (max === 999) return; // Can't "use" unlimited
-    const cur = getCurrent(r);
-    if (cur <= 0) return;
-    onUpdate({ ...current, [r.id]: cur - 1 });
-  }
-
-  function restore(r: ClassResourceDef, amount = 1) {
-    const max = getMax(r);
-    if (max === 999) return;
-    const cur = getCurrent(r);
-    onUpdate({ ...current, [r.id]: Math.min(max, cur + amount) });
-  }
-
-  function restoreAll(r: ClassResourceDef) {
-    const max = getMax(r);
-    if (max === 999) return;
-    onUpdate({ ...current, [r.id]: max });
-  }
-
   function toggle(r: ClassResourceDef) {
     // For "once per turn" reminders - toggle used/available
     const cur = current[r.id] ?? 1;
@@ -100,7 +79,6 @@ export default function ClassResourcesPanel({ character, onUpdate }: ClassResour
                 const cur = getCurrent(r);
                 const isUnlimited = max === 999;
                 const isToggle = max === 1 && r.id !== 'lay-on-hands';
-                const isPool = !isUnlimited && !isToggle;
                 const color = RECOVERY_COLORS[r.recovery];
                 const depleted = !isUnlimited && cur <= 0;
 
@@ -149,69 +127,48 @@ export default function ClassResourcesPanel({ character, onUpdate }: ClassResour
                             {cur > 0 ? 'Available' : 'Used'}
                           </button>
                         ) : (
-                          /* Pool counter */
+                          /* Pool counter — pips for any pool up to the
+                             max single Psion PED count (12). v2.264.0:
+                             previously capped at 6 pips and switched to
+                             a +/- number stepper above that, but the
+                             stepper looked out of place next to the
+                             other resource rows and the user feedback
+                             called it out. Pips scale fine up to 12;
+                             we just wrap into 2 rows once it gets
+                             past 8 so the panel doesn't grow too wide. */
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                            {/* Pips for small pools */}
-                            {max <= 6 && (
-                              <div style={{ display: 'flex', gap: 3 }}>
-                                {Array.from({ length: max }).map((_, i) => (
-                                  <button
-                                    key={i}
-                                    onClick={() => {
-                                      // Click pip to toggle
-                                      const filled = i < cur;
-                                      if (filled) onUpdate({ ...current, [r.id]: i });
-                                      else onUpdate({ ...current, [r.id]: i + 1 });
-                                    }}
-                                    style={{
-                                      width: 14, height: 14, borderRadius: '50%',
-                                      border: `2px solid ${color}`,
-                                      background: i < cur ? color : 'transparent',
-                                      cursor: 'pointer', padding: 0,
-                                      transition: 'all var(--tr-fast)',
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Number for large pools */}
-                            {max > 6 && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                            <div style={{
+                              display: 'flex',
+                              gap: 3,
+                              flexWrap: 'wrap' as const,
+                              justifyContent: 'flex-end',
+                              maxWidth: max > 8 ? 8 * 14 + 7 * 3 : undefined, // 8 pips per row
+                            }}>
+                              {Array.from({ length: max }).map((_, i) => (
                                 <button
-                                  onClick={() => use(r)}
-                                  disabled={cur <= 0}
-                                  style={{
-                                    width: 24, height: 24, borderRadius: 'var(--r-sm)',
-                                    border: '1px solid var(--c-border)', background: 'var(--c-raised)',
-                                    cursor: cur > 0 ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700,
-                                    color: cur > 0 ? 'var(--c-red-l)' : 'var(--t-2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  key={i}
+                                  onClick={() => {
+                                    // Click pip to toggle: clicking a
+                                    // filled pip empties down to its
+                                    // index; clicking an empty pip
+                                    // fills up to its position.
+                                    const filled = i < cur;
+                                    if (filled) onUpdate({ ...current, [r.id]: i });
+                                    else onUpdate({ ...current, [r.id]: i + 1 });
                                   }}
-                                >
-                                  −
-                                </button>
-                                <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 900, fontSize: 'var(--fs-lg)', color, minWidth: 32, textAlign: 'center', lineHeight: 1 }}>
-                                  {cur}
-                                </span>
-                                <button
-                                  onClick={() => restore(r)}
-                                  disabled={cur >= max}
                                   style={{
-                                    width: 24, height: 24, borderRadius: 'var(--r-sm)',
-                                    border: `1px solid ${color}50`, background: `${color}10`,
-                                    cursor: cur < max ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700,
-                                    color: cur < max ? color : 'var(--t-2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    width: 14, height: 14, borderRadius: '50%',
+                                    border: `2px solid ${color}`,
+                                    background: i < cur ? color : 'transparent',
+                                    cursor: 'pointer', padding: 0,
+                                    transition: 'all var(--tr-fast)',
                                   }}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            )}
+                                />
+                              ))}
+                            </div>
 
                             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>
-                              {max > 6 ? `${cur} / ${max}` : `${cur} of ${max} remaining`}
+                              {cur} of {max} remaining
                             </div>
                           </div>
                         )}

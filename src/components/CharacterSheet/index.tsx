@@ -78,7 +78,15 @@ const TABS: { id: Tab; label: string }[] = [
  { id: 'features', label: 'Features' },
  { id: 'spells', label: 'Spells' },
  { id: 'inventory', label: 'Inventory' },
- { id: 'bio', label: 'Notes' },
+ // v2.264.0 — Notes tab (`bio`) hidden per user request. The tab
+ // contained a duplicate FeaturesPanel surface (already covered by
+ // the Features tab) plus a Notes panel for personality/bonds/
+ // ideals/flaws. The data fields stay populated in the DB and can
+ // still be edited via character settings; if the tab is wanted
+ // back later, just re-add this entry. The render block at
+ // `activeTab === 'bio'` below is left in place as dead code so a
+ // re-add is one-line.
+ //   { id: 'bio', label: 'Notes' },
  { id: 'history', label: 'History' },
 ];
 

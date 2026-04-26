@@ -9,6 +9,11 @@
 // into 36-px-tall bars. Every button in this component now explicitly overrides
 // min-height. Chiclet buttons also hide the global `::after` shimmer pseudo
 // (which otherwise sits in the middle of the tiny square as a visible bar).
+//
+// v2.264.0: Chiclet rail replaced with compact numeric "X / Y" + tiny ± steppers.
+// At high level a Wizard has up to 36 chiclets across 9 slot tiers, which was
+// visually noisy and didn't scan as fast as a number. The two tiny squared
+// step buttons preserve the per-slot expend/restore affordance.
 
 interface LevelTabProps {
   label: string;
@@ -19,20 +24,17 @@ interface LevelTabProps {
   onToggleSlot?: (slotIndex: number, expending: boolean) => void;
 }
 
-// Small helper to forcibly kill the global button ::after shimmer on tiny elements.
-// Using inline keyframes isn't possible, so we nuke the overflow visual instead.
-const chicletBaseStyle = {
-  display: 'inline-block', width: 10, height: 10, borderRadius: 2,
-  padding: 0, cursor: 'pointer',
-  transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box' as const,
+const stepBtnStyle = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 14, height: 14, borderRadius: 3, padding: 0,
+  fontSize: 10, fontWeight: 800, lineHeight: 1,
+  cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
   minHeight: 0, minWidth: 0,        // override global button { min-height: 36px }
-  lineHeight: 0,                     // no accidental text baseline height
-  overflow: 'visible' as const,      // global sets overflow:hidden; don't want shimmer clipped to a sliver
+  overflow: 'visible' as const,     // global sets overflow:hidden
+  fontFamily: 'inherit',
 };
 
 export default function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: LevelTabProps) {
-  const maxVisibleBoxes = 4;
-  const boxesToShow = slots ? Math.min(slots.max, maxVisibleBoxes) : 0;
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, verticalAlign: 'middle' }}>
       {/* Filter pill — click to set active level */}
@@ -62,36 +64,53 @@ export default function LevelTab({ label, count, slots, active, onClick, onToggl
         </span>
       </button>
 
-      {/* Slot chiclet rail — sits right next to the pill, inline (no wrapper box). */}
-      {slots && (
+      {/* Slot count + steppers — replaces the v2.78.0 chiclet rail.
+          Sits inline next to the pill, mirroring layout but with the
+          remaining/max as text and tiny − / + buttons for per-slot
+          expend/restore. */}
+      {slots && slots.max > 0 && (
         <span
-          title="Click a gold box to expend a slot; click an empty box to restore one."
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 3,
             flex: '0 0 auto',
           }}
         >
-          {Array.from({ length: boxesToShow }).map((_, i) => {
-            const isAvailable = i < slots.remaining;
-            return (
-              <button
-                key={i}
-                onClick={() => onToggleSlot?.(i, isAvailable)}
-                title={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
-                aria-label={isAvailable ? `Expend ${label} slot` : `Restore ${label} slot`}
-                style={{
-                  ...chicletBaseStyle,
-                  background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
-                  border: `1.5px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
-                }}
-              />
-            );
-          })}
-          {slots.max > maxVisibleBoxes && (
-            <span style={{ fontSize: 9, color: 'var(--t-3)', marginLeft: 1 }}>
-              +{slots.max - maxVisibleBoxes}
-            </span>
-          )}
+          <button
+            onClick={() => onToggleSlot?.(slots.remaining - 1, true)}
+            disabled={slots.remaining <= 0}
+            title={`Expend a ${label} slot`}
+            aria-label={`Expend a ${label} slot`}
+            style={{
+              ...stepBtnStyle,
+              border: '1px solid var(--c-border-m)',
+              background: 'var(--c-raised)',
+              color: slots.remaining > 0 ? 'var(--t-2)' : 'var(--t-3)',
+              opacity: slots.remaining > 0 ? 1 : 0.4,
+            }}
+          >−</button>
+          <span style={{
+            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+            color: slots.remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)',
+            minWidth: 28, textAlign: 'center' as const,
+            letterSpacing: '0.02em',
+          }}
+            title={`${slots.remaining} of ${slots.max} ${label} slots remaining`}
+          >
+            {slots.remaining}/{slots.max}
+          </span>
+          <button
+            onClick={() => onToggleSlot?.(slots.remaining, false)}
+            disabled={slots.remaining >= slots.max}
+            title={`Restore a ${label} slot`}
+            aria-label={`Restore a ${label} slot`}
+            style={{
+              ...stepBtnStyle,
+              border: '1px solid var(--c-gold-bdr)',
+              background: slots.remaining < slots.max ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+              color: slots.remaining < slots.max ? 'var(--c-gold-l)' : 'var(--t-3)',
+              opacity: slots.remaining < slots.max ? 1 : 0.4,
+            }}
+          >+</button>
         </span>
       )}
     </div>

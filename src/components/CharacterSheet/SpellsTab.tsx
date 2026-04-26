@@ -419,12 +419,19 @@ export default function SpellsTab({
  {spells.length}
  </span>
  {slots && (
- <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginLeft: 4 }}>
- {Array.from({ length: slots.max }).map((_, i) => (
- <div key={i} style={{ width: 9, height: 9, borderRadius: '50%', border: `1.5px solid var(--c-gold-bdr)`, background: i < slots.remaining ? 'var(--c-gold)' : 'transparent', boxShadow: i < slots.remaining ? '0 0 4px rgba(212,160,23,0.4)' : 'none' }} />
- ))}
- <span style={{ fontSize: 10, color: 'var(--t-3)', marginLeft: 3 }}>{slots.remaining}/{slots.max} slots</span>
- </div>
+ // v2.264.0 — was rendering `slots.max` pip dots PLUS "X/Y slots"
+ // text. At high level (Wizard L17+ has 9 slot levels) this added
+ // a wall of pips that doubled the header height. Replaced with
+ // text-only display: "Slots: 4 / 4". Per-slot expend/restore
+ // remains available through the Actions tab's chiclet rail and
+ // the LevelTab pill in this tab.
+ <span style={{
+   fontSize: 10, color: slots.remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)',
+   marginLeft: 4, fontFamily: 'var(--ff-body)', fontWeight: 700,
+   letterSpacing: '0.04em',
+ }}>
+   Slots: {slots.remaining} / {slots.max}
+ </span>
  )}
  </div>
 
