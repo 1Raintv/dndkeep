@@ -20,7 +20,7 @@ import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
-import { canAddKnownSpell, canPrepareSpell } from '../../lib/spellLimits';
+import { canAddKnownSpell, canPrepareSpell, getSpellCounts, getMaxPrepared } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
@@ -47,6 +47,7 @@ import SpellCompletionBanner from './SpellCompletionBanner';
 import PendingChoicesAlert from './PendingChoicesAlert';
 import AvatarPicker from '../shared/AvatarPicker';
 import ModalPortal from '../shared/ModalPortal';
+import { useToast } from '../shared/Toast';
 import WeaponsTracker from './WeaponsTracker';
 import UnifiedHistory from './UnifiedHistory';
 import LevelUpWizard from './LevelUpWizard';
@@ -106,6 +107,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // closure below without re-subscribing every time the callback
  // identity shifts.
  const props = { onLocalToast };
+ // v2.263.0 — toast surface for surfacing previously-silent failures
+ // (most importantly the "can't prepare this spell" block which used
+ // to console.warn only, leaving the user thinking the toggle was
+ // broken).
+ const toast = useToast();
  const [character, setCharacter] = useState<Character>(initialCharacter);
  const [activeTab, setActiveTab] = useState<Tab>('actions');
 
@@ -2280,7 +2286,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onAddSpell={id => {
  const check = canAddKnownSpell(character, id);
  if (!check.allowed) {
- console.warn('[spell add blocked]', check.reason);
+ // v2.263.0 — was console.warn only. Surface the block reason so
+ // the user sees "Cantrip limit reached (3/3)" or "Already known"
+ // instead of clicking and getting no feedback.
+ toast.showToast(check.reason ?? 'Cannot add this spell', 'warn');
  return;
  }
  applyUpdate({ known_spells: [...character.known_spells, id] }, true);
@@ -2298,7 +2307,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Use canonical enforcement — single source of truth (src/lib/spellLimits.ts)
  const check = canPrepareSpell(character, id);
  if (!check.allowed) {
- console.warn('[spell prepare blocked]', check.reason);
+ // v2.263.0 — was console.warn only, which left the player
+ // thinking the prepare toggle was broken. Surface the reason
+ // (from spellLimits.ts: "Prepared spell limit reached (16/17)",
+ // "Already prepared", etc.) as a toast so the user knows why.
+ toast.showToast(check.reason ?? 'Cannot prepare this spell', 'warn');
  return;
  }
  applyUpdate({ prepared_spells: [...character.prepared_spells, id] }, true);
@@ -3338,7 +3351,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* v2.36.0: Upcast toggle removed per feedback. Upcast affordance now lives
  directly on each leveled spell row as a "↑" arrow chip, letting the user
  upcast from the cast modal picker when they click Cast. */}
- {isPreparer && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>{character.prepared_spells.length} prepared</span>}
+ {/* v2.263.0 — was reading character.prepared_spells.length, which
+     INCLUDES granted (always-prepared) subclass spells and so always
+     reads higher than the player's actual cap usage. Now uses
+     getSpellCounts which excludes granted, and additionally surfaces
+     the max so DMs/players see "16 / 17 prepared" — same shape as
+     the SpellsTab badges and SpellCompletionBanner. */}
+ {isPreparer && (() => {
+   const { prepared } = getSpellCounts(character);
+   const max = getMaxPrepared(character);
+   return (
+     <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
+       {prepared} / {max} prepared
+     </span>
+   );
+ })()}
  </div>
 
  {/* v2.78.0: Actions-tab level filter now uses the shared LevelTab component
