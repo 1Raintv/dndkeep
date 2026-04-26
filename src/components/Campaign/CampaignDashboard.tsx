@@ -514,7 +514,15 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               playerCharacters={characters.map(c => ({
                 id: c.id, name: c.name, current_hp: c.current_hp, max_hp: c.max_hp,
                 armor_class: c.armor_class, class_name: c.class_name,
-                level: c.level, conditions: [],
+                level: c.level,
+                // v2.292.0 — was: conditions: []. The previous bug
+                // path wrote conditions into sessionState.initiative_order
+                // and merged them client-side; the prop never carried
+                // real values. Now the canonical column flows through
+                // and the DMlobby Players-tab Conditions UI shows the
+                // actual state in sync with the character sheet.
+                conditions: [],
+                active_conditions: c.active_conditions ?? [],
               }))}
               members={members}
               isOwner={isOwner}

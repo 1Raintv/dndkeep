@@ -13,18 +13,44 @@
 //     every page is the canonical combat surface now.
 //   - Map subtab → removed; the top-level Battle Map tab covers it.
 // Surviving tabs: Players (HP/condition management) + Notes.
-// The legacy schema columns (combat_active, initiative_order) stay
+//
+// v2.292.0 — Phase 2b of the combat-system unification.
+// applyPlayerHP and togglePlayerCondition used to write into
+// sessionState.initiative_order, which was a known bug from the
+// v2.286 transcript: those writes never reached characters.current_hp
+// or characters.active_conditions, so the values stayed isolated to
+// the Players-tab UI and didn't propagate to the character sheet,
+// the Party tab, the Battle Map, or anywhere else. Fix: write the
+// canonical columns directly via supabase. The existing campaign-
+// level realtime sub on `characters` in CampaignDashboard echoes
+// the change back through the playerCharacters prop, so the
+// Players-tab UI updates without a manual livePCs merge.
+//
+// The schema legacy columns (combat_active, initiative_order) stay
 // in place — schema cleanup is its own ship to keep this one
 // focused on the user-visible win.
 import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import type { SessionState, ConditionName } from '../../types';
+import { useToast } from '../shared/Toast';
 
 interface DMlobbyProps {
   campaign: { id: string; name: string; description?: string };
+  // v2.292.0 — sessionState is no longer read by this component.
+  // applyPlayerHP/togglePlayerCondition write the `characters` table
+  // directly now (the canonical source of truth for player HP and
+  // active conditions), and the legacy initiative_order merge in
+  // livePCs is gone. Keeping the prop as-is so the existing
+  // CampaignDashboard mount keeps working unchanged; this component
+  // simply doesn't read it. Same back-compat pattern as v2.291's
+  // DMScreen migration.
   sessionState: SessionState | null;
   playerCharacters: { id: string; name: string; current_hp: number; max_hp: number; armor_class: number; class_name: string; level: number; conditions: ConditionName[]; active_conditions?: string[]; strength?: number; dexterity?: number; constitution?: number; intelligence?: number; wisdom?: number; charisma?: number; speed?: number }[];
   members: { user_id: string; display_name?: string; email: string; role: string }[];
   isOwner: boolean;
+  // v2.292.0 — onUpdateSession is no longer called by this component
+  // (HP/condition writes go to the characters table directly). Prop
+  // stays for back-compat with the existing mount.
   onUpdateSession: (updates: Partial<SessionState>) => void;
   // v2.286.0 — onToggleCombat dropped. The legacy "Start Combat"
   // button it drove only flipped sessionState.combat_active without
@@ -105,18 +131,19 @@ function PlayerCard({ pc, isOwner, onApplyHP, onToggleCondition }: {
   );
 }
 
-export default function DMlobby({ campaign, sessionState, playerCharacters, members, isOwner, onUpdateSession }: DMlobbyProps) {
+export default function DMlobby({ campaign, playerCharacters, members, isOwner }: DMlobbyProps) {
   // v2.286.0 — Tab union slimmed: dropped 'combat' (used the legacy
   // InitiativeTracker which doesn't drive combat_participants) and
   // 'map' (top-level Battle Map tab in CampaignDashboard covers it).
-  // sessionState/onUpdateSession kept available for the player HP
-  // controls below — they write current_hp into initiative_order
-  // entries, which is read by the legacy v1 surfaces. This is
-  // tolerated for now; full retirement of the legacy schema is a
-  // follow-up ship.
+  // v2.292.0 — sessionState/onUpdateSession dropped from destructure.
+  // applyPlayerHP and togglePlayerCondition now write characters
+  // table directly. The CampaignDashboard's existing realtime sub on
+  // characters echoes the UPDATE through playerCharacters prop, so
+  // the UI updates without a manual livePCs merge.
   const [activeTab, setActiveTab] = useState<'players'|'notes'>('players');
   const [notes, setNotes] = useState<SceneNote[]>([]);
   const [newNote, setNewNote] = useState('');
+  const { showToast } = useToast();
 
   function addNote() {
     if (!newNote.trim()) return;
@@ -124,36 +151,64 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
     setNewNote('');
   }
 
-  // Apply HP to a player character in the session state
-  function applyPlayerHP(pcId: string, delta: number, mode: 'damage'|'heal') {
-    const order = sessionState?.initiative_order ?? [];
-    const updated = order.map(c => {
-      if (c.id !== pcId) return c;
-      const newHP = mode === 'damage' ? Math.max(0, c.current_hp - delta) : Math.min(c.max_hp, c.current_hp + delta);
-      return { ...c, current_hp: newHP };
-    });
-    onUpdateSession({ initiative_order: updated });
+  // v2.292.0 — Apply HP delta directly to the characters table.
+  // Was: write into sessionState.initiative_order (which was the
+  // root cause of the v2.286-flagged bug — the value never reached
+  // the canonical column). Now: read current values off the prop,
+  // compute clamped new HP, write characters.current_hp. RLS
+  // (`characters: dm can update combat fields`) lets the campaign
+  // owner update any character whose campaign_id matches.
+  async function applyPlayerHP(pcId: string, delta: number, mode: 'damage'|'heal') {
+    const pc = playerCharacters.find(p => p.id === pcId);
+    if (!pc) return;
+    const newHP = mode === 'damage'
+      ? Math.max(0, pc.current_hp - delta)
+      : Math.min(pc.max_hp, pc.current_hp + delta);
+    const { error } = await supabase
+      .from('characters')
+      .update({ current_hp: newHP })
+      .eq('id', pcId);
+    if (error) {
+      console.error('[DMlobby] applyPlayerHP failed:', error);
+      showToast(`Couldn't update HP: ${error.message}`, 'error');
+    }
+    // No optimistic local state update needed — the realtime
+    // subscription on characters in CampaignDashboard fires an
+    // UPDATE echo that flows back through playerCharacters prop.
   }
 
-  function togglePlayerCondition(pcId: string, cond: ConditionName) {
-    const order = sessionState?.initiative_order ?? [];
-    const updated = order.map(c => {
-      if (c.id !== pcId) return c;
-      const has = c.conditions.includes(cond);
-      return { ...c, conditions: has ? c.conditions.filter(x=>x!==cond) : [...c.conditions, cond as ConditionName] };
-    });
-    onUpdateSession({ initiative_order: updated });
+  // v2.292.0 — Toggle condition directly on characters.active_conditions.
+  // The Character row stores the canonical list; legacy code wrote into
+  // initiative_order which UI elsewhere never read. Read current list
+  // from the prop, toggle membership, write back.
+  async function togglePlayerCondition(pcId: string, cond: ConditionName) {
+    const pc = playerCharacters.find(p => p.id === pcId);
+    if (!pc) return;
+    const current = (pc.active_conditions ?? pc.conditions ?? []) as string[];
+    const has = current.includes(cond);
+    const next = has ? current.filter(x => x !== cond) : [...current, cond];
+    const { error } = await supabase
+      .from('characters')
+      .update({ active_conditions: next })
+      .eq('id', pcId);
+    if (error) {
+      console.error('[DMlobby] togglePlayerCondition failed:', error);
+      showToast(`Couldn't update condition: ${error.message}`, 'error');
+    }
   }
 
-  // Merge player characters with session state for live HP
-  const livePCs = playerCharacters.map(pc => {
-    const sessionPC = sessionState?.initiative_order?.find(c => c.id === pc.id);
-    return {
-      ...pc,
-      current_hp: sessionPC?.current_hp ?? pc.current_hp,
-      conditions: (sessionPC?.conditions ?? pc.conditions ?? []) as ConditionName[],
-    };
-  });
+  // v2.292.0 — livePCs merge gone. We now render playerCharacters
+  // directly with a stable shape: characters.active_conditions is
+  // the single source of truth for conditions, characters.current_hp
+  // for HP. The prop already carries both fresh from the
+  // CampaignDashboard's character realtime sub. The local
+  // normalizer below just collapses the two condition shapes
+  // (active_conditions vs the legacy `conditions` field on the prop
+  // type) into one array for the renderer.
+  const livePCs = playerCharacters.map(pc => ({
+    ...pc,
+    conditions: ((pc.active_conditions ?? pc.conditions ?? []) as ConditionName[]),
+  }));
 
   const TABS = [
     { id: 'players', label: `Players (${playerCharacters.length})` },
