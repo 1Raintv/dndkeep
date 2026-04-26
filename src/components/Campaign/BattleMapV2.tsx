@@ -158,6 +158,7 @@ import * as wallsApi from '../../lib/api/sceneWalls';
 import * as textsApi from '../../lib/api/sceneTexts';
 import * as drawingsApi from '../../lib/api/sceneDrawings';
 import { computeVisibilityPolygon, type WallSegment } from '../../lib/vision/visibilityPolygon';
+import { segmentBlockedByWall } from '../../lib/wallCollision';
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
 import { supabase } from '../../lib/supabase';
@@ -2528,12 +2529,17 @@ function TokenLayer(props: {
   // movement (and the token wasn't dragged). Receives world-screen
   // coordinates so the parent can place the panel near the token.
   onTokenClick?: (tokenId: string, screenX: number, screenY: number) => void;
+  // v2.268.0 — fired when a drop is rejected because the path crosses
+  // a movement-blocking wall. The parent shows a toast; TokenLayer
+  // doesn't import the toast hook directly so it stays test-friendly
+  // (rendering this layer in isolation doesn't need a ToastProvider).
+  onMovementBlocked?: () => void;
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, characterHpMap, npcHpMap, tokenConditionsMap,
-    onTokenClick,
+    onTokenClick, onMovementBlocked,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -2594,7 +2600,11 @@ function TokenLayer(props: {
     conditionsLayer: Container | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
-  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  // v2.268.0 — added originX/originY so the drop handler can validate
+  // movement against blocking walls (segment from origin → snapped
+  // drop point shouldn't intersect any wall with blocksMovement=true).
+  // Captured at drag start; never mutated during the drag.
+  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number; originX: number; originY: number } | null>(null);
 
   // v2.256.0 — Lock-ring pulse animation. A single rAF walks every
   // active TokenGfx and breathes the lockRing's alpha+scale. Cheaper
@@ -2743,6 +2753,10 @@ function TokenLayer(props: {
             id: tid,
             offsetX: worldPoint.x - t.x,
             offsetY: worldPoint.y - t.y,
+            // v2.268 — remember where the token was when the drag began so
+            // wall-collision validation has both endpoints of the segment.
+            originX: t.x,
+            originY: t.y,
           };
           // v2.226 — record click-probe state. If pointerup fires soon
           // after with negligible movement, the parent gets onTokenClick
@@ -3219,16 +3233,41 @@ function TokenLayer(props: {
         const snapped = snapToCellCenter(t.x, t.y, gridSizePx);
         const clampedX = Math.max(0, Math.min(worldWidth, snapped.x));
         const clampedY = Math.max(0, Math.min(worldHeight, snapped.y));
-        updatePos(drag.id, clampedX, clampedY);
-        // v2.216: send one final broadcast at the snapped position so
-        // peers see the snap even before the DB round-trip completes.
-        onDragMove?.(drag.id, clampedX, clampedY);
-        // v2.213 commit — single DB write on release. Only commit if
-        // the position actually moved (avoid pointless DB write on click).
-        if (!wasClick) {
-          tokensApi.updateTokenPos(drag.id, clampedX, clampedY).catch(err =>
-            console.error('[BattleMapV2] pos commit failed', err)
-          );
+        // v2.268.0 — wall-blocked movement check. If the segment from
+        // the drag origin to the (clamped, snapped) drop point crosses
+        // any wall with blocksMovement=true (and not an open door), the
+        // drop is rejected and the token snaps back to its origin.
+        // Click drops (wasClick === true) skip this check — clicks
+        // don't change position, so there's no segment to validate.
+        // The check is also skipped when the user didn't actually move
+        // (origin === drop) since that's a no-op drop.
+        const movedAtAll = drag.originX !== clampedX || drag.originY !== clampedY;
+        const blocked = !wasClick && movedAtAll && segmentBlockedByWall(
+          drag.originX, drag.originY,
+          clampedX, clampedY,
+          Object.values(useBattleMapStore.getState().walls),
+        );
+        if (blocked) {
+          // Snap back to origin. updatePos rewrites the local store;
+          // peers see this position on the next broadcast/commit cycle.
+          // No DB write — the token's row in scene_tokens already has
+          // the origin position (we never committed the drag-target
+          // for this drop, since updatePos calls below this branch).
+          updatePos(drag.id, drag.originX, drag.originY);
+          onDragMove?.(drag.id, drag.originX, drag.originY);
+          onMovementBlocked?.();
+        } else {
+          updatePos(drag.id, clampedX, clampedY);
+          // v2.216: send one final broadcast at the snapped position so
+          // peers see the snap even before the DB round-trip completes.
+          onDragMove?.(drag.id, clampedX, clampedY);
+          // v2.213 commit — single DB write on release. Only commit if
+          // the position actually moved (avoid pointless DB write on click).
+          if (!wasClick) {
+            tokensApi.updateTokenPos(drag.id, clampedX, clampedY).catch(err =>
+              console.error('[BattleMapV2] pos commit failed', err)
+            );
+          }
         }
       }
       const entry = gfxMapRef.current.get(drag.id);
@@ -3256,7 +3295,7 @@ function TokenLayer(props: {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked]);
 
   return null;
 }
@@ -5178,6 +5217,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     });
   }, [userId]);
 
+  // v2.268.0 — fired when a drag is rejected because it crosses a
+  // movement-blocking wall. Surface a toast so the player knows the
+  // snap-back wasn't a UI glitch. Cooldown via the toast system's own
+  // dedup if it has one; otherwise rapid-fire reject attempts will
+  // stack toasts (acceptable: rare, and self-explanatory).
+  const handleMovementBlocked = useCallback(() => {
+    showToast('A wall blocks that path.', 'warn');
+  }, [showToast]);
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -6222,6 +6270,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     npcHpMap={npcHpMap}
                     tokenConditionsMap={tokenConditionsMap}
                     onTokenClick={handleTokenClick}
+                    onMovementBlocked={handleMovementBlocked}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
@@ -6439,8 +6488,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             <button
               onClick={toggleWallMode}
               title={wallActive
-                ? 'Walls active — click to place vertices, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls block player line-of-sight; toggle 👁 Player View to verify.'
-                : 'Walls — block line-of-sight on the map. Players can\'t see past them; toggle 👁 to preview the player\'s view. DM only.'}
+                ? 'Walls active — click to place vertices, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls block player line-of-sight AND token movement; toggle 👁 Player View to verify sight lines.'
+                : 'Walls — block line-of-sight + token movement on the map. Players can\'t see or move past them; toggle 👁 to preview the player\'s view. DM only.'}
               style={{
                 width: 36, height: 36,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
