@@ -52,6 +52,17 @@ export interface SeedSource {
    *  populated for monster seeds whose stat block has LR (e.g. dragons,
    *  Lich, Tarrasque). Character/NPC seeds leave this undefined. */
   legendaryResistance?: number;
+  /** v2.285.0 — legendary actions per round. SRD standard is 3 for
+   *  every creature whose stat block carries an LA list (dragons,
+   *  liches, vampires, etc.); variants like Tiamat (5) the DM can
+   *  override after start via the existing LegendaryActionConfigModal.
+   *  Undefined for creatures with no LA at all. */
+  legendaryActionsTotal?: number;
+  /** v2.285.0 — the LA option list itself (Detect, Tail Attack, Wing
+   *  Attack, etc.) carried into combat_participants.legendary_actions_config
+   *  so the DM popover can render them without re-querying the
+   *  bestiary. Mirrors the MonsterData.legendary_actions shape. */
+  legendaryActionsConfig?: import('../types').MonsterLegendaryAction[];
 }
 
 export function characterToSeed(c: Character): SeedSource {
@@ -132,6 +143,19 @@ export async function addParticipantToEncounter(
     max_speed_ft: seed.maxSpeedFt ?? 30,
     legendary_resistance: seed.legendaryResistance ?? null,
     legendary_resistance_used: (seed.legendaryResistance ?? 0) > 0 ? 0 : null,
+    // v2.285.0 — same explicit-defaults LA seeding as startEncounter
+    // (see comment there for the rationale on writing zero/empty
+    // explicitly vs conditional spread). Non-LA seeds get 0/0/[]
+    // matching the DB defaults; LA seeds get 3/3/<list>.
+    legendary_actions_total: seed.legendaryActionsTotal ?? 0,
+    legendary_actions_remaining: seed.legendaryActionsTotal ?? 0,
+    // Cast required because MonsterLegendaryAction is a structural
+    // interface without an index signature, but Supabase's generated
+    // Json type insists on `{ [key: string]: Json | undefined }`. The
+    // runtime payload is plain JSON-serializable data (string fields
+    // + optional numeric `cost`), so the cast is sound. Same pattern
+    // mirrored in startEncounter at the equivalent insert.
+    legendary_actions_config: (seed.legendaryActionsConfig ?? []) as unknown as import('../types/supabase').Json,
   };
 
   const { data, error } = await supabase
@@ -155,6 +179,19 @@ export async function addParticipantToEncounter(
 }
 
 export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSource {
+  // v2.285.0 — auto-import legendary actions. The bestiary stores the
+  // LA option list (Detect, Tail Attack, Wing Attack, ...) but no
+  // per-round count field — it's flavor text in 5e SRD. The 2014
+  // standard for every LA-bearing creature with a published count is
+  // 3, with rare exceptions (Tiamat 5, some homebrew bosses 1-2). We
+  // default to 3 when the option list is non-empty; the DM overrides
+  // via the existing LegendaryActionConfigModal if the creature uses
+  // a different budget. Pre-2.285 the participant row was created
+  // with legendary_actions_total = null, so the LA chip never
+  // appeared and the v2.126 ⚙ Configure popover required manual
+  // bootstrap on every dragon — bad UX.
+  const laList = m.legendary_actions ?? [];
+  const hasLa = laList.length > 0;
   return {
     type: 'monster',
     entityId: m.id,
@@ -170,6 +207,8 @@ export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSo
     // Backfilled for all SRD 2014 LR-bearing creatures via
     // phase_m_lr_backfill migration. Null/0 for creatures without LR.
     legendaryResistance: m.legendary_resistance_count ?? undefined,
+    legendaryActionsTotal: hasLa ? 3 : undefined,
+    legendaryActionsConfig: hasLa ? laList : undefined,
   };
 }
 
@@ -252,6 +291,19 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
       legendary_resistance: s.legendaryResistance ?? null,
       legendary_resistance_used:
         (s.legendaryResistance ?? 0) > 0 ? 0 : null,
+      // v2.285.0 — auto-seed LA from the bestiary. monsterToSeed sets
+      // legendaryActionsTotal=3 + legendaryActionsConfig=<list> when
+      // the stat block has any legendary actions; non-LA seeds leave
+      // both undefined and we fall back to the DB defaults' shape
+      // (0, 0, []). Writing the defaults explicitly rather than
+      // conditional-spreading because TS narrows the union shape
+      // poorly across the insert overloads. The columns are NOT
+      // NULL with defaults, so explicit writes are safe.
+      legendary_actions_total: s.legendaryActionsTotal ?? 0,
+      legendary_actions_remaining: s.legendaryActionsTotal ?? 0,
+      // Cast: see addParticipantToEncounter for the rationale —
+      // MonsterLegendaryAction lacks the Json index signature.
+      legendary_actions_config: (s.legendaryActionsConfig ?? []) as unknown as import('../types/supabase').Json,
     };
   });
 

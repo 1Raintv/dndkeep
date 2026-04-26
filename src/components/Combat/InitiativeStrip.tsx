@@ -63,6 +63,13 @@ export default function InitiativeStrip({ isDM }: Props) {
   // v2.127.0 — Phase J pt 5: lair action popover + config modal (encounter-scoped)
   const [lairPopoverAnchor, setLairPopoverAnchor] = useState<{ x: number; y: number } | null>(null);
   const [lairConfigOpen, setLairConfigOpen] = useState(false);
+  // v2.285.0 — Round summary popover. Click the "Round N" badge to
+  // open; shows one row per participant with chips for action /
+  // bonus / reaction / movement / conditions, derived from the
+  // already-loaded participants array (no new fetch). DM-only —
+  // players don't have the same coordination need (they only see
+  // their own turn).
+  const [roundSummaryAnchor, setRoundSummaryAnchor] = useState<{ x: number; y: number } | null>(null);
 
   if (!encounter || encounter.status !== 'active') return null;
 
@@ -138,13 +145,51 @@ export default function InitiativeStrip({ isDM }: Props) {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
-        <span style={{
-          fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
-          letterSpacing: '0.14em', textTransform: 'uppercase',
-          color: 'var(--c-gold-l)',
-        }}>
-          ⚔ Combat · Round {encounter.round_number}
-        </span>
+        {/* v2.285.0 — Round badge is clickable for the DM. Click
+            opens a per-participant action-status popover anchored
+            below the badge. Player-side stays a static span: the
+            popover would only show their own status which they
+            already see on their tile. */}
+        {isDM ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setRoundSummaryAnchor({ x: rect.left, y: rect.top });
+            }}
+            title="Show per-participant action status for this round"
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+              letterSpacing: '0.14em', textTransform: 'uppercase',
+              color: 'var(--c-gold-l)',
+              background: 'transparent',
+              border: '1px solid transparent',
+              borderRadius: 4,
+              padding: '1px 4px',
+              cursor: 'pointer',
+              textAlign: 'left' as const,
+              lineHeight: 1.3,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,160,23,0.10)';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold-bdr)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent';
+            }}
+          >
+            ⚔ Combat · Round {encounter.round_number}
+          </button>
+        ) : (
+          <span style={{
+            fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+            letterSpacing: '0.14em', textTransform: 'uppercase',
+            color: 'var(--c-gold-l)',
+          }}>
+            ⚔ Combat · Round {encounter.round_number}
+          </span>
+        )}
         <span style={{
           fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
           color: 'var(--t-2)',
@@ -676,6 +721,119 @@ export default function InitiativeStrip({ isDM }: Props) {
           onClose={() => setLairConfigOpen(false)}
         />
       )}
+      {/* v2.285.0 — Round summary popover. Renders above the strip
+          when the DM clicks the Round badge. Pure derivation from
+          the loaded participants array; no fetch. Closes on outside
+          click via the invisible backdrop layer. */}
+      {roundSummaryAnchor && (() => {
+        // Position the popover ABOVE the badge: badge is in the
+        // strip at bottom:0, so popover anchored to the badge top
+        // grows upward via a bottom-relative position.
+        const POPOVER_W = 360;
+        const POPOVER_MAX_H = 320;
+        const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
+        const left = Math.min(Math.max(8, roundSummaryAnchor.x), vw - POPOVER_W - 8);
+        // The strip is at bottom:0; we position the popover above
+        // it with a bottom offset that clears the strip's height
+        // (~64px) plus a small gap.
+        return (
+          <>
+            <div
+              onClick={() => setRoundSummaryAnchor(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 29000, background: 'transparent' }}
+            />
+            <div
+              style={{
+                position: 'fixed', left, bottom: 76,
+                zIndex: 29100,
+                width: POPOVER_W, maxHeight: POPOVER_MAX_H,
+                overflowY: 'auto' as const,
+                background: 'var(--c-card)',
+                border: '1px solid var(--c-gold-bdr)',
+                borderRadius: 10,
+                boxShadow: '0 -10px 28px rgba(0,0,0,0.6)',
+                padding: '10px 12px',
+                animation: 'modalIn 0.15s ease',
+              }}
+            >
+              <div style={{
+                fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+                letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                color: 'var(--c-gold-l)',
+                marginBottom: 8,
+              }}>
+                Round {encounter.round_number} · Action Status
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+                {ordered.map(p => {
+                  const used = (used: boolean, label: string, color: string) => (
+                    <span
+                      title={label + (used ? ' — used' : ' — available')}
+                      style={{
+                        fontFamily: 'var(--ff-stat)', fontSize: 9, fontWeight: 800,
+                        padding: '1px 5px', borderRadius: 3,
+                        background: used ? `${color}33` : 'transparent',
+                        color: used ? color : 'var(--t-3)',
+                        border: `1px solid ${used ? color + '80' : 'var(--c-border)'}`,
+                        letterSpacing: '0.02em',
+                        opacity: used ? 1 : 0.45,
+                      }}
+                    >{label}</span>
+                  );
+                  const moveUsed = (p.movement_used_ft ?? 0) > 0;
+                  const isCurrent = currentActor?.id === p.id;
+                  // ACTOR_COLORS is defined at the top of this file
+                  // (character/monster/npc → hex). Falls back to the
+                  // generic body text color if a participant slips
+                  // through with an unrecognized type.
+                  const typeColor = ACTOR_COLORS[p.participant_type] ?? 'var(--t-2)';
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '4px 6px',
+                        background: isCurrent ? 'rgba(212,160,23,0.12)' : 'rgba(15,16,18,0.5)',
+                        border: `1px solid ${isCurrent ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+                        borderRadius: 4,
+                        opacity: p.is_dead ? 0.5 : 1,
+                      }}
+                    >
+                      <div style={{
+                        fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                        color: typeColor,
+                        whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {isCurrent && <span style={{ marginRight: 4 }}>▶</span>}
+                        {p.name}
+                        {p.is_dead && <span style={{ marginLeft: 6, color: '#f87171', fontSize: 9 }}>✝</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                        {used(p.action_used, 'A', '#f87171')}
+                        {used(p.bonus_used, 'B', '#fbbf24')}
+                        {used(p.reaction_used, 'R', '#60a5fa')}
+                        {used(moveUsed, 'M', '#34d399')}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{
+                marginTop: 8, paddingTop: 8,
+                borderTop: '1px solid var(--c-border)',
+                fontSize: 9, color: 'var(--t-3)',
+                fontFamily: 'var(--ff-body)',
+                letterSpacing: '0.04em',
+              }}>
+                A action · B bonus · R reaction · M movement
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
