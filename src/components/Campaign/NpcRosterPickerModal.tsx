@@ -221,8 +221,13 @@ export default function NpcRosterPickerModal({ ownerId, onClose, onConfirm }: Pr
           ) : filtered && filtered.length === 0 && roster.length === 0 ? (
             <div style={{ padding: 24, color: 'var(--t-3)', fontSize: 13, lineHeight: 1.6 }}>
               <div style={{ fontWeight: 700, color: 'var(--t-2)', marginBottom: 6 }}>Your roster is empty.</div>
-              Add reusable monster entries from the v1 BattleMap's "DM Roster" panel —
-              the entries you build there are owner-scoped and reusable across all your campaigns.
+              {/* v2.289.0 — was a pointer to the old v1 BattleMap "DM Roster" panel
+                  (which no longer exists). The modern path is the Roster Builder
+                  modal opened from the Battle Map tab — typically a "Build Roster"
+                  button in the same area as the NPC tools. Roster entries are
+                  owner-scoped and reusable across all your campaigns. */}
+              Open the Roster Builder from the Battle Map tab to add reusable monster entries —
+              they're owner-scoped and reusable across all your campaigns.
             </div>
           ) : filtered && filtered.length === 0 ? (
             <div style={{ padding: 16, color: 'var(--t-3)', fontSize: 12 }}>

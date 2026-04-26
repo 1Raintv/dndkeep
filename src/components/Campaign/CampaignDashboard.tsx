@@ -26,7 +26,12 @@ import NPCManager from './NPCManager';
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 // v2.267.0 — v1 BattleMap import removed. v2 is the only renderer.
-// If a P0 rollback is needed, re-add: import BattleMap from './BattleMap';
+// v2.289.0 — v1 BattleMap.tsx file deleted from the tree (1695 lines)
+// after v2.286 retired its last importer (DMlobby). To rollback to a
+// pre-v2 renderer would now require either restoring the file from
+// git history or treating it as a from-scratch rewrite — which is
+// fine because BattleMapV2 has been the production renderer for
+// many months by this point. No live code reaches the v1 path.
 // v2.210.0 — Phase Q.1 pt 3: BattleMapV2 is lazy-loaded so Pixi
 // (~500KB) only downloads when a user actually opens the map tab AND
 // flips the v2 toggle. Keeps the main-bundle cost zero for anyone
