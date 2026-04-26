@@ -104,22 +104,40 @@ export interface TakeDashInput {
   participantType: 'character' | 'monster' | 'npc';
 }
 
-export async function takeDash(input: TakeDashInput): Promise<void> {
-  const { data: cur } = await supabase
+// v2.278.0 — Returns a result discriminator so the InitiativeStrip
+// can toast on failure. See combatEncounter.ts for full rationale.
+// Defined locally rather than imported from combatEncounter.ts to
+// keep movement.ts free of cross-module dependencies on encounter
+// internals; the shape is intentionally identical so a future
+// refactor can hoist the type to a shared module without churn.
+export type MovementActionResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export async function takeDash(input: TakeDashInput): Promise<MovementActionResult> {
+  const { data: cur, error: curErr } = await supabase
     .from('combat_participants')
     .select('dash_used_this_turn, action_used, max_speed_ft')
     .eq('id', input.participantId)
     .single();
-  if (!cur) return;
-  if (cur.dash_used_this_turn) return;   // already dashed this turn
+  if (curErr) {
+    console.error('[takeDash] fetch failed:', curErr);
+    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
+  }
+  if (!cur) return { ok: false, reason: 'Participant not found' };
+  if (cur.dash_used_this_turn) return { ok: false, reason: 'Already dashed this turn' };
 
-  await supabase
+  const { error: updErr } = await supabase
     .from('combat_participants')
     .update({
       dash_used_this_turn: true,
       action_used: true,
     })
     .eq('id', input.participantId);
+  if (updErr) {
+    console.error('[takeDash] update failed:', updErr);
+    return { ok: false, reason: updErr.message ?? 'Failed to apply Dash' };
+  }
 
   const chainId = newChainId();
   await emitCombatEvent({
@@ -139,6 +157,7 @@ export async function takeDash(input: TakeDashInput): Promise<void> {
       bonus_ft: cur.max_speed_ft ?? 30,
     },
   });
+  return { ok: true };
 }
 
 // ─── Disengage ───────────────────────────────────────────────────
@@ -153,22 +172,30 @@ export interface TakeDisengageInput {
   participantType: 'character' | 'monster' | 'npc';
 }
 
-export async function takeDisengage(input: TakeDisengageInput): Promise<void> {
-  const { data: cur } = await supabase
+export async function takeDisengage(input: TakeDisengageInput): Promise<MovementActionResult> {
+  const { data: cur, error: curErr } = await supabase
     .from('combat_participants')
     .select('disengaged_this_turn, action_used')
     .eq('id', input.participantId)
     .single();
-  if (!cur) return;
-  if (cur.disengaged_this_turn) return;
+  if (curErr) {
+    console.error('[takeDisengage] fetch failed:', curErr);
+    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
+  }
+  if (!cur) return { ok: false, reason: 'Participant not found' };
+  if (cur.disengaged_this_turn) return { ok: false, reason: 'Already disengaged this turn' };
 
-  await supabase
+  const { error: updErr } = await supabase
     .from('combat_participants')
     .update({
       disengaged_this_turn: true,
       action_used: true,
     })
     .eq('id', input.participantId);
+  if (updErr) {
+    console.error('[takeDisengage] update failed:', updErr);
+    return { ok: false, reason: updErr.message ?? 'Failed to apply Disengage' };
+  }
 
   const chainId = newChainId();
   await emitCombatEvent({
@@ -186,6 +213,7 @@ export async function takeDisengage(input: TakeDisengageInput): Promise<void> {
     eventType: 'disengage',
     payload: {},
   });
+  return { ok: true };
 }
 
 /**

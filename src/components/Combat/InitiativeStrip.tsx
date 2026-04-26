@@ -21,6 +21,10 @@ import LegendaryResistancePopover from './LegendaryResistancePopover';
 import LegendaryActionConfigModal from './LegendaryActionConfigModal';
 import LairActionPickerPopover from './LairActionPickerPopover';
 import LairActionsConfigModal from './LairActionsConfigModal';
+// v2.278.0 — toast for action-button failures (RLS, network, stale state).
+// Without this, a click that hit an error was indistinguishable from a click
+// that worked-but-rendered-late, since the realtime echo also drives the UI.
+import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -35,6 +39,10 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 
 export default function InitiativeStrip({ isDM }: Props) {
   const { encounter, participants, currentActor } = useCombat();
+  // v2.278.0 — surface action-button failures to the user. Pre-2.278
+  // every handler did `await fn(...)` and discarded the result, so an
+  // RLS rejection / network error / stale state was completely silent.
+  const { showToast } = useToast();
   const [showDeclare, setShowDeclare] = useState(false);
   // v2.112.0 — Phase H pt 3: condition picker popover anchored to a tile
   const [conditionPicker, setConditionPicker] = useState<{
@@ -64,13 +72,19 @@ export default function InitiativeStrip({ isDM }: Props) {
 
   async function onEndTurn() {
     if (!encounter) return;
-    await advanceTurn(encounter.id);
+    const result = await advanceTurn(encounter.id);
+    if (!result.ok) {
+      showToast(`Couldn't end turn: ${result.reason}`, 'error');
+    }
   }
 
   async function onEndCombat() {
     if (!encounter) return;
     if (!window.confirm('End combat?')) return;
-    await endEncounter(encounter.id);
+    const result = await endEncounter(encounter.id);
+    if (!result.ok) {
+      showToast(`Couldn't end combat: ${result.reason}`, 'error');
+    }
   }
 
   // v2.108.0 — Phase G: Dash + Disengage action buttons. Apply to the current
@@ -78,25 +92,31 @@ export default function InitiativeStrip({ isDM }: Props) {
   async function onDash() {
     if (!encounter || !currentActor) return;
     if (currentActor.dash_used_this_turn) return;
-    await takeDash({
+    const result = await takeDash({
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
       participantId: currentActor.id,
       participantName: currentActor.name,
       participantType: currentActor.participant_type,
     });
+    if (!result.ok) {
+      showToast(`Couldn't Dash: ${result.reason}`, 'error');
+    }
   }
 
   async function onDisengage() {
     if (!encounter || !currentActor) return;
     if (currentActor.disengaged_this_turn) return;
-    await takeDisengage({
+    const result = await takeDisengage({
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
       participantId: currentActor.id,
       participantName: currentActor.name,
       participantType: currentActor.participant_type,
     });
+    if (!result.ok) {
+      showToast(`Couldn't Disengage: ${result.reason}`, 'error');
+    }
   }
 
   return (

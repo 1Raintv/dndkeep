@@ -391,25 +391,43 @@ export async function rollInitiativeForParticipant(
 // ─── advanceTurn ─────────────────────────────────────────────────
 // Advance to the next non-dead, visible-in-initiative participant.
 // Wraps back to turn_order=0 and increments round_number on wrap.
-export async function advanceTurn(encounterId: string): Promise<void> {
-  const { data: enc } = await supabase
+// v2.278.0 — Returns a discriminated result so the UI can surface a
+// toast on failure instead of silently swallowing the error. Pre-2.278
+// the function returned void and any RLS / network / constraint
+// failure was invisible to the user — a "button doesn't work" report
+// would have no signal trail. The non-void return is non-breaking:
+// existing callers `await advanceTurn(id)` just discard the value.
+export type CombatActionResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export async function advanceTurn(encounterId: string): Promise<CombatActionResult> {
+  const { data: enc, error: encErr } = await supabase
     .from('combat_encounters')
     .select('*')
     .eq('id', encounterId)
     .single();
-  if (!enc) return;
+  if (encErr) {
+    console.error('[advanceTurn] encounter fetch failed:', encErr);
+    return { ok: false, reason: encErr.message ?? 'Failed to load encounter' };
+  }
+  if (!enc) return { ok: false, reason: 'Encounter not found' };
   const encounter = enc as CombatEncounter;
 
-  const { data: rows } = await supabase
+  const { data: rows, error: rowsErr } = await supabase
     .from('combat_participants')
     .select('id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining')
     .eq('encounter_id', encounterId)
     .order('turn_order', { ascending: true });
-  if (!rows || rows.length === 0) return;
+  if (rowsErr) {
+    console.error('[advanceTurn] participants fetch failed:', rowsErr);
+    return { ok: false, reason: rowsErr.message ?? 'Failed to load participants' };
+  }
+  if (!rows || rows.length === 0) return { ok: false, reason: 'No participants in this encounter' };
 
   // Filter out dead and rows without an initiative slot (shouldn't be many)
   const active = rows.filter(r => !r.is_dead);
-  if (active.length === 0) return;
+  if (active.length === 0) return { ok: false, reason: 'All participants are dead' };
 
   const currentIdx = encounter.current_turn_index ?? 0;
   let nextIdx = currentIdx + 1;
@@ -432,7 +450,7 @@ export async function advanceTurn(encounterId: string): Promise<void> {
   const laRemaining = (incomingParticipant.legendary_actions_remaining as number | null) ?? 0;
   const needsLaRefill = laTotal > 0 && laRemaining < laTotal;
 
-  await supabase
+  const { error: partUpdErr } = await supabase
     .from('combat_participants')
     .update({
       action_used: false,
@@ -445,13 +463,17 @@ export async function advanceTurn(encounterId: string): Promise<void> {
       ...(needsLaRefill ? { legendary_actions_remaining: laTotal } : {}),
     })
     .eq('id', incomingParticipant.id);
+  if (partUpdErr) {
+    console.error('[advanceTurn] participant turn-reset failed:', partUpdErr);
+    return { ok: false, reason: partUpdErr.message ?? 'Failed to reset turn budgets' };
+  }
 
   // v2.127.0 — Phase J: on round increment, reset lair_action_used_this_round
   // so the DM can fire another one. Only included in the UPDATE when the round
   // actually ticked over.
   const lairUpdates = roundIncremented ? { lair_action_used_this_round: false } : {};
 
-  await supabase
+  const { error: encUpdErr } = await supabase
     .from('combat_encounters')
     .update({
       current_turn_index: nextIdx,
@@ -459,6 +481,10 @@ export async function advanceTurn(encounterId: string): Promise<void> {
       ...lairUpdates,
     })
     .eq('id', encounterId);
+  if (encUpdErr) {
+    console.error('[advanceTurn] encounter turn-advance failed:', encUpdErr);
+    return { ok: false, reason: encUpdErr.message ?? 'Failed to advance turn' };
+  }
 
   // v2.127.0 — Phase J: lair action window opens at top of each round (RAW
   // 2024: initiative 20). Only emit when the encounter is flagged in_lair
@@ -663,20 +689,34 @@ export async function advanceTurn(encounterId: string): Promise<void> {
     visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
   });
   await emitCombatEventChain(chain);
+  return { ok: true };
 }
 
 // ─── endEncounter ────────────────────────────────────────────────
-export async function endEncounter(encounterId: string): Promise<void> {
-  const { data: enc } = await supabase
+// v2.278.0 — Returns CombatActionResult for the same reason advanceTurn
+// does: silent failure on RLS / network / missing-row used to leave
+// the End Combat button looking unresponsive. emitCombatEvent at the
+// end is fire-and-forget — log emission failing isn't a user-visible
+// failure for the action itself.
+export async function endEncounter(encounterId: string): Promise<CombatActionResult> {
+  const { data: enc, error: encErr } = await supabase
     .from('combat_encounters')
     .select('campaign_id, started_at, round_number')
     .eq('id', encounterId)
     .single();
+  if (encErr) {
+    console.error('[endEncounter] fetch failed:', encErr);
+    return { ok: false, reason: encErr.message ?? 'Failed to load encounter' };
+  }
 
-  await supabase
+  const { error: updErr } = await supabase
     .from('combat_encounters')
     .update({ status: 'ended', ended_at: new Date().toISOString() })
     .eq('id', encounterId);
+  if (updErr) {
+    console.error('[endEncounter] update failed:', updErr);
+    return { ok: false, reason: updErr.message ?? 'Failed to end encounter' };
+  }
 
   if (enc) {
     const durationSec = enc.started_at
@@ -691,6 +731,7 @@ export async function endEncounter(encounterId: string): Promise<void> {
       payload: { rounds: enc.round_number, duration_seconds: durationSec },
     });
   }
+  return { ok: true };
 }
 
 // ─── revealMonster ───────────────────────────────────────────────
