@@ -1201,13 +1201,26 @@ function VisionLayer(props: {
    *  preview). Default false; only the DM toolbar's preview button
    *  flips this. Players never see this prop set. */
   dmPreviewFog?: boolean;
+  /** v2.274.0 — scene ambient lighting. Drives whether the fog
+   *  layer renders at all and at what alpha:
+   *    'bright' → no fog rendering (skipped via fogActive gate);
+   *    'dim'    → fog rendered at ~0.55 alpha (mood lighting);
+   *    'dark'   → fog rendered at 1.0 alpha (the original behavior).
+   *  Vision polygons still cut transparent holes through 'dim' fog so
+   *  PCs see clearly within their range; the difference is the
+   *  ambient layer outside their cones is partly transparent rather
+   *  than fully opaque. */
+  ambientLight: 'bright' | 'dim' | 'dark';
 }) {
-  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, dmPreviewFog } = props;
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, dmPreviewFog, ambientLight } = props;
   // v2.267.0 — effective "should this layer render fog" check. When
   // the DM has enabled Player View preview, treat them like a player
   // for the purposes of mounting + recomputing the fog texture. The
   // DM's own walls + tokens still render normally on top.
-  const fogActive = !isDM || !!dmPreviewFog;
+  // v2.274.0 — also gated by ambientLight: 'bright' means "no fog at
+  // all" so the layer never mounts, regardless of player/DM identity.
+  // This is the daylight/outdoor case — players see the whole map.
+  const fogActive = ambientLight !== 'bright' && (!isDM || !!dmPreviewFog);
   const tokens = useBattleMapStore(s => s.tokens);
   const walls = useBattleMapStore(s => s.walls);
   const { app } = useApplication();
@@ -1309,9 +1322,19 @@ function VisionLayer(props: {
     }
 
     // 1. Dark fog fill covering the entire world.
+    // v2.274.0 — alpha varies with ambientLight:
+    //   - 'dark' (default, current behavior): full opaque (alpha 1).
+    //     Outside vision polygons = pure black.
+    //   - 'dim' : translucent (alpha ~0.55). The map shows through but
+    //     muted, and the vision polygons still cut clear holes for the
+    //     player's actual sight cone. Reads as "twilight / mood".
+    //   - 'bright' : we'd never reach here because the fogActive gate
+    //     already returned early. Defensive fallback to 'dark' alpha
+    //     just in case the gate logic changes.
+    const fogAlpha = ambientLight === 'dim' ? 0.55 : 1;
     const fog = new Graphics();
     fog.rect(0, 0, worldWidth, worldHeight);
-    fog.fill({ color: 0x0a0c10, alpha: 1 });
+    fog.fill({ color: 0x0a0c10, alpha: fogAlpha });
     scratch.addChild(fog);
 
     // 2. For each origin token, compute polygon and draw with erase
@@ -1347,7 +1370,7 @@ function VisionLayer(props: {
 
     // 3. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
-  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, app]);
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, app]);
 
   return null;
 }
@@ -5386,6 +5409,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               backgroundStoragePath: newRow.background_storage_path,
               dmNotes: newRow.dm_notes,
               isPublished: newRow.is_published,
+              // v2.274.0 — ambient_light defaults to 'dark' if missing.
+              ambientLight: newRow.ambient_light ?? 'dark',
               createdAt: newRow.created_at,
               updatedAt: newRow.updated_at,
             };
@@ -5406,6 +5431,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               backgroundStoragePath: newRow.background_storage_path,
               dmNotes: newRow.dm_notes,
               isPublished: newRow.is_published,
+              // v2.274.0 — pull ambient_light through realtime so the
+              // DM's lighting toggle reaches all connected players
+              // without a refetch.
+              ambientLight: newRow.ambient_light ?? 'dark',
               updatedAt: newRow.updated_at,
             } : s));
             // If the currently-selected scene was renamed / retuned,
@@ -5419,6 +5448,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               backgroundStoragePath: newRow.background_storage_path,
               dmNotes: newRow.dm_notes,
               isPublished: newRow.is_published,
+              ambientLight: newRow.ambient_light ?? 'dark',
               updatedAt: newRow.updated_at,
             } : prev);
           } else if (payload.eventType === 'DELETE') {
@@ -6172,6 +6202,25 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     );
   }, [currentScene, confirmModal]);
 
+  // v2.274.0 — Set the scene's ambient lighting (bright/dim/dark).
+  // Optimistic local update + async DB commit. Realtime echo to other
+  // clients is handled by the existing scenes-table channel; the
+  // originator's state is already correct from the optimistic update,
+  // so the echo is a no-op.
+  const handleSetAmbientLight = useCallback((mode: 'bright' | 'dim' | 'dark') => {
+    if (!currentScene) return;
+    if (currentScene.ambientLight === mode) return; // no-op when already in this mode
+    setScenes(prev => prev.map(s => s.id === currentScene.id
+      ? { ...s, ambientLight: mode }
+      : s));
+    setCurrentScene(prev => prev && prev.id === currentScene.id
+      ? { ...prev, ambientLight: mode }
+      : prev);
+    scenesApi.updateScene(currentScene.id, { ambientLight: mode }).catch(err =>
+      console.error('[BattleMapV2] ambient light commit failed', err)
+    );
+  }, [currentScene]);
+
   const handleContextMenu = useCallback((state: ContextMenuState) => {
     setContextMenu(state);
   }, []);
@@ -6447,6 +6496,53 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             background: 'var(--c-border)',
             margin: '0 4px',
           }} />
+          {/* v2.274.0 — Lighting controls. Three-state toggle for the
+              scene's ambient_light value. Active state is highlighted
+              gold; inactive states use a muted variant of the icon
+              color so the cluster reads as a connected control group.
+              Click the active button = no-op (handler short-circuits).
+              Tooltips explain the player-side effect of each mode. */}
+          <span style={{
+            fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+            color: 'var(--t-3)', letterSpacing: '0.08em',
+            textTransform: 'uppercase' as const,
+            marginRight: 4,
+          }}>
+            Light
+          </span>
+          {([
+            { mode: 'bright' as const, icon: '☀', label: 'Bright', tip: 'Daylight / outdoor — players see the entire map (no fog).' },
+            { mode: 'dim'    as const, icon: '🌆', label: 'Dim',    tip: 'Dusk / mood — players see a translucent fog over the map; their vision cones cut clear holes.' },
+            { mode: 'dark'   as const, icon: '🌑', label: 'Dark',   tip: 'Night / dungeon — players only see inside their vision cones; the rest is opaque black.' },
+          ]).map(({ mode, icon, label, tip }) => {
+            const active = currentScene.ambientLight === mode;
+            return (
+              <button
+                key={mode}
+                onClick={() => handleSetAmbientLight(mode)}
+                title={tip}
+                style={{
+                  padding: '6px 12px',
+                  background: active ? 'var(--c-gold-bg)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${active ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: active ? 'var(--c-gold-l)' : 'var(--t-2)',
+                  fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  cursor: active ? 'default' : 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                <span aria-hidden="true">{icon}</span>
+                <span>{label}</span>
+              </button>
+            );
+          })}
+          <span style={{
+            width: 1, height: 22,
+            background: 'var(--c-border)',
+            margin: '0 4px',
+          }} />
           <span style={{
             fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
             color: 'var(--t-3)', letterSpacing: '0.08em',
@@ -6693,6 +6789,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     isDM={isDM}
                     visionOriginCharacterIds={visionOriginCharacterIds}
                     dmPreviewFog={dmPreviewFog}
+                    ambientLight={currentScene?.ambientLight ?? 'dark'}
                   />
                   {/* v2.218 — rendered last so the ruler's Graphics +
                       label appear on top of tokens. Internally addChild's

@@ -2190,6 +2190,7 @@ export type Database = {
           background_storage_path: string | null;
           dm_notes: string | null;
           is_published: boolean;
+          ambient_light: string;
           created_at: string;
           updated_at: string;
         };
@@ -2205,6 +2206,7 @@ export type Database = {
           background_storage_path?: string | null;
           dm_notes?: string | null;
           is_published?: boolean;
+          ambient_light?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -2220,6 +2222,7 @@ export type Database = {
           background_storage_path?: string | null;
           dm_notes?: string | null;
           is_published?: boolean;
+          ambient_light?: string;
           created_at?: string;
           updated_at?: string;
         };

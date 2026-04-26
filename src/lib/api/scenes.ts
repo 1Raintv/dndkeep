@@ -27,6 +27,11 @@ export interface Scene {
   backgroundStoragePath: string | null;
   dmNotes: string | null;
   isPublished: boolean;
+  // v2.274.0 — scene ambient lighting. 'bright' = no fog rendered (day,
+  // outdoor); 'dim' = translucent fog (~0.55 alpha — dusk, mood); 'dark'
+  // = opaque fog (the v2.224+ default — dungeons, night). DM-controlled
+  // via the in-app toolbar; backed by a CHECK-constrained text column.
+  ambientLight: 'bright' | 'dim' | 'dark';
   createdAt: string;
   updatedAt: string;
 }
@@ -45,6 +50,10 @@ function rowToScene(row: any): Scene {
     backgroundStoragePath: row.background_storage_path,
     dmNotes: row.dm_notes,
     isPublished: row.is_published,
+    // v2.274.0 — fall back to 'dark' if the column is somehow missing
+    // (shouldn't happen post-migration, but defensive against stale
+    // server response shapes during the migration rollout window).
+    ambientLight: row.ambient_light ?? 'dark',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -104,10 +113,10 @@ export async function deleteScene(sceneId: string): Promise<boolean> {
   return true;
 }
 
-/** Update mutable scene fields (name, grid settings, background, published state). */
+/** Update mutable scene fields (name, grid settings, background, published state, ambient light). */
 export async function updateScene(
   sceneId: string,
-  patch: Partial<Pick<Scene, 'name' | 'isPublished' | 'dmNotes' | 'gridSizePx' | 'widthCells' | 'heightCells' | 'backgroundStoragePath'>>
+  patch: Partial<Pick<Scene, 'name' | 'isPublished' | 'dmNotes' | 'gridSizePx' | 'widthCells' | 'heightCells' | 'backgroundStoragePath' | 'ambientLight'>>
 ): Promise<boolean> {
   const dbPatch: Record<string, any> = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -118,6 +127,8 @@ export async function updateScene(
   if (patch.heightCells !== undefined) dbPatch.height_cells = patch.heightCells;
   // v2.217: allow explicit null (remove background); undefined means "leave alone".
   if (patch.backgroundStoragePath !== undefined) dbPatch.background_storage_path = patch.backgroundStoragePath;
+  // v2.274.0 — ambient lighting toggle.
+  if (patch.ambientLight !== undefined) dbPatch.ambient_light = patch.ambientLight;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scenes').update(dbPatch).eq('id', sceneId);
   if (error) {
