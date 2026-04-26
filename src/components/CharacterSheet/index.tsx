@@ -7,7 +7,7 @@ import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { useSpells } from '../../lib/hooks/useSpells';
 import { rechargeOnLongRest } from '../../lib/charges';
-import { CombatProvider } from '../../context/CombatContext';
+import { CombatProvider, useCombat } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import ReactionPromptModal from '../Combat/ReactionPromptModal';
 import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal';
@@ -139,11 +139,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
  const [showLevelUp, setShowLevelUp] = useState(false);
 
- // ── Initiative / "your turn" banner ──────────────────────────────
- const [isMyTurn, setIsMyTurn] = useState(false);
- const [combatActive, setCombatActive] = useState(false);
- const [currentTurnName, setCurrentTurnName] = useState('');
- const [combatRound, setCombatRound] = useState(1);
+ // v2.294.0 — The combat-status useStates that used to live here
+ // (isMyTurn / combatActive / currentTurnName / combatRound) are
+ // gone. They were driven by a now-dead legacy session_states
+ // realtime sub; the v2.286+ combat unification moved combat off
+ // those columns and the banner had been silently broken in
+ // production since (combat_active never flipped true). The
+ // <YourTurnBanner /> sub-component below subscribes to the
+ // existing CombatProvider and renders the banner directly via
+ // useCombat() — no parent state needed.
 
  // ── DM Announcements & Save Prompts ────────────────────────────
  const [dmAnnouncement, setDmAnnouncement] = useState<string | null>(null);
@@ -478,38 +482,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  supabase.from('campaigns').select('owner_id').eq('id', character.campaign_id).single()
  .then(({ data }) => { if (data && userId) setIsDM(data.owner_id === userId); });
 
- // Fetch initial state
- supabase
- .from('session_states')
- .select('*')
- .eq('campaign_id', character.campaign_id)
- .maybeSingle()
- .then(({ data }) => { if (data) applySessionState(data); });
+ // v2.294.0 — session_states fetch + realtime sub removed. The
+ // legacy applySessionState() function fed combat-banner state
+ // (combat_active / round / current_turn → isMyTurn etc.) but
+ // that table stopped being written to combat-actively after the
+ // v2.286+ migrations retired the legacy Start Combat path.
+ // Combat status now flows through CombatProvider (mounted
+ // inside this component, see the JSX below) and the
+ // <YourTurnBanner /> sub-component reads it via useCombat().
+ // No realtime channel needed at this hook level — the provider
+ // owns its own subscription.
+ }, [character.campaign_id, character.id, userId]);
 
- // Subscribe to changes
- const ch = supabase
- .channel(`session-state-${character.campaign_id}`)
- .on('postgres_changes', { event: '*', schema: 'public', table: 'session_states', filter: `campaign_id=eq.${character.campaign_id}` },
- payload => { if (payload.new) applySessionState(payload.new as any); }
- )
- .subscribe();
-
- return () => { supabase.removeChannel(ch); };
- }, [character.campaign_id, character.id]);
-
- function applySessionState(state: any) {
- const active = !!state.combat_active;
- setCombatActive(active);
- setCombatRound(state.round ?? 1);
- if (!active) { setIsMyTurn(false); setCurrentTurnName(''); return; }
- const order: any[] = state.initiative_order ?? [];
- const sorted = [...order].sort((a, b) => b.initiative - a.initiative);
- const idx = state.current_turn % Math.max(sorted.length, 1);
- const current = sorted[idx];
- if (!current) return;
- setCurrentTurnName(current.name ?? '');
- setIsMyTurn(current.character_id === character.id || current.name === character.name);
- }
+ // v2.294.0 — applySessionState() function removed. It was the only
+ // consumer of the four useStates dropped above, all now derived
+ // inside <YourTurnBanner />.
  // Concentration: derived from character.concentration_spell (persisted in DB).
  // Empty string means "not concentrating" — same as null at the React layer.
  // Writes go through setConcentration(), which persists immediately so a refresh
@@ -2082,46 +2069,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  )}
 
  {/* ── Your Turn banner ── */}
- {combatActive && (
- <div style={{
- padding: '8px 16px',
- background: isMyTurn
- ? 'linear-gradient(90deg, rgba(212,160,23,0.18), rgba(212,160,23,0.06))'
- : 'rgba(255,255,255,0.03)',
- border: `1px solid ${isMyTurn ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
- borderRadius: 10,
- display: 'grid',
- gridTemplateColumns: '1fr auto 1fr',
- alignItems: 'center',
- gap: 10,
- transition: 'all 0.3s',
- animation: isMyTurn ? 'pulse-gold 2s infinite' : 'none',
- }}>
- {/* left spacer */}
- <div />
- {/* centered content */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
- <div style={{
- width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
- background: isMyTurn ? 'var(--c-gold)' : 'var(--t-3)',
- boxShadow: isMyTurn ? '0 0 8px var(--c-gold)' : 'none',
- }} />
- {isMyTurn ? (
- <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--c-gold-l)', letterSpacing: '0.04em' }}>
- YOUR TURN
- </span>
- ) : (
- <span style={{ fontWeight: 500, fontSize: 12, color: 'var(--t-3)' }}>
- Combat active — {currentTurnName ? `${currentTurnName}'s turn` : 'waiting…'}
- </span>
- )}
- </div>
- {/* right: round */}
- <span style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 600, textAlign: 'right' }}>
- ROUND {combatRound}
- </span>
- </div>
- )}
+ {/* v2.294.0 — Inlined sub-component (defined at module bottom).
+     Reads combat state via useCombat() so it can stay inside
+     the existing CombatProvider tree. Was a JSX block driven by
+     parent state; the parent state itself was driven by a dead
+     session_states sub. */}
+ <YourTurnBanner characterId={character.id} characterName={character.name} />
 
  {/* ── Divider ── */}
  <div style={{ height: 1, background: 'var(--c-border)' }} />
@@ -4279,6 +4232,80 @@ function SpellRow({
  </div>
  )}
 
+ </div>
+ );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// v2.294.0 — Combat banner ("Your Turn" / "Combat active") sub-component.
+//
+// Was a JSX block driven by parent state (combatActive / isMyTurn /
+// currentTurnName / combatRound) that came from a session_states
+// realtime subscription. After the v2.286+ migrations, that table
+// stopped being the canonical combat source and the banner had been
+// silently broken (combat_active stayed false in production).
+//
+// New shape: pure derivation from useCombat() inside the existing
+// CombatProvider tree. The provider already realtime-subscribes to
+// combat_encounters + combat_participants for this campaign, so this
+// sub-component renders nothing during peace and the right banner
+// during combat with no extra plumbing.
+//
+// "Your turn" matching: modern combat_participants use entity_id to
+// link back to the character row, so we match
+// `currentActor.entity_id === characterId` for player chars.
+// Legacy fallback by name was a defensive hack for the v2.248-era
+// schema where Combatant entries created via "Add Monster" had no
+// link back to the npcs table; modern combat doesn't have that
+// problem so the name fallback is dropped.
+// ──────────────────────────────────────────────────────────────────
+function YourTurnBanner({ characterId, characterName: _characterName }: {
+ characterId: string;
+ characterName: string;
+}) {
+ const { encounter, currentActor } = useCombat();
+ if (!encounter || encounter.status !== 'active') return null;
+
+ const isMyTurn = currentActor?.entity_id === characterId
+ && currentActor?.participant_type === 'character';
+ const currentTurnName = currentActor?.name ?? '';
+ const combatRound = encounter.round_number ?? 1;
+
+ return (
+ <div style={{
+ padding: '8px 16px',
+ background: isMyTurn
+ ? 'linear-gradient(90deg, rgba(212,160,23,0.18), rgba(212,160,23,0.06))'
+ : 'rgba(255,255,255,0.03)',
+ border: `1px solid ${isMyTurn ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+ borderRadius: 10,
+ display: 'grid',
+ gridTemplateColumns: '1fr auto 1fr',
+ alignItems: 'center',
+ gap: 10,
+ transition: 'all 0.3s',
+ animation: isMyTurn ? 'pulse-gold 2s infinite' : 'none',
+ }}>
+ <div />
+ <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
+ <div style={{
+ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+ background: isMyTurn ? 'var(--c-gold)' : 'var(--t-3)',
+ boxShadow: isMyTurn ? '0 0 8px var(--c-gold)' : 'none',
+ }} />
+ {isMyTurn ? (
+ <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--c-gold-l)', letterSpacing: '0.04em' }}>
+ YOUR TURN
+ </span>
+ ) : (
+ <span style={{ fontWeight: 500, fontSize: 12, color: 'var(--t-3)' }}>
+ Combat active — {currentTurnName ? `${currentTurnName}'s turn` : 'waiting…'}
+ </span>
+ )}
+ </div>
+ <span style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 600, textAlign: 'right' }}>
+ ROUND {combatRound}
+ </span>
  </div>
  );
 }
