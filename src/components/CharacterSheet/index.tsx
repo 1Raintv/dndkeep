@@ -26,6 +26,7 @@ import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canU
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { itemRequiresAttunement } from '../../lib/attunement';
+import { isStrikeableInventoryWeapon, inventoryItemToWeapon } from '../../lib/inventoryWeapon';
 import { getMagicItemById } from '../../lib/hooks/useMagicItems';
 
 import CharacterHeader from './CharacterHeader';
@@ -2334,94 +2335,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── COMBAT: Weapons & Attacks only ── */}
  {activeTab === 'actions' && (() => {
  // v2.179.0 — Phase Q.0 pt 20: equip-auto-attack.
- // Inventory items promote to attacks on the Actions tab when:
- //   1. Not a potion (potions use the Use button in Consumables).
- //   2. Equipped (the player is actually wielding it).
- //   3. Has weapon characteristics: a damage string, or the
- //      category is 'Weapon', or the legacy is_weapon flag is set.
- //   4. If the item requires attunement (magic item catalogue says
- //      so), the player must also be attuned. A +1 sword sitting
- //      equipped but not attuned is a shiny stick — per RAW you
- //      can swing it, but none of its magical benefits apply; and
- //      RAW also says most such items "don't function" without
- //      attunement. We take the stricter reading here: if the
- //      catalogue requires attunement, the item doesn't appear
- //      as an attack until attuned. Non-magic weapons (longsword,
- //      dagger, etc.) are unaffected by this gate — they have no
- //      magic_item_id so itemRequiresAttunement returns false.
- const inventoryWeapons = (character.inventory ?? []).filter((item: any) => {
- if (item.category === 'Potion') return false;
- if (!item.equipped) return false;
- const catalogueType = item.magic_item_id
- ? getMagicItemById(item.magic_item_id)?.type
- : undefined;
- const looksLikeWeapon =
- item.damage ||
- item.is_weapon ||
- item.category?.toLowerCase() === 'weapon' ||
- item.category?.toLowerCase() === 'weapons' ||
- // v2.180.0 — also honor catalogue type for magic items that
- // were added before Fix A (their inventory rows don't have
- // category set locally, but the magic_item_id → catalogue
- // lookup tells us they're a weapon/staff).
- catalogueType === 'weapon' ||
- catalogueType === 'staff';
- if (!looksLikeWeapon) return false;
- if (itemRequiresAttunement(item) && !item.attuned) return false;
- return true;
- });
- const inventoryAsWeapons = inventoryWeapons.map((item: any) => {
- // v2.184.0 — Phase Q.0 pt 25: damage resolution cascade reorder.
- //
- // Previous order (v2.180-v2.183) was:
- //   item.damage || item.description || item.notes || catalogue
- //
- // Bug: a Luck Blade's `description` is fluff ("[LEGENDARY — Requires
- // Attunement] +1 attack/damage. 1 luck point to reroll...") — truthy,
- // no dice. The `||` cascade stopped there and never reached the
- // catalogue's baseDamageDice ("1d8 slashing"). Result: 1d4 fallback
- // with a stray +1 parsed from "+1 attack/damage" wording, producing
- // "1d4+2 bludgeoning" instead of "1d8 slashing" on the Actions tab.
- //
- // Fix: pick the first candidate that CONTAINS parseable dice
- // (\d+d\d+). If none do, fall back to whichever was truthy so the
- // regex below still has something to try for bonus/type extraction.
- // This means catalogue baseDamageDice wins for Luck Blade / Flame
- // Tongue / etc., while non-magic weapons (Greatclub has dice in
- // description, no catalogue link) still resolve correctly.
- const catalogueEntry = item.magic_item_id
- ? getMagicItemById(item.magic_item_id)
- : undefined;
- const candidates = [
- item.damage,
- catalogueEntry?.baseDamageDice,
- item.description,
- item.notes,
- ].filter((s): s is string => typeof s === 'string' && s.length > 0);
- const DICE_RE = /\d+d\d+/;
- const dmgStr = candidates.find(s => DICE_RE.test(s)) ?? candidates[0] ?? '';
- const diceMatch = dmgStr.match(/(\d+d\d+)/);
- const bonusMatch = dmgStr.match(/[+\-]\d+/);
- const typeMatch = dmgStr.match(/(slashing|piercing|bludgeoning|fire|cold|lightning|poison|acid|necrotic|radiant|psychic|thunder|force)/i);
- const strMod = computed.modifiers.strength ?? 0;
- const dexMod = computed.modifiers.dexterity ?? 0;
- const isFinesse = item.properties?.toLowerCase().includes('finesse');
- const atkMod = isFinesse ? Math.max(strMod, dexMod) : strMod;
- const pb = computed.proficiency_bonus ?? 2;
- const magicAtkBonus = typeof item.attackBonus === 'number' ? item.attackBonus : 0;
- const magicDmgBonus = typeof item.damageBonus === 'number' ? item.damageBonus : 0;
- return {
- id: `inv_${item.id}`,
- name: item.name,
- attackBonus: atkMod + pb + magicAtkBonus,
- damageDice: diceMatch ? diceMatch[1] : '1d4',
- damageBonus: (bonusMatch ? parseInt(bonusMatch[0]) : atkMod) + magicDmgBonus,
- damageType: typeMatch ? typeMatch[1].toLowerCase() : 'bludgeoning',
- range: item.range ?? 'Melee',
- properties: item.properties ?? '',
- notes: '',
- };
- });
+ // v2.266.0 — the inline filter + map were extracted to
+ // src/lib/inventoryWeapon.ts so the Inventory tab can also
+ // strike from equipped weapons without forking the math.
+ // The predicate (isStrikeableInventoryWeapon) and the conversion
+ // (inventoryItemToWeapon) live there with full RAW notes about
+ // the damage cascade fix from v2.184.
+ const inventoryWeapons = (character.inventory ?? []).filter(isStrikeableInventoryWeapon);
+ const inventoryAsWeapons = inventoryWeapons.map((item: any) => inventoryItemToWeapon(item, computed));
 
  // Unarmed Strike — always available per 2024 PHB (p.377)
  // Attack: d20 + STR mod + Proficiency Bonus
@@ -3863,7 +3784,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── INVENTORY ── */}
  {activeTab === 'inventory' && (
  <div style={{ maxWidth: 900 }}>
- <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)} onUpdateHP={hp => applyUpdate({ current_hp: hp }, true)} />
+ <Inventory character={character} onUpdateInventory={handleUpdateInventory} onUpdateCurrency={currency => applyUpdate({ currency })} onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)} onUpdateHP={hp => applyUpdate({ current_hp: hp }, true)} computed={computed} userId={userId} campaignId={character.campaign_id} />
  </div>
  )}
 

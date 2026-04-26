@@ -265,9 +265,12 @@ export default function WeaponsTracker({
  }
  }
 
- // Separate non-inventory weapons (can be edited/deleted)
+ // v2.266.0 — was splitting weapons into customWeapons and an
+ // unused inventoryWeapons branch; the unused branch was kept "for
+ // symmetry" but TS rejects it. Drop entirely; we filter only
+ // customWeapons here. If a future ranged-from-inventory section
+ // wants its own branch, recreate it then.
  const customWeapons = weapons.filter(w => !String(w.id).startsWith('inv_'));
- const inventoryWeapons = weapons.filter(w => String(w.id).startsWith('inv_'));
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>

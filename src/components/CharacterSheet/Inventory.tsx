@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie } from '../../lib/gameUtils';
-import { calcArmorAC, acBreakdown } from '../../data/equipment';
 import type { Character, InventoryItem } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -14,6 +13,8 @@ import {
   ATTUNEMENT_SLOT_MAX,
 } from '../../lib/attunement';
 import { recomputeAC, describeACBreakdown } from '../../lib/armorClass';
+import { isStrikeableInventoryWeapon, inventoryItemToWeapon } from '../../lib/inventoryWeapon';
+import { useWeaponStrike } from '../../lib/hooks/useWeaponStrike';
 import { drinkPotion, isPotionByType } from '../../lib/potions';
 import { useMagicItems } from '../../lib/hooks/useMagicItems';
 import { emitCombatEvent } from '../../lib/combatEvents';
@@ -28,6 +29,13 @@ interface InventoryProps {
  // sites that mount Inventory without this capability (the add-
  // at-mount-site change in CharacterSheet provides it).
  onUpdateHP?: (hp: number) => void;
+ // v2.266.0 — strike-from-Inventory needs derived stats (STR/DEX
+ // mods, proficiency bonus) plus identity for the roll/action logs.
+ // All optional so any older mount sites that don't pass them just
+ // disable the Strike button instead of crashing.
+ computed?: import('../../types').ComputedStats;
+ userId?: string;
+ campaignId?: string | null;
 }
 
 import { CATALOGUE, ALL_CATEGORIES, type CatalogueItem, type ItemCategory } from '../../data/equipment';
@@ -417,10 +425,237 @@ function CurrencyDisplay({ currency, onUpdate }: {
  );
 }
 
+// ── Strike Modal (v2.266.0) ─────────────────────────────────────────
+//
+// Compact strike UI surfaced from the Inventory tab. Mirrors the
+// WeaponsTracker UX from the Actions tab: To Hit / Damage / Crit
+// Damage buttons, with the most recent roll shown inline. The whole
+// thing is built around the useWeaponStrike hook so the dice tray,
+// roll log, action log, and character history all flow through the
+// same pipeline as Actions-tab strikes.
+//
+// Why a separate modal instead of expanding the row: the Inventory
+// row layout (free-flow chip strip) doesn't have grid space for
+// three result columns + three buttons without breaking on narrow
+// screens. The modal is a clean overlay that can grow as needed and
+// is easy to dismiss.
+function StrikeModal({ item, character, computed, userId, campaignId, onClose }: {
+ item: InventoryItem;
+ character: Character;
+ computed: import('../../types').ComputedStats;
+ userId?: string;
+ campaignId?: string | null;
+ onClose: () => void;
+}) {
+ // Convert the inventory row to the WeaponItem shape the strike
+ // pipeline needs. The conversion is memoized at the lib layer
+ // (isStrikeableInventoryWeapon already filtered the row) so this
+ // is pure function output — no extra hooks needed.
+ const weapon = useMemo(() => inventoryItemToWeapon(item, computed), [item, computed]);
+
+ const { rollHit, rollDamage, lastRoll } = useWeaponStrike({
+   characterId: userId,
+   characterName: character.name,
+   historyCharacterId: character.id,
+   userId,
+   campaignId: campaignId ?? null,
+   activeConditions: character.active_conditions ?? [],
+   activeBuffs: (character as any).active_buffs ?? [],
+ });
+
+ // Esc closes
+ useEffect(() => {
+   const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+   window.addEventListener('keydown', handler);
+   return () => window.removeEventListener('keydown', handler);
+ }, [onClose]);
+
+ return (
+   <div
+     style={{
+       position: 'fixed', inset: 0, zIndex: 250,
+       background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)',
+       display: 'flex', alignItems: 'center', justifyContent: 'center',
+       padding: 16,
+     }}
+     onClick={onClose}
+   >
+     <div
+       style={{
+         background: 'var(--c-card)', border: '1px solid rgba(251,191,36,0.5)',
+         borderRadius: 14, width: '100%', maxWidth: 480,
+         display: 'flex', flexDirection: 'column', overflow: 'hidden',
+         boxShadow: '0 0 40px rgba(251,191,36,0.15), var(--shadow-lg)',
+       }}
+       onClick={e => e.stopPropagation()}
+     >
+       {/* Header */}
+       <div style={{
+         padding: '12px 16px',
+         borderBottom: '1px solid var(--c-border)',
+         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+       }}>
+         <div>
+           <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#fbbf24' }}>
+             Strike
+           </div>
+           <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 16, color: 'var(--t-1)', marginTop: 2 }}>
+             {weapon.name}
+           </div>
+         </div>
+         <button onClick={onClose} title="Close" style={{
+           fontSize: 18, background: 'none', border: 'none',
+           color: 'var(--t-2)', cursor: 'pointer', padding: '0 4px', lineHeight: 1,
+         }}>×</button>
+       </div>
+
+       {/* Stats strip — atk bonus, damage dice, type, range. Same
+           shape as the Actions tab weapon row's stat block. */}
+       <div style={{
+         padding: '10px 16px',
+         borderBottom: '1px solid var(--c-border)',
+         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8,
+       }}>
+         <div>
+           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 2 }}>To Hit</div>
+           <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 18, fontWeight: 800, color: '#fbbf24' }}>
+             +{weapon.attackBonus}
+           </div>
+         </div>
+         <div>
+           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 2 }}>Damage</div>
+           <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 16, fontWeight: 800, color: 'var(--t-1)' }}>
+             {weapon.damageDice}{weapon.damageBonus !== 0 ? (weapon.damageBonus > 0 ? `+${weapon.damageBonus}` : weapon.damageBonus) : ''}
+           </div>
+         </div>
+         <div>
+           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 2 }}>Type</div>
+           <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 600, color: 'var(--t-2)', textTransform: 'capitalize' as const }}>
+             {weapon.damageType}
+           </div>
+         </div>
+         <div>
+           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 2 }}>Range</div>
+           <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 600, color: 'var(--t-2)' }}>
+             {weapon.range || 'Melee'}
+           </div>
+         </div>
+       </div>
+
+       {/* Properties / notes — same as the inventory description */}
+       {(weapon.properties || item.description) && (
+         <div style={{
+           padding: '8px 16px',
+           borderBottom: '1px solid var(--c-border)',
+           fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5,
+         }}>
+           {weapon.properties && (
+             <div style={{ marginBottom: 4 }}>
+               <span style={{ color: 'var(--t-3)', fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginRight: 6 }}>Properties</span>
+               {weapon.properties}
+             </div>
+           )}
+           {item.description && (
+             <div style={{ whiteSpace: 'pre-wrap' as const }}>
+               {item.description}
+             </div>
+           )}
+         </div>
+       )}
+
+       {/* Last roll display */}
+       {lastRoll && lastRoll.weaponName === weapon.name && (
+         <div style={{
+           padding: '10px 16px',
+           background: lastRoll.crit ? 'rgba(251,191,36,0.08)' : lastRoll.miss ? 'rgba(239,68,68,0.06)' : 'var(--c-raised)',
+           borderBottom: '1px solid var(--c-border)',
+           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+         }}>
+           <div>
+             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>Last To Hit</div>
+             <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 22, color: lastRoll.crit ? '#fbbf24' : lastRoll.miss ? '#ef4444' : 'var(--t-1)' }}>
+               {lastRoll.hit > 0 ? lastRoll.hit : '—'}
+             </div>
+             {lastRoll.crit && <div style={{ fontSize: 10, color: '#fbbf24', fontWeight: 800, letterSpacing: '0.1em' }}>CRITICAL</div>}
+             {lastRoll.miss && <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 800, letterSpacing: '0.1em' }}>NAT 1</div>}
+           </div>
+           <div>
+             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>Last Damage</div>
+             <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 22, color: 'var(--t-1)' }}>
+               {lastRoll.damage > 0 ? lastRoll.damage : '—'}
+             </div>
+             {lastRoll.damage > 0 && (
+               <div style={{ fontSize: 10, color: 'var(--t-3)', textTransform: 'capitalize' as const }}>
+                 {lastRoll.damageType}
+               </div>
+             )}
+           </div>
+         </div>
+       )}
+
+       {/* Action buttons */}
+       <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+         <button
+           onClick={() => rollHit(weapon)}
+           style={{
+             flex: 1, minWidth: 100,
+             padding: '10px 14px', borderRadius: 8,
+             background: 'rgba(251,191,36,0.15)',
+             border: '1px solid rgba(251,191,36,0.5)',
+             color: '#fbbf24',
+             fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 800,
+             letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+             cursor: 'pointer',
+           }}
+         >
+           To Hit
+         </button>
+         <button
+           onClick={() => rollDamage(weapon, { crit: false })}
+           style={{
+             flex: 1, minWidth: 100,
+             padding: '10px 14px', borderRadius: 8,
+             background: 'var(--c-raised)',
+             border: '1px solid var(--c-border-m)',
+             color: 'var(--t-1)',
+             fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 800,
+             letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+             cursor: 'pointer',
+           }}
+         >
+           Damage
+         </button>
+         <button
+           onClick={() => rollDamage(weapon, { crit: true })}
+           title="Roll damage with crit dice (RAW 2024 doubles the dice rolled)"
+           style={{
+             flex: 1, minWidth: 100,
+             padding: '10px 14px', borderRadius: 8,
+             background: 'rgba(251,191,36,0.08)',
+             border: '1px solid rgba(251,191,36,0.3)',
+             color: '#fbbf24',
+             fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 800,
+             letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+             cursor: 'pointer',
+           }}
+         >
+           Crit Dmg
+         </button>
+       </div>
+     </div>
+   </div>
+ );
+}
+
 // ── Main Inventory Component ───────────────────────────────────────
-export default function Inventory({ character, onUpdateInventory, onUpdateCurrency, onUpdateAC, onUpdateHP }: InventoryProps) {
+export default function Inventory({ character, onUpdateInventory, onUpdateCurrency, onUpdateAC, onUpdateHP, computed, userId, campaignId }: InventoryProps) {
  const [showPicker, setShowPicker] = useState(false);
  const [search, setSearch] = useState('');
+ // v2.266.0 — when set, an inline modal opens to swing the equipped
+ // weapon (To Hit / Damage / Crit Damage). Same UX as WeaponsTracker
+ // on the Actions tab. Reuses the useWeaponStrike hook so the dice,
+ // roll log, action log, and 3D tray all flow through one pipeline.
+ const [strikeItem, setStrikeItem] = useState<InventoryItem | null>(null);
 
  const { triggerRoll } = useDiceRoll();
  // v2.158.0 — Phase P pt 6: need the catalogue map so each row can
@@ -828,6 +1063,15 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
    isPotion={!!item.magic_item_id && isPotionByType(magicItemMap[item.magic_item_id]?.type)}
    onDrink={handleDrinkPotion}
    onChargeSpent={handleChargeSpent}
+   onStrike={
+     // v2.266.0 — only show Strike when (a) we have the deps to
+     // resolve attack/damage math, and (b) the item is actually
+     // strikeable. The predicate already filters Potions, items
+     // requiring attunement that aren't attuned, etc.
+     computed && isStrikeableInventoryWeapon(item)
+       ? () => setStrikeItem(item)
+       : undefined
+   }
  />
  ))}
  </div>
@@ -864,6 +1108,21 @@ export default function Inventory({ character, onUpdateInventory, onUpdateCurren
  onBuy={(item, qty) => { buyFromCatalogue(item, qty); }}
  currency={character.currency}
  onClose={() => setShowPicker(false)}
+ />
+ )}
+
+ {/* v2.266.0 — Strike modal. Opens when the user clicks the
+     ⚔ Strike chip on an equipped weapon row. computed must
+     be present (the row predicate already guarantees it via
+     the onStrike gate above). */}
+ {strikeItem && computed && (
+ <StrikeModal
+ item={strikeItem}
+ character={character}
+ computed={computed}
+ userId={userId}
+ campaignId={campaignId}
+ onClose={() => setStrikeItem(null)}
  />
  )}
  </section>
@@ -1091,7 +1350,7 @@ function parseNoteChips(notes: string): string[] {
 }
 
 // ── Inventory Row ──────────────────────────────────────────────────
-function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, onDrink, onChargeSpent }: {
+function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, onDrink, onChargeSpent, onStrike }: {
  item: InventoryItem;
  onToggle: (id: string) => void;
  onRemove: (id: string) => void;
@@ -1108,6 +1367,12 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, on
  // for safety — InventoryRow used to do the emit inline (v2.193)
  // but `character` wasn't in this row's scope, breaking the build.
  onChargeSpent?: (item: InventoryItem, chargesBefore: number) => void;
+ // v2.266.0 — Strike opens the weapon strike modal for equipped
+ // weapons. Passed only when the row qualifies as strikeable
+ // (isStrikeableInventoryWeapon === true) so the button doesn't
+ // appear on non-weapon items, unequipped weapons, or unattuned
+ // magic weapons that require attunement.
+ onStrike?: (item: InventoryItem) => void;
 }) {
  const [showDetail, setShowDetail] = useState(false);
  const typeBadge = itemTypeBadge(item);
@@ -1221,6 +1486,26 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, on
      routes through handleDrinkPotion → parses heal dice, applies
      to character HP, decrements quantity. Stops event propagation
      so it doesn't also expand the detail modal. */}
+ {/* v2.266.0 — Strike: equipped weapons get an inline button that
+     opens the strike modal (same flow as the Actions tab's
+     WeaponsTracker). Only renders when the parent passed onStrike,
+     which the parent only does for items that pass
+     isStrikeableInventoryWeapon. */}
+ {onStrike && (
+ <span
+ onClick={e => { e.stopPropagation(); onStrike(item); }}
+ title={`Swing ${item.name}: roll to-hit and damage`}
+ style={{
+ fontSize: 10, fontWeight: 700, color: '#fbbf24',
+ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)',
+ borderRadius: 99, padding: '2px 9px', cursor: 'pointer', flexShrink: 0,
+ display: 'flex', alignItems: 'center', gap: 3,
+ letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+ }}>
+ ⚔ Strike
+ </span>
+ )}
+
  {isPotion && onDrink && (
  <span
  onClick={e => { e.stopPropagation(); onDrink(item.id); }}
