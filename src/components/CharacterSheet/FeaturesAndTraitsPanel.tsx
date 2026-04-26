@@ -6,6 +6,7 @@ import { CLASS_MAP } from '../../data/classes';
 import { CLASS_COMBAT_ABILITIES, PASSIVE_FEATURE_NAMES } from '../../data/classAbilities';
 import { FEATS } from '../../data/feats';
 import FeatsPanel from './FeatsPanel';
+import UnifiedActionRow, { ActionTypeBadge, PassiveTag, type ActionType } from './_shared/UnifiedActionRow';
 
 interface Props {
  character: Character;
@@ -155,13 +156,35 @@ function getCombatAbility(featureName: string, className: string) {
  return abilities.find(a => featureName.toLowerCase().includes(a.name.toLowerCase()));
 }
 
-const ACTION_COLORS: Record<string, string> = {
- action: '#60a5fa',
- bonus: '#fbbf24',
- reaction: '#34d399',
- special: '#c084fc',
- free: 'var(--t-3)',
-};
+// v2.265.0 — derive the small time abbreviation used in col 3 of
+// the unified action row from a class ability's actionType. Mirrors
+// the abbreviations SpellCard uses ("1A", "1BA", "1R") so the
+// columns line up visually across surfaces.
+function actionTimeAbbr(actionType: string | undefined): string {
+ switch (actionType) {
+   case 'action': return '1A';
+   case 'bonus': return '1BA';
+   case 'reaction': return '1R';
+   case 'special': return 'Spcl';
+   case 'free': return 'Free';
+   default: return '—';
+ }
+}
+
+// v2.265.0 — fire the existing dndkeep:gototab CustomEvent to
+// switch over to the Actions tab. Used by the "View in Actions"
+// button on castable features so we don't fork the cast pipeline —
+// the player's flow becomes "find it in Features → switch to
+// Actions to actually use it." This sets the foundation for
+// invoking the cast directly from Features in a future ship.
+function gotoActionsTab() {
+ const evt = new CustomEvent('dndkeep:gototab', { detail: 'actions' });
+ window.dispatchEvent(evt);
+}
+
+// v2.265.0 — ACTION_COLORS was previously used by the inline class
+// feature row (now refactored to UnifiedActionRow which derives its
+// own colors via ActionTypeBadge). Removed.
 
 // ── DDB-style sub-feature row with inline checkboxes ────────────────
 // Matches DDB pattern: [colored bar] [Name: Label] [■■] / Long Rest
@@ -229,24 +252,17 @@ export function SubFeatureRow({ label, featureKey, rest, max, character, onUpdat
  );
 }
 
-// Legacy alias kept for back-compat (no longer rendered but export kept)
-function UseTracker({ featureKey, max, rest, character, onUpdate }: {
- featureKey: string; max: number; rest: 'short' | 'long';
- character: Character; onUpdate: (u: Partial<Character>) => void;
-}) {
- return <SubFeatureRow label={featureKey} featureKey={featureKey} rest={rest} max={max} character={character} onUpdate={onUpdate} />;
-}
-
-const poolBtnStyle: React.CSSProperties = {
- padding: '2px 8px', borderRadius: 'var(--r-sm)',
- background: 'var(--c-raised)', border: '1px solid var(--c-border)',
- color: 'var(--t-2)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--ff-body)',
-};
+// v2.265.0 — UseTracker (back-compat alias) and poolBtnStyle were
+// both unused after the class feature row refactor. Removed.
 
 export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  const [filter, setFilter] = useState<Filter>('all');
  const [featAddOpen, setFeatAddOpen] = useState(false);
  const [featSearch, setFeatSearch] = useState('');
+ // v2.265.0 — track which feature's expanded body is open. Single-
+ // open accordion: clicking a different row collapses the previous.
+ // Keyed by the feature name (which is unique within the panel).
+ const [expandedFeature, setExpandedFeature] = useState<string | null>(null);
 
  const choices = useMemo(
  () => parseChoices(character.features_and_traits ?? ''),
@@ -373,73 +389,103 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  const isASI = feature.isASI;
 
  return (
- <div
- key={`${feature.name}-${idx}`}
- style={{
- padding: '10px 0',
- borderBottom: '1px solid var(--c-border)',
- }}
- >
- {/* Row: name + badges */}
- <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' as const }}>
- <div style={{ flex: 1, minWidth: 0 }}>
- <span style={{
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 14,
- color: feature.isSubclassFeature ? '#c084fc' : 'var(--t-1)',
- }}>
- {feature.isSubclassFeature && subclassFeats.length > 0
+ <div key={`${feature.name}-${idx}`} style={{ marginBottom: 4 }}>
+ {(() => {
+ // v2.265.0 — class feature row, refactored from the wall-of-text
+ // flexbox layout to the same 8-column UnifiedActionRow grid used
+ // by SpellCard and ClassAbilitiesSection. Three classes of row:
+ //   1. ASI / FEAT row — gold passive tag, no expand
+ //   2. Castable feature (combatAbility match) — action-type badge
+ //      in lead column, "View in Actions" button in tail
+ //   3. Passive feature — grey PASSIVE tag, no expand
+ // The expanded body keeps the original description, choice
+ // display, calculated values, and SubFeatureRow tracker —
+ // they're just hidden by default now instead of always-visible
+ // wall-of-text.
+ const displayName = feature.isSubclassFeature && subclassFeats.length > 0
  ? subclassFeats.map(f => f.name).join(' & ')
- : feature.name}
- </span>
- {feature.isSubclassFeature && character.subclass && (
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: '#c084fc', marginLeft: 6, opacity: 0.7 }}>
- {character.subclass}
- </span>
- )}
- </div>
+ : feature.name;
 
- <div style={{ display: 'flex', gap: 4, flexShrink: 0, flexWrap: 'wrap' as const }}>
- {/* Level badge */}
- <span style={{ fontSize: 9, color: 'var(--t-3)', fontFamily: 'var(--ff-body)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '1px 6px' }}>
+ // Accent color: gold for ASI/feat, purple for subclass features,
+ // class purple for class proper.
+ const accentColor = isASI
+ ? '#fbbf24'
+ : feature.isSubclassFeature
+ ? '#c084fc'
+ : '#a78bfa';
+
+ // Lead column content: action badge for castables, level badge
+ // otherwise. Single visual unit so the column stays the same
+ // 70px width across rows.
+ const lead = combatAbility ? (
+ <ActionTypeBadge type={(combatAbility.actionType as ActionType) ?? 'action'} />
+ ) : (
+ <span style={{
+ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 700,
+ color: accentColor,
+ padding: '3px 8px', borderRadius: 6,
+ border: `1px solid ${accentColor}45`,
+ background: `${accentColor}10`,
+ whiteSpace: 'nowrap' as const,
+ letterSpacing: '0.04em',
+ }}>
  Lv {feature.level}
  </span>
- {/* Action type badge */}
- {combatAbility && (
- <span style={{
- fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
- color: ACTION_COLORS[combatAbility.actionType],
- background: ACTION_COLORS[combatAbility.actionType] + '18',
- border: `1px solid ${ACTION_COLORS[combatAbility.actionType]}40`,
- borderRadius: 999, padding: '1px 6px',
- }}>
- {combatAbility.actionType === 'bonus' ? 'Bonus Action'
- : combatAbility.actionType === 'action' ? 'Action'
- : combatAbility.actionType === 'reaction' ? 'Reaction'
- : combatAbility.actionType === 'special' ? 'Special'
- : 'Free'}
- </span>
- )}
- {/* ACTIVE / PASSIVE badge */}
- {isASI ? (
- <span style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '1px 6px' }}>
- ASI / FEAT
- </span>
- ) : isPassive ? (
- <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 999, padding: '1px 6px' }}>
- ACTIVE
- </span>
- ) : !combatAbility ? (
- <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', background: 'var(--c-raised)', border: '1px solid var(--c-border)', borderRadius: 999, padding: '1px 6px' }}>
- PASSIVE
- </span>
- ) : null}
- </div>
- </div>
+ );
 
+ // Subtitle: subclass name when applicable, else feature category.
+ const subtitle = feature.isSubclassFeature && character.subclass ? (
+ <span style={{ color: '#c084fc' }}>{character.subclass} feature</span>
+ ) : isASI ? (
+ <span style={{ color: 'var(--c-gold-l)' }}>ASI / Feat</span>
+ ) : isPassive ? (
+ <span>Passive · Lv {feature.level}</span>
+ ) : (
+ <span>{character.class_name} · Lv {feature.level}</span>
+ );
+
+ // Button column: "View in Actions" for castables (jumps tabs to
+ // the existing cast pipeline), passive tag otherwise. Keeps the
+ // grid aligned across rows.
+ const button = combatAbility ? (
+ <button
+ onClick={(e) => { e.stopPropagation(); gotoActionsTab(); }}
+ title="Jump to the Actions tab to use this feature"
+ style={{
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+ padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+ border: '1px solid rgba(96,165,250,0.5)',
+ background: 'rgba(96,165,250,0.10)',
+ color: '#60a5fa',
+ letterSpacing: '0.04em', whiteSpace: 'nowrap' as const,
+ width: '100%',
+ }}
+ >
+ View in Actions
+ </button>
+ ) : <PassiveTag />;
+
+ const isExpanded = expandedFeature === `class:${feature.name}-${idx}`;
+ const expandKey = `class:${feature.name}-${idx}`;
+
+ return (
+ <UnifiedActionRow
+ lead={lead}
+ accentColor={accentColor}
+ name={displayName}
+ subtitle={subtitle}
+ time={combatAbility ? actionTimeAbbr(combatAbility.actionType) : undefined}
+ hitDC={undefined}
+ button={button}
+ expandable={true}
+ isExpanded={isExpanded}
+ onExpand={() => setExpandedFeature(isExpanded ? null : expandKey)}
+ expandedBody={(
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
  {/* Choice result */}
  {choiceDisplay && (
  <div style={{
- marginTop: 5, padding: '4px 10px',
+ padding: '4px 10px',
  background: 'rgba(212,160,23,0.06)', border: '1px solid rgba(212,160,23,0.2)',
  borderRadius: 'var(--r-md)', display: 'inline-block',
  fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--c-gold-l)', fontStyle: 'italic',
@@ -450,7 +496,7 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
 
  {/* Subclass feature descriptions */}
  {feature.isSubclassFeature && subclassFeats.length > 0 && (
- <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
  {subclassFeats.map((sf, i) => (
  <div key={i} style={{
  padding: '8px 12px',
@@ -468,16 +514,16 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  </div>
  )}
 
- {/* Class feature description (if not subclass or if no subclass data) */}
+ {/* Class feature description */}
  {(!feature.isSubclassFeature || subclassFeats.length === 0) && !choiceDisplay && (
- <div style={{ marginTop: 4, fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>
  {feature.description}
  </div>
  )}
 
  {/* Calculated values */}
  {calc && (
- <div style={{ marginTop: 4 }}>
+ <div>
  <span style={{
  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
  color: 'var(--c-gold-l)', background: 'rgba(212,160,23,0.08)',
@@ -506,6 +552,11 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  accentColor={feature.isSubclassFeature ? '#c084fc' : '#a78bfa'}
  />
  )}
+ </div>
+ )}
+ />
+ );
+ })()}
  </div>
  );
  })}
@@ -537,23 +588,66 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  const perShort = /once per short rest|per short rest|short or long rest/i.test(desc);
  const hasUse = perLong || perShort;
  const speciesTraitKey = `species_${section.title}_${trait.name}`;
+
+ // v2.265.0 — species trait row, refactored to UnifiedActionRow.
+ // Active species traits (limited uses, e.g. Tiefling's Hellish
+ // Rebuke once/long-rest) get a "View in Actions" button. Pure-
+ // passive traits (Darkvision, ASI, Size & Speed) get a Passive
+ // tag. Limited-use trackers move to the expanded body.
+ const accentColor = '#34d399';
+ const isCastable = hasUse || trait.isActive;
+ const expandKey = `species:${section.title}:${trait.name}:${ti}`;
+ const isExpanded = expandedFeature === expandKey;
+
+ const lead = (
+ <span style={{
+ fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 700,
+ color: accentColor,
+ padding: '3px 8px', borderRadius: 6,
+ border: `1px solid ${accentColor}45`,
+ background: `${accentColor}10`,
+ whiteSpace: 'nowrap' as const,
+ letterSpacing: '0.04em',
+ }}>
+ {hasUse ? (perShort ? '1/Short' : '1/Long') : trait.isActive ? 'Active' : 'Trait'}
+ </span>
+ );
+
+ const subtitle = (
+ <span>{section.title} trait</span>
+ );
+
+ const button = isCastable ? (
+ <button
+ onClick={(e) => { e.stopPropagation(); gotoActionsTab(); }}
+ title="Jump to the Actions tab to use this trait"
+ style={{
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+ padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+ border: '1px solid rgba(96,165,250,0.5)',
+ background: 'rgba(96,165,250,0.10)',
+ color: '#60a5fa',
+ letterSpacing: '0.04em', whiteSpace: 'nowrap' as const,
+ width: '100%',
+ }}
+ >
+ View in Actions
+ </button>
+ ) : <PassiveTag />;
+
  return (
- <div key={ti} style={{ padding: '8px 0', borderBottom: '1px solid var(--c-border)' }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' as const }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
- {trait.name}
- </span>
- {trait.isActive && (
- <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 999, padding: '1px 6px' }}>
- ACTIVE
- </span>
- )}
- {hasUse && (
- <span style={{ fontSize: 9, fontWeight: 700, color: perShort ? '#60a5fa' : '#a78bfa', background: perShort ? 'rgba(96,165,250,0.1)' : 'rgba(167,139,250,0.1)', border: `1px solid ${perShort ? 'rgba(96,165,250,0.3)' : 'rgba(167,139,250,0.3)'}`, borderRadius: 999, padding: '1px 6px' }}>
- ⏳ {perShort ? '1/Short Rest' : '1/Long Rest'}
- </span>
- )}
- </div>
+ <div key={ti} style={{ marginBottom: 4 }}>
+ <UnifiedActionRow
+ lead={lead}
+ accentColor={accentColor}
+ name={trait.name}
+ subtitle={subtitle}
+ button={button}
+ expandable={true}
+ isExpanded={isExpanded}
+ onExpand={() => setExpandedFeature(isExpanded ? null : expandKey)}
+ expandedBody={(
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' as const }}>
  {desc}
  </div>
@@ -569,6 +663,9 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  accentColor="#34d399"
  />
  )}
+ </div>
+ )}
+ />
  </div>
  );
  })();
