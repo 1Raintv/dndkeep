@@ -4731,162 +4731,15 @@ function TokenQuickPanel(props: {
   );
 }
 
-/**
- * v2.231.0 — Initiative bar.
- *
- * Slim horizontal strip rendered ABOVE the canvas wrapper inside
- * BattleMapV2 when the campaign's session has combat_active = true.
- * Hidden the rest of the time so it doesn't clutter the map.
- *
- * Shows: Round N · combatant chips left-to-right (initiative order) ·
- * the active combatant has a gold border + scale-up to make it
- * obvious whose turn it is. DMs additionally see a "Next Turn"
- * button that advances current_turn (wrapping to 0 + round++ at
- * the end of the round).
- *
- * Read-only for players. The full initiative editor lives on the
- * Session tab (InitiativeTracker.tsx) and remains the source of
- * truth for adding/removing/rolling combatants.
- *
- * Source of truth: sessionState.initiative_order (Combatant[]) and
- * sessionState.current_turn (index). Both are kept in sync by the
- * existing CampaignDashboard Realtime subscription on campaign_sessions.
- */
-function InitiativeBar(props: {
-  sessionState: import('../../types').SessionState;
-  isDM: boolean;
-  onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
-}) {
-  const { sessionState, isDM, onUpdateSession } = props;
-  const order = sessionState.initiative_order ?? [];
-  const cur = sessionState.current_turn ?? 0;
-  const round = sessionState.round ?? 1;
+// v2.286.0 — Legacy InitiativeBar component removed. It rendered
+// ABOVE the canvas wrapper when sessionState.combat_active was true,
+// driven by the legacy initiative_order on campaign_sessions. The
+// modern InitiativeStrip mounts at the bottom of the page from
+// CombatProvider and is the canonical surface for combat. Keeping
+// both was a UX hazard — they could disagree if the legacy boolean
+// got toggled without participants being seeded. The mount site
+// (~line 6844 originally) was deleted in the same commit.
 
-  if (!sessionState.combat_active || order.length === 0) return null;
-
-  function nextTurn() {
-    if (!onUpdateSession || order.length === 0) return;
-    const next = cur + 1;
-    if (next >= order.length) {
-      onUpdateSession({ current_turn: 0, round: round + 1 });
-    } else {
-      onUpdateSession({ current_turn: next });
-    }
-  }
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 12px',
-        marginBottom: 8,
-        background: 'var(--c-card)',
-        border: '1px solid rgba(251,191,36,0.4)',
-        borderRadius: 'var(--r-md, 8px)',
-        overflowX: 'auto' as const,
-      }}
-    >
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        flexShrink: 0,
-        padding: '2px 10px',
-        background: 'rgba(251,191,36,0.15)',
-        border: '1px solid rgba(251,191,36,0.55)',
-        borderRadius: 'var(--r-sm, 4px)',
-        fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
-        letterSpacing: '0.08em', textTransform: 'uppercase' as const,
-        color: '#fbbf24',
-      }}>
-        ⚔ Round {round}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, overflowX: 'auto' as const }}>
-        {order.map((c, i) => {
-          const active = i === cur;
-          const dead = c.current_hp <= 0;
-          return (
-            <div
-              key={c.id}
-              title={`${c.name} · Initiative ${c.initiative}${dead ? ' · DOWN' : ''}`}
-              style={{
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column' as const,
-                alignItems: 'center',
-                minWidth: 64,
-                padding: active ? '4px 8px' : '3px 6px',
-                background: active
-                  ? 'rgba(251,191,36,0.22)'
-                  : c.is_monster
-                    ? 'rgba(248,113,113,0.1)'
-                    : 'rgba(96,165,250,0.1)',
-                border: active
-                  ? '2px solid #fbbf24'
-                  : `1px solid ${c.is_monster ? 'rgba(248,113,113,0.4)' : 'rgba(96,165,250,0.4)'}`,
-                borderRadius: 'var(--r-sm, 4px)',
-                opacity: dead ? 0.45 : 1,
-                transform: active ? 'scale(1.04)' : 'scale(1)',
-                transition: 'transform 0.15s, background 0.15s',
-              }}
-            >
-              <div style={{
-                fontFamily: 'var(--ff-stat)',
-                fontSize: 11, fontWeight: 800,
-                color: active ? '#fbbf24' : c.is_monster ? '#f87171' : '#60a5fa',
-              }}>
-                {c.initiative}
-              </div>
-              <div style={{
-                fontFamily: 'var(--ff-body)',
-                fontSize: 10, fontWeight: 700,
-                color: 'var(--t-1)',
-                maxWidth: 80,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
-                {c.name}
-              </div>
-              <div style={{
-                fontFamily: 'var(--ff-stat)',
-                fontSize: 9, fontWeight: 700,
-                color: c.current_hp / Math.max(1, c.max_hp) > 0.5
-                  ? '#34d399'
-                  : c.current_hp / Math.max(1, c.max_hp) > 0.25
-                    ? '#fbbf24'
-                    : '#f87171',
-              }}>
-                {c.current_hp}/{c.max_hp}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {isDM && onUpdateSession && (
-        <button
-          onClick={nextTurn}
-          title="Advance to the next combatant. Wraps and bumps the round counter at the end of the order."
-          style={{
-            flexShrink: 0,
-            padding: '6px 14px',
-            background: 'rgba(251,191,36,0.22)',
-            border: '1px solid rgba(251,191,36,0.65)',
-            borderRadius: 'var(--r-sm, 4px)',
-            color: '#fbbf24',
-            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-            letterSpacing: '0.04em',
-            cursor: 'pointer',
-          }}
-        >
-          Next Turn →
-        </button>
-      )}
-    </div>
-  );
-}
 
 /**
  * v2.231.0 — Party Vitals strip.
@@ -6839,15 +6692,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         </div>
       )}
 
-      {/* v2.231 — Initiative bar. Renders only when combat is active.
-          Shows turn order with active highlight + "Next Turn" for DM. */}
-      {props.sessionState && props.sessionState.combat_active && (
-        <InitiativeBar
-          sessionState={props.sessionState}
-          isDM={isDM}
-          onUpdateSession={props.onUpdateSession}
-        />
-      )}
+      {/* v2.286.0 — Legacy InitiativeBar mount removed. Combat UI
+          now lives exclusively in the InitiativeStrip at the bottom
+          of the page (mounted by CombatProvider via CampaignDashboard). */}
 
       <div
         ref={wrapperRef}

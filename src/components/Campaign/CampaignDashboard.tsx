@@ -6,7 +6,10 @@ import {
   getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail, getCharacters, supabase,
   addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
 } from '../../lib/supabase';
-import InitiativeTracker from './InitiativeTracker';
+// v2.286.0 — InitiativeTracker import dropped. The legacy player-side
+// view it provided was retired in this ship; the player session tab
+// now renders an inline pointer to the InitiativeStrip (the modern
+// combat surface mounted at the bottom of the page).
 import DMlobby from './DMlobby';
 import CombatEventLog from '../shared/CombatEventLog';
 // v2.283.0 — confirm modal + toast for the strengthened remove-player
@@ -284,9 +287,13 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     }
   }
 
-  async function toggleCombat() {
-    await updateSessionState({ combat_active: !sessionState?.combat_active });
-  }
+  // v2.286.0 — toggleCombat removed. The legacy boolean-flip combat
+  // start (campaign_sessions.combat_active) was retired in favor of
+  // the modern combat_encounters pipeline. Combat now starts via the
+  // header <StartCombatButton> in this dashboard, which calls
+  // startEncounter() and seeds combat_participants. The boolean
+  // column stays in the schema for now to avoid a coupled migration;
+  // schema cleanup is its own future ship.
 
   return (
     <CombatProvider campaignId={campaign.id}>
@@ -507,19 +514,37 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               members={members}
               isOwner={isOwner}
               onUpdateSession={updateSessionState}
-              onToggleCombat={toggleCombat}
+              /* v2.286.0 — onToggleCombat dropped. The legacy button
+                 it drove is gone; modern combat starts via the
+                 header <StartCombatButton>. */
             />
           ) : (
-            <InitiativeTracker
-              sessionState={sessionState}
-              isOwner={false}
-              playerCharacters={characters.map(c => ({
-                id: c.id, name: c.name, current_hp: c.current_hp,
-                max_hp: c.max_hp, armor_class: c.armor_class, initiative_bonus: 0,
-              }))}
-              onUpdateSession={updateSessionState}
-              onToggleCombat={toggleCombat}
-            />
+            // v2.286.0 — Player-side session tab. Was the legacy
+            // <InitiativeTracker> reading sessionState.initiative_order;
+            // that data isn't populated by modern combat starts (which
+            // write to combat_participants instead). Replaced with a
+            // pointer to the InitiativeStrip at the bottom of the page,
+            // which auto-mounts whenever the DM has an active encounter
+            // and is the actual surface players interact with.
+            <div style={{ maxWidth: 600 }}>
+              <div style={{
+                padding: '20px 24px',
+                background: 'var(--c-card)',
+                border: '1px solid var(--c-border)',
+                borderRadius: 'var(--r-lg, 12px)',
+                fontFamily: 'var(--ff-body)',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--c-gold-l)', marginBottom: 8 }}>
+                  Combat
+                </div>
+                <div style={{ fontSize: 14, color: 'var(--t-1)', lineHeight: 1.5, marginBottom: 8 }}>
+                  When your DM starts an encounter, the initiative strip appears at the bottom of the page automatically.
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--t-3)', lineHeight: 1.5 }}>
+                  You'll see whose turn it is, your remaining action / bonus / reaction / movement budget, and prompts for attacks, saves, and reactions as they come in. No setup required from your side.
+                </div>
+              </div>
+            </div>
           )
         )}
 

@@ -1,7 +1,23 @@
+// v2.286.0 — Phase 1 of the combat-system unification. The legacy
+// initiative-on-campaign_sessions model is being retired in favor of
+// the modern combat_encounters + combat_participants pipeline (the
+// InitiativeStrip + StartCombatButton + CombatProvider flow). This
+// component used to host its own "Start Combat" button (which only
+// flipped sessionState.combat_active without creating participants —
+// the v2.278 root cause of "buttons don't work" reports), an
+// InitiativeTracker subtab, and a v1 BattleMap subtab. All three
+// have been retired here:
+//   - Start Combat button → replaced with an info banner pointing
+//     to the header's ⚔ Start Combat (the modern flow).
+//   - Combat subtab → removed; InitiativeStrip at the bottom of
+//     every page is the canonical combat surface now.
+//   - Map subtab → removed; the top-level Battle Map tab covers it.
+// Surviving tabs: Players (HP/condition management) + Notes.
+// The legacy schema columns (combat_active, initiative_order) stay
+// in place — schema cleanup is its own ship to keep this one
+// focused on the user-visible win.
 import { useState } from 'react';
-import BattleMap from './BattleMap';
 import type { SessionState, ConditionName } from '../../types';
-import InitiativeTracker from './InitiativeTracker';
 
 interface DMlobbyProps {
   campaign: { id: string; name: string; description?: string };
@@ -10,7 +26,13 @@ interface DMlobbyProps {
   members: { user_id: string; display_name?: string; email: string; role: string }[];
   isOwner: boolean;
   onUpdateSession: (updates: Partial<SessionState>) => void;
-  onToggleCombat: () => void;
+  // v2.286.0 — onToggleCombat dropped. The legacy "Start Combat"
+  // button it drove only flipped sessionState.combat_active without
+  // creating participants. Modern combat starts via the header
+  // <StartCombatButton> in CampaignDashboard. Keeping the prop here
+  // as optional for back-compat with any older import sites; this
+  // component no longer reads it.
+  onToggleCombat?: () => void;
 }
 
 interface SceneNote {
@@ -83,8 +105,16 @@ function PlayerCard({ pc, isOwner, onApplyHP, onToggleCondition }: {
   );
 }
 
-export default function DMlobby({ campaign, sessionState, playerCharacters, members, isOwner, onUpdateSession, onToggleCombat }: DMlobbyProps) {
-  const [activeTab, setActiveTab] = useState<'players'|'combat'|'map'|'notes'>('players');
+export default function DMlobby({ campaign, sessionState, playerCharacters, members, isOwner, onUpdateSession }: DMlobbyProps) {
+  // v2.286.0 — Tab union slimmed: dropped 'combat' (used the legacy
+  // InitiativeTracker which doesn't drive combat_participants) and
+  // 'map' (top-level Battle Map tab in CampaignDashboard covers it).
+  // sessionState/onUpdateSession kept available for the player HP
+  // controls below — they write current_hp into initiative_order
+  // entries, which is read by the legacy v1 surfaces. This is
+  // tolerated for now; full retirement of the legacy schema is a
+  // follow-up ship.
+  const [activeTab, setActiveTab] = useState<'players'|'notes'>('players');
   const [notes, setNotes] = useState<SceneNote[]>([]);
   const [newNote, setNewNote] = useState('');
 
@@ -127,8 +157,6 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
 
   const TABS = [
     { id: 'players', label: `Players (${playerCharacters.length})` },
-    { id: 'combat', label: sessionState?.combat_active ? 'Combat Active' : 'Combat' },
-    { id: 'map', label: 'Battle Map' },
     { id: 'notes', label: `Notes${notes.length > 0 ? ` (${notes.length})` : ''}` },
   ];
 
@@ -144,21 +172,22 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
           <div style={{ display:'flex', gap:'var(--sp-4)', fontSize:'var(--fs-xs)', color:'var(--t-2)', fontFamily:'var(--ff-body)' }}>
             <span>{members.length} player{members.length !== 1 ? 's' : ''}</span>
             <span>{playerCharacters.length} character{playerCharacters.length !== 1 ? 's' : ''}</span>
-            {sessionState?.combat_active && (
-              <span style={{ color:'var(--c-red-l)' }}>Round {sessionState.round} — Combat Active</span>
-            )}
+            {/* v2.286.0 — Round/combat-active line dropped. Combat
+                status now lives on the InitiativeStrip at the bottom
+                of the page (mounted by CampaignDashboard via
+                CombatProvider); duplicating it here was confusing
+                because the legacy boolean and the modern encounter
+                state could disagree. */}
           </div>
         </div>
-        <div style={{ display:'flex', gap:'var(--sp-2)' }}>
-          {isOwner && (
-            <button
-              className={sessionState?.combat_active ? 'btn-danger btn-sm' : 'btn-primary btn-sm'}
-              onClick={onToggleCombat}
-            >
-              {sessionState?.combat_active ? 'End Combat' : 'Start Combat'}
-            </button>
-          )}
-        </div>
+        {/* v2.286.0 — "Start Combat" button removed. Use the
+            ⚔ Start Combat button in the campaign header (top of the
+            dashboard) — that one creates a real combat_encounters
+            row and seeds participants, which is what the
+            InitiativeStrip + AttackResolutionModal + LR/Reaction
+            prompts all read from. The legacy toggle here only
+            flipped a boolean and was the v2.278 root cause of
+            "buttons don't work" reports. */}
       </div>
 
       {/* Tab bar */}
@@ -173,7 +202,7 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
               border: activeTab === t.id ? '1px solid var(--c-border)' : '1px solid transparent',
               borderBottom: activeTab === t.id ? '1px solid var(--bg-base)' : 'none',
               background: activeTab === t.id ? 'var(--c-surface)' : 'transparent',
-              color: activeTab === t.id ? (t.id === 'combat' && sessionState?.combat_active ? 'var(--c-red-l)' : 'var(--c-gold-l)') : 'var(--t-2)',
+              color: activeTab === t.id ? 'var(--c-gold-l)' : 'var(--t-2)',
               cursor:'pointer', marginBottom:-1,
             }}
           >
@@ -241,46 +270,11 @@ export default function DMlobby({ campaign, sessionState, playerCharacters, memb
         </div>
       )}
 
-      {/* Combat Tab */}
-      {activeTab === 'combat' && (
-        <InitiativeTracker
-          sessionState={sessionState}
-          isOwner={isOwner}
-          playerCharacters={playerCharacters.map(pc => ({
-            id: pc.id, name: pc.name,
-            current_hp: pc.current_hp, max_hp: pc.max_hp,
-            armor_class: pc.armor_class, initiative_bonus: 0,
-          }))}
-          onUpdateSession={onUpdateSession}
-          onToggleCombat={onToggleCombat}
-        />
-      )}
+      {/* Combat Tab — v2.286.0 retired. Use the header
+          ⚔ Start Combat button + the bottom InitiativeStrip. */}
 
-      {/* Battle Map Tab */}
-      {activeTab === 'map' && (
-        <BattleMap
-          campaignId={campaign.id}
-          isDM={true}
-          userId={''}
-          playerCharacters={playerCharacters.map(pc => ({
-            id: pc.id,
-            name: pc.name,
-            class_name: pc.class_name,
-            level: pc.level,
-            current_hp: pc.current_hp,
-            max_hp: pc.max_hp,
-            armor_class: pc.armor_class,
-            active_conditions: pc.active_conditions ?? pc.conditions.map(String) ?? [],
-            strength: pc.strength ?? 10,
-            dexterity: pc.dexterity ?? 10,
-            constitution: pc.constitution ?? 10,
-            intelligence: pc.intelligence ?? 10,
-            wisdom: pc.wisdom ?? 10,
-            charisma: pc.charisma ?? 10,
-            speed: pc.speed ?? 30,
-          }))}
-        />
-      )}
+      {/* Battle Map Tab — v2.286.0 retired. Use the top-level
+          "Battle Map" tab in the campaign dashboard. */}
 
       {/* Notes Tab */}
       {activeTab === 'notes' && (
