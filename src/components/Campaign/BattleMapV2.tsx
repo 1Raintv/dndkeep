@@ -4170,6 +4170,43 @@ function TokenQuickPanel(props: {
   // from racing two updates against an out-of-date base array.
   const [condBusy, setCondBusy] = useState(false);
 
+  // v2.280.0 — Per-DM collapse state for the Default Stats and Ability
+  // Checks sections. Persisted in localStorage so the DM's preference
+  // survives page reloads. Default `false` (sections start expanded)
+  // so a first-time user sees the full panel; once they collapse it
+  // the choice sticks. Stored under per-section keys so toggling one
+  // doesn't affect the other.
+  const STATS_COLLAPSED_KEY = 'dndkeep:tokenpanel:stats_collapsed';
+  const CHECKS_COLLAPSED_KEY = 'dndkeep:tokenpanel:checks_collapsed';
+  const [statsCollapsed, setStatsCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem(STATS_COLLAPSED_KEY) === '1'; } catch { return false; }
+  });
+  const [checksCollapsed, setChecksCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem(CHECKS_COLLAPSED_KEY) === '1'; } catch { return false; }
+  });
+  const toggleStatsCollapsed = () => {
+    setStatsCollapsed(prev => {
+      const next = !prev;
+      try {
+        if (next) localStorage.setItem(STATS_COLLAPSED_KEY, '1');
+        else localStorage.removeItem(STATS_COLLAPSED_KEY);
+      } catch { /* ignore quota / storage errors */ }
+      return next;
+    });
+  };
+  const toggleChecksCollapsed = () => {
+    setChecksCollapsed(prev => {
+      const next = !prev;
+      try {
+        if (next) localStorage.setItem(CHECKS_COLLAPSED_KEY, '1');
+        else localStorage.removeItem(CHECKS_COLLAPSED_KEY);
+      } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   // Esc closes the panel.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -4354,93 +4391,21 @@ function TokenQuickPanel(props: {
           </div>
         </div>
 
-        {/* AC + Speed */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-          {[
-            { label: 'AC', value: c.armor_class },
-            { label: 'Speed', value: `${c.speed} ft` },
-          ].map(stat => (
-            <div key={stat.label} style={{
-              padding: '6px 8px',
-              background: 'rgba(15,16,18,0.5)',
-              border: '1px solid var(--c-border)',
-              borderRadius: 'var(--r-sm, 4px)',
-              textAlign: 'center' as const,
-            }}>
-              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                {stat.label}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--t-1)', marginTop: 2 }}>
-                {stat.value}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Stats row — abbreviated mods */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, marginBottom: 12 }}>
-          {[
-            ['STR', c.strength],
-            ['DEX', c.dexterity],
-            ['CON', c.constitution],
-            ['INT', c.intelligence],
-            ['WIS', c.wisdom],
-            ['CHA', c.charisma],
-          ].map(([k, v]) => {
-            const m = mod(v as number);
-            return (
-              <div key={k as string} style={{
-                padding: '4px 0',
-                background: 'rgba(15,16,18,0.5)',
-                border: '1px solid var(--c-border)',
-                borderRadius: 'var(--r-sm, 4px)',
-                textAlign: 'center' as const,
-              }}>
-                <div style={{ fontSize: 8, color: 'var(--t-3)', letterSpacing: '0.04em' }}>{k as string}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--t-1)' }}>{modStr(m)}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* v2.227 — Active conditions chips. DM clicks the ✕ to
-            remove; players see them read-only. Color-coded via
-            COND_COLOR matching v1's palette. Writes flow through the
-            characters table directly (same path v1 uses) — Realtime
-            propagates back to this panel and to character sheets. */}
-        {c.active_conditions && c.active_conditions.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
-              Conditions
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
-              {c.active_conditions.map(cond => {
-                const color = COND_COLOR[cond] ?? '#9ca3af';
-                return (
-                  <span
-                    key={cond}
-                    onClick={isDM ? () => removeCondition(cond) : undefined}
-                    title={isDM ? `Remove ${cond}` : cond}
-                    style={{
-                      padding: '2px 8px',
-                      background: color + '22',
-                      border: `1px solid ${color}55`,
-                      borderRadius: 999,
-                      fontSize: 10, fontWeight: 700,
-                      color,
-                      cursor: isDM ? 'pointer' : 'default',
-                      opacity: condBusy ? 0.6 : 1,
-                      pointerEvents: condBusy ? 'none' : 'auto',
-                      userSelect: 'none' as const,
-                    }}
-                  >
-                    {cond}{isDM && ' ✕'}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* v2.280.0 — Reordered. New flow:
+              1. Header (above)
+              2. HP bar (above)
+              3. DM Controls (damage/heal/set)
+              4. Open Character Sheet button (immediately below DM controls)
+              5. Apply Condition picker (DM-only)
+              6. Default Stats (AC, Speed, ability mods) — COLLAPSIBLE
+              7. Ability Checks (ChecksPanel) — COLLAPSIBLE
+              8. Active Conditions chips — moved to the bottom
+            Pre-2.280 layout had Default Stats and ability mods up
+            top (always visible) and Conditions just below them; that
+            burned vertical real estate on info DMs rarely act on
+            mid-combat. The frequently-needed surfaces (HP, DM
+            controls, Open Sheet) are now above the fold; the
+            informational surfaces collapse to a one-line header. */}
 
         {/* DM controls — damage / heal / set */}
         {isDM && (
@@ -4510,6 +4475,27 @@ function TokenQuickPanel(props: {
           </div>
         )}
 
+        {/* v2.280.0 — Open full character sheet, moved up to sit
+            directly below the DM Controls per spec. Renders for both
+            DM and player surfaces; the navigation target itself
+            handles permissions (RLS gates write access there). */}
+        <button
+          onClick={onOpenSheet}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'rgba(167,139,250,0.15)',
+            border: '1px solid rgba(167,139,250,0.45)',
+            borderRadius: 'var(--r-sm, 4px)',
+            color: '#a78bfa',
+            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.04em', cursor: 'pointer',
+            marginBottom: 12,
+          }}
+        >
+          Open Character Sheet →
+        </button>
+
         {/* v2.227 — Apply Condition picker (DM only). Lists every
             condition NOT already active as a clickable color chip;
             click → write to characters.active_conditions → Realtime
@@ -4554,40 +4540,149 @@ function TokenQuickPanel(props: {
           );
         })()}
 
-        {/* v2.229 — Checks panel (DM only). Same component the Party
-            tab renders, so the two surfaces stay structurally
-            identical: skill picker, raw ability buttons, save buttons,
-            adv/dis/DC controls, Roll Secret + Prompt Player. The
-            character object is passed as-is (cast to Character — the
-            slim shape from playerCharacters carries every field
-            ChecksPanel reads). Wrapped in a divider for visual
-            separation from the HP/conditions controls above. */}
+        {/* v2.280.0 — Default Stats: collapsible. AC + Speed grid +
+            STR/DEX/CON/INT/WIS/CHA mods. Default expanded; collapsed
+            state persisted per-DM in localStorage. The header row is
+            click-to-toggle so the affordance is consistent with the
+            Ability Checks section below. */}
+        <div style={{ marginBottom: 12 }}>
+          <div
+            onClick={toggleStatsCollapsed}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', userSelect: 'none' as const, marginBottom: 6,
+            }}
+            title={statsCollapsed ? 'Expand default stats' : 'Collapse default stats'}
+          >
+            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Default Stats
+            </div>
+            <span style={{ fontSize: 10, color: 'var(--t-3)' }}>
+              {statsCollapsed ? '▸' : '▾'}
+            </span>
+          </div>
+          {!statsCollapsed && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                {[
+                  { label: 'AC', value: c.armor_class },
+                  { label: 'Speed', value: `${c.speed} ft` },
+                ].map(stat => (
+                  <div key={stat.label} style={{
+                    padding: '6px 8px',
+                    background: 'rgba(15,16,18,0.5)',
+                    border: '1px solid var(--c-border)',
+                    borderRadius: 'var(--r-sm, 4px)',
+                    textAlign: 'center' as const,
+                  }}>
+                    <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      {stat.label}
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--t-1)', marginTop: 2 }}>
+                      {stat.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+                {[
+                  ['STR', c.strength],
+                  ['DEX', c.dexterity],
+                  ['CON', c.constitution],
+                  ['INT', c.intelligence],
+                  ['WIS', c.wisdom],
+                  ['CHA', c.charisma],
+                ].map(([k, v]) => {
+                  const m = mod(v as number);
+                  return (
+                    <div key={k as string} style={{
+                      padding: '4px 0',
+                      background: 'rgba(15,16,18,0.5)',
+                      border: '1px solid var(--c-border)',
+                      borderRadius: 'var(--r-sm, 4px)',
+                      textAlign: 'center' as const,
+                    }}>
+                      <div style={{ fontSize: 8, color: 'var(--t-3)', letterSpacing: '0.04em' }}>{k as string}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--t-1)' }}>{modStr(m)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* v2.229 — Checks panel (DM only). v2.280.0: collapsible.
+            Default expanded; persisted in localStorage. Same
+            ChecksPanel component the Party tab renders, so the two
+            surfaces stay structurally identical: skill picker, raw
+            ability buttons, save buttons, adv/dis/DC controls,
+            Roll Secret + Prompt Player. The character object is
+            passed as-is (cast to Character — the slim shape from
+            playerCharacters carries every field ChecksPanel reads). */}
         {isDM && (
-          <div style={{
-            marginBottom: 12,
-            paddingTop: 10,
-            borderTop: '1px solid var(--c-border)',
-          }}>
-            <ChecksPanel character={c as unknown as Character} campaignId={campaignId} />
+          <div style={{ marginBottom: 12, paddingTop: 10, borderTop: '1px solid var(--c-border)' }}>
+            <div
+              onClick={toggleChecksCollapsed}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                cursor: 'pointer', userSelect: 'none' as const, marginBottom: 6,
+              }}
+              title={checksCollapsed ? 'Expand ability checks' : 'Collapse ability checks'}
+            >
+              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                Ability Checks
+              </div>
+              <span style={{ fontSize: 10, color: 'var(--t-3)' }}>
+                {checksCollapsed ? '▸' : '▾'}
+              </span>
+            </div>
+            {!checksCollapsed && (
+              <ChecksPanel character={c as unknown as Character} campaignId={campaignId} />
+            )}
           </div>
         )}
 
-        {/* Open full character sheet */}
-        <button
-          onClick={onOpenSheet}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            background: 'rgba(167,139,250,0.15)',
-            border: '1px solid rgba(167,139,250,0.45)',
-            borderRadius: 'var(--r-sm, 4px)',
-            color: '#a78bfa',
-            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-            letterSpacing: '0.04em', cursor: 'pointer',
-          }}
-        >
-          Open Character Sheet →
-        </button>
+        {/* v2.227 — Active conditions chips, moved to bottom in v2.280.
+            DM clicks the ✕ to remove; players see them read-only.
+            Color-coded via COND_COLOR matching v1's palette. Writes
+            flow through the characters table directly (same path v1
+            uses) — Realtime propagates back to this panel and to
+            character sheets. Bottom placement is per-spec: conditions
+            are status info, not the primary actionable surface. */}
+        {c.active_conditions && c.active_conditions.length > 0 && (
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+              Conditions
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+              {c.active_conditions.map(cond => {
+                const color = COND_COLOR[cond] ?? '#9ca3af';
+                return (
+                  <span
+                    key={cond}
+                    onClick={isDM ? () => removeCondition(cond) : undefined}
+                    title={isDM ? `Remove ${cond}` : cond}
+                    style={{
+                      padding: '2px 8px',
+                      background: color + '22',
+                      border: `1px solid ${color}55`,
+                      borderRadius: 999,
+                      fontSize: 10, fontWeight: 700,
+                      color,
+                      cursor: isDM ? 'pointer' : 'default',
+                      opacity: condBusy ? 0.6 : 1,
+                      pointerEvents: condBusy ? 'none' : 'auto',
+                      userSelect: 'none' as const,
+                    }}
+                  >
+                    {cond}{isDM && ' ✕'}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4924,12 +5019,12 @@ function PartyVitalsBar(props: {
       {characters.map(c => {
         const pct = c.max_hp > 0 ? Math.max(0, Math.min(1, c.current_hp / c.max_hp)) : 0;
         const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
-        // Sort slot levels 1–9 numerically; only show levels that have
-        // at least one slot defined (total > 0). Skips cantrips (level 0).
-        const slotLevels = Object.keys(c.spell_slots ?? {})
-          .map(k => parseInt(k, 10))
-          .filter(n => Number.isFinite(n) && n >= 1 && n <= 9 && (c.spell_slots![String(n)]?.total ?? 0) > 0)
-          .sort((a, b) => a - b);
+        // v2.280.0 — Spell slots removed from the in-canvas party panel.
+        // Per-DM feedback: slot dots clutter the at-a-glance HP read,
+        // and DMs cross-reference slots in the character sheet anyway.
+        // The full slot UI continues to live in CharacterSheet
+        // (player-side) and PartyDashboard (DM Party tab); only this
+        // floating canvas overlay is HP-only now.
         return (
           <div
             key={c.id}
@@ -5007,57 +5102,9 @@ function PartyVitalsBar(props: {
               </div>
             </div>
 
-            {/* Spell slots — only renders for casters with slots */}
-            {slotLevels.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 2 }}>
-                <div style={{
-                  fontSize: 9, fontWeight: 700, color: 'var(--t-3)',
-                  letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-                }}>
-                  Slots
-                </div>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column' as const,
-                  gap: 1,
-                }}>
-                  {slotLevels.map(lvl => {
-                    const slot = c.spell_slots![String(lvl)];
-                    const remaining = Math.max(0, slot.total - slot.used);
-                    return (
-                      <div
-                        key={lvl}
-                        title={`Level ${lvl}: ${remaining}/${slot.total} remaining`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                      >
-                        <span style={{
-                          fontFamily: 'var(--ff-stat)',
-                          fontSize: 9, fontWeight: 700,
-                          color: 'var(--t-3)',
-                          minWidth: 8,
-                        }}>
-                          {lvl}
-                        </span>
-                        <div style={{ display: 'flex', gap: 1 }}>
-                          {Array.from({ length: slot.total }).map((_, i) => (
-                            <span
-                              key={i}
-                              style={{
-                                width: 8, height: 8,
-                                borderRadius: '50%',
-                                background: i < remaining ? '#a78bfa' : 'transparent',
-                                border: '1px solid rgba(167,139,250,0.55)',
-                                boxSizing: 'border-box' as const,
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {/* v2.280.0 — Spell slots removed from this overlay. Slots
+                continue to render in the full character sheet and the
+                Party tab; the floating canvas panel is HP+AC only. */}
           </div>
         );
       })}

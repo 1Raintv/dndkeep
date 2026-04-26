@@ -862,6 +862,22 @@ body.in-combat::before {
   animation: combatBorderPulse 2.4s ease-in-out infinite;
 }
 
+/* v2.280.0 — When the InitiativeStrip is mounted (bottom: 0, ~56-72px
+   tall, zIndex 9999), the QuickRoll dice button + FloatingRollLog
+   button (both at bottom: var(--sp-10) ≈ 40px, zIndex 90) sit INSIDE
+   the strip's vertical bounds and are visually covered. Same problem
+   for their open panels (bottom: 76px). Bumping bottom by ~88px when
+   body.in-combat is on lifts both surfaces clear of the strip's
+   maximum reasonable height. CSS-only — no React refactor needed. */
+body.in-combat .quickroll-fab,
+body.in-combat .rolllog-fab {
+  bottom: calc(var(--sp-10) + 88px) !important;
+}
+body.in-combat .quickroll-panel,
+body.in-combat .rolllog-panel {
+  bottom: calc(76px + 88px) !important;
+}
+
 /* ── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .app-sidebar { width: var(--sidebar-w-collapsed); }

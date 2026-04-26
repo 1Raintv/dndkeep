@@ -248,6 +248,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  <button
  onClick={() => setOpen(o => !o)}
  title="Dice Roller"
+ className="quickroll-fab"
  style={{
  position: 'fixed', bottom: 'var(--sp-10)', right: 'var(--sp-4)',
  zIndex: 90, width: 52, height: 52, borderRadius: '50%',
@@ -280,7 +281,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  </button>
 
  {open && (
- <div className="animate-fade-in" style={{
+ <div className="animate-fade-in quickroll-panel" style={{
  position: 'fixed', bottom: 76, right: 'var(--sp-4)',
  zIndex: 89, width: 296,
  background: 'linear-gradient(160deg, #1a1f2e 0%, #0d1117 100%)',

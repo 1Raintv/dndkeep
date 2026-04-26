@@ -17,6 +17,7 @@ export default function FloatingRollLog({ characterId, userId, characterName }: 
  <button
  onClick={() => setOpen(o => !o)}
  title="Roll Log"
+ className="rolllog-fab"
  style={{
  position: 'fixed',
  bottom: 'var(--sp-10)',
@@ -51,7 +52,7 @@ export default function FloatingRollLog({ characterId, userId, characterName }: 
  {/* Panel */}
  {open && (
  <div
- className="animate-fade-in"
+ className="animate-fade-in rolllog-panel"
  style={{
  position: 'fixed',
  bottom: 76,
