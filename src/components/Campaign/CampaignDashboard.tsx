@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense, type FormEvent } from 'react';
+import { useState, useEffect, lazy, Suspense, type FormEvent } from 'react';
 import type { Campaign, Character, CampaignMember } from '../../types';
 import { useCampaign } from '../../context/CampaignContext';
 import { useAuth } from '../../context/AuthContext';
@@ -13,7 +13,7 @@ import PartyChat from './PartyChat';
 import DMScreen from './DMScreen';
 import SessionScheduler from './SessionScheduler';
 import NPCManager from './NPCManager';
-import AISummary from './AISummary';
+// v2.276.0 — AISummary import removed alongside the Recap tab.
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
 // v2.267.0 — v1 BattleMap import removed. v2 is the only renderer.
@@ -71,7 +71,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'notes' | 'schedule' | 'npcs' | 'recap' | 'dm' | 'discord' | 'map'>('characters');
+  const [activeTab, setActiveTab] = useState<'members' | 'characters' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>('characters');
   // Handle deep-link ?tab=map from character sheet Map button
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -81,30 +81,22 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [notesSaving, setNotesSaving] = useState(false);
-  const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // v2.276.0 — Notes tab removed. The campaigns.notes column is left
+  // alone (would-be-destructive migration; harmless to leave). The
+  // textarea, autosave timer, realtime subscription, and loader
+  // function were dropped from this component.
   // Derived from props/context — after all hooks
   const isOwner = campaign.owner_id === user?.id;
 
   useEffect(() => {
     loadMembers();
     loadCharacters();
-    loadNotes();
     loadNpcs();
 
-    // Realtime: campaign notes
-    const notesChannel = supabase
-      .channel(`campaign-notes-${campaign.id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'campaigns',
-        filter: `id=eq.${campaign.id}`,
-      }, (payload: { new: Record<string, unknown> }) => {
-        if (payload.new && typeof payload.new.notes === 'string') {
-          setNotes(payload.new.notes as string);
-        }
-      })
-      .subscribe();
+    // v2.276.0 — campaign-notes realtime channel removed alongside
+    // the Notes tab. The `campaigns.notes` column is no longer read
+    // by any component; future readers should treat the column as
+    // legacy. character + npc realtime subs continue below.
 
     // Realtime: character HP / conditions sync — keeps BattleMap and party panel live
     const charsChannel = supabase
@@ -158,30 +150,10 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       .subscribe();
 
     return () => {
-      supabase.removeChannel(notesChannel);
       supabase.removeChannel(charsChannel);
       supabase.removeChannel(npcsChannel);
     };
   }, [campaign.id]);
-
-  async function loadNotes() {
-    const { data } = await supabase
-      .from('campaigns')
-      .select('notes')
-      .eq('id', campaign.id)
-      .single();
-    if (data?.notes) setNotes(data.notes);
-  }
-
-  function handleNotesChange(value: string) {
-    setNotes(value);
-    if (notesSaveTimer.current) clearTimeout(notesSaveTimer.current);
-    setNotesSaving(true);
-    notesSaveTimer.current = setTimeout(async () => {
-      await supabase.from('campaigns').update({ notes: value }).eq('id', campaign.id);
-      setNotesSaving(false);
-    }, 800);
-  }
 
   async function loadMembers() {
     const { data } = await getCampaignMembers(campaign.id);
@@ -316,12 +288,18 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       </div>
 
       {/* Tabs */}
+      {/* v2.276.0 — Removed Recap and Notes tabs. Recap (AI session
+          summaries) was rarely used and the AISummary component is
+          dropped from imports. Notes was a freeform per-campaign
+          textarea — content is preserved in the campaigns.notes column
+          but no longer surfaced in the UI; planned chat surface in
+          v2.288 supersedes the freeform-notes use case. */}
       <div className="tabs">
-        {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'members', 'notes', 'schedule', 'recap', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
+        {(['characters', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'members', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
             members: 'Members', characters: 'Characters', session: 'Combat',
-            party: 'Party', log: 'Log', chat: 'Chat', notes: 'Notes',
-            schedule: 'Schedule', npcs: 'NPCs', recap: 'Recap',
+            party: 'Party', log: 'Log', chat: 'Chat',
+            schedule: 'Schedule', npcs: 'NPCs',
             dm: 'DM Screen', discord: 'Discord', map: 'Battle Map',
           };
           return (
@@ -464,35 +442,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           )
         )}
 
-        {/* Notes tab — shared, real-time synced */}
-        {activeTab === 'notes' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', maxWidth: 720 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div className="section-header" style={{ marginBottom: 0 }}>Session Notes</div>
-              <span style={{
-                fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)',
-                color: notesSaving ? 'var(--c-gold)' : 'var(--t-2)',
-                transition: 'color 200ms',
-              }}>
-                {notesSaving ? '● Saving…' : '✓ Saved'}
-              </span>
-            </div>
-            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
-              Shared with all campaign members. Changes sync in real-time.
-            </p>
-            <textarea
-              value={notes}
-              onChange={e => handleNotesChange(e.target.value)}
-              placeholder="Session recap, quest notes, NPC names, loot found…"
-              rows={20}
-              style={{
-                resize: 'vertical', fontSize: 'var(--fs-sm)',
-                lineHeight: 1.7, fontFamily: 'var(--ff-body)',
-                minHeight: 320,
-              }}
-            />
-          </div>
-        )}
+        {/* v2.276.0 — Notes tab content block removed. */}
 
         {/* Party tab — real-time HP/conditions for all members */}
         {activeTab === 'party' && (
@@ -552,13 +502,8 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           </div>
         )}
 
-        {/* AI Session Recap */}
-        {activeTab === 'recap' && (
-          <div>
-            <h3 style={{ marginBottom: 'var(--sp-2)' }}>Session Recaps</h3>
-            <AISummary campaignId={campaign.id} campaignName={campaign.name} isOwner={isOwner} />
-          </div>
-        )}
+        {/* v2.276.0 — Recap (AI Session Summary) tab content block
+            removed. AISummary component is no longer imported. */}
 
         {/* v2.95.0 — Phase C: one unified Battle Map for everyone.
             DM gets full controls; players get view-all + drag-own-token-only via myCharacterId.
