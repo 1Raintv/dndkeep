@@ -5135,6 +5135,47 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [dims, setDims] = useState({ width: 800, height: 600 });
+  // v2.281.0 — pseudo-fullscreen toggle. When true the wrapper goes
+  // position:fixed inset:0 to take over the viewport without invoking
+  // the browser's native fullscreen API (which would hide portaled
+  // overlays like the InitiativeStrip, dice/log buttons, toasts, and
+  // modals — all of which mount via document.body). The CSS approach
+  // keeps every portal layer correctly stacked above the map.
+  // Persisted per-user in localStorage so the choice survives page
+  // reloads. Esc exits fullscreen as a convenience.
+  const FULLSCREEN_KEY = 'dndkeep:battlemap:fullscreen';
+  const [mapFullscreen, setMapFullscreen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem(FULLSCREEN_KEY) === '1'; } catch { return false; }
+  });
+  const toggleMapFullscreen = useCallback(() => {
+    setMapFullscreen(prev => {
+      const next = !prev;
+      try {
+        if (next) localStorage.setItem(FULLSCREEN_KEY, '1');
+        else localStorage.removeItem(FULLSCREEN_KEY);
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+  // Esc exits fullscreen. Doesn't interfere with other Esc handlers
+  // because they generally check for an open modal/menu first; this
+  // listener only acts when fullscreen is on AND no other Esc-eating
+  // surface is mounted. We can't easily detect "another modal open"
+  // from here without coupling, so we just check our own state and
+  // bail otherwise — the cost of double-handling Esc (closing both
+  // a popup and exiting fullscreen) is acceptably minor.
+  useEffect(() => {
+    if (!mapFullscreen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMapFullscreen(false);
+        try { localStorage.removeItem(FULLSCREEN_KEY); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [mapFullscreen]);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   // v2.226 — left-click-without-drag opens the TokenQuickPanel for
@@ -5643,44 +5684,46 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(entries => {
-      for (const e of entries) {
-        const w = Math.max(300, Math.floor(e.contentRect.width));
-        // v2.270.0 — was: width × 0.5625 (16:9), capped at 700px max.
-        // The 700px cap was conservative — on 1440p+ desktops it left
-        // significant unused vertical space below the canvas. Now we
-        // size against the available viewport height so the canvas
-        // grows with the window, with sane min/max guards:
-        //   - Min 400px: avoids degenerate tiny canvas on short viewports
-        //   - Max 90vh: leaves room for headers/initiative bar/floating
-        //     party panel without forcing scrolling
-        // The wrapper itself is bounded by the available .app-content
-        // box so this max is effectively a "don't overflow" guard.
-        const viewportH = typeof window !== 'undefined' ? window.innerHeight : 900;
-        const targetH = Math.floor(viewportH * 0.78);
-        const h = Math.max(400, Math.min(targetH, 1100));
-        setDims({ width: w, height: h });
-      }
-    });
-    ro.observe(el);
-    // v2.270.0 — also resize on window resize (ResizeObserver only
-    // fires on the wrapper's own size; window height changes don't
-    // change the wrapper's box, so we need a separate listener to
-    // recompute against the new viewport vertical.
-    const onWinResize = () => {
-      if (!el) return;
+    // v2.270.0 — was: width × 0.5625 (16:9), capped at 700px max.
+    // v2.281.0 — bigger default + fullscreen support. The previous
+    // 0.78 ratio felt cramped on tall monitors; bumped to 0.86 for
+    // the standard layout, and the cap from 1100 → 1400 so 1440p+
+    // displays can use more vertical real estate. When mapFullscreen
+    // is on the canvas takes essentially the whole viewport
+    // (height = innerHeight - 8 to keep a hairline border visible).
+    // Width still comes from the wrapper's own clientWidth, which
+    // becomes 100vw because the wrapper is position:fixed inset:0
+    // when fullscreen is on.
+    const computeDims = () => {
       const w = Math.max(300, Math.floor(el.clientWidth));
-      const viewportH = window.innerHeight;
-      const targetH = Math.floor(viewportH * 0.78);
-      const h = Math.max(400, Math.min(targetH, 1100));
+      const viewportH = typeof window !== 'undefined' ? window.innerHeight : 900;
+      let h: number;
+      if (mapFullscreen) {
+        h = Math.max(400, viewportH - 8);
+      } else {
+        const targetH = Math.floor(viewportH * 0.86);
+        h = Math.max(400, Math.min(targetH, 1400));
+      }
       setDims({ width: w, height: h });
     };
+    const ro = new ResizeObserver(() => computeDims());
+    ro.observe(el);
+    // ResizeObserver only fires on the wrapper's own size; window
+    // height changes don't change the wrapper box on the standard
+    // layout, so a separate window listener catches that case. (In
+    // fullscreen the wrapper IS the viewport, so RO would fire too,
+    // but the window listener is harmless redundancy.)
+    const onWinResize = () => computeDims();
     window.addEventListener('resize', onWinResize);
+    // Force one immediate recompute so toggling fullscreen updates
+    // dims even if the wrapper's clientWidth happens to be unchanged
+    // (it isn't, in practice — but defensively explicit).
+    computeDims();
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', onWinResize);
     };
-  }, []);
+  }, [mapFullscreen]);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -6484,6 +6527,28 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             ⚙ Settings
           </button>
         )}
+        {/* v2.281.0 — Fullscreen toggle. Visible to all users (DM and
+            players both benefit from a maximized canvas during combat).
+            When on, the wrapper goes position:fixed inset:0 and the
+            canvas dims compute to viewport size. Esc also exits.
+            Active state shown via gold tint to match the existing
+            DM toolbar's "active mode" affordance. */}
+        <button
+          onClick={toggleMapFullscreen}
+          title={mapFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen map'}
+          style={{
+            padding: '4px 10px',
+            background: mapFullscreen ? 'rgba(212,160,23,0.20)' : 'var(--c-card)',
+            border: `1px solid ${mapFullscreen ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`,
+            borderRadius: 'var(--r-sm, 4px)',
+            color: mapFullscreen ? 'var(--c-gold-l)' : 'var(--t-2)',
+            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+          }}
+        >
+          {mapFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen'}
+        </button>
         {loading && (
           <span style={{
             marginLeft: 'auto',
@@ -6727,14 +6792,60 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       <div
         ref={wrapperRef}
         style={{
-          width: '100%',
+          // v2.281.0 — pseudo-fullscreen via position:fixed inset:0.
+          // zIndex is below the InitiativeStrip (9999) so combat UI
+          // stays on top, but above the app sidebar/header chrome
+          // (which sits at standard z-indices ≤100). Border kept on
+          // both modes for visual continuity; in fullscreen the
+          // border becomes a hairline against the viewport edge.
+          ...(mapFullscreen
+            ? {
+                position: 'fixed' as const,
+                inset: 0,
+                width: '100vw',
+                height: '100vh',
+                zIndex: 9000,
+                borderRadius: 0,
+              }
+            : {
+                width: '100%',
+                position: 'relative' as const,
+              }),
           background: 'var(--c-card)',
           border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-lg, 12px)',
+          ...(mapFullscreen ? {} : { borderRadius: 'var(--r-lg, 12px)' }),
           overflow: 'hidden',
-          position: 'relative' as const,
         }}
       >
+        {/* v2.281.0 — Floating exit affordance, only when fullscreen.
+            The toolbar with the Fullscreen toggle lives ABOVE the
+            wrapper and is hidden behind it when fullscreen is on
+            (the wrapper covers the viewport). This in-canvas button
+            gives users an obvious way out besides Esc. Top-right
+            corner; high zIndex to stay above any canvas overlays. */}
+        {mapFullscreen && (
+          <button
+            onClick={toggleMapFullscreen}
+            title="Exit fullscreen (Esc)"
+            style={{
+              position: 'absolute',
+              top: 8, right: 8,
+              zIndex: 10,
+              padding: '6px 12px',
+              background: 'rgba(15,16,18,0.85)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              border: '1px solid var(--c-gold-bdr)',
+              borderRadius: 'var(--r-sm, 4px)',
+              color: 'var(--c-gold-l)',
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+            }}
+          >
+            ⛶ Exit Fullscreen
+          </button>
+        )}
         <Application
           width={dims.width}
           height={dims.height}
