@@ -1,6 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../shared/Toast';
+// v2.293.0 — Combat-system Phase 2c migration. The Initiative
+// section in this panel used to read/write sessionState.initiative_order
+// (the legacy campaign_sessions JSON column). Modern combat lives on
+// combat_encounters + combat_participants, accessed here via
+// useCombat() which is provided by CampaignDashboard's CombatProvider
+// wrapper. The old code path matched by `Combatant.npc_id`; the
+// modern equivalent matches by `participant_type='npc' AND
+// entity_id=npc.id`.
+//
+// Behavior changes worth flagging:
+//   - The Initiative section is now hidden when there's no active
+//     encounter (encounter?.status !== 'active'). The legacy code
+//     showed the section whenever sessionState/onUpdateSession were
+//     plumbed; you could "add to initiative" outside of combat,
+//     which mostly produced confused state. With modern combat,
+//     adding-to-initiative without an encounter doesn't have a
+//     meaningful target.
+//   - Add-to-combat now snapshots HP/AC via npcToSeed (the same
+//     path the StartCombatModal uses), keeping the seed shape
+//     consistent across all entry points.
+//   - Initiative override (the manual input) issues a direct
+//     UPDATE on combat_participants.initiative + recomputeTurnOrder
+//     so the strip re-sorts immediately.
+import { useCombat } from '../../context/CombatContext';
+import { npcToSeed, addParticipantToEncounter, recomputeTurnOrder } from '../../lib/combatEncounter';
 
 /**
  * v2.243.0 — Phase Q.1 pt 31: NPC quick panel.
@@ -76,17 +101,27 @@ interface Props {
   anchorY: number;
   isDM: boolean;
   onClose: () => void;
-  // v2.248.0 — initiative integration. Reads the campaign's
-  // session_state.initiative_order to find this NPC's entry (matched
-  // by Combatant.npc_id) and updates it via onUpdateSession. Optional
-  // so older callers (test harnesses, share view) still compile —
-  // when missing, the Initiative section in the panel is hidden.
+  // v2.293.0 — sessionState/onUpdateSession kept on the prop type
+  // for back-compat with the existing BattleMapV2 mount. The
+  // Initiative section now reads from useCombat() and writes
+  // directly to combat_participants. These props are no longer
+  // consumed; the BattleMapV2 mount can drop them in a future
+  // ship without affecting behavior. Same back-compat pattern as
+  // v2.291's DMScreen and v2.292's DMlobby migrations.
   sessionState?: import('../../types').SessionState | null;
   onUpdateSession?: (updates: Partial<import('../../types').SessionState>) => void;
 }
 
-export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onClose, sessionState, onUpdateSession }: Props) {
+export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onClose }: Props) {
   const { showToast } = useToast();
+  // v2.293.0 — Modern combat state. encounter is null when no
+  // encounter exists; .status is 'pending' | 'active' | 'completed'.
+  // The Initiative section gates on 'active' specifically (a
+  // 'pending' encounter is the brief setup window between
+  // startEncounter and the first turn — the strip itself isn't
+  // showing yet so adding here would create a participant the
+  // strip wouldn't render correctly).
+  const { encounter, participants, refresh: refreshCombat } = useCombat();
   const [npc, setNpc] = useState<NpcRow | null>(null);
   const [hpInput, setHpInput] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
@@ -247,64 +282,113 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     }
   }, [npc, showToast]);
 
-  // v2.248.0 — Initiative integration. Find this NPC's Combatant entry
-  // in the campaign's session_state.initiative_order via `npc_id`. We
-  // intentionally don't fall back to a name match: legacy Combatant
-  // entries created via the InitiativeTracker's "Add Monster" form
-  // never had an npcs row, so a name collision (two "Goblin" rows)
-  // would silently bind to the wrong one. Better to require linking
-  // via the panel's "Add to Combat" button, which writes npc_id.
-  const myCombatant = (sessionState?.initiative_order ?? []).find(c => c.npc_id === npcId);
-  const inCombat = !!myCombatant;
+  // v2.293.0 — Initiative integration via modern combat schema.
+  // Match by entity_id (the foreign key combat_participants writes to
+  // when seeded from npcToSeed) AND participant_type='npc' so we
+  // don't cross-link with a character whose id happens to collide
+  // (UUIDs make collision astronomically unlikely, but the type
+  // guard is free and matches the legacy npc_id-only intent).
+  const myParticipant = participants.find(
+    p => p.participant_type === 'npc' && p.entity_id === npcId
+  );
+  const inCombat = !!myParticipant;
+  // The Initiative section additionally requires an active encounter
+  // to function — adding-to-initiative without one has no target.
+  const canEditInitiative = encounter?.status === 'active';
 
-  const setInitiativeValue = useCallback((value: number) => {
-    if (!sessionState || !onUpdateSession || !myCombatant) return;
-    onUpdateSession({
-      initiative_order: sessionState.initiative_order.map(c =>
-        c.id === myCombatant.id ? { ...c, initiative: value } : c
-      ),
-    });
-  }, [sessionState, onUpdateSession, myCombatant]);
+  const setInitiativeValue = useCallback(async (value: number) => {
+    if (!myParticipant || !encounter) return;
+    // v2.293.0 — Direct UPDATE on combat_participants.initiative.
+    // The InitiativeStrip reads initiative + initiative_tiebreaker
+    // to render the order; recomputeTurnOrder writes the resorted
+    // turn_order back so the strip re-shuffles immediately. Same
+    // path rollInitiativeForParticipant uses internally; we go
+    // direct here because rollInitiativeForParticipant also emits
+    // an 'initiative_rolled' combat event, which would be wrong for
+    // a manual override (no roll happened).
+    const { error } = await supabase
+      .from('combat_participants')
+      .update({ initiative: value })
+      .eq('id', myParticipant.id);
+    if (error) {
+      console.error('[NpcTokenQuickPanel] setInitiativeValue failed', error);
+      showToast(`Couldn't set initiative: ${error.message}`, 'error');
+      return;
+    }
+    await recomputeTurnOrder(encounter.id);
+    await refreshCombat();
+  }, [myParticipant, encounter, refreshCombat, showToast]);
 
-  const rollInitiative = useCallback(() => {
-    if (!npc || !sessionState || !onUpdateSession) return;
-    // v2.250.0 — flat d20+0. The npcs table doesn't carry ability scores
-    // (only dm_npc_roster does), so we can't derive a dex mod here. The
-    // DM can type a value into the manual input as an override before
-    // committing. v2.251+ candidate: snapshot dex from dm_npc_roster on
-    // placement so it travels with the spawned NPC.
+  const rollInitiative = useCallback(async () => {
+    if (!npc || !encounter || encounter.status !== 'active') return;
+    // v2.293.0 — Flat d20+0 (npcs row doesn't carry dex). Same
+    // semantic as the legacy code; v2.251+ candidate: snapshot dex
+    // from dm_npc_roster on placement so it travels with the
+    // spawned NPC and we can route through
+    // rollInitiativeForParticipant for the proper d20+DEX path
+    // (which also emits a public 'initiative_rolled' combat event).
     const d20 = Math.floor(Math.random() * 20) + 1;
     const total = d20;
-    if (myCombatant) {
-      setInitiativeValue(total);
+    if (myParticipant) {
+      // Re-roll path: just overwrite the existing participant's value.
+      await setInitiativeValue(total);
     } else {
-      // Auto-add to combat with the rolled initiative. Snapshots HP/AC/
-      // conditions from the npcs row at add time, matching the existing
-      // addCombatant pattern in InitiativeTracker.
-      const newCombatant: import('../../types').Combatant = {
-        id: `${Date.now()}-${Math.random()}`,
+      // First-add path: seed via npcToSeed (the same shape
+      // StartCombatModal uses), then drop the auto-rolled initiative
+      // and write our d20 result. addParticipantToEncounter would
+      // auto-roll if we didn't override after, but we want the toast
+      // to show the same d20 the DM sees written into the participant
+      // row, so we override post-insert.
+      const seed = npcToSeed({
+        id: npc.id,
         name: npc.name,
-        initiative: total,
-        current_hp: npc.hp ?? 0,
-        max_hp: npc.max_hp ?? (npc.hp ?? 0),
-        ac: npc.ac ?? 10,
-        is_monster: true,
-        npc_id: npc.id,
-        conditions: (npc.conditions ?? []) as any,
-      };
-      onUpdateSession({
-        initiative_order: [...sessionState.initiative_order, newCombatant],
+        ac: npc.ac ?? undefined,
+        hp: npc.hp ?? undefined,
+        max_hp: npc.max_hp ?? undefined,
       });
+      const created = await addParticipantToEncounter(
+        encounter.id,
+        encounter.campaign_id,
+        seed,
+      );
+      if (!created) {
+        showToast('Failed to add NPC to combat.', 'error');
+        return;
+      }
+      const { error } = await supabase
+        .from('combat_participants')
+        .update({ initiative: total })
+        .eq('id', created.id);
+      if (error) {
+        console.error('[NpcTokenQuickPanel] post-insert init override failed', error);
+        // Soft-fail: the participant exists, just with the auto-roll
+        // value instead of our d20. Don't toast; show the toast for
+        // the successful add below so the DM still gets feedback.
+      }
+      await recomputeTurnOrder(encounter.id);
+      await refreshCombat();
     }
     showToast(`Rolled ${d20}`, 'info');
-  }, [npc, sessionState, onUpdateSession, myCombatant, setInitiativeValue, showToast]);
+  }, [npc, encounter, myParticipant, setInitiativeValue, showToast, refreshCombat]);
 
-  const removeFromCombat = useCallback(() => {
-    if (!sessionState || !onUpdateSession || !myCombatant) return;
-    onUpdateSession({
-      initiative_order: sessionState.initiative_order.filter(c => c.id !== myCombatant.id),
-    });
-  }, [sessionState, onUpdateSession, myCombatant]);
+  const removeFromCombat = useCallback(async () => {
+    if (!myParticipant || !encounter) return;
+    // v2.293.0 — Hard delete the combat_participants row. The
+    // realtime sub on combat_participants in CombatProvider will
+    // drop the row from the strip; recomputeTurnOrder fills the
+    // turn_order gap so the next-turn flow doesn't skip.
+    const { error } = await supabase
+      .from('combat_participants')
+      .delete()
+      .eq('id', myParticipant.id);
+    if (error) {
+      console.error('[NpcTokenQuickPanel] removeFromCombat failed', error);
+      showToast(`Couldn't remove from combat: ${error.message}`, 'error');
+      return;
+    }
+    await recomputeTurnOrder(encounter.id);
+    await refreshCombat();
+  }, [myParticipant, encounter, refreshCombat, showToast]);
 
   function stop(e: React.MouseEvent) { e.stopPropagation(); }
 
@@ -447,13 +531,20 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
           </button>
         </div>
 
-        {/* v2.248.0 — Initiative section. Reads sessionState.initiative_order
-            for this NPC's entry (matched by npc_id). DM-only controls:
-            [Roll d20] auto-adds to combat with the rolled total if not
-            present; manual input sets the value directly; [Remove] tears
-            down the entry. Hidden when no sessionState/onUpdateSession was
-            plumbed through (e.g. share view, older callers). */}
-        {isDM && sessionState && onUpdateSession && (
+        {/* v2.293.0 — Initiative section. Reads from useCombat() to
+            find this NPC's combat_participant entry (matched by
+            entity_id + participant_type='npc'). DM-only controls:
+            [Roll d20] adds to combat with the rolled total if not
+            present, re-rolls otherwise; manual input sets the value
+            directly; [Remove] tears down the participant row.
+            Hidden when there's no active encounter — combat must
+            be running for adding-to-initiative to have a target.
+            Modern combat schema gate. Hidden when there's
+            no active encounter (was: hidden when sessionState/
+            onUpdateSession weren't plumbed). With the modern path,
+            the section only does something useful while combat is
+            running; outside of combat there's no encounter to add to. */}
+        {isDM && canEditInitiative && (
           <div style={{
             marginBottom: 12,
             padding: '8px 10px',
@@ -495,7 +586,12 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
                 fontFamily: 'var(--ff-stat)', fontSize: 16, fontWeight: 800,
                 color: inCombat ? 'var(--c-gold-l)' : 'var(--t-3)',
               }}>
-                {myCombatant ? myCombatant.initiative : '—'}
+                {/* v2.293.0 — was: myCombatant?.initiative. Now reads
+                    from the modern CombatParticipant whose initiative
+                    is `number | null`. Render '—' for the null case
+                    (a participant exists with no initiative rolled
+                    yet — possible in initiative_mode='player_agency'). */}
+                {myParticipant?.initiative ?? '—'}
               </div>
               {/* Manual override input — only enabled when in combat */}
               <input
