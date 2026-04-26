@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as rosterApi from '../../lib/api/npcRoster';
 import * as srdApi from '../../lib/api/srdMonsters';
+import * as homebrewApi from '../../lib/api/homebrewMonsters';
 import type { RosterEntry, RosterEntryDraft } from '../../lib/api/npcRoster';
 import type { SrdMonsterRow } from '../../lib/api/srdMonsters';
 
@@ -136,6 +137,35 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
     await reload();
   }
 
+  // v2.261.0 — Save the current draft as a personal homebrew monster
+  // template (independent of the roster). This is the "I want this
+  // available across all my future campaigns" save. Doesn't close
+  // the modal — DM might also want to Save to Roster afterward to
+  // get it into the active campaign's encounter list. A transient
+  // chip appears on the Save as Homebrew button to confirm the save.
+  const [homebrewSavedAt, setHomebrewSavedAt] = useState<number | null>(null);
+  async function handleSaveAsHomebrew() {
+    if (!editing) return;
+    if (!editing.draft.name.trim()) return;
+    setSaving(true);
+    const saved = await homebrewApi.createHomebrewFromDraft(ownerId, editing.draft);
+    setSaving(false);
+    if (!saved) return;
+    // Flash a "Saved!" indicator for 2 seconds without closing the
+    // form. Keeps the DM in flow if they want to also Save to Roster.
+    const savedAt = Date.now();
+    setHomebrewSavedAt(savedAt);
+    setTimeout(() => {
+      // Only clear if no newer save happened in the meantime.
+      setHomebrewSavedAt(curr => curr === savedAt ? null : curr);
+    }, 2000);
+  }
+  // Reset the confirmation chip when the editing draft changes (i.e.
+  // the DM moved on to a different entry).
+  useEffect(() => {
+    setHomebrewSavedAt(null);
+  }, [editing?.entry?.id, editing?.draft.name]);
+
   async function handleDelete(entry: RosterEntry) {
     // Inline confirm — modal-on-modal would be heavier than warranted.
     // The action is irreversible but spawned NPCs don't depend on the
@@ -216,9 +246,11 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
             draft={editing.draft}
             isNew={!editing.entry}
             saving={saving}
+            homebrewSavedAt={homebrewSavedAt}
             onChange={(patch) => setEditing({ ...editing, draft: { ...editing.draft, ...patch } })}
             onCancel={() => setEditing(null)}
             onSave={handleSave}
+            onSaveAsHomebrew={handleSaveAsHomebrew}
           />
         ) : showSrdPicker ? (
           <SrdPickerView
@@ -408,11 +440,17 @@ function ListView({ roster, filtered, search, setSearch, onNew, onCloneSrd, onEd
 
 // ─── Edit View ────────────────────────────────────────────────────
 
-function EditView({ draft, isNew, saving, onChange, onCancel, onSave }: {
+function EditView({ draft, isNew, saving, homebrewSavedAt, onChange, onCancel, onSave, onSaveAsHomebrew }: {
   draft: RosterEntryDraft; isNew: boolean; saving: boolean;
+  /** v2.261.0 — timestamp of last successful "Save as Homebrew".
+   *  Non-null for ~2 seconds after a save → renders the confirmation
+   *  chip on the button. Reset to null when the draft identity
+   *  changes (parent useEffect). */
+  homebrewSavedAt: number | null;
   onChange: (patch: Partial<RosterEntryDraft>) => void;
   onCancel: () => void;
   onSave: () => void;
+  onSaveAsHomebrew: () => void;
 }) {
   // Compact label component to keep the form readable. Each row is a
   // grid; labels are 9pt uppercase tracking — matches the visual idiom
@@ -586,7 +624,15 @@ function EditView({ draft, isNew, saving, onChange, onCancel, onSave }: {
           </div>
         </div>
       </div>
-      {/* Footer — Cancel + Save. Save is gated on a non-empty name. */}
+      {/* Footer — Cancel · Save as Homebrew · Save to Roster.
+          Three independent actions:
+          - Cancel: discard changes
+          - Save as Homebrew (v2.261.0): persist as a reusable per-user
+            template in homebrew_monsters. Doesn't close the modal —
+            DM may also want to save to the active roster.
+          - Save to Roster: original behavior; persists to dm_npc_roster
+            scoped to this campaign and closes the modal.
+          All three are gated on a non-empty name. */}
       <div style={{
         padding: '10px 16px',
         borderTop: '1px solid var(--c-border)',
@@ -606,6 +652,28 @@ function EditView({ draft, isNew, saving, onChange, onCancel, onSave }: {
           }}
         >Cancel</button>
         <button
+          onClick={onSaveAsHomebrew}
+          disabled={!draft.name.trim() || saving}
+          title="Save as a reusable homebrew template (available across all your campaigns)"
+          style={{
+            padding: '6px 14px',
+            background: homebrewSavedAt != null
+              ? 'rgba(34,197,94,0.22)'
+              : 'rgba(96,165,250,0.18)',
+            border: `1px solid ${homebrewSavedAt != null
+              ? 'rgba(34,197,94,0.65)'
+              : 'rgba(96,165,250,0.55)'}`,
+            borderRadius: 4,
+            color: homebrewSavedAt != null ? '#86efac' : '#93c5fd',
+            fontSize: 12, fontWeight: 700,
+            cursor: !draft.name.trim() || saving ? 'not-allowed' : 'pointer',
+            opacity: !draft.name.trim() || saving ? 0.5 : 1,
+            transition: 'background 200ms, border-color 200ms, color 200ms',
+          }}
+        >
+          {homebrewSavedAt != null ? '✓ Saved to Homebrew' : 'Save as Homebrew'}
+        </button>
+        <button
           onClick={onSave}
           disabled={!draft.name.trim() || saving}
           style={{
@@ -619,7 +687,7 @@ function EditView({ draft, isNew, saving, onChange, onCancel, onSave }: {
             opacity: !draft.name.trim() || saving ? 0.5 : 1,
           }}
         >
-          {saving ? 'Saving…' : isNew ? 'Create' : 'Save Changes'}
+          {saving ? 'Saving…' : isNew ? 'Save to Roster' : 'Save Changes'}
         </button>
       </div>
     </>
