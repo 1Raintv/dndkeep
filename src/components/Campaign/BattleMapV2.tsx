@@ -1832,8 +1832,14 @@ function DrawingLayer(props: {
   // (which DOES confirm) remains available outside eraser mode.
   // Misses on empty space are silent no-ops; no toast spam.
   eraserActive?: boolean;
+  // v2.287.0 — Eraser also targets walls now; the wall-detection
+  // threshold scales with grid size (max(6, gridSizePx*0.25)) to
+  // match the wall-mode right-click-delete feel. Plumbed in as a
+  // prop because the store doesn't carry grid info — it's a
+  // viewport/scene rendering concern owned by the parent.
+  gridSizePx?: number;
 }) {
-  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth, selectMode, recordUndoable, eraserActive } = props;
+  const { viewport, canvasEl, activeKind, isDM, currentSceneId, color, lineWidth, selectMode, recordUndoable, eraserActive, gridSizePx } = props;
   const drawings = useBattleMapStore(s => s.drawings);
   const containerRef = useRef<Container | null>(null);
   const previewGfxRef = useRef<Graphics | null>(null);
@@ -2253,31 +2259,142 @@ function DrawingLayer(props: {
       return { x: wp.x, y: wp.y };
     }
 
-    function findDrawingAt(world: { x: number; y: number }): SceneDrawing | null {
-      const c = containerRef.current;
-      if (!c) return null;
-      // Iterate top-down so the visually-frontmost drawing wins.
-      for (let i = c.children.length - 1; i >= 0; i--) {
-        const child = c.children[i];
-        const id = (child as any).__drawingId as string | undefined;
-        if (!id) continue;
-        const b = child.getBounds();
-        const pad = 6;
-        if (world.x >= b.minX - pad && world.x <= b.maxX + pad
-            && world.y >= b.minY - pad && world.y <= b.maxY + pad) {
-          const found = useBattleMapStore.getState().drawings[id];
-          if (found) return found;
+    // v2.287.0 — Shape-aware hit-test, replacing the v2.269 AABB pad.
+    // The old test (`world inside child.getBounds() padded 6px`) erased
+    // any drawing whose axis-aligned bounding box covered the click —
+    // disastrous for diagonal lines and large pencil strokes whose AABB
+    // is mostly empty space. New approach: per-shape distance to the
+    // visually-occupied geometry; a click "hits" if that distance is
+    // <= the drawing's stroke half-width plus a tolerance band so thin
+    // lines remain easy to grab on touchscreens / high-DPI.
+    function distanceToDrawing(world: { x: number; y: number }, d: SceneDrawing): number {
+      const pts = d.points;
+      if (!pts || pts.length === 0) return Infinity;
+      switch (d.kind) {
+        case 'line': {
+          // Two-point primitive: distance to the segment.
+          if (pts.length < 2) return Infinity;
+          return pointSegmentDistance(world.x, world.y, pts[0].x, pts[0].y, pts[1].x, pts[1].y);
+        }
+        case 'pencil': {
+          // Polyline: distance to the nearest segment. Single-point
+          // pencil dabs (kind === 'pencil' with 1 point) fall back to
+          // straight Euclidean distance to that point.
+          if (pts.length === 1) {
+            const dx = world.x - pts[0].x;
+            const dy = world.y - pts[0].y;
+            return Math.sqrt(dx * dx + dy * dy);
+          }
+          let best = Infinity;
+          for (let i = 1; i < pts.length; i++) {
+            const dist = pointSegmentDistance(
+              world.x, world.y,
+              pts[i - 1].x, pts[i - 1].y,
+              pts[i].x, pts[i].y,
+            );
+            if (dist < best) best = dist;
+          }
+          return best;
+        }
+        case 'rect': {
+          // Two-point primitive: stroked rectangle. Distance is to the
+          // nearest edge (4 segments of the perimeter). Filled-rect
+          // semantics aren't used — drawings are stroked outlines —
+          // so interior clicks should NOT erase.
+          if (pts.length < 2) return Infinity;
+          const x1 = Math.min(pts[0].x, pts[1].x);
+          const y1 = Math.min(pts[0].y, pts[1].y);
+          const x2 = Math.max(pts[0].x, pts[1].x);
+          const y2 = Math.max(pts[0].y, pts[1].y);
+          const dTop    = pointSegmentDistance(world.x, world.y, x1, y1, x2, y1);
+          const dRight  = pointSegmentDistance(world.x, world.y, x2, y1, x2, y2);
+          const dBottom = pointSegmentDistance(world.x, world.y, x1, y2, x2, y2);
+          const dLeft   = pointSegmentDistance(world.x, world.y, x1, y1, x1, y2);
+          return Math.min(dTop, dRight, dBottom, dLeft);
+        }
+        case 'circle': {
+          // Two-point primitive: center + edge. Distance is |dist-radius|
+          // so clicks on the stroke ring hit, interior clicks miss.
+          if (pts.length < 2) return Infinity;
+          const cx = pts[0].x, cy = pts[0].y;
+          const dx = pts[1].x - cx, dy = pts[1].y - cy;
+          const radius = Math.sqrt(dx * dx + dy * dy);
+          const ddx = world.x - cx, ddy = world.y - cy;
+          const distFromCenter = Math.sqrt(ddx * ddx + ddy * ddy);
+          return Math.abs(distFromCenter - radius);
+        }
+        default:
+          return Infinity;
+      }
+    }
+
+    function findDrawingAt(world: { x: number; y: number }): { drawing: SceneDrawing; dist: number } | null {
+      // Iterate the live store (not Pixi children) so the test is
+      // independent of render order and uses real geometry data.
+      // The eraser's "frontmost wins" tiebreaker matters only on
+      // genuine overlaps; we resolve it via lowest-distance instead,
+      // which feels right when two shapes are equally close (the one
+      // whose stroke is exactly under the cursor wins).
+      const all = Object.values(useBattleMapStore.getState().drawings);
+      let best: { drawing: SceneDrawing; dist: number } | null = null;
+      for (const d of all) {
+        if (d.sceneId !== currentSceneId) continue;
+        const dist = distanceToDrawing(world, d);
+        // Hit threshold: stroke half-width + 6px tolerance band.
+        // The band keeps thin 1-2px lines reachable even when the
+        // user clicks 4-5px off-center, matching the v2.269 pad.
+        const threshold = (d.lineWidth ?? 2) / 2 + 6;
+        if (dist <= threshold && (!best || dist < best.dist)) {
+          best = { drawing: d, dist };
         }
       }
-      return null;
+      return best;
+    }
+
+    // v2.287.0 — Walls are now eraser-targets too. Previously the
+    // eraser only handled scene_drawings; users had to switch to wall
+    // mode and right-click to delete a wall. Now eraser mode treats
+    // walls and drawings as one pool — the closer hit wins. Threshold
+    // mirrors the wall-mode delete (max(6, gridSize*0.25)) so the
+    // feel is consistent across modes.
+    function findWallAt(world: { x: number; y: number }, gridSizePx: number): { wall: import('../../lib/stores/battleMapStore').Wall; dist: number } | null {
+      const threshold = Math.max(6, gridSizePx * 0.25);
+      let best: { wall: import('../../lib/stores/battleMapStore').Wall; dist: number } | null = null;
+      for (const w of Object.values(useBattleMapStore.getState().walls)) {
+        if (w.sceneId !== currentSceneId) continue;
+        const dist = pointSegmentDistance(world.x, world.y, w.x1, w.y1, w.x2, w.y2);
+        if (dist <= threshold && (!best || dist < best.dist)) {
+          best = { wall: w, dist };
+        }
+      }
+      return best;
     }
 
     function onPointerDown(e: MouseEvent) {
       if (e.button !== 0) return; // primary only
       const w = clientToWorld(e);
       if (!w) return;
-      const found = findDrawingAt(w);
-      if (!found) {
+      const drawingHit = findDrawingAt(w);
+      // gridSizePx threshold tracks the wall-mode delete feel; falls
+      // back to 50 (a reasonable default cell size in world px) if the
+      // prop wasn't plumbed in for some reason.
+      const gridPx = gridSizePx ?? 50;
+      const wallHit = findWallAt(w, gridPx);
+
+      // Pick the closer of the two if both hit. Drawing-only or wall-
+      // only cases just use whichever is non-null.
+      let target: { kind: 'drawing'; drawing: SceneDrawing } | { kind: 'wall'; wall: import('../../lib/stores/battleMapStore').Wall } | null = null;
+      if (drawingHit && wallHit) {
+        target = drawingHit.dist <= wallHit.dist
+          ? { kind: 'drawing', drawing: drawingHit.drawing }
+          : { kind: 'wall', wall: wallHit.wall };
+      } else if (drawingHit) {
+        target = { kind: 'drawing', drawing: drawingHit.drawing };
+      } else if (wallHit) {
+        target = { kind: 'wall', wall: wallHit.wall };
+      }
+
+      if (!target) {
         // Silent miss — clicking empty space in eraser mode is a no-op.
         // Adding a toast here would spam the user during normal scrub-
         // looking-for-shapes behavior.
@@ -2285,31 +2402,56 @@ function DrawingLayer(props: {
       }
       e.stopPropagation();
       e.preventDefault();
-      // Snapshot before delete so undo can restore it. Defensive deep-
-      // clone of points so a later in-place mutation can't corrupt the
-      // snapshot held by the undo closure.
-      const snapshot = { ...found, points: found.points.map(p => ({ ...p })) };
-      useBattleMapStore.getState().removeDrawing(found.id);
-      drawingsApi.deleteDrawing(found.id).catch(err =>
-        console.error('[DrawingLayer] eraser deleteDrawing failed', err));
-      recordUndoableRef.current?.({
-        label: `erase ${snapshot.kind}`,
-        forward: () => {
-          useBattleMapStore.getState().removeDrawing(snapshot.id);
-          return drawingsApi.deleteDrawing(snapshot.id).then(() => undefined);
-        },
-        backward: () => {
-          useBattleMapStore.getState().addDrawing(snapshot);
-          return drawingsApi.createDrawing(snapshot).then(() => undefined);
-        },
-      });
+
+      if (target.kind === 'drawing') {
+        const found = target.drawing;
+        // Snapshot before delete so undo can restore it. Defensive deep-
+        // clone of points so a later in-place mutation can't corrupt the
+        // snapshot held by the undo closure.
+        const snapshot = { ...found, points: found.points.map(p => ({ ...p })) };
+        useBattleMapStore.getState().removeDrawing(found.id);
+        drawingsApi.deleteDrawing(found.id).catch(err =>
+          console.error('[DrawingLayer] eraser deleteDrawing failed', err));
+        recordUndoableRef.current?.({
+          label: `erase ${snapshot.kind}`,
+          forward: () => {
+            useBattleMapStore.getState().removeDrawing(snapshot.id);
+            return drawingsApi.deleteDrawing(snapshot.id).then(() => undefined);
+          },
+          backward: () => {
+            useBattleMapStore.getState().addDrawing(snapshot);
+            return drawingsApi.createDrawing(snapshot).then(() => undefined);
+          },
+        });
+      } else {
+        // Wall delete + undo. createWall writes a fresh row using the
+        // same id, which is fine — Postgres will accept it because we
+        // deleted the prior row first. The store's addWall/removeWall
+        // are idempotent on re-execution.
+        const wall = target.wall;
+        const snapshot = { ...wall };
+        useBattleMapStore.getState().removeWall(wall.id);
+        wallsApi.deleteWall(wall.id).catch(err =>
+          console.error('[DrawingLayer] eraser deleteWall failed', err));
+        recordUndoableRef.current?.({
+          label: 'erase wall',
+          forward: () => {
+            useBattleMapStore.getState().removeWall(snapshot.id);
+            return wallsApi.deleteWall(snapshot.id).then(() => undefined);
+          },
+          backward: () => {
+            useBattleMapStore.getState().addWall(snapshot);
+            return wallsApi.createWall(snapshot).then(() => undefined);
+          },
+        });
+      }
     }
 
     canvasEl.addEventListener('pointerdown', onPointerDown);
     return () => {
       canvasEl.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [eraserActive, canvasEl, viewport, isDM, currentSceneId]);
+  }, [eraserActive, canvasEl, viewport, isDM, currentSceneId, gridSizePx]);
 
   return null;
 }
@@ -6850,6 +6992,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     selectMode={!textActive && drawActive == null && !eraserActive}
                     recordUndoable={recordUndoable}
                     eraserActive={eraserActive}
+                    gridSizePx={gridSizePx}
                   />
                   {/* v2.236 — FxLayer renders ephemeral particle
                       effects. Mounted last (top of z-stack) so
