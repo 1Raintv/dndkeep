@@ -225,7 +225,12 @@ export default function NpcRosterBuilderModal({ ownerId, campaignId, onClose }: 
           background: 'var(--c-card)', borderRadius: 14,
           border: '2px solid rgba(239,68,68,0.55)',
           boxShadow: '0 0 40px rgba(239,68,68,0.3), 0 10px 40px rgba(0,0,0,0.8)',
-          maxWidth: 560, width: '100%',
+          // v2.277.0 — bumped from 560 → 720. The 4-column
+          // Type/CR/Size/XP grid was uncomfortably tight at 560,
+          // forcing labels to abbreviate and inputs to truncate
+          // 4-digit XP values. 720 gives each column ~145px which
+          // fits a 4-digit number plus the label cleanly.
+          maxWidth: 720, width: '100%',
           maxHeight: '85vh',
           display: 'flex', flexDirection: 'column',
         }}
@@ -501,18 +506,27 @@ function EditView({ draft, isNew, saving, homebrewSavedAt, onChange, onCancel, o
   // grid; labels are 9pt uppercase tracking — matches the visual idiom
   // used in NpcTokenQuickPanel and CharacterSettings.
   const lblStyle = {
-    fontSize: 9, color: 'var(--t-3)',
+    // v2.277.0 — bumped from 9 to 11pt. The 9pt labels were below
+    // the comfortable readability threshold for many users; the
+    // tighter HUD aesthetic isn't worth losing scannability of the
+    // form. Tracking spacing kept tight (0.06em) so the uppercase
+    // labels still read as a "label" pattern visually.
+    fontSize: 11, color: 'var(--t-2)',
     letterSpacing: '0.06em', textTransform: 'uppercase' as const,
-    display: 'block' as const, marginBottom: 2,
+    display: 'block' as const, marginBottom: 3,
+    fontWeight: 600 as const,
   };
   const inputStyle = {
     width: '100%',
-    padding: '5px 8px',
+    // v2.277.0 — input padding bumped from 5px/8px → 7px/10px so the
+    // text doesn't sit flush against the border. fontSize from 12 →
+    // 13 for the same reason as the label bump.
+    padding: '7px 10px',
     background: 'var(--c-raised)',
     border: '1px solid var(--c-border)',
     borderRadius: 4,
     color: 'var(--t-1)',
-    fontSize: 12,
+    fontSize: 13,
     boxSizing: 'border-box' as const,
   };
 

@@ -323,8 +323,19 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
           {/* v2.164.0 — Phase Q.0 pt 5: bumped maxWidth 520 → 760.
               The 14 proposed-date pills wrap into many cramped rows
-              at 520px; 760px lets them breathe and stay scannable. */}
-          <div className="modal" style={{ maxWidth: 760, width: '92vw' }} onClick={e => e.stopPropagation()}>
+              at 520px; 760px lets them breathe and stay scannable.
+              v2.277.0 — added inline padding (sp-5/sp-6). The global
+              .modal class itself has zero padding; it only gets
+              padding via the optional .modal-header/.modal-body/
+              .modal-footer children. This modal renders content as
+              direct children, so without inline padding the title
+              and inputs sat flush against the modal border, making
+              labels look cramped and partly clipped. */}
+          <div
+            className="modal"
+            style={{ maxWidth: 760, width: '92vw', padding: 'var(--sp-5) var(--sp-6)' }}
+            onClick={e => e.stopPropagation()}
+          >
             <h3 style={{ marginBottom: 'var(--sp-4)' }}>New Scheduling Poll</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <div>
