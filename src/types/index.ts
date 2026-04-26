@@ -203,21 +203,32 @@ export interface Character {
   experience_points: number;
   alignment: Alignment | null;
   avatar_url: string | null;
-  inspiration: boolean;
-  equipped_armor: string;
-  class_resources: Record<string, number>;
-  secondary_class: string;
-  secondary_level: number;
-  secondary_subclass: string;
-  features_text: string;
-  wildshape_active: boolean;
-  wildshape_beast_name: string;
-  wildshape_current_hp: number;
-  wildshape_max_hp: number;
-  concentration_spell: string;
+  // v2.260.0 — fields below were originally typed as non-nullable T,
+  // but the characters table allows NULL for each. Loosened to T | null
+  // so casts from TableRow<'characters'> stop failing. Runtime code
+  // should already be ?-defending; if it wasn't, this surfaces real
+  // bugs at the call site (which is the point).
+  inspiration: boolean | null;
+  equipped_armor: string | null;
+  class_resources: Record<string, number> | null;
+  secondary_class: string | null;
+  secondary_level: number | null;
+  secondary_subclass: string | null;
+  features_text: string | null;
+  wildshape_active: boolean | null;
+  wildshape_beast_name: string | null;
+  wildshape_current_hp: number | null;
+  wildshape_max_hp: number | null;
+  concentration_spell: string | null;
  // v2.38.0: Rounds remaining on current concentration. NULL = no timer (instantaneous
  // / until dispelled / missing duration info). 0 = expired. One combat round = 6 seconds.
  concentration_rounds_remaining: number | null;
+  // v2.260.0 — surfaced previously-missing fields. active_buffs is the
+  // jsonb array consumed by the Active Buffs panel; push_subscription
+  // is the WebPush subscription blob the notifications system stores
+  // on the user's character row. Both nullable per DB schema.
+  active_buffs?: any[] | null;
+  push_subscription?: Record<string, unknown> | null;
 
   // Automation framework — see src/lib/automations.ts
   automation_overrides: Record<string, 'off' | 'prompt' | 'auto'>;
@@ -271,9 +282,10 @@ export interface Character {
 
   // Inventory
   inventory: InventoryItem[];
-  weapons: WeaponItem[];
+  // v2.260.0 — DB-nullable. Most callers default to [] when reading.
+  weapons: WeaponItem[] | null;
   share_token: string | null;
-  share_enabled: boolean;
+  share_enabled: boolean | null;
   currency: Currency;
 
   // Conditions
@@ -312,8 +324,9 @@ export interface Character {
   bonds: string;
   flaws: string;
   features_and_traits: string;
-  gained_feats: string[];        // structured feat names e.g. ['Alert', 'Lucky']
-  feature_uses: Record<string, number>; // e.g. { 'Rage': 2, 'Second Wind': 1 }
+  // v2.260.0 — both DB-nullable, callers default to [] / {} on read.
+  gained_feats: string[] | null;        // structured feat names e.g. ['Alert', 'Lucky']
+  feature_uses: Record<string, number> | null; // e.g. { 'Rage': 2, 'Second Wind': 1 }
 
   // Creation meta
   ability_score_improvements: ASIRecord[];

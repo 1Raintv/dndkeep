@@ -86,8 +86,12 @@ export default function WildshapeTracker({ character, onUpdate }: WildshapeTrack
  });
  }
 
- const hpPct = character.wildshape_max_hp > 0
- ? (character.wildshape_current_hp ?? 0) / character.wildshape_max_hp
+ // v2.260.0 — wildshape_max_hp is DB-nullable. Treat null as 0
+ // (no active wildshape), same as the previous implicit fallback
+ // that the Character type widening exposed.
+ const wsMax = character.wildshape_max_hp ?? 0;
+ const hpPct = wsMax > 0
+ ? (character.wildshape_current_hp ?? 0) / wsMax
  : 0;
  const hpColor = hpPct > 0.5 ? 'var(--hp-full)' : hpPct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
 

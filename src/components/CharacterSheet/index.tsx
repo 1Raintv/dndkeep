@@ -1504,7 +1504,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* Wildshape banner (Druids only) */}
  {character.class_name === 'Druid' && character.wildshape_active && (() => {
- const hpPct = character.wildshape_max_hp > 0 ? (character.wildshape_current_hp ?? 0) / character.wildshape_max_hp : 0;
+ // v2.260.0 — wildshape_max_hp is DB-nullable; treat null as 0.
+ const wsMax = character.wildshape_max_hp ?? 0;
+ const hpPct = wsMax > 0 ? (character.wildshape_current_hp ?? 0) / wsMax : 0;
  const hpColor = hpPct > 0.5 ? 'var(--hp-full)' : hpPct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
  return (
  <div className="animate-fade-in" style={{
@@ -1849,7 +1851,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const abilityKey = savePrompt.ability.toLowerCase() as keyof typeof character;
  const score = (character[abilityKey] as number) ?? 10;
  const mod = Math.floor((score - 10) / 2);
- const pb = computed.proficiencyBonus ?? 2;
+ // v2.260.0 — was reading computed.proficiencyBonus (camelCase),
+ // but the ComputedStats field is proficiency_bonus (snake_case).
+ // The ?? 2 fallback was masking the bug — every save prompt
+ // computed PB=2 regardless of level.
+ const pb = computed.proficiency_bonus;
  const hasSaveProf = character.saving_throw_proficiencies?.includes(savePrompt.ability.toLowerCase());
  const total = mod + (hasSaveProf ? pb : 0);
  const needsToRoll = savePrompt.dc - total;
@@ -1927,9 +1933,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      const score = (character[skillTarget.ability as keyof typeof character] as number) ?? 10;
      mod = Math.floor((score - 10) / 2);
      proficient = (character.skill_proficiencies ?? []).includes(checkPrompt.target);
-     if (proficient) mod += (computed.proficiencyBonus ?? 2);
+     // v2.260.0 — same camelCase→snake_case fix; was silently using
+     // PB=2 for every skill check regardless of level.
+     if (proficient) mod += computed.proficiency_bonus;
      const expert = (character.skill_expertises ?? []).includes(checkPrompt.target);
-     if (expert) mod += (computed.proficiencyBonus ?? 2);
+     if (expert) mod += computed.proficiency_bonus;
    }
  } else {
    const ability = abilityMap[checkPrompt.target];
@@ -2136,7 +2144,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* ── GLOBAL ALERTS — spell assignment + pending choices ── */}
  <PendingChoicesAlert character={character} onUpdate={u => applyUpdate(u, true)} />
- {(character.is_spellcaster || Object.values(character.spell_slots).some((s: any) => s.total > 0)) && (activeTab === 'spells' || activeTab === 'actions') && (
+ {/* v2.260.0 — was reading character.is_spellcaster which doesn't
+     exist on Character; the field lives on ClassData. The OR-fallback
+     to spell_slots was masking the bug. Look up the class properly. */}
+ {(CLASS_MAP[character.class_name]?.is_spellcaster || Object.values(character.spell_slots).some((s: any) => s.total > 0)) && (activeTab === 'spells' || activeTab === 'actions') && (
  <SpellCompletionBanner
  character={character}
  onGoToSpells={() => {
@@ -3267,7 +3278,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  })()}
 
  {(contentFilters.size === 0 || contentFilters.has('spell')) && (() => {
- const isSpellcaster = character.is_spellcaster ||
+ // v2.260.0 — same fix as the alerts banner above; was reading
+ // character.is_spellcaster which is a ClassData field, not a
+ // Character field. Falls back to spell_slots check.
+ const isSpellcaster = CLASS_MAP[character.class_name]?.is_spellcaster ||
  Object.values(character.spell_slots).some((s: any) => s.total > 0);
  if (!isSpellcaster) return null;
 

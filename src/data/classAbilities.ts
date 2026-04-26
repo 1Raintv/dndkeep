@@ -1,4 +1,5 @@
 import type { Character } from '../types';
+import { proficiencyBonus } from '../lib/gameUtils';
 
 export type ActionType = 'action' | 'bonus' | 'reaction' | 'special' | 'free';
 
@@ -72,7 +73,10 @@ export interface ClassAbility {
 
 function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
 function wis(c: Character) { return Math.floor((c.wisdom - 10) / 2); }
-function prof(c: Character) { return c.proficiency_bonus ?? 2; }
+// v2.260.0 — was reading c.proficiency_bonus (?? 2), which doesn't
+// exist on Character. Same bug as FeaturesAndTraitsPanel — every
+// CLASS_COMBAT_ABILITIES description used PB=2. Compute from level.
+function prof(c: Character) { return proficiencyBonus(c.level); }
 
 export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
   Barbarian: [

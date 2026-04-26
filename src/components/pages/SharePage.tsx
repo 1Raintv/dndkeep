@@ -143,7 +143,7 @@ export default function SharePage() {
         <div className="card">
           <div className="section-header">Weapons & Attacks</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-            {character.weapons.map(w => (
+            {(character.weapons ?? []).map(w => (
               <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-2) var(--sp-3)', background: '#080d14', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)' }}>
                 <div>
                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{w.name}</div>

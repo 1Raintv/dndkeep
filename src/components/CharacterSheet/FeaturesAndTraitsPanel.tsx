@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
+import { proficiencyBonus } from '../../lib/gameUtils';
 import { CLASS_FEATURES } from '../../data/classFeatures';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_COMBAT_ABILITIES, PASSIVE_FEATURE_NAMES } from '../../data/classAbilities';
@@ -44,7 +45,12 @@ function getTrackerConfig(featureName: string, c: Character) {
 // Calculated values for features
 function getCalcNote(name: string, c: Character): string {
  const level = c.level;
- const prof = c.proficiency_bonus ?? 2;
+ // v2.260.0 — was reading c.proficiency_bonus, which doesn't exist
+ // on Character (PB lives on the derived ComputedStats). The ?? 2
+ // fallback was masking a runtime bug — every call landed on 2
+ // regardless of the character's actual level. Compute from level
+ // via the helper instead.
+ const prof = proficiencyBonus(level);
  const cha = Math.floor((c.charisma - 10) / 2);
  const wis = Math.floor((c.wisdom - 10) / 2);
  const int_ = Math.floor((c.intelligence - 10) / 2);
