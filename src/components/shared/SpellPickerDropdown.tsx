@@ -109,16 +109,31 @@ export default function SpellPickerDropdown({
  // v2.39.0: For LEVELED spells, hard cap = number of slots at that level (excl. granted).
  // This enforces the house rule: max chosen spells per level = slot count at that level.
  // Granted spells (e.g. subclass auto-prepared) never count against any cap.
+ // v2.322.0 (T1 fix): the slotsPerLevel cap only applies to KNOWN casters
+ // (Bard/Sorcerer/Warlock). For preparing casters (Wizard/Cleric/Druid/Paladin/
+ // Ranger/Psion/Artificer), this picker is the SPELLBOOK — `selected` is
+ // `character.known_spells`, which RAW is unbounded per level (a Wizard's
+ // spellbook can hold dozens of L1 spells, capped only by the prepared-list
+ // size on a long rest). Per-level slot caps still apply to known casters
+ // because for them `known_spells` IS their daily-castable list. The
+ // `isAtLimit` precedence below routes preparers to `prepareMax/prepareCount`
+ // (the prep limit) only, never the slot-count cap.
  function isAtLimit(level: number): boolean {
  if (level === 0 && cantripMax !== undefined) {
  return (selectedByLevel[0] ?? 0) >= cantripMax;
  }
  if (level > 0) {
- // Per-level slot cap takes precedence when slotsPerLevel is supplied
- if (slotsPerLevel && slotsPerLevel[level] !== undefined) {
+ // Per-level slot cap — KNOWN CASTERS ONLY.
+ if (isKnownCaster && slotsPerLevel && slotsPerLevel[level] !== undefined) {
  return (selectedByLevel[level] ?? 0) >= slotsPerLevel[level];
  }
- if (prepareMax !== undefined && prepareCount !== undefined) {
+ // Global "spells known" cap — also KNOWN CASTERS ONLY. For preparers
+ // this picker mutates `known_spells` (the spellbook) which is unbounded
+ // by RAW; daily prep is enforced separately via canPrepareSpell when
+ // the user toggles a spell to "prepared" in the SpellsTab. Showing
+ // "14/17 prepared" stays informative in the dropdown header without
+ // blocking spellbook additions.
+ if (isKnownCaster && prepareMax !== undefined && prepareCount !== undefined) {
  return prepareCount >= prepareMax;
  }
  }

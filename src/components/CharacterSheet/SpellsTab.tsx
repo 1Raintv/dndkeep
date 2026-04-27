@@ -96,9 +96,14 @@ export default function SpellsTab({
  [character.class_name]
  );
  // Granted spells that don't count toward limits
+ // v2.322.0 (T1 fix): added character.level to deps. getSubclassSpellIds
+ // gates spells by character level (L3 spells unlock at lvl 5, L4 at 7,
+ // L5 at 9, etc.), so the granted list MUST recompute on level-up.
+ // Pre-fix this could leave a freshly-leveled character with stale
+ // grants (e.g. Psi Warper hitting lvl 5 wouldn't auto-prep Blink/Haste).
  const { grantedCantrips, grantedPrepared, entries: grantedEntries } = useMemo(
  () => getGrantedSpellIds(character),
- [character.class_name, character.subclass] // eslint-disable-line react-hooks/exhaustive-deps
+ [character.class_name, character.subclass, character.level] // eslint-disable-line react-hooks/exhaustive-deps
  );
  // Map id -> reason for badge display
  const grantedReasonMap = useMemo(() => {
