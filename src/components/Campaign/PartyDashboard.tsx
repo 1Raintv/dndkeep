@@ -19,6 +19,20 @@ import { rechargeOnLongRest } from '../../lib/charges';
 // UI can be reused by the BattleMapV2 TokenQuickPanel.
 import ChecksPanel from './ChecksPanel';
 
+// v2.334.0 — P3: shared max-width for all DM tool panels (AoE, Party
+// Rest, Announcement, Saving Throw, Award XP, Distribute Loot).
+// Previously each panel was unconstrained and sprawled to whatever
+// container width PartyDashboard rendered in — on a wide desktop the
+// AoE damage panel ran 1400+ px wide despite holding ~2 inputs and a
+// row of pills. Capping all to the same max keeps them visually
+// consistent and tightens the form ergonomics. 760px is the standard
+// reading width we already use for tall modals (SessionScheduler).
+const DM_PANEL_STYLE = {
+  width: '100%',
+  maxWidth: 760,
+  boxSizing: 'border-box' as const,
+};
+
 interface PartyDashboardProps {
   campaignId: string;
   isOwner: boolean; // DM = true, player = false
@@ -546,7 +560,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
           {/* ── AoE DAMAGE PANEL ── */}
           {dmPanel === 'aoe' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#f87171' }}>
                 AoE / Mass Damage — select targets, enter damage, apply
               </div>
@@ -702,7 +716,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
           {/* ── PARTY LONG REST PANEL ── */}
           {dmPanel === 'rest' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
                 Party Rest — {characters.length} character{characters.length !== 1 ? 's' : ''}
               </div>
@@ -758,7 +772,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
           {/* ── ANNOUNCEMENT PANEL ── */}
           {dmPanel === 'announce' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(212,160,23,0.4)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(212,160,23,0.4)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
                 DM Announcement — banner on selected player sheets
               </div>
@@ -793,7 +807,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
           {/* ── SAVE PROMPT PANEL ── */}
           {dmPanel === 'save' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* v2.192.0 — Phase Q.0 pt 33: dynamic label reflects
                   target count, mirroring the XP/Loot panel pattern. */}
               {(() => {
@@ -863,7 +877,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
           {/* XP Award panel */}
           {dmPanel === 'xp' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* v2.173.0 — Phase Q.0 pt 14: target-aware. The amount is
                   split evenly among the SELECTED characters, not the
                   whole party, so a DM can reward one player (e.g. a
@@ -937,7 +951,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
           {/* Loot Distribution panel */}
           {dmPanel === 'loot' && (
-            <div style={{ padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* v2.173.0 — Phase Q.0 pt 14: full rebuild.
                   • All 5 coin types (pp / gp / ep / sp / cp) — previously
                     only GP worked
