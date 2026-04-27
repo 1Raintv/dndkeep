@@ -103,6 +103,37 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
   const [savingXp, setSavingXp] = useState(false);
   const [xpSaved, setXpSaved] = useState(false);
 
+  // v2.314.0 — Combat Phase 3: BattleMap path toggle. When true, the
+  // BattleMap reads/writes through scene_token_placements +
+  // combatants. When false (default), the legacy scene_tokens path
+  // is used. Reload required for the change to take effect. Marked
+  // BETA in the UI because the new path has documented gaps (e.g.,
+  // multi-client rename propagation requires v2.314's combatants
+  // realtime subscription which lands in this same ship).
+  const [usePhase3, setUsePhase3] = useState<boolean>(!!campaign.use_combatants_for_battlemap);
+  const [savingPhase3, setSavingPhase3] = useState(false);
+  const [phase3Saved, setPhase3Saved] = useState(false);
+
+  async function saveUsePhase3(next: boolean) {
+    setSavingPhase3(true);
+    setUsePhase3(next);
+    // supabase types lag the live schema for use_combatants_for_battlemap
+    // (added in v2.312); cast to bypass strict column checking. Same
+    // pattern as src/lib/api/scenePlacements.ts. See v2.315 cleanup
+    // for type regen.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+      .from('campaigns')
+      .update({ use_combatants_for_battlemap: next })
+      .eq('id', campaign.id);
+    setSavingPhase3(false);
+    if (!error) {
+      onUpdated({ use_combatants_for_battlemap: next });
+      setPhase3Saved(true);
+      setTimeout(() => setPhase3Saved(false), 2000);
+    }
+  }
+
   async function saveAwardXpEnabled(next: boolean) {
     setSavingXp(true);
     setAwardXpEnabled(next);
@@ -520,6 +551,68 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                       {awardXpEnabled
                         ? 'DM can award XP to the party or specific players from the Party Dashboard.'
                         : 'XP panel hidden from DM Controls. Levels advance via milestones set by the DM.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* v2.314.0 — Combat Phase 3 BattleMap path toggle. The
+                  legacy scene_tokens path is the default; opting in
+                  routes the BattleMap through scene_token_placements
+                  + combatants for persistent creature identity across
+                  scenes and encounters. Reload required after toggle.
+                  Marked BETA — multi-client rename and combat HP
+                  realtime propagation work via the v2.314 combatants
+                  channel; deeper combat-code integration lands in
+                  v2.315. */}
+              <div style={{ padding: '14px 16px', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', background: 'var(--c-surface-1)' }}>
+                <div style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                  color: 'var(--c-gold-l)', marginBottom: 8,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  BattleMap Engine
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '2px 6px',
+                    borderRadius: 4, background: 'rgba(139,92,246,0.15)',
+                    color: '#a78bfa', letterSpacing: '0.08em',
+                  }}>BETA</span>
+                  {savingPhase3 && <span style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 400 }}>Saving…</span>}
+                  {phase3Saved && <span style={{ fontSize: 9, color: '#34d399', fontWeight: 400 }}>✓ Saved · reload to apply</span>}
+                </div>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 12 }}>
+                  Switches the BattleMap to the new combatants + placements engine. Tokens become persistent creature instances that carry HP and conditions across scenes and combat encounters. Reload the BattleMap after toggling.
+                </p>
+                <div
+                  onClick={() => saveUsePhase3(!usePhase3)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                    border: `1px solid ${usePhase3 ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
+                    background: usePhase3 ? 'rgba(212,160,23,0.06)' : 'var(--c-raised)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 20, borderRadius: 999, flexShrink: 0,
+                    background: usePhase3 ? 'var(--c-gold-l)' : 'var(--c-border-m)',
+                    position: 'relative' as const, transition: 'background 0.15s',
+                  }}>
+                    <div style={{
+                      position: 'absolute' as const, top: 2, left: usePhase3 ? 18 : 2,
+                      width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.15s',
+                    }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: usePhase3 ? 'var(--t-1)' : 'var(--t-2)' }}>
+                      {usePhase3 ? 'Combatants engine on' : 'Legacy scene_tokens engine'}
+                    </div>
+                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
+                      {usePhase3
+                        ? 'BattleMap reads/writes through scene_token_placements + combatants. Per-creature identity persists across scenes and encounters.'
+                        : 'BattleMap reads/writes through scene_tokens. Each placement is independent; HP/conditions reset between encounters.'}
                     </div>
                   </div>
                 </div>

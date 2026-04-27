@@ -598,6 +598,17 @@ export interface Campaign {
   // panel. When false, the "Award XP" tab is hidden from DM Controls
   // entirely. Milestone-leveling tables don't need the clutter.
   award_xp_enabled?: boolean;
+
+  // v2.312.0 — Combat Phase 3: feature flag for the new BattleMap
+  // path that reads/writes through scene_token_placements +
+  // combatants instead of scene_tokens. v2.313 wired BattleMapV2 to
+  // branch on this; v2.314 added the UI toggle. Defaults false. The
+  // DM opts in via Campaign Settings → Rules tab. Reload required
+  // for the change to take effect (BattleMap reads the flag at scene
+  // load and the realtime channel rewires accordingly). When the
+  // legacy path is dropped (v2.317), this field becomes vestigial
+  // and can be removed in a cleanup ship.
+  use_combatants_for_battlemap?: boolean;
 }
 
 export interface CombatAutomationSettings {

@@ -5476,6 +5476,69 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [currentScene?.id, useNewPath]);
 
+  // v2.314.0 — Combat Phase 3 pt 6: combatants realtime subscription.
+  // The placement subscription above only fires on placement-row
+  // changes — it doesn't see UPDATEs to the linked combatant (e.g.,
+  // a rename writes to combatants.name, not the placement). Without
+  // this second channel, multi-client rename propagation is broken
+  // (the DM's own UI sees the rename via optimistic state, but other
+  // clients keep showing the old name until they reload).
+  //
+  // The dual-write trigger from v2.311 also writes HP/condition
+  // changes to combatants whenever a combat_participants row is
+  // updated. We don't want every HP tick to trigger a full token
+  // re-fetch, so the handler filters on a name-change predicate
+  // (and portrait_storage_path, which also affects token render)
+  // before refreshing. HP/conditions/buffs/etc. updates are skipped
+  // because the BattleMap doesn't currently render those on tokens
+  // — they're shown elsewhere (initiative strip, character sheet).
+  // If a future feature shows HP on tokens, expand the predicate.
+  //
+  // Filter: campaign_id=eq.${campaignId}. RLS still applies on top.
+  useEffect(() => {
+    if (!useNewPath || !campaignId) return;
+    let cancelled = false;
+    const channel = supabase
+      .channel(`battle_map:combatants:${campaignId}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'combatants',
+          filter: `campaign_id=eq.${campaignId}`,
+        },
+        async (payload: any) => {
+          // Skip if neither name nor portrait changed. The dual-write
+          // trigger fires on HP/condition changes which we don't
+          // visualize on the map.
+          const oldRow = payload.old ?? {};
+          const newRow = payload.new ?? {};
+          const visualChanged =
+            oldRow.name !== newRow.name ||
+            oldRow.portrait_storage_path !== newRow.portrait_storage_path;
+          if (!visualChanged) return;
+          if (!currentScene?.id) return;
+          // Only refresh if this combatant has a placement on the
+          // current scene. Avoids refreshing for combatants that
+          // only exist in other scenes or in combat-only state.
+          const tokens = useBattleMapStore.getState().tokens;
+          const onScene = Object.values(tokens).some(
+            (t) => t.combatantId === newRow.id
+          );
+          if (!onScene) return;
+          const list = await tokensApi.listTokens(currentScene.id);
+          if (cancelled) return;
+          useBattleMapStore.getState().setTokensBulk(list);
+        }
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [campaignId, useNewPath, currentScene?.id]);
+
   // v2.223.0 — Phase Q.1 pt 16: Realtime sync for scene_walls.
   // Same pattern as scene_tokens. INSERTs (wall drawn) fire addWall on
   // all subscribers; DELETEs fire removeWall. No UPDATE handler in
