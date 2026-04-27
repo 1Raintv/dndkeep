@@ -96,6 +96,32 @@ VITE_STRIPE_PRO_MONTHLY_PRICE_ID=price_...
 VITE_APP_URL=https://your-app.vercel.app
 ```
 
+### Optional: GIF picker (Giphy)
+
+The campaign chat (Party Chat) supports inline GIFs via Giphy. If you
+don't set this up, the GIF button is simply hidden and chat works
+normally without GIFs:
+
+```bash
+VITE_GIPHY_API_KEY=your_giphy_api_key
+```
+
+To get a key:
+
+1. Sign in at https://developers.giphy.com/dashboard/
+2. Click "Create an App" → choose "API" (not SDK).
+3. Name it "DNDKeep" (or whatever) → confirm Giphy's brand guidelines.
+4. Copy the API key from the dashboard.
+
+Giphy's "API keys" are public client-side identifiers — they're rate-
+limit anchors per app, not secrets. Shipping them in the bundle is
+normal Giphy usage. The free tier is generous (1000 requests/hour),
+which comfortably covers a small campaign.
+
+After adding the key, the GIF button automatically appears in Party
+Chat for everyone in your deployment. Removing the env var hides it
+again on next deploy.
+
 ---
 
 ## 4. Vercel Deployment
@@ -114,6 +140,8 @@ vercel env add VITE_SUPABASE_ANON_KEY
 vercel env add VITE_STRIPE_PUBLISHABLE_KEY
 vercel env add VITE_STRIPE_PRO_MONTHLY_PRICE_ID
 vercel env add VITE_APP_URL
+# Optional — only if you want the GIF picker enabled:
+vercel env add VITE_GIPHY_API_KEY
 
 # Deploy to production
 vercel --prod

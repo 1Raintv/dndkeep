@@ -428,24 +428,32 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
 
       {/* Input */}
       <div style={{ borderTop: '1px solid var(--c-border)', padding: 'var(--sp-3)', display: 'flex', gap: 'var(--sp-2)' }}>
-        <button
-          onClick={() => setPickerOpen(v => !v)}
-          title="Send a GIF"
-          style={{
-            flexShrink: 0,
-            padding: '6px 10px',
-            background: pickerOpen ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-            border: pickerOpen ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
-            borderRadius: 6,
-            color: pickerOpen ? 'var(--c-gold-l)' : 'var(--t-2)',
-            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
-            letterSpacing: '0.08em',
-            cursor: 'pointer',
-            minHeight: 0,
-          }}
-        >
-          GIF
-        </button>
+        {/* v2.333.0 — B3: only render the GIF button when a Giphy
+            API key is actually configured. Previously the button
+            appeared unconditionally and tapping it surfaced "GIF
+            picker is not configured" — a broken affordance for
+            self-hosters who haven't set up VITE_GIPHY_API_KEY yet.
+            See DEPLOYMENT.md → Environment Variables for setup. */}
+        {GIPHY_API_KEY && (
+          <button
+            onClick={() => setPickerOpen(v => !v)}
+            title="Send a GIF"
+            style={{
+              flexShrink: 0,
+              padding: '6px 10px',
+              background: pickerOpen ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+              border: pickerOpen ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
+              borderRadius: 6,
+              color: pickerOpen ? 'var(--c-gold-l)' : 'var(--t-2)',
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+              letterSpacing: '0.08em',
+              cursor: 'pointer',
+              minHeight: 0,
+            }}
+          >
+            GIF
+          </button>
+        )}
         <input
           ref={inputRef}
           value={input}
