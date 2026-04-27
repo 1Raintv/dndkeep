@@ -18,6 +18,12 @@ import type {
   MonsterData,
 } from '../types';
 import { abilityModifier } from './gameUtils';
+// v2.315: HP/conditions/death-save reads come from combatants via JOIN.
+// See src/lib/combatParticipantNormalize.ts.
+import {
+  JOINED_COMBATANT_FIELDS,
+  normalizeParticipantRow,
+} from './combatParticipantNormalize';
 
 // ─── d20 ─────────────────────────────────────────────────────────
 export function rollD20(): number {
@@ -466,19 +472,28 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   if (!enc) return { ok: false, reason: 'Encounter not found' };
   const encounter = enc as CombatEncounter;
 
-  const { data: rows, error: rowsErr } = await supabase
+  const { data: rowsRaw, error: rowsErr } = await (supabase as any)
     .from('combat_participants')
-    .select('id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining')
+    .select(
+      'id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining, ' +
+        JOINED_COMBATANT_FIELDS
+    )
     .eq('encounter_id', encounterId)
     .order('turn_order', { ascending: true });
   if (rowsErr) {
     console.error('[advanceTurn] participants fetch failed:', rowsErr);
     return { ok: false, reason: rowsErr.message ?? 'Failed to load participants' };
   }
-  if (!rows || rows.length === 0) return { ok: false, reason: 'No participants in this encounter' };
+  if (!rowsRaw || rowsRaw.length === 0) return { ok: false, reason: 'No participants in this encounter' };
+  // v2.315: flatten the JOINed combatants object onto each row so
+  // downstream code (r.is_dead, r.current_hp, r.death_save_*) reads
+  // through to the combatant. Same shape, combatants is the source.
+  const rows = rowsRaw.map(normalizeParticipantRow);
 
   // Filter out dead and rows without an initiative slot (shouldn't be many)
-  const active = rows.filter(r => !r.is_dead);
+  // v2.315: rows came through (supabase as any) for the JOIN; type
+  // the filter callback explicitly to avoid implicit any.
+  const active = rows.filter((r: { is_dead?: boolean | null }) => !r.is_dead);
   if (active.length === 0) return { ok: false, reason: 'All participants are dead' };
 
   const currentIdx = encounter.current_turn_index ?? 0;

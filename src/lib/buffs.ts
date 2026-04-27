@@ -17,6 +17,11 @@
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDie } from './gameUtils';
+// v2.315: active_buffs reads come from combatants via JOIN.
+import {
+  JOINED_COMBATANT_FIELDS,
+  normalizeParticipantRow,
+} from './combatParticipantNormalize';
 
 export interface ActiveBuff {
   key: string;
@@ -45,12 +50,16 @@ export interface ApplyBuffInput {
 }
 
 export async function applyBuff(input: ApplyBuffInput): Promise<void> {
-  const { data: part } = await supabase
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('active_buffs, name, participant_type, campaign_id, encounter_id')
+    .select(
+      'active_buffs, name, participant_type, campaign_id, encounter_id, ' +
+        JOINED_COMBATANT_FIELDS
+    )
     .eq('id', input.participantId)
     .single();
-  if (!part) return;
+  if (!partRaw) return;
+  const part = normalizeParticipantRow(partRaw);
 
   const current = ((part.active_buffs ?? []) as ActiveBuff[]);
   // De-duplicate on key — replace existing entry if already present
@@ -91,12 +100,16 @@ export interface RemoveBuffInput {
 }
 
 export async function removeBuff(input: RemoveBuffInput): Promise<void> {
-  const { data: part } = await supabase
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('active_buffs, name, participant_type, campaign_id, encounter_id')
+    .select(
+      'active_buffs, name, participant_type, campaign_id, encounter_id, ' +
+        JOINED_COMBATANT_FIELDS
+    )
     .eq('id', input.participantId)
     .single();
-  if (!part) return;
+  if (!partRaw) return;
+  const part = normalizeParticipantRow(partRaw);
 
   const current = ((part.active_buffs ?? []) as ActiveBuff[]);
   const removed = current.find(b => b.key === input.key);
@@ -204,16 +217,20 @@ export async function clearBuffsFromConcentration(
 ): Promise<number> {
   const needle = `spell:${spellName.toLowerCase()}`;
 
-  let query = supabase
+  let query = (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, active_buffs, encounter_id');
+    .select(
+      'id, name, participant_type, active_buffs, encounter_id, ' +
+        JOINED_COMBATANT_FIELDS
+    );
   if (encounterId) {
     query = query.eq('encounter_id', encounterId);
   } else {
     query = query.eq('campaign_id', campaignId);
   }
-  const { data: rows } = await query;
-  if (!rows) return 0;
+  const { data: rowsRaw } = await query;
+  if (!rowsRaw) return 0;
+  const rows = rowsRaw.map(normalizeParticipantRow);
 
   let removedCount = 0;
   for (const row of rows) {
