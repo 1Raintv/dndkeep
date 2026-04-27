@@ -69,6 +69,13 @@ export interface ClassAbility {
    *  v2.247 will route through a target picker that consumes targetMode
    *  and exposes Auto-Fail (willing) for `targetMode: 'allies'` or 'any'. */
   save?: SaveSpec;
+  /** v2.324.0 — T3 limited-use refactor. Optional range string surfaced as
+   *  inline metadata in the Actions tab subtitle (e.g. "Long Rest · 30 ft").
+   *  Free-form to accommodate compound ranges ("30/150 ft" for Mass
+   *  Teleportation, "Self (30 ft)" for emanation effects). Display-only;
+   *  no automation reads it. Backfilled for Psi Warper abilities first;
+   *  other classes will follow in later refactors. */
+  range?: string;
 }
 
 function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
@@ -508,6 +515,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Spend 1 Psionic Energy Die: move a creature or object up to 30 ft. Or attack with a telepathic force (INT-based).',
       minLevel: 1,
       isPool: true,
+      range: '60 ft',
       // v2.246.0 — first user-visible save chip. Telekinesis forces a STR
       // save vs the caster's spell save DC when used to move a creature
       // (objects don't save). targetMode 'any' so the v2.247 picker
@@ -525,6 +533,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Cast Mage Hand at will. The hand is invisible.',
       descriptionLong: 'You can cast Mage Hand without expending a spell slot or material components, and the spectral hand is invisible. The hand can interact with objects, push or pull, and carry items as normal — but onlookers see only the items moving on their own. Useful for stealth, infiltration, or unsettling NPCs.',
       minLevel: 1,
+      range: '30 ft',
     },
     // ─── Psi Warper subclass features (v2.187.0) ───────────────────────
     // All 5 active/usable Psi Warper features inserted here so they render
@@ -553,6 +562,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.190.0 — Phase Q.0 pt 31: spend 1 PED to refresh mid-rest.
       // Triggers the "Restore (1 PED)" button when feature is depleted.
       pedRestoreCost: 1,
+      range: '30 ft',
     },
     {
       name: 'Warp Propel',
@@ -560,6 +570,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'When a target fails the save vs Telekinetic Propel, teleport it to an unoccupied space within 30 ft instead of pushing.',
       descriptionLong: 'Modifies your Telekinetic Propel feature. When a target fails the saving throw against Telekinetic Propel, you can choose to teleport the target to an unoccupied space you can see within 30 ft of where it was, instead of pushing it. The teleported target lands prone.\n\nCombines with Mass Teleportation at level 14.',
       minLevel: 3,
+      range: '30 ft',
     },
     {
       name: 'Warp Space',
@@ -571,6 +582,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // flags which only deducted 1 die generically. New flow: Use
       // button checks pool ≥ pedCost, deducts, broadcasts.
       pedCost: 1,
+      range: '60 ft',
     },
     {
       name: 'Teleporter Combat',
@@ -578,6 +590,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'After casting Misty Step, immediately cast a Psion cantrip (action casting time) as part of the same Bonus Action.',
       descriptionLong: 'When you cast Misty Step (whether via spell slot or via your Free Misty Step feature), you may immediately cast one Psion cantrip with an Action casting time as part of the same Bonus Action — without taking a separate Action.\n\nThis effectively lets you teleport and attack in the same turn while keeping your Action free for Dash, Dodge, or another use.',
       minLevel: 6,
+      range: 'Self',
     },
     {
       name: 'Duplicitous Target',
@@ -586,6 +599,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       descriptionLong: 'When a creature you can see attacks you, you can use your Reaction and spend 1 Psionic Energy Die to swap places with a willing ally within 30 ft. The ally takes the attack instead of you.\n\nThe ally must be willing — you can\'t involuntarily swap with an unwilling target. Both you and the ally must have line of sight to each other and there must be no full cover between you.',
       minLevel: 10,
       pedCost: 1,
+      range: '30 ft',
     },
     {
       name: 'Mass Teleportation',
@@ -594,6 +608,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       descriptionLong: 'Take a Magic action and spend 4 Psionic Energy Dice. Choose up to a number of creatures equal to your Intelligence modifier (minimum 1) within 30 ft of you. You teleport each chosen creature to an unoccupied space you can see within 150 ft.\n\nWilling targets are simply moved. Unwilling targets must succeed on a Wisdom saving throw against your spell save DC or be teleported anyway.\n\nYou may include yourself among the chosen targets.',
       minLevel: 14,
       pedCost: 4,
+      range: '30/150 ft',
     },
   ],
 };

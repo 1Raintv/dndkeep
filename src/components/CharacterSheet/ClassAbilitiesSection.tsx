@@ -8,6 +8,8 @@ import { useToast } from '../shared/Toast';
 import { computeStats } from '../../lib/gameUtils';
 import ClassAbilityResolveModal, { formatOutcomesLog, type TargetOutcome } from '../Combat/ClassAbilityResolveModal';
 import { supabase } from '../../lib/supabase';
+import SlotBoxes, { PALETTE_TEAL, PALETTE_PSI, type SlotBoxesPalette } from './_shared/SlotBoxes';
+import PsionicDicePool from './_shared/PsionicDicePool';
 
 interface Props {
  character: Character;
@@ -52,81 +54,51 @@ function resolveSaveDC(save: SaveSpec | undefined, character: Character): number
  return computed.spell_save_dc ?? null;
 }
 
-function UseTracker({ abilityName, max, rest, character, onUpdate }: {
+// v2.324.0 — T3 limited-use refactor: UseTracker now wraps the shared
+// SlotBoxes primitive (purple PSI for psionic uses, teal for once-per-rest,
+// gold default). The previous design had two modes (>8 = ±1 stepper, ≤8 =
+// raw chiclet rail). T3 spec drops the ±1 stepper entirely — even at 12
+// uses, the user clicks individual boxes. SlotBoxes handles size scaling
+// (sm 12×12 when max > 8 to keep the row narrow; md 16×16 otherwise for
+// thumb-tap comfort).
+function UseTracker({ abilityName, max, rest, character, onUpdate, palette }: {
  abilityName: string; max: number; rest: 'short' | 'long';
  character: Character; onUpdate: (u: Partial<Character>) => void;
+ palette?: SlotBoxesPalette;
 }) {
  const uses = ((character.feature_uses as Record<string, number>) ?? {})[abilityName] ?? 0;
- const remaining = max - uses;
 
- function toggle(targetUsed: number) {
- const clamped = Math.min(max, Math.max(0, targetUsed));
- onUpdate({
- feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [abilityName]: clamped }
- });
+ function handleToggle(_idx: number, isExpending: boolean) {
+  const next = isExpending ? uses + 1 : uses - 1;
+  const clamped = Math.min(max, Math.max(0, next));
+  onUpdate({
+   feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [abilityName]: clamped }
+  });
  }
 
- // Pool display (> 8 uses or isPool)
- if (max > 8) {
- return (
- <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
- <button onClick={() => toggle(uses + 1)} style={trackBtnStyle}>−1</button>
- <span style={{
- fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 700,
- color: remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)',
- minWidth: 52, textAlign: 'center' as const,
- }}>
- {remaining}/{max}
- </span>
- <button onClick={() => toggle(uses - 1)} style={trackBtnStyle}>+1</button>
- <button onClick={() => toggle(0)} style={{ ...trackBtnStyle, color: 'var(--t-3)', fontSize: 9 }}>↺</button>
- <span style={{ fontSize: 9, color: rest === 'short' ? '#60a5fa' : '#a78bfa', fontFamily: 'var(--ff-body)' }}>
- {rest === 'short' ? 'Short/LR' : 'Long Rest'}
- </span>
- </div>
- );
- }
+ // Default palette for rest-based features is teal; callers may override
+ // (e.g. psionic disciplines pass PALETTE_PSI).
+ const pal = palette ?? PALETTE_TEAL;
+ const size = max > 8 ? 'sm' : 'md';
+ const restWord = rest === 'short' ? 'Short' : 'Long';
 
- // v2.81.0: Chiclets fill LEFT → RIGHT, empty from the RIGHT as uses are
- // consumed. Matches the LevelTab pattern on Spells/Actions tabs, where
- // available slots sit on the LEFT and spent slots appear on the RIGHT.
- // Previously this was inverted (used on LEFT), which was inconsistent
- // with the rest of the app's chiclet direction.
  return (
- <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
- {Array.from({ length: max }).map((_, i) => {
- // Box i is available if its index is within the remaining count.
- // E.g. max=8, uses=2 → remaining=6 → indices 0-5 filled (LEFT side),
- // indices 6-7 empty (RIGHT side). Clicking a filled box consumes it
- // (becomes empty); clicking an empty box restores it (becomes filled).
- const isAvailable = i < remaining;
- return (
- <button
- key={i}
- onClick={() => toggle(isAvailable ? uses + 1 : uses - 1)}
- title={isAvailable
- ? `Use a die (${rest === 'short' ? 'Short' : 'Long'} Rest recovers)`
- : `Restore a die (${rest === 'short' ? 'Short' : 'Long'} Rest recovers)`}
- style={{
- width: 12, height: 12, borderRadius: 2, cursor: 'pointer', padding: 0,
- minHeight: 0, minWidth: 0,            // override global button 36px touch target
- background: isAvailable ? 'var(--c-gold-l)' : 'transparent',
- border: `1.5px solid ${isAvailable ? 'var(--c-gold-l)' : 'var(--c-border-m)'}`,
- transition: 'all 0.15s', flexShrink: 0, boxSizing: 'border-box',
- }}
- />
- );
- })}
- </div>
+  <SlotBoxes
+   total={max}
+   used={uses}
+   onToggle={handleToggle}
+   size={size}
+   palette={pal}
+   ariaLabel={`${abilityName} uses`}
+   ariaLabelPrefix={`${abilityName} use`}
+   title={(_, available) =>
+    available
+     ? `Use ${abilityName} (${restWord} Rest recovers)`
+     : `Restore use (${restWord} Rest recovers)`
+   }
+  />
  );
 }
-
-const trackBtnStyle: React.CSSProperties = {
- width: 24, height: 24, borderRadius: 'var(--r-sm)',
- background: 'var(--c-raised)', border: '1px solid var(--c-border)',
- color: 'var(--t-2)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--ff-body)',
- display: 'flex', alignItems: 'center', justifyContent: 'center',
-};
 
 function getMaxUses(ability: ClassAbility, character: Character): number | undefined {
  if (ability.maxUsesFn) {
@@ -432,13 +404,21 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      the grid row — preserves the v2.86.0 UX where a player can read
      what an ability does without expanding. */}
  {(() => {
- const canExpand = !!(descLong || ((ability as any).psionicDie && psionicRollHistory.length > 0));
+ // v2.324.0 — T3: every row is now expandable so the description
+ // (moved out of the always-visible band into the expanded panel)
+ // is always reachable. Roll history + stats grid still gate on
+ // their own data inside the panel.
+ const canExpand = true;
  const ped = (ability as any).pedCost as number | undefined;
+ // v2.324.0 — T3: button text "Cast" replaces "Use" for the default
+ // case. PED-cost abilities become "Cast (N PED)". Reactions remain
+ // "Trigger" (semantically distinct — the player isn't initiating).
+ // Pure die-spend rows keep "Spend Die (1dN)" since they roll, not cast.
  const restingLabel =
- typeof ped === 'number' && ped > 0 ? `Use (${ped} PED)` :
+ typeof ped === 'number' && ped > 0 ? `Cast (${ped} PED)` :
  ability.actionType === 'reaction' ? 'Trigger' :
  (ability as any).psionicDie ? `Spend Die (1${getPsionicDieSize(character.level)})` :
- (ability as any).isPool ? 'Spend Die' : 'Use';
+ (ability as any).isPool ? 'Spend Die' : 'Cast';
  const isFlashing = justUsed === ability.name;
  const ACTION_BADGE_LABEL: Record<string, string> = {
  action: 'ACTION', bonus: 'BONUS', reaction: 'REACT', special: 'SPCL', free: 'FREE',
@@ -451,6 +431,18 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  : (ability as any).isPool ? 'Resource Pool'
  : (ability as any).psionicDie ? 'Psionic Die'
  : 'At Will';
+ // v2.324.0 — T3: PED-pool ability gets a dedicated PsionicDicePool
+ // tracker (purple SlotBoxes + N/max readout, sourced from the
+ // class_resources['psionic-energy-dice'] number rather than
+ // feature_uses, since other abilities deduct from class_resources).
+ const isPedPoolRow = ability.isPool === true && (ability as any).psionicDie === true;
+ // v2.324.0 — T3: range string (Psi Warper backfill) joined into
+ // the subtitle line as "{recovery} · {range}" when present.
+ const rangeStr = (ability as any).range as string | undefined;
+ // v2.324.0 — T3: psionic disciplines (injected with `psionicDie`)
+ // get the purple PSI palette to visually distinguish from regular
+ // long-rest features that use TEAL.
+ const trackerPalette = (ability as any).psionicDie ? PALETTE_PSI : PALETTE_TEAL;
 
  return (
  <div
@@ -499,21 +491,48 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </span>
  )}
  </div>
- <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
- <span style={{ flexShrink: 0 }}>{recoveryLabel}</span>
- {/* Inline tracker chiclets — moved here from the row tail so the
-     button column stays predictable. Don't propagate row clicks
-     when the user is interacting with the tracker. */}
- {maxUses !== undefined && ability.rest && (
- <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex' }}>
- <UseTracker
- abilityName={ability.name}
- max={maxUses}
- rest={ability.rest}
- character={character}
- onUpdate={onUpdate}
- />
+ <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', justifyContent: 'space-between' }}>
+ <span style={{ flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+  {recoveryLabel}{rangeStr ? ` · ${rangeStr}` : ''}
  </span>
+ {/* v2.324.0 — T3: chiclets right-aligned for thumb-tap. Click
+     events stopPropagation so users tapping a slot don't also
+     trigger the row-level expand toggle. PED pool gets the
+     dedicated PsionicDicePool component (purple, sources from
+     class_resources['psionic-energy-dice']); everything else
+     keeps the generic UseTracker. */}
+ {isPedPoolRow && maxUses !== undefined ? (
+  <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', flexShrink: 0 }}>
+   {(() => {
+    const resources = (character.class_resources as Record<string, number> | null) ?? {};
+    const remaining = (resources['psionic-energy-dice'] as number | undefined) ?? maxUses;
+    const used = Math.max(0, maxUses - remaining);
+    return (
+     <PsionicDicePool
+      character={character}
+      total={maxUses}
+      used={used}
+      onChange={(newUsed) => {
+       const newRemaining = Math.max(0, maxUses - newUsed);
+       onUpdate({
+        class_resources: { ...resources, 'psionic-energy-dice': newRemaining },
+       });
+      }}
+     />
+    );
+   })()}
+  </span>
+ ) : maxUses !== undefined && ability.rest && (
+  <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', flexShrink: 0 }}>
+   <UseTracker
+    abilityName={ability.name}
+    max={maxUses}
+    rest={ability.rest}
+    character={character}
+    onUpdate={onUpdate}
+    palette={trackerPalette}
+   />
+  </span>
  )}
  </div>
  </div>
@@ -674,21 +693,11 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  );
  })()}
 
- {/* v2.86.0: Always-visible short description below the grid row.
-     Preserved from the previous design — class abilities have
-     narrative behavior that doesn't reduce to a single chip, so
-     reading it shouldn't require expanding the card. */}
- <div style={{
- padding: '0 12px 9px 12px',
- fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
- lineHeight: 1.5,
- }}>
- {descShort}
- </div>
-
- {/* Expanded detail panel — long-form mechanics + roll history.
-     Layout mirrors the regular spell row's expanded panel: stats
-     grid on top, prose body below. */}
+ {/* v2.324.0 — T3: description moved out of the always-visible band
+     into the expanded panel. Short description renders first
+     (replaces the band's previous role); long description follows
+     when present. Layout still mirrors the regular spell row's
+     expanded panel: stats grid on top, prose body below. */}
  {isExpanded && (
  <div style={{
  padding: '10px 14px 12px 14px',
@@ -699,8 +708,10 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
  {(() => {
  const ped = (ability as any).pedCost as number | undefined;
+ const rangeStr = (ability as any).range as string | undefined;
  const stats: Array<[string, string | null]> = [
  ['Action', ACTION_LABELS[ability.actionType]?.replace(/^[^A-Za-z]+/, '') ?? ability.actionType],
+ ['Range', rangeStr ?? null],
  ['Recovery', ability.rest === 'short' ? 'Short Rest' : ability.rest === 'long' ? 'Long Rest' : 'At Will'],
  ['Uses', maxUses !== undefined ? String(maxUses) : null],
  ['Cost', typeof ped === 'number' && ped > 0 ? `${ped} PED` : null],
@@ -712,6 +723,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  ));
  })()}
+ </div>
+ {/* Short description first — what was previously the always-visible
+     band. Always rendered when the panel is open. */}
+ <div style={{
+ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+ lineHeight: 1.5, marginBottom: descLong ? 10 : 0,
+ }}>
+ {descShort}
  </div>
  {descLong && (
  <div style={{
