@@ -153,12 +153,23 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useNavigate } from 'react-router-dom';
 import { useBattleMapStore, type Token, type TokenSize, type Wall, type SceneText, type SceneDrawing, type DrawingKind } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
-import * as tokensApi from '../../lib/api/sceneTokens';
+// v2.313: tokens now route through the API router so the BattleMap
+// can swap between scene_tokens (legacy) and scene_token_placements
+// (new combatants+placements path) based on the per-campaign
+// use_combatants_for_battlemap flag. The router exposes the same
+// surface as the old sceneTokens import, so existing call sites work
+// unchanged. See docs/COMBAT_PHASE_3_TOKEN_LIBRARY.md.
+import * as tokensApi from '../../lib/api/tokensApiRouter';
+import { setUseCombatantsPath } from '../../lib/api/tokensApiRouter';
+import { getUseCombatantsFlag } from '../../lib/api/scenePlacements';
 import * as wallsApi from '../../lib/api/sceneWalls';
 import * as textsApi from '../../lib/api/sceneTexts';
 import * as drawingsApi from '../../lib/api/sceneDrawings';
 import { computeVisibilityPolygon, type WallSegment } from '../../lib/vision/visibilityPolygon';
 import { segmentBlockedByWall } from '../../lib/wallCollision';
+// dbRowToToken is the legacy realtime mapper — used only on the
+// legacy branch of the subscription effect. The new path re-fetches
+// the JOINed placement+combatant row instead.
 import { dbRowToToken } from '../../lib/api/sceneTokens';
 import * as assetsApi from '../../lib/api/battleMapAssets';
 import { supabase } from '../../lib/supabase';
@@ -5201,6 +5212,16 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // from here without coupling, so we just check our own state and
   // bail otherwise — the cost of double-handling Esc (closing both
   // a popup and exiting fullscreen) is acceptably minor.
+
+  // v2.313.0 — Combat Phase 3 pt 5: per-campaign feature flag. When
+  // true, this BattleMap reads/writes through scenePlacements.ts
+  // (placements + combatants) instead of sceneTokens.ts. Hydrated by
+  // the scene-load effect after fetching campaigns.use_combatants_for_battlemap
+  // and used by the realtime subscription effect to choose which
+  // table to subscribe to. Defaults false so the legacy path stays
+  // active until the DM opts in. Flip via SQL during dogfooding —
+  // a UI toggle in CampaignSettings is queued for a follow-up ship.
+  const [useNewPath, setUseNewPath] = useState(false);
   useEffect(() => {
     if (!mapFullscreen) return;
     const handler = (e: KeyboardEvent) => {
@@ -5339,11 +5360,27 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     let cancelled = false;
     store.setLoading(true);
     store.resetForScene(currentScene.id);
-    tokensApi.listTokens(currentScene.id).then(list => {
+    // v2.313.0 — Combat Phase 3 pt 5: chain flag fetch before
+    // listTokens so the router knows which path to use. Walls/texts/
+    // drawings hydrate in parallel below as before — they're not
+    // affected by the Phase 3 swap.
+    (async () => {
+      let flag = false;
+      try {
+        flag = await getUseCombatantsFlag(campaignId);
+      } catch (err) {
+        // Default to legacy path on flag-fetch errors so a transient
+        // outage doesn't silently switch render modes.
+        console.error('[BattleMapV2] getUseCombatantsFlag failed', err);
+      }
+      if (cancelled) return;
+      setUseCombatantsPath(flag);
+      setUseNewPath(flag);
+      const list = await tokensApi.listTokens(currentScene.id);
       if (cancelled) return;
       useBattleMapStore.getState().setTokensBulk(list);
       useBattleMapStore.getState().setLoading(false);
-    });
+    })();
     // v2.223 — walls hydration runs in parallel with tokens. No
     // loading gate for walls specifically; they populate when ready.
     wallsApi.listWalls(currentScene.id).then(list => {
@@ -5379,21 +5416,31 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // subscription setup and listTokens resolving where a new INSERT
   // event could be superseded by setTokensBulk's wholesale replacement.
   // Acceptable for v2.214; v2.215 can introduce a merge strategy.
+  //
+  // v2.313.0 — Combat Phase 3 pt 5: when useNewPath is true, the
+  // subscription targets scene_token_placements. INSERT/UPDATE
+  // payloads from that table don't include the JOINed combatant
+  // data, so the handler re-fetches the full list via the router
+  // (bounded scenes; ~50 tokens is the realistic upper bound and the
+  // round-trip cost is acceptable). DELETE payloads carry only the
+  // primary key, which is enough to drop from the store.
   useEffect(() => {
     if (!currentScene?.id) return;
     const sceneId = currentScene.id;
+    const tableName = useNewPath ? 'scene_token_placements' : 'scene_tokens';
+    let cancelled = false;
     const channel = supabase
-      .channel(`battle_map:scene_tokens:${sceneId}`)
+      .channel(`battle_map:${tableName}:${sceneId}`)
       .on(
         // Supabase types lag behind runtime; cast to bypass the literal.
         'postgres_changes' as any,
         {
           event: '*',
           schema: 'public',
-          table: 'scene_tokens',
+          table: tableName,
           filter: `scene_id=eq.${sceneId}`,
         },
-        (payload: any) => {
+        async (payload: any) => {
           const store = useBattleMapStore.getState();
           // Ignore events for tokens belonging to a different scene —
           // the filter should already handle this but defense-in-depth
@@ -5401,7 +5448,17 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newRow = payload.new;
             if (newRow?.scene_id !== sceneId) return;
-            store.addToken(dbRowToToken(newRow));
+            if (useNewPath) {
+              // The placement realtime payload doesn't carry the
+              // combatants JOIN. Re-fetch via the router so the store
+              // sees the merged Token shape. v2.314+ may do a
+              // single-row JOINed fetch by id for tighter cost.
+              const list = await tokensApi.listTokens(sceneId);
+              if (cancelled) return;
+              useBattleMapStore.getState().setTokensBulk(list);
+            } else {
+              store.addToken(dbRowToToken(newRow));
+            }
           } else if (payload.eventType === 'DELETE') {
             // For DELETE with REPLICA IDENTITY DEFAULT (Postgres default),
             // payload.old contains only the primary key. That's all we need.
@@ -5414,9 +5471,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       )
       .subscribe();
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [currentScene?.id]);
+  }, [currentScene?.id, useNewPath]);
 
   // v2.223.0 — Phase Q.1 pt 16: Realtime sync for scene_walls.
   // Same pattern as scene_tokens. INSERTs (wall drawn) fire addWall on
@@ -5869,7 +5927,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       visibleToAll: false,
     };
     state.addToken(newToken);
-    tokensApi.createToken(newToken).catch(err =>
+    // v2.313: pass campaignId for the new path. Legacy path ignores opts.
+    tokensApi.createToken(newToken, { campaignId }).catch(err =>
       console.error('[BattleMapV2] token create commit failed', err)
     );
   }, [currentScene, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT]);
@@ -5953,7 +6012,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     // is fine but sequential keeps error logs readable.
     (async () => {
       for (const t of newTokens) {
-        try { await tokensApi.createToken(t); }
+        try { await tokensApi.createToken(t, { campaignId }); }
         catch (err) { console.error('[BattleMapV2] pc token create failed', t.name, err); }
       }
     })();
@@ -6095,7 +6154,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     for (const t of newTokens) state.addToken(t);
     (async () => {
       for (const t of newTokens) {
-        try { await tokensApi.createToken(t); }
+        try { await tokensApi.createToken(t, { campaignId }); }
         catch (err) { console.error('[BattleMapV2] roster token create failed', t.name, err); }
       }
     })();
