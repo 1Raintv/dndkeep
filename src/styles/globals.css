@@ -669,8 +669,17 @@ button:active:not(:disabled) { transform: scale(0.96); }
   align-items: safe center;
   justify-content: center;
   z-index: 1000;
-  padding: var(--sp-4);
+  /* v2.331.0 — B4 fix: tighten overlay padding from sp-4 (16px each side
+     = 32px total) to sp-2 (8px each side = 16px total) on narrow
+     viewports. Saves 16px of horizontal real estate on phones, where
+     two-column grids inside NPC / Scheduler modals were too cramped
+     to read. Desktop screens (>520px viewport) keep the full sp-4
+     gutter via the media query override below. */
+  padding: var(--sp-2);
   overflow-y: auto;
+}
+@media (min-width: 520px) {
+  .modal-overlay { padding: var(--sp-4); }
 }
 .modal {
   /* Glassmorphic modal */
@@ -685,7 +694,23 @@ button:active:not(:disabled) { transform: scale(0.96); }
   max-width: 660px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* v2.331.0 — B4 fix: cap height + scroll internally so raw-content
+     modals (NPCManager / SessionScheduler / DiscordSettings / etc.)
+     never extend their Save button below the viewport. Previously the
+     modal had `overflow: hidden` with no max-height, relying on the
+     overlay's `overflow-y: auto` to scroll — but on mobile a fixed-
+     position overlay often won't scroll reliably (touch events hit
+     the body underneath instead). Switching to per-modal scroll fixes
+     it without breaking slotted modals: those have a `.modal-body`
+     with `flex: 1; overflow-y: auto` that already shrinks inside the
+     new max-height parent, so they don't double-scroll.
+     `100dvh` (dynamic viewport height) accounts for mobile browsers'
+     collapsing address bars; falls back gracefully on older browsers
+     via the static-vh path below. */
+  max-height: calc(100vh - 2 * var(--sp-4));
+  max-height: calc(100dvh - 2 * var(--sp-4));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   flex-shrink: 0;
   animation: modalIn 250ms cubic-bezier(0.34,1.56,0.64,1) both;
 }
