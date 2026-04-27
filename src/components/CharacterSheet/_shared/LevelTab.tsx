@@ -14,6 +14,14 @@
 // At high level a Wizard has up to 36 chiclets across 9 slot tiers, which was
 // visually noisy and didn't scan as fast as a number. The two tiny squared
 // step buttons preserve the per-slot expend/restore affordance.
+//
+// v2.323.0 (T2): Reverted to chiclet rail per user request — they preferred the
+// at-a-glance visual count and tap-to-expend affordance over the numeric "X/Y".
+// Now uses the shared SlotBoxes primitive (../_shared/SlotBoxes) so T3 can
+// reuse it for psionic energy dice and once-per-rest class features. Boxes
+// sized 'md' (16×16) for thumb-friendly tapping.
+
+import SlotBoxes, { PALETTE_GOLD } from './SlotBoxes';
 
 interface LevelTabProps {
   label: string;
@@ -24,19 +32,9 @@ interface LevelTabProps {
   onToggleSlot?: (slotIndex: number, expending: boolean) => void;
 }
 
-const stepBtnStyle = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 14, height: 14, borderRadius: 3, padding: 0,
-  fontSize: 10, fontWeight: 800, lineHeight: 1,
-  cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
-  minHeight: 0, minWidth: 0,        // override global button { min-height: 36px }
-  overflow: 'visible' as const,     // global sets overflow:hidden
-  fontFamily: 'inherit',
-};
-
 export default function LevelTab({ label, count, slots, active, onClick, onToggleSlot }: LevelTabProps) {
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, verticalAlign: 'middle' }}>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, verticalAlign: 'middle' }}>
       {/* Filter pill — click to set active level */}
       <button
         onClick={onClick}
@@ -64,54 +62,21 @@ export default function LevelTab({ label, count, slots, active, onClick, onToggl
         </span>
       </button>
 
-      {/* Slot count + steppers — replaces the v2.78.0 chiclet rail.
-          Sits inline next to the pill, mirroring layout but with the
-          remaining/max as text and tiny − / + buttons for per-slot
-          expend/restore. */}
+      {/* Slot chiclet rail (T2 — restored). One box per slot at this level.
+          Filled = available, empty = expended. Click any box to toggle.
+          Auto-decrement on cast still flows through SpellCastButton →
+          onUpdateSlots; this rail is the manual control surface. */}
       {slots && slots.max > 0 && (
-        <span
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            flex: '0 0 auto',
-          }}
-        >
-          <button
-            onClick={() => onToggleSlot?.(slots.remaining - 1, true)}
-            disabled={slots.remaining <= 0}
-            title={`Expend a ${label} slot`}
-            aria-label={`Expend a ${label} slot`}
-            style={{
-              ...stepBtnStyle,
-              border: '1px solid var(--c-border-m)',
-              background: 'var(--c-raised)',
-              color: slots.remaining > 0 ? 'var(--t-2)' : 'var(--t-3)',
-              opacity: slots.remaining > 0 ? 1 : 0.4,
-            }}
-          >−</button>
-          <span style={{
-            fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-            color: slots.remaining > 0 ? 'var(--c-gold-l)' : 'var(--t-3)',
-            minWidth: 28, textAlign: 'center' as const,
-            letterSpacing: '0.02em',
-          }}
-            title={`${slots.remaining} of ${slots.max} ${label} slots remaining`}
-          >
-            {slots.remaining}/{slots.max}
-          </span>
-          <button
-            onClick={() => onToggleSlot?.(slots.remaining, false)}
-            disabled={slots.remaining >= slots.max}
-            title={`Restore a ${label} slot`}
-            aria-label={`Restore a ${label} slot`}
-            style={{
-              ...stepBtnStyle,
-              border: '1px solid var(--c-gold-bdr)',
-              background: slots.remaining < slots.max ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-              color: slots.remaining < slots.max ? 'var(--c-gold-l)' : 'var(--t-3)',
-              opacity: slots.remaining < slots.max ? 1 : 0.4,
-            }}
-          >+</button>
-        </span>
+        <SlotBoxes
+          total={slots.max}
+          used={slots.max - slots.remaining}
+          onToggle={(idx, isExpending) => onToggleSlot?.(idx, isExpending)}
+          size="md"
+          palette={PALETTE_GOLD}
+          ariaLabel={`${label} spell slots: ${slots.remaining} of ${slots.max} remaining`}
+          ariaLabelPrefix={`${label} slot`}
+          title={(_idx, avail) => avail ? `Expend a ${label} slot` : `Restore a ${label} slot`}
+        />
       )}
     </div>
   );
