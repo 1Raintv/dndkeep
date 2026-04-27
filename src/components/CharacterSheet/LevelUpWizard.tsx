@@ -6,6 +6,7 @@ import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplin
 import FeatPicker from '../shared/FeatPicker';
 import { abilityModifier } from '../../lib/gameUtils';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
+import { useAuth } from '../../context/AuthContext';
 
 interface LevelUpWizardProps {
  character: Character;
@@ -591,13 +592,21 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
 }
 
 function SubclassStep({ classData, selected, onSelect }: any) {
+ // v2.329.0 — T7: filter UA subclasses out of the level-up picker.
+ // The pre-existing Psion characters that ALREADY chose a UA subclass
+ // continue to render fine since gating only applies to the chooser
+ // surface, not the character data path.
+ const { showUaContent } = useAuth();
+ const visibleSubs = (classData.subclasses ?? []).filter(
+  (s: any) => showUaContent || s.source !== 'ua',
+ );
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)' }}>
  Choose your {classData.name} subclass
  </div>
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
- {classData.subclasses.map((sub: any) => {
+ {visibleSubs.map((sub: any) => {
  const featuresByLevel: Record<number, string[]> = {};
  for (const f of sub.features ?? []) {
  if (!featuresByLevel[f.level]) featuresByLevel[f.level] = [];

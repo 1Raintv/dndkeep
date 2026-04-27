@@ -20,7 +20,7 @@ const emptyFeature = (): SubclassFeature => ({
 });
 
 export default function HomebrewPage() {
-  const { user, isPro } = useAuth();
+  const { user, isPro, showUaContent } = useAuth();
   const { classes, loading, refresh } = useClassRegistry(user?.id);
   const [tab, setTab] = useState<'browse' | 'create'>('browse');
   const [editing, setEditing] = useState<Partial<ClassEntry> | null>(null);
@@ -28,7 +28,10 @@ export default function HomebrewPage() {
   const [saveMsg, setSaveMsg] = useState('');
 
   const homebrew = classes.filter(c => c.source === 'homebrew' && (c as ClassEntry).owner_id === user?.id);
-  const ua = classes.filter(c => c.source === 'ua');
+  // v2.329.0 — T7: only surface UA / playtest classes when the account
+  // has opted in via show_ua_content. Default-false accounts see an
+  // empty array here, which collapses the UA section entirely.
+  const ua = showUaContent ? classes.filter(c => c.source === 'ua') : [];
 
   function newClass(): any {
     return {

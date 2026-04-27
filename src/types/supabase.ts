@@ -1863,6 +1863,7 @@ export type Database = {
           updated_at: string;
           active_dice_skin: string | null;
           extra_character_slots: number;
+          show_ua_content: boolean;
         };
         Insert: {
           id: string;
@@ -1876,6 +1877,7 @@ export type Database = {
           updated_at?: string;
           active_dice_skin?: string | null;
           extra_character_slots?: number;
+          show_ua_content?: boolean;
         };
         Update: {
           id?: string;
@@ -1889,6 +1891,7 @@ export type Database = {
           updated_at?: string;
           active_dice_skin?: string | null;
           extra_character_slots?: number;
+          show_ua_content?: boolean;
         };
         Relationships: [];
       };

@@ -4,6 +4,7 @@ import { CLASS_LEVEL_PROGRESSION, hpPerLevel } from '../../data/levelProgression
 import { SPELLS } from '../../data/spells';
 import FeatPicker from '../shared/FeatPicker';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
+import { useAuth } from '../../context/AuthContext';
 import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
@@ -742,7 +743,14 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
   // currently-selected one collapses the description but keeps it selected
   // (use a different row to change picks).
   const [expanded, setExpanded] = useState<string | null>(choices.subclass || null);
-  const subclasses: any[] = cls?.subclasses ?? [];
+  // v2.329.0 — T7: filter UA subclasses (the 4 Psion archetypes) from
+  // accounts without show_ua_content. Today only Psion has UA-flagged
+  // subclasses, so this is a no-op for non-Psion classes; in the future
+  // any new UA subclass on a base class will hide cleanly.
+  const { showUaContent } = useAuth();
+  const subclasses: any[] = (cls?.subclasses ?? []).filter(
+    (s: any) => showUaContent || s.source !== 'ua',
+  );
   const selected = choices.subclass;
 
   return (

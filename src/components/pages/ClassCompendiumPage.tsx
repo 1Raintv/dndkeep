@@ -5,6 +5,7 @@ import { CLASS_FEATURES } from '../../data/classFeatures';
 import { getSpellSlotRow } from '../../data/spellSlots';
 import { ARTIFICER_INFUSIONS, getActiveInfusionCount } from '../../data/artificerInfusions';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
+import { useAuth } from '../../context/AuthContext';
 
 // Class color accents
 const CLASS_COLORS: Record<string, string> = {
@@ -55,6 +56,11 @@ function profBonus(level: number) {
 export default function ClassCompendiumPage() {
   const { className: urlClass, subclassSlug } = useParams<{ className?: string; subclassSlug?: string }>();
   const navigate = useNavigate();
+  // v2.329.0 — T7: filter UA classes (Psion) from the compendium for
+  // accounts without show_ua_content. Direct URL access (/compendium/psion)
+  // is also gated below — the class data still resolves but the page
+  // shows an "unknown class" state if UA isn't enabled.
+  const { showUaContent } = useAuth();
 
   const [selectedClass, setSelectedClass] = useState<string>(
     urlClass ? CLASSES.find(c => c.name.toLowerCase().replace(/\s+/g, '-') === urlClass)?.name ?? '' : ''
@@ -103,7 +109,8 @@ export default function ClassCompendiumPage() {
   }, [classData]);
 
   const filteredClasses = CLASSES.filter(c =>
-    search === '' || c.name.toLowerCase().includes(search.toLowerCase())
+    (showUaContent || (c as any).source !== 'ua') &&
+    (search === '' || c.name.toLowerCase().includes(search.toLowerCase()))
   );
 
   function selectClass(name: string) {
@@ -253,7 +260,7 @@ export default function ClassCompendiumPage() {
                   >
                     No Subclass
                   </button>
-                  {classData.subclasses.map((sub: any) => {
+                  {classData.subclasses.filter((sub: any) => showUaContent || sub.source !== 'ua').map((sub: any) => {
                     const isSelected = selectedSubclass === sub.name;
                     return (
                       <button

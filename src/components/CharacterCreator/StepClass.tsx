@@ -1,5 +1,6 @@
 import { CLASSES } from '../../data/classes';
 import { capitalize } from '../../lib/gameUtils';
+import { useAuth } from '../../context/AuthContext';
 
 interface StepClassProps {
   selected: string;
@@ -37,14 +38,20 @@ function ComplexityPips({ rating }: { rating: number }) {
 }
 
 export default function StepClass({ selected, level, selectedSkills, onSelect, onLevelChange, onSkillToggle }: StepClassProps) {
-  const preview = CLASSES.find(c => c.name === selected);
+  const { showUaContent } = useAuth();
+  // v2.329.0 — T7: hide UA / playtest classes (Psion) from accounts that
+  // don't have the show_ua_content flag enabled. Filtering at the picker
+  // is enough — already-created Psion characters still load fine because
+  // the data still exists in CLASSES; we only hide it from the chooser.
+  const visibleClasses = CLASSES.filter(c => showUaContent || (c as any).source !== 'ua');
+  const preview = visibleClasses.find(c => c.name === selected);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
 
       {/* Class grid — 2 columns */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--sp-2)' }}>
-        {CLASSES.map(cls => {
+        {visibleClasses.map(cls => {
           const complexity = CLASS_COMPLEXITY[cls.name] ?? 3;
           const icon = CLASS_ICONS[cls.name] ?? '🧙';
           const sel = selected === cls.name;

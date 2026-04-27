@@ -67,6 +67,13 @@ export interface Profile {
   subscription_status: string;
   created_at: string;
   updated_at: string;
+  /** v2.329.0 — T7: feature flag for UA / playtest content visibility.
+   *  When true, this account sees the Psion class (and its 4
+   *  subclasses) in the character creator, subclass pickers, and
+   *  class compendium. When false, those entries are filtered out.
+   *  Default false at the DB level, so existing accounts upgrade
+   *  cleanly with UA hidden. */
+  show_ua_content?: boolean;
 }
 
 // --- Character ---

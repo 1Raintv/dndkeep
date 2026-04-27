@@ -1,6 +1,7 @@
 import type { SubclassData } from '../../types';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
+import { useAuth } from '../../context/AuthContext';
 
 interface StepSubclassProps {
   className: string;
@@ -14,8 +15,15 @@ const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th
 export default function StepSubclass({ className, selected, onSelect, level }: StepSubclassProps) {
   const cls = CLASS_MAP[className];
   if (!cls) return null;
+  // v2.329.0 — T7: filter UA subclasses out of the picker for accounts
+  // without show_ua_content. Today only Psion has UA-flagged subclasses;
+  // scaling to future UA additions is automatic.
+  const { showUaContent } = useAuth();
+  const visibleSubclasses = cls.subclasses.filter(
+    (s: any) => showUaContent || s.source !== 'ua',
+  );
 
-  const subclassUnlockLevel = Math.min(...cls.subclasses.map(s => s.unlock_level));
+  const subclassUnlockLevel = Math.min(...visibleSubclasses.map(s => s.unlock_level));
   const needsSubclass = level >= subclassUnlockLevel;
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
 
@@ -36,7 +44,7 @@ export default function StepSubclass({ className, selected, onSelect, level }: S
             Your character is level {level} — choose now.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-            {cls.subclasses.map(sc => (
+            {visibleSubclasses.map(sc => (
               <SubclassCard key={sc.name} subclass={sc} selected={selected === sc.name} onSelect={onSelect} />
             ))}
           </div>
@@ -45,7 +53,7 @@ export default function StepSubclass({ className, selected, onSelect, level }: S
         <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-lg)', fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
           <strong>Subclass unlocks at level {subclassUnlockLevel}.</strong> Your character is level {level} — no choice needed yet. Here's a preview of what's available:
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginTop: 'var(--sp-3)' }}>
-            {cls.subclasses.map(sc => (
+            {visibleSubclasses.map(sc => (
               <div key={sc.name} style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
                 <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>{sc.name}</div>
                 <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginTop: 2 }}>{sc.description}</div>

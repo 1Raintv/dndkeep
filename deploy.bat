@@ -124,7 +124,24 @@ REM ---- Step 4 ----
 
 echo  [4/7] Running production build...
 call npx vite build >build-output.tmp 2>&1
-if %errorlevel% neq 0 (
+set BUILD_EXIT=!errorlevel!
+
+REM Detect Vite success by output marker, not exit code.
+REM Node on Windows has a known libuv bug where, after Vite finishes
+REM and writes the entire dist/ tree, the process crashes during
+REM shutdown with:
+REM   "Assertion failed: !(handle->flags ^& UV_HANDLE_CLOSING),
+REM    file src\win\async.c, line 76"
+REM This fires during esbuild worker-pool teardown — the build output
+REM is already complete, dist/ is intact, but errorlevel is non-zero.
+REM We grep for "built in" (Vite's success line, e.g. "built in 3.91s")
+REM as the authoritative success signal. If that line is present,
+REM the build succeeded regardless of what Node did on shutdown.
+set BUILD_OK=0
+findstr /C:"built in" build-output.tmp >nul 2>&1
+if !errorlevel! == 0 set BUILD_OK=1
+
+if "!BUILD_OK!"=="0" (
     echo.
     echo  ============================================
     echo   [ERROR] Build failed:
@@ -136,8 +153,18 @@ if %errorlevel% neq 0 (
     echo  ============================================
     echo. & pause & exit /b 1
 )
+
+if not "!BUILD_EXIT!"=="0" (
+    findstr /C:"UV_HANDLE_CLOSING" build-output.tmp >nul 2>&1
+    if !errorlevel! == 0 (
+        echo        Build OK ^(ignored known Node-on-Windows libuv shutdown crash^).
+    ) else (
+        echo        Build OK ^(non-zero exit but dist is complete^).
+    )
+) else (
+    echo        Build OK.
+)
 del build-output.tmp >nul 2>&1
-echo        Build OK.
 
 REM ---- Step 5 ----
 

@@ -9,6 +9,11 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   isPro: boolean;
+  /** v2.329.0 — T7: derived flag mirroring profile.show_ua_content
+   *  with a safe `false` default. Consumers in the character creator
+   *  / subclass pickers / class compendium use this to filter out
+   *  UA-source classes (Psion + its subclasses) from public view. */
+  showUaContent: boolean;
   refreshProfile: () => Promise<void>;
 }
 
@@ -18,6 +23,7 @@ const AuthContext = createContext<AuthContextValue>({
   profile: null,
   loading: true,
   isPro: false,
+  showUaContent: false,
   refreshProfile: async () => {},
 });
 
@@ -58,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       loading,
       isPro: profile?.subscription_tier === 'pro',
+      showUaContent: profile?.show_ua_content === true,
       refreshProfile,
     }}>
       {children}
