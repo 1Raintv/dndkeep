@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -10,6 +10,10 @@ import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
 import QuickRoll from './components/CharacterSheet/QuickRoll';
 import FloatingRollLog from './components/CharacterSheet/FloatingRollLog';
+import ErrorBoundary from './components/ErrorBoundary';
+// v2.330.0 — B1 fix: retry chunk imports + recover from stale-hash blank
+// screens after deploys. See src/lib/lazyWithRetry.ts for the full story.
+import { lazyWithRetry as lazy, clearLazyReloadGuard } from './lib/lazyWithRetry';
 
 import './styles/globals.css';
 
@@ -434,6 +438,15 @@ function AppRoutes() {
     });
   }, [activeCharId]);
 
+  // v2.330.0 — B1 fix: AppRoutes rendered successfully, so any prior
+  // chunk-load reload has fully resolved. Clear the reload-loop guard
+  // so future deploys can trigger the safety net again. If we're stuck
+  // in a real reload loop, this useEffect never runs (component never
+  // mounts), so the guard correctly stays set.
+  useEffect(() => {
+    clearLazyReloadGuard();
+  }, []);
+
   return (
     <div className={showSidebar ? 'app-layout-sidebar' : 'app-layout-full'}>
       {/* v2.284.0 — Cross-tab version banner. Renders only when a
@@ -503,7 +516,39 @@ function AppRoutes() {
           </NavLink>
         </nav>
         <Suspense fallback={<PageLoader />}>
-          <Routes>
+          <ErrorBoundary
+            section="route"
+            fallback={
+              // v2.330.0 — B1 fix: chunk-load failures get a recovery UI
+              // instead of the silent blank screen. lazyWithRetry already
+              // tries 3x and force-reloads once before getting here, so
+              // by the time we render this, something is genuinely off
+              // and the user just needs an obvious recovery button.
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 12, padding: '64px 24px', textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 32 }}>⚠</div>
+                <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 16, color: 'var(--t-1)' }}>
+                  This page couldn't load.
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--t-3)', maxWidth: 360 }}>
+                  Usually a network blip or a recent update — a fresh load fixes it.
+                </div>
+                <button
+                  onClick={() => { try { sessionStorage.removeItem('dndkeep:lazy-reloaded'); } catch {} window.location.reload(); }}
+                  style={{
+                    marginTop: 8, padding: '8px 20px', borderRadius: 8, cursor: 'pointer',
+                    fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
+                    background: 'var(--c-gold)', color: '#1a1a1a', border: 'none',
+                  }}
+                >
+                  Reload page
+                </button>
+              </div>
+            }
+          >
+            <Routes>
             <Route path="/share/:token"   element={<SharePage />} />
             <Route path="/"               element={<HomeRedirect />} />
             <Route path="/auth"           element={<AuthPage />} />
@@ -524,6 +569,7 @@ function AppRoutes() {
             <Route path="/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="*"              element={<NotFound />} />
           </Routes>
+          </ErrorBoundary>
         </Suspense>
       </main>
       {/* Global floating dice roller — always visible when logged in */}
