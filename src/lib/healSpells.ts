@@ -24,6 +24,10 @@
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 // ─── Registry ────────────────────────────────────────────────────────
 
 export type HealRollMode =
@@ -153,9 +157,9 @@ export interface ApplyHealInput {
 export async function applyHealToParticipant(
   input: ApplyHealInput,
 ): Promise<number> {
-  const { data: part } = await supabase
+  const { data: part } = await (supabase as any)
     .from('combat_participants')
-    .select('id, current_hp, max_hp, is_dead, is_stable, death_save_successes, death_save_failures, name, hidden_from_players')
+    .select('id, current_hp, max_hp, is_dead, is_stable, death_save_successes, death_save_failures, name, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
   if (!part) return 0;

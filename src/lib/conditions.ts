@@ -22,6 +22,10 @@ import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { CONDITION_MAP } from '../data/conditions';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 export interface ApplyConditionInput {
   participantId: string;
   conditionName: string;            // e.g. 'Prone', 'Restrained'
@@ -56,9 +60,9 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
     return;
   }
 
-  const { data: part } = await supabase
+  const { data: part } = await (supabase as any)
     .from('combat_participants')
-    .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id')
+    .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   if (!part) return;
@@ -182,9 +186,9 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
     return;
   }
 
-  const { data: part } = await supabase
+  const { data: part } = await (supabase as any)
     .from('combat_participants')
-    .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id')
+    .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   if (!part) return;
@@ -334,9 +338,9 @@ export async function clearConditionsFromConcentration(
 
   // Pull all participants in the campaign/encounter and scan their
   // condition_sources for a match. Small numbers — direct read is fine.
-  let query = supabase
+  let query = (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, active_conditions, condition_sources, encounter_id');
+    .select('id, name, participant_type, active_conditions, condition_sources, encounter_id, ' + JOINED_COMBATANT_FIELDS);
   if (encounterId) {
     query = query.eq('encounter_id', encounterId);
   } else {
@@ -483,9 +487,9 @@ export interface AdjustExhaustionInput {
 }
 
 export async function adjustExhaustion(input: AdjustExhaustionInput): Promise<number> {
-  const { data: part } = await supabase
+  const { data: part } = await (supabase as any)
     .from('combat_participants')
-    .select('exhaustion_level, active_conditions, name, participant_type, campaign_id, encounter_id, is_dead')
+    .select('exhaustion_level, active_conditions, name, participant_type, campaign_id, encounter_id, is_dead, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   if (!part) return 0;

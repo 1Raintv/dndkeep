@@ -30,6 +30,9 @@ import {
 import { logAction } from '../shared/ActionLog';
 import type { SpellData, CombatParticipant, Character } from '../../types';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
+import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -108,9 +111,9 @@ export default function MultiAttackPickerModal({
       }
       setCasterParticipantId(caster.id as string);
 
-      const { data: all } = await supabase
+      const { data: all } = await (supabase as any)
         .from('combat_participants')
-        .select('*')
+        .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', enc.id)
         .order('turn_order', { ascending: true });
       if (cancelled) return;

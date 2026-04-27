@@ -13,6 +13,9 @@ import { acceptReaction, declineReaction, expireReaction } from '../../lib/pendi
 import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
 import type { PendingReaction, PendingAttack } from '../../types';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
+import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+
 interface Props {
   campaignId: string;
 }
@@ -197,9 +200,9 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     if (!mover || !mover.mover_participant_id) { setBusy(false); return; }
 
     // Fetch encounter + participant details needed by declareAttack
-    const { data: reactorPart } = await supabase
+    const { data: reactorPart } = await (supabase as any)
       .from('combat_participants')
-      .select('encounter_id, participant_type, max_hp')
+      .select('encounter_id, participant_type, max_hp, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', urgent.reactor_participant_id)
       .single();
     const { data: targetPart } = await supabase

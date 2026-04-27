@@ -18,6 +18,9 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { BUFF_SPELL_REGISTRY, applyBuffFromSpell } from '../../lib/buffs';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
+import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+
 interface Props {
   campaignId: string;
   casterCharacterId: string;
@@ -105,9 +108,9 @@ export default function BuffTargetPickerModal({
         }
 
         // 4. Load the rest of the participants (targets to pick from)
-        const { data: all } = await supabase
+        const { data: all } = await (supabase as any)
           .from('combat_participants')
-          .select('id, name, participant_type, current_hp, max_hp, is_dead')
+          .select('id, name, participant_type, current_hp, max_hp, is_dead, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', enc.id)
           .eq('is_dead', false)
           .order('initiative', { ascending: false });

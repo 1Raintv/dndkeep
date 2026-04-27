@@ -23,6 +23,10 @@ import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 const DEFAULT_TIMER_SECONDS = 120;
 
 // ─── Registry ────────────────────────────────────────────────────
@@ -765,9 +769,9 @@ export async function offerCounterspell(
 
   // Load all character participants in the encounter — only characters can
   // counterspell (monsters with innate counterspell are a future edge case).
-  const { data: rows } = await supabase
+  const { data: rows } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, reaction_used, is_dead')
+    .select('id, name, participant_type, entity_id, reaction_used, is_dead, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId)
     .eq('participant_type', 'character');
   if (!rows) return 0;
@@ -1121,9 +1125,9 @@ export async function offerOpportunityAttacks(
 
   // All combat participants in this encounter (we only OA between combatants)
   if (!input.encounterId) return 0;
-  const { data: pdata } = await supabase
+  const { data: pdata } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, is_dead, reaction_used')
+    .select('id, name, participant_type, entity_id, is_dead, reaction_used, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId);
   const participants = (pdata ?? []) as Array<{
     id: string; name: string; participant_type: 'character' | 'monster' | 'npc';

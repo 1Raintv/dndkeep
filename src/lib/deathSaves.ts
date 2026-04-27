@@ -22,6 +22,10 @@
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 export interface CreatePendingDeathSaveInput {
   campaignId: string;
   encounterId: string | null;
@@ -107,9 +111,9 @@ export async function resolvePendingDeathSave(
   // could change between creation and resolution (e.g. the character
   // took damage while unconscious, which adds a failure via a separate
   // pipeline).
-  const { data: partRow } = await supabase
+  const { data: partRow } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, death_save_successes, death_save_failures, campaign_id, encounter_id, hidden_from_players')
+    .select('id, name, death_save_successes, death_save_failures, campaign_id, encounter_id, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', pendingRow.participant_id as string)
     .single();
   if (!partRow) return null;

@@ -26,6 +26,10 @@
 import type { Character } from '../types';
 import { currencyWeightLbs } from './currency';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 // ─── Constants ───────────────────────────────────────────────────
 const CAPACITY_MULTIPLIER = 15;           // base 2024 rule: STR × 15 lbs
 const VARIANT_ENCUMBERED_MULT = 5;        // variant: > STR × 5 → encumbered
@@ -241,9 +245,9 @@ export async function syncEncumbranceCondition(
   }
 
   // Find the character's active combat participant, if any.
-  const { data: part } = await supabase
+  const { data: part } = await (supabase as any)
     .from('combat_participants')
-    .select('id, active_conditions, condition_sources, campaign_id, encounter_id')
+    .select('id, active_conditions, condition_sources, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('entity_id', input.characterId)
     .eq('participant_type', 'character')
     .order('created_at', { ascending: false })

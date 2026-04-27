@@ -17,6 +17,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { CombatEncounter, CombatParticipant } from '../types';
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN so all useCombat() consumers see the unified source.
+import {
+  JOINED_COMBATANT_FIELDS,
+  normalizeParticipantRow,
+} from '../lib/combatParticipantNormalize';
 
 interface CombatContextValue {
   encounter: CombatEncounter | null;
@@ -69,12 +75,17 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
     setEncounter(enc);
 
     if (enc) {
-      const { data: partData } = await supabase
+      const { data: partData } = await (supabase as any)
         .from('combat_participants')
-        .select('*')
+        .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', enc.id)
         .order('turn_order', { ascending: true });
-      setParticipants((partData as CombatParticipant[]) ?? []);
+      // v2.316: normalize flattens combatants.* onto each row so
+      // every useCombat() consumer reads through to the combatant.
+      setParticipants(
+        ((partData ?? []) as Array<Record<string, unknown>>)
+          .map(normalizeParticipantRow) as unknown as CombatParticipant[]
+      );
     } else {
       setParticipants([]);
     }

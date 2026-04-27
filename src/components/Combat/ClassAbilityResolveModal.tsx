@@ -50,6 +50,9 @@ import { getTargetSaveBonus } from '../../lib/pendingAttack';
 import type { Character, Campaign, CombatParticipant } from '../../types';
 import type { ClassAbility, SaveSpec } from '../../data/classAbilities';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
+import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+
 export type SaveOutcome = 'pending' | 'passed' | 'failed' | 'auto-failed';
 
 export interface TargetOutcome {
@@ -156,9 +159,9 @@ export default function ClassAbilityResolveModal({
       const casterId = (caster?.id as string) ?? null;
       setCasterParticipantId(casterId);
 
-      const { data: all } = await supabase
+      const { data: all } = await (supabase as any)
         .from('combat_participants')
-        .select('*')
+        .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', enc.id)
         .order('turn_order', { ascending: true });
       if (cancelled) return;

@@ -13,6 +13,10 @@ import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerOpportunityAttacks } from './pendingReaction';
 import { conditionsSpeedZero, conditionsSpeedHalved } from './conditions';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 const FEET_PER_SQUARE = 5;   // D&D standard
 
 /**
@@ -45,9 +49,9 @@ export async function canMove(
   participantId: string,
   distanceFt: number,
 ): Promise<MovementCheck> {
-  const { data } = await supabase
+  const { data } = await (supabase as any)
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions, exhaustion_level')
+    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions, exhaustion_level, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', participantId)
     .single();
 

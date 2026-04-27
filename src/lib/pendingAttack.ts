@@ -31,6 +31,10 @@ import { CONDITION_MAP } from '../data/conditions';
 import { effectiveCombatAC } from './armorClass';
 import type { PendingAttack, HitResult } from '../types';
 
+// v2.316: HP/conditions/buffs/death-save reads come from combatants
+// via JOIN. See src/lib/combatParticipantNormalize.ts.
+import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+
 // ─── Dice helpers ────────────────────────────────────────────────
 export function rollD20(): number {
   return Math.floor(Math.random() * 20) + 1;
@@ -328,14 +332,14 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
   if (atk.attacker_participant_id && atk.target_participant_id) {
     const [aRes, tRes] = await Promise.all([
-      supabase
+      (supabase as any)
         .from('combat_participants')
-        .select('active_conditions, active_buffs, exhaustion_level, entity_id, participant_type, name')
+        .select('active_conditions, active_buffs, exhaustion_level, entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
         .eq('id', atk.attacker_participant_id)
         .maybeSingle(),
-      supabase
+      (supabase as any)
         .from('combat_participants')
-        .select('active_conditions, active_buffs, entity_id, participant_type, name')
+        .select('active_conditions, active_buffs, entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
         .eq('id', atk.target_participant_id)
         .maybeSingle(),
     ]);
@@ -577,9 +581,9 @@ export async function rollSave(
   let targetBuffs: ActiveBuff[] = [];
   let targetExhaustion = 0;
   if (atk.target_participant_id) {
-    const { data: tRow } = await supabase
+    const { data: tRow } = await (supabase as any)
       .from('combat_participants')
-      .select('active_conditions, active_buffs, exhaustion_level')
+      .select('active_conditions, active_buffs, exhaustion_level, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .maybeSingle();
     targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
@@ -892,9 +896,9 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     || (atk.attack_kind === 'save' && atk.save_result === 'passed' && atk.save_success_effect === 'half');
 
   if (riderEligible && atk.attacker_participant_id) {
-    const { data: aRow } = await supabase
+    const { data: aRow } = await (supabase as any)
       .from('combat_participants')
-      .select('active_buffs')
+      .select('active_buffs, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.attacker_participant_id)
       .maybeSingle();
     const attackerBuffs = ((aRow?.active_buffs as ActiveBuff[] | null) ?? []);
@@ -1047,9 +1051,9 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
 
   // If no target participant (e.g., target was free-text) we still mark applied
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {
-    const { data: tgt } = await supabase
+    const { data: tgt } = await (supabase as any)
       .from('combat_participants')
-      .select('id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions')
+      .select('id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .single();
 
@@ -1255,9 +1259,9 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
         // on characters was just cleared), so we do broad cleanup: remove
         // any condition or buff on any participant where casterParticipantId
         // equals this one.
-        const { data: allRows } = await supabase
+        const { data: allRows } = await (supabase as any)
           .from('combat_participants')
-          .select('id, active_conditions, condition_sources, active_buffs, encounter_id')
+          .select('id, active_conditions, condition_sources, active_buffs, encounter_id, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', atk.encounter_id);
         for (const row of (allRows ?? [])) {
           const sources = ((row.condition_sources ?? {}) as Record<string, any>);
