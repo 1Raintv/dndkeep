@@ -475,7 +475,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   const { data: rowsRaw, error: rowsErr } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining, ' +
+      'id, combatant_id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('encounter_id', encounterId)
@@ -682,10 +682,16 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       };
       if (result === 'crit_success') updates.current_hp = currentHp;
 
-      await supabase
-        .from('combat_participants')
-        .update(updates)
-        .eq('id', incomingParticipant.id);
+      // v2.318: writes go to combatants. All fields in `updates` are mirrored.
+      const combatantId = (incomingParticipant as any).combatant_id as string | null;
+      if (!combatantId) {
+        console.warn('[advanceTurn:deathSave] participant missing combatant_id; skipping write', incomingParticipant.id);
+      } else {
+        await (supabase as any)
+          .from('combatants')
+          .update(updates)
+          .eq('id', combatantId);
+      }
 
       // Emit a structured event for the log
       await emitCombatEvent({

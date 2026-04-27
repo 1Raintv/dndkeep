@@ -113,7 +113,7 @@ export async function resolvePendingDeathSave(
   // pipeline).
   const { data: partRowRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, death_save_successes, death_save_failures, campaign_id, encounter_id, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, combatant_id, name, death_save_successes, death_save_failures, campaign_id, encounter_id, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', pendingRow.participant_id as string)
     .single();
   const partRow = partRowRaw ? normalizeParticipantRow(partRowRaw) : partRowRaw;
@@ -158,10 +158,16 @@ export async function resolvePendingDeathSave(
   };
   if (result === 'crit_success') partUpdates.current_hp = currentHp;
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants. All fields in `partUpdates` are mirrored.
+  const combatantId = partRow.combatant_id as string | null;
+  if (!combatantId) {
+    console.warn('[resolveDeathSave] participant missing combatant_id; skipping write', partRow.id);
+    return null;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update(partUpdates)
-    .eq('id', partRow.id as string);
+    .eq('id', combatantId);
 
   // Mark pending row rolled
   const { data: updatedPending } = await supabase

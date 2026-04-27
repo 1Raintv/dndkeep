@@ -62,7 +62,7 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
 
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
@@ -135,13 +135,20 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
 
   if (actuallyApplied.length === 0) return;
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants (the source-of-truth post-Phase 3).
+  // combatant_id is guaranteed non-null by the v2.315 BEFORE INSERT trigger.
+  const combatantId = part.combatant_id as string | null;
+  if (!combatantId) {
+    console.warn('[applyCondition] participant missing combatant_id; skipping write', input.participantId);
+    return;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update({
       active_conditions: nextConditions,
       condition_sources: sources,
     })
-    .eq('id', input.participantId);
+    .eq('id', combatantId);
 
   if (input.emitEvent !== false) {
     const chainId = newChainId();
@@ -189,7 +196,7 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
 
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
@@ -210,13 +217,19 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
   const nextConditions = existing.filter(c => !toRemove.has(c));
   for (const c of toRemove) delete sources[c];
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants.
+  const combatantIdR = part.combatant_id as string | null;
+  if (!combatantIdR) {
+    console.warn('[removeCondition] participant missing combatant_id; skipping write', input.participantId);
+    return;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update({
       active_conditions: nextConditions,
       condition_sources: sources,
     })
-    .eq('id', input.participantId);
+    .eq('id', combatantIdR);
 
   if (input.emitEvent !== false) {
     const chainId = newChainId();
@@ -492,7 +505,7 @@ export interface AdjustExhaustionInput {
 export async function adjustExhaustion(input: AdjustExhaustionInput): Promise<number> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('exhaustion_level, active_conditions, name, participant_type, campaign_id, encounter_id, is_dead, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, exhaustion_level, active_conditions, name, participant_type, campaign_id, encounter_id, is_dead, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
@@ -521,10 +534,17 @@ export async function adjustExhaustion(input: AdjustExhaustionInput): Promise<nu
     updates.current_hp = 0;
   }
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants. All fields in `updates` are mirrored
+  // (exhaustion_level, active_conditions, optional is_dead/current_hp).
+  const combatantIdE = part.combatant_id as string | null;
+  if (!combatantIdE) {
+    console.warn('[adjustExhaustion] participant missing combatant_id; skipping write', input.participantId);
+    return current;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update(updates)
-    .eq('id', input.participantId);
+    .eq('id', combatantIdE);
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({

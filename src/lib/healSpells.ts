@@ -159,7 +159,7 @@ export async function applyHealToParticipant(
 ): Promise<number> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, current_hp, max_hp, is_dead, is_stable, death_save_successes, death_save_failures, name, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, combatant_id, current_hp, max_hp, is_dead, is_stable, death_save_successes, death_save_failures, name, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
@@ -187,10 +187,17 @@ export async function applyHealToParticipant(
     updates.death_save_failures = 0;
   }
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants. All fields in `updates`
+  // (current_hp, optional is_stable/death_save_*) are mirrored.
+  const combatantId = part.combatant_id as string | null;
+  if (!combatantId) {
+    console.warn('[applyHealToParticipant] participant missing combatant_id; skipping write', input.participantId);
+    return 0;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update(updates)
-    .eq('id', input.participantId);
+    .eq('id', combatantId);
 
   // Emit event so the combat log captures the heal. Mirrors the shape of
   // the damage_applied events so the DMScreen log renders naturally.

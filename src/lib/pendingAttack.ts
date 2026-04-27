@@ -1058,7 +1058,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {
     const { data: tgtRaw } = await (supabase as any)
       .from('combat_participants')
-      .select('id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions, ' + JOINED_COMBATANT_FIELDS)
+      .select('id, combatant_id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .single();
   const tgt = tgtRaw ? normalizeParticipantRow(tgtRaw) : tgtRaw;
@@ -1217,16 +1217,22 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       // Any damage taken while unstable removes Stable — RAW
       if (dmg > 0 && isStable) isStable = false;
 
-      await supabase
-        .from('combat_participants')
-        .update({
-          current_hp: hpAfter,
-          temp_hp: tempAfter,
-          is_dead: isDead,
-          is_stable: isStable,
-          death_save_failures: deathFailures,
-        })
-        .eq('id', tgt.id);
+      // v2.318: writes go to combatants. All updated fields are mirrored.
+      const tgtCombatantId = (tgt as any).combatant_id as string | null;
+      if (!tgtCombatantId) {
+        console.warn('[pendingAttack:damage] tgt missing combatant_id; skipping write', tgt.id);
+      } else {
+        await (supabase as any)
+          .from('combatants')
+          .update({
+            current_hp: hpAfter,
+            temp_hp: tempAfter,
+            is_dead: isDead,
+            is_stable: isStable,
+            death_save_failures: deathFailures,
+          })
+          .eq('id', tgtCombatantId);
+      }
 
       // v2.116.0 — Phase H pt 7: death-tied cleanup.
       // When a participant dies:
@@ -1251,11 +1257,18 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
             .eq('id', deadRow.entity_id);
         }
 
-        // Clear own buffs + concentration pointer on the participant
+        // Clear own buffs + concentration pointer on the participant.
+        // v2.318: active_buffs write goes to combatants; concentration_spell_id
+        // stays on combat_participants (no equivalent on combatants).
+        if (tgtCombatantId) {
+          await (supabase as any)
+            .from('combatants')
+            .update({ active_buffs: [] })
+            .eq('id', tgtCombatantId);
+        }
         await supabase
           .from('combat_participants')
           .update({
-            active_buffs: [],
             concentration_spell_id: null,
           })
           .eq('id', tgt.id);

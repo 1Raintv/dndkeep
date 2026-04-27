@@ -53,7 +53,7 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'active_buffs, name, participant_type, campaign_id, encounter_id, ' +
+      'combatant_id, active_buffs, name, participant_type, campaign_id, encounter_id, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('id', input.participantId)
@@ -65,10 +65,18 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
   // De-duplicate on key — replace existing entry if already present
   const next = current.filter(b => b.key !== input.buff.key).concat(input.buff);
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants (the source-of-truth post-Phase 3).
+  // combatant_id is guaranteed non-null by the cp_ensure_combatant_link
+  // BEFORE INSERT trigger from v2.315.
+  const combatantId = part.combatant_id as string | null;
+  if (!combatantId) {
+    console.warn('[applyBuff] participant missing combatant_id; skipping write', input.participantId);
+    return;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update({ active_buffs: next })
-    .eq('id', input.participantId);
+    .eq('id', combatantId);
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({
@@ -103,7 +111,7 @@ export async function removeBuff(input: RemoveBuffInput): Promise<void> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'active_buffs, name, participant_type, campaign_id, encounter_id, ' +
+      'combatant_id, active_buffs, name, participant_type, campaign_id, encounter_id, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('id', input.participantId)
@@ -116,10 +124,16 @@ export async function removeBuff(input: RemoveBuffInput): Promise<void> {
   if (!removed) return;
   const next = current.filter(b => b.key !== input.key);
 
-  await supabase
-    .from('combat_participants')
+  // v2.318: writes go to combatants.
+  const combatantId = part.combatant_id as string | null;
+  if (!combatantId) {
+    console.warn('[removeBuff] participant missing combatant_id; skipping write', input.participantId);
+    return;
+  }
+  await (supabase as any)
+    .from('combatants')
     .update({ active_buffs: next })
-    .eq('id', input.participantId);
+    .eq('id', combatantId);
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({
