@@ -49,6 +49,58 @@ export interface MagicItem {
 }
 
 export const MAGIC_ITEMS: MagicItem[] = [
+  // ───────────────────────────────────────────────────────────────────
+  // v2.328.0 — T5b magic items catalog audit pass.
+  //
+  // Every entry below with `requiresAttunement: true` was reviewed for
+  // structured-effect coverage. Items that DON'T have a numeric/schema
+  // field today rely on the description text — which is the right call
+  // when the RAW effect doesn't reduce to a clean type. The list of
+  // intentionally-narrative attuneable effects (so future audits don't
+  // re-litigate them):
+  //
+  //   • Damage-type resistances / immunities (Ring of Resistance, Ring
+  //     of Warmth, Periapt of Proof Against Poison, Periapt of Health,
+  //     Frost Brand fire resistance) — needs a damage-resistance field
+  //     on the schema; deferred until the buff/condition system exposes
+  //     resistance as a typed bonus.
+  //
+  //   • "Extra XdY damage on hit" weapons (Flame Tongue +2d6 fire,
+  //     Frost Brand +1d6 cold) — needs a separate `bonusDamageDice`
+  //     field with a damage type; today damageBonus is flat numeric.
+  //
+  //   • Weapon-type-restricted bonuses (Bracers of Archery +2 dmg with
+  //     bows only) — needs a weapon-category constraint on the bonus.
+  //
+  //   • At-will / charged spell items (Hat of Disguise, Helm of
+  //     Comprehending Languages, Cape of the Mountebank, Crystal Ball,
+  //     Wand of *, Staff of *, Rod of Rulership, Eyes of Charming,
+  //     Medallion of Thoughts, Helm of Brilliance, Helm of
+  //     Teleportation) — RP-only flow today. Charges already track via
+  //     `maxCharges` + `recharge`; the cast itself stays narrative.
+  //
+  //   • Movement / sense overrides (Boots of Speed/Striding/Flying,
+  //     Slippers of Spider Climbing, Ioun Stone Sustenance, Goggles
+  //     of Night, Eyes of the Eagle, Cloak of Elvenkind/Displacement,
+  //     Lantern of Revealing) — narrative; no numeric stat to set.
+  //
+  //   • Anti-condition effects (Ring of Free Action, Ring of Feather
+  //     Falling, Periapt of Wound Closure, Mantle of Spell Resistance)
+  //     — needs a "condition immunity / save advantage" schema; lives
+  //     adjacent to the condition system, not the bonus system.
+  //
+  //   • Curse/restriction items (Demon Armor, Vorpal Sword class
+  //     restriction in flavor text) — RP-only.
+  //
+  // What v2.328 DID land structurally:
+  //   • Belt of Giant Strength × 5 (Hill 21 / Stone 23 / Fire 25 /
+  //     Cloud 27 / Storm 29) — all attuneable, all abilityOverride.
+  //   • Holy Avenger / Luck Blade / Vorpal Sword — attackBonus +
+  //     damageBonus filled in to match the descriptive text.
+  //   • Stone of Good Luck — saveBonus: 1. Ability-check side stays
+  //     narrative pending an ability-check-bonus schema field.
+  // ───────────────────────────────────────────────────────────────────
+
   // Potions
   { id: 'potion-healing', name: 'Potion of Healing', type: 'potion', rarity: 'common', requiresAttunement: false, description: 'Drink to regain 2d4+2 HP.', weight: 0.5 },
   { id: 'potion-greater-healing', name: 'Potion of Greater Healing', type: 'potion', rarity: 'uncommon', requiresAttunement: false, description: 'Drink to regain 4d4+4 HP.', weight: 0.5 },
@@ -96,9 +148,9 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'frost-brand', name: 'Frost Brand', type: 'weapon', rarity: 'very rare', requiresAttunement: true, description: '+1d6 cold damage, resistance to fire. When drawn in freezing temps, shed bright light 10 ft. 1/hour extinguish nearby fires.', weight: 3, baseDamageDice: '1d8 slashing' },
   { id: 'dragon-slayer', name: 'Dragon Slayer', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+1 attack/damage. Against dragons, +3d6 extra damage.', weight: 3, baseDamageDice: '1d8 slashing' },
   { id: 'giant-slayer', name: 'Giant Slayer', type: 'weapon', rarity: 'rare', requiresAttunement: false, description: '+1 attack/damage. Against giants, +2d6 extra damage and target must succeed DC 15 STR save or be knocked prone.', weight: 3, baseDamageDice: '1d8 slashing' },
-  { id: 'holy-avenger', name: 'Holy Avenger', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: 'Paladin only. +3 to attack and damage. Radiant damage vs undead and fiends. Aura of protection (saves) within 10 ft.', weight: 3, baseDamageDice: '1d8 slashing' },
-  { id: 'luck-blade', name: 'Luck Blade', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+1 attack/damage. 1 luck point to reroll. May have 1-3 Wish spells (DM determines).', weight: 3, baseDamageDice: '1d8 slashing' },
-  { id: 'vorpal-sword', name: 'Vorpal Sword', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+3 attack/damage, slashing. Ignores resistance. On 20, decapitates if creature has neck.', weight: 3, baseDamageDice: '1d8 slashing' },
+  { id: 'holy-avenger', name: 'Holy Avenger', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: 'Paladin only. +3 to attack and damage. Radiant damage vs undead and fiends. Aura of protection (saves) within 10 ft.', weight: 3, baseDamageDice: '1d8 slashing', attackBonus: 3, damageBonus: 3 },
+  { id: 'luck-blade', name: 'Luck Blade', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+1 attack/damage. 1 luck point to reroll. May have 1-3 Wish spells (DM determines).', weight: 3, baseDamageDice: '1d8 slashing', attackBonus: 1, damageBonus: 1 },
+  { id: 'vorpal-sword', name: 'Vorpal Sword', type: 'weapon', rarity: 'legendary', requiresAttunement: true, description: '+3 attack/damage, slashing. Ignores resistance. On 20, decapitates if creature has neck.', weight: 3, baseDamageDice: '1d8 slashing', attackBonus: 3, damageBonus: 3 },
   { id: 'thundering-blade', name: 'Thundering Blade', type: 'weapon', rarity: 'uncommon', requiresAttunement: false, description: 'On hit, 1d6 thunder damage. On 20, target is deafened until start of its next turn.', weight: 2, baseDamageDice: '1d8 slashing' },
 
   // Armor
@@ -115,6 +167,16 @@ export const MAGIC_ITEMS: MagicItem[] = [
 
   // Wondrous Items
   { id: 'bag-of-holding', name: 'Bag of Holding', type: 'wondrous', rarity: 'uncommon', requiresAttunement: false, description: 'Holds up to 500 lb / 64 cubic feet. Weighs 15 lb regardless. Inside is an extradimensional space.', weight: 15 },
+  // v2.328.0 — T5b: Belt of Giant Strength variants. Per RAW 2024 these
+  // require attunement and override STR to a fixed value (Math.max with
+  // base, so a barbarian whose raw STR is already higher gets no benefit).
+  // Stone Giant strength is very rare in 2024 (rare in 2014); using the
+  // 2024 rarity for consistency with the rest of the catalogue.
+  { id: 'belt-of-hill-giant-strength', name: 'Belt of Hill Giant Strength', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: 'STR becomes 21 (no effect if already 21+).', weight: 1, abilityOverride: { ability: 'strength', value: 21 } },
+  { id: 'belt-of-stone-giant-strength', name: 'Belt of Stone Giant Strength', type: 'wondrous', rarity: 'very rare', requiresAttunement: true, description: 'STR becomes 23 (no effect if already 23+).', weight: 1, abilityOverride: { ability: 'strength', value: 23 } },
+  { id: 'belt-of-fire-giant-strength', name: 'Belt of Fire Giant Strength', type: 'wondrous', rarity: 'very rare', requiresAttunement: true, description: 'STR becomes 25 (no effect if already 25+).', weight: 1, abilityOverride: { ability: 'strength', value: 25 } },
+  { id: 'belt-of-cloud-giant-strength', name: 'Belt of Cloud Giant Strength', type: 'wondrous', rarity: 'legendary', requiresAttunement: true, description: 'STR becomes 27 (no effect if already 27+).', weight: 1, abilityOverride: { ability: 'strength', value: 27 } },
+  { id: 'belt-of-storm-giant-strength', name: 'Belt of Storm Giant Strength', type: 'wondrous', rarity: 'legendary', requiresAttunement: true, description: 'STR becomes 29 (no effect if already 29+).', weight: 1, abilityOverride: { ability: 'strength', value: 29 } },
   { id: 'boots-of-elvenkind', name: 'Boots of Elvenkind', type: 'wondrous', rarity: 'uncommon', requiresAttunement: false, description: 'Advantage on Stealth checks to move silently.', weight: 1 },
   { id: 'boots-of-speed', name: 'Boots of Speed', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: 'Bonus action: double your speed and opportunity attacks against you have disadvantage. Lasts 10 minutes (1 hr recharge).', weight: 1 },
   { id: 'boots-of-striding', name: 'Boots of Striding and Springing', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Speed 30 ft minimum. Jump distance tripled.', weight: 1 },
@@ -152,7 +214,7 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'sending-stones', name: 'Sending Stones', type: 'wondrous', rarity: 'uncommon', requiresAttunement: false, description: 'Pair of stones. Cast Sending to the other stone holder, once per day.', weight: 0 },
   { id: 'slippers-of-spider-climbing', name: 'Slippers of Spider Climbing', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Climb on surfaces including ceilings at full speed, hands-free.', weight: 0.5 },
   { id: 'stone-of-controlling-earth', name: 'Stone of Controlling Earth Elementals', type: 'wondrous', rarity: 'rare', requiresAttunement: false, description: 'Once per day, summon an Earth Elemental (as if cast Conjure Elemental).', weight: 5 },
-  { id: 'stone-of-good-luck', name: 'Stone of Good Luck (Luckstone)', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: '+1 to ability checks and saving throws.', weight: 0 },
+  { id: 'stone-of-good-luck', name: 'Stone of Good Luck (Luckstone)', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: '+1 to ability checks and saving throws.', weight: 0, saveBonus: 1 },
   { id: 'tome-of-clear-thought', name: 'Tome of Clear Thought', type: 'wondrous', rarity: 'very rare', requiresAttunement: false, description: 'Read in 48 hrs over 6 days: INT permanently increases by 2 (max 24). Then loses magic.', weight: 5 },
   { id: 'tome-of-leadership', name: 'Tome of Leadership and Influence', type: 'wondrous', rarity: 'very rare', requiresAttunement: false, description: 'Read in 48 hrs: CHA permanently increases by 2 (max 24). Then loses magic.', weight: 5 },
   { id: 'tome-of-understanding', name: 'Tome of Understanding', type: 'wondrous', rarity: 'very rare', requiresAttunement: false, description: 'Read in 48 hrs: WIS permanently increases by 2 (max 24). Then loses magic.', weight: 5 },
