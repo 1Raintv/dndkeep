@@ -1274,6 +1274,21 @@ function VisionLayer(props: {
     const sprite = new Sprite(rt);
     sprite.x = 0;
     sprite.y = 0;
+    // v2.332.0 — B2 fix: pointer-transparent overlay.
+    //
+    // PIXI v8 sprites default to eventMode: 'auto', which means they
+    // participate in hit-testing whenever their parent is interactive.
+    // Because the fog sprite is a worldWidth × worldHeight rectangle
+    // (i.e. it covers EVERY interactive coordinate on the canvas),
+    // any pointer-down on a token was hit-testing against the fog
+    // FIRST and never reaching the token's drag handler underneath.
+    // Symptom: fog renders correctly, but tokens are un-draggable
+    // whenever fog is active (DM with dmPreviewFog, or any player).
+    //
+    // Fog is purely visual — it should be invisible to the event
+    // system in every mode. 'none' makes hit-testing skip it entirely
+    // so events fall through to the token / wall / ruler layers below.
+    sprite.eventMode = 'none';
     // The vision sprite must sit ABOVE walls and tokens (so it can
     // hide them) but NEVER above the ruler. Calling addChild adds it
     // last in the children array = top of stack relative to other
