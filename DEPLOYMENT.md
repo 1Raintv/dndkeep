@@ -17,12 +17,27 @@
 
 ### Apply the schema
 ```bash
-# Option A: paste supabase/schema.sql into Supabase Dashboard > SQL Editor
-
-# Option B: use the CLI
+# Recommended: use the CLI to replay all migrations in order
 supabase link --project-ref YOUR_PROJECT_REF
-supabase db push
+supabase migration up
 ```
+
+This replays all 112 files in `supabase/migrations/` and produces the
+complete app schema through April 2026. The repo was reconciled with
+`live`'s migration history in ships v2.297–v2.305 (see
+`docs/MIGRATION_DRIFT_CLEANUP.md` for details).
+
+> **Seed data note:** A fresh DB built this way will have the full schema
+> but **empty `spells`, `monsters`, and `magic_items` tables**. Canonical
+> SRD content is intentionally not stored as migrations — it's loaded as
+> a separate seeding step. See `docs/MIGRATION_DRIFT_CLEANUP.md` →
+> "Seeding a Fresh Database" for the three options (`pg_dump` from
+> existing project, re-seed from `static/*.ts`, or back-fill seed
+> migrations from live).
+>
+> The legacy `supabase/schema.sql` snapshot is stale (predates the
+> v2.297–v2.305 reconciliation) and should not be used for fresh
+> provisioning.
 
 ### Enable Realtime
 In Supabase Dashboard > Database > Replication, enable replication for:
