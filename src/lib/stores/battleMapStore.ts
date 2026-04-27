@@ -113,6 +113,18 @@ export interface Token {
   // same roster origin don't share a stat block — each gets its own
   // npc row. characterId and npcId are mutually exclusive.
   npcId: string | null;
+  // v2.312: Combat Phase 3 — combatant identity for tokens that came
+  // through the new placement+combatant path. Optional for backward
+  // compat: tokens hydrated from scene_tokens (legacy path) leave this
+  // undefined; tokens hydrated from scene_token_placements (new path,
+  // gated on campaigns.use_combatants_for_battlemap) populate it. The
+  // BattleMap can use this to navigate to the combatant editor or
+  // share state with combat encounters that reference the same
+  // combatant. Mutually NON-exclusive with characterId/npcId — a PC
+  // token can have both characterId set AND combatantId set when the
+  // new path is on, since the combatant's definition_id mirrors
+  // characterId in that case.
+  combatantId?: string | null;
   // v2.282: hide-from-players flag. When false, RLS strips the row
   // from the players' SELECT result (and from realtime broadcasts),
   // so the token is invisible to non-DM users. The DM sees every
