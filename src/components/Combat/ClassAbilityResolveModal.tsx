@@ -51,7 +51,7 @@ import type { Character, Campaign, CombatParticipant } from '../../types';
 import type { ClassAbility, SaveSpec } from '../../data/classAbilities';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
-import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
 
 export type SaveOutcome = 'pending' | 'passed' | 'failed' | 'auto-failed';
 
@@ -159,11 +159,12 @@ export default function ClassAbilityResolveModal({
       const casterId = (caster?.id as string) ?? null;
       setCasterParticipantId(casterId);
 
-      const { data: all } = await (supabase as any)
+      const { data: allRaw } = await (supabase as any)
         .from('combat_participants')
         .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', enc.id)
         .order('turn_order', { ascending: true });
+  const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
       if (cancelled) return;
 
       const list = ((all ?? []) as CombatParticipant[]);

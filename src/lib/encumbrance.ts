@@ -28,7 +28,7 @@ import { currencyWeightLbs } from './currency';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
-import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 
 // ─── Constants ───────────────────────────────────────────────────
 const CAPACITY_MULTIPLIER = 15;           // base 2024 rule: STR × 15 lbs
@@ -245,7 +245,7 @@ export async function syncEncumbranceCondition(
   }
 
   // Find the character's active combat participant, if any.
-  const { data: part } = await (supabase as any)
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select('id, active_conditions, condition_sources, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('entity_id', input.characterId)
@@ -253,6 +253,7 @@ export async function syncEncumbranceCondition(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
   if (!part) return;   // not in combat — encumbrance is narrative only
 
   const conditions: string[] = (part.active_conditions ?? []) as string[];

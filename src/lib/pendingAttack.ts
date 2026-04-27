@@ -33,7 +33,7 @@ import type { PendingAttack, HitResult } from '../types';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
-import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 
 // ─── Dice helpers ────────────────────────────────────────────────
 export function rollD20(): number {
@@ -343,16 +343,19 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
         .eq('id', atk.target_participant_id)
         .maybeSingle(),
     ]);
-    attackerConditions = ((aRes.data?.active_conditions as string[] | null) ?? []);
-    targetConditions = ((tRes.data?.active_conditions as string[] | null) ?? []);
-    attackerBuffs = ((aRes.data?.active_buffs as ActiveBuff[] | null) ?? []);
-    targetBuffs = ((tRes.data?.active_buffs as ActiveBuff[] | null) ?? []);
-    attackerExhaustion = ((aRes.data?.exhaustion_level as number | null) ?? 0);
+    // v2.317: source HP/conditions/buffs from combatants via normalize.
+    const aData = aRes.data ? normalizeParticipantRow(aRes.data) : null;
+    const tData = tRes.data ? normalizeParticipantRow(tRes.data) : null;
+    attackerConditions = ((aData?.active_conditions as string[] | null) ?? []);
+    targetConditions = ((tData?.active_conditions as string[] | null) ?? []);
+    attackerBuffs = ((aData?.active_buffs as ActiveBuff[] | null) ?? []);
+    targetBuffs = ((tData?.active_buffs as ActiveBuff[] | null) ?? []);
+    attackerExhaustion = ((aData?.exhaustion_level as number | null) ?? 0);
 
     // Attempt distance lookup via the campaign's active battle map tokens.
     // If either token is missing we fall back to the default "far" distance,
     // which means no Prone-within-5ft advantage and no auto-crit.
-    if (aRes.data && tRes.data) {
+    if (aData && tData) {
       const { data: bm } = await supabase
         .from('battle_maps')
         .select('tokens')
@@ -366,8 +369,8 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
           if (p.participant_type === 'character') return t.character_id === p.entity_id;
           return (t.name ?? '').toLowerCase() === p.name.toLowerCase();
         });
-      const at = matchToken(aRes.data as any);
-      const tt = matchToken(tRes.data as any);
+      const at = matchToken(aData as any);
+      const tt = matchToken(tData as any);
       if (at && tt) {
         distanceCells = Math.max(Math.abs(at.row - tt.row), Math.abs(at.col - tt.col));
       }
@@ -581,11 +584,12 @@ export async function rollSave(
   let targetBuffs: ActiveBuff[] = [];
   let targetExhaustion = 0;
   if (atk.target_participant_id) {
-    const { data: tRow } = await (supabase as any)
+    const { data: tRowRaw } = await (supabase as any)
       .from('combat_participants')
       .select('active_conditions, active_buffs, exhaustion_level, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .maybeSingle();
+  const tRow = tRowRaw ? normalizeParticipantRow(tRowRaw) : tRowRaw;
     targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
     targetBuffs = ((tRow?.active_buffs as ActiveBuff[] | null) ?? []);
     targetExhaustion = ((tRow?.exhaustion_level as number | null) ?? 0);
@@ -896,11 +900,12 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     || (atk.attack_kind === 'save' && atk.save_result === 'passed' && atk.save_success_effect === 'half');
 
   if (riderEligible && atk.attacker_participant_id) {
-    const { data: aRow } = await (supabase as any)
+    const { data: aRowRaw } = await (supabase as any)
       .from('combat_participants')
       .select('active_buffs, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.attacker_participant_id)
       .maybeSingle();
+  const aRow = aRowRaw ? normalizeParticipantRow(aRowRaw) : aRowRaw;
     const attackerBuffs = ((aRow?.active_buffs as ActiveBuff[] | null) ?? []);
     const isMeleeDmg = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
     const riders = getDamageRiders(attackerBuffs, {
@@ -1051,11 +1056,12 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
 
   // If no target participant (e.g., target was free-text) we still mark applied
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {
-    const { data: tgt } = await (supabase as any)
+    const { data: tgtRaw } = await (supabase as any)
       .from('combat_participants')
       .select('id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .single();
+  const tgt = tgtRaw ? normalizeParticipantRow(tgtRaw) : tgtRaw;
 
     if (tgt) {
       // v2.111.0 — Phase H pt 2: Petrified (and any future condition flagged
@@ -1259,10 +1265,11 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
         // on characters was just cleared), so we do broad cleanup: remove
         // any condition or buff on any participant where casterParticipantId
         // equals this one.
-        const { data: allRows } = await (supabase as any)
+        const { data: allRowsRaw } = await (supabase as any)
           .from('combat_participants')
           .select('id, active_conditions, condition_sources, active_buffs, encounter_id, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', atk.encounter_id);
+  const allRows = ((allRowsRaw ?? []) as any[]).map(normalizeParticipantRow);
         for (const row of (allRows ?? [])) {
           const sources = ((row.condition_sources ?? {}) as Record<string, any>);
           const condsToRemove: string[] = [];

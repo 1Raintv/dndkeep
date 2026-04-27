@@ -26,7 +26,7 @@ import { emitCombatEvent, newChainId } from './combatEvents';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
-import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 
 // ─── Registry ────────────────────────────────────────────────────────
 
@@ -157,11 +157,12 @@ export interface ApplyHealInput {
 export async function applyHealToParticipant(
   input: ApplyHealInput,
 ): Promise<number> {
-  const { data: part } = await (supabase as any)
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select('id, current_hp, max_hp, is_dead, is_stable, death_save_successes, death_save_failures, name, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
+  const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
   if (!part) return 0;
 
   // Dead creatures can't be healed by normal healing (only Revivify, Raise

@@ -15,7 +15,7 @@ import { conditionsSpeedZero, conditionsSpeedHalved } from './conditions';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
-import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 
 const FEET_PER_SQUARE = 5;   // D&D standard
 
@@ -49,11 +49,12 @@ export async function canMove(
   participantId: string,
   distanceFt: number,
 ): Promise<MovementCheck> {
-  const { data } = await (supabase as any)
+  const { data: dataRaw } = await (supabase as any)
     .from('combat_participants')
     .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions, exhaustion_level, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', participantId)
     .single();
+  const data = dataRaw ? normalizeParticipantRow(dataRaw) : dataRaw;
 
   const currentUsed = (data?.movement_used_ft as number | null) ?? 0;
   const baseSpeed = (data?.max_speed_ft as number | null) ?? 30;

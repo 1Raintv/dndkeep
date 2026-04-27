@@ -24,7 +24,7 @@ import { CONDITION_MAP } from '../data/conditions';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
-import { JOINED_COMBATANT_FIELDS } from './combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 
 export interface ApplyConditionInput {
   participantId: string;
@@ -60,11 +60,12 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
     return;
   }
 
-  const { data: part } = await (supabase as any)
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
+  const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
   if (!part) return;
 
   const existing: string[] = (part.active_conditions ?? []) as string[];
@@ -186,11 +187,12 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
     return;
   }
 
-  const { data: part } = await (supabase as any)
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select('active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
+  const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
   if (!part) return;
 
   const existing: string[] = (part.active_conditions ?? []) as string[];
@@ -346,8 +348,9 @@ export async function clearConditionsFromConcentration(
   } else {
     query = query.eq('campaign_id', campaignId);
   }
-  const { data: rows } = await query;
-  if (!rows) return 0;
+  const { data: rowsRaw } = await query;
+  if (!rowsRaw) return 0;
+  const rows = (rowsRaw as any[]).map(normalizeParticipantRow);
 
   let removedCount = 0;
   for (const row of rows) {
@@ -487,11 +490,12 @@ export interface AdjustExhaustionInput {
 }
 
 export async function adjustExhaustion(input: AdjustExhaustionInput): Promise<number> {
-  const { data: part } = await (supabase as any)
+  const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select('exhaustion_level, active_conditions, name, participant_type, campaign_id, encounter_id, is_dead, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
+  const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
   if (!part) return 0;
 
   const current = (part.exhaustion_level as number | null) ?? 0;

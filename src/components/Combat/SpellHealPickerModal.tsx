@@ -31,7 +31,7 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import type { SpellData, CombatParticipant, Character } from '../../types';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
-import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
 
 interface Props {
   open: boolean;
@@ -89,11 +89,12 @@ export default function SpellHealPickerModal({
       // Include the caster themself — self-heal is legal (Cure Wounds on
       // self, Healing Word on self). Dead participants excluded since
       // standard heals don't revive (v2.150 scope).
-      const { data: all } = await (supabase as any)
+      const { data: allRaw } = await (supabase as any)
         .from('combat_participants')
         .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', enc.id)
         .order('turn_order', { ascending: true });
+  const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
       if (cancelled) return;
       const list = ((all ?? []) as CombatParticipant[]).filter(p => !p.is_dead);
       setParticipants(list);

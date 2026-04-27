@@ -40,7 +40,7 @@ import { logAction } from '../shared/ActionLog';
 import type { SpellData, CombatParticipant, Character } from '../../types';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
-import { JOINED_COMBATANT_FIELDS } from '../../lib/combatParticipantNormalize';
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
 
 interface Props {
   /** True when the modal should render. */
@@ -154,11 +154,12 @@ export default function SpellTargetPickerModal({
       setCasterParticipantId(caster.id as string);
 
       // All other participants — candidates for targeting.
-      const { data: all } = await (supabase as any)
+      const { data: allRaw } = await (supabase as any)
         .from('combat_participants')
         .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', enc.id)
         .order('turn_order', { ascending: true });
+  const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
       if (cancelled) return;
       const list = ((all ?? []) as CombatParticipant[])
         .filter(p => p.id !== caster.id && !p.is_dead);
