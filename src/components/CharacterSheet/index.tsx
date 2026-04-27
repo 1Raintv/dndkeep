@@ -54,7 +54,6 @@ import UnifiedHistory from './UnifiedHistory';
 import LevelUpWizard from './LevelUpWizard';
 import LevelUpBanner from './LevelUpBanner';
 import SpellsTab from './SpellsTab';
-import ActionLog from '../shared/ActionLog';
 import ErrorBoundary from '../ErrorBoundary';
 import DamageEffect from './DamageEffect';
 import { PlayerRollPrompt } from '../Campaign/RollRequest';
@@ -815,6 +814,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // the full RAW description text.
  const [justUsedStandardAction, setJustUsedStandardAction] = useState<string | null>(null);
  const [expandedStandardAction, setExpandedStandardAction] = useState<string | null>(null);
+ // v2.326.0 — T4: row expansion state for Actions-tab item rows (potions
+ // and other inventory items rendered with a description). Collapsed by
+ // default so the row stays at single-line height even when the item has
+ // a long flavor blurb; click to reveal the full description.
+ const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
  // v2.88.0: Turn-scoped effects from Standard Actions that actually change
  // character behavior while active:
  //  - dashing: doubles your effective Speed in Turn Economy (2024 PHB Dash)
@@ -3115,34 +3119,63 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  Potions & Consumables
  </div>
  <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
- {potions.map((item: any) => (
- <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 'var(--r-md)', border: '1px solid rgba(52,211,153,0.2)', background: 'rgba(52,211,153,0.03)' }}>
- <div style={{ flex: 1, minWidth: 0 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{item.name}</div>
- {item.description && (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 1 }}>{item.description}</div>
- )}
- </div>
- <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, color: 'var(--c-green-l)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)', padding: '2px 8px', borderRadius: 999 }}>
- ×{item.quantity}
- </span>
- {/* v2.82.0: Use button opens the target chooser. Drinking yourself rolls
-     the heal dice and applies HP; giving to another just rolls + logs. */}
- <button
- onClick={() => setPotionToUse(item)}
- style={{
- padding: '5px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
- background: 'rgba(52,211,153,0.15)',
- border: '1px solid rgba(52,211,153,0.5)',
- color: 'var(--c-green-l)',
- fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
- letterSpacing: '0.04em', minHeight: 0, flexShrink: 0,
- }}
- >
- Use
- </button>
- </div>
- ))}
+ {potions.map((item: any) => {
+  // v2.326.0 — T4: row collapsed by default; click anywhere outside the
+  // Use button or quantity badge to expand the description below. Falls
+  // back to no chevron on items without a description (nothing to reveal).
+  const isExpanded = expandedItemId === item.id;
+  const hasDesc = !!item.description;
+  return (
+   <div key={item.id} style={{
+    borderRadius: 'var(--r-md)',
+    border: `1px solid ${isExpanded ? 'rgba(52,211,153,0.45)' : 'rgba(52,211,153,0.2)'}`,
+    background: isExpanded ? 'rgba(52,211,153,0.06)' : 'rgba(52,211,153,0.03)',
+    overflow: 'hidden',
+    transition: 'all 0.15s',
+   }}>
+    <div
+     onClick={() => { if (hasDesc) setExpandedItemId(isExpanded ? null : item.id); }}
+     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: hasDesc ? 'pointer' : 'default' }}
+    >
+     <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{item.name}</div>
+     </div>
+     {hasDesc && (
+      <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
+     )}
+     <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 11, color: 'var(--c-green-l)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)', padding: '2px 8px', borderRadius: 999, flexShrink: 0 }}>
+      ×{item.quantity}
+     </span>
+     {/* v2.82.0: Use button opens the target chooser. Drinking yourself rolls
+         the heal dice and applies HP; giving to another just rolls + logs. */}
+     <button
+      onClick={(e) => { e.stopPropagation(); setPotionToUse(item); }}
+      style={{
+       padding: '5px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+       background: 'rgba(52,211,153,0.15)',
+       border: '1px solid rgba(52,211,153,0.5)',
+       color: 'var(--c-green-l)',
+       fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+       letterSpacing: '0.04em', minHeight: 0, flexShrink: 0,
+      }}
+     >
+      Use
+     </button>
+    </div>
+    {isExpanded && hasDesc && (
+     <div style={{
+      padding: '0 14px 10px 14px',
+      fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+      lineHeight: 1.5,
+      borderTop: '1px solid rgba(52,211,153,0.15)',
+      paddingTop: 8,
+     }}>
+      {item.description}
+     </div>
+    )}
+   </div>
+  );
+ })}
  </div>
  </div>
  );
@@ -3726,13 +3759,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  );
  })()}
- {/* ── COMPACT ROLL LOG — pinned at bottom of Actions tab ── */}
- {activeTab === 'actions' && character.campaign_id && (
- <div style={{ marginTop: 8, padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 8 }}>Recent Rolls</div>
- <ActionLog campaignId={character.campaign_id} characterId={character.id} mode="character" maxHeight={120} compact />
- </div>
- )}
+ {/* v2.326.0 — T4: Recent Rolls strip removed. The History tab's
+     unified timeline (CharacterHistory + combat events + roll log)
+     covers the same ground without duplicating a fixed pane at the
+     bottom of every Actions-tab session. The floating Roll Log
+     overlay in the bottom-right of the screen handles in-the-
+     moment review. */}
 
  {/* ── INVENTORY ── */}
  {activeTab === 'inventory' && (

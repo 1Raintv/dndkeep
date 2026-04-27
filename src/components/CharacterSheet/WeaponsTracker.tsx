@@ -73,6 +73,11 @@ export default function WeaponsTracker({
  // reference so the 4 mode buttons (Damage / Grapple / Shove Push / Shove
  // Prone) have everything they need.
  const [unarmedModal, setUnarmedModal] = useState<WeaponItem | null>(null);
+ // v2.326.0 — T4: weapon row expansion. Magic weapons (Lucky Blade,
+ // staves, etc.) often have a description in `notes` that doesn't fit on
+ // the row. Click anywhere outside the Hit/Damage/edit buttons to expand
+ // the row and show the full notes panel below.
+ const [expandedWeaponId, setExpandedWeaponId] = useState<string | null>(null);
  const [form, setForm] = useState<Partial<WeaponItem>>({
  name: '', attackBonus: 0, damageDice: '1d8', damageBonus: 0,
  damageType: 'slashing', range: 'Melee', properties: '', notes: '',
@@ -315,17 +320,36 @@ export default function WeaponsTracker({
  const isInv = String(w.id).startsWith('inv_');
  const isSaveSpell = w.notes?.startsWith('save:');
  const saveInfo = isSaveSpell ? w.notes!.replace('save:', '') : null;
+ // v2.326.0 — T4: only non-save-spell weapons with descriptive notes
+ // get the click-to-expand affordance. Save spells already use `notes`
+ // as a structured save spec ("save:DC X · YYY"), not as a description.
+ const hasNotesPanel = !isSaveSpell && !!w.notes;
+ const isExpanded = expandedWeaponId === w.id;
 
  return (
  <div key={w.id} style={{
+ borderRadius: 'var(--r-md)',
+ border: `1px solid ${isExpanded ? 'rgba(200,146,42,0.45)' : isInv ? 'rgba(200,146,42,0.2)' : 'var(--c-border)'}`,
+ background: isInv ? 'rgba(200,146,42,0.03)' : '#080d14',
+ overflow: 'hidden',
+ transition: 'border-color 0.15s',
+ }}>
+ <div
+ onClick={(e) => {
+ // Only toggle when the click didn't originate on a button or
+ // input — Hit / Damage / edit / delete clicks roll dice or
+ // open modals and shouldn't double as expansion triggers.
+ const t = e.target as HTMLElement;
+ if (t.closest('button') || t.closest('input')) return;
+ if (hasNotesPanel) setExpandedWeaponId(isExpanded ? null : w.id);
+ }}
+ style={{
  display: isSaveSpell ? 'flex' : 'grid',
  gridTemplateColumns: isSaveSpell ? undefined : '1fr 70px 64px 100px auto',
  alignItems: 'center',
  gap: isSaveSpell ? 10 : '0 10px',
  padding: '8px 12px',
- borderRadius: 'var(--r-md)',
- border: `1px solid ${isInv ? 'rgba(200,146,42,0.2)' : 'var(--c-border)'}`,
- background: isInv ? 'rgba(200,146,42,0.03)' : '#080d14',
+ cursor: hasNotesPanel ? 'pointer' : 'default',
  }}>
 
  {isSaveSpell ? (
@@ -450,10 +474,10 @@ export default function WeaponsTracker({
  />
  )}
  </>
- )} {/* NOTES + edit/delete */}
+ )} {/* chevron + edit/delete (notes moved to expanded panel below) */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', minWidth: 0 }}>
- {w.notes && !w.notes.startsWith('save:') && (
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{w.notes}</span>
+ {hasNotesPanel && (
+ <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
  )}
  {!isInv && w.id !== 'unarmed' && (
  <div style={{ display: 'flex', gap: 2, flexShrink: 0, marginLeft: 'auto' }}>
@@ -463,6 +487,23 @@ export default function WeaponsTracker({
  )}
  </div>
  </>
+ )}
+ </div>
+ {/* v2.326.0 — T4: expanded notes panel. Magic-weapon descriptions
+     ("Lucky Blade: +1 to hit, advantage on…", staff usage charges,
+     etc.) live in `notes` and used to be truncated inline; now they
+     get full lines with proper wrapping when the row is expanded. */}
+ {isExpanded && hasNotesPanel && (
+ <div style={{
+ padding: '0 12px 10px 12px',
+ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)',
+ lineHeight: 1.5,
+ borderTop: '1px solid rgba(200,146,42,0.18)',
+ paddingTop: 8,
+ whiteSpace: 'pre-wrap' as const,
+ }}>
+ {w.notes}
+ </div>
  )}
  </div>
  );
