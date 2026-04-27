@@ -378,10 +378,29 @@ function ViewportHost(props: {
       .clampZoom({ minScale: 0.25, maxScale: 4 })
       .clamp({ direction: 'all', underflow: 'center' });
     vp.moveCenter(worldWidth / 2, worldHeight / 2);
-    // v2.226 — was 0.9× (which leaves margin around the map). Use 1.0×
-    // to fully fill the available canvas; tokens read at usable size.
+    // v2.336.0 — P1+P2 fix: default zoom shows the map with breathing
+    // room on all sides instead of filling the canvas edge-to-edge.
+    //
+    // Old behavior: fitScale = the largest zoom that lets the world
+    // fit inside the screen. We applied it directly when world > screen.
+    // Result: the world filled the canvas edge-to-edge horizontally,
+    // and the left-edge tools palette (top:60 left:12) sat ON TOP of
+    // map content — the user reported the tools menu felt "lost" and
+    // tokens at the map's left edge were obscured.
+    //
+    // New behavior: 0.80 × fitScale, capped at 1.0 (we never zoom IN
+    // past native by default — only out). That gives the viewer:
+    //   - ~20% margin around the world on the dominant axis
+    //   - The tools palette + zoom badges + scene-name badge all sit
+    //     in negative space around the map, not on it
+    //   - Room to pan / zoom in while still seeing context near the
+    //     map's edges
+    //
+    // Same math regardless of world or screen size — no special-cases
+    // for tiny scenes or huge ones.
     const fitScale = Math.min(screenWidth / worldWidth, screenHeight / worldHeight);
-    if (fitScale < 1) vp.setZoom(fitScale, true);
+    const initialScale = Math.min(fitScale * 0.80, 1.0);
+    vp.setZoom(initialScale, true);
 
     pixiApp.stage.addChild(vp);
     setViewport(vp);
@@ -5873,7 +5892,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (mapFullscreen) {
         h = Math.max(400, viewportH - 8);
       } else {
-        const targetH = Math.floor(viewportH * 0.86);
+        // v2.336.0 — P2: bumped 0.86 → 0.92 of viewport height. Was
+        // chosen to leave room for navigation + action bar above the
+        // canvas, but in practice 14% of a 1080p monitor (~150px) is
+        // overkill — the nav + action bar combined are ~80–100px tall.
+        // 0.92 reclaims ~75px of vertical map area while still leaving
+        // the nav fully visible. The 1400px cap still applies, so
+        // 1440p+ displays don't get a runaway-tall canvas.
+        const targetH = Math.floor(viewportH * 0.92);
         h = Math.max(400, Math.min(targetH, 1400));
       }
       setDims({ width: w, height: h });
