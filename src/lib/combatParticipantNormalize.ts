@@ -64,10 +64,14 @@ interface RowWithCombatant {
 }
 
 /** Flatten the JOINed combatants object onto the participant row's
- *  own keys. Combatant values take precedence; the participant's
- *  legacy column values are the fallback for rows that somehow
- *  lack a combatant_id (shouldn't happen post-v2.315 BEFORE INSERT
- *  trigger, but defensively handled).
+ *  own keys.
+ *
+ *  Pre-v2.321 this had `cb.X ?? row.X` fallbacks because both
+ *  combat_participants and combatants stored the mirrored fields
+ *  during the dual-write phase. After v2.321 dropped the 11
+ *  legacy columns from combat_participants, row.X is always
+ *  undefined for those fields — combatants is the sole source.
+ *  Fallbacks removed for clarity.
  *
  *  Returns a NEW object — does not mutate input. The original
  *  `combatants` property is preserved on the result for callers
@@ -77,16 +81,16 @@ export function normalizeParticipantRow<T extends RowWithCombatant>(row: T): T {
   const cb = row.combatants;
   return {
     ...row,
-    current_hp:           cb.current_hp           ?? row.current_hp,
-    max_hp:               cb.max_hp               ?? row.max_hp,
-    temp_hp:              cb.temp_hp              ?? row.temp_hp,
-    active_conditions:    cb.active_conditions    ?? row.active_conditions,
-    condition_sources:    cb.condition_sources    ?? row.condition_sources,
-    active_buffs:         cb.active_buffs         ?? row.active_buffs,
-    exhaustion_level:     cb.exhaustion_level     ?? row.exhaustion_level,
-    death_save_successes: cb.death_save_successes ?? row.death_save_successes,
-    death_save_failures:  cb.death_save_failures  ?? row.death_save_failures,
-    is_stable:            cb.is_stable            ?? row.is_stable,
-    is_dead:              cb.is_dead              ?? row.is_dead,
+    current_hp:           cb.current_hp,
+    max_hp:               cb.max_hp,
+    temp_hp:              cb.temp_hp,
+    active_conditions:    cb.active_conditions,
+    condition_sources:    cb.condition_sources,
+    active_buffs:         cb.active_buffs,
+    exhaustion_level:     cb.exhaustion_level,
+    death_save_successes: cb.death_save_successes,
+    death_save_failures:  cb.death_save_failures,
+    is_stable:            cb.is_stable,
+    is_dead:              cb.is_dead,
   };
 }
