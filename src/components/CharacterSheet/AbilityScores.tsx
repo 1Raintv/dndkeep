@@ -113,39 +113,45 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  onClick={() => rollSave(ability)}
  onKeyDown={e => e.key === 'Enter' && rollSave(ability)}
  title={`Roll ${ability} saving throw (d20${saveMod >= 0 ? '+' : ''}${saveMod})${isProficient ? ' — Proficient' : ''}`}
+ aria-label={`${ability} saving throw${isProficient ? ', proficient' : ''}, modifier ${formatModifier(saveMod)}`}
  style={{
+ // v2.325.0 — T6: proficiency now signaled by a full-color border
+ // on all four sides (top stripe was already meta.color; sides +
+ // bottom now match when proficient). The standalone dot indicator
+ // and its legend are gone — the colored frame is unambiguous on
+ // its own. Non-proficient saves keep the default subtle border
+ // so the proficient ones visibly "pop" out of the grid.
  borderTopColor: meta.color,
+ borderColor: isProficient ? meta.color : undefined,
+ borderWidth: isProficient ? 1.5 : undefined,
+ borderTopWidth: isProficient ? 2.5 : undefined,
  background: isProficient ? meta.color + '0A' : undefined,
  padding: '8px 6px',
  cursor: 'pointer',
  }}
  >
- {/* Prof dot + abbrev inline */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, marginBottom: 3 }}>
- <div style={{
- width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
- background: isProficient ? meta.color : 'transparent',
- border: `1px solid ${isProficient ? meta.color : 'var(--c-border-m)'}`,
- }} />
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color }}>
+ {/* v2.325.0 — T6: dropped the 5×5 proficiency dot. The colored
+     border above carries the proficiency signal; freeing up the
+     header row lets the abbreviation sit cleanly centered. */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: meta.color, marginBottom: 3, textAlign: 'center' as const }}>
  {meta.abbrev}
- </span>
  </div>
  {/* Modifier — big, same weight as DDB */}
- <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.3rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1 }}>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontSize: '1.3rem', fontWeight: 900, color: 'var(--t-1)', lineHeight: 1, textAlign: 'center' as const }}>
  {formatModifier(saveMod)}
  </div>
- {/* Save label */}
-
  </div>
  );
  })}
  </div>
  </div>
 
- <p style={{ fontSize: 9, color: 'var(--t-3)', fontFamily: 'var(--ff-body)', letterSpacing: '0.03em', marginBottom: 0, marginTop: 6 }}>
- Top = ability check · Bottom = saving throw · filled dot = proficient
- </p>
+ {/* v2.325.0 — T6: legend ("Top = ability check · Bottom = saving
+     throw · filled dot = proficient") removed. The proficiency dot
+     it documented is gone, and the ability-check strip that lived
+     below the saves grid is self-evident from its own header. No
+     replacement needed — the colored border on proficient saves
+     speaks for itself. */}
 
  {/* v2.51.0: Passive Scores, Senses, Defenses, Tools & Languages MOVED out
      of this sidebar and into the Abilities tab (right under the skills list).
