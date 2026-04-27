@@ -771,7 +771,7 @@ export async function offerCounterspell(
   // counterspell (monsters with innate counterspell are a future edge case).
   const { data: rowsRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, reaction_used, is_dead, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, reaction_used, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId)
     .eq('participant_type', 'character');
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
@@ -1128,7 +1128,7 @@ export async function offerOpportunityAttacks(
   if (!input.encounterId) return 0;
   const { data: pdataRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, is_dead, reaction_used, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, reaction_used, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId);
   const pdata = ((pdataRaw ?? []) as any[]).map(normalizeParticipantRow);
   const participants = (pdata ?? []) as Array<{

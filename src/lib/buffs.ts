@@ -53,7 +53,7 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'combatant_id, active_buffs, name, participant_type, campaign_id, encounter_id, ' +
+      'combatant_id, name, participant_type, campaign_id, encounter_id, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('id', input.participantId)
@@ -111,7 +111,7 @@ export async function removeBuff(input: RemoveBuffInput): Promise<void> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'combatant_id, active_buffs, name, participant_type, campaign_id, encounter_id, ' +
+      'combatant_id, name, participant_type, campaign_id, encounter_id, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('id', input.participantId)
@@ -234,7 +234,7 @@ export async function clearBuffsFromConcentration(
   let query = (supabase as any)
     .from('combat_participants')
     .select(
-      'id, name, participant_type, active_buffs, encounter_id, ' +
+      'id, name, participant_type, encounter_id, ' +
         JOINED_COMBATANT_FIELDS
     );
   if (encounterId) {

@@ -202,7 +202,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     // Fetch encounter + participant details needed by declareAttack
     const { data: reactorPartRaw } = await (supabase as any)
       .from('combat_participants')
-      .select('encounter_id, participant_type, max_hp, ' + JOINED_COMBATANT_FIELDS)
+      .select('encounter_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', urgent.reactor_participant_id)
       .single();
   const reactorPart = reactorPartRaw ? normalizeParticipantRow(reactorPartRaw) : reactorPartRaw;

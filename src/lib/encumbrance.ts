@@ -247,7 +247,7 @@ export async function syncEncumbranceCondition(
   // Find the character's active combat participant, if any.
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, active_conditions, condition_sources, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('entity_id', input.characterId)
     .eq('participant_type', 'character')
     .order('created_at', { ascending: false })

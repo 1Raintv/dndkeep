@@ -159,7 +159,7 @@ export async function applyHealToParticipant(
 ): Promise<number> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, combatant_id, current_hp, max_hp, is_dead, is_stable, death_save_successes, death_save_failures, name, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, combatant_id, name, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;

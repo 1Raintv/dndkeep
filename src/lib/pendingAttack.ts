@@ -334,12 +334,12 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     const [aRes, tRes] = await Promise.all([
       (supabase as any)
         .from('combat_participants')
-        .select('active_conditions, active_buffs, exhaustion_level, entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
+        .select('entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
         .eq('id', atk.attacker_participant_id)
         .maybeSingle(),
       (supabase as any)
         .from('combat_participants')
-        .select('active_conditions, active_buffs, entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
+        .select('entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
         .eq('id', atk.target_participant_id)
         .maybeSingle(),
     ]);
@@ -586,7 +586,7 @@ export async function rollSave(
   if (atk.target_participant_id) {
     const { data: tRowRaw } = await (supabase as any)
       .from('combat_participants')
-      .select('active_conditions, active_buffs, exhaustion_level, ' + JOINED_COMBATANT_FIELDS)
+      .select(', ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .maybeSingle();
   const tRow = tRowRaw ? normalizeParticipantRow(tRowRaw) : tRowRaw;
@@ -902,7 +902,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   if (riderEligible && atk.attacker_participant_id) {
     const { data: aRowRaw } = await (supabase as any)
       .from('combat_participants')
-      .select('active_buffs, ' + JOINED_COMBATANT_FIELDS)
+      .select(', ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.attacker_participant_id)
       .maybeSingle();
   const aRow = aRowRaw ? normalizeParticipantRow(aRowRaw) : aRowRaw;
@@ -1058,7 +1058,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {
     const { data: tgtRaw } = await (supabase as any)
       .from('combat_participants')
-      .select('id, combatant_id, current_hp, max_hp, temp_hp, name, is_dead, is_stable, death_save_successes, death_save_failures, campaign_id, participant_type, hidden_from_players, concentration_spell_id, active_conditions, ' + JOINED_COMBATANT_FIELDS)
+      .select('id, combatant_id, name, campaign_id, participant_type, hidden_from_players, concentration_spell_id, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .single();
   const tgt = tgtRaw ? normalizeParticipantRow(tgtRaw) : tgtRaw;
@@ -1280,7 +1280,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
         // equals this one.
         const { data: allRowsRaw } = await (supabase as any)
           .from('combat_participants')
-          .select('id, active_conditions, condition_sources, active_buffs, encounter_id, ' + JOINED_COMBATANT_FIELDS)
+          .select('id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', atk.encounter_id);
   const allRows = ((allRowsRaw ?? []) as any[]).map(normalizeParticipantRow);
         for (const row of (allRows ?? [])) {

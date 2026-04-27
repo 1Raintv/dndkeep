@@ -110,7 +110,7 @@ export default function BuffTargetPickerModal({
         // 4. Load the rest of the participants (targets to pick from)
         const { data: allRaw } = await (supabase as any)
           .from('combat_participants')
-          .select('id, name, participant_type, current_hp, max_hp, is_dead, ' + JOINED_COMBATANT_FIELDS)
+          .select('id, name, participant_type, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', enc.id)
           .eq('is_dead', false)
           .order('initiative', { ascending: false });

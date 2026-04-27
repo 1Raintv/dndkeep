@@ -51,7 +51,7 @@ export async function canMove(
 ): Promise<MovementCheck> {
   const { data: dataRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, active_conditions, exhaustion_level, ' + JOINED_COMBATANT_FIELDS)
+    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', participantId)
     .single();
   const data = dataRaw ? normalizeParticipantRow(dataRaw) : dataRaw;

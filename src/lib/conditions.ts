@@ -62,7 +62,7 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
 
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('combatant_id, active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
@@ -196,7 +196,7 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
 
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('combatant_id, active_conditions, condition_sources, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
@@ -355,7 +355,7 @@ export async function clearConditionsFromConcentration(
   // condition_sources for a match. Small numbers — direct read is fine.
   let query = (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, active_conditions, condition_sources, encounter_id, ' + JOINED_COMBATANT_FIELDS);
+    .select('id, name, participant_type, encounter_id, ' + JOINED_COMBATANT_FIELDS);
   if (encounterId) {
     query = query.eq('encounter_id', encounterId);
   } else {
@@ -505,7 +505,7 @@ export interface AdjustExhaustionInput {
 export async function adjustExhaustion(input: AdjustExhaustionInput): Promise<number> {
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('combatant_id, exhaustion_level, active_conditions, name, participant_type, campaign_id, encounter_id, is_dead, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;

@@ -143,8 +143,10 @@ export async function addParticipantToEncounter(
     initiative_tiebreaker: seed.dexMod,
     turn_order: 999, // placeholder — recomputed below
     ac: seed.ac,
-    current_hp: seed.hp,
-    max_hp: seed.maxHp,
+    // v2.320: current_hp/max_hp removed from insert payload. The v2.319
+    // BEFORE INSERT trigger (cp_ensure_combatant_link) seeds the linked
+    // combatant's HP from authoritative tables (characters/monsters/npcs).
+    // Legacy current_hp/max_hp columns drop in v2.321.
     hidden_from_players: seed.hiddenFromPlayers ?? false,
     max_speed_ft: seed.maxSpeedFt ?? 30,
     legendary_resistance: seed.legendaryResistance ?? null,
@@ -286,8 +288,8 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
       initiative_tiebreaker: s.dexMod,
       turn_order: 0,  // computed after all rolls settle
       ac: s.ac,
-      current_hp: s.hp,
-      max_hp: s.maxHp,
+      // v2.320: current_hp/max_hp removed; trigger seeds combatants
+      // from authoritative tables (see addParticipantToEncounter).
       hidden_from_players: s.hiddenFromPlayers ?? false,
       max_speed_ft: s.maxSpeedFt ?? 30,
       // v2.138.0 — Phase M pt 1: seed LR from the monster stat block so
@@ -475,7 +477,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   const { data: rowsRaw, error: rowsErr } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'id, combatant_id, turn_order, is_dead, is_stable, name, participant_type, hidden_from_players, campaign_id, current_hp, death_save_successes, death_save_failures, entity_id, legendary_actions_total, legendary_actions_remaining, ' +
+      'id, combatant_id, turn_order, name, participant_type, hidden_from_players, campaign_id, entity_id, legendary_actions_total, legendary_actions_remaining, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('encounter_id', encounterId)

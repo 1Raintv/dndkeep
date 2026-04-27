@@ -113,7 +113,7 @@ export async function resolvePendingDeathSave(
   // pipeline).
   const { data: partRowRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, combatant_id, name, death_save_successes, death_save_failures, campaign_id, encounter_id, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, combatant_id, name, campaign_id, encounter_id, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', pendingRow.participant_id as string)
     .single();
   const partRow = partRowRaw ? normalizeParticipantRow(partRowRaw) : partRowRaw;

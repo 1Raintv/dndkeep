@@ -667,10 +667,22 @@ export interface CombatParticipant {
   movement_used_ft: number;
   leveled_spell_cast: boolean;
   hidden_from_players: boolean;
+  /** Real column. AC currently lives on combat_participants; combatants has
+   *  an `ac_override` column with different semantics. Outside the v2.321
+   *  legacy-column drop scope. */
+  ac: number | null;
+  /** ─── Virtual fields (v2.317+) ──────────────────────────────────
+   *  These 11 fields are NOT actual columns on combat_participants.
+   *  Combat Phase 3 moved their source-of-truth to the combatants
+   *  table. Reads come through normalizeParticipantRow() which
+   *  flattens combatants.X onto the row; writes go directly to
+   *  combatants via combatant_id. The fields stay on the type
+   *  because every downstream consumer reads `row.current_hp` etc.
+   *  See src/lib/combatParticipantNormalize.ts.
+   *  Legacy columns drop in v2.321. */
   current_hp: number | null;
   max_hp: number | null;
   temp_hp: number;
-  ac: number | null;
   death_save_successes: number;
   death_save_failures: number;
   is_stable: boolean;
