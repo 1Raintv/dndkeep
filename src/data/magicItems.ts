@@ -1,6 +1,20 @@
 export type MagicItemRarity = 'common' | 'uncommon' | 'rare' | 'very rare' | 'legendary' | 'artifact';
 export type MagicItemType = 'armor' | 'potion' | 'ring' | 'rod' | 'scroll' | 'staff' | 'wand' | 'weapon' | 'wondrous' | 'ammunition';
 
+// v2.327.0 — T5: ability-score override. RAW 2024 magic items like
+// Gauntlets of Ogre Power and Headband of Intellect set the wearer's
+// score to a fixed value while attuned + equipped, with the rule "no
+// effect if your score is already that high or higher." The actual
+// "no effect if higher" semantics live in lib/attunement.ts where
+// overrides are aggregated — Math.max(base, override.value) per
+// ability — so multiple overrides on the same ability also resolve
+// correctly (only the highest applies). Lowercase ability keys to
+// match the AbilityKey type used everywhere downstream.
+export interface MagicItemAbilityOverride {
+  ability: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+  value: number;
+}
+
 export interface MagicItem {
   id: string;
   name: string;
@@ -14,6 +28,11 @@ export interface MagicItem {
   saveBonus?: number;
   attackBonus?: number;
   damageBonus?: number;
+  // v2.327.0 — T5: ability-score override (Gauntlets of Ogre Power,
+  // Headband of Intellect, Belt of Giant Strength variants, etc.).
+  // Applied via Math.max(base, value) in computeStats so existing
+  // higher scores are preserved per RAW.
+  abilityOverride?: MagicItemAbilityOverride;
   // v2.157.0 — Phase P pt 5: charges metadata from the DB.
   // Populated by the useMagicItems hook from the magic_items row.
   // maxCharges omitted or undefined = not a charged item.
@@ -111,12 +130,12 @@ export const MAGIC_ITEMS: MagicItem[] = [
   { id: 'dimensional-shackles', name: 'Dimensional Shackles', type: 'wondrous', rarity: 'rare', requiresAttunement: false, description: 'Restrain a creature. While restrained, it can\'t use teleportation or planar travel.', weight: 6 },
   { id: 'eyes-of-charming', name: 'Eyes of Charming', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Cast Charm Person (DC 13) up to 3 charges per day.', weight: 0 },
   { id: 'eyes-of-eagle', name: 'Eyes of the Eagle', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Advantage on Perception checks relying on sight. In clear conditions, see up to 1 mile without issue.', weight: 0 },
-  { id: 'gauntlets-of-ogre-power', name: 'Gauntlets of Ogre Power', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'STR becomes 19 (no effect if already 19+).', weight: 2 },
+  { id: 'gauntlets-of-ogre-power', name: 'Gauntlets of Ogre Power', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'STR becomes 19 (no effect if already 19+).', weight: 2, abilityOverride: { ability: 'strength', value: 19 } },
   { id: 'gem-of-seeing', name: 'Gem of Seeing', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: 'True Sight 120 ft for 10 minutes. 3 charges, regains 1d3 daily.', weight: 0 },
   { id: 'gloves-of-swimming', name: 'Gloves of Swimming and Climbing', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Swim and climb speed equal to walking speed. Advantage on Athletics for swimming and climbing.', weight: 0 },
   { id: 'goggles-of-night', name: 'Goggles of Night', type: 'wondrous', rarity: 'uncommon', requiresAttunement: false, description: 'Darkvision 60 ft (stacks with existing).', weight: 0 },
   { id: 'hat-of-disguise', name: 'Hat of Disguise', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'Cast Disguise Self at will.', weight: 0 },
-  { id: 'headband-of-intellect', name: 'Headband of Intellect', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'INT becomes 19 (no effect if already 19+).', weight: 0 },
+  { id: 'headband-of-intellect', name: 'Headband of Intellect', type: 'wondrous', rarity: 'uncommon', requiresAttunement: true, description: 'INT becomes 19 (no effect if already 19+).', weight: 0, abilityOverride: { ability: 'intelligence', value: 19 } },
   { id: 'helm-of-brilliance', name: 'Helm of Brilliance', type: 'wondrous', rarity: 'very rare', requiresAttunement: true, description: 'Gemmed helm with daily spell uses: Daylight, Fireball, Prismatic Spray, Wall of Fire. Resistance to fire.', weight: 3 },
   { id: 'helm-of-comprehend', name: 'Helm of Comprehending Languages', type: 'wondrous', rarity: 'uncommon', requiresAttunement: false, description: 'Cast Comprehend Languages at will.', weight: 3 },
   { id: 'helm-of-teleportation', name: 'Helm of Teleportation', type: 'wondrous', rarity: 'rare', requiresAttunement: true, description: 'Cast Teleport 3 charges per day.', weight: 3 },

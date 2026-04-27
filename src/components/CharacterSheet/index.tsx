@@ -1855,7 +1855,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── Save Prompt banner ── */}
  {savePrompt && (() => {
  const abilityKey = savePrompt.ability.toLowerCase() as keyof typeof character;
- const score = (character[abilityKey] as number) ?? 10;
+ // v2.327.0 — T5: read the effective score from computed.ability_scores
+ // so an attuned Headband of Intellect / Gauntlets of Ogre Power
+ // actually changes the save modifier the player sees.
+ const score = (computed.ability_scores as any)[abilityKey] ?? (character[abilityKey] as number) ?? 10;
  const mod = Math.floor((score - 10) / 2);
  // v2.260.0 — was reading computed.proficiencyBonus (camelCase),
  // but the ComputedStats field is proficiency_bonus (snake_case).
@@ -1948,7 +1951,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  } else {
    const ability = abilityMap[checkPrompt.target];
    if (ability) {
-     const score = (character[ability] as number) ?? 10;
+     // v2.327.0 — T5: prefer computed.ability_scores so attunement
+     // overrides flow into ability-check prompts the same way they
+     // do for skills (which already route through computed.skills).
+     const score = (computed.ability_scores as any)[ability] ?? (character[ability] as number) ?? 10;
      mod = Math.floor((score - 10) / 2);
    }
  }

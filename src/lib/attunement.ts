@@ -23,6 +23,7 @@
 // cache miss.
 
 import type { InventoryItem } from '../types';
+import type { MagicItemAbilityOverride } from '../data/magicItems';
 import { getMagicItemById } from './hooks/useMagicItems';
 
 /** RAW 2024 maximum concurrent attunements. */
@@ -86,4 +87,104 @@ export function countAttunedItems(inventory: InventoryItem[]): number {
  */
 export function hasAttunementSlotAvailable(inventory: InventoryItem[]): boolean {
   return countAttunedItems(inventory) < ATTUNEMENT_SLOT_MAX;
+}
+
+/**
+ * v2.327.0 — T5: Compute effective ability scores after applying
+ * any attuned + equipped item overrides (Gauntlets of Ogre Power,
+ * Headband of Intellect, etc.).
+ *
+ * RAW 2024 semantics:
+ *   • An item that "sets your STR to 19" only applies if you're
+ *     attuned AND wearing it.
+ *   • If your base score is already at or above the override value,
+ *     the item has no effect — modeled here as Math.max(base, value).
+ *   • Multiple overrides on the same ability resolve to the highest
+ *     value among active items (e.g. Gauntlets STR 19 + Belt of Hill
+ *     Giant STR 21 → effective STR 21).
+ *
+ * Any item whose `magic_item_id` doesn't resolve to a catalogue entry
+ * with `abilityOverride` is ignored. Mundane / homebrew / legacy items
+ * never override ability scores.
+ *
+ * Returns a new object — does not mutate the input character.
+ */
+export function getEffectiveAbilityScores(
+  baseScores: {
+    strength: number;
+    dexterity: number;
+    constitution: number;
+    intelligence: number;
+    wisdom: number;
+    charisma: number;
+  },
+  inventory: InventoryItem[] | null | undefined,
+): {
+  strength: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+} {
+  // Start from the base scores. We only mutate when an active override
+  // beats the current value.
+  const effective = { ...baseScores };
+  if (!inventory || inventory.length === 0) return effective;
+
+  for (const item of inventory) {
+    if (!itemBonusesActive(item)) continue;
+    if (!item.magic_item_id) continue;
+    const cat = getMagicItemById(item.magic_item_id);
+    const override = cat?.abilityOverride;
+    if (!override) continue;
+    const ability = override.ability;
+    if (effective[ability] < override.value) {
+      effective[ability] = override.value;
+    }
+  }
+  return effective;
+}
+
+/**
+ * v2.327.0 — T5: Inspect which abilities are currently being overridden
+ * by attuned items and by which item (for UI badges + tooltips). Returns
+ * the list of `{ability, value, sourceName}` entries that are actually
+ * applied (i.e. the override beat the base score). Useful for showing
+ * a small ✦ marker on overridden ability scores.
+ */
+export function getActiveAbilityOverrides(
+  baseScores: {
+    strength: number;
+    dexterity: number;
+    constitution: number;
+    intelligence: number;
+    wisdom: number;
+    charisma: number;
+  },
+  inventory: InventoryItem[] | null | undefined,
+): Array<{ ability: MagicItemAbilityOverride['ability']; value: number; sourceName: string }> {
+  if (!inventory || inventory.length === 0) return [];
+  // Per-ability winning override (highest value among active items).
+  const winners: Partial<Record<MagicItemAbilityOverride['ability'], { value: number; sourceName: string }>> = {};
+  for (const item of inventory) {
+    if (!itemBonusesActive(item)) continue;
+    if (!item.magic_item_id) continue;
+    const cat = getMagicItemById(item.magic_item_id);
+    const ov = cat?.abilityOverride;
+    if (!ov) continue;
+    const cur = winners[ov.ability];
+    if (!cur || ov.value > cur.value) {
+      winners[ov.ability] = { value: ov.value, sourceName: item.name };
+    }
+  }
+  // Filter to ones that actually beat the base score.
+  const out: Array<{ ability: MagicItemAbilityOverride['ability']; value: number; sourceName: string }> = [];
+  for (const ability of ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const) {
+    const w = winners[ability];
+    if (!w) continue;
+    if (baseScores[ability] >= w.value) continue;
+    out.push({ ability, value: w.value, sourceName: w.sourceName });
+  }
+  return out;
 }

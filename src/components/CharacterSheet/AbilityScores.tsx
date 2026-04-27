@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { formatModifier, rollDie } from '../../lib/gameUtils';
+import { getActiveAbilityOverrides } from '../../lib/attunement';
 import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 
@@ -44,6 +45,23 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  // checks and saves surface in character history alongside HP/condition/slot
  // events.
  const logHistory = { characterId: character.id, userId: character.user_id };
+ // v2.327.0 — T5: which abilities are currently being overridden by
+ // attuned items? Used to render a ✦ badge + tooltip on the affected
+ // save tile so the override is discoverable from the sheet itself.
+ const overrideMap: Partial<Record<AbilityKey, { value: number; sourceName: string }>> = {};
+ for (const ov of getActiveAbilityOverrides(
+  {
+   strength: character.strength,
+   dexterity: character.dexterity,
+   constitution: character.constitution,
+   intelligence: character.intelligence,
+   wisdom: character.wisdom,
+   charisma: character.charisma,
+  },
+  character.inventory,
+ )) {
+  overrideMap[ov.ability] = { value: ov.value, sourceName: ov.sourceName };
+ }
 
  function rollAbility(ability: AbilityKey) {
  const mod = computed.modifiers[ability];
@@ -104,6 +122,16 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  const meta = STAT_META[ability];
  const isProficient = character.saving_throw_proficiencies?.includes(ability);
  const saveMod = computed.modifiers[ability] + (isProficient ? computed.proficiency_bonus : 0);
+ // v2.327.0 — T5: surface attunement-driven score override on the
+ // tile so the player sees it without diving into Inventory. Combines
+ // with the proficiency frame from T6 cleanly — purple ✦ on the
+ // ability-color frame reads independently from proficiency.
+ const override = overrideMap[ability];
+ const titleParts = [
+  `Roll ${ability} saving throw (d20${saveMod >= 0 ? '+' : ''}${saveMod})`,
+  isProficient ? '— Proficient' : '',
+  override ? `— ${ability.toUpperCase()} ${override.value} (${override.sourceName})` : '',
+ ].filter(Boolean);
  return (
  <div
  key={ability}
@@ -112,8 +140,8 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  tabIndex={0}
  onClick={() => rollSave(ability)}
  onKeyDown={e => e.key === 'Enter' && rollSave(ability)}
- title={`Roll ${ability} saving throw (d20${saveMod >= 0 ? '+' : ''}${saveMod})${isProficient ? ' — Proficient' : ''}`}
- aria-label={`${ability} saving throw${isProficient ? ', proficient' : ''}, modifier ${formatModifier(saveMod)}`}
+ title={titleParts.join(' ')}
+ aria-label={`${ability} saving throw${isProficient ? ', proficient' : ''}${override ? `, ${override.sourceName} sets score to ${override.value}` : ''}, modifier ${formatModifier(saveMod)}`}
  style={{
  // v2.325.0 — T6: proficiency now signaled by a full-color border
  // on all four sides (top stripe was already meta.color; sides +
@@ -128,8 +156,27 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  background: isProficient ? meta.color + '0A' : undefined,
  padding: '8px 6px',
  cursor: 'pointer',
+ position: 'relative' as const,
  }}
  >
+ {/* v2.327.0 — T5: ✦ badge top-right when attunement-overridden.
+     Purple matches the attunement palette used in Inventory. */}
+ {override && (
+  <span
+   style={{
+    position: 'absolute' as const,
+    top: 3,
+    right: 4,
+    fontSize: 9,
+    color: '#c084fc',
+    lineHeight: 1,
+    pointerEvents: 'none' as const,
+   }}
+   aria-hidden="true"
+  >
+   ✦
+  </span>
+ )}
  {/* v2.325.0 — T6: dropped the 5×5 proficiency dot. The colored
      border above carries the proficiency signal; freeing up the
      header row lets the abbreviation sit cleanly centered. */}

@@ -1,7 +1,7 @@
 import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
 import { CLASS_MAP } from '../data/classes';
-import { itemBonusesActive } from './attunement';
+import { itemBonusesActive, getEffectiveAbilityScores } from './attunement';
 
 /** PHB formula: floor((score - 10) / 2) */
 export function abilityModifier(score: number): number {
@@ -69,13 +69,31 @@ export function xpForNextLevel(currentLevel: number): number {
 export function computeStats(character: Character): ComputedStats {
   const pb = proficiencyBonus(character.level);
 
+  // v2.327.0 — T5: apply attunement-gated ability-score overrides
+  // (Gauntlets of Ogre Power, Headband of Intellect, etc.) BEFORE
+  // computing modifiers so every downstream save/skill/spell DC sees
+  // the effective score. The helper falls through to base scores when
+  // inventory is empty or no active item overrides anything.
+  const baseScores = {
+    strength:     character.strength,
+    dexterity:    character.dexterity,
+    constitution: character.constitution,
+    intelligence: character.intelligence,
+    wisdom:       character.wisdom,
+    charisma:     character.charisma,
+  };
+  const ability_scores: Record<AbilityKey, number> = getEffectiveAbilityScores(
+    baseScores,
+    character.inventory,
+  );
+
   const modifiers: Record<AbilityKey, number> = {
-    strength:     abilityModifier(character.strength),
-    dexterity:    abilityModifier(character.dexterity),
-    constitution: abilityModifier(character.constitution),
-    intelligence: abilityModifier(character.intelligence),
-    wisdom:       abilityModifier(character.wisdom),
-    charisma:     abilityModifier(character.charisma),
+    strength:     abilityModifier(ability_scores.strength),
+    dexterity:    abilityModifier(ability_scores.dexterity),
+    constitution: abilityModifier(ability_scores.constitution),
+    intelligence: abilityModifier(ability_scores.intelligence),
+    wisdom:       abilityModifier(ability_scores.wisdom),
+    charisma:     abilityModifier(ability_scores.charisma),
   };
 
   const ABILITY_KEYS: AbilityKey[] = [
@@ -120,6 +138,7 @@ export function computeStats(character: Character): ComputedStats {
 
   return {
     proficiency_bonus: pb,
+    ability_scores,
     modifiers,
     saving_throws,
     skills,
