@@ -1,7 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import type { Campaign, AutomationSettings } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { AUTOMATIONS, labelForValue, type AutomationValue } from '../../lib/automations';
+// v2.335.0 — P4: Members management lives here now (was a top-level
+// dashboard tab pre-v2.335). DMs invite, generate codes, and remove
+// players from inside Settings; players still see a read-only Members
+// tab on the dashboard for the assign-my-PC flow.
+import {
+  getCampaignMembers, lookupProfileByEmail, addCampaignMember,
+  removeCampaignMember, refreshCampaignJoinCode,
+  type MemberWithProfile,
+} from '../../lib/supabase';
+import type { CampaignMember } from '../../types';
+import { useModal } from '../shared/Modal';
+import { useToast } from '../shared/Toast';
 
 // v2.165.0 — Phase Q.0 pt 6: Campaign Settings reorg with tabs.
 //
@@ -19,6 +31,11 @@ import { AUTOMATIONS, labelForValue, type AutomationValue } from '../../lib/auto
 //     that predate the registry: hit dice, damage dice, damage done,
 //     condition tracker), plus Encumbrance variant at the bottom (a
 //     rare-use toggle that most tables won't enable).
+//   • Members — v2.335.0 (P4): finishes the v2.283 plan that originally
+//     wanted Members in Settings. Invite Code (copy/refresh), email
+//     invite, players list with Remove. Hidden from the dashboard tab
+//     strip for DMs since this is its canonical home now; players
+//     still see the dashboard's Members tab for assign-my-PC.
 //   • Danger Zone — Delete Campaign with typed-name confirmation.
 //     Same flow as before, just isolated on its own tab so it can't
 //     be hit accidentally while scrolling settings.
@@ -32,6 +49,12 @@ interface Props {
   onClose: () => void;
   onDeleted: () => void;
   onUpdated: (updates: Partial<Campaign>) => void;
+  /** v2.335.0 — P4: optional callback fired whenever the DM acts on
+   *  membership inside Settings (invite, refresh code, remove player).
+   *  Lets the parent dashboard refresh its own copy of the members
+   *  list / join code without forcing the user to close + reopen
+   *  Settings to see the change. */
+  onMembersChanged?: () => void;
 }
 
 const DEFAULT_AUTOMATION: AutomationSettings = {
@@ -68,10 +91,111 @@ const QUICK_RULES_OPTIONS: { key: keyof AutomationSettings; label: string; desc:
   },
 ];
 
-type Tab = 'automation' | 'rules' | 'danger';
+type Tab = 'automation' | 'rules' | 'members' | 'danger';
 
-export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdated }: Props) {
+export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdated, onMembersChanged }: Props) {
   const [tab, setTab] = useState<Tab>('automation');
+  const { confirm: confirmModal } = useModal();
+  const { showToast } = useToast();
+
+  // v2.335.0 — P4: Members tab state. Self-loaded so this modal stays
+  // self-contained — dashboards just mount it. We refresh on tab open
+  // so a DM coming in from a stale cache sees current invites.
+  const [members, setMembers] = useState<(CampaignMember & { display_name: string | null; email: string })[]>([]);
+  const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
+  const [refreshingCode, setRefreshingCode] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  async function loadMembers() {
+    const { data } = await getCampaignMembers(campaign.id);
+    setMembers(data.map((m: MemberWithProfile) => ({
+      id: m.id, campaign_id: m.campaign_id, user_id: m.user_id,
+      role: m.role as 'dm' | 'player', joined_at: m.joined_at,
+      display_name: m.profiles?.display_name ?? null,
+      email: m.profiles?.email ?? '',
+    })));
+  }
+
+  // Load when the modal first opens AND every time the user switches
+  // to the Members tab (so a Remove from one session is reflected if
+  // they navigate away and back). Cheap call — single SELECT with one
+  // join, doesn't merit memoization.
+  useEffect(() => {
+    if (tab === 'members') loadMembers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  async function handleInvite(e: FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    setInviteError(null);
+    const { data: found, error: lookupErr } = await lookupProfileByEmail(inviteEmail);
+    if (lookupErr || !found) {
+      setInviteError('No DNDKeep account found for that email address.');
+      setInviting(false);
+      return;
+    }
+    const { error } = await addCampaignMember(campaign.id, found.id);
+    if (error) setInviteError(error.message);
+    else { setInviteEmail(''); await loadMembers(); onMembersChanged?.(); }
+    setInviting(false);
+  }
+
+  async function removeMember(userId: string) {
+    if (userId === campaign.owner_id) return;
+    const m = members.find(x => x.user_id === userId);
+    const displayName = m?.display_name ?? m?.email ?? 'this player';
+    const ok = await confirmModal({
+      title: 'Remove player?',
+      message: `${displayName} will be removed from the campaign. Their character(s) will be unassigned but not deleted — they can rejoin via the invite code.`,
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
+    if (!ok) return;
+    // Same two-step flow as the dashboard had pre-v2.335: unassign PCs
+    // first (RLS would otherwise block once the membership row is gone),
+    // then drop the membership.
+    const { error: unassignErr } = await supabase
+      .from('characters')
+      .update({ campaign_id: null })
+      .eq('campaign_id', campaign.id)
+      .eq('user_id', userId);
+    if (unassignErr) {
+      showToast(`Couldn't remove player: ${unassignErr.message}`, 'error');
+      return;
+    }
+    const { error } = await removeCampaignMember(campaign.id, userId);
+    if (error) {
+      showToast(`Couldn't remove player: ${error.message}`, 'error');
+      return;
+    }
+    await loadMembers();
+    onMembersChanged?.();
+    showToast(`${displayName} removed from the campaign.`, 'success');
+  }
+
+  async function handleRefreshCode() {
+    setRefreshingCode(true);
+    const { data } = await refreshCampaignJoinCode(campaign.id);
+    if (data) { setJoinCode(data); onMembersChanged?.(); }
+    setRefreshingCode(false);
+  }
+
+  async function handleCopyCode() {
+    if (!joinCode) return;
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      // Fallback: select text manually
+    }
+  }
 
   // Danger zone state
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -279,6 +403,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
           {([
             { id: 'automation', label: 'Automation' },
             { id: 'rules', label: 'Rules' },
+            { id: 'members', label: 'Members' },
             { id: 'danger', label: 'Danger Zone', accent: 'red' },
           ] as { id: Tab; label: string; accent?: 'red' }[]).map(t => {
             const active = tab === t.id;
@@ -615,6 +740,117 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                         : 'BattleMap reads/writes through scene_tokens. Each placement is independent; HP/conditions reset between encounters.'}
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MEMBERS TAB — invite code, email invite, players list with Remove.
+              v2.335.0 — P4: lifted from CampaignDashboard's old standalone
+              Members tab. The dashboard tab still exists for non-DM players
+              (so they can use AssignMyCharacterPanel) but is hidden from
+              DMs since this is its canonical home now. */}
+          {tab === 'members' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+              {/* Invite Code panel */}
+              <div className="panel">
+                <div className="section-header">Invite Code</div>
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.6 }}>
+                  Share this code with players. They enter it on the Campaigns page to join.
+                </p>
+                <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{
+                    fontFamily: 'var(--ff-body)', fontWeight: 900,
+                    fontSize: '2rem', letterSpacing: '0.25em',
+                    color: 'var(--c-gold-l)', background: '#080d14',
+                    border: '2px solid var(--c-gold-bdr)',
+                    borderRadius: 'var(--r-md)',
+                    padding: 'var(--sp-2) var(--sp-6)',
+                    minWidth: 180, textAlign: 'center' as const,
+                  }}>
+                    {joinCode || '——'}
+                  </div>
+                  <button
+                    className="btn-gold btn-sm"
+                    onClick={handleCopyCode}
+                    disabled={!joinCode}
+                  >
+                    {codeCopied ? 'Copied' : 'Copy Code'}
+                  </button>
+                  <button
+                    className="btn-secondary btn-sm"
+                    onClick={handleRefreshCode}
+                    disabled={refreshingCode}
+                    title="Generate a new invite code — the old one will stop working"
+                  >
+                    {refreshingCode ? 'Refreshing...' : 'New Code'}
+                  </button>
+                </div>
+                <p style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
+                  Generating a new code invalidates the current one. Existing players keep their seats.
+                </p>
+              </div>
+
+              {/* Email invite */}
+              <form onSubmit={handleInvite} style={{ display: 'flex', gap: 'var(--sp-3)' }}>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="Or invite by email address..."
+                  style={{ flex: 1 }}
+                />
+                <button type="submit" className="btn-secondary" disabled={inviting}>
+                  {inviting ? 'Inviting...' : 'Invite'}
+                </button>
+              </form>
+              {inviteError && (
+                <div style={{ background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>
+                  {inviteError}
+                </div>
+              )}
+
+              {/* Players list */}
+              <div>
+                <div className="section-header">Players ({members.length})</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                  {members.map(m => (
+                    <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-raised)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                      <div>
+                        <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, color: 'var(--t-1)', fontSize: 'var(--fs-sm)' }}>
+                          {m.display_name ?? m.email}
+                          {m.user_id === campaign.owner_id && <span style={{ color: 'var(--t-2)', marginLeft: 'var(--sp-2)' }}>(DM)</span>}
+                        </div>
+                        {m.display_name && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>{m.email}</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+                        <span className={m.role === 'dm' ? 'badge badge-gold' : 'badge badge-muted'}>{m.role.toUpperCase()}</span>
+                        {m.user_id !== campaign.owner_id && (
+                          <button
+                            onClick={() => removeMember(m.user_id)}
+                            title={`Remove ${m.display_name ?? m.email} from this campaign`}
+                            style={{
+                              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                              padding: '4px 10px',
+                              background: 'rgba(248,113,113,0.10)',
+                              border: '1px solid rgba(248,113,113,0.35)',
+                              borderRadius: 'var(--r-sm, 4px)',
+                              color: '#f87171',
+                              cursor: 'pointer',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {members.length === 0 && (
+                    <div style={{ padding: 'var(--sp-3) var(--sp-4)', color: 'var(--t-3)', fontSize: 'var(--fs-sm)', fontStyle: 'italic' }}>
+                      Loading players…
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -104,11 +104,15 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   // that flow now lives inside the Members tab as the
   // AssignMyCharacterPanel below. The roster-of-PCs grid the
   // Characters tab also rendered duplicated the Party tab one-to-one
-  // and was redundant. Default tab is Members for everyone — the DM
-  // arrives at the player roster (with invite code panel + remove
-  // controls), the player arrives at the assign-my-PC panel above
-  // their fellow players' list.
-  const [activeTab, setActiveTab] = useState<'members' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>('members');
+  // v2.335.0 — P4: Members tab is hidden from the dashboard tab strip
+  // for DMs since membership management lives in Settings now (see
+  // CampaignSettings → Members). Players still see Members on the
+  // dashboard for AssignMyCharacterPanel + read-only roster. Default
+  // tab differs by role: DMs land on Party (the live roster), players
+  // land on Members (where they assign their PC and see who else is in).
+  // Inlined comparison rather than referencing `isOwner` because
+  // `isOwner` is declared after this hook (TDZ).
+  const [activeTab, setActiveTab] = useState<'members' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>(campaignProp.owner_id === user?.id ? 'party' : 'members');
   // Handle deep-link ?tab=map from character sheet Map button
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -359,6 +363,20 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               campaign={campaign}
               onBack={onBack}
               onCampaignUpdate={updates => setCampaign(c => ({ ...c, ...updates }))}
+              onMembersChanged={() => {
+                // v2.335.0 — P4: refresh the dashboard's own members copy
+                // + join code state when DM invites/removes/refreshes via
+                // Settings. Settings has its own state but the dashboard
+                // also caches members for the Party / Combat / DMlobby
+                // mounts that don't refetch on their own.
+                loadMembers();
+                // Re-pull the campaign row to pick up a new join_code if
+                // the DM regenerated. Cheaper than threading the new code
+                // up through Settings → button → dashboard.
+                supabase.from('campaigns').select('join_code').eq('id', campaign.id).single().then(({ data }) => {
+                  if (data?.join_code) setCampaign(c => ({ ...c, join_code: data.join_code }));
+                });
+              }}
             />
           )}
         </div>
@@ -372,11 +390,11 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           but no longer surfaced in the UI; planned chat surface in
           v2.288 supersedes the freeform-notes use case. */}
       <div className="tabs">
-        {/* v2.283.0 — Characters tab removed (assign-my-PC moved to
-            Members tab). Reordered so Members leads since it's now
-            the default tab. Party stays prominent as the in-play
-            party state surface. */}
-        {(['members', 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
+        {/* v2.335.0 — P4: Members tab hidden for DMs. The DM manages
+            invites + removals from Settings → Members now. Players
+            keep the dashboard tab so they can still assign their PC
+            and see the roster. */}
+        {([...(isOwner ? [] : ['members'] as const), 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
             members: 'Members', session: 'Combat',
             party: 'Party', log: 'Log', chat: 'Chat',
@@ -748,10 +766,15 @@ function CampaignSettingsButton({
   campaign,
   onBack,
   onCampaignUpdate,
+  onMembersChanged,
 }: {
   campaign: Campaign;
   onBack: () => void;
   onCampaignUpdate?: (updates: Partial<Campaign>) => void;
+  /** v2.335.0 — P4: bubbles up when the DM acts on membership inside
+   *  Settings (invite, remove, refresh code) so the dashboard can
+   *  resync its own members list + join code without a refresh. */
+  onMembersChanged?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState(campaign);
@@ -773,6 +796,7 @@ function CampaignSettingsButton({
             setCurrent(c => ({ ...c, ...updates }));
             onCampaignUpdate?.(updates);
           }}
+          onMembersChanged={onMembersChanged}
         />
       )}
     </>
