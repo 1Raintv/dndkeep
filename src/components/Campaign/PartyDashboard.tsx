@@ -18,6 +18,13 @@ import { rechargeOnLongRest } from '../../lib/charges';
 // v2.229.0 — ChecksPanel was extracted into its own file so the same
 // UI can be reused by the BattleMapV2 TokenQuickPanel.
 import ChecksPanel from './ChecksPanel';
+// v2.337.0 — F1: searchable loot item picker for the Distribute Loot
+// panel. Replaces the previous free-text input with a typeahead over
+// the magic-items catalog, falling back to free text for non-catalog
+// (RP / one-off) loot. See ./LootItemPicker.tsx.
+import LootItemPicker from './LootItemPicker';
+import type { MagicItem } from '../../data/magicItems';
+import { v4 as uuidv4 } from 'uuid';
 
 // v2.334.0 — P3: shared max-width for all DM tool panels (AoE, Party
 // Rest, Announcement, Saving Throw, Award XP, Distribute Loot).
@@ -87,6 +94,18 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   const [lootEp, setLootEp] = useState('');
   const [lootSp, setLootSp] = useState('');
   const [lootCp, setLootCp] = useState('');
+  // v2.337.0 — F1: split the old single `lootItem` string into two
+  // fields fed by LootItemPicker:
+  //   • lootSelectedItem: the picked catalog MagicItem (carries id,
+  //     rarity, magic_item_id, baseDamageDice, bonuses, etc.). When
+  //     set, distributeLoot() constructs a full-shape InventoryItem.
+  //   • lootItem: free-text fallback for non-catalog loot ("Old map",
+  //     "Letter from the king"). When this is set instead, we build
+  //     the same generic Other-category row as before, so RP-flavor
+  //     drops keep working.
+  // Exactly one is ever non-null at a time — picking one clears the
+  // other in LootItemPicker.
+  const [lootSelectedItem, setLootSelectedItem] = useState<MagicItem | null>(null);
   const [lootItem, setLootItem] = useState('');
   const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | 'aoe' | 'rest' | 'announce' | 'save' | null>(null);
   // AoE
@@ -152,14 +171,29 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       sp: parseInt(lootSp) || 0,
       cp: parseInt(lootCp) || 0,
     };
-    const item = lootItem.trim();
+    const customName = lootItem.trim();
+    const hasItem = !!lootSelectedItem || !!customName;
     const hasCoins = coins.pp + coins.gp + coins.ep + coins.sp + coins.cp > 0;
-    if (!hasCoins && !item) return;
+    if (!hasCoins && !hasItem) return;
 
     const targets = lootTargets === null
       ? characters
       : characters.filter(c => lootTargets.has(c.id));
     if (targets.length === 0) return;
+
+    // v2.337.0 — F1: when picked from the catalog, build the same
+    // complete InventoryItem shape MagicItemBrowser uses (magic_item_id
+    // linkage + category by type + bonuses + base damage dice + charge
+    // metadata). Without this, attunement, AC bonuses, ability score
+    // overrides, and weapon damage rolls all silently degrade to
+    // "free-text item" levels of functionality on the recipient side.
+    // Custom-text drops keep the older minimal shape since they don't
+    // map to any catalog row.
+    const TYPE_TO_CATEGORY: Record<string, string | undefined> = {
+      weapon: 'Weapon', armor: 'Armor', potion: 'Potion', ring: 'Ring',
+      rod: 'Wondrous', scroll: 'Scroll', staff: 'Weapon',
+      wand: 'Wondrous', wondrous: 'Wondrous', ammunition: 'Ammunition',
+    };
 
     await Promise.all(targets.map((c, i) => {
       const patch: Partial<Character> = {};
@@ -173,16 +207,42 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         });
         patch.currency = curr;
       }
-      if (item) {
-        // v2.173.0 — more complete item shape so it renders correctly
-        // in the player's Inventory tab (previously missing category
-        // and equipped, which made the row look empty).
-        const newItem = {
-          id: `loot-${Date.now()}-${i}`,
-          name: item, quantity: 1, weight: 0,
-          description: '', equipped: false,
-          category: 'Other' as const,
-        };
+      if (hasItem) {
+        let newItem: any;
+        if (lootSelectedItem) {
+          const cat = lootSelectedItem;
+          const category = TYPE_TO_CATEGORY[cat.type];
+          newItem = {
+            id: uuidv4(),
+            name: cat.name,
+            quantity: 1,
+            weight: cat.weight ?? 0,
+            description: `[${cat.rarity.toUpperCase()}${cat.requiresAttunement ? ' — Requires Attunement' : ''}] ${cat.description}`,
+            equipped: false,
+            magical: true,
+            magic_item_id: cat.id,
+            ...(category               ? { category }                   : {}),
+            ...(cat.baseDamageDice     ? { damage: cat.baseDamageDice } : {}),
+            ...(cat.acBonus     !== undefined ? { acBonus:     cat.acBonus     } : {}),
+            ...(cat.saveBonus   !== undefined ? { saveBonus:   cat.saveBonus   } : {}),
+            ...(cat.attackBonus !== undefined ? { attackBonus: cat.attackBonus } : {}),
+            ...(cat.damageBonus !== undefined ? { damageBonus: cat.damageBonus } : {}),
+            ...(cat.maxCharges  !== undefined ? {
+              charges_max:     cat.maxCharges,
+              charges_current: cat.maxCharges,
+              ...(cat.recharge     ? { recharge:      cat.recharge     } : {}),
+              ...(cat.rechargeDice ? { recharge_dice: cat.rechargeDice } : {}),
+            } : {}),
+          };
+        } else {
+          // Custom-text fallback — same generic shape as pre-v2.337.
+          newItem = {
+            id: `loot-${Date.now()}-${i}`,
+            name: customName, quantity: 1, weight: 0,
+            description: '', equipped: false,
+            category: 'Other' as const,
+          };
+        }
         patch.inventory = [...(c.inventory ?? []), newItem];
       }
       return Object.keys(patch).length
@@ -191,6 +251,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     }));
     setLootPp(''); setLootGp(''); setLootEp(''); setLootSp(''); setLootCp('');
     setLootItem('');
+    setLootSelectedItem(null);
   }
 
   async function applyAoE() {
@@ -998,24 +1059,30 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 ))}
               </div>
 
-              {/* Item + distribute button */}
+              {/* Item picker + distribute button.
+                  v2.337.0 — F1: free-text input replaced with the
+                  LootItemPicker typeahead. Custom-text fallback still
+                  available via the "Use 'X' as custom item" affordance
+                  inside the picker dropdown, so RP / one-off drops
+                  ("Tattered map", "Bloodied letter") keep working. */}
               <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={lootItem} onChange={e => setLootItem(e.target.value)}
-                  placeholder="Item name (each selected player gets one, optional)…"
-                  onKeyDown={e => e.key === 'Enter' && distributeLoot()}
-                  style={{ flex: 1, fontSize: 13, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
+                <LootItemPicker
+                  selected={lootSelectedItem}
+                  onSelect={setLootSelectedItem}
+                  customName={lootItem}
+                  onCustomNameChange={setLootItem}
+                  onSubmit={distributeLoot}
                 />
                 <button onClick={distributeLoot}
                   disabled={
                     (lootTargets !== null && lootTargets.size === 0) ||
-                    (!lootPp && !lootGp && !lootEp && !lootSp && !lootCp && !lootItem.trim())
+                    (!lootPp && !lootGp && !lootEp && !lootSp && !lootCp && !lootSelectedItem && !lootItem.trim())
                   }
                   style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                     border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
                     opacity: (
                       (lootTargets !== null && lootTargets.size === 0) ||
-                      (!lootPp && !lootGp && !lootEp && !lootSp && !lootCp && !lootItem.trim())
+                      (!lootPp && !lootGp && !lootEp && !lootSp && !lootCp && !lootSelectedItem && !lootItem.trim())
                     ) ? 0.4 : 1 }}>
                   Distribute
                 </button>
