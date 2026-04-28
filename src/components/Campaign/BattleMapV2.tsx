@@ -7699,160 +7699,23 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (refs.label) refs.label.visible = false;
     }
 
-    function redraw(clientX: number, clientY: number) {
+    function redraw(_clientX: number, _clientY: number) {
       const refs = hoverPreviewRefs.current;
       const gfxLocal = refs.gfx;
       const labelLocal = refs.label;
       if (!gfxLocal || !labelLocal) return;
 
-      const ati = activeTokenInfoForMoveRef.current;
-      if (!ati || !ati.tokenId || !ati.participantId) { clearPreview(); return; }
+      // v2.359.0 — Hover-path preview disabled by default. User
+      // feedback: the path showing on every mouse move during a
+      // turn read as visual noise / "where the character can move
+      // by default." The drag-preview path (TokenLayer, fires only
+      // during an actual drag) still shows the route + cost while
+      // a token is picked up — which is what the user wanted. Click-
+      // to-move continues to work via its own handler; users just
+      // don't see the planned route until they click.
+      clearPreview();
+      return;
 
-      // Ownership gate (same as click-to-move).
-      const myToken = liveTokens[ati.tokenId];
-      if (!myToken) { clearPreview(); return; }
-      const isMyCharacter =
-        ati.participantType === 'character' &&
-        props.myCharacterId &&
-        myToken.characterId === props.myCharacterId;
-      const isDmRunning =
-        props.isDM &&
-        isCreatureParticipantType(ati.participantType);
-      if (!isMyCharacter && !isDmRunning) { clearPreview(); return; }
-
-      // Mode gate.
-      const mf = modeFlagsRef.current;
-      if (mf.ruler || mf.wall || mf.text || mf.draw || mf.fx || mf.eraser) { clearPreview(); return; }
-      if (useBattleMapStore.getState().directionPick.active) { clearPreview(); return; }
-
-      const vpLocal = vpRef.current;
-      if (!canvasEl || !vpLocal) return;
-      const rect = canvasEl.getBoundingClientRect();
-      const screenX = clientX - rect.left;
-      const screenY = clientY - rect.top;
-      // Out of canvas → hide.
-      if (screenX < 0 || screenY < 0 || screenX > rect.width || screenY > rect.height) {
-        clearPreview();
-        return;
-      }
-      const worldPoint = vpLocal.toWorld(screenX, screenY);
-      if (worldPoint.x < 0 || worldPoint.x > WORLD_WIDTH) { clearPreview(); return; }
-      if (worldPoint.y < 0 || worldPoint.y > WORLD_HEIGHT) { clearPreview(); return; }
-
-      // v2.357.0 — Math.floor (not Math.round). For raw cursor world
-      // coords (worldPoint here), Math.round splits each cell at its
-      // midpoint: the right half of cell N gets reported as cell N+1,
-      // the bottom half of row M as row M+1. That produced the visible
-      // "tracks from bottom-right of the token" symptom users reported
-      // — pointer-to-cell mapping was offset toward the SE corner of
-      // each cell as the cursor approached its center. Math.floor
-      // correctly returns the cell containing the cursor.
-      const targetCellRow = Math.floor(worldPoint.y / gridSizePx);
-      const targetCellCol = Math.floor(worldPoint.x / gridSizePx);
-      const fromCellRow = Math.floor(myToken.y / gridSizePx);
-      const fromCellCol = Math.floor(myToken.x / gridSizePx);
-
-      // Hovering own cell — no preview needed.
-      if (targetCellRow === fromCellRow && targetCellCol === fromCellCol) { clearPreview(); return; }
-
-      // Occupied target cell — a click would abort, so don't preview either.
-      for (const t of Object.values(liveTokens)) {
-        if (t.id === ati.tokenId) continue;
-        const tCellRow = Math.floor(t.y / gridSizePx);
-        const tCellCol = Math.floor(t.x / gridSizePx);
-        if (tCellRow === targetCellRow && tCellCol === targetCellCol) {
-          clearPreview();
-          return;
-        }
-      }
-
-      const walls = Object.values(useBattleMapStore.getState().walls);
-      const path = findPath(
-        { row: fromCellRow, col: fromCellCol },
-        { row: targetCellRow, col: targetCellCol },
-        {
-          widthCells,
-          heightCells,
-          gridSizePx,
-          walls,
-          occupants: Object.values(liveTokens),
-          moverTokenId: ati.tokenId,
-          maxCells: Math.max(1, Math.floor(ati.max / 5)),
-        },
-      );
-      if (!path || path.length < 2) { clearPreview(); return; }
-
-      const distanceFt = (path.length - 1) * 5;
-      const remaining = Math.max(0, ati.max - ati.used);
-      const wouldUse = ati.used + distanceFt;
-      let lineColor: number;
-      let labelColor: number;
-      let costLabel: string;
-      if (ati.max === 0) {
-        // Speed-zeroed (Stunned, Paralyzed, etc.) — show but in red.
-        lineColor = 0xef4444; labelColor = 0xfca5a5;
-        costLabel = `${distanceFt} ft  ·  speed 0`;
-      } else if (wouldUse > ati.max) {
-        lineColor = 0xef4444; labelColor = 0xfca5a5;
-        costLabel = `${distanceFt} ft  ·  over budget`;
-      } else if (wouldUse > ati.max - Math.floor(ati.max / 4)) {
-        lineColor = 0xf59e0b; labelColor = 0xfde68a;
-        costLabel = `${distanceFt} ft  ·  ${remaining - distanceFt} left`;
-      } else {
-        lineColor = 0x22c55e; labelColor = 0x86efac;
-        costLabel = `${distanceFt} ft  ·  ${remaining - distanceFt} left`;
-      }
-
-      // Convert path cells → world waypoints, draw a dashed polyline,
-      // mark destination with a square outline. Same visual contract
-      // as the drag preview so both inputs read consistently.
-      const waypoints = path.map(c => ({
-        x: (c.col + 0.5) * gridSizePx,
-        y: (c.row + 0.5) * gridSizePx,
-      }));
-
-      gfxLocal.clear();
-      gfxLocal.setStrokeStyle({ color: lineColor, width: 3, alpha: 0.7 });
-      // Dashed multi-segment polyline. Walk each segment, stamping
-      // dashOn pixels then skipping dashOff.
-      const dashOn = 8;
-      const dashOff = 6;
-      let carry = 0; // residual along-segment from previous segment
-      for (let i = 1; i < waypoints.length; i++) {
-        const a = waypoints[i - 1];
-        const b = waypoints[i];
-        const segDx = b.x - a.x;
-        const segDy = b.y - a.y;
-        const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
-        if (segLen < 1e-3) continue;
-        const nx = segDx / segLen;
-        const ny = segDy / segLen;
-        let traveled = -carry; // start with previous residual
-        while (traveled < segLen) {
-          const segStart = Math.max(0, traveled);
-          const segEnd = Math.min(traveled + dashOn, segLen);
-          if (segEnd > segStart) {
-            gfxLocal.moveTo(a.x + nx * segStart, a.y + ny * segStart);
-            gfxLocal.lineTo(a.x + nx * segEnd, a.y + ny * segEnd);
-          }
-          traveled += dashOn + dashOff;
-        }
-        carry = traveled - segLen; // hand off pen state to next segment
-      }
-      gfxLocal.stroke();
-
-      // Destination cell marker.
-      const last = waypoints[waypoints.length - 1];
-      const mark = gridSizePx * 0.85;
-      gfxLocal.setStrokeStyle({ color: lineColor, width: 2, alpha: 0.9 });
-      gfxLocal.roundRect(last.x - mark / 2, last.y - mark / 2, mark, mark, 4);
-      gfxLocal.stroke();
-      gfxLocal.visible = true;
-
-      labelLocal.text = costLabel;
-      (labelLocal.style as TextStyle).fill = labelColor;
-      labelLocal.position.set(last.x, last.y - mark / 2 - 4);
-      labelLocal.visible = true;
     }
 
     function onMove(e: PointerEvent) {
@@ -8008,13 +7871,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     setClickedNpcToken(null);
   }, []);
 
-  useEffect(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-    const handler = (e: MouseEvent) => e.preventDefault();
-    el.addEventListener('contextmenu', handler);
-    return () => el.removeEventListener('contextmenu', handler);
-  }, []);
+  // v2.359.0 — wrapper-level contextmenu suppression moved to the JSX
+  // onContextMenu prop on the wrapper div (see render below). The
+  // previous useEffect was racing with the empty-state early returns.
 
   // ========================================================
   // Empty-state renderers
@@ -8381,6 +8240,18 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
       <div
         ref={wrapperRef}
+        // v2.359.0 — Suppress the browser's native context menu on
+        // the entire battle-map wrapper. Pre-v2.359 this was wired
+        // via a useEffect with deps=[] that ran once at mount; if
+        // the wrapper wasn't rendered yet (scenesLoading state, or
+        // empty-scenes empty state), wrapperRef.current was null and
+        // the listener never attached. Putting the handler on the
+        // JSX makes it a property of the element and applies to any
+        // render where the wrapper exists. Token + wall + drawing
+        // layers still install their own contextmenu listeners on
+        // the canvas for tool-specific delete/menu logic; they
+        // preventDefault themselves so they don't fight this one.
+        onContextMenu={(e) => e.preventDefault()}
         style={{
           // v2.281.0 — pseudo-fullscreen via position:fixed inset:0.
           // zIndex is below the InitiativeStrip (9999) so combat UI
