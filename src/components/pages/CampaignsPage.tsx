@@ -9,6 +9,9 @@ import CampaignDashboard from '../Campaign/CampaignDashboard';
 // ── Join via code (available to all users) ──────────────────────────────────
 function JoinCampaignByCode() {
   const { user } = useAuth();
+  // v2.338.0: pull the campaign-list refresh from context so a successful
+  // join updates the list without making the user reload.
+  const { refreshCampaigns } = useCampaign();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,9 +41,14 @@ function JoinCampaignByCode() {
       return;
     }
 
-    setSuccess(`Joined "${campaign.name}" successfully. Reload the page to see it in your campaign list.`);
+    setSuccess(`Joined "${campaign.name}" successfully.`);
     setCode('');
     setLoading(false);
+    // v2.338.0: pull the new membership into the campaign list so the
+    // joined campaign appears in the list below the join box without
+    // the user having to F5. Fire-and-forget — failure here is fine
+    // because the success toast is already shown.
+    refreshCampaigns?.();
   }
 
   return (
@@ -104,7 +112,22 @@ function CampaignsContent() {
     return <CampaignDashboard campaign={selected} onBack={() => navigate('/campaigns')} />;
   }
 
-  return <CampaignList onSelect={c => navigate('/campaigns/' + c.id)} />;
+  // v2.338.0 — fix: Pro users couldn't join campaigns by code.
+  // Pre-v2.338, JoinCampaignByCode was only rendered on the non-Pro
+  // branch of the page root (free-tier upsell screen). Pro users —
+  // including DMs who also play in OTHER DMs' campaigns, and paying
+  // players — landed straight on CampaignList with no join affordance,
+  // so the only way for a Pro account to enter a foreign campaign was
+  // to be email-invited by the DM. The join code box is the canonical
+  // join path; it belongs on every authenticated user's campaigns
+  // page above their list. Free-tier users still see it (rendered in
+  // the page root below) — this just makes it appear for Pro too.
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
+      <JoinCampaignByCode />
+      <CampaignList onSelect={c => navigate('/campaigns/' + c.id)} />
+    </div>
+  );
 }
 
 // ── Page root ────────────────────────────────────────────────────────────────
