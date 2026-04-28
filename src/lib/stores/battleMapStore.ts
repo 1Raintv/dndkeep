@@ -200,6 +200,25 @@ interface BattleMapStore {
     directionWorldX?: number;
     directionWorldY?: number;
   } | null;
+  /** v2.344.0 — Single-target spell range overlay. Set by the spell
+   *  picker for non-AoE spells with a numeric range, drawn by the map
+   *  as a faint circle around the caster's token. Distinct from
+   *  aoePreview (which represents the spell's AREA OF EFFECT) — the
+   *  range overlay represents how far the caster can REACH to apply
+   *  the spell to a single target. Both can be active simultaneously
+   *  in theory (Self-with-radius spells like Spirit Guardians), in
+   *  which case the AoE ring sits inside / around the range ring.
+   *
+   *  centerWorldX/Y are pre-resolved to caster's token cell center.
+   *  rangeFt is the spell's range from the SRD (60ft for Eldritch
+   *  Blast, 30ft for Cure Wounds, 120ft for Fireball, etc.). When
+   *  null, the renderer skips the overlay (Self / Sight / Special
+   *  spells have no usable circle). */
+  rangePreview: {
+    centerWorldX: number;
+    centerWorldY: number;
+    rangeFt: number;
+  } | null;
 
   addToken: (token: Token) => void;
   updateTokenPosition: (id: string, x: number, y: number) => void;
@@ -249,6 +268,14 @@ interface BattleMapStore {
       directionWorldY?: number;
     } | null,
   ) => void;
+  /** v2.344.0 — Single-target spell range setter. Pass null to clear. */
+  setRangePreview: (
+    p: {
+      centerWorldX: number;
+      centerWorldY: number;
+      rangeFt: number;
+    } | null,
+  ) => void;
 }
 
 export const useBattleMapStore = create<BattleMapStore>((set) => ({
@@ -261,6 +288,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   currentSceneId: null,
   loading: false,
   aoePreview: null,
+  rangePreview: null,
 
   addToken: (token) =>
     set((s) => ({ tokens: { ...s.tokens, [token.id]: token } })),
@@ -398,7 +426,10 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
         // v2.342.0 — clear AoE preview on scene change so a stale
         // ring from one scene doesn't bleed into the next.
         aoePreview: null,
+        // v2.344.0 — same for range preview.
+        rangePreview: null,
       };
     }),
   setAoePreview: (p) => set({ aoePreview: p }),
+  setRangePreview: (p) => set({ rangePreview: p }),
 }));

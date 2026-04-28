@@ -40,6 +40,8 @@ import {
   type AoeShape,
   type ParticipantPosition,
 } from '../../lib/battleMapGeometry';
+// v2.344.0 — single-target range visualization + out-of-range flagging.
+import { parseSpellRange, resolveRangeFt } from '../../lib/spellRange';
 import { logAction } from '../shared/ActionLog';
 import type { SpellData, CombatParticipant, Character } from '../../types';
 
@@ -161,6 +163,40 @@ export default function SpellTargetPickerModal({
     });
     return () => { setAoePreview(null); };
   }, [open, autoTargetable, centerId, casterParticipantId, positions, gridSize, aoeSize, aoeShape, setAoePreview]);
+
+  // v2.344.0 — push the SINGLE-TARGET range circle to the map. Active
+  // for any spell with a numeric range (parsed from spell.range), drawn
+  // as a faint circle around the caster's token. Distinct from the AoE
+  // overlay above — the range circle shows REACH; the AoE overlay shows
+  // the SHAPE OF EFFECT. They can coexist on emanation spells (Spirit
+  // Guardians, Spirit Shroud — Self with a radius rider): the range
+  // circle is centered on caster with radius=0 (collapses to inner cell
+  // dot only), and the AoE ring shows the actual emanation radius.
+  //
+  // Cleared when the modal closes or the caster's position can't be
+  // resolved (caster not on this scene's map). Special-range spells
+  // (Sight, Unlimited, Special) skip the overlay entirely so we don't
+  // paint a misleading "30000ft" giant circle.
+  const setRangePreview = useBattleMapStore(s => s.setRangePreview);
+  const parsedRange = parseSpellRange(spell.range);
+  const rangeFt = resolveRangeFt(parsedRange);
+  useEffect(() => {
+    if (!open || !casterParticipantId || !positions || rangeFt == null) {
+      setRangePreview(null);
+      return;
+    }
+    const casterPos = positions.get(casterParticipantId);
+    if (!casterPos) {
+      setRangePreview(null);
+      return;
+    }
+    setRangePreview({
+      centerWorldX: casterPos.col * gridSize + gridSize / 2,
+      centerWorldY: casterPos.row * gridSize + gridSize / 2,
+      rangeFt,
+    });
+    return () => { setRangePreview(null); };
+  }, [open, casterParticipantId, positions, gridSize, rangeFt, setRangePreview]);
 
   // Load active encounter + participants once on open.
   useEffect(() => {
@@ -507,12 +543,34 @@ export default function SpellTargetPickerModal({
                                  : cover === 'half' ? '#60a5fa'
                                  : null;
                 const coverLabel = cover === 'three_quarters' ? '¾' : cover;
+                // v2.344.0 — distance-from-caster check. Only flags when
+                // we have positions for both AND a numeric range. The
+                // flag is informational — RAW edge cases (e.g. "you can
+                // see the target" being more permissive than grid math)
+                // mean we shouldn't HARD block; we just dim the row and
+                // surface the distance so the player knows. If they're
+                // sure it's reachable they tick the box anyway.
+                let outOfRange = false;
+                let distanceFt: number | null = null;
+                if (positions && casterParticipantId && rangeFt != null && rangeFt > 0) {
+                  const casterPos = positions.get(casterParticipantId);
+                  const targetPos = positions.get(p.id);
+                  if (casterPos && targetPos) {
+                    const cells = Math.max(
+                      Math.abs(casterPos.row - targetPos.row),
+                      Math.abs(casterPos.col - targetPos.col),
+                    );
+                    distanceFt = cells * 5;
+                    outOfRange = distanceFt > rangeFt;
+                  }
+                }
                 return (
                   <label key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 8px', borderRadius: 5,
                     background: checked ? 'rgba(167,139,250,0.15)' : 'transparent',
                     cursor: 'pointer', fontSize: 12,
+                    opacity: outOfRange ? 0.55 : 1,
                   }}>
                     <input
                       type="checkbox"
@@ -532,6 +590,17 @@ export default function SpellTargetPickerModal({
                         · {p.participant_type}
                       </span>
                     </span>
+                    {outOfRange && (
+                      <span title={`${distanceFt} ft away — outside spell range (${rangeFt} ft)`} style={{
+                        fontSize: 9, fontWeight: 800,
+                        padding: '1px 5px', borderRadius: 3,
+                        background: 'rgba(245,158,11,0.18)', color: '#fbbf24',
+                        border: '1px solid rgba(245,158,11,0.45)',
+                        textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+                      }}>
+                        {distanceFt}ft · OOR
+                      </span>
+                    )}
                     {cover && coverColor && (
                       <span title={`Cover (wall-derived): ${cover}`} style={{
                         fontSize: 9, fontWeight: 800,

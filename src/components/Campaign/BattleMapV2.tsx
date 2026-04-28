@@ -1512,6 +1512,76 @@ function VisionLayer(props: {
     ring.visible = true;
   }, [aoePreview, gridSizePx]);
 
+  // v2.344.0 — single-target spell range overlay.
+  //
+  // Reads battleMapStore.rangePreview. When the spell picker is open
+  // for a non-AoE spell with a numeric range, the picker writes the
+  // caster's position + range to the store; this effect draws a
+  // dashed cyan circle around the caster's token marking the reach
+  // boundary. Distinct visually from the gold AoE ring (which uses
+  // solid stroke + translucent fill) so the two read differently
+  // when both are active simultaneously — e.g. Spirit Guardians
+  // (Self emanation: AoE ring) cast with a 30ft range still shows
+  // the caster's general targeting reach as a separate concept.
+  //
+  // Color: cyan (0x60a5fa) — the same hue used elsewhere for
+  // informational/reach UI (cover indicators, etc.). Distinct from
+  // the gold AoE ring (selection / damage area) and from the
+  // green/amber/red drag preview (movement budget).
+  //
+  // Special-range spells (Self, Sight, Unlimited) skip the overlay —
+  // the picker pushes null in those cases, so we just hide.
+  const rangePreview = useBattleMapStore(s => s.rangePreview);
+  const rangeRingRef = useRef<Graphics | null>(null);
+  useEffect(() => {
+    if (!viewport) return;
+    const ring = new Graphics();
+    ring.eventMode = 'none';
+    ring.visible = false;
+    viewport.addChild(ring);
+    rangeRingRef.current = ring;
+    return () => {
+      try {
+        if (ring.parent && !viewport.destroyed) viewport.removeChild(ring);
+        if (!ring.destroyed) ring.destroy();
+      } catch { /* viewport torn down */ }
+      rangeRingRef.current = null;
+    };
+  }, [viewport]);
+
+  useEffect(() => {
+    const ring = rangeRingRef.current;
+    if (!ring || ring.destroyed) return;
+    if (!rangePreview || rangePreview.rangeFt <= 0) {
+      ring.visible = false;
+      return;
+    }
+    const radiusPx = (rangePreview.rangeFt / 5) * gridSizePx;
+    ring.clear();
+    // Dashed cyan stroke. PIXI v8 has no native dashed-circle helper,
+    // so we segment the perimeter into ~24 arcs with alternating
+    // visibility — same trick as the v2.340 drag-preview path. At
+    // typical zoom this reads as a tasteful broken ring.
+    const SEGMENTS = 48;
+    const ON = 2;   // arcs drawn
+    const OFF = 1;  // arcs skipped
+    ring.setStrokeStyle({ color: 0x60a5fa, width: 2, alpha: 0.75 });
+    for (let i = 0; i < SEGMENTS; i++) {
+      const cycle = i % (ON + OFF);
+      if (cycle >= ON) continue;
+      const a0 = (i / SEGMENTS) * Math.PI * 2;
+      const a1 = ((i + 1) / SEGMENTS) * Math.PI * 2;
+      const x0 = rangePreview.centerWorldX + Math.cos(a0) * radiusPx;
+      const y0 = rangePreview.centerWorldY + Math.sin(a0) * radiusPx;
+      const x1 = rangePreview.centerWorldX + Math.cos(a1) * radiusPx;
+      const y1 = rangePreview.centerWorldY + Math.sin(a1) * radiusPx;
+      ring.moveTo(x0, y0);
+      ring.lineTo(x1, y1);
+    }
+    ring.stroke();
+    ring.visible = true;
+  }, [rangePreview, gridSizePx]);
+
   // Recompute fog whenever inputs change. We rebuild the scratch
   // container, render it to the RT, and let the sprite redisplay.
   // v2.267.0 — gate is fogActive (was isDM) so the DM's preview also
