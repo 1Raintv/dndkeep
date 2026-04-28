@@ -6660,6 +6660,50 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     vpRef.current.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
   }, [dims.width, dims.height, WORLD_WIDTH, WORLD_HEIGHT]);
 
+  // v2.345.0 — Free-aim direction picker for cone/line spell targeting.
+  //
+  // When the spell picker activates direction-pick mode, this effect
+  // attaches a one-shot click listener on the canvas. The click is
+  // converted to world-pixel coords via vpRef.current.toWorld(),
+  // written to store.directionPick.result, and direction-pick mode is
+  // auto-deactivated. The picker reads the result on its next render.
+  //
+  // Capture phase + stopImmediatePropagation: critical. The map has
+  // many click consumers (tokens, walls, drawing tools); without
+  // capture-phase intercept a click on a token would also trigger
+  // token-click. Direction-pick is "where on the canvas, ignore what's
+  // there" — we win the race and stop propagation.
+  //
+  // CSS cursor flips to crosshair while active so the player has a
+  // clear "click to aim" affordance; restored on deactivate.
+  const directionPickActiveStore = useBattleMapStore(s => s.directionPick.active);
+  const setDirectionPickResultStore = useBattleMapStore(s => s.setDirectionPickResult);
+  const setDirectionPickActiveStore = useBattleMapStore(s => s.setDirectionPickActive);
+  useEffect(() => {
+    if (!canvasEl || !directionPickActiveStore) return;
+    const prevCursor = canvasEl.style.cursor;
+    canvasEl.style.cursor = 'crosshair';
+    function onClick(e: MouseEvent) {
+      const vp = vpRef.current;
+      if (!canvasEl || !vp) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPoint = vp.toWorld(screenX, screenY);
+      setDirectionPickResultStore({ worldX: worldPoint.x, worldY: worldPoint.y });
+      setDirectionPickActiveStore(false);
+    }
+    canvasEl.addEventListener('click', onClick, true);
+    return () => {
+      if (canvasEl) {
+        canvasEl.removeEventListener('click', onClick, true);
+        canvasEl.style.cursor = prevCursor;
+      }
+    };
+  }, [canvasEl, directionPickActiveStore, setDirectionPickResultStore, setDirectionPickActiveStore]);
+
   // v2.239.0 — Pan-to-token. Click a PartyVitalsBar card → camera
   // animates to that PC's linked token on the current scene. Lifts
   // the vitals bar from "info display" to "navigation control" with

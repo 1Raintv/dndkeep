@@ -219,6 +219,24 @@ interface BattleMapStore {
     centerWorldY: number;
     rangeFt: number;
   } | null;
+  /** v2.345.0 — Free-aim direction picker. When `active` is true, the
+   *  map intercepts the next canvas click and writes the click's
+   *  world-pixel coordinates to `result`. The spell picker reads the
+   *  result, uses it as the direction toward-point for cone/line AoE
+   *  shapes, then clears `active` (which also clears `result` on next
+   *  set). Lets the player aim a cone or line at any cell — including
+   *  empty corridors — instead of being forced to pick a target
+   *  participant.
+   *
+   *  Single-shot: once `result` is non-null the map stops listening
+   *  and goes back to normal click handling. The modal is responsible
+   *  for clearing both flags after consuming `result`. If the player
+   *  cancels (closes the modal mid-pick), the modal sets active=false
+   *  with a null result so no stray click is captured later. */
+  directionPick: {
+    active: boolean;
+    result: { worldX: number; worldY: number } | null;
+  };
 
   addToken: (token: Token) => void;
   updateTokenPosition: (id: string, x: number, y: number) => void;
@@ -276,6 +294,11 @@ interface BattleMapStore {
       rangeFt: number;
     } | null,
   ) => void;
+  /** v2.345.0 — Free-aim direction picker. Activate to capture next
+   *  canvas click; clear (active=false) to abort or after consuming
+   *  the result. */
+  setDirectionPickActive: (active: boolean) => void;
+  setDirectionPickResult: (result: { worldX: number; worldY: number } | null) => void;
 }
 
 export const useBattleMapStore = create<BattleMapStore>((set) => ({
@@ -289,6 +312,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   loading: false,
   aoePreview: null,
   rangePreview: null,
+  directionPick: { active: false, result: null },
 
   addToken: (token) =>
     set((s) => ({ tokens: { ...s.tokens, [token.id]: token } })),
@@ -428,8 +452,14 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
         aoePreview: null,
         // v2.344.0 — same for range preview.
         rangePreview: null,
+        // v2.345.0 — same for direction-pick state.
+        directionPick: { active: false, result: null },
       };
     }),
   setAoePreview: (p) => set({ aoePreview: p }),
   setRangePreview: (p) => set({ rangePreview: p }),
+  setDirectionPickActive: (active) =>
+    set((s) => ({ directionPick: { active, result: active ? null : s.directionPick.result } })),
+  setDirectionPickResult: (result) =>
+    set((s) => ({ directionPick: { ...s.directionPick, result } })),
 }));

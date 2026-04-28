@@ -129,40 +129,100 @@ export default function SpellTargetPickerModal({
   // sphere-only at the moment, so the visual matches the actual
   // selection — both will upgrade together when shaped AoE lands).
   const setAoePreview = useBattleMapStore(s => s.setAoePreview);
+
+  // v2.345.0 — free-aim direction picker support.
+  //
+  // When the spell shape is cone or line, the player can choose to
+  // aim at any cell on the map (not just at a target participant).
+  // The flow:
+  //   1. Player clicks "Aim on map" in the picker.
+  //   2. Picker activates `directionPick` in the store. Modal backdrop
+  //      goes pointer-transparent so the click reaches the canvas.
+  //   3. Map captures the click, writes worldX/Y to `directionPick.result`,
+  //      auto-deactivates.
+  //   4. Picker reads the result here, stashes it in freeAimWorld for
+  //      use as the AoE direction-toward, and clears the store result.
+  //   5. AoE preview useEffect picks up freeAimWorld and routes around
+  //      the participant-derived direction.
+  //
+  // Player can re-aim or fall back to participant-based direction by
+  // clicking "Aim on map" again, or selecting a center participant.
+  const directionPickResult = useBattleMapStore(s => s.directionPick.result);
+  const directionPickActive = useBattleMapStore(s => s.directionPick.active);
+  const setDirectionPickActive = useBattleMapStore(s => s.setDirectionPickActive);
+  const setDirectionPickResult = useBattleMapStore(s => s.setDirectionPickResult);
+  const [freeAimWorld, setFreeAimWorld] = useState<{ x: number; y: number } | null>(null);
+  // Consume any direction-pick result that lands while we're open.
   useEffect(() => {
-    if (!open || !autoTargetable || !centerId || !positions) {
+    if (!open || !directionPickResult) return;
+    setFreeAimWorld({ x: directionPickResult.worldX, y: directionPickResult.worldY });
+    setDirectionPickResult(null); // consume
+  }, [open, directionPickResult, setDirectionPickResult]);
+  // Reset free-aim when the modal opens fresh.
+  useEffect(() => {
+    if (!open) {
+      setFreeAimWorld(null);
+      setDirectionPickActive(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !autoTargetable || !positions) {
       setAoePreview(null);
       return;
     }
-    const centerPos = positions.get(centerId);
-    if (!centerPos) {
-      setAoePreview(null);
-      return;
-    }
-    // v2.343.0 — shape-aware preview. For cone + line, the caster is
-    // the apex/origin and the chosen "center" is the direction target.
-    // For sphere/cylinder/cube, the chosen center IS the geometric
-    // origin and direction is unused. Mirrors the selection logic in
-    // findParticipantsInArea so the visual stays honest with the math.
     const isDirectional = aoeShape === 'cone' || aoeShape === 'line';
     const casterPos = casterParticipantId
       ? positions.get(casterParticipantId)
       : null;
-    const originPos = isDirectional && casterPos ? casterPos : centerPos;
-    const targetPos = isDirectional ? centerPos : null;
+
+    // For directional shapes, prefer the free-aim point if the player
+    // set one; otherwise fall back to the centerId participant.
+    let originWorld: { x: number; y: number } | null = null;
+    let targetWorld: { x: number; y: number } | null = null;
+
+    if (isDirectional) {
+      if (!casterPos) { setAoePreview(null); return; }
+      originWorld = {
+        x: casterPos.col * gridSize + gridSize / 2,
+        y: casterPos.row * gridSize + gridSize / 2,
+      };
+      if (freeAimWorld) {
+        targetWorld = freeAimWorld;
+      } else if (centerId) {
+        const cp = positions.get(centerId);
+        if (cp) {
+          targetWorld = {
+            x: cp.col * gridSize + gridSize / 2,
+            y: cp.row * gridSize + gridSize / 2,
+          };
+        }
+      }
+      if (!targetWorld) { setAoePreview(null); return; }
+    } else {
+      // Non-directional: sphere/cylinder/cube. Use centerId.
+      if (!centerId) { setAoePreview(null); return; }
+      const cp = positions.get(centerId);
+      if (!cp) { setAoePreview(null); return; }
+      originWorld = {
+        x: cp.col * gridSize + gridSize / 2,
+        y: cp.row * gridSize + gridSize / 2,
+      };
+    }
 
     setAoePreview({
-      centerWorldX: originPos.col * gridSize + gridSize / 2,
-      centerWorldY: originPos.row * gridSize + gridSize / 2,
+      centerWorldX: originWorld.x,
+      centerWorldY: originWorld.y,
       sizeFt: aoeSize,
       shape: aoeShape as 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line',
-      ...(targetPos ? {
-        directionWorldX: targetPos.col * gridSize + gridSize / 2,
-        directionWorldY: targetPos.row * gridSize + gridSize / 2,
+      ...(targetWorld ? {
+        directionWorldX: targetWorld.x,
+        directionWorldY: targetWorld.y,
       } : {}),
     });
     return () => { setAoePreview(null); };
-  }, [open, autoTargetable, centerId, casterParticipantId, positions, gridSize, aoeSize, aoeShape, setAoePreview]);
+  }, [open, autoTargetable, centerId, casterParticipantId, positions, gridSize, aoeSize, aoeShape, freeAimWorld, setAoePreview]);
 
   // v2.344.0 — push the SINGLE-TARGET range circle to the map. Active
   // for any spell with a numeric range (parsed from spell.range), drawn
@@ -384,9 +444,49 @@ export default function SpellTargetPickerModal({
   return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 31000,
-      background: 'rgba(0,0,0,0.75)',
+      // v2.345.0 — during direction-pick mode, the backdrop becomes
+      // pointer-transparent so canvas clicks reach the map. Backdrop
+      // also dims so the player understands the modal is "paused"
+      // waiting for their click. The inner modal panel keeps
+      // pointerEvents enabled (so the Cancel hint is clickable) but
+      // shrinks to a small floating chip at the top.
+      background: directionPickActive ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.75)',
+      pointerEvents: directionPickActive ? 'none' : 'auto',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-    }} onClick={onClose}>
+    }} onClick={directionPickActive ? undefined : onClose}>
+      {directionPickActive ? (
+        // Floating "click on map" hint chip. Pointer-events re-enabled
+        // on the chip itself so the Cancel button is clickable.
+        <div style={{
+          position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(15,23,42,0.96)',
+          border: '1px solid rgba(251,191,36,0.6)',
+          borderRadius: 8,
+          padding: '10px 18px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', gap: 12,
+          pointerEvents: 'auto',
+        }}>
+          <span style={{
+            fontSize: 13, fontWeight: 700, color: '#fbbf24',
+            fontFamily: 'var(--ff-body)',
+          }}>
+            Click on the map to aim {spell.name}…
+          </span>
+          <button
+            onClick={() => setDirectionPickActive(false)}
+            style={{
+              fontSize: 11, fontWeight: 700,
+              padding: '4px 10px', borderRadius: 4,
+              background: 'transparent', color: 'var(--t-2)',
+              border: '1px solid var(--c-border)',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
       <div onClick={e => e.stopPropagation()} style={{
         background: 'var(--c-card)', borderRadius: 14,
         border: '2px solid #a78bfa',
@@ -448,10 +548,18 @@ export default function SpellTargetPickerModal({
                     AoE Auto-Select · {aoeSize}ft {aoeShape}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <label style={{ fontSize: 11, color: 'var(--t-2)' }}>Center on:</label>
+                    <label style={{ fontSize: 11, color: 'var(--t-2)' }}>
+                      {(aoeShape === 'cone' || aoeShape === 'line') ? 'Aim at:' : 'Center on:'}
+                    </label>
                     <select
-                      value={centerId ?? ''}
-                      onChange={e => setCenterId(e.target.value || null)}
+                      value={freeAimWorld ? '' : (centerId ?? '')}
+                      onChange={e => {
+                        setCenterId(e.target.value || null);
+                        // Selecting a participant overrides any prior
+                        // free-aim point — they're mutually exclusive
+                        // ways to specify "where to aim."
+                        if (e.target.value) setFreeAimWorld(null);
+                      }}
                       style={{
                         fontSize: 11, padding: '3px 6px', borderRadius: 4,
                         border: '1px solid var(--c-border)',
@@ -459,6 +567,7 @@ export default function SpellTargetPickerModal({
                         minHeight: 0,
                       }}
                     >
+                      <option value="">— pick —</option>
                       {casterParticipantId && positions?.has(casterParticipantId) && (
                         <option value={casterParticipantId}>{character.name} (self)</option>
                       )}
@@ -468,22 +577,98 @@ export default function SpellTargetPickerModal({
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                     </select>
+                    {/* v2.345.0 — Free-aim button. Only shown for
+                        directional shapes (cone/line) where aiming at
+                        a non-participant cell is a meaningful tactical
+                        choice (clearing a corridor, hitting one enemy
+                        without grouping). */}
+                    {(aoeShape === 'cone' || aoeShape === 'line') && (
+                      <button
+                        onClick={() => {
+                          if (directionPickActive) {
+                            // Cancel a pending pick.
+                            setDirectionPickActive(false);
+                          } else {
+                            setDirectionPickActive(true);
+                            // Selecting "aim on map" overrides any
+                            // prior participant target.
+                            setCenterId(null);
+                          }
+                        }}
+                        title={directionPickActive
+                          ? 'Click anywhere on the map to set aim direction. Click here to cancel.'
+                          : 'Click on the map to aim at any cell — useful for empty corridors or single targets in a cluster.'}
+                        style={{
+                          fontSize: 10, fontWeight: 800,
+                          padding: '3px 8px', borderRadius: 4,
+                          background: directionPickActive
+                            ? 'rgba(251,191,36,0.25)'
+                            : 'rgba(96,165,250,0.12)',
+                          color: directionPickActive ? '#fbbf24' : '#60a5fa',
+                          border: directionPickActive
+                            ? '1px solid rgba(251,191,36,0.55)'
+                            : '1px solid rgba(96,165,250,0.4)',
+                          cursor: 'pointer',
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase' as const,
+                        }}
+                      >
+                        {directionPickActive ? 'Click map…' : freeAimWorld ? 'Re-aim' : 'Aim on map'}
+                      </button>
+                    )}
+                    {freeAimWorld && (
+                      <span
+                        title="Free-aim point set. Click 'Re-aim' to change, or pick a participant to override."
+                        style={{
+                          fontSize: 9, fontWeight: 800,
+                          padding: '2px 6px', borderRadius: 3,
+                          background: 'rgba(251,191,36,0.12)',
+                          color: '#fbbf24',
+                          border: '1px solid rgba(251,191,36,0.35)',
+                          letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+                        }}
+                      >
+                        Free aim
+                      </span>
+                    )}
                     <button
                       onClick={() => {
-                        if (!centerId || !positions) return;
-                        const centerPos = positions.get(centerId);
-                        if (!centerPos) return;
+                        if (!positions) return;
                         // v2.343.0 — shape-aware. For cone + line, the
                         // caster is the apex/origin and the chosen
                         // "center" is the direction target. Sphere/
                         // cylinder/cube treat the chosen center as the
                         // origin directly.
+                        // v2.345.0 — free-aim direction overrides the
+                        // participant-derived "toward" for cone/line
+                        // when freeAimWorld is set. We convert it back
+                        // to a row/col cell for the selection math
+                        // (which works in grid coords).
                         const casterPos = casterParticipantId
                           ? positions.get(casterParticipantId)
                           : null;
                         const isDirectional = aoeShape === 'cone' || aoeShape === 'line';
-                        const origin = isDirectional && casterPos ? casterPos : centerPos;
-                        const toward = isDirectional ? centerPos : null;
+                        let origin: ParticipantPosition | null = null;
+                        let toward: ParticipantPosition | null = null;
+                        if (isDirectional) {
+                          if (!casterPos) return;
+                          origin = casterPos;
+                          if (freeAimWorld) {
+                            toward = {
+                              row: Math.floor(freeAimWorld.y / gridSize),
+                              col: Math.floor(freeAimWorld.x / gridSize),
+                            };
+                          } else if (centerId) {
+                            const cp = positions.get(centerId);
+                            if (cp) toward = cp;
+                          }
+                          if (!toward) return;
+                        } else {
+                          if (!centerId) return;
+                          const cp = positions.get(centerId);
+                          if (!cp) return;
+                          origin = cp;
+                        }
                         const matches = findParticipantsInArea(
                           participants.map(p => ({
                             id: p.id,
@@ -501,7 +686,13 @@ export default function SpellTargetPickerModal({
                         );
                         setPicked(new Set(matches.map(m => m.participant.id)));
                       }}
-                      disabled={!centerId || !positions?.has(centerId ?? '')}
+                      disabled={
+                        !positions ||
+                        ((aoeShape === 'cone' || aoeShape === 'line')
+                          ? (!casterParticipantId || (!freeAimWorld && !centerId))
+                          : !centerId
+                        )
+                      }
                       style={{
                         fontSize: 11, fontWeight: 700, padding: '4px 10px',
                         borderRadius: 4,
@@ -663,6 +854,7 @@ export default function SpellTargetPickerModal({
           </button>
         </div>
       </div>
+      )}
     </div>,
     document.body,
   );
