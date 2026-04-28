@@ -43,7 +43,12 @@ export function rollInitiativeFor(dexMod: number, bonus = 0): {
 // ─── Seed participants from campaign sources ─────────────────────
 
 export interface SeedSource {
-  type: 'character' | 'monster' | 'npc';
+  // v2.352.0 — collapsed to align with combat_participants.participant_type
+  // CHECK constraint ('character' | 'creature' since v2.350). Legacy
+  // 'monster'/'npc' values are accepted in the type union for any in-flight
+  // callers that haven't been updated, but seeds should write 'creature'
+  // for everything that isn't a character — the DB CHECK rejects the others.
+  type: 'character' | 'creature' | 'monster' | 'npc';
   entityId: string;
   name: string;
   ac: number | null;
@@ -96,7 +101,7 @@ export function npcToSeed(n: {
   dex?: number; speed?: number;
 }, hiddenFromPlayers = false): SeedSource {
   return {
-    type: 'npc',
+    type: 'creature',
     entityId: n.id,
     name: n.name,
     ac: n.ac ?? null,
@@ -136,7 +141,8 @@ export async function addParticipantToEncounter(
   const row = {
     encounter_id: encounterId,
     campaign_id: campaignId,
-    participant_type: seed.type,
+    // v2.352.0 — normalize legacy 'monster'/'npc' to 'creature'.
+    participant_type: seed.type === 'character' ? 'character' : 'creature',
     entity_id: seed.entityId,
     name: seed.name,
     initiative,
@@ -201,7 +207,7 @@ export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSo
   const laList = m.legendary_actions ?? [];
   const hasLa = laList.length > 0;
   return {
-    type: 'monster',
+    type: 'creature',
     entityId: m.id,
     name: m.name,
     ac: m.ac ?? null,
@@ -281,7 +287,10 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
     return {
       encounter_id: encounter.id,
       campaign_id: opts.campaignId,
-      participant_type: s.type,
+      // v2.352.0 — normalize legacy 'monster'/'npc' to 'creature' to
+      // match the v2.350 CHECK constraint. Without this, any caller
+      // still passing legacy seed types would 500 the insert.
+      participant_type: s.type === 'character' ? 'character' : 'creature',
       entity_id: s.entityId,
       name: s.name,
       initiative,
