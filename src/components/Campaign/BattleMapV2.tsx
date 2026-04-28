@@ -3194,6 +3194,18 @@ function TokenLayer(props: {
   // (RLS strips them at SELECT), so the alpha cue only ever applies
   // on the DM surface — players would never see a faded token.
   isDM?: boolean;
+  // v2.358.0 — DM-only token-move undo. Pre-v2.358 useUndoRedo
+  // explicitly excluded tokens because of multi-user drag races,
+  // but DM-only undo on the DM's own token moves is safe — only one
+  // user is moving the token. Player tokens still don't record (the
+  // commit path checks isDM before calling this).
+  recordUndoable?: (action: import('../../lib/hooks/useUndoRedo').UndoableAction) => void;
+  // v2.358.0 — Token id currently selected by left-click. TokenLayer
+  // renders a thin cyan ring around this token to indicate selection.
+  // Distinct from activeTokenInfo.tokenId (gold ring, driven by
+  // initiative) — both can be visible simultaneously when the DM
+  // selects a non-active token.
+  selectedTokenId?: string | null;
   // v2.339.0 — BG3 turn UX. When combat is active, this carries the
   // token id of the participant whose turn it is + their movement
   // budget so the renderer can stamp a gold pulse outline + an
@@ -3228,11 +3240,18 @@ function TokenLayer(props: {
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, activeTokenInfo,
+    recordUndoable, selectedTokenId,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
   const setDragging = useBattleMapStore(s => s.setDragging);
   const remoteDragLocks = useBattleMapStore(s => s.remoteDragLocks);
+
+  // v2.358.0 — recordUndoable mirrored into a ref so the drag-end
+  // closure (attached once per token at mount) can read the latest
+  // value without re-wiring listeners. Same pattern as ruler/wall/etc.
+  const recordUndoableRef = useRef(recordUndoable);
+  useEffect(() => { recordUndoableRef.current = recordUndoable; }, [recordUndoable]);
 
   // v2.218: pointerdown is attached once per token; to read the
   // current rulerActive value without re-wiring listeners, mirror it
@@ -3309,6 +3328,12 @@ function TokenLayer(props: {
     turnRing: Graphics | null;
     movementBadge: Text | null;
     movementBadgeBg: Graphics | null;
+    // v2.358.0 — Selection ring. Thin cyan outline rendered when the
+    // token is the user's currently-selected token (left-click select,
+    // not initiative). Lazy-created like turnRing/movementBadge —
+    // null until the token first becomes selected, .visible toggled
+    // thereafter.
+    selectionRing: Graphics | null;
     // v2.341.0 — Action / Bonus / Reaction pip indicators. A small
     // 3-dot strip rendered just below the movement badge above the
     // active token. Each pip is a Graphics circle: gold-filled when
@@ -3428,6 +3453,7 @@ function TokenLayer(props: {
           turnRing: null,
           movementBadge: null,
           movementBadgeBg: null,
+          selectionRing: null,
           economyPipsLayer: null,
           economyPipsRefs: null,
         };
@@ -3965,6 +3991,29 @@ function TokenLayer(props: {
         currentEntry.turnRing.visible = false;
       }
 
+      // ── Selection ring (v2.358.0) ──────────────────────────────────
+      // Drawn when this token is the user's currently-selected token
+      // (left-click select). Cyan, thin, outside the active-turn ring
+      // so both can read simultaneously without visual collision.
+      const isSelected = selectedTokenId === token.id;
+      if (isSelected) {
+        if (!currentEntry.selectionRing) {
+          const ring = new Graphics();
+          // First child so it sits below the circle (reads as a halo).
+          // Using addChildAt(0) places it under the token sprite/circle.
+          container.addChildAt(ring, 0);
+          currentEntry.selectionRing = ring;
+        }
+        const ring = currentEntry.selectionRing;
+        ring.clear();
+        ring.setStrokeStyle({ color: 0x67e8f9, width: 1.5, alpha: 0.9 });
+        ring.circle(0, 0, r + 9);
+        ring.stroke();
+        ring.visible = true;
+      } else if (currentEntry.selectionRing) {
+        currentEntry.selectionRing.visible = false;
+      }
+
       // ── Movement badge ─────────────────────────────────────────────
       if (isActiveTurn) {
         const badgeY = -(r + 18); // sits just above the token
@@ -4109,7 +4158,7 @@ function TokenLayer(props: {
         currentEntry.economyPipsLayer.visible = false;
       }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap, activeTokenInfo]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap, activeTokenInfo, selectedTokenId]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -4424,6 +4473,32 @@ function TokenLayer(props: {
                 console.error('[BattleMapV2] logMovement threw', err);
               }
             }
+            // v2.358.0 — Record token-move undo (DM only).
+            // User feedback: "if the character moved into a incorrect
+            // position for the dm it should be in their log in the
+            // bottom right corner." Capture the move before/after so
+            // a single Ctrl-Z (or the floating Undo Last Move button)
+            // restores the original position. Skipped for player drags
+            // since the multi-user race concerns useUndoRedo flagged
+            // still apply to player tokens.
+            if (isDM) {
+              const tokenId = drag.id;
+              const fromX = drag.originX;
+              const fromY = drag.originY;
+              const toX = clampedX;
+              const toY = clampedY;
+              recordUndoableRef.current?.({
+                label: 'move token',
+                forward: async () => {
+                  useBattleMapStore.getState().updateTokenPosition(tokenId, toX, toY);
+                  await tokensApi.updateTokenPos(tokenId, toX, toY);
+                },
+                backward: async () => {
+                  useBattleMapStore.getState().updateTokenPosition(tokenId, fromX, fromY);
+                  await tokensApi.updateTokenPos(tokenId, fromX, fromY);
+                },
+              });
+            }
           };
           commit().catch(err => console.error('[BattleMapV2] drop commit threw', err));
         }
@@ -4489,8 +4564,14 @@ function TokenContextMenu(props: {
   // v2.222 — when set, the menu shows a "View Character Sheet" item
   // for tokens linked to a character. Caller handles the navigate.
   onOpenCharacter?: (characterId: string) => void;
+  // v2.358.0 — opens the quick panel that pre-v2.358 left-click used
+  // to open auto. Caller resolves which panel based on token type
+  // (PC quick panel for characterId, NPC quick panel for npcId, or
+  // bare context menu for unlinked). Lets users still get to the
+  // panel after we made plain left-click into "just select."
+  onOpenQuickPanel?: (tokenId: string) => void;
 }) {
-  const { state, isDM, onClose, onRequestUpload, onOpenCharacter } = props;
+  const { state, isDM, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
@@ -4626,6 +4707,27 @@ function TokenContextMenu(props: {
       <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
         {token.name || 'Token'}
       </div>
+      {/* v2.358.0 — Open Quick Panel. Restores the pre-v2.358 left-
+          click behavior as an explicit menu action. Renders for any
+          token that has a quick panel — PCs and NPCs both. Cyan
+          palette to distinguish from the purple "View Character
+          Sheet" navigate-away action below. */}
+      {onOpenQuickPanel && (token.characterId || token.npcId) && (
+        <div
+          style={{
+            ...itemStyle,
+            color: '#67e8f9',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(103,232,249,0.18)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          onClick={() => {
+            onOpenQuickPanel(state.tokenId);
+            onClose();
+          }}
+        >
+          Open Quick Panel
+        </div>
+      )}
       {/* v2.222 — quick-jump to the linked character sheet. Only
           renders when the token is bound to a character via
           characterId AND the parent provided a navigate handler.
@@ -5997,6 +6099,31 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   }, [mapFullscreen]);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // v2.358.0 — Token selection (left-click without drag). Local-only
+  // UI state; not persisted, not sync'd across users. Shows a thin
+  // cyan ring around the selected token to distinguish from the
+  // active-turn gold ring (which is sync'd / driven by initiative).
+  // Clicking a different token replaces selection; Escape clears it;
+  // right-click → "Open Quick Panel" is how the DM accesses the
+  // character/NPC quick panel that left-click used to open before
+  // this ship.
+  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  // Escape clears selection. Bails on text inputs so a user typing
+  // in the rename modal can press Escape to dismiss the modal
+  // without also wiping their selection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target;
+      if (t instanceof HTMLElement) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
+      }
+      setSelectedTokenId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // v2.226 — left-click-without-drag opens the TokenQuickPanel for
   // character-linked tokens. State holds the tokenId + screen pos
   // so the panel can be anchored near the click.
@@ -6083,7 +6210,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // (history resets on scene switch). Bound to Cmd-Z / Cmd-Shift-Z
   // by the hook's own keyboard listener; we just consume `record`
   // and pass it down to TextLayer + DrawingLayer.
-  const { record: recordUndoable } = useUndoRedo(currentScene?.id ?? null);
+  // v2.358.0 — also consume `undo` + `canUndo` + `lastActionLabel`
+  // for the floating "Undo Last Move" button rendered in the bottom-
+  // right corner of the map. Per user request: undo affordance lives
+  // in the log corner, not just behind a keybind.
+  const { record: recordUndoable, undo: undoLast, canUndo, lastActionLabel } = useUndoRedo(currentScene?.id ?? null);
 
   // Derive world dimensions from the current scene (fallback to
   // defaults so the empty-state screen still renders a reasonable
@@ -6620,17 +6751,19 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (mapFullscreen) {
         h = Math.max(400, viewportH - 8);
       } else {
-        // v2.356.0 — bumped 0.92 → 0.96 of viewport height. User
-        // feedback after v2.356: still small. Without measurements of
-        // their actual browser viewport I can't tune further without
-        // guessing. v2.357 leaves this at 0.96 and prioritizes the
-        // verifiable movement-coord bug fix. If the map still reads as
-        // small post-deploy, the next move is either (a) push to a
-        // collapsed-header layout when on the map tab, or (b) make
-        // mapFullscreen the default for the map tab. Both are real
-        // changes — not guesswork — once we have the measurements.
-        const targetH = Math.floor(viewportH * 0.96);
-        h = Math.max(400, Math.min(targetH, 1800));
+        // v2.358.0 — Bumped 0.96 → 0.99 of viewport. User has flagged
+        // "still small" twice after v2.356/v2.357 raises. Combined
+        // with the v2.358 negative top margin extension on
+        // .battlemap-fullwidth (sp-6 → sp-8), the canvas now reaches
+        // ~99% of viewport height before any chrome buffer kicks in.
+        // Cap raised 1800 → 2200 so 4K (2160p) displays don't bottle-
+        // neck on the cap. Buffer for the InitiativeStrip (~64px) is
+        // intentionally absorbed into the 1% — when in combat, the
+        // strip overlays the bottom of the canvas, hiding ~1 row of
+        // cells. That tradeoff is acceptable; the strip itself is
+        // collapsible via its own toolbar button.
+        const targetH = Math.floor(viewportH * 0.99);
+        h = Math.max(400, Math.min(targetH, 2200));
       }
       setDims({ width: w, height: h });
     };
@@ -7039,6 +7172,42 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       return;
     }
     showToast(`Cleared ${deleted} drawing${deleted === 1 ? '' : 's'}.`, 'success');
+  }, [currentScene, showToast]);
+
+  // v2.358.0 — Clear all walls. Companion to clearAllDrawings.
+  // User feedback: "The walls that are being drawn and then being
+  // erased are still there in affecting the tokens." This happens
+  // when per-wall eraser deletes hit RLS errors or network issues —
+  // the local store updates optimistically but the DB row stays, so
+  // the server-side wall-collision trigger keeps blocking movement.
+  // Bulk delete from the DB side guarantees the trigger has nothing
+  // to block against.
+  const clearAllWalls = useCallback(async () => {
+    if (!currentScene) return;
+    // Count locally for the confirm message. We may be missing some
+    // server-side rows (the bug we're fixing), so the confirm count is
+    // a lower bound — we'll report the actual server-side delete count
+    // after the fact.
+    const localCount = Object.values(useBattleMapStore.getState().walls)
+      .filter(w => w.sceneId === currentScene.id).length;
+    const msg = localCount === 0
+      ? 'Local view shows no walls, but the server may have stale ones blocking movement. Clear them anyway?'
+      : `Delete all ${localCount} wall${localCount === 1 ? '' : 's'} on this scene? Drawings, text, and tokens are not affected.`;
+    if (!window.confirm(msg)) return;
+    // Optimistic local clear so the canvas updates immediately.
+    const store = useBattleMapStore.getState();
+    const ids = Object.values(store.walls)
+      .filter(w => w.sceneId === currentScene.id)
+      .map(w => w.id);
+    for (const id of ids) store.removeWall(id);
+    // Server commit. The bulk delete also catches any stale rows the
+    // local store didn't know about (the v2.358 fix's whole point).
+    const deleted = await wallsApi.clearSceneWalls(currentScene.id);
+    if (deleted < 0) {
+      showToast('Failed to clear walls on the server. Movement may still be blocked.', 'error');
+      return;
+    }
+    showToast(`Cleared ${deleted} wall${deleted === 1 ? '' : 's'}.`, 'success');
   }, [currentScene, showToast]);
 
   // v2.219 — scene settings modal open state.
@@ -7823,43 +7992,21 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     setContextMenu(state);
   }, []);
 
-  // v2.232 — left-click handler. Branches on whether the token is
-  // linked to a player character:
-  //   - PC linked → rich TokenQuickPanel (HP/AC/conditions/checks/...)
-  //   - Unlinked (NPC, plain marker) → fall through to the existing
-  //     TokenContextMenu so the user gets SOMETHING (rename / resize /
-  //     recolor / upload portrait / delete). Previously did nothing,
-  //     which read as "clicking is broken." Right-click still works
-  //     for both kinds; left-click is now equivalent for unlinked.
-  // Future: when NPC roster ships (v2.234+), unlinked tokens linked
-  // to a bestiary entry will get their own quick panel with monster
-  // stat block + attack list instead of the bare context menu.
-  const handleTokenClick = useCallback((tokenId: string, screenX: number, screenY: number) => {
-    const t = useBattleMapStore.getState().tokens[tokenId];
-    if (!t) return;
-    if (t.characterId) {
-      const char = props.playerCharacters.find(c => c.id === t.characterId);
-      if (!char) {
-        // Token references a character that's no longer in the prop —
-        // probably orphaned data. Fall through to context menu so the
-        // user can at least delete the orphan.
-        setContextMenu({ tokenId, clientX: screenX, clientY: screenY });
-        return;
-      }
-      // v2.243: clear any open NPC panel so panels are mutually exclusive.
-      setClickedNpcToken(null);
-      setClickedToken({ tokenId, x: screenX, y: screenY });
-    } else if (t.npcId) {
-      // v2.243 — NPC-linked token (typically from v2.242 roster bulk-add).
-      // Opens the NPC quick panel anchored near the click.
-      setClickedToken(null);
-      setClickedNpcToken({ npcId: t.npcId, x: screenX, y: screenY });
-    } else {
-      // Truly unlinked token (manual + Add Token, or marker) — open
-      // the context menu inline.
-      setContextMenu({ tokenId, clientX: screenX, clientY: screenY });
-    }
-  }, [props.playerCharacters]);
+  // v2.358.0 — Click on a token = JUST SELECT IT. Pre-v2.358 click
+  // opened the rich TokenQuickPanel for PCs / NpcTokenQuickPanel for
+  // NPCs / TokenContextMenu for unlinked. User feedback: "if we just
+  // left click a token it should just select it and shouldn't do
+  // anything but if we right click on the token it should give us
+  // all the menu system that we currently have." Quick panels are
+  // still accessible via the right-click menu's "Open Quick Panel"
+  // item — users who want them just take the explicit extra step.
+  const handleTokenClick = useCallback((tokenId: string, _screenX: number, _screenY: number) => {
+    setSelectedTokenId(tokenId);
+    // Close any open quick panels so selection is the only active
+    // surface — keeps the canvas clean.
+    setClickedToken(null);
+    setClickedNpcToken(null);
+  }, []);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -8354,6 +8501,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onMovementBlocked={handleMovementBlocked}
                     isDM={isDM}
                     activeTokenInfo={activeTokenInfo}
+                    recordUndoable={recordUndoable}
+                    selectedTokenId={selectedTokenId}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
@@ -8601,6 +8750,40 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               }}
             >
               🧱
+            </button>
+          )}
+
+          {/* v2.358.0 — Clear All Walls button. Companion to the
+              wall tool. Bulk wipe of every wall on the current scene.
+              Critical for unsticking the "walls erased but still
+              blocking movement" failure mode where per-wall eraser
+              calls didn't reach the DB but the scene_walls table
+              still has rows the server-side collision trigger reads. */}
+          {isDM && (
+            <button
+              onClick={clearAllWalls}
+              title="Clear all walls on this scene (drawings, text, and tokens are not affected). Use this if walls you erased seem to still be blocking token movement."
+              style={{
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent',
+                border: '1px solid rgba(167,139,250,0.25)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: 'var(--t-2)',
+                fontSize: 14,
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.14)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.55)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.25)';
+              }}
+            >
+              🧱✕
             </button>
           )}
 
@@ -9099,6 +9282,22 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             onClose={() => setContextMenu(null)}
             onRequestUpload={handleRequestUpload}
             onOpenCharacter={handleOpenCharacter}
+            onOpenQuickPanel={(tokenId) => {
+              // v2.358.0 — Resolve which panel based on token type.
+              // Mirrors the pre-v2.358 handleTokenClick branching but
+              // triggered explicitly via the menu instead of on every
+              // click. Uses the menu's clientX/Y as the anchor so the
+              // panel pops near where the user right-clicked.
+              const t = useBattleMapStore.getState().tokens[tokenId];
+              if (!t) return;
+              if (t.characterId) {
+                setClickedNpcToken(null);
+                setClickedToken({ tokenId, x: contextMenu.clientX, y: contextMenu.clientY });
+              } else if (t.npcId) {
+                setClickedToken(null);
+                setClickedNpcToken({ npcId: t.npcId, x: contextMenu.clientX, y: contextMenu.clientY });
+              }
+            }}
           />
         )}
 
@@ -9238,6 +9437,47 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           characters={props.playerCharacters}
           onCharacterClick={panToCharacter}
         />
+
+        {/* v2.358.0 — Floating Undo button. User feedback: "There also
+            needs to be an undo button if the character moved into a
+            incorrect position for the dam it should be in their log
+            in the bottom right corner." Anchored bottom-right of the
+            map wrapper; visible only when there's something to undo;
+            shows the last action label so the DM knows what reverts.
+            DM-only (player tokens skip recording per the v2.358 carve-
+            out from useUndoRedo's "tokens excluded" rule). */}
+        {isDM && canUndo && (
+          <button
+            onClick={() => { undoLast(); }}
+            title="Undo the last action (Ctrl+Z / Cmd+Z)"
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              right: 12,
+              padding: '8px 14px',
+              background: 'rgba(15,16,18,0.92)',
+              border: '1px solid rgba(234,179,8,0.55)',
+              borderRadius: 'var(--r-sm, 4px)',
+              color: '#fde68a',
+              fontFamily: 'var(--ff-body)',
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+              transition: 'background 0.12s, transform 0.12s',
+              zIndex: 50,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,179,8,0.18)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.92)';
+            }}
+          >
+            ↶ Undo {lastActionLabel ? lastActionLabel : 'last action'}
+          </button>
+        )}
       </div>
     </div>
   );

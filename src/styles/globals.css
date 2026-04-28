@@ -337,13 +337,12 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .battlemap-fullwidth {
   margin-left: calc(-1 * var(--sp-8));
   margin-right: calc(-1 * var(--sp-8));
-  /* v2.356.0 — Negative top margin pulls the map wrapper up to meet
-     the tab strip directly, reclaiming the inter-tab spacing margin
-     that's wasted on a full-canvas surface. The tabs themselves still
-     render at full height; only the gap below them collapses for the
-     map tab. ~24px reclaimed at default sp-6 (which is the tab-strip
-     bottom margin in CampaignDashboard). */
-  margin-top: calc(-1 * var(--sp-6));
+  /* v2.358.0 — Bumped negative top margin sp-6 → sp-8 to reclaim
+     more vertical space, plus added a paddingBottom override on the
+     CombatProvider parent (see CampaignDashboard) so the InitiativeStrip
+     doesn't get pushed off-screen. The wrapper now reaches all the
+     way up to the bottom edge of the tab strip. */
+  margin-top: calc(-1 * var(--sp-8));
   /* The wrapper itself doesn't need padding; BattleMapV2's internal
      toolbar + canvas have their own spacing. */
   padding: 0;

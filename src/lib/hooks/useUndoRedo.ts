@@ -19,7 +19,7 @@
 // History is *not* persisted across page reloads. Same contract as
 // most desktop apps' undo stacks — a refresh is a clean slate.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface UndoableAction {
   /** Human label for debugging / future toast surfacing. Not user-facing yet. */
@@ -50,6 +50,12 @@ export function useUndoRedo(sceneId: string | null) {
   // themselves (they touch the store, which subscribes its consumers).
   const stateRef = useRef<UndoState>({ past: [], future: [] });
   const sceneRef = useRef<string | null>(null);
+  // v2.358.0 — Reactive flag + label so the parent can render a
+  // visible "Undo last <action>" button. The ref above is still the
+  // source of truth for forward/backward closures (they need the full
+  // stack); the state below is just for UI presence.
+  const [canUndo, setCanUndo] = useState(false);
+  const [lastActionLabel, setLastActionLabel] = useState<string | null>(null);
 
   // Reset history when the active scene changes. Comparing against a
   // ref so we don't reset on every re-render — only on actual scene
@@ -58,6 +64,8 @@ export function useUndoRedo(sceneId: string | null) {
     if (sceneRef.current !== sceneId) {
       sceneRef.current = sceneId;
       stateRef.current = { past: [], future: [] };
+      setCanUndo(false);
+      setLastActionLabel(null);
     }
   }, [sceneId]);
 
@@ -71,16 +79,22 @@ export function useUndoRedo(sceneId: string | null) {
     const past = [...stateRef.current.past, action];
     if (past.length > MAX_HISTORY) past.shift();
     stateRef.current = { past, future: [] };
+    setCanUndo(true);
+    setLastActionLabel(action.label);
   }, []);
 
   const undo = useCallback(async () => {
     const { past, future } = stateRef.current;
     if (past.length === 0) return false;
     const action = past[past.length - 1];
+    const newPast = past.slice(0, -1);
     stateRef.current = {
-      past: past.slice(0, -1),
+      past: newPast,
       future: [...future, action],
     };
+    // v2.358.0 — sync reactive state.
+    setCanUndo(newPast.length > 0);
+    setLastActionLabel(newPast.length > 0 ? newPast[newPast.length - 1].label : null);
     try {
       await action.backward();
     } catch (err) {
@@ -93,10 +107,14 @@ export function useUndoRedo(sceneId: string | null) {
     const { past, future } = stateRef.current;
     if (future.length === 0) return false;
     const action = future[future.length - 1];
+    const newPast = [...past, action];
     stateRef.current = {
-      past: [...past, action],
+      past: newPast,
       future: future.slice(0, -1),
     };
+    // v2.358.0 — sync reactive state.
+    setCanUndo(true);
+    setLastActionLabel(action.label);
     try {
       await action.forward();
     } catch (err) {
@@ -133,5 +151,5 @@ export function useUndoRedo(sceneId: string | null) {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
 
-  return { record, undo, redo };
+  return { record, undo, redo, canUndo, lastActionLabel };
 }

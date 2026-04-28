@@ -82,6 +82,26 @@ export async function deleteWall(id: string): Promise<boolean> {
   return true;
 }
 
+/** v2.358.0 — Bulk-clear all walls for a scene. Companion to
+ *  clearSceneDrawings (v2.356). User feedback: walls erased via the
+ *  eraser tool sometimes "stayed" — visually gone but still in the
+ *  scene_walls table, where the server-side wall-collision trigger
+ *  reads them and blocks token movement. Bulk delete from the DB
+ *  side is the unambiguous way to wipe them all in one shot.
+ *  Returns the count of rows deleted, or -1 on failure. */
+export async function clearSceneWalls(sceneId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('scene_walls')
+    .delete()
+    .eq('scene_id', sceneId)
+    .select('id');
+  if (error) {
+    console.error('[sceneWalls] clearSceneWalls failed', error);
+    return -1;
+  }
+  return (data ?? []).length;
+}
+
 /** v2.271.0 — Update a wall's mutable fields (currently only
  *  doorState; blocksSight / blocksMovement are reserved for future
  *  ships and aren't surfaced in the UI yet). RLS gates DM-only
