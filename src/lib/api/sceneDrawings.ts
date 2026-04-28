@@ -79,6 +79,30 @@ export async function createDrawing(d: SceneDrawing): Promise<SceneDrawing | nul
   return dbRowToSceneDrawing(data);
 }
 
+/** v2.356.0 — Bulk-clear all drawings for a scene. Used by the
+ *  battle map's "Clear Drawings" toolbar button so the DM can wipe
+ *  pencil annotations / lines / shapes in one shot rather than
+ *  selecting and deleting them one at a time. Walls are deliberately
+ *  separate (different concept — structural geometry, not
+ *  annotations); same with texts. Returns the count of rows deleted
+ *  for status reporting; -1 on failure. */
+export async function clearSceneDrawings(sceneId: string): Promise<number> {
+  // Two-step so we can return the count. We could also use
+  // `.delete().eq().select()` to avoid the round-trip, but Supabase's
+  // `select()` after `delete()` returns the deleted rows which is
+  // useful for the count without an extra query. Single-step:
+  const { data, error } = await supabase
+    .from('scene_drawings')
+    .delete()
+    .eq('scene_id', sceneId)
+    .select('id');
+  if (error) {
+    console.error('[sceneDrawings] clearSceneDrawings failed', error);
+    return -1;
+  }
+  return (data ?? []).length;
+}
+
 export async function deleteDrawing(id: string): Promise<boolean> {
   const { error } = await supabase
     .from('scene_drawings')

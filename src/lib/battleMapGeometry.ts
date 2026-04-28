@@ -32,6 +32,10 @@ export interface BattleMapToken {
   col: number;
   name?: string;
   character_id?: string;
+  // v2.356.0 — link to homebrew_monsters.id for creature-typed tokens.
+  // Surfaced from scene_tokens.creature_id by loadActiveBattleMap so
+  // findTokenForParticipant can ID-match instead of name-matching.
+  creature_id?: string;
   participant_id?: string;
   size?: number;
   [k: string]: unknown;
@@ -41,7 +45,10 @@ export interface BattleMapToken {
 export interface ParticipantForTokenLookup {
   id: string;
   name: string;
-  participant_type: 'character' | 'monster' | 'npc';
+  // v2.356.0 — extended with 'creature' to match the v2.350 unified
+  // participant_type. Legacy 'monster'/'npc' values still accepted for
+  // any in-flight callers; matching logic treats them all the same.
+  participant_type: 'character' | 'creature' | 'monster' | 'npc';
   entity_id?: string | null;
 }
 
@@ -106,33 +113,102 @@ export function wallCoverPoints(w: WallSegment): number {
 }
 
 /**
- * Load the active battle map for a campaign. Returns null if no active map
- * exists (common in text-only / theater-of-the-mind encounters).
+ * Load the active battle map for a campaign. Returns null if no scene
+ * exists (theater-of-the-mind campaigns).
+ *
+ * v2.356.0 — Rewritten to read from the v2 schema (`scenes` +
+ * `scene_tokens` + `scene_walls`). Pre-v2.356 this read from the
+ * legacy `battle_maps` table, which BattleMapV2 stopped keeping in
+ * sync once scene_tokens became the canonical store. That stale read
+ * is the root of the spell-range and movement-counter mis-positioning
+ * — a token placed via the v2.354 NPC tab "Place on Map" flow exists
+ * only in scene_tokens, so loadActiveBattleMap returned an empty
+ * positions map and any visual anchored on those positions either
+ * didn't render or rendered at (0,0).
+ *
+ * Active-scene selection: there's no `is_active` column on `scenes`,
+ * so we use the most recently updated scene per campaign. This
+ * matches the implicit single-scene-at-a-time convention all current
+ * production campaigns follow. Multi-scene campaigns will eventually
+ * need an explicit active flag; v2.356 leaves that for later.
  */
 export async function loadActiveBattleMap(
   campaignId: string,
 ): Promise<ActiveBattleMap | null> {
-  const { data } = await supabase
-    .from('battle_maps')
-    .select('id, tokens, grid_cols, grid_rows, grid_size, walls')
+  // 1. Pick the active scene (most recently updated).
+  const { data: scene } = await supabase
+    .from('scenes')
+    .select('id, grid_size_px, width_cells, height_cells')
     .eq('campaign_id', campaignId)
-    .eq('active', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
-  if (!data) return null;
+  if (!scene) return null;
+
+  const sceneId = scene.id as string;
+  const gridSizePx = (scene.grid_size_px as number) ?? 50;
+  const gridCols = (scene.width_cells as number) ?? 0;
+  const gridRows = (scene.height_cells as number) ?? 0;
+
+  // 2. Tokens for this scene. Convert (x, y) world pixels → (row, col)
+  //    cell indices using gridSizePx. Tokens are stored at cell-center
+  //    positions (snapped on placement + drag-end), so the row/col
+  //    derived here accurately reflects the visual cell.
+  const { data: tokenRows } = await supabase
+    .from('scene_tokens')
+    .select('id, x, y, name, character_id, creature_id, size')
+    .eq('scene_id', sceneId);
+  const tokens: BattleMapToken[] = (tokenRows ?? []).map(t => ({
+    row: Math.floor(((t.y as number) ?? 0) / gridSizePx),
+    col: Math.floor(((t.x as number) ?? 0) / gridSizePx),
+    name: (t.name as string) ?? undefined,
+    character_id: (t.character_id as string) ?? undefined,
+    // v2.356.0 — creature_id maps to the participant's entity_id for
+    // creature-typed combatants (post-v2.350 unified shape).
+    // findTokenForParticipant matches by entity_id for characters and
+    // by name for creatures; we surface both linkage fields so future
+    // matchers can prefer ID over name.
+    creature_id: (t.creature_id as string) ?? undefined,
+    size: 1, // size column is a label string; cell-occupancy unused for v1 callers
+  }));
+
+  // 3. Walls for this scene (v2 system).
+  const { data: wallRows } = await supabase
+    .from('scene_walls')
+    .select('id, x1, y1, x2, y2, blocks_sight')
+    .eq('scene_id', sceneId);
+  const walls: WallSegment[] = (wallRows ?? [])
+    .filter(w => w.blocks_sight !== false)
+    .map(w => ({
+      id: (w.id as string),
+      x1: (w.x1 as number) ?? 0,
+      y1: (w.y1 as number) ?? 0,
+      x2: (w.x2 as number) ?? 0,
+      y2: (w.y2 as number) ?? 0,
+    }));
+
   return {
-    id: data.id as string,
-    tokens: ((data.tokens ?? []) as BattleMapToken[]),
-    grid_cols: (data.grid_cols as number) ?? 0,
-    grid_rows: (data.grid_rows as number) ?? 0,
-    grid_size: (data.grid_size as number) ?? 50,
-    walls: ((data.walls ?? []) as WallSegment[]),
+    id: sceneId,
+    tokens,
+    grid_cols: gridCols,
+    grid_rows: gridRows,
+    grid_size: gridSizePx,
+    walls,
   };
 }
 
 /**
  * Find the battle-map token for a participant. Characters match by
- * `entity_id` (character_id), monsters/NPCs by case-insensitive name.
+ * `entity_id` (character_id), creatures by `entity_id` (creature_id)
+ * with a name-based fallback for legacy tokens predating v2.350.
  * Tokens without row/col are ignored.
+ *
+ * v2.356.0 — Added creature_id matching. Pre-v2.350 the only ID on
+ * a creature token was a v1 npc_id (now dropped); v2 unified onto
+ * homebrew_monsters and BattleMapToken now exposes creature_id, so
+ * we prefer ID-based matching for creatures too. The legacy
+ * name-based fallback covers any in-flight tokens whose row/col
+ * came from the v1 battle_maps table during a transitional read.
  */
 export function findTokenForParticipant(
   participant: ParticipantForTokenLookup,
@@ -143,6 +219,10 @@ export function findTokenForParticipant(
     if (participant.participant_type === 'character') {
       if (t.character_id && participant.entity_id && t.character_id === participant.entity_id) return t;
     } else {
+      // Creature path. Prefer creature_id match (post-v2.350 unified ID).
+      const creatureIdOnToken = (t as BattleMapToken & { creature_id?: string }).creature_id;
+      if (creatureIdOnToken && participant.entity_id && creatureIdOnToken === participant.entity_id) return t;
+      // Fall back to name match for legacy rows.
       if ((t.name ?? '').toLowerCase() === participant.name.toLowerCase()) return t;
     }
   }

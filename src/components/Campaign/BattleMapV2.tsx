@@ -6609,15 +6609,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (mapFullscreen) {
         h = Math.max(400, viewportH - 8);
       } else {
-        // v2.336.0 — P2: bumped 0.86 → 0.92 of viewport height. Was
-        // chosen to leave room for navigation + action bar above the
-        // canvas, but in practice 14% of a 1080p monitor (~150px) is
-        // overkill — the nav + action bar combined are ~80–100px tall.
-        // 0.92 reclaims ~75px of vertical map area while still leaving
-        // the nav fully visible. The 1400px cap still applies, so
-        // 1440p+ displays don't get a runaway-tall canvas.
-        const targetH = Math.floor(viewportH * 0.92);
-        h = Math.max(400, Math.min(targetH, 1400));
+        // v2.356.0 — bumped 0.92 → 0.96 of viewport height. User
+        // feedback: "the map is still too small. We need to enlarge
+        // that still." Above the canvas there's the campaign header
+        // (~80px) + tab strip (~40px); 4% of a 1080p viewport (~43px)
+        // is enough buffer to keep the bottom edge from clipping into
+        // the InitiativeStrip during combat. The 1400 cap also raised
+        // to 1800 so 1440p+ displays don't bottleneck on it.
+        const targetH = Math.floor(viewportH * 0.96);
+        h = Math.max(400, Math.min(targetH, 1800));
       }
       setDims({ width: w, height: h });
     };
@@ -6994,6 +6994,39 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       return next;
     });
   }, []);
+
+  // v2.356.0 — Clear all drawings on the current scene. One-shot
+  // bulk wipe for when the DM has scribbled all over the map and
+  // wants a clean slate. Walls, texts, and tokens are NOT touched —
+  // only freehand pencil, lines, rects, and circles. Confirms before
+  // committing because there's no undo for bulk delete in v2.356.
+  const clearAllDrawings = useCallback(async () => {
+    if (!currentScene) return;
+    // Count locally first so the confirm message is informative.
+    const localCount = Object.values(useBattleMapStore.getState().drawings)
+      .filter(d => d.sceneId === currentScene.id).length;
+    if (localCount === 0) {
+      showToast('No drawings to clear on this scene.', 'info');
+      return;
+    }
+    const ok = window.confirm(
+      `Delete all ${localCount} drawing${localCount === 1 ? '' : 's'} on this scene? Walls, text, and tokens are not affected.`
+    );
+    if (!ok) return;
+    // Optimistically remove from store so the canvas clears immediately.
+    const store = useBattleMapStore.getState();
+    const ids = Object.values(store.drawings)
+      .filter(d => d.sceneId === currentScene.id)
+      .map(d => d.id);
+    for (const id of ids) store.removeDrawing(id);
+    // Server commit. Returns count or -1 on failure.
+    const deleted = await drawingsApi.clearSceneDrawings(currentScene.id);
+    if (deleted < 0) {
+      showToast('Failed to clear drawings on the server. Refreshing may restore them.', 'error');
+      return;
+    }
+    showToast(`Cleared ${deleted} drawing${deleted === 1 ? '' : 's'}.`, 'success');
+  }, [currentScene, showToast]);
 
   // v2.219 — scene settings modal open state.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -8718,6 +8751,38 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               }}
             >
               🧹
+            </button>
+          )}
+          {/* v2.356.0 — Clear All Drawings button. Bulk wipe of every
+              pencil/line/rect/circle on the current scene. Confirm
+              dialog gates the action since there's no undo. Trash
+              icon distinguishes from the eraser (single-click delete);
+              same pink palette since both are drawing-tool siblings. */}
+          {isDM && (
+            <button
+              onClick={clearAllDrawings}
+              title="Clear all drawings on this scene (walls and text are not affected)"
+              style={{
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent',
+                border: '1px solid rgba(244,114,182,0.25)',
+                borderRadius: 'var(--r-sm, 4px)',
+                color: 'var(--t-2)',
+                fontSize: 16,
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(244,114,182,0.14)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.55)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
+              }}
+            >
+              🗑
             </button>
           )}
           {/* v2.236 — FX particle effects. DM only. Four kinds:
