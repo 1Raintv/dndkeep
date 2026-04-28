@@ -185,6 +185,9 @@ import NpcRosterBuilderModal from './NpcRosterBuilderModal';
 import NpcTokenQuickPanel from './NpcTokenQuickPanel';
 import * as npcRosterApi from '../../lib/api/npcRoster';
 import * as npcsApi from '../../lib/api/npcs';
+// v2.339.0 — BG3 turn UX: read currentActor from CombatContext to drive
+// the active-turn outline + movement-remaining badge on the map.
+import { useCombat } from '../../context/CombatContext';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -2934,12 +2937,23 @@ function TokenLayer(props: {
   // (RLS strips them at SELECT), so the alpha cue only ever applies
   // on the DM surface — players would never see a faded token.
   isDM?: boolean;
+  // v2.339.0 — BG3 turn UX. When combat is active, this carries the
+  // token id of the participant whose turn it is + their movement
+  // budget so the renderer can stamp a gold pulse outline + an
+  // "Xft / Yft" badge above the matching token. Null token id means
+  // either no combat OR the active actor isn't placed on this scene.
+  activeTokenInfo?: {
+    tokenId: string | null;
+    used: number;
+    max: number;
+    dashed: boolean;
+  };
 }) {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenConditionsMap,
-    onTokenClick, onMovementBlocked, isDM,
+    onTokenClick, onMovementBlocked, isDM, activeTokenInfo,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -3001,6 +3015,19 @@ function TokenLayer(props: {
     // tear it down + rebuild on conditions change rather than diff
     // child-by-child; conditions are rare and the cost is trivial.
     conditionsLayer: Container | null;
+    // v2.339.0 — BG3 turn UX overlays. Both null until first activation
+    // (token isn't the active turn) — we lazily create on first need
+    // and toggle .visible thereafter. Removing/re-adding Pixi children
+    // is more expensive than visibility toggles, and active-turn flips
+    // every few seconds during combat.
+    //   • turnRing: gold outline graphics, sibling of `circle`. Pulses
+    //     via the same rAF loop that drives lockRing.
+    //   • movementBadge: Text node above the token showing "Xft/Yft"
+    //     with a small backing pill (movementBadgeBg) for legibility
+    //     against any map background.
+    turnRing: Graphics | null;
+    movementBadge: Text | null;
+    movementBadgeBg: Graphics | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   // v2.268.0 — added originX/originY so the drop handler can validate
@@ -3108,6 +3135,9 @@ function TokenLayer(props: {
           deadFilter: null,
           deadX: null,
           conditionsLayer: null,
+          turnRing: null,
+          movementBadge: null,
+          movementBadgeBg: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -3590,8 +3620,120 @@ function TokenLayer(props: {
         container.addChild(layer);
         currentEntry.conditionsLayer = layer;
       }
+
+      // v2.339.0 — BG3 turn UX overlay (active-turn ring + movement badge).
+      //
+      // Mounted last in the per-token reconcile so the ring + badge sit
+      // above the HP bar, name label, and conditions strip in z-order.
+      // Both pieces toggle visibility based on whether THIS token is the
+      // active actor's token — created lazily on first activation, kept
+      // around so subsequent activations are just a .visible flip.
+      //
+      // The ring is sized as a full-width outline at the token radius +
+      // 4px breathing room. Stroke alpha pulses between 0.6 and 1.0 via
+      // the same rAF that drives lockRing — see "rAF" loop below.
+      // We tint the ring color based on remaining movement: gold if any
+      // movement left, red-orange if budget is fully spent. (Future v2.340
+      // will add green-yellow-red drag-preview path coloring, but the
+      // ring itself is a coarser at-a-glance signal.)
+      //
+      // The badge is a Text node with a small backing pill so it stays
+      // legible over any map texture. Positions ABOVE the token (negative
+      // Y from container origin) — far enough up that the HP bar and
+      // name label below stay uncluttered. Hidden when not the active
+      // turn, redrawn on movement-spent change.
+      const isActiveTurn = !!activeTokenInfo && activeTokenInfo.tokenId === token.id;
+
+      // ── Turn ring ──────────────────────────────────────────────────
+      if (isActiveTurn) {
+        if (!currentEntry.turnRing) {
+          const ring = new Graphics();
+          // Add as the FIRST child of the container (under the circle/
+          // sprite/initials) so the ring reads as a halo, not an
+          // overlay. addChildAt(0) keeps z-order natural.
+          container.addChildAt(ring, 0);
+          currentEntry.turnRing = ring;
+        }
+        const ring = currentEntry.turnRing;
+        const remaining = Math.max(0, (activeTokenInfo!.max - activeTokenInfo!.used));
+        // Ring color encodes remaining-budget state at a glance:
+        //   • gold  (#d4a017): budget remaining
+        //   • amber (#f59e0b): half or less remaining
+        //   • red   (#ef4444): fully spent / can't move
+        const ringColor =
+          remaining <= 0                         ? 0xef4444 :
+          remaining <= activeTokenInfo!.max / 2  ? 0xf59e0b :
+                                                   0xd4a017;
+        ring.clear();
+        ring.setStrokeStyle({ color: ringColor, width: 3, alpha: 1.0 });
+        ring.circle(0, 0, r + 4);
+        ring.stroke();
+        ring.visible = true;
+      } else if (currentEntry.turnRing) {
+        currentEntry.turnRing.visible = false;
+      }
+
+      // ── Movement badge ─────────────────────────────────────────────
+      if (isActiveTurn) {
+        const badgeY = -(r + 18); // sits just above the token
+        const remaining = Math.max(0, (activeTokenInfo!.max - activeTokenInfo!.used));
+        const badgeText =
+          activeTokenInfo!.max === 0
+            ? '0 / 0 ft'
+            : `${remaining} / ${activeTokenInfo!.max} ft${activeTokenInfo!.dashed ? ' · Dash' : ''}`;
+        const badgeColor =
+          remaining <= 0                         ? 0xef4444 :
+          remaining <= activeTokenInfo!.max / 2  ? 0xf59e0b :
+                                                   0xfde68a;
+
+        if (!currentEntry.movementBadgeBg) {
+          const bg = new Graphics();
+          container.addChild(bg);
+          currentEntry.movementBadgeBg = bg;
+        }
+        if (!currentEntry.movementBadge) {
+          const txt = new Text({
+            text: badgeText,
+            style: new TextStyle({
+              fontFamily: 'sans-serif',
+              fontWeight: '800',
+              fontSize: 11,
+              fill: badgeColor,
+              align: 'center',
+            }),
+          });
+          txt.anchor.set(0.5, 0.5);
+          container.addChild(txt);
+          currentEntry.movementBadge = txt;
+        }
+        const txt = currentEntry.movementBadge;
+        const bg = currentEntry.movementBadgeBg;
+        // Update text + color (cheap; .text setter triggers a re-layout
+        // only if the string changed). Re-applying TextStyle would
+        // allocate a new style object — tweak fill in place instead.
+        if (txt.text !== badgeText) txt.text = badgeText;
+        (txt.style as TextStyle).fill = badgeColor;
+        txt.position.set(0, badgeY);
+        // Backing pill sized to the measured text width with padding.
+        const padX = 6;
+        const padY = 3;
+        const w = txt.width + padX * 2;
+        const h = txt.height + padY * 2;
+        bg.clear();
+        bg.setFillStyle({ color: 0x0a0c10, alpha: 0.85 });
+        bg.roundRect(-w / 2, badgeY - h / 2, w, h, 4);
+        bg.fill();
+        bg.setStrokeStyle({ color: badgeColor, width: 1, alpha: 0.5 });
+        bg.roundRect(-w / 2, badgeY - h / 2, w, h, 4);
+        bg.stroke();
+        txt.visible = true;
+        bg.visible = true;
+      } else {
+        if (currentEntry.movementBadge) currentEntry.movementBadge.visible = false;
+        if (currentEntry.movementBadgeBg) currentEntry.movementBadgeBg.visible = false;
+      }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap, activeTokenInfo]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -6463,6 +6605,59 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     return map;
   }, [liveTokens, props.playerCharacters, props.npcs]);
 
+  // v2.339.0 — BG3 turn UX. Derive on-map signals for active-turn
+  // outline + movement-remaining badge from the combat context.
+  //
+  // Three derived values:
+  //   • activeTokenId — the token belonging to the participant whose
+  //     turn it is. Resolved by matching currentActor.entity_id +
+  //     participant_type against tokens' characterId / npcId. May be
+  //     null if combat isn't running OR if the active actor isn't
+  //     placed on this scene's map.
+  //   • used — feet of movement spent so far this turn.
+  //   • max — effective max for THIS turn (base speed, doubled when
+  //     Dash has been consumed; zeroed when the active actor is
+  //     unconscious / paralyzed / petrified / stunned). Mirrors the
+  //     cheap version of the lib/movement.ts speed gate so the badge
+  //     stays honest with what the actor is allowed to spend.
+  //
+  // TokensLayer reads these via props and stamps a gold pulse + a
+  // "Xft / Yft" Text node above the matching token. Cheap to
+  // recompute — the heavy lift is upstream in useCombat.
+  const { currentActor } = useCombat();
+  const activeTokenInfo = useMemo<{
+    tokenId: string | null;
+    used: number;
+    max: number;
+    dashed: boolean;
+  }>(() => {
+    if (!currentActor) return { tokenId: null, used: 0, max: 0, dashed: false };
+    let tokenId: string | null = null;
+    for (const t of Object.values(liveTokens)) {
+      if (currentActor.participant_type === 'character' && t.characterId === currentActor.entity_id) {
+        tokenId = t.id; break;
+      }
+      if (currentActor.participant_type === 'npc' && t.npcId === currentActor.entity_id) {
+        tokenId = t.id; break;
+      }
+    }
+    const baseMax = currentActor.max_speed_ft ?? 30;
+    const dashed = currentActor.dash_used_this_turn === true;
+    const conds = currentActor.active_conditions ?? [];
+    const speedZeroed =
+      conds.includes('Unconscious') ||
+      conds.includes('Petrified') ||
+      conds.includes('Paralyzed') ||
+      conds.includes('Stunned');
+    const max = speedZeroed ? 0 : (dashed ? baseMax * 2 : baseMax);
+    return {
+      tokenId,
+      used: currentActor.movement_used_ft ?? 0,
+      max,
+      dashed,
+    };
+  }, [currentActor, liveTokens]);
+
   // v2.224 — character IDs whose linked tokens should contribute
   // vision polygons. For party-shared sight, every PC in the campaign
   // counts. v2.225 will narrow this to the current user's own
@@ -7120,6 +7315,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}
                     isDM={isDM}
+                    activeTokenInfo={activeTokenInfo}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
