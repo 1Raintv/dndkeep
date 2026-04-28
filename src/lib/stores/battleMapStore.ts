@@ -173,6 +173,26 @@ interface BattleMapStore {
   currentSceneId: string | null;
   /** v2.213: true while tokens are being fetched for the current scene. */
   loading: boolean;
+  /** v2.342.0 — AoE preview overlay signal (sphere/cone/cube/cylinder).
+   *  Set by SpellTargetPickerModal whenever it has both a center
+   *  participant + a sized AoE; read by BattleMapV2 which renders a
+   *  semi-transparent radius ring at the matching world position so
+   *  the caster (and DM) can see the area before confirming the spell.
+   *  Cleared on modal close. Null when no preview is active.
+   *
+   *  centerWorldX/Y are pre-resolved to world pixel coords (the modal
+   *  has the position lookup; the map shouldn't have to redo it).
+   *  sizeFt is the AoE diameter in feet for sphere, cone length etc.
+   *  shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line' — currently
+   *  only sphere is rendered (most common case: Fireball, Shatter,
+   *  Spirit Guardians); other shapes fall back to the sphere ring with
+   *  the same radius until the per-shape geometry lands. */
+  aoePreview: {
+    centerWorldX: number;
+    centerWorldY: number;
+    sizeFt: number;
+    shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line';
+  } | null;
 
   addToken: (token: Token) => void;
   updateTokenPosition: (id: string, x: number, y: number) => void;
@@ -211,6 +231,15 @@ interface BattleMapStore {
   removeDrawing: (id: string) => void;
   setDrawingsBulk: (drawings: SceneDrawing[]) => void;
   resetForScene: (sceneId: string | null) => void;
+  /** v2.342.0 — AoE preview overlay setter. Pass null to clear. */
+  setAoePreview: (
+    p: {
+      centerWorldX: number;
+      centerWorldY: number;
+      sizeFt: number;
+      shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line';
+    } | null,
+  ) => void;
 }
 
 export const useBattleMapStore = create<BattleMapStore>((set) => ({
@@ -222,6 +251,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   drawings: {},
   currentSceneId: null,
   loading: false,
+  aoePreview: null,
 
   addToken: (token) =>
     set((s) => ({ tokens: { ...s.tokens, [token.id]: token } })),
@@ -356,6 +386,10 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
         dragging: null,
         remoteDragLocks: {},
         currentSceneId: sceneId,
+        // v2.342.0 — clear AoE preview on scene change so a stale
+        // ring from one scene doesn't bleed into the next.
+        aoePreview: null,
       };
     }),
+  setAoePreview: (p) => set({ aoePreview: p }),
 }));

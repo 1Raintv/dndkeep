@@ -1342,6 +1342,65 @@ function VisionLayer(props: {
     };
   }, [viewport, worldWidth, worldHeight, fogActive]);
 
+  // v2.342.0 — AoE preview overlay.
+  //
+  // Subscribes to battleMapStore.aoePreview. When SpellTargetPickerModal
+  // (or any future caster surface) sets a center + radius, we draw a
+  // translucent ring at the spec'd world position. When it clears the
+  // value, we hide the overlay. The single Graphics is mounted once
+  // and toggled .visible — same lazy-mount-then-mutate pattern as the
+  // turn ring + economy pips.
+  //
+  // Geometry today: sphere only. Cone/cube/cylinder/line all fall
+  // back to the sphere ring at the same radius — matches what
+  // findParticipantsInRadius selects, so the visual stays honest with
+  // the actual auto-targeting math. When shaped AoE lands, both the
+  // selector and this overlay upgrade together.
+  //
+  // Conversion: gridSizePx pixels = 5ft (D&D standard), so the world-
+  // pixel radius for an N-ft sphere is `(N / 5) * gridSizePx`.
+  const aoePreview = useBattleMapStore(s => s.aoePreview);
+  const aoeRingRef = useRef<Graphics | null>(null);
+  useEffect(() => {
+    if (!viewport) return;
+    const ring = new Graphics();
+    ring.eventMode = 'none';
+    ring.visible = false;
+    viewport.addChild(ring);
+    aoeRingRef.current = ring;
+    return () => {
+      try {
+        if (ring.parent && !viewport.destroyed) viewport.removeChild(ring);
+        if (!ring.destroyed) ring.destroy();
+      } catch { /* viewport torn down — safe to ignore */ }
+      aoeRingRef.current = null;
+    };
+  }, [viewport]);
+
+  useEffect(() => {
+    const ring = aoeRingRef.current;
+    if (!ring || ring.destroyed) return;
+    if (!aoePreview) {
+      ring.visible = false;
+      return;
+    }
+    const radiusPx = (aoePreview.sizeFt / 5) * gridSizePx;
+    ring.clear();
+    // Translucent fill — 8% opacity reads as a selection, not an obstacle.
+    ring.setFillStyle({ color: 0xfde68a, alpha: 0.10 });
+    ring.circle(aoePreview.centerWorldX, aoePreview.centerWorldY, radiusPx);
+    ring.fill();
+    ring.setStrokeStyle({ color: 0xfbbf24, width: 2, alpha: 0.95 });
+    ring.circle(aoePreview.centerWorldX, aoePreview.centerWorldY, radiusPx);
+    ring.stroke();
+    // Inner small ring marks the precise center cell so the player
+    // can see exactly where the spell is anchored.
+    ring.setStrokeStyle({ color: 0xfbbf24, width: 1.5, alpha: 0.8 });
+    ring.circle(aoePreview.centerWorldX, aoePreview.centerWorldY, gridSizePx * 0.5);
+    ring.stroke();
+    ring.visible = true;
+  }, [aoePreview, gridSizePx]);
+
   // Recompute fog whenever inputs change. We rebuild the scratch
   // container, render it to the RT, and let the sprite redisplay.
   // v2.267.0 — gate is fogActive (was isDM) so the DM's preview also
@@ -2952,6 +3011,10 @@ function TokenLayer(props: {
   // drop. All four added fields are null when there's no active
   // combat, which is the gate the drag handler uses to decide whether
   // to enforce movement at all.
+  // v2.341.0 — extended with action/bonus/reaction booleans so the
+  // renderer can stamp the three-pip economy indicator on the active
+  // token. Pips render gold-filled when available, dimmed dark when
+  // consumed; toggle source-of-truth lives on combat_participants.
   activeTokenInfo?: {
     tokenId: string | null;
     used: number;
@@ -2962,6 +3025,9 @@ function TokenLayer(props: {
     participantType: 'character' | 'npc' | 'monster' | null;
     encounterId: string | null;
     campaignId: string | null;
+    actionUsed: boolean;
+    bonusUsed: boolean;
+    reactionUsed: boolean;
   };
 }) {
   const {
@@ -3050,6 +3116,15 @@ function TokenLayer(props: {
     turnRing: Graphics | null;
     movementBadge: Text | null;
     movementBadgeBg: Graphics | null;
+    // v2.341.0 — Action / Bonus / Reaction pip indicators. A small
+    // 3-dot strip rendered just below the movement badge above the
+    // active token. Each pip is a Graphics circle: gold-filled when
+    // available, dim-charcoal when consumed. Letters A / B / R sit
+    // inside via a single Text per pip. We keep them as a Container
+    // so we can toggle .visible at the group level cheaply, and
+    // mutate child fills in place for cheap per-frame updates.
+    economyPipsLayer: Container | null;
+    economyPipsRefs: Array<{ dot: Graphics; glyph: Text; key: 'A' | 'B' | 'R' }> | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   // v2.268.0 — added originX/originY so the drop handler can validate
@@ -3160,6 +3235,8 @@ function TokenLayer(props: {
           turnRing: null,
           movementBadge: null,
           movementBadgeBg: null,
+          economyPipsLayer: null,
+          economyPipsRefs: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -3753,6 +3830,90 @@ function TokenLayer(props: {
       } else {
         if (currentEntry.movementBadge) currentEntry.movementBadge.visible = false;
         if (currentEntry.movementBadgeBg) currentEntry.movementBadgeBg.visible = false;
+      }
+
+      // ── v2.341.0 — Action / Bonus / Reaction pips ─────────────────
+      // Three small dots in a row, sitting just under the movement
+      // badge, marking which parts of the action economy the active
+      // actor still has available this turn. A=Action, B=Bonus,
+      // R=Reaction. Available pips render gold; consumed pips dim
+      // to a charcoal fill with reduced alpha so the read at a
+      // glance is "shiny = ready, dull = spent."
+      //
+      // We lazy-create the layer + 3 child Graphics+Text pairs on
+      // first activation and only mutate fills/alpha thereafter.
+      // That avoids tearing down + rebuilding on every state flip
+      // (action flips every couple seconds during play).
+      if (isActiveTurn) {
+        if (!currentEntry.economyPipsLayer) {
+          const layer = new Container();
+          const refs: Array<{ dot: Graphics; glyph: Text; key: 'A' | 'B' | 'R' }> = [];
+          const PIP_RADIUS = 7;
+          const PIP_GAP = 4;
+          const totalWidth = 3 * (PIP_RADIUS * 2) + 2 * PIP_GAP;
+          let cursorX = -totalWidth / 2 + PIP_RADIUS;
+          for (const key of ['A', 'B', 'R'] as const) {
+            const dot = new Graphics();
+            dot.position.set(cursorX, 0);
+            layer.addChild(dot);
+            const glyph = new Text({
+              text: key,
+              style: new TextStyle({
+                fontFamily: 'sans-serif',
+                fontWeight: '900',
+                fontSize: 9,
+                fill: 0x0a0c10,
+                align: 'center',
+              }),
+            });
+            glyph.anchor.set(0.5, 0.5);
+            glyph.position.set(cursorX, 0);
+            layer.addChild(glyph);
+            refs.push({ dot, glyph, key });
+            cursorX += PIP_RADIUS * 2 + PIP_GAP;
+          }
+          container.addChild(layer);
+          currentEntry.economyPipsLayer = layer;
+          currentEntry.economyPipsRefs = refs;
+        }
+        // Position layer below the movement badge: badge sits at
+        // -(r + 18); badge is ~20px tall so center the pip strip
+        // at -(r + 36). Tweakable later if it needs more breathing
+        // room from the badge.
+        currentEntry.economyPipsLayer.position.set(0, -(r + 36));
+        const pipMap: Record<'A' | 'B' | 'R', boolean> = {
+          A: !activeTokenInfo!.actionUsed,
+          B: !activeTokenInfo!.bonusUsed,
+          R: !activeTokenInfo!.reactionUsed,
+        };
+        for (const ref of currentEntry.economyPipsRefs!) {
+          const available = pipMap[ref.key];
+          ref.dot.clear();
+          // Available: gold fill + dark stroke + black glyph (high contrast).
+          // Consumed: charcoal fill + faint stroke + dim glyph (low contrast).
+          if (available) {
+            ref.dot.setFillStyle({ color: 0xd4a017, alpha: 1.0 });
+            ref.dot.circle(0, 0, 7);
+            ref.dot.fill();
+            ref.dot.setStrokeStyle({ color: 0x0a0c10, width: 1, alpha: 0.85 });
+            ref.dot.circle(0, 0, 7);
+            ref.dot.stroke();
+            (ref.glyph.style as TextStyle).fill = 0x0a0c10;
+            ref.glyph.alpha = 1.0;
+          } else {
+            ref.dot.setFillStyle({ color: 0x1a1a26, alpha: 0.85 });
+            ref.dot.circle(0, 0, 7);
+            ref.dot.fill();
+            ref.dot.setStrokeStyle({ color: 0x444450, width: 1, alpha: 0.6 });
+            ref.dot.circle(0, 0, 7);
+            ref.dot.stroke();
+            (ref.glyph.style as TextStyle).fill = 0x6b7280;
+            ref.glyph.alpha = 0.7;
+          }
+        }
+        currentEntry.economyPipsLayer.visible = true;
+      } else if (currentEntry.economyPipsLayer) {
+        currentEntry.economyPipsLayer.visible = false;
       }
     }
   }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap, activeTokenInfo]);
@@ -6856,11 +7017,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     participantType: 'character' | 'npc' | 'monster' | null;
     encounterId: string | null;
     campaignId: string | null;
+    actionUsed: boolean;
+    bonusUsed: boolean;
+    reactionUsed: boolean;
   }>(() => {
     const empty = {
       tokenId: null, used: 0, max: 0, dashed: false,
       participantId: null, participantName: null, participantType: null,
       encounterId: null, campaignId: null,
+      actionUsed: false, bonusUsed: false, reactionUsed: false,
     };
     if (!currentActor) return empty;
     let tokenId: string | null = null;
@@ -6891,6 +7056,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       participantType: currentActor.participant_type as 'character' | 'npc' | 'monster',
       encounterId: encounter?.id ?? null,
       campaignId: props.campaignId,
+      actionUsed: currentActor.action_used === true,
+      bonusUsed: currentActor.bonus_used === true,
+      reactionUsed: currentActor.reaction_used === true,
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
 

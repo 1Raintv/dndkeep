@@ -29,6 +29,9 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { declareMultiTargetAttack } from '../../lib/pendingAttack';
+// v2.342.0 — push the AoE radius preview to the battle map so the
+// player can see exactly which area they're about to drop.
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 import {
   deriveCoverFromWalls,
   loadActiveBattleMap,
@@ -110,6 +113,37 @@ export default function SpellTargetPickerModal({
   const autoTargetable = !!(spell.area_of_effect?.size && positions && positions.size > 0);
   const aoeSize = spell.area_of_effect?.size ?? 0;
   const aoeShape = spell.area_of_effect?.type ?? 'sphere';
+
+  // v2.342.0 — push the AoE preview to the battle map store whenever
+  // we have a sized AoE + a resolved center. The map's render loop
+  // picks this up and stamps a translucent radius ring at the center
+  // cell. Cleared when the modal closes (open=false), when the spell
+  // isn't an AoE, or when the picker can't resolve a center yet.
+  //
+  // Only "sphere" geometries are correctly area-shaped; cone/cube/
+  // line fall back to a sphere of the declared size for now (the
+  // automated targeting math in findParticipantsInRadius is also
+  // sphere-only at the moment, so the visual matches the actual
+  // selection — both will upgrade together when shaped AoE lands).
+  const setAoePreview = useBattleMapStore(s => s.setAoePreview);
+  useEffect(() => {
+    if (!open || !autoTargetable || !centerId || !positions) {
+      setAoePreview(null);
+      return;
+    }
+    const centerPos = positions.get(centerId);
+    if (!centerPos) {
+      setAoePreview(null);
+      return;
+    }
+    setAoePreview({
+      centerWorldX: centerPos.col * gridSize + gridSize / 2,
+      centerWorldY: centerPos.row * gridSize + gridSize / 2,
+      sizeFt: aoeSize,
+      shape: aoeShape as 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line',
+    });
+    return () => { setAoePreview(null); };
+  }, [open, autoTargetable, centerId, positions, gridSize, aoeSize, aoeShape, setAoePreview]);
 
   // Load active encounter + participants once on open.
   useEffect(() => {
