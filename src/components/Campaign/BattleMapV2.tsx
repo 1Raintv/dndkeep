@@ -193,6 +193,10 @@ import { useCombat } from '../../context/CombatContext';
 // new movement_used_ft + emits the combat event + offers OAs.
 // computeChebyshevFt drives the live drag-preview path label.
 import { computeChebyshevFt, canMove, logMovement } from '../../lib/movement';
+// v2.348.0 — A* pathfinder for click-to-move. Routes around walls +
+// occupied cells so the player doesn't have to click each leg of an
+// L-shaped corridor.
+import { findPath } from '../../lib/pathfinding';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -7398,17 +7402,37 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // No-op if the click is on our own current cell.
       if (Math.abs(originX - targetX) < 1 && Math.abs(originY - targetY) < 1) return;
 
-      // Wall-blocked check (same as drag).
-      const walls = Object.values(useBattleMapStore.getState().walls);
-      if (segmentBlockedByWall(originX, originY, targetX, targetY, walls)) {
-        showToast('A wall blocks that path.', 'warn');
-        return;
-      }
-
-      // Distance + movement-budget validation.
+      // v2.348.0 — A* pathfinding (was straight-line wall check).
+      // Routes around walls + occupied cells. If no path exists,
+      // surface a clean message. The path's cell count drives the
+      // movement-budget check (multi-cell paths around walls cost
+      // more feet than the straight line would have, and that's
+      // RAW-correct).
       const fromCellRow = Math.round(originY / gridSizePx);
       const fromCellCol = Math.round(originX / gridSizePx);
-      const distanceFt = computeChebyshevFt(fromCellRow, fromCellCol, targetCellRow, targetCellCol);
+      const walls = Object.values(useBattleMapStore.getState().walls);
+      const path = findPath(
+        { row: fromCellRow, col: fromCellCol },
+        { row: targetCellRow, col: targetCellCol },
+        {
+          widthCells,
+          heightCells,
+          gridSizePx,
+          walls,
+          occupants: Object.values(liveTokens),
+          moverTokenId: ati.tokenId,
+          // Cap A*'s search at the actor's full effective movement
+          // (Dash-doubled). Past that, no point searching — the move
+          // would fail the canMove gate anyway.
+          maxCells: Math.max(1, Math.floor(ati.max / 5)),
+        },
+      );
+      if (!path) {
+        showToast("Can't reach there.", 'warn');
+        return;
+      }
+      // Path includes both endpoints. Distance = (cells-1) * 5ft.
+      const distanceFt = (path.length - 1) * 5;
 
       (async () => {
         const check = await canMove(ati.participantId!, distanceFt);
@@ -7420,9 +7444,12 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           return;
         }
         // v2.347.0 — Smooth-slide animation (BG3 feel).
+        // v2.348.0 — Now walks along the multi-cell path returned by
+        // A* instead of one straight-line segment, so the token
+        // visibly bends around walls and obstacles.
         //
         // Pre-v2.347 the click-to-move snapped instantly. Now we
-        // slide the token along the straight path at ~120 ft/s
+        // slide the token along the returned path at ~120 ft/s
         // (250ms per 30ft step). Visual only — server commit + log
         // fire upfront so peers see the move immediately and the
         // movement_used_ft + OA triggers don't lag the animation.
@@ -7437,32 +7464,62 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         // Min duration 60ms (a 5ft step) so even a single-cell
         // step shows visible motion and reads as "deliberate" rather
         // than "snap." Max ~500ms cap so a Dash-doubled 60ft move
-        // doesn't drag too long.
+        // doesn't drag too long. Cap is total path duration (not per-
+        // segment) so a path that bends around walls still finishes
+        // in a single human-readable beat.
         const SPEED_PX_PER_MS = (120 * gridSizePx / 5) / 1000; // 120 ft/s in px/ms
-        const dx = targetX - originX;
-        const dy = targetY - originY;
-        const distPx = Math.sqrt(dx * dx + dy * dy);
-        const durationMs = Math.max(60, Math.min(500, distPx / SPEED_PX_PER_MS));
+        // Convert path cells to world-pixel waypoints. Path[0] is the
+        // current cell; we start the slide from path[1].
+        const waypoints = path.map(c => ({
+          x: (c.col + 0.5) * gridSizePx,
+          y: (c.row + 0.5) * gridSizePx,
+        }));
+        // Total path length in pixels — used for total-duration calc.
+        let totalDistPx = 0;
+        for (let i = 1; i < waypoints.length; i++) {
+          const ddx = waypoints[i].x - waypoints[i - 1].x;
+          const ddy = waypoints[i].y - waypoints[i - 1].y;
+          totalDistPx += Math.sqrt(ddx * ddx + ddy * ddy);
+        }
+        const durationMs = Math.max(60, Math.min(500, totalDistPx / SPEED_PX_PER_MS));
 
         // Fire server commit immediately (peers see the destination).
         // Animation is local-only.
         const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY);
 
-        // Local rAF animation. Linear interpolation reads cleanest
-        // for grid-snapped destinations; easing would feel mushy.
+        // Local rAF animation along the path. Per-frame: compute
+        // total elapsed-time-along-path in pixels, then walk the
+        // waypoints to find which segment we're in and lerp inside it.
         const startMs = performance.now();
         const tokenId = ati.tokenId!;
         const animateGen = ++clickMoveGenRef.current;
         await new Promise<void>(resolve => {
           function step() {
-            // Cancel if a newer click-to-move started.
             if (animateGen !== clickMoveGenRef.current) {
               resolve();
               return;
             }
-            const t = Math.min(1, (performance.now() - startMs) / durationMs);
-            const x = originX + dx * t;
-            const y = originY + dy * t;
+            const elapsed = performance.now() - startMs;
+            const t = Math.min(1, elapsed / durationMs);
+            // Distance traveled so far along the path, in pixels.
+            const distSoFar = totalDistPx * t;
+            let remaining = distSoFar;
+            let x = waypoints[0].x;
+            let y = waypoints[0].y;
+            for (let i = 1; i < waypoints.length; i++) {
+              const a = waypoints[i - 1];
+              const b = waypoints[i];
+              const segDx = b.x - a.x;
+              const segDy = b.y - a.y;
+              const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+              if (remaining <= segLen || i === waypoints.length - 1) {
+                const frac = segLen > 0 ? Math.min(1, remaining / segLen) : 1;
+                x = a.x + segDx * frac;
+                y = a.y + segDy * frac;
+                break;
+              }
+              remaining -= segLen;
+            }
             useBattleMapStore.getState().updateTokenPosition(tokenId, x, y);
             if (t < 1) {
               requestAnimationFrame(step);
