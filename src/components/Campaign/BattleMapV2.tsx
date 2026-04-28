@@ -7567,6 +7567,267 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [canvasEl, liveTokens, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM, showToast]);
 
+  // v2.349.0 — Animated hover path preview for click-to-move.
+  //
+  // BG3 shows a translucent ghost line from your active token to
+  // wherever the cursor is hovering, with the same color-coded
+  // cost-vs-budget logic as the drag preview. Click confirms; hover
+  // updates live. This is the most polished version of click-to-move
+  // feedback — the player sees exactly where they'll end up and what
+  // it'll cost BEFORE clicking.
+  //
+  // Differences from the drag preview (v2.340):
+  //   • Activated by hover, not by drag. Hidden when no active turn,
+  //     no ownership, mode active, or cursor not over the canvas.
+  //   • Uses A* (v2.348) so the preview shows the actual route, not
+  //     a straight line. Bends around walls in real time.
+  //   • Owned by the parent (this scope), separate from the drag
+  //     preview which TokensLayer owns. Both Graphics live on the
+  //     viewport but never simultaneously visible (drag is exclusive
+  //     while the mouse is held).
+  //
+  // Throttling: rAF-gated rather than fixed-interval. A fast mouse
+  // can fire pointermove 200+ Hz; we only redraw once per animation
+  // frame which caps work at ~60 Hz. A* runs in <1ms on typical
+  // scenes so the cost is negligible — but redraws aren't, and the
+  // visible result is the same.
+  const hoverPreviewRefs = useRef<{
+    gfx: Graphics | null;
+    label: Text | null;
+    rafPending: boolean;
+    lastClientX: number;
+    lastClientY: number;
+  }>({
+    gfx: null, label: null, rafPending: false,
+    lastClientX: 0, lastClientY: 0,
+  });
+  useEffect(() => {
+    if (!canvasEl) return;
+    const vp = vpRef.current;
+    if (!vp) return;
+
+    // Lazy-mount the preview Graphics + label once. They live in the
+    // viewport so they pan/zoom with the world. Both are eventMode:
+    // 'none' so they never capture pointer events.
+    const gfx = new Graphics();
+    gfx.eventMode = 'none';
+    gfx.visible = false;
+    vp.addChild(gfx);
+    const label = new Text({
+      text: '',
+      style: new TextStyle({
+        fontFamily: 'sans-serif',
+        fontWeight: '800',
+        fontSize: 13,
+        fill: 0xfde68a,
+        stroke: { color: 0x0a0c10, width: 3 },
+        align: 'center',
+      }),
+    });
+    label.anchor.set(0.5, 1);
+    label.eventMode = 'none';
+    label.visible = false;
+    vp.addChild(label);
+    hoverPreviewRefs.current.gfx = gfx;
+    hoverPreviewRefs.current.label = label;
+
+    function clearPreview() {
+      const refs = hoverPreviewRefs.current;
+      if (refs.gfx) { refs.gfx.clear(); refs.gfx.visible = false; }
+      if (refs.label) refs.label.visible = false;
+    }
+
+    function redraw(clientX: number, clientY: number) {
+      const refs = hoverPreviewRefs.current;
+      const gfxLocal = refs.gfx;
+      const labelLocal = refs.label;
+      if (!gfxLocal || !labelLocal) return;
+
+      const ati = activeTokenInfoForMoveRef.current;
+      if (!ati || !ati.tokenId || !ati.participantId) { clearPreview(); return; }
+
+      // Ownership gate (same as click-to-move).
+      const myToken = liveTokens[ati.tokenId];
+      if (!myToken) { clearPreview(); return; }
+      const isMyCharacter =
+        ati.participantType === 'character' &&
+        props.myCharacterId &&
+        myToken.characterId === props.myCharacterId;
+      const isDmRunning =
+        props.isDM &&
+        (ati.participantType === 'npc' || ati.participantType === 'monster');
+      if (!isMyCharacter && !isDmRunning) { clearPreview(); return; }
+
+      // Mode gate.
+      const mf = modeFlagsRef.current;
+      if (mf.ruler || mf.wall || mf.text || mf.draw || mf.fx || mf.eraser) { clearPreview(); return; }
+      if (useBattleMapStore.getState().directionPick.active) { clearPreview(); return; }
+
+      const vpLocal = vpRef.current;
+      if (!canvasEl || !vpLocal) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = clientX - rect.left;
+      const screenY = clientY - rect.top;
+      // Out of canvas → hide.
+      if (screenX < 0 || screenY < 0 || screenX > rect.width || screenY > rect.height) {
+        clearPreview();
+        return;
+      }
+      const worldPoint = vpLocal.toWorld(screenX, screenY);
+      if (worldPoint.x < 0 || worldPoint.x > WORLD_WIDTH) { clearPreview(); return; }
+      if (worldPoint.y < 0 || worldPoint.y > WORLD_HEIGHT) { clearPreview(); return; }
+
+      const targetCellRow = Math.round(worldPoint.y / gridSizePx);
+      const targetCellCol = Math.round(worldPoint.x / gridSizePx);
+      const fromCellRow = Math.round(myToken.y / gridSizePx);
+      const fromCellCol = Math.round(myToken.x / gridSizePx);
+
+      // Hovering own cell — no preview needed.
+      if (targetCellRow === fromCellRow && targetCellCol === fromCellCol) { clearPreview(); return; }
+
+      // Occupied target cell — a click would abort, so don't preview either.
+      for (const t of Object.values(liveTokens)) {
+        if (t.id === ati.tokenId) continue;
+        const tCellRow = Math.round(t.y / gridSizePx);
+        const tCellCol = Math.round(t.x / gridSizePx);
+        if (tCellRow === targetCellRow && tCellCol === targetCellCol) {
+          clearPreview();
+          return;
+        }
+      }
+
+      const walls = Object.values(useBattleMapStore.getState().walls);
+      const path = findPath(
+        { row: fromCellRow, col: fromCellCol },
+        { row: targetCellRow, col: targetCellCol },
+        {
+          widthCells,
+          heightCells,
+          gridSizePx,
+          walls,
+          occupants: Object.values(liveTokens),
+          moverTokenId: ati.tokenId,
+          maxCells: Math.max(1, Math.floor(ati.max / 5)),
+        },
+      );
+      if (!path || path.length < 2) { clearPreview(); return; }
+
+      const distanceFt = (path.length - 1) * 5;
+      const remaining = Math.max(0, ati.max - ati.used);
+      const wouldUse = ati.used + distanceFt;
+      let lineColor: number;
+      let labelColor: number;
+      let costLabel: string;
+      if (ati.max === 0) {
+        // Speed-zeroed (Stunned, Paralyzed, etc.) — show but in red.
+        lineColor = 0xef4444; labelColor = 0xfca5a5;
+        costLabel = `${distanceFt} ft  ·  speed 0`;
+      } else if (wouldUse > ati.max) {
+        lineColor = 0xef4444; labelColor = 0xfca5a5;
+        costLabel = `${distanceFt} ft  ·  over budget`;
+      } else if (wouldUse > ati.max - Math.floor(ati.max / 4)) {
+        lineColor = 0xf59e0b; labelColor = 0xfde68a;
+        costLabel = `${distanceFt} ft  ·  ${remaining - distanceFt} left`;
+      } else {
+        lineColor = 0x22c55e; labelColor = 0x86efac;
+        costLabel = `${distanceFt} ft  ·  ${remaining - distanceFt} left`;
+      }
+
+      // Convert path cells → world waypoints, draw a dashed polyline,
+      // mark destination with a square outline. Same visual contract
+      // as the drag preview so both inputs read consistently.
+      const waypoints = path.map(c => ({
+        x: (c.col + 0.5) * gridSizePx,
+        y: (c.row + 0.5) * gridSizePx,
+      }));
+
+      gfxLocal.clear();
+      gfxLocal.setStrokeStyle({ color: lineColor, width: 3, alpha: 0.7 });
+      // Dashed multi-segment polyline. Walk each segment, stamping
+      // dashOn pixels then skipping dashOff.
+      const dashOn = 8;
+      const dashOff = 6;
+      let carry = 0; // residual along-segment from previous segment
+      for (let i = 1; i < waypoints.length; i++) {
+        const a = waypoints[i - 1];
+        const b = waypoints[i];
+        const segDx = b.x - a.x;
+        const segDy = b.y - a.y;
+        const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+        if (segLen < 1e-3) continue;
+        const nx = segDx / segLen;
+        const ny = segDy / segLen;
+        let traveled = -carry; // start with previous residual
+        while (traveled < segLen) {
+          const segStart = Math.max(0, traveled);
+          const segEnd = Math.min(traveled + dashOn, segLen);
+          if (segEnd > segStart) {
+            gfxLocal.moveTo(a.x + nx * segStart, a.y + ny * segStart);
+            gfxLocal.lineTo(a.x + nx * segEnd, a.y + ny * segEnd);
+          }
+          traveled += dashOn + dashOff;
+        }
+        carry = traveled - segLen; // hand off pen state to next segment
+      }
+      gfxLocal.stroke();
+
+      // Destination cell marker.
+      const last = waypoints[waypoints.length - 1];
+      const mark = gridSizePx * 0.85;
+      gfxLocal.setStrokeStyle({ color: lineColor, width: 2, alpha: 0.9 });
+      gfxLocal.roundRect(last.x - mark / 2, last.y - mark / 2, mark, mark, 4);
+      gfxLocal.stroke();
+      gfxLocal.visible = true;
+
+      labelLocal.text = costLabel;
+      (labelLocal.style as TextStyle).fill = labelColor;
+      labelLocal.position.set(last.x, last.y - mark / 2 - 4);
+      labelLocal.visible = true;
+    }
+
+    function onMove(e: PointerEvent) {
+      const refs = hoverPreviewRefs.current;
+      refs.lastClientX = e.clientX;
+      refs.lastClientY = e.clientY;
+      // rAF coalesce: a fast mouse fires pointermove 200+Hz but we
+      // only need to redraw once per animation frame. The pending
+      // flag ensures we coalesce all moves between two rAF callbacks
+      // into a single redraw at the latest cursor position.
+      if (refs.rafPending) return;
+      refs.rafPending = true;
+      requestAnimationFrame(() => {
+        refs.rafPending = false;
+        redraw(refs.lastClientX, refs.lastClientY);
+      });
+    }
+    function onLeave() { clearPreview(); }
+    function onDown() {
+      // While drag is starting, the drag preview takes over. Clear
+      // ours immediately so the two don't double-render. Drag
+      // preview is shown by TokensLayer; we just yield.
+      clearPreview();
+    }
+
+    canvasEl.addEventListener('pointermove', onMove);
+    canvasEl.addEventListener('pointerleave', onLeave);
+    canvasEl.addEventListener('pointerdown', onDown);
+    return () => {
+      if (canvasEl) {
+        canvasEl.removeEventListener('pointermove', onMove);
+        canvasEl.removeEventListener('pointerleave', onLeave);
+        canvasEl.removeEventListener('pointerdown', onDown);
+      }
+      try {
+        if (gfx.parent) gfx.parent.removeChild(gfx);
+        if (!gfx.destroyed) gfx.destroy();
+        if (label.parent) label.parent.removeChild(label);
+        if (!label.destroyed) label.destroy();
+      } catch { /* viewport torn down */ }
+      hoverPreviewRefs.current.gfx = null;
+      hoverPreviewRefs.current.label = null;
+    };
+  }, [canvasEl, vpRef.current, liveTokens, gridSizePx, widthCells, heightCells, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM]);
+
   // v2.224 — character IDs whose linked tokens should contribute
   // vision polygons. For party-shared sight, every PC in the campaign
   // counts. v2.225 will narrow this to the current user's own
