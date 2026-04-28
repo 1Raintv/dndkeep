@@ -323,6 +323,37 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .app-main-full { min-height: 100vh; }
 .app-content { padding: var(--sp-6) var(--sp-8); }
 
+/* v2.353.0 — Battle map full-width.
+   The map tab needs to span the full viewport horizontally so the
+   canvas has real estate to zoom into. .app-main applies sp-8 (~32px)
+   horizontal padding for breathing room on text-heavy tabs (NPCs,
+   Members, etc.) — but the battle map needs to break out of that.
+   Negative horizontal margins counteract the padding without affecting
+   any sibling tabs.
+
+   We zero the horizontal padding too so the canvas wrapper truly
+   reaches edge-to-edge; the top padding is preserved so the canvas
+   doesn't run into the page tab strip. */
+.battlemap-fullwidth {
+  margin-left: calc(-1 * var(--sp-8));
+  margin-right: calc(-1 * var(--sp-8));
+  /* The wrapper itself doesn't need padding; BattleMapV2's internal
+     toolbar + canvas have their own spacing. */
+  padding: 0;
+}
+@media (max-width: 768px) {
+  .battlemap-fullwidth {
+    margin-left: calc(-1 * var(--sp-3));
+    margin-right: calc(-1 * var(--sp-3));
+  }
+}
+@media (max-width: 480px) {
+  .battlemap-fullwidth {
+    margin-left: calc(-1 * var(--sp-2));
+    margin-right: calc(-1 * var(--sp-2));
+  }
+}
+
 /* ── Sidebar ────────────────────────────────────────────────── */
 .app-sidebar {
   width: var(--sidebar-w);

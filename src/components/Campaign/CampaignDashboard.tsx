@@ -710,7 +710,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               })),
           };
           return (
-            <div>
+            <div className="battlemap-fullwidth">
               <Suspense fallback={
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',

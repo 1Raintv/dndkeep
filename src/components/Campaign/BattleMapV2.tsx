@@ -6759,40 +6759,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     });
   }, [currentScene, props.playerCharacters, showToast]);
 
-  // v2.213 "Add Token" commits to DB immediately.
-  const addToken = useCallback(() => {
-    const vp = vpRef.current;
-    if (!vp || !currentScene) return;
-    const state = useBattleMapStore.getState();
-    const existingCount = Object.keys(state.tokens).length;
-    const center = vp.center;
-    const snapped = snapToCellCenter(center.x, center.y, gridSizePx);
-    const clampedX = Math.max(gridSizePx / 2, Math.min(WORLD_WIDTH - gridSizePx / 2, snapped.x));
-    const clampedY = Math.max(gridSizePx / 2, Math.min(WORLD_HEIGHT - gridSizePx / 2, snapped.y));
-    const newToken: Token = {
-      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `token-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      sceneId: currentScene.id,
-      x: clampedX,
-      y: clampedY,
-      size: 'medium',
-      rotation: 0,
-      name: `Token ${existingCount + 1}`,
-      color: TOKEN_COLORS[existingCount % TOKEN_COLORS.length],
-      imageStoragePath: null,
-      characterId: null,
-      npcId: null,
-      // v2.282: generic DM-placed tokens (the "+ Add Token" button)
-      // start hidden. The DM reveals via right-click → Show. PC and
-      // NPC bulk-add paths below override this case-by-case so
-      // characters stay visible to their owning players from t=0.
-      visibleToAll: false,
-    };
-    state.addToken(newToken);
-    // v2.313: pass campaignId for the new path. Legacy path ignores opts.
-    tokensApi.createToken(newToken, { campaignId }).catch(err =>
-      console.error('[BattleMapV2] token create commit failed', err)
-    );
-  }, [currentScene, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT]);
+  // v2.213 — "+ Add Token" callback. REMOVED in v2.353.0 along with
+  // its toolbar button. The original implementation created default
+  // placeholder tokens (named "Token 1", "Token 2") with no creature
+  // linkage, which conflicts with the unified flow where everything
+  // on the map should be a player character or a creature from the
+  // NPC section. v2.354 will add a fresh placement helper that
+  // takes a creature_id.
 
   // v2.220 — "+ Add PC Tokens". Bulk-creates tokens for every player
   // character in the campaign that doesn't already have a token linked
@@ -8343,24 +8316,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               Manage Roster
             </button>
           )}
-          <button
-            onClick={addToken}
-            title="Add a token at viewport center"
-            style={{
-              padding: '6px 14px',
-              background: 'rgba(167,139,250,0.22)',
-              border: '1px solid rgba(167,139,250,0.6)',
-              borderRadius: 'var(--r-sm, 4px)',
-              color: '#a78bfa',
-              fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
-              letterSpacing: '0.04em',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.34)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.22)'; }}
-          >
-            + Add Token
-          </button>
+          {/* v2.353.0 — "+ Add Token" button removed. It created
+              default placeholder tokens with no creature/character
+              linkage, which conflicts with the new unified flow where
+              everything on the map should come from the NPC section
+              (creatures + folder browser) or be a player's character.
+              The addToken callback stays in place for now so the
+              context menu / shortcut paths don't break; v2.354 will
+              remove it entirely as part of the place-on-map ship. */}
         </div>
       )}
 
