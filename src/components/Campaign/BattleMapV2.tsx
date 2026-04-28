@@ -6830,6 +6830,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         imageStoragePath: null,
         characterId: pc.id,
         npcId: null,
+        // v2.354.0: creatureId added to Token interface; PC tokens
+        // never link to a creature row.
+        creatureId: null,
         // v2.282: PCs are visible to all from creation. The owning
         // player needs to see their own character; hiding it would
         // be confusing UX. (The other players also see PC tokens —
@@ -6974,6 +6977,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         imageStoragePath: null,
         characterId: null,
         npcId: npc.id,
+        // v2.354.0: creatureId mirrors npcId — npcs table absorbed
+        // into homebrew_monsters in v2.350, so the IDs are identical.
+        // We populate both fields during the v1→v2 transition; new
+        // code paths use creatureId, legacy reads use npcId.
+        creatureId: npc.id,
         // v2.282: NPCs from the roster bulk-add start hidden. The
         // npcs row itself was already inserted with
         // visible_to_players=false (per the v2.242 comment block

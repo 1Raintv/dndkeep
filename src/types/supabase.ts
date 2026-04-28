@@ -2162,7 +2162,9 @@ export type Database = {
           image_storage_path: string | null;
           name: string;
           character_id: string | null;
-          npc_id: string | null;
+          // v2.354.0: replaced npc_id with creature_id to match the
+          // v2.350 schema (npcs table absorbed into homebrew_monsters).
+          creature_id: string | null;
           player_id: string | null;
           visible_to_all: boolean;
           z_index: number;
@@ -2180,7 +2182,7 @@ export type Database = {
           image_storage_path?: string | null;
           name?: string;
           character_id?: string | null;
-          npc_id?: string | null;
+          creature_id?: string | null;
           player_id?: string | null;
           visible_to_all?: boolean;
           z_index?: number;
@@ -2198,7 +2200,7 @@ export type Database = {
           image_storage_path?: string | null;
           name?: string;
           character_id?: string | null;
-          npc_id?: string | null;
+          creature_id?: string | null;
           player_id?: string | null;
           visible_to_all?: boolean;
           z_index?: number;

@@ -113,6 +113,15 @@ export interface Token {
   // same roster origin don't share a stat block — each gets its own
   // npc row. characterId and npcId are mutually exclusive.
   npcId: string | null;
+  // v2.354.0: link to a unified creature row (homebrew_monsters table).
+  // Set when a token was placed from the NPC manager's "Place on Map"
+  // action, post-v2.350 schema unification. Replaces the legacy npcId
+  // semantics for new code paths. npcId stays in the type for backward
+  // compatibility with existing realtime payloads + tokens whose rows
+  // pre-date v2.354, but the database column behind npcId was dropped
+  // in v2.350 — only creatureId is wired to a real DB column now.
+  // Mutually exclusive with characterId.
+  creatureId: string | null;
   // v2.312: Combat Phase 3 — combatant identity for tokens that came
   // through the new placement+combatant path. Optional for backward
   // compat: tokens hydrated from scene_tokens (legacy path) leave this

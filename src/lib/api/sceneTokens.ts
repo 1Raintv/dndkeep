@@ -34,7 +34,12 @@ export function dbRowToToken(row: any): Token {
     color: row.color ?? 0xa78bfa,
     imageStoragePath: row.image_storage_path ?? null,
     characterId: row.character_id ?? null,
-    npcId: row.npc_id ?? null,
+    // v2.354.0: legacy npcId reads are mirrored from creature_id.
+    // npc_id column was dropped in v2.350 (always null on read);
+    // homebrew_monsters absorbed npcs so the IDs are identical. Old
+    // code reading t.npcId continues to work without a refactor.
+    npcId: row.creature_id ?? row.npc_id ?? null,
+    creatureId: row.creature_id ?? null,
     // v2.282: read visible_to_all. RLS already filters rows the user
     // shouldn't see; this read is for the DM's own list (which sees
     // every row) so the UI can render hidden tokens with a faded
@@ -59,7 +64,13 @@ function tokenToInsertRow(token: Token): SceneTokenInsert {
     color: token.color,
     image_storage_path: token.imageStoragePath,
     character_id: token.characterId,
-    npc_id: token.npcId,
+    // v2.354.0: write creature_id (new column, v2.350). The legacy
+    // npc_id column was dropped — writing to it would 500 the insert.
+    // For tokens carrying a legacy npcId in their runtime shape (any
+    // realtime payload created before this client deployed), we mirror
+    // it into creature_id since homebrew_monsters absorbed npcs and
+    // the IDs map 1:1 per the v2.350 migration.
+    creature_id: token.creatureId ?? token.npcId ?? null,
     // v2.282: persist visible_to_all so DM-placed tokens that the
     // caller marked hidden actually go to the DB hidden. Without
     // this the DB default (true) would override the caller's intent.

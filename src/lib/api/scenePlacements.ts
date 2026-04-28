@@ -91,6 +91,14 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     row.combatants?.definition_type === 'narrative_npc'
       ? row.combatants.definition_id ?? null
       : null;
+  // v2.354.0: creatureId for the unified creature path. Any combatant
+  // with a non-character definition_type points at homebrew_monsters
+  // (post-v2.350 unification). Mirror npcId into creatureId when the
+  // legacy narrative_npc path was used so downstream renders work.
+  const creatureId =
+    row.combatants && row.combatants.definition_type !== 'character'
+      ? row.combatants.definition_id ?? null
+      : null;
 
   return {
     id: row.id,
@@ -104,6 +112,7 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     imageStoragePath: imagePath,
     characterId,
     npcId,
+    creatureId,
     visibleToAll: row.visible_to_all ?? true,
     // v2.312: new field. Always populated when this path is used.
     combatantId: row.combatant_id,

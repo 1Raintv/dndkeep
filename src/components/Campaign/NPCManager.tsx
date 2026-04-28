@@ -10,6 +10,11 @@ import {
   createCreature, updateCreature, deleteCreature, importFromCatalog,
   type CreatureRow,
 } from '../../lib/api/creatures';
+// v2.354.0 — folder browser sidebar + place-on-map flow.
+import CreatureFolderBrowser from './CreatureFolderBrowser';
+import * as tokensApi from '../../lib/api/tokensApiRouter';
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
+import type { Token, TokenSize } from '../../lib/stores/battleMapStore';
 
 interface NPC {
   id: string;
@@ -94,6 +99,22 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   // v2.351.0 — catalog import picker open state. Opens over the form
   // modal when the user clicks "Import from Catalog" inside the form.
   const [catalogImportOpen, setCatalogImportOpen] = useState(false);
+  // v2.354.0 — folder browser selection + place-on-map status.
+  // selectedFolderId: 'all' | 'unfiled' | <uuid>; defaults to 'all'.
+  // placingId tracks per-creature placement-in-flight UI.
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null | 'all' | 'unfiled'>('all');
+  const [placingId, setPlacingId] = useState<string | null>(null);
+  const [placeStatus, setPlaceStatus] = useState<Record<string, 'placed' | 'no-scene' | 'error'>>({});
+  // v2.354.0 — Quick Create modal (the user's "click button, type
+  // name, maybe HP, that's it" path). Distinct from `editing` which
+  // opens the full CreatureFormModal.
+  const [quickName, setQuickName] = useState('');
+  const [quickHp, setQuickHp] = useState('');
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  // v2.354.0 — top-level "Add Monster" button opens the catalog
+  // picker directly (no form first). Distinct from the in-form
+  // catalog import via catalogImportOpen.
+  const [topLevelCatalogOpen, setTopLevelCatalogOpen] = useState(false);
 
   useEffect(() => { load(); }, [campaignId]);
 
@@ -201,10 +222,170 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
     }
   }
 
+  // v2.354.0 — Place a creature on the active battle map scene.
+  // Reads currentSceneId from the battleMap store (set when the user
+  // visits the map tab; persists across tab switches in-session).
+  // If no scene has ever been visited this session, the field is null
+  // and we surface a "no-scene" status so the DM knows to open the
+  // map first. Placement creates a scene_token at the scene center
+  // (the DM can drag from there) plus, if there's an active
+  // encounter, adds the creature to combat_participants so it shows
+  // up in initiative + becomes a valid target for spells.
+  async function placeOnMap(npc: NPC) {
+    setPlacingId(npc.id);
+    try {
+      const sceneId = useBattleMapStore.getState().currentSceneId;
+      if (!sceneId) {
+        setPlaceStatus(prev => ({ ...prev, [npc.id]: 'no-scene' }));
+        setTimeout(() => setPlaceStatus(prev => {
+          const copy = { ...prev };
+          delete copy[npc.id];
+          return copy;
+        }), 4000);
+        return;
+      }
+      // Look up the scene's grid info to compute a placement point
+      // at the world center. We can't use viewport center here
+      // (NPCManager isn't on the map tab), so center-of-scene is the
+      // sensible default — the DM drags from there.
+      const { data: scene } = await supabase
+        .from('scenes')
+        .select('grid_size_px, width_cells, height_cells')
+        .eq('id', sceneId)
+        .single();
+      const gridPx = (scene?.grid_size_px ?? 60) as number;
+      const wCells = (scene?.width_cells ?? 30) as number;
+      const hCells = (scene?.height_cells ?? 20) as number;
+      const cx = (wCells * gridPx) / 2;
+      const cy = (hCells * gridPx) / 2;
+      // Snap to cell center.
+      const x = Math.floor(cx / gridPx) * gridPx + gridPx / 2;
+      const y = Math.floor(cy / gridPx) * gridPx + gridPx / 2;
+      // Map size string → TokenSize. Defaults to medium.
+      const sizeRaw = ((npc.size ?? 'medium') as string).toLowerCase();
+      const validSizes: TokenSize[] = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
+      const tokenSize: TokenSize = (validSizes as string[]).includes(sizeRaw)
+        ? (sizeRaw as TokenSize)
+        : 'medium';
+      const newToken: Token = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `token-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        sceneId,
+        x, y,
+        size: tokenSize,
+        rotation: 0,
+        name: npc.name,
+        // Default purple — same fallback BattleMapV2 uses.
+        color: 0xa78bfa,
+        imageStoragePath: null,
+        characterId: null,
+        npcId: npc.id,        // legacy mirror for existing readers
+        creatureId: npc.id,   // post-v2.350 canonical link
+        visibleToAll: npc.visible_to_players ?? true,
+      };
+      // Optimistic store update so the token appears immediately if
+      // the user switches to the map tab.
+      useBattleMapStore.getState().addToken(newToken);
+      // Server commit. tokensApiRouter handles legacy + new path.
+      await tokensApi.createToken(newToken, { campaignId });
+      // If there's an active encounter, also add to combat. Same
+      // contract as the existing addToCombat flow — initiative is
+      // auto-rolled in auto_all mode.
+      try {
+        const enc = await getActiveEncounter(campaignId);
+        if (enc) {
+          const seed = npcToSeed(npc, !(npc.visible_to_players ?? true));
+          await addParticipantToEncounter(enc.id, campaignId, seed);
+        }
+      } catch (combatErr) {
+        // Placement still succeeded; the combat add is best-effort.
+        console.warn('[NPCManager] placeOnMap: combat add failed', combatErr);
+      }
+      setPlaceStatus(prev => ({ ...prev, [npc.id]: 'placed' }));
+      setTimeout(() => setPlaceStatus(prev => {
+        const copy = { ...prev };
+        delete copy[npc.id];
+        return copy;
+      }), 3000);
+    } catch (err) {
+      console.error('[NPCManager] placeOnMap failed', err);
+      setPlaceStatus(prev => ({ ...prev, [npc.id]: 'error' }));
+      setTimeout(() => setPlaceStatus(prev => {
+        const copy = { ...prev };
+        delete copy[npc.id];
+        return copy;
+      }), 4000);
+    } finally {
+      setPlacingId(null);
+    }
+  }
+
+  // v2.354.0 — Quick Create. The user's exact words: "they click
+  // this button, they can type in a name and maybe health and that's
+  // about it." Everything else takes a sensible default via
+  // createCreature's defaults branch. Drops the creature into the
+  // currently-selected folder (or unfiled if 'all'/'unfiled' is
+  // selected) so the DM doesn't have to file it after creation.
+  async function handleQuickCreate() {
+    const name = quickName.trim();
+    if (!name) return;
+    const hpNum = quickHp ? parseInt(quickHp, 10) : null;
+    const folderForNew =
+      selectedFolderId === 'all' || selectedFolderId === 'unfiled'
+        ? null
+        : selectedFolderId;
+    try {
+      await createCreature({
+        name,
+        hp: hpNum,
+        max_hp: hpNum,
+        campaign_id: campaignId,
+        folder_id: folderForNew,
+      });
+      setQuickName('');
+      setQuickHp('');
+      setQuickCreateOpen(false);
+      await load();
+    } catch (err) {
+      console.error('[NPCManager] quick create failed', err);
+    }
+  }
+
+  // v2.354.0 — Top-level "Add Monster" button picks straight from
+  // the catalog (no form first). The selected catalog row gets
+  // copied into the currently-selected folder.
+  async function handleAddMonsterFromCatalog(catalogId: string) {
+    const folderForNew =
+      selectedFolderId === 'all' || selectedFolderId === 'unfiled'
+        ? null
+        : selectedFolderId;
+    try {
+      await importFromCatalog({
+        catalogMonsterId: catalogId,
+        campaignId,
+        folderId: folderForNew,
+      });
+      setTopLevelCatalogOpen(false);
+      await load();
+    } catch (err) {
+      console.error('[NPCManager] add monster failed', err);
+    }
+  }
+
   const filtered = npcs.filter(n => {
     if (!showDead && !n.is_alive) return false;
     if (filterRole && n.role !== filterRole) return false;
     if (search && !n.name.toLowerCase().includes(search.toLowerCase()) && !n.location.toLowerCase().includes(search.toLowerCase()) && !n.faction.toLowerCase().includes(search.toLowerCase())) return false;
+    // v2.354.0 — folder filter. 'all' shows everything; 'unfiled'
+    // shows folder_id null; specific folder id matches that folder.
+    if (selectedFolderId === 'unfiled' && n.folder_id != null) return false;
+    if (
+      selectedFolderId !== 'all' &&
+      selectedFolderId !== 'unfiled' &&
+      selectedFolderId !== null &&
+      n.folder_id !== selectedFolderId
+    ) return false;
     return true;
   });
 
@@ -217,7 +398,17 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   if (loading) return <div className="loading-text" style={{ padding: 'var(--sp-4)' }}>Loading NPCs…</div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+    // v2.354.0 — Outer flex-row with folder browser sidebar on the
+    // left, existing column on the right. The sidebar uses fixed
+    // 220px width via its own internal styles; the right side flexes.
+    <div style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'flex-start' }}>
+      <CreatureFolderBrowser
+        campaignId={campaignId}
+        selectedFolderId={selectedFolderId}
+        onSelect={setSelectedFolderId}
+        isOwner={isOwner}
+      />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
       {/* Controls */}
       <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'center' }}>
         <input
@@ -234,7 +425,25 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
           Show deceased
         </label>
         {isOwner && (
-          <button className="btn-gold btn-sm" onClick={() => setEditing(empty())}>+ New NPC</button>
+          <>
+            <button
+              className="btn-secondary btn-sm"
+              onClick={() => setQuickCreateOpen(true)}
+              title="Quick-create an NPC with just a name and HP. Opens a small form."
+            >
+              + Quick NPC
+            </button>
+            <button
+              className="btn-secondary btn-sm"
+              onClick={() => setTopLevelCatalogOpen(true)}
+              title="Add a monster from the bestiary catalog into this campaign / folder."
+            >
+              + Add Monster
+            </button>
+            <button className="btn-gold btn-sm" onClick={() => setEditing(empty())}>
+              + New NPC
+            </button>
+          </>
         )}
       </div>
 
@@ -322,6 +531,33 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                               added (RAW — dead things don't roll init).
                               Feedback is inline: flash the button label
                               on success, keep error state visible. */}
+                          {/* v2.354.0 — Place on Map. Drops a token
+                              for this creature at the active scene's
+                              center; if there's an active encounter,
+                              also adds to combat_participants so it
+                              shows up in initiative + becomes
+                              targetable by spells. Dead NPCs can
+                              still be placed (lore corpses, etc.). */}
+                          {isOwner && (
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={() => placeOnMap(npc)}
+                              disabled={placingId === npc.id}
+                              style={{
+                                color: placeStatus[npc.id] === 'placed' ? 'var(--hp-full)'
+                                     : placeStatus[npc.id] === 'no-scene' ? 'var(--c-red-l)'
+                                     : placeStatus[npc.id] === 'error' ? 'var(--c-red-l)'
+                                     : 'var(--c-blue-l, #93c5fd)',
+                              }}
+                              title="Place this creature as a token on the active battle map scene."
+                            >
+                              {placingId === npc.id ? 'Placing…'
+                               : placeStatus[npc.id] === 'placed' ? '✓ On Map'
+                               : placeStatus[npc.id] === 'no-scene' ? 'Open Map First'
+                               : placeStatus[npc.id] === 'error' ? '✕ Failed'
+                               : '🗺 Place on Map'}
+                            </button>
+                          )}
                           {npc.is_alive && (
                             <button
                               className="btn-secondary btn-sm"
@@ -386,6 +622,76 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
           onClose={() => setCatalogImportOpen(false)}
         />
       )}
+
+      {/* v2.354.0 — Top-level Add Monster catalog picker. Same
+          component as the in-form catalog import, but the picked
+          monster lands directly in the current folder without
+          opening the form first. */}
+      {topLevelCatalogOpen && (
+        <CatalogImportModal
+          onPick={handleAddMonsterFromCatalog}
+          onClose={() => setTopLevelCatalogOpen(false)}
+        />
+      )}
+
+      {/* v2.354.0 — Quick Create NPC modal. Just name + HP, per
+          user request. Submit creates the row with sensible defaults
+          for everything else (10 in every stat, AC 10, speed 30,
+          neutral role, current folder). */}
+      {quickCreateOpen && (
+        <div
+          className="modal-overlay"
+          onClick={() => setQuickCreateOpen(false)}
+          style={{ zIndex: 31000 }}
+        >
+          <div
+            className="modal"
+            style={{ maxWidth: 380, width: '92vw', padding: '20px 24px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 'var(--sp-3)' }}>Quick NPC</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+              <div>
+                <label>Name *</label>
+                <input
+                  value={quickName}
+                  onChange={e => setQuickName(e.target.value)}
+                  placeholder="Goblin, Innkeeper, Mom…"
+                  autoFocus
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && quickName.trim()) handleQuickCreate();
+                    if (e.key === 'Escape') setQuickCreateOpen(false);
+                  }}
+                />
+              </div>
+              <div>
+                <label>HP (optional)</label>
+                <input
+                  type="number"
+                  value={quickHp}
+                  onChange={e => setQuickHp(e.target.value)}
+                  placeholder="10"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && quickName.trim()) handleQuickCreate();
+                    if (e.key === 'Escape') setQuickCreateOpen(false);
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => setQuickCreateOpen(false)}>Cancel</button>
+              <button
+                className="btn-gold"
+                onClick={handleQuickCreate}
+                disabled={!quickName.trim()}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
     </div>
   );
 }
