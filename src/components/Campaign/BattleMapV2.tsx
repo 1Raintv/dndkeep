@@ -7317,6 +7317,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // token's own click handler (open quick panel etc.) do its thing.
   const activeTokenInfoForMoveRef = useRef(activeTokenInfo);
   useEffect(() => { activeTokenInfoForMoveRef.current = activeTokenInfo; }, [activeTokenInfo]);
+  // v2.347.0 — generation counter for the in-flight click-to-move
+  // animation. Bumped at the start of each move; the rAF loop checks
+  // this on every frame and bails if a newer move started. Prevents
+  // overlapping animations from fighting over the token's position.
+  const clickMoveGenRef = useRef(0);
   // Mirror tool-mode flags into a ref so the click handler reads the
   // current value without re-attaching every time a mode toggles.
   const modeFlagsRef = useRef({
@@ -7404,8 +7409,6 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       const fromCellRow = Math.round(originY / gridSizePx);
       const fromCellCol = Math.round(originX / gridSizePx);
       const distanceFt = computeChebyshevFt(fromCellRow, fromCellCol, targetCellRow, targetCellCol);
-      const enforceMove = ati.tokenId === ati.tokenId; // trivially true
-      void enforceMove;
 
       (async () => {
         const check = await canMove(ati.participantId!, distanceFt);
@@ -7416,9 +7419,61 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           );
           return;
         }
-        // Optimistic local update.
-        useBattleMapStore.getState().updateTokenPosition(ati.tokenId!, targetX, targetY);
-        const result = await tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY);
+        // v2.347.0 — Smooth-slide animation (BG3 feel).
+        //
+        // Pre-v2.347 the click-to-move snapped instantly. Now we
+        // slide the token along the straight path at ~120 ft/s
+        // (250ms per 30ft step). Visual only — server commit + log
+        // fire upfront so peers see the move immediately and the
+        // movement_used_ft + OA triggers don't lag the animation.
+        //
+        // Cancellation: a generation counter gates each frame. If
+        // another click-to-move starts (or any code calls
+        // updateTokenPosition for this token), the token's stored
+        // position will diverge from our animated frame's target,
+        // so we abort. Belt-and-suspenders against double-clicks
+        // and rapid re-aiming.
+        //
+        // Min duration 60ms (a 5ft step) so even a single-cell
+        // step shows visible motion and reads as "deliberate" rather
+        // than "snap." Max ~500ms cap so a Dash-doubled 60ft move
+        // doesn't drag too long.
+        const SPEED_PX_PER_MS = (120 * gridSizePx / 5) / 1000; // 120 ft/s in px/ms
+        const dx = targetX - originX;
+        const dy = targetY - originY;
+        const distPx = Math.sqrt(dx * dx + dy * dy);
+        const durationMs = Math.max(60, Math.min(500, distPx / SPEED_PX_PER_MS));
+
+        // Fire server commit immediately (peers see the destination).
+        // Animation is local-only.
+        const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY);
+
+        // Local rAF animation. Linear interpolation reads cleanest
+        // for grid-snapped destinations; easing would feel mushy.
+        const startMs = performance.now();
+        const tokenId = ati.tokenId!;
+        const animateGen = ++clickMoveGenRef.current;
+        await new Promise<void>(resolve => {
+          function step() {
+            // Cancel if a newer click-to-move started.
+            if (animateGen !== clickMoveGenRef.current) {
+              resolve();
+              return;
+            }
+            const t = Math.min(1, (performance.now() - startMs) / durationMs);
+            const x = originX + dx * t;
+            const y = originY + dy * t;
+            useBattleMapStore.getState().updateTokenPosition(tokenId, x, y);
+            if (t < 1) {
+              requestAnimationFrame(step);
+            } else {
+              resolve();
+            }
+          }
+          requestAnimationFrame(step);
+        });
+
+        const result = await commitPromise;
         if (!result.ok) {
           // Roll back on server reject (wall trigger, RLS, etc.).
           useBattleMapStore.getState().updateTokenPosition(ati.tokenId!, originX, originY);
