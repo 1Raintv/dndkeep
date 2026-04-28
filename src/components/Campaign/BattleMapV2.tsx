@@ -3483,21 +3483,25 @@ function TokenLayer(props: {
             event.stopPropagation();
             event.preventDefault();
             const tid = (container as any).__tokenId as string;
-            // v2.360.0 — Use the FederatedPointerEvent's own clientX/Y
-            // directly. Pre-v2.360 read event.nativeEvent.clientX which
-            // is a Pixi v7-era API; in v8 the federated event exposes
-            // its own viewport-relative clientX/clientY synthesized
-            // from the underlying DOM PointerEvent. Reading nativeEvent
-            // sometimes returns the OuterEvent's coordinates from a
-            // different propagation phase, producing a context menu
-            // that appears far from the actual click. User feedback:
-            // "When you right click on a Ancient Red Dragon the menu
-            // pops up very far off to the right it needs to be right
-            // where you right clicked on the token."
+            // v2.361.0 — Compute viewport-relative coords ourselves
+            // instead of trusting event.clientX. Pixi v8's
+            // FederatedMouseEvent.clientX is documented as
+            // "relative to the canvas" (per Pixi v8 type defs),
+            // NOT viewport-relative. The v2.360 fix that switched
+            // from event.nativeEvent.clientX → event.clientX made
+            // the menu offset worse, not better. Source of truth:
+            //   event.global    = canvas-stage coords (top-left = 0,0)
+            //   canvas bounding = canvas top-left in viewport coords
+            //   sum             = viewport coords for the click
+            // No reliance on Pixi's clientX semantics or on the
+            // nativeEvent prop being populated.
+            const rect = canvasEl?.getBoundingClientRect();
+            const vpX = (rect?.left ?? 0) + event.global.x;
+            const vpY = (rect?.top ?? 0) + event.global.y;
             onContextMenu({
               tokenId: tid,
-              clientX: event.clientX,
-              clientY: event.clientY,
+              clientX: vpX,
+              clientY: vpY,
             });
             return;
           }
@@ -3526,13 +3530,18 @@ function TokenLayer(props: {
           // v2.226 — record click-probe state. If pointerup fires soon
           // after with negligible movement, the parent gets onTokenClick
           // instead of (or in addition to) the drag commit.
-          // v2.360.0 — Use event.clientX/Y directly (Pixi v8 federated
-          // event), not event.nativeEvent.clientX (v7-era). Same reason
-          // as the right-click handler above.
+          // v2.361.0 — Translate stage coords → viewport coords via
+          // the canvas's bounding rect. event.clientX is canvas-
+          // relative in Pixi v8, so the click-probe's downClientX/Y
+          // were canvas-relative too; pointerup compares against DOM
+          // PointerEvent.clientX which IS viewport-relative,
+          // producing apparent movement of hundreds of px on every
+          // click and breaking the click-vs-drag distinction.
+          const probeRect = canvasEl?.getBoundingClientRect();
           clickProbeRef.current = {
             id: tid,
-            downClientX: event.clientX,
-            downClientY: event.clientY,
+            downClientX: (probeRect?.left ?? 0) + event.global.x,
+            downClientY: (probeRect?.top ?? 0) + event.global.y,
             downAtMs: performance.now(),
             didMove: false,
           };
@@ -4429,6 +4438,31 @@ function TokenLayer(props: {
           const toCellCol = Math.floor(clampedX / gridSizePx);
           const distanceFt = computeChebyshevFt(fromCellRow, fromCellCol, toCellRow, toCellCol);
 
+          // v2.361.0 — Snappy local over-budget snap-back. User
+          // feedback: snap-back was sluggish because we awaited a
+          // canMove() round-trip (~100-500ms over the network) before
+          // resetting the token. The local activeTokenInfo already
+          // has authoritative .max + .used values that are kept in
+          // sync via the combat-state push loop; checking distanceFt
+          // > remaining locally gives the same answer 99% of the
+          // time. Predict locally first → snap immediately if over —
+          // no network wait. canMove still runs below as the
+          // authoritative server check (catches edge cases where the
+          // local cache was stale due to another concurrent action),
+          // but by then the user has already seen the snap.
+          if (enforceMove) {
+            const remaining = Math.max(0, ati!.max - ati!.used);
+            if (distanceFt > remaining) {
+              // Snap back instantly. Skip both the optimistic position
+              // commit AND the canMove round-trip. No DB write; the
+              // origin position is still canonical in scene_tokens.
+              useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
+              onDragMove?.(drag.id, drag.originX, drag.originY);
+              onMovementBlocked?.();
+              return;
+            }
+          }
+
           // Optimistic UI: position the token at the drop site
           // immediately. If validation fails, we'll snap it back
           // below — most drags succeed, so this avoids a perceptible
@@ -4440,9 +4474,10 @@ function TokenLayer(props: {
             if (enforceMove) {
               const check = await canMove(ati!.participantId!, distanceFt);
               if (!check.allowed) {
-                // Snap back to origin. Skip the tokensApi commit —
-                // we never want the over-budget position to hit the
-                // DB. Notify parent so a toast can fire.
+                // Authoritative server-side rejection. The local
+                // pre-check above passed, so this only fires when
+                // the local cache was stale (rare). Same snap-back
+                // path as the local short-circuit.
                 useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
                 onDragMove?.(drag.id, drag.originX, drag.originY);
                 onMovementBlocked?.();
