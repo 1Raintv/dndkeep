@@ -2208,6 +2208,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      // v2.351.0 — folder organization for the unified Creatures Manager
+      creature_folders: {
+        Row: {
+          id: string;
+          owner_id: string;
+          campaign_id: string | null;
+          parent_folder_id: string | null;
+          name: string;
+          sort_index: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          campaign_id?: string | null;
+          parent_folder_id?: string | null;
+          name: string;
+          sort_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          campaign_id?: string | null;
+          parent_folder_id?: string | null;
+          name?: string;
+          sort_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       scene_walls: {
         Row: {
           id: string;

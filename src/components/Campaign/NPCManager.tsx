@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { getActiveEncounter, npcToSeed, addParticipantToEncounter } from '../../lib/combatEncounter';
+// v2.351.0 — Unified Creatures Manager. The old inline form (story
+// fields only, 720px modal) is replaced by CreatureFormModal which
+// covers combat stats too. Catalog import via CatalogImportModal.
+import CreatureFormModal from './CreatureFormModal';
+import CatalogImportModal from './CatalogImportModal';
+import {
+  createCreature, updateCreature, deleteCreature, importFromCatalog,
+  type CreatureRow,
+} from '../../lib/api/creatures';
 
 interface NPC {
   id: string;
@@ -18,11 +27,29 @@ interface NPC {
   // v2.175.0 — Phase Q.0 pt 16: combat stats (already present in the
   // `npcs` DB table with sensible defaults). Exposed so the new
   // "Add to Combat" button has HP/AC to seed the participant row.
+  // v2.351.0 — extended further to cover the unified creature shape
+  // so the rebuilt form can read/write all combat fields.
   ac?: number;
   hp?: number;
   max_hp?: number;
   dex?: number;
   speed?: number;
+  str?: number;
+  con?: number;
+  int?: number;
+  wis?: number;
+  cha?: number;
+  cr?: string;
+  xp?: number;
+  type?: string;
+  size?: string;
+  attack_name?: string;
+  attack_bonus?: number;
+  attack_damage?: string;
+  // v2.351.0 — folder + visibility + image
+  folder_id?: string | null;
+  image_url?: string | null;
+  visible_to_players?: boolean;
 }
 
 interface NPCManagerProps {
@@ -31,7 +58,6 @@ interface NPCManagerProps {
 }
 
 const ROLES = ['ally', 'enemy', 'neutral', 'merchant', 'quest-giver', 'boss', 'unknown'];
-const RELATIONSHIPS = ['friendly', 'neutral', 'hostile', 'unknown', 'feared', 'trusted'];
 
 const ROLE_COLORS: Record<string, string> = {
   ally: '#34d399', enemy: '#f87171', neutral: '#94a3b8',
@@ -65,6 +91,9 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   // DM starts combat or clicks again).
   const [addingNpcId, setAddingNpcId] = useState<string | null>(null);
   const [addToCombatStatus, setAddToCombatStatus] = useState<Record<string, 'added' | 'no-encounter' | 'error'>>({});
+  // v2.351.0 — catalog import picker open state. Opens over the form
+  // modal when the user clicks "Import from Catalog" inside the form.
+  const [catalogImportOpen, setCatalogImportOpen] = useState(false);
 
   useEffect(() => { load(); }, [campaignId]);
 
@@ -78,23 +107,54 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   async function save() {
     if (!editing?.name?.trim()) return;
     setSaving(true);
-    if ((editing as NPC).id) {
-      await supabase.from('homebrew_monsters').update({ ...editing, updated_at: new Date().toISOString() }).eq('id', (editing as NPC).id);
-    } else {
-      await supabase.from('homebrew_monsters').insert({ ...editing, campaign_id: campaignId });
+    try {
+      if ((editing as NPC).id) {
+        await updateCreature((editing as NPC).id, editing as Partial<CreatureRow>);
+      } else {
+        await createCreature({
+          ...(editing as Partial<CreatureRow>),
+          name: editing.name.trim(),
+          campaign_id: campaignId,
+        });
+      }
+      await load();
+      setEditing(null);
+    } catch (err) {
+      console.error('[NPCManager] save failed', err);
+    } finally {
+      setSaving(false);
     }
-    await load();
-    setEditing(null);
-    setSaving(false);
+  }
+
+  async function handleCatalogPick(catalogId: string) {
+    // v2.351.0 — copy the selected catalog row into homebrew_monsters,
+    // drop into the current campaign + the form's folder selection,
+    // then close the picker and refresh the list. The form closes too
+    // (the new creature is now persisted; user can re-open to edit).
+    setCatalogImportOpen(false);
+    try {
+      await importFromCatalog({
+        catalogMonsterId: catalogId,
+        campaignId,
+        folderId: editing?.folder_id ?? null,
+      });
+      await load();
+      setEditing(null);
+    } catch (err) {
+      console.error('[NPCManager] catalog import failed', err);
+    }
   }
 
   async function toggleAlive(npc: NPC) {
-    await supabase.from('homebrew_monsters').update({ is_alive: !npc.is_alive, status: npc.is_alive ? 'dead' : 'alive' }).eq('id', npc.id);
+    await updateCreature(npc.id, {
+      is_alive: !npc.is_alive,
+      status: npc.is_alive ? 'dead' : 'alive',
+    });
     setNpcs(prev => prev.map(n => n.id === npc.id ? { ...n, is_alive: !n.is_alive, status: n.is_alive ? 'dead' : 'alive' } : n));
   }
 
   async function deleteNPC(id: string) {
-    await supabase.from('homebrew_monsters').delete().eq('id', id);
+    await deleteCreature(id);
     setNpcs(prev => prev.filter(n => n.id !== id));
   }
 
@@ -302,42 +362,29 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
         </div>
       )}
 
-      {/* NPC Form Modal */}
+      {/* v2.351.0 — Unified Creature form modal. Replaces the v2.169
+          inline form which was 720px wide and only had story fields.
+          New shape is 1100px, two-column, with combat stats on the
+          left and story fields on the right. Catalog import via the
+          inline button → CatalogImportModal. */}
       {editing && (
-        <div className="modal-overlay" onClick={() => setEditing(null)}>
-          {/* v2.169.0 — same fix as Campaign Settings v2.168. The
-              .modal class has overflow:hidden with no inner padding,
-              which clipped the NPC form's h3 and Save button against
-              the edges. Bumped 520→720 and added inline padding. */}
-          <div className="modal" style={{ maxWidth: 720, width: '92vw', padding: '20px 24px' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 'var(--sp-4)' }}>{(editing as NPC).id ? 'Edit' : 'New'} NPC</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <div><label>Name *</label><input value={editing.name ?? ''} onChange={e => setEditing(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
-                <div><label>Role</label>
-                  <select value={editing.role ?? 'neutral'} onChange={e => setEditing(f => ({ ...f, role: e.target.value }))}>
-                    {ROLES.map(r => <option key={r} value={r}>{ROLE_ICONS[r]} {r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-                  </select>
-                </div>
-                <div><label>Relationship</label>
-                  <select value={editing.relationship ?? 'neutral'} onChange={e => setEditing(f => ({ ...f, relationship: e.target.value }))}>
-                    {RELATIONSHIPS.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-                  </select>
-                </div>
-                <div><label>Race / Type</label><input value={editing.race ?? ''} onChange={e => setEditing(f => ({ ...f, race: e.target.value }))} placeholder="Human, Elf, Dragon…" /></div>
-                <div><label>Faction</label><input value={editing.faction ?? ''} onChange={e => setEditing(f => ({ ...f, faction: e.target.value }))} placeholder="Thieves Guild, Crown…" /></div>
-                <div><label>Current Location</label><input value={editing.location ?? ''} onChange={e => setEditing(f => ({ ...f, location: e.target.value }))} placeholder="The Rusty Flagon…" /></div>
-                <div><label>Last Seen</label><input value={editing.last_seen ?? ''} onChange={e => setEditing(f => ({ ...f, last_seen: e.target.value }))} placeholder="Session 3, Market…" /></div>
-              </div>
-              <div><label>Description</label><textarea value={editing.description ?? ''} onChange={e => setEditing(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="What the party knows about this character…" /></div>
-              <div><label>DM Notes (private)</label><textarea value={editing.notes ?? ''} onChange={e => setEditing(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Secrets, motivations, planned scenes…" /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-4)', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn-gold" onClick={save} disabled={saving || !editing.name?.trim()}>{saving ? 'Saving…' : 'Save NPC'}</button>
-            </div>
-          </div>
-        </div>
+        <CreatureFormModal
+          creature={editing as Partial<CreatureRow>}
+          campaignId={campaignId}
+          onChange={c => setEditing(c as Partial<NPC>)}
+          onSave={save}
+          onClose={() => setEditing(null)}
+          onOpenCatalogImport={() => setCatalogImportOpen(true)}
+          saving={saving}
+        />
+      )}
+
+      {/* v2.351.0 — Catalog import picker (over the form modal). */}
+      {catalogImportOpen && (
+        <CatalogImportModal
+          onPick={handleCatalogPick}
+          onClose={() => setCatalogImportOpen(false)}
+        />
       )}
     </div>
   );
