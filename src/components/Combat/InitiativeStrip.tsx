@@ -131,12 +131,24 @@ export default function InitiativeStrip({ isDM }: Props) {
       className="initiative-strip"
       style={{
         position: 'fixed',
-        bottom: 0, left: 0, right: 0,
+        // v2.360.0 — Constrain horizontally so the strip doesn't
+        // overlap the left sidebar (where the version label lives)
+        // or the bottom-right dice roller / dice log FAB. Pre-v2.360
+        // was left:0, right:0 (full-bleed), which buried both.
+        // Sidebar width: 220px expanded, 60px collapsed (CSS var).
+        // Dice fab cluster: ~80px wide on the right edge.
+        bottom: 0,
+        left: 'var(--sidebar-w, 220px)',
+        right: 80,
         padding: '8px 14px',
         background: 'rgba(19, 19, 29, 0.96)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
         borderTop: '1px solid var(--c-gold-bdr)',
+        borderLeft: '1px solid var(--c-border)',
+        borderRight: '1px solid var(--c-border)',
+        borderTopLeftRadius: 'var(--r-md, 8px)',
+        borderTopRightRadius: 'var(--r-md, 8px)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',

@@ -3483,11 +3483,21 @@ function TokenLayer(props: {
             event.stopPropagation();
             event.preventDefault();
             const tid = (container as any).__tokenId as string;
-            const oe = event.nativeEvent as MouseEvent | PointerEvent;
+            // v2.360.0 — Use the FederatedPointerEvent's own clientX/Y
+            // directly. Pre-v2.360 read event.nativeEvent.clientX which
+            // is a Pixi v7-era API; in v8 the federated event exposes
+            // its own viewport-relative clientX/clientY synthesized
+            // from the underlying DOM PointerEvent. Reading nativeEvent
+            // sometimes returns the OuterEvent's coordinates from a
+            // different propagation phase, producing a context menu
+            // that appears far from the actual click. User feedback:
+            // "When you right click on a Ancient Red Dragon the menu
+            // pops up very far off to the right it needs to be right
+            // where you right clicked on the token."
             onContextMenu({
               tokenId: tid,
-              clientX: oe.clientX,
-              clientY: oe.clientY,
+              clientX: event.clientX,
+              clientY: event.clientY,
             });
             return;
           }
@@ -3516,11 +3526,13 @@ function TokenLayer(props: {
           // v2.226 — record click-probe state. If pointerup fires soon
           // after with negligible movement, the parent gets onTokenClick
           // instead of (or in addition to) the drag commit.
-          const oe = event.nativeEvent as PointerEvent;
+          // v2.360.0 — Use event.clientX/Y directly (Pixi v8 federated
+          // event), not event.nativeEvent.clientX (v7-era). Same reason
+          // as the right-click handler above.
           clickProbeRef.current = {
             id: tid,
-            downClientX: oe.clientX,
-            downClientY: oe.clientY,
+            downClientX: event.clientX,
+            downClientY: event.clientY,
             downAtMs: performance.now(),
             didMove: false,
           };
@@ -6751,19 +6763,21 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (mapFullscreen) {
         h = Math.max(400, viewportH - 8);
       } else {
-        // v2.358.0 — Bumped 0.96 → 0.99 of viewport. User has flagged
-        // "still small" twice after v2.356/v2.357 raises. Combined
-        // with the v2.358 negative top margin extension on
-        // .battlemap-fullwidth (sp-6 → sp-8), the canvas now reaches
-        // ~99% of viewport height before any chrome buffer kicks in.
-        // Cap raised 1800 → 2200 so 4K (2160p) displays don't bottle-
-        // neck on the cap. Buffer for the InitiativeStrip (~64px) is
-        // intentionally absorbed into the 1% — when in combat, the
-        // strip overlays the bottom of the canvas, hiding ~1 row of
-        // cells. That tradeoff is acceptable; the strip itself is
-        // collapsible via its own toolbar button.
-        const targetH = Math.floor(viewportH * 0.99);
-        h = Math.max(400, Math.min(targetH, 2200));
+        // v2.360.0 — Settled at 0.92 of viewport height. Path:
+        //   v2.336: 0.92 (baseline that worked)
+        //   v2.356: 0.96 (user said "still small")
+        //   v2.357: 0.96 (held — no measurements)
+        //   v2.358: 0.99 (aggressive — pushed under tab strip,
+        //     hid the left-side floating tools toolbar)
+        //   v2.359: 0.99 (held)
+        //   v2.360: 0.92 (rolled back). User feedback: "tools are
+        //     hidden because the map is too small" (i.e. too big,
+        //     pushing tools off-screen). The right answer for "bigger
+        //     map" is the existing fullscreen mode, which gives 100%
+        //     viewport coverage with no chrome competing. Default
+        //     layout keeps room for the floating tools + InitiativeStrip.
+        const targetH = Math.floor(viewportH * 0.92);
+        h = Math.max(400, Math.min(targetH, 1400));
       }
       setDims({ width: w, height: h });
     };

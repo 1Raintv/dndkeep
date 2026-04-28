@@ -337,12 +337,12 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .battlemap-fullwidth {
   margin-left: calc(-1 * var(--sp-8));
   margin-right: calc(-1 * var(--sp-8));
-  /* v2.358.0 — Bumped negative top margin sp-6 → sp-8 to reclaim
-     more vertical space, plus added a paddingBottom override on the
-     CombatProvider parent (see CampaignDashboard) so the InitiativeStrip
-     doesn't get pushed off-screen. The wrapper now reaches all the
-     way up to the bottom edge of the tab strip. */
-  margin-top: calc(-1 * var(--sp-8));
+  /* v2.360.0 — Reverted negative top margin. v2.356-2.358 pulled the
+     wrapper up under the tab strip to reclaim vertical space, but
+     the floating tools toolbar (position:absolute top:60 inside the
+     wrapper) shifted up with it and ended up partially obscured by
+     the tab strip. Without the negative top margin, the toolbar
+     starts at top:60 of the wrapper which is below the tab strip. */
   /* The wrapper itself doesn't need padding; BattleMapV2's internal
      toolbar + canvas have their own spacing. */
   padding: 0;
@@ -850,7 +850,13 @@ button:active:not(:disabled) { transform: scale(0.96); }
 
 /* ── Toast notifications ─────────────────────────────────────── */
 .toast-container {
-  position: fixed; bottom: var(--sp-6); right: var(--sp-6);
+  /* v2.360.0 — Moved from bottom-right (var(--sp-6) bottom + right)
+     to top-right. The bottom-right corner is occupied by the dice
+     roller FAB and the dice log; toasts were stacking right on top
+     of them. Top-right keeps notifications visible without colliding
+     with any persistent UI. Top inset clears any future top app-bar;
+     right inset matches the visual gutter of the dice fab below. */
+  position: fixed; top: var(--sp-4); right: var(--sp-4);
   z-index: 9999; display: flex; flex-direction: column; gap: var(--sp-2);
   pointer-events: none;
 }
@@ -872,6 +878,27 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .toast-error   { border-left: 3px solid var(--c-red-l); }
 .toast-info    { border-left: 3px solid var(--c-blue-l); }
 .toast-warn    { border-left: 3px solid var(--c-gold-l); }
+
+/* v2.360.0 — Responsive InitiativeStrip insets. Inline styles set
+   left: var(--sidebar-w, 220px) and right: 80 by default. On smaller
+   viewports the sidebar is collapsed (60px) or hidden, so the strip's
+   left inset needs to shrink to match. */
+@media (max-width: 768px) {
+  .initiative-strip {
+    left: var(--sidebar-w-collapsed, 60px) !important;
+  }
+}
+@media (max-width: 480px) {
+  .initiative-strip {
+    /* Sidebar is hidden entirely below 480px, so the strip can go
+       to the left edge. Right inset still leaves room for the dice
+       fab. The mobile-bottom-nav also takes bottom 56px below 480px,
+       so the strip needs to sit above it. */
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 56px !important;
+  }
+}
 
 /* ── Skeleton loading ────────────────────────────────────────── */
 .skeleton {
