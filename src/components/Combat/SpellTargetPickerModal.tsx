@@ -36,7 +36,8 @@ import {
   deriveCoverFromWalls,
   loadActiveBattleMap,
   buildParticipantPositions,
-  findParticipantsInRadius,
+  findParticipantsInArea,
+  type AoeShape,
   type ParticipantPosition,
 } from '../../lib/battleMapGeometry';
 import { logAction } from '../shared/ActionLog';
@@ -136,14 +137,30 @@ export default function SpellTargetPickerModal({
       setAoePreview(null);
       return;
     }
+    // v2.343.0 — shape-aware preview. For cone + line, the caster is
+    // the apex/origin and the chosen "center" is the direction target.
+    // For sphere/cylinder/cube, the chosen center IS the geometric
+    // origin and direction is unused. Mirrors the selection logic in
+    // findParticipantsInArea so the visual stays honest with the math.
+    const isDirectional = aoeShape === 'cone' || aoeShape === 'line';
+    const casterPos = casterParticipantId
+      ? positions.get(casterParticipantId)
+      : null;
+    const originPos = isDirectional && casterPos ? casterPos : centerPos;
+    const targetPos = isDirectional ? centerPos : null;
+
     setAoePreview({
-      centerWorldX: centerPos.col * gridSize + gridSize / 2,
-      centerWorldY: centerPos.row * gridSize + gridSize / 2,
+      centerWorldX: originPos.col * gridSize + gridSize / 2,
+      centerWorldY: originPos.row * gridSize + gridSize / 2,
       sizeFt: aoeSize,
       shape: aoeShape as 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line',
+      ...(targetPos ? {
+        directionWorldX: targetPos.col * gridSize + gridSize / 2,
+        directionWorldY: targetPos.row * gridSize + gridSize / 2,
+      } : {}),
     });
     return () => { setAoePreview(null); };
-  }, [open, autoTargetable, centerId, positions, gridSize, aoeSize, aoeShape, setAoePreview]);
+  }, [open, autoTargetable, centerId, casterParticipantId, positions, gridSize, aoeSize, aoeShape, setAoePreview]);
 
   // Load active encounter + participants once on open.
   useEffect(() => {
@@ -420,9 +437,18 @@ export default function SpellTargetPickerModal({
                         if (!centerId || !positions) return;
                         const centerPos = positions.get(centerId);
                         if (!centerPos) return;
-                        // Build the candidate set (eligible targets only —
-                        // excludes caster and dead, already done upstream).
-                        const matches = findParticipantsInRadius(
+                        // v2.343.0 — shape-aware. For cone + line, the
+                        // caster is the apex/origin and the chosen
+                        // "center" is the direction target. Sphere/
+                        // cylinder/cube treat the chosen center as the
+                        // origin directly.
+                        const casterPos = casterParticipantId
+                          ? positions.get(casterParticipantId)
+                          : null;
+                        const isDirectional = aoeShape === 'cone' || aoeShape === 'line';
+                        const origin = isDirectional && casterPos ? casterPos : centerPos;
+                        const toward = isDirectional ? centerPos : null;
+                        const matches = findParticipantsInArea(
                           participants.map(p => ({
                             id: p.id,
                             name: p.name,
@@ -430,8 +456,10 @@ export default function SpellTargetPickerModal({
                             entity_id: p.entity_id,
                           })),
                           positions,
-                          centerPos,
+                          aoeShape as AoeShape,
                           aoeSize,
+                          origin,
+                          toward,
                           null,
                           gridSize,
                         );

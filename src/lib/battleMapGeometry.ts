@@ -423,3 +423,158 @@ export function deriveCoverFromWalls(
   }
   return pointsToCoverLevel(points);
 }
+
+// ─── v2.343.0 — Shape-aware AoE helpers ──────────────────────────
+//
+// 5e SRD shapes: sphere, cylinder, cube, cone, line. Each has a
+// distinct origin model:
+//
+//   sphere    — point in the world; participants within radius selected
+//   cylinder  — same as sphere in 2D top-down (vertical extrusion not
+//               modeled today); aliased to sphere
+//   cube      — origin point; cube extends outward along all axes; for
+//               grid math, an N-foot cube fills (N/5) × (N/5) cells
+//   cone      — apex at caster; opens 53° on each side along a chosen
+//               direction; size = length-to-far-edge in feet
+//   line      — from caster, length L feet, width 5 ft (1 square)
+//
+// Inputs match findParticipantsInRadius for sphere; cone/line need the
+// caster origin (apex) plus a target direction. Cube needs the origin
+// cell. The picker UI provides the "target participant" — we derive
+// (caster, target) from that.
+//
+// The 53.13° cone half-angle is the standard tabletop interpretation
+// of "cone fills a triangular area as wide as it is long" (DMG 2014).
+// 5e 2024 keeps the same shape geometry. cosθ ≈ 0.6 at 53.13°, so the
+// hit test is dot(normalize(toTarget), normalize(toCandidate)) >= 0.6.
+
+const CONE_COSINE_HALF_ANGLE = 0.6;  // cos(53.13°) — wide-as-long cone
+const LINE_HALF_WIDTH_FT = 2.5;       // 5ft total width per RAW
+
+export type AoeShape = 'sphere' | 'cylinder' | 'cube' | 'cone' | 'line';
+
+/**
+ * Find all participants whose token sits inside an AoE of arbitrary
+ * shape. Origin semantics depend on shape:
+ *   sphere/cylinder/cube  — origin is the AoE center cell
+ *   cone/line             — origin is the CASTER cell (apex / line start)
+ *                            and `toward` is required (target cell)
+ *
+ * Returns the same RadiusMatch[] shape as findParticipantsInRadius so
+ * callers can swap implementations without rewriting result-handling.
+ * `distanceFt` is Chebyshev distance from origin to the matched token —
+ * useful for sorting (closer targets first) and for the call-site to
+ * surface "you are 15ft away" labels.
+ */
+export function findParticipantsInArea<P extends ParticipantForTokenLookup>(
+  participants: P[],
+  positions: Map<string, ParticipantPosition>,
+  shape: AoeShape,
+  sizeFt: number,
+  origin: ParticipantPosition,
+  toward: ParticipantPosition | null,
+  excludeIds?: ReadonlySet<string> | null,
+  feetPerSquare: number = FEET_PER_SQUARE,
+): RadiusMatch<P>[] {
+  // Sphere + cylinder are the existing math; delegate so we get one
+  // canonical implementation for the common case.
+  if (shape === 'sphere' || shape === 'cylinder') {
+    return findParticipantsInRadius(
+      participants, positions,
+      origin, sizeFt, excludeIds, feetPerSquare,
+    );
+  }
+
+  const results: RadiusMatch<P>[] = [];
+
+  if (shape === 'cube') {
+    // Origin = a corner cell of the cube. RAW is "you choose a point of
+    // origin" — we treat the named origin as the near-corner and let
+    // the cube extend outward in +row/+col by sizeCells. The picker
+    // can flip rows/cols if the player wants the cube to extend in a
+    // different direction; for MVP, +/- expansion from origin via
+    // bounding box centered at origin reads as "cube around target."
+    // Players will place the spell on a target participant, so a
+    // centered cube is the more intuitive default.
+    const sizeCells = Math.floor(sizeFt / feetPerSquare);
+    const half = Math.floor(sizeCells / 2);
+    const minRow = origin.row - half;
+    const maxRow = origin.row + (sizeCells - half - 1);
+    const minCol = origin.col - half;
+    const maxCol = origin.col + (sizeCells - half - 1);
+    for (const p of participants) {
+      if (excludeIds && excludeIds.has(p.id)) continue;
+      const pos = positions.get(p.id);
+      if (!pos) continue;
+      if (pos.row < minRow || pos.row > maxRow) continue;
+      if (pos.col < minCol || pos.col > maxCol) continue;
+      const dCells = Math.max(Math.abs(pos.row - origin.row), Math.abs(pos.col - origin.col));
+      results.push({ participant: p, distanceFt: dCells * feetPerSquare });
+    }
+    return results;
+  }
+
+  if (shape === 'cone') {
+    // Cone: apex at origin (caster), opens toward `toward`. Half-angle
+    // ~53° → cos = 0.6. Test each candidate with:
+    //   1) distance from apex ≤ size (length cap)
+    //   2) dot(normalize(apex→target), normalize(apex→candidate)) ≥ cos
+    if (!toward) return results;
+    const lengthCells = Math.ceil(sizeFt / feetPerSquare);
+    // Direction vector from apex to target. Treat row/col as (y, x).
+    const dx = toward.col - origin.col;
+    const dy = toward.row - origin.row;
+    const dirLen = Math.sqrt(dx * dx + dy * dy);
+    if (dirLen < 1e-6) return results; // degenerate — caster IS target
+    const ndx = dx / dirLen;
+    const ndy = dy / dirLen;
+    for (const p of participants) {
+      if (excludeIds && excludeIds.has(p.id)) continue;
+      const pos = positions.get(p.id);
+      if (!pos) continue;
+      const cdx = pos.col - origin.col;
+      const cdy = pos.row - origin.row;
+      const candLen = Math.sqrt(cdx * cdx + cdy * cdy);
+      if (candLen < 1e-6) continue; // candidate IS the caster — skip
+      if (candLen > lengthCells) continue;
+      const dot = (cdx * ndx + cdy * ndy) / candLen;
+      if (dot >= CONE_COSINE_HALF_ANGLE) {
+        results.push({ participant: p, distanceFt: Math.round(candLen) * feetPerSquare });
+      }
+    }
+    return results;
+  }
+
+  if (shape === 'line') {
+    // Line: from caster (origin) toward `toward`, length sizeFt, half-
+    // width LINE_HALF_WIDTH_FT (2.5ft per side = 5ft total per RAW).
+    // Hit test: project candidate onto the line, accept if projection
+    // is within [0, lengthCells] and perpendicular distance ≤ halfCells.
+    if (!toward) return results;
+    const lengthCells = sizeFt / feetPerSquare;
+    const halfWidthCells = LINE_HALF_WIDTH_FT / feetPerSquare;
+    const dx = toward.col - origin.col;
+    const dy = toward.row - origin.row;
+    const dirLen = Math.sqrt(dx * dx + dy * dy);
+    if (dirLen < 1e-6) return results;
+    const ndx = dx / dirLen;
+    const ndy = dy / dirLen;
+    for (const p of participants) {
+      if (excludeIds && excludeIds.has(p.id)) continue;
+      const pos = positions.get(p.id);
+      if (!pos) continue;
+      const cdx = pos.col - origin.col;
+      const cdy = pos.row - origin.row;
+      // Projection along line
+      const along = cdx * ndx + cdy * ndy;
+      if (along < 0 || along > lengthCells) continue;
+      // Perpendicular distance (cross-product magnitude in 2D)
+      const perp = Math.abs(cdx * ndy - cdy * ndx);
+      if (perp > halfWidthCells) continue;
+      results.push({ participant: p, distanceFt: Math.round(along) * feetPerSquare });
+    }
+    return results;
+  }
+
+  return results;
+}

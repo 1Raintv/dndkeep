@@ -183,15 +183,22 @@ interface BattleMapStore {
    *  centerWorldX/Y are pre-resolved to world pixel coords (the modal
    *  has the position lookup; the map shouldn't have to redo it).
    *  sizeFt is the AoE diameter in feet for sphere, cone length etc.
-   *  shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line' — currently
-   *  only sphere is rendered (most common case: Fireball, Shatter,
-   *  Spirit Guardians); other shapes fall back to the sphere ring with
-   *  the same radius until the per-shape geometry lands. */
+   *  shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line' — v2.343.0
+   *  added cone/cube/line geometries; pre-v2.343 every shape rendered
+   *  as a sphere ring of the same size.
+   *
+   *  v2.343.0 — directionWorldX/Y added for cone + line. Their preview
+   *  needs an apex (caster) AND a direction (target). When set, the
+   *  renderer draws the shape from `centerWorld*` (apex) toward
+   *  `directionWorld*`. Sphere/cylinder/cube ignore the direction
+   *  fields and use centerWorld* as the geometric center. */
   aoePreview: {
     centerWorldX: number;
     centerWorldY: number;
     sizeFt: number;
     shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line';
+    directionWorldX?: number;
+    directionWorldY?: number;
   } | null;
 
   addToken: (token: Token) => void;
@@ -238,6 +245,8 @@ interface BattleMapStore {
       centerWorldY: number;
       sizeFt: number;
       shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line';
+      directionWorldX?: number;
+      directionWorldY?: number;
     } | null,
   ) => void;
 }

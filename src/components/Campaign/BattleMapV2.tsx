@@ -1386,17 +1386,128 @@ function VisionLayer(props: {
     }
     const radiusPx = (aoePreview.sizeFt / 5) * gridSizePx;
     ring.clear();
-    // Translucent fill — 8% opacity reads as a selection, not an obstacle.
-    ring.setFillStyle({ color: 0xfde68a, alpha: 0.10 });
-    ring.circle(aoePreview.centerWorldX, aoePreview.centerWorldY, radiusPx);
-    ring.fill();
-    ring.setStrokeStyle({ color: 0xfbbf24, width: 2, alpha: 0.95 });
-    ring.circle(aoePreview.centerWorldX, aoePreview.centerWorldY, radiusPx);
-    ring.stroke();
-    // Inner small ring marks the precise center cell so the player
-    // can see exactly where the spell is anchored.
-    ring.setStrokeStyle({ color: 0xfbbf24, width: 1.5, alpha: 0.8 });
-    ring.circle(aoePreview.centerWorldX, aoePreview.centerWorldY, gridSizePx * 0.5);
+
+    const FILL_COLOR = 0xfde68a;
+    const FILL_ALPHA = 0.10;
+    const STROKE_COLOR = 0xfbbf24;
+    const STROKE_WIDTH = 2;
+    const STROKE_ALPHA = 0.95;
+    const INNER_DOT_ALPHA = 0.8;
+
+    const cx = aoePreview.centerWorldX;
+    const cy = aoePreview.centerWorldY;
+    const shape = aoePreview.shape;
+
+    // v2.343.0 — shape-aware geometry. The selection logic in
+    // findParticipantsInArea is the source of truth; we mirror its
+    // shape model here so the visual matches the actual auto-target
+    // result. Both upgrade together when shape definitions change.
+    if (shape === 'sphere' || shape === 'cylinder') {
+      // Circle. radiusPx = full radius of the AoE.
+      ring.setFillStyle({ color: FILL_COLOR, alpha: FILL_ALPHA });
+      ring.circle(cx, cy, radiusPx);
+      ring.fill();
+      ring.setStrokeStyle({ color: STROKE_COLOR, width: STROKE_WIDTH, alpha: STROKE_ALPHA });
+      ring.circle(cx, cy, radiusPx);
+      ring.stroke();
+    } else if (shape === 'cube') {
+      // Square centered on the origin cell. sizeFt is the edge length;
+      // half each side from center. Snapping the rect to whole cells
+      // would be slightly more accurate but the visual already lines
+      // up well enough with the selection at typical zoom levels.
+      const halfPx = radiusPx; // sizeFt/5 * gridSizePx — already half-edge in cells
+      // Cube: full edge in feet. Selection uses Math.floor(sizeFt/5)
+      // cells; reflect that exactly so visual = selection.
+      const sizeCells = Math.floor(aoePreview.sizeFt / 5);
+      const half = Math.floor(sizeCells / 2);
+      const minX = (cx - (half + 0.5) * gridSizePx);
+      const minY = (cy - (half + 0.5) * gridSizePx);
+      const widthPx = sizeCells * gridSizePx;
+      ring.setFillStyle({ color: FILL_COLOR, alpha: FILL_ALPHA });
+      ring.rect(minX, minY, widthPx, widthPx);
+      ring.fill();
+      ring.setStrokeStyle({ color: STROKE_COLOR, width: STROKE_WIDTH, alpha: STROKE_ALPHA });
+      ring.rect(minX, minY, widthPx, widthPx);
+      ring.stroke();
+      void halfPx; // silence: used only by sphere; kept readable above
+    } else if (shape === 'cone') {
+      // Triangular wedge from apex (caster) opening 53° on each side
+      // toward the target direction. cos(53.13°) ≈ 0.6 → tan ≈ 1.333.
+      // At distance L from apex, half-width = L * tan(53.13°) ≈ L.
+      // Practical RAW interpretation: cone is "as wide as it is long"
+      // at its far edge — half-width at far edge equals length.
+      // We render this as a filled isoceles triangle with one vertex
+      // at the apex, two vertices at the corners of the far edge.
+      const dx = (aoePreview.directionWorldX ?? cx) - cx;
+      const dy = (aoePreview.directionWorldY ?? cy) - cy;
+      const dirLen = Math.sqrt(dx * dx + dy * dy);
+      if (dirLen > 1e-3) {
+        const ndx = dx / dirLen;
+        const ndy = dy / dirLen;
+        // Perpendicular (rotated 90°)
+        const px = -ndy;
+        const py = ndx;
+        // Far edge at distance = radiusPx (length in pixels).
+        // Half-width at far edge = radiusPx (cone is as wide as long).
+        const farX = cx + ndx * radiusPx;
+        const farY = cy + ndy * radiusPx;
+        const cornerLeftX = farX + px * radiusPx;
+        const cornerLeftY = farY + py * radiusPx;
+        const cornerRightX = farX - px * radiusPx;
+        const cornerRightY = farY - py * radiusPx;
+        ring.setFillStyle({ color: FILL_COLOR, alpha: FILL_ALPHA });
+        ring.poly([
+          cx, cy,
+          cornerLeftX, cornerLeftY,
+          cornerRightX, cornerRightY,
+        ]);
+        ring.fill();
+        ring.setStrokeStyle({ color: STROKE_COLOR, width: STROKE_WIDTH, alpha: STROKE_ALPHA });
+        ring.poly([
+          cx, cy,
+          cornerLeftX, cornerLeftY,
+          cornerRightX, cornerRightY,
+        ]);
+        ring.stroke();
+      }
+    } else if (shape === 'line') {
+      // Thick rectangle from origin (caster) toward direction target,
+      // length = radiusPx, width = 1 cell (5ft per RAW). The line is
+      // drawn as a 4-vertex polygon hugging both sides of the path.
+      const dx = (aoePreview.directionWorldX ?? cx) - cx;
+      const dy = (aoePreview.directionWorldY ?? cy) - cy;
+      const dirLen = Math.sqrt(dx * dx + dy * dy);
+      if (dirLen > 1e-3) {
+        const ndx = dx / dirLen;
+        const ndy = dy / dirLen;
+        const px = -ndy;
+        const py = ndx;
+        const halfWidthPx = gridSizePx / 2; // 2.5ft per side = 1 cell total
+        const farX = cx + ndx * radiusPx;
+        const farY = cy + ndy * radiusPx;
+        ring.setFillStyle({ color: FILL_COLOR, alpha: FILL_ALPHA });
+        ring.poly([
+          cx + px * halfWidthPx,    cy + py * halfWidthPx,
+          farX + px * halfWidthPx,  farY + py * halfWidthPx,
+          farX - px * halfWidthPx,  farY - py * halfWidthPx,
+          cx - px * halfWidthPx,    cy - py * halfWidthPx,
+        ]);
+        ring.fill();
+        ring.setStrokeStyle({ color: STROKE_COLOR, width: STROKE_WIDTH, alpha: STROKE_ALPHA });
+        ring.poly([
+          cx + px * halfWidthPx,    cy + py * halfWidthPx,
+          farX + px * halfWidthPx,  farY + py * halfWidthPx,
+          farX - px * halfWidthPx,  farY - py * halfWidthPx,
+          cx - px * halfWidthPx,    cy - py * halfWidthPx,
+        ]);
+        ring.stroke();
+      }
+    }
+
+    // Inner small ring marks the precise origin cell — common to all
+    // shapes so the player can locate the apex/center at a glance.
+    ring.setStrokeStyle({ color: STROKE_COLOR, width: 1.5, alpha: INNER_DOT_ALPHA });
+    ring.circle(cx, cy, gridSizePx * 0.5);
     ring.stroke();
     ring.visible = true;
   }, [aoePreview, gridSizePx]);
