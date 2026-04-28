@@ -93,8 +93,10 @@ export function findPath(
   const occupied = new Set<string>();
   for (const t of occupants) {
     if (t.id === moverTokenId) continue;
-    const tRow = Math.round(t.y / gridSizePx);
-    const tCol = Math.round(t.x / gridSizePx);
+    // v2.357.0 — Math.floor (not Math.round). Tokens stored at center-
+    // of-cell produce N+0.5 when divided by cellSize; floor gives N.
+    const tRow = Math.floor(t.y / gridSizePx);
+    const tCol = Math.floor(t.x / gridSizePx);
     occupied.add(`${tRow},${tCol}`);
   }
   // The goal cell can be the goal even if not in occupied set; we

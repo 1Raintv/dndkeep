@@ -4176,8 +4176,16 @@ function TokenLayer(props: {
       // Compute Chebyshev distance in feet using the canonical math
       // from lib/movement.ts. Convert from world pixels → cells via
       // gridSizePx, then feed the cell coordinates to the helper.
-      const fromCell = { row: Math.round(originY / gridSizePx), col: Math.round(originX / gridSizePx) };
-      const toCell = { row: Math.round(ty / gridSizePx), col: Math.round(tx / gridSizePx) };
+      // v2.357.0 — Math.floor (not Math.round). Tokens are stored at
+      // center-of-cell positions (col*size + size/2), so x/size is
+      // N+0.5 for column N. Math.round on N+0.5 returns N+1 (off-by-
+      // one toward the bottom-right cell). Math.floor returns N
+      // correctly. Pre-fix the distance result was still right because
+      // both endpoints had the same offset and they canceled, but any
+      // caller reading the cell coords directly was landing one cell
+      // SE of the actual token.
+      const fromCell = { row: Math.floor(originY / gridSizePx), col: Math.floor(originX / gridSizePx) };
+      const toCell = { row: Math.floor(ty / gridSizePx), col: Math.floor(tx / gridSizePx) };
       const distanceFt = computeChebyshevFt(fromCell.row, fromCell.col, toCell.row, toCell.col);
 
       // Color decision. If we have an active actor + this dragged token
@@ -4351,10 +4359,13 @@ function TokenLayer(props: {
           const enforceMove = !wasClick && movedAtAll && !!ati &&
             ati.tokenId === drag.id && !!ati.participantId;
 
-          const fromCellRow = Math.round(drag.originY / gridSizePx);
-          const fromCellCol = Math.round(drag.originX / gridSizePx);
-          const toCellRow = Math.round(clampedY / gridSizePx);
-          const toCellCol = Math.round(clampedX / gridSizePx);
+          // v2.357.0 — Math.floor (not Math.round). See drawPreview
+          // comment for rationale. Tokens stored at center-of-cell
+          // produce N+0.5 when divided by cell size; floor gives N.
+          const fromCellRow = Math.floor(drag.originY / gridSizePx);
+          const fromCellCol = Math.floor(drag.originX / gridSizePx);
+          const toCellRow = Math.floor(clampedY / gridSizePx);
+          const toCellCol = Math.floor(clampedX / gridSizePx);
           const distanceFt = computeChebyshevFt(fromCellRow, fromCellCol, toCellRow, toCellCol);
 
           // Optimistic UI: position the token at the drop site
@@ -6610,12 +6621,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         h = Math.max(400, viewportH - 8);
       } else {
         // v2.356.0 — bumped 0.92 → 0.96 of viewport height. User
-        // feedback: "the map is still too small. We need to enlarge
-        // that still." Above the canvas there's the campaign header
-        // (~80px) + tab strip (~40px); 4% of a 1080p viewport (~43px)
-        // is enough buffer to keep the bottom edge from clipping into
-        // the InitiativeStrip during combat. The 1400 cap also raised
-        // to 1800 so 1440p+ displays don't bottleneck on it.
+        // feedback after v2.356: still small. Without measurements of
+        // their actual browser viewport I can't tune further without
+        // guessing. v2.357 leaves this at 0.96 and prioritizes the
+        // verifiable movement-coord bug fix. If the map still reads as
+        // small post-deploy, the next move is either (a) push to a
+        // collapsed-header layout when on the map tab, or (b) make
+        // mapFullscreen the default for the map tab. Both are real
+        // changes — not guesswork — once we have the measurements.
         const targetH = Math.floor(viewportH * 0.96);
         h = Math.max(400, Math.min(targetH, 1800));
       }
@@ -7261,12 +7274,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // Block if the target cell is occupied by another token (would
       // collide with a creature). Cell-radius check: any token whose
       // snapped position equals our target cell.
-      const targetCellRow = Math.round(targetY / gridSizePx);
-      const targetCellCol = Math.round(targetX / gridSizePx);
+      // v2.357.0 — Math.floor (not Math.round); see drawPreview.
+      const targetCellRow = Math.floor(targetY / gridSizePx);
+      const targetCellCol = Math.floor(targetX / gridSizePx);
       for (const t of Object.values(liveTokens)) {
         if (t.id === ati.tokenId) continue; // skip self
-        const tCellRow = Math.round(t.y / gridSizePx);
-        const tCellCol = Math.round(t.x / gridSizePx);
+        const tCellRow = Math.floor(t.y / gridSizePx);
+        const tCellCol = Math.floor(t.x / gridSizePx);
         if (tCellRow === targetCellRow && tCellCol === targetCellCol) {
           return; // occupied — abort, let token's own click handler win
         }
@@ -7286,8 +7300,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // movement-budget check (multi-cell paths around walls cost
       // more feet than the straight line would have, and that's
       // RAW-correct).
-      const fromCellRow = Math.round(originY / gridSizePx);
-      const fromCellCol = Math.round(originX / gridSizePx);
+      // v2.357.0 — Math.floor (not Math.round); see drawPreview.
+      const fromCellRow = Math.floor(originY / gridSizePx);
+      const fromCellCol = Math.floor(originX / gridSizePx);
       const walls = Object.values(useBattleMapStore.getState().walls);
       const path = findPath(
         { row: fromCellRow, col: fromCellCol },
@@ -7555,10 +7570,18 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (worldPoint.x < 0 || worldPoint.x > WORLD_WIDTH) { clearPreview(); return; }
       if (worldPoint.y < 0 || worldPoint.y > WORLD_HEIGHT) { clearPreview(); return; }
 
-      const targetCellRow = Math.round(worldPoint.y / gridSizePx);
-      const targetCellCol = Math.round(worldPoint.x / gridSizePx);
-      const fromCellRow = Math.round(myToken.y / gridSizePx);
-      const fromCellCol = Math.round(myToken.x / gridSizePx);
+      // v2.357.0 — Math.floor (not Math.round). For raw cursor world
+      // coords (worldPoint here), Math.round splits each cell at its
+      // midpoint: the right half of cell N gets reported as cell N+1,
+      // the bottom half of row M as row M+1. That produced the visible
+      // "tracks from bottom-right of the token" symptom users reported
+      // — pointer-to-cell mapping was offset toward the SE corner of
+      // each cell as the cursor approached its center. Math.floor
+      // correctly returns the cell containing the cursor.
+      const targetCellRow = Math.floor(worldPoint.y / gridSizePx);
+      const targetCellCol = Math.floor(worldPoint.x / gridSizePx);
+      const fromCellRow = Math.floor(myToken.y / gridSizePx);
+      const fromCellCol = Math.floor(myToken.x / gridSizePx);
 
       // Hovering own cell — no preview needed.
       if (targetCellRow === fromCellRow && targetCellCol === fromCellCol) { clearPreview(); return; }
@@ -7566,8 +7589,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // Occupied target cell — a click would abort, so don't preview either.
       for (const t of Object.values(liveTokens)) {
         if (t.id === ati.tokenId) continue;
-        const tCellRow = Math.round(t.y / gridSizePx);
-        const tCellCol = Math.round(t.x / gridSizePx);
+        const tCellRow = Math.floor(t.y / gridSizePx);
+        const tCellCol = Math.floor(t.x / gridSizePx);
         if (tCellRow === targetCellRow && tCellCol === targetCellCol) {
           clearPreview();
           return;
