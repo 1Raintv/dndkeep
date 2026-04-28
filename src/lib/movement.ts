@@ -16,6 +16,7 @@ import { conditionsSpeedZero, conditionsSpeedHalved } from './conditions';
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
+import { isCreatureParticipantType } from './participantType';
 
 const FEET_PER_SQUARE = 5;   // D&D standard
 
@@ -152,7 +153,7 @@ export async function takeDash(input: TakeDashInput): Promise<MovementActionResu
     sequence: 0,
     actorType:
       input.participantType === 'character' ? 'player'
-      : input.participantType === 'monster' ? 'monster'
+      : isCreatureParticipantType(input.participantType) ? 'creature'
       : 'system',
     actorName: input.participantName,
     targetType: null,
@@ -210,7 +211,7 @@ export async function takeDisengage(input: TakeDisengageInput): Promise<Movement
     sequence: 0,
     actorType:
       input.participantType === 'character' ? 'player'
-      : input.participantType === 'monster' ? 'monster'
+      : isCreatureParticipantType(input.participantType) ? 'creature'
       : 'system',
     actorName: input.participantName,
     targetType: null,
@@ -264,7 +265,7 @@ export async function logMovement(input: LogMovementInput): Promise<void> {
     sequence: 0,
     actorType:
       input.participantType === 'character' ? 'player'
-      : input.participantType === 'monster' ? 'monster'
+      : isCreatureParticipantType(input.participantType) ? 'creature'
       : 'system',
     actorName: input.participantName,
     targetType: null,

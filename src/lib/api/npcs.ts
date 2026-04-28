@@ -72,7 +72,7 @@ export async function createNpcInstances(specs: NpcInstanceSpec[]): Promise<Arra
     save_proficiencies: s.roster.save_proficiencies ?? [],
   }));
   const { data, error } = await supabase
-    .from('npcs')
+    .from('homebrew_monsters')
     .insert(rows)
     .select('id, name');
   if (error || !data) {

@@ -26,6 +26,7 @@ import { abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
 //     the same trigger semantics: fires once per new round.
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn } from '../../lib/combatEncounter';
+import { isCreatureParticipantType } from '../../lib/participantType';
 
 interface PartyMember {
   id: string;
@@ -141,12 +142,12 @@ export default function DMScreen({ campaign }: DMScreenProps) {
   }
 
   async function loadNPCs() {
-    const { data } = await supabase.from('npcs').select('*').eq('campaign_id', campaign.id).order('name');
+    const { data } = await supabase.from('homebrew_monsters').select('*').eq('campaign_id', campaign.id).order('name');
     if (data) setNpcs(data as NPC[]);
   }
 
   async function updateNPC(id: string, patch: Partial<NPC>) {
-    await supabase.from('npcs').update(patch).eq('id', id);
+    await supabase.from('homebrew_monsters').update(patch).eq('id', id);
     setNpcs(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n));
   }
 
@@ -568,7 +569,9 @@ export default function DMScreen({ campaign }: DMScreenProps) {
             const max = c.max_hp ?? 0;
             const hpPct = max > 0 ? cur / max : 0;
             const col = hpColor(cur, max);
-            const isMonster = c.participant_type === 'monster';
+            // v2.350.0: 'monster' rows migrated to 'creature'; helper
+            // accepts both for in-flight data.
+            const isMonster = isCreatureParticipantType(c.participant_type);
             return (
               <div key={c.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
@@ -633,9 +636,9 @@ export default function DMScreen({ campaign }: DMScreenProps) {
           onSave={async () => {
             if (!editingNPC.name?.trim()) return;
             if ((editingNPC as NPC).id) {
-              await supabase.from('npcs').update({ ...editingNPC, updated_at: new Date().toISOString() }).eq('id', (editingNPC as NPC).id);
+              await supabase.from('homebrew_monsters').update({ ...editingNPC, updated_at: new Date().toISOString() }).eq('id', (editingNPC as NPC).id);
             } else {
-              await supabase.from('npcs').insert({ ...editingNPC, campaign_id: campaign.id });
+              await supabase.from('homebrew_monsters').insert({ ...editingNPC, campaign_id: campaign.id });
             }
             await loadNPCs();
             setEditingNPC(null);

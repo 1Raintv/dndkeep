@@ -69,7 +69,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   useEffect(() => { load(); }, [campaignId]);
 
   async function load() {
-    const { data } = await supabase.from('npcs').select('*')
+    const { data } = await supabase.from('homebrew_monsters').select('*')
       .eq('campaign_id', campaignId).order('name');
     setNpcs((data ?? []) as NPC[]);
     setLoading(false);
@@ -79,9 +79,9 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
     if (!editing?.name?.trim()) return;
     setSaving(true);
     if ((editing as NPC).id) {
-      await supabase.from('npcs').update({ ...editing, updated_at: new Date().toISOString() }).eq('id', (editing as NPC).id);
+      await supabase.from('homebrew_monsters').update({ ...editing, updated_at: new Date().toISOString() }).eq('id', (editing as NPC).id);
     } else {
-      await supabase.from('npcs').insert({ ...editing, campaign_id: campaignId });
+      await supabase.from('homebrew_monsters').insert({ ...editing, campaign_id: campaignId });
     }
     await load();
     setEditing(null);
@@ -89,12 +89,12 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   }
 
   async function toggleAlive(npc: NPC) {
-    await supabase.from('npcs').update({ is_alive: !npc.is_alive, status: npc.is_alive ? 'dead' : 'alive' }).eq('id', npc.id);
+    await supabase.from('homebrew_monsters').update({ is_alive: !npc.is_alive, status: npc.is_alive ? 'dead' : 'alive' }).eq('id', npc.id);
     setNpcs(prev => prev.map(n => n.id === npc.id ? { ...n, is_alive: !n.is_alive, status: n.is_alive ? 'dead' : 'alive' } : n));
   }
 
   async function deleteNPC(id: string) {
-    await supabase.from('npcs').delete().eq('id', id);
+    await supabase.from('homebrew_monsters').delete().eq('id', id);
     setNpcs(prev => prev.filter(n => n.id !== id));
   }
 

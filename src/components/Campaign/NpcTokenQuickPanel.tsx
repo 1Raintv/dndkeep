@@ -26,6 +26,7 @@ import { useToast } from '../shared/Toast';
 //     so the strip re-sorts immediately.
 import { useCombat } from '../../context/CombatContext';
 import { npcToSeed, addParticipantToEncounter, recomputeTurnOrder } from '../../lib/combatEncounter';
+import { isCreatureParticipantType } from '../../lib/participantType';
 
 /**
  * v2.243.0 — Phase Q.1 pt 31: NPC quick panel.
@@ -129,7 +130,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
-        .from('npcs')
+        .from('homebrew_monsters')
         .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat')
         .eq('id', npcId)
         .single();
@@ -207,7 +208,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     setApplying(true);
     try {
       const { error } = await supabase
-        .from('npcs')
+        .from('homebrew_monsters')
         .update({ hp: next, updated_at: new Date().toISOString() })
         .eq('id', npc.id);
       if (error) {
@@ -229,7 +230,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     try {
       const next = [...current, cond];
       const { error } = await supabase
-        .from('npcs')
+        .from('homebrew_monsters')
         .update({ conditions: next, updated_at: new Date().toISOString() })
         .eq('id', npc.id);
       if (error) {
@@ -249,7 +250,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     try {
       const next = current.filter(x => x !== cond);
       const { error } = await supabase
-        .from('npcs')
+        .from('homebrew_monsters')
         .update({ conditions: next, updated_at: new Date().toISOString() })
         .eq('id', npc.id);
       if (error) {
@@ -265,7 +266,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     if (!npc) return;
     try {
       const { error } = await supabase
-        .from('npcs')
+        .from('homebrew_monsters')
         .update({ visible_to_players: !npc.visible_to_players, updated_at: new Date().toISOString() })
         .eq('id', npc.id);
       if (error) {
@@ -284,7 +285,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
   // (UUIDs make collision astronomically unlikely, but the type
   // guard is free and matches the legacy npc_id-only intent).
   const myParticipant = participants.find(
-    p => p.participant_type === 'npc' && p.entity_id === npcId
+    p => isCreatureParticipantType(p.participant_type) && p.entity_id === npcId
   );
   const inCombat = !!myParticipant;
   // The Initiative section additionally requires an active encounter

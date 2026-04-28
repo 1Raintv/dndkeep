@@ -215,7 +215,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   // BattleMap doesn't use (notes, faction, last_seen, etc.).
   async function loadNpcs() {
     const { data, error } = await supabase
-      .from('npcs')
+      .from('homebrew_monsters')
       .select('id, name, hp, max_hp, ac, conditions, is_alive, visible_to_players')
       .eq('campaign_id', campaign.id);
     if (error) {

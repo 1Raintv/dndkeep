@@ -23,8 +23,13 @@ import { supabase } from './supabase';
 // changes, just the type system catching up to the data already
 // flowing through the system. A future cleanup ship can normalize
 // to one vocabulary across pendingAttack + combatEvents.
-export type ActorType = 'player' | 'character' | 'dm' | 'npc' | 'monster' | 'system';
-export type TargetType = 'player' | 'character' | 'monster' | 'npc' | 'object' | 'area' | 'self' | 'system';
+// v2.350.0 — Added 'creature' to both unions when NPCs and monsters
+// were merged into a single creature concept. Legacy 'monster' and
+// 'npc' remain in the type unions to keep TypeScript happy for any
+// realtime payloads still in flight using the old values; the DB
+// CHECK constraints now only accept 'creature' for fresh writes.
+export type ActorType = 'player' | 'character' | 'dm' | 'creature' | 'npc' | 'monster' | 'system';
+export type TargetType = 'player' | 'character' | 'creature' | 'monster' | 'npc' | 'object' | 'area' | 'self' | 'system';
 export type Visibility = 'public' | 'hidden_from_players';
 
 export type CombatEventType =

@@ -34,6 +34,7 @@ import type { PendingAttack, HitResult } from '../types';
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
+import { isCreatureParticipantType } from './participantType';
 
 // ─── Dice helpers ────────────────────────────────────────────────
 export function rollD20(): number {
@@ -1135,7 +1136,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
           sequence: 4,
           actorType: 'system',
           actorName: 'System',
-          targetType: tgt.participant_type === 'monster' ? 'monster' : 'character',
+          targetType: isCreatureParticipantType(tgt.participant_type) ? 'creature' : 'character',
           targetName: tgt.name,
           eventType: 'massive_damage_death',
           payload: {
@@ -1469,54 +1470,36 @@ export async function getTargetSaveBonus(
     .single();
   if (!part) return { bonus: 0, breakdown: '0 (no participant)', confidence: 'low' };
 
-  // v2.253.0 — NPC branch. Reads ability_scores AND save_proficiencies
-  // jsonb columns on the npcs row, both populated at spawn from
-  // dm_npc_roster. When the NPC is proficient in the requested save,
-  // the proficiency bonus is added — derived from the roster CR via
-  // crToProficiencyBonus (NPCs don't carry level). Falls back to 0
-  // + low confidence for legacy rows that pre-date v2.251.
-  if (part.participant_type === 'npc') {
-    const { data: n } = await supabase
-      .from('npcs')
-      .select('ability_scores, save_proficiencies, name')
+  // v2.350.0 — Unified creature branch. Pre-v2.350 there were two
+  // branches: 'npc' (read from npcs table + walk dm_npc_roster for CR)
+  // and 'monster' (low-confidence fallback). Post-migration, both
+  // npcs and dm_npc_roster are gone and creatures live in
+  // homebrew_monsters with a unified shape (ability_scores,
+  // save_proficiencies, cr all on the same row). One branch handles
+  // the whole space.
+  if (isCreatureParticipantType(part.participant_type)) {
+    const { data: cr } = await supabase
+      .from('homebrew_monsters')
+      .select('ability_scores, save_proficiencies, name, cr')
       .eq('id', part.entity_id)
       .maybeSingle();
-    const scores = (n?.ability_scores ?? {}) as Record<string, number | undefined>;
+    const scores = (cr?.ability_scores ?? {}) as Record<string, number | undefined>;
     const score = scores[ability.toLowerCase()];
     if (typeof score !== 'number') {
-      return { bonus: 0, breakdown: `0 (NPC, ${ability} score not stored)`, confidence: 'low' };
+      return { bonus: 0, breakdown: `0 (creature, ${ability} score not stored)`, confidence: 'low' };
     }
     const mod = abilityModifier(score);
-
-    // Walk back to dm_npc_roster to look up CR for the proficiency
-    // bonus. Snapshot model: the spawned npcs row doesn't carry CR,
-    // only the ability snapshot. For the common case (roster-spawned
-    // NPC) the row exists; for hand-created npcs (v1 NPCManager full
-    // form) the CR lookup misses and we treat as PB=2 (CR ≤4 default).
-    // The miss case still computes a save bonus, just with a
-    // conservative PB.
-    const profs = (n?.save_proficiencies ?? []) as string[];
+    const profs = (cr?.save_proficiencies ?? []) as string[];
     const isProficient = profs.includes(ability.toLowerCase());
     if (!isProficient) {
       return {
         bonus: mod,
-        breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}, NPC)`,
+        breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}, creature)`,
         confidence: 'high',
       };
     }
-    // Proficient — need PB. Best-effort lookup against the roster by
-    // name + campaign. Two name shapes to try: exact ("Goblin") and
-    // disambiguated ("Goblin 3" → strip the trailing index). If both
-    // miss, default PB 2 (CR 0–4).
-    const baseName = (n?.name ?? '').replace(/ \d+$/, '');
-    const { data: rosterRow } = await supabase
-      .from('dm_npc_roster')
-      .select('cr')
-      .eq('campaign_id', part.campaign_id ?? '')
-      .in('name', [n?.name ?? '', baseName])
-      .limit(1)
-      .maybeSingle();
-    const pb = crToProficiencyBonus(rosterRow?.cr);
+    // Proficient — derive PB from the CR stored on the same row.
+    const pb = crToProficiencyBonus(cr?.cr);
     const total = mod + pb;
     return {
       bonus: total,
@@ -1526,10 +1509,9 @@ export async function getTargetSaveBonus(
   }
 
   if (part.participant_type !== 'character') {
-    // Monster — full data could be loaded from the monsters table, but
-    // that's a bestiary-shape lookup we can plumb in v2.250+. For now:
-    // 0 + low confidence, modal lets the user override.
-    return { bonus: 0, breakdown: 'manual entry (monster)', confidence: 'low' };
+    // Defensive — unrecognized participant_type. Fall through to
+    // manual entry.
+    return { bonus: 0, breakdown: 'manual entry (unknown type)', confidence: 'low' };
   }
 
   const { data: c } = await supabase

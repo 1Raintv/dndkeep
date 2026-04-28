@@ -197,6 +197,10 @@ import { computeChebyshevFt, canMove, logMovement } from '../../lib/movement';
 // occupied cells so the player doesn't have to click each leg of an
 // L-shaped corridor.
 import { findPath } from '../../lib/pathfinding';
+// v2.350.0 — participant-type compat: helper recognizes both the new
+// 'creature' value and legacy 'monster'/'npc' values until any
+// in-flight realtime data settles.
+import { isCreatureParticipantType } from '../../lib/participantType';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -7262,7 +7266,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (currentActor.participant_type === 'character' && t.characterId === currentActor.entity_id) {
         tokenId = t.id; break;
       }
-      if (currentActor.participant_type === 'npc' && t.npcId === currentActor.entity_id) {
+      if (isCreatureParticipantType(currentActor.participant_type) && t.npcId === currentActor.entity_id) {
         tokenId = t.id; break;
       }
     }
@@ -7360,7 +7364,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         liveTokens[ati.tokenId]?.characterId === props.myCharacterId;
       const isDmRunning =
         props.isDM &&
-        (ati.participantType === 'npc' || ati.participantType === 'monster');
+        isCreatureParticipantType(ati.participantType);
       if (!isMyCharacter && !isDmRunning) return;
 
       const vp = vpRef.current;
@@ -7655,7 +7659,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         myToken.characterId === props.myCharacterId;
       const isDmRunning =
         props.isDM &&
-        (ati.participantType === 'npc' || ati.participantType === 'monster');
+        isCreatureParticipantType(ati.participantType);
       if (!isMyCharacter && !isDmRunning) { clearPreview(); return; }
 
       // Mode gate.

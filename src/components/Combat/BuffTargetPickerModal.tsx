@@ -20,6 +20,7 @@ import { BUFF_SPELL_REGISTRY, applyBuffFromSpell } from '../../lib/buffs';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
+import { isCreatureParticipantType } from '../../lib/participantType';
 
 interface Props {
   campaignId: string;
@@ -221,9 +222,11 @@ export default function BuffTargetPickerModal({
         }}>
           {participants.map(p => {
             const isSelected = selected.has(p.id);
+            // v2.350.0: 'monster'/'npc' merged into 'creature'.
+            // Helper recognizes all three for in-flight data.
             const typeColor =
               p.participant_type === 'character' ? '#60a5fa'
-              : p.participant_type === 'monster' ? '#f87171'
+              : isCreatureParticipantType(p.participant_type) ? '#f87171'
               : '#a78bfa';
             return (
               <button

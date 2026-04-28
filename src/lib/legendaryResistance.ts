@@ -16,6 +16,7 @@
 
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
+import { isCreatureParticipantType } from './participantType';
 import type { PendingAttack } from '../types';
 
 export interface LrDecisionInput {
@@ -151,7 +152,7 @@ export async function spendLegendaryResistanceManually(
     encounterId: (partRow.encounter_id ?? input.encounterId ?? null) as string | null,
     chainId: newChainId(),
     sequence: 0,
-    actorType: partRow.participant_type === 'monster' ? 'monster' : 'system',
+    actorType: isCreatureParticipantType(partRow.participant_type as string) ? 'creature' : 'system',
     actorName: (partRow.name as string) ?? 'Monster',
     targetType: null,
     targetName: null,
@@ -192,7 +193,7 @@ export async function resetLegendaryResistance(
     encounterId: (partRow.encounter_id ?? input.encounterId ?? null) as string | null,
     chainId: newChainId(),
     sequence: 0,
-    actorType: partRow.participant_type === 'monster' ? 'monster' : 'system',
+    actorType: isCreatureParticipantType(partRow.participant_type as string) ? 'creature' : 'system',
     actorName: (partRow.name as string) ?? 'Monster',
     targetType: null,
     targetName: null,
