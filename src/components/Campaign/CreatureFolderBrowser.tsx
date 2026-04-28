@@ -1,31 +1,31 @@
-// v2.354.0 — Folder browser sidebar for the unified Creatures Manager.
+// v2.354.0 — Folder browser sidebar for the NPC manager.
 //
-// Lives in the left rail of the NPC tab. Lists folders the calling
-// user can see (their own + campaign-member-readable ones), plus
-// virtual entries for "All" (no filter) and "Unfiled" (folder_id null).
+// Left rail showing the user's creature folders for the active
+// campaign. Two virtual entries at the top ("All Creatures" and
+// "Unfiled") + per-folder rows + an inline "+ New Folder" footer.
+// Selecting a folder filters the creature list in the parent
+// NPCManager via the selectedFolderId / onSelect props.
 //
-// Actions:
-//   • Click folder → notifies parent which filters the creature list
-//   • "+ New Folder" button at top → inline name input → creates
-//   • Hover → kebab menu reveals → Rename (inline edit) / Delete
-//   • Delete asks for confirmation; creatures in the folder become
-//     unfiled (folder_id set NULL by the FK ON DELETE SET NULL)
+// Folder management: create (inline input), rename (click pencil to
+// inline-edit), delete (click × with confirm). All three use the
+// helpers from src/lib/api/creatureFolders.ts.
 //
-// Two-level rendering at most for simplicity. The DB allows nesting
-// via parent_folder_id → CASCADE delete; the UI just doesn't render
-// past one level for v2.354 — folders stay flat. Nested folders is
-// a v2.355+ enhancement if it actually proves useful.
+// Self-contained: this component owns its folder load + reload
+// lifecycle. Parent doesn't need to manage folder state — passes only
+// the campaign + selection callbacks.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   listFolders, createFolder, renameFolder, deleteFolder,
   type CreatureFolderRow,
 } from '../../lib/api/creatureFolders';
 
+export type FolderSelection = 'all' | 'unfiled' | string;
+
 interface Props {
   campaignId: string;
-  selectedFolderId: string | null | 'all' | 'unfiled';
-  onSelect: (folderId: string | null | 'all' | 'unfiled') => void;
+  selectedFolderId: FolderSelection | null;
+  onSelect: (sel: FolderSelection) => void;
   isOwner: boolean;
 }
 
@@ -34,211 +34,211 @@ export default function CreatureFolderBrowser({
 }: Props) {
   const [folders, setFolders] = useState<CreatureFolderRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [creatingNew, setCreatingNew] = useState(false);
   const [newName, setNewName] = useState('');
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
 
-  useEffect(() => {
-    let alive = true;
-    listFolders(campaignId)
-      .then(rows => { if (alive) { setFolders(rows); setLoading(false); } })
-      .catch(err => { console.error('[FolderBrowser] listFolders failed', err); setLoading(false); });
-    return () => { alive = false; };
-  }, [campaignId]);
-
-  async function refresh() {
+  const reload = useCallback(async () => {
     try {
       const rows = await listFolders(campaignId);
       setFolders(rows);
     } catch (err) {
-      console.error('[FolderBrowser] refresh failed', err);
+      console.error('[CreatureFolderBrowser] listFolders failed', err);
+    } finally {
+      setLoading(false);
     }
-  }
+  }, [campaignId]);
+
+  useEffect(() => { reload(); }, [reload]);
 
   async function handleCreate() {
-    if (!newName.trim()) { setCreating(false); return; }
+    const name = newName.trim();
+    if (!name) { setCreatingNew(false); setNewName(''); return; }
     try {
-      await createFolder({ name: newName, campaignId });
+      await createFolder({ name, campaignId });
       setNewName('');
-      setCreating(false);
-      await refresh();
+      setCreatingNew(false);
+      await reload();
     } catch (err) {
-      console.error('[FolderBrowser] create failed', err);
+      console.error('[CreatureFolderBrowser] createFolder failed', err);
     }
   }
 
   async function handleRename(id: string) {
-    if (!renameDraft.trim()) { setRenamingId(null); return; }
+    const name = editName.trim();
+    if (!name) { setEditingId(null); return; }
     try {
-      await renameFolder(id, renameDraft);
-      setRenamingId(null);
-      await refresh();
+      await renameFolder(id, name);
+      setEditingId(null);
+      await reload();
     } catch (err) {
-      console.error('[FolderBrowser] rename failed', err);
+      console.error('[CreatureFolderBrowser] renameFolder failed', err);
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(`Delete folder "${name}"?\n\nCreatures inside become unfiled. Folders can't be recovered.`)) return;
+  async function handleDelete(f: CreatureFolderRow) {
+    if (!window.confirm(`Delete folder "${f.name}"? Creatures inside become unfiled (not deleted).`)) return;
     try {
-      await deleteFolder(id);
-      // If we just deleted the selected folder, fall back to All.
-      if (selectedFolderId === id) onSelect('all');
-      await refresh();
+      await deleteFolder(f.id);
+      if (selectedFolderId === f.id) onSelect('all');
+      await reload();
     } catch (err) {
-      console.error('[FolderBrowser] delete failed', err);
+      console.error('[CreatureFolderBrowser] deleteFolder failed', err);
     }
   }
 
-  // Only top-level folders for v2.354 (parent_folder_id null).
-  const rootFolders = folders.filter(f => !f.parent_folder_id);
+  // v2.354 renders only root folders (parent_folder_id null). The
+  // schema supports nesting via parent_folder_id but the UI is flat
+  // until a real "Battle 1 / Encounter A" use case asks for nesting.
+  const rootFolders = folders.filter(f => f.parent_folder_id === null);
 
   return (
     <aside style={{
       width: 220, flexShrink: 0,
-      display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)',
       borderRight: '1px solid var(--c-border)',
       paddingRight: 'var(--sp-3)',
+      display: 'flex', flexDirection: 'column', gap: 4,
+      fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)',
     }}>
-      <div className="section-header" style={{ marginTop: 0 }}>Folders</div>
+      <div style={{
+        fontSize: 'var(--fs-xs)', color: 'var(--t-3)',
+        textTransform: 'uppercase', letterSpacing: '0.08em',
+        fontWeight: 700, padding: '4px 8px',
+      }}>
+        Folders
+      </div>
 
-      {/* Virtual entries */}
       <FolderRow
         label="All Creatures"
-        selected={selectedFolderId === 'all'}
+        active={selectedFolderId === 'all' || selectedFolderId === null}
         onClick={() => onSelect('all')}
       />
       <FolderRow
         label="Unfiled"
-        selected={selectedFolderId === 'unfiled'}
+        active={selectedFolderId === 'unfiled'}
         onClick={() => onSelect('unfiled')}
-        muted
       />
 
-      <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 0' }} />
+      <div style={{ height: 1, background: 'var(--c-border)', margin: '6px 0' }} />
 
-      {/* User folders */}
       {loading && (
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', padding: '6px 8px' }}>
+        <div style={{ padding: '6px 10px', color: 'var(--t-3)', fontSize: 'var(--fs-xs)' }}>
           Loading…
         </div>
       )}
-      {!loading && rootFolders.length === 0 && !creating && (
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', padding: '6px 8px', fontStyle: 'italic' }}>
-          No folders yet.
-        </div>
-      )}
-      {rootFolders.map(f => (
-        renamingId === f.id ? (
+
+      {!loading && rootFolders.map(f => (
+        editingId === f.id ? (
           <input
             key={f.id}
-            value={renameDraft}
-            onChange={e => setRenameDraft(e.target.value)}
+            value={editName}
+            onChange={e => setEditName(e.target.value)}
             onBlur={() => handleRename(f.id)}
             onKeyDown={e => {
               if (e.key === 'Enter') handleRename(f.id);
-              if (e.key === 'Escape') setRenamingId(null);
+              if (e.key === 'Escape') setEditingId(null);
             }}
             autoFocus
-            style={{ fontSize: 'var(--fs-sm)', padding: '4px 8px' }}
+            style={{ fontSize: 'var(--fs-sm)' }}
           />
         ) : (
           <FolderRow
             key={f.id}
             label={f.name}
-            selected={selectedFolderId === f.id}
+            active={selectedFolderId === f.id}
             onClick={() => onSelect(f.id)}
-            onRename={isOwner ? () => { setRenamingId(f.id); setRenameDraft(f.name); } : undefined}
-            onDelete={isOwner ? () => handleDelete(f.id, f.name) : undefined}
+            onRename={isOwner ? () => { setEditingId(f.id); setEditName(f.name); } : undefined}
+            onDelete={isOwner ? () => handleDelete(f) : undefined}
           />
         )
       ))}
 
-      {/* Create folder */}
-      {isOwner && (creating ? (
-        <input
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onBlur={handleCreate}
-          onKeyDown={e => {
-            if (e.key === 'Enter') handleCreate();
-            if (e.key === 'Escape') { setCreating(false); setNewName(''); }
-          }}
-          placeholder="Folder name…"
-          autoFocus
-          style={{ fontSize: 'var(--fs-sm)', padding: '4px 8px' }}
-        />
-      ) : (
-        <button
-          className="btn-ghost btn-sm"
-          onClick={() => setCreating(true)}
-          style={{
-            justifyContent: 'flex-start',
-            fontSize: 'var(--fs-xs)', color: 'var(--t-2)',
-            padding: '6px 8px', minHeight: 0,
-          }}
-        >
-          + New Folder
-        </button>
-      ))}
+      {isOwner && (
+        creatingNew ? (
+          <input
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onBlur={handleCreate}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleCreate();
+              if (e.key === 'Escape') { setCreatingNew(false); setNewName(''); }
+            }}
+            placeholder="Folder name…"
+            autoFocus
+            style={{ fontSize: 'var(--fs-sm)' }}
+          />
+        ) : (
+          <button
+            onClick={() => setCreatingNew(true)}
+            style={{
+              background: 'transparent', border: '1px dashed var(--c-border)',
+              color: 'var(--t-2)', fontSize: 'var(--fs-xs)',
+              padding: '6px 10px', borderRadius: 4,
+              cursor: 'pointer', textAlign: 'left',
+              marginTop: 4,
+            }}
+            title="Create a new folder"
+          >
+            + New Folder
+          </button>
+        )
+      )}
     </aside>
   );
 }
 
-interface RowProps {
+// ── Sub-component ─────────────────────────────────────────────
+
+interface FolderRowProps {
   label: string;
-  selected: boolean;
-  muted?: boolean;
+  active: boolean;
   onClick: () => void;
   onRename?: () => void;
   onDelete?: () => void;
 }
 
-function FolderRow({ label, selected, muted, onClick, onRename, onDelete }: RowProps) {
-  const [hover, setHover] = useState(false);
-  const showActions = hover && (onRename || onDelete);
+function FolderRow({ label, active, onClick, onRename, onDelete }: FolderRowProps) {
+  const [hovered, setHovered] = useState(false);
   return (
     <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '6px 8px',
-        borderRadius: 'var(--r-sm, 4px)',
-        background: selected ? 'rgba(167,139,250,0.18)' : 'transparent',
-        color: selected ? '#c4b5fd' : muted ? 'var(--t-3)' : 'var(--t-1)',
-        fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)',
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '6px 10px', borderRadius: 4,
         cursor: 'pointer',
-        transition: 'background var(--tr-fast)',
+        background: active ? 'rgba(234,179,8,0.12)' : (hovered ? 'rgba(255,255,255,0.04)' : 'transparent'),
+        color: active ? 'var(--c-gold-l)' : 'var(--t-1)',
+        border: active ? '1px solid rgba(234,179,8,0.35)' : '1px solid transparent',
+        fontWeight: active ? 600 : 400,
       }}
     >
       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        📁 {label}
+        {label}
       </span>
-      {showActions && (
-        <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+
+      {(onRename || onDelete) && hovered && (
+        <span style={{ display: 'flex', gap: 2 }}>
           {onRename && (
             <button
               onClick={e => { e.stopPropagation(); onRename(); }}
-              title="Rename"
               style={{
-                fontSize: 10, padding: '1px 5px', minHeight: 0,
-                background: 'transparent', border: '1px solid var(--c-border)',
-                borderRadius: 3, color: 'var(--t-2)', cursor: 'pointer',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '0 4px', color: 'var(--t-2)', fontSize: 12,
               }}
+              title="Rename"
             >✎</button>
           )}
           {onDelete && (
             <button
               onClick={e => { e.stopPropagation(); onDelete(); }}
-              title="Delete"
               style={{
-                fontSize: 10, padding: '1px 5px', minHeight: 0,
-                background: 'transparent', border: '1px solid rgba(239,68,68,0.45)',
-                borderRadius: 3, color: '#fca5a5', cursor: 'pointer',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '0 4px', color: 'var(--t-2)', fontSize: 12,
               }}
+              title="Delete"
             >×</button>
           )}
         </span>
