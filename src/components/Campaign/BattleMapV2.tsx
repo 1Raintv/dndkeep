@@ -188,6 +188,11 @@ import * as npcsApi from '../../lib/api/npcs';
 // v2.339.0 — BG3 turn UX: read currentActor from CombatContext to drive
 // the active-turn outline + movement-remaining badge on the map.
 import { useCombat } from '../../context/CombatContext';
+// v2.340.0 — BG3 turn UX part 2: movement enforcement on token drag.
+// canMove validates the budget before commit; logMovement writes the
+// new movement_used_ft + emits the combat event + offers OAs.
+// computeChebyshevFt drives the live drag-preview path label.
+import { computeChebyshevFt, canMove, logMovement } from '../../lib/movement';
 
 extend({ Container, Graphics, Sprite, Text });
 
@@ -2942,11 +2947,21 @@ function TokenLayer(props: {
   // budget so the renderer can stamp a gold pulse outline + an
   // "Xft / Yft" badge above the matching token. Null token id means
   // either no combat OR the active actor isn't placed on this scene.
+  // v2.340.0 — extended with participant identity + campaign/encounter
+  // ids so the drag handler can invoke canMove() + logMovement() on
+  // drop. All four added fields are null when there's no active
+  // combat, which is the gate the drag handler uses to decide whether
+  // to enforce movement at all.
   activeTokenInfo?: {
     tokenId: string | null;
     used: number;
     max: number;
     dashed: boolean;
+    participantId: string | null;
+    participantName: string | null;
+    participantType: 'character' | 'npc' | 'monster' | null;
+    encounterId: string | null;
+    campaignId: string | null;
   };
 }) {
   const {
@@ -2980,6 +2995,13 @@ function TokenLayer(props: {
   // v2.269.0: same mechanism for eraser mode.
   const eraserActiveRef = useRef(false);
   useEffect(() => { eraserActiveRef.current = !!eraserActive; }, [eraserActive]);
+  // v2.340.0: same pattern for activeTokenInfo. The drag handler
+  // attaches listeners once at mount; without a ref the closure
+  // would capture the FIRST activeTokenInfo (likely null) and never
+  // see turn changes. The ref keeps the closure reading the latest
+  // value at drag-move and drop time.
+  const activeTokenInfoRef = useRef(activeTokenInfo);
+  useEffect(() => { activeTokenInfoRef.current = activeTokenInfo; }, [activeTokenInfo]);
 
   interface TokenGfx {
     container: Container;
@@ -3744,6 +3766,131 @@ function TokenLayer(props: {
     // elapses. The final position is covered by onPointerUp below.
     let lastBroadcastMs = 0;
 
+    // v2.340.0 — Live drag-preview path (BG3-style).
+    //
+    // A single persistent Graphics overlay attached to the viewport,
+    // re-drawn on every pointermove during a drag. Shows:
+    //   • Origin → snapped-cursor straight line (faint dashed)
+    //   • Destination cell highlight (rounded square marker)
+    //   • Distance + cost-vs-remaining label near the cursor
+    //
+    // The line color encodes whether the move is affordable:
+    //   • green   — within remaining movement
+    //   • amber   — into Dash range / dipping past base speed
+    //   • red     — over the cap (drop will snap back if active turn)
+    //
+    // The overlay is purely visual (eventMode='none' so it never
+    // captures clicks meant for tokens/walls underneath). It only
+    // renders during an actual drag — on pointerup we clear() so
+    // nothing is left behind. When combat isn't running we still
+    // show the path (for distance reference) but skip color-grading
+    // since there's no budget to compare against — a soft white line.
+    const previewGfx = new Graphics();
+    previewGfx.eventMode = 'none';
+    previewGfx.visible = false;
+    viewport.addChild(previewGfx);
+    const previewLabel = new Text({
+      text: '',
+      style: new TextStyle({
+        fontFamily: 'sans-serif',
+        fontWeight: '800',
+        fontSize: 13,
+        fill: 0xfde68a,
+        stroke: { color: 0x0a0c10, width: 3 },
+        align: 'center',
+      }),
+    });
+    previewLabel.anchor.set(0.5, 1);
+    previewLabel.eventMode = 'none';
+    previewLabel.visible = false;
+    viewport.addChild(previewLabel);
+
+    function clearPreview() {
+      previewGfx.clear();
+      previewGfx.visible = false;
+      previewLabel.visible = false;
+    }
+
+    function drawPreview(originX: number, originY: number, cursorX: number, cursorY: number) {
+      // Snap the cursor to the nearest grid cell center so the preview
+      // matches what will actually commit (snapToCellCenter is what
+      // pointerup uses too — keep them in sync).
+      const snapped = snapToCellCenter(cursorX, cursorY, gridSizePx);
+      const tx = Math.max(0, Math.min(worldWidth, snapped.x));
+      const ty = Math.max(0, Math.min(worldHeight, snapped.y));
+
+      // Compute Chebyshev distance in feet using the canonical math
+      // from lib/movement.ts. Convert from world pixels → cells via
+      // gridSizePx, then feed the cell coordinates to the helper.
+      const fromCell = { row: Math.round(originY / gridSizePx), col: Math.round(originX / gridSizePx) };
+      const toCell = { row: Math.round(ty / gridSizePx), col: Math.round(tx / gridSizePx) };
+      const distanceFt = computeChebyshevFt(fromCell.row, fromCell.col, toCell.row, toCell.col);
+
+      // Color decision. If we have an active actor + this dragged token
+      // is theirs, grade green/amber/red against the budget. Otherwise
+      // (DM repositioning monsters out of combat, or non-active token),
+      // show a neutral white line so the distance label still helps.
+      const ati = activeTokenInfoRef.current;
+      const drag = dragRef.current;
+      const inCombatForThisToken = !!(ati && drag && ati.tokenId === drag.id && ati.max > 0);
+      let lineColor = 0xffffff;
+      let labelColor = 0xffffff;
+      let costLabel = `${distanceFt} ft`;
+      if (inCombatForThisToken) {
+        const remaining = Math.max(0, ati!.max - ati!.used);
+        const wouldUse = ati!.used + distanceFt;
+        if (wouldUse > ati!.max) {
+          lineColor = 0xef4444; labelColor = 0xfca5a5;          // red — overspend
+        } else if (wouldUse > ati!.max - Math.floor(ati!.max / 4)) {
+          lineColor = 0xf59e0b; labelColor = 0xfde68a;          // amber — getting close
+        } else {
+          lineColor = 0x22c55e; labelColor = 0x86efac;          // green — comfortably within budget
+        }
+        costLabel = `${distanceFt} ft  ·  ${remaining - distanceFt >= 0 ? remaining - distanceFt : 0} left`;
+      }
+
+      // Draw: dashed line from origin → snapped cursor + small square
+      // marker at the destination. PIXI v8 has no native dashed-line
+      // helper, so we manually segment the line with `moveTo / lineTo`
+      // jumps. ~6px on / 6px off reads as obviously-temporary.
+      previewGfx.clear();
+      const dx = tx - originX;
+      const dy = ty - originY;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 1) {
+        const nx = dx / len;
+        const ny = dy / len;
+        const dashOn = 8;
+        const dashOff = 6;
+        previewGfx.setStrokeStyle({ color: lineColor, width: 3, alpha: 0.85 });
+        let traveled = 0;
+        while (traveled < len) {
+          const segStart = traveled;
+          const segEnd = Math.min(traveled + dashOn, len);
+          previewGfx.moveTo(originX + nx * segStart, originY + ny * segStart);
+          previewGfx.lineTo(originX + nx * segEnd, originY + ny * segEnd);
+          traveled += dashOn + dashOff;
+        }
+        previewGfx.stroke();
+      }
+
+      // Destination cell marker — square outlined in line color.
+      const mark = gridSizePx * 0.85;
+      previewGfx.setStrokeStyle({ color: lineColor, width: 2, alpha: 0.9 });
+      previewGfx.roundRect(tx - mark / 2, ty - mark / 2, mark, mark, 4);
+      previewGfx.stroke();
+
+      previewGfx.visible = true;
+
+      // Label sits just above the destination cell. Keeping it in
+      // world space (not screen space) means it rides the viewport
+      // zoom — readable at 1x, hugs the cell at 4x. Acceptable.
+      previewLabel.text = costLabel;
+      (previewLabel.style as TextStyle).fill = labelColor;
+      previewLabel.position.set(tx, ty - mark / 2 - 4);
+      previewLabel.visible = true;
+    }
+
     function onPointerMove(e: PointerEvent) {
       // v2.226 — click probe: if pointer moves > CLICK_THRESHOLD_PX
       // in screen space, mark drag as "moved" (suppresses click).
@@ -3765,6 +3912,13 @@ function TokenLayer(props: {
       const newX = worldPoint.x - drag.offsetX;
       const newY = worldPoint.y - drag.offsetY;
       updatePos(drag.id, newX, newY);
+
+      // v2.340.0 — live drag preview. Only show after the user has
+      // actually moved (probe.didMove guards against firing on a
+      // pure-click landing on the token).
+      if (probe?.didMove) {
+        drawPreview(drag.originX, drag.originY, newX, newY);
+      }
 
       // Throttled broadcast to peers.
       const now = performance.now();
@@ -3820,45 +3974,99 @@ function TokenLayer(props: {
           onDragMove?.(drag.id, drag.originX, drag.originY);
           onMovementBlocked?.();
         } else {
+          // v2.340.0 — movement-budget enforcement (BG3-style hard
+          // block). When combat is active AND the dragged token is
+          // the active actor's, validate that the drop distance
+          // doesn't exceed remaining movement (Dash-doubled, condition-
+          // zeroed per RAW). If it does, snap the token back to
+          // origin and fire the budget-exceeded callback. On success,
+          // commit BOTH the position write AND a logMovement call so
+          // movement_used_ft updates and the badge reflects the new
+          // remaining budget.
+          //
+          // canMove is async (single SELECT), so we sequence:
+          //   1. validate (canMove)
+          //   2a. if !allowed → snap back, fire callback, return
+          //   2b. if allowed → commit pos via tokensApi (existing
+          //       wall-trigger path), then logMovement
+          //
+          // Out-of-combat drags (no active actor, or this token
+          // isn't the active one) skip enforcement entirely — DM
+          // pre-staging, NPC re-positioning by DM, all unchanged.
+          const ati = activeTokenInfoRef.current;
+          const enforceMove = !wasClick && movedAtAll && !!ati &&
+            ati.tokenId === drag.id && !!ati.participantId;
+
+          const fromCellRow = Math.round(drag.originY / gridSizePx);
+          const fromCellCol = Math.round(drag.originX / gridSizePx);
+          const toCellRow = Math.round(clampedY / gridSizePx);
+          const toCellCol = Math.round(clampedX / gridSizePx);
+          const distanceFt = computeChebyshevFt(fromCellRow, fromCellCol, toCellRow, toCellCol);
+
+          // Optimistic UI: position the token at the drop site
+          // immediately. If validation fails, we'll snap it back
+          // below — most drags succeed, so this avoids a perceptible
+          // pause on the common path.
           updatePos(drag.id, clampedX, clampedY);
-          // v2.216: send one final broadcast at the snapped position so
-          // peers see the snap even before the DB round-trip completes.
           onDragMove?.(drag.id, clampedX, clampedY);
-          // v2.213 commit — single DB write on release. Only commit if
-          // the position actually moved (avoid pointless DB write on click).
-          if (!wasClick) {
-            // v2.275.0 — also handle the server-side wall trigger
-            // rejection. The client-side segmentBlockedByWall check
-            // above catches the common case (and gives instant
-            // feedback). The server trigger catches the rest:
-            //   1. wall added by another client AFTER the drag started
-            //      but BEFORE the commit hit the server (race window);
-            //   2. malicious / buggy client that skipped the local
-            //      check entirely.
-            // On rejection, snap the local store back to origin and
-            // notify (same UX as client-side rejection). Pre-existing
-            // catch() retained for unexpected exceptions (network
-            // throws etc.) — the new return shape only resolves with
-            // {ok:false} for known supabase errors.
-            tokensApi.updateTokenPos(drag.id, clampedX, clampedY).then(result => {
-              if (result.ok) return;
+
+          const commit = async () => {
+            if (enforceMove) {
+              const check = await canMove(ati!.participantId!, distanceFt);
+              if (!check.allowed) {
+                // Snap back to origin. Skip the tokensApi commit —
+                // we never want the over-budget position to hit the
+                // DB. Notify parent so a toast can fire.
+                useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
+                onDragMove?.(drag.id, drag.originX, drag.originY);
+                onMovementBlocked?.();
+                return;
+              }
+            }
+            if (wasClick) return; // pure click — no commit needed
+            // v2.213 commit (existing path) — wall-trigger rejection
+            // handling is preserved verbatim from pre-v2.340.
+            const result = await tokensApi.updateTokenPos(drag.id, clampedX, clampedY);
+            if (!result.ok) {
               if (result.reason === 'wall_blocked') {
-                // Roll back local state to origin. The peer-broadcast
-                // we sent above (with the would-be-final position) is
-                // self-correcting: peers also see this rollback when
-                // we re-broadcast the origin position right below.
                 useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
                 onDragMove?.(drag.id, drag.originX, drag.originY);
                 onMovementBlocked?.();
               } else {
                 console.error('[BattleMapV2] pos commit failed', result);
               }
-            }).catch(err =>
-              console.error('[BattleMapV2] pos commit threw', err)
-            );
-          }
+              return;
+            }
+            // v2.340.0 — log the movement so movement_used_ft updates
+            // server-side and the badge reflects the new remaining
+            // budget on the next combat-state push. Also fires
+            // opportunity-attack offers for adjacent enemies.
+            if (enforceMove && distanceFt > 0) {
+              try {
+                await logMovement({
+                  campaignId: ati!.campaignId!,
+                  encounterId: ati!.encounterId,
+                  participantId: ati!.participantId!,
+                  participantName: ati!.participantName!,
+                  participantType: ati!.participantType!,
+                  fromRow: fromCellRow,
+                  fromCol: fromCellCol,
+                  toRow: toCellRow,
+                  toCol: toCellCol,
+                  distanceFt,
+                });
+              } catch (err) {
+                console.error('[BattleMapV2] logMovement threw', err);
+              }
+            }
+          };
+          commit().catch(err => console.error('[BattleMapV2] drop commit threw', err));
         }
       }
+      // v2.340.0 — always clear the preview overlay on pointerup.
+      // Even on click drops or rejected drops, the dashes shouldn't
+      // linger after the gesture ends.
+      clearPreview();
       const entry = gfxMapRef.current.get(drag.id);
       if (entry) {
         entry.container.cursor = 'grab';
@@ -3883,6 +4091,19 @@ function TokenLayer(props: {
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      // v2.340.0 — tear down the persistent drag-preview overlay so
+      // it doesn't leak between viewport remounts (rare, but happens
+      // on scene change). destroy() releases the Graphics + Text
+      // GPU resources cleanly.
+      try {
+        if (previewGfx.parent) previewGfx.parent.removeChild(previewGfx);
+        previewGfx.destroy();
+        if (previewLabel.parent) previewLabel.parent.removeChild(previewLabel);
+        previewLabel.destroy();
+      } catch {
+        // PIXI sometimes throws if the parent has already disposed
+        // — safe to ignore on teardown.
+      }
     };
   }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked]);
 
@@ -6624,14 +6845,24 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // TokensLayer reads these via props and stamps a gold pulse + a
   // "Xft / Yft" Text node above the matching token. Cheap to
   // recompute — the heavy lift is upstream in useCombat.
-  const { currentActor } = useCombat();
+  const { currentActor, encounter } = useCombat();
   const activeTokenInfo = useMemo<{
     tokenId: string | null;
     used: number;
     max: number;
     dashed: boolean;
+    participantId: string | null;
+    participantName: string | null;
+    participantType: 'character' | 'npc' | 'monster' | null;
+    encounterId: string | null;
+    campaignId: string | null;
   }>(() => {
-    if (!currentActor) return { tokenId: null, used: 0, max: 0, dashed: false };
+    const empty = {
+      tokenId: null, used: 0, max: 0, dashed: false,
+      participantId: null, participantName: null, participantType: null,
+      encounterId: null, campaignId: null,
+    };
+    if (!currentActor) return empty;
     let tokenId: string | null = null;
     for (const t of Object.values(liveTokens)) {
       if (currentActor.participant_type === 'character' && t.characterId === currentActor.entity_id) {
@@ -6655,8 +6886,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       used: currentActor.movement_used_ft ?? 0,
       max,
       dashed,
+      participantId: currentActor.id,
+      participantName: currentActor.name,
+      participantType: currentActor.participant_type as 'character' | 'npc' | 'monster',
+      encounterId: encounter?.id ?? null,
+      campaignId: props.campaignId,
     };
-  }, [currentActor, liveTokens]);
+  }, [currentActor, liveTokens, encounter, props.campaignId]);
 
   // v2.224 — character IDs whose linked tokens should contribute
   // vision polygons. For party-shared sight, every PC in the campaign
