@@ -7287,6 +7287,174 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
 
+  // v2.346.0 — Click-to-move (BG3 alt input).
+  //
+  // Drag-to-move (v2.340) is one BG3-style input; click-to-move is
+  // the other. Click any empty cell on the map and your active
+  // token snaps there, subject to the same movement enforcement +
+  // wall checks + logMovement that the drag uses.
+  //
+  // Activation gates (all must be true):
+  //   • Active combat with a current actor
+  //   • The active actor's token is on this scene
+  //   • The user owns the active actor (their character's token, or
+  //     for DMs, any NPC/monster they're running)
+  //   • No conflicting tool mode is on (ruler/wall/text/draw/fx/
+  //     eraser/directionPick — those modes own canvas clicks)
+  //   • The click landed on an EMPTY cell (no token there)
+  //   • The click landed on the same scene's grid (within world bounds)
+  //
+  // The sequence reuses the drag-drop logic verbatim: validate via
+  // canMove, snap-back on overspend or wall-block, otherwise commit
+  // position and call logMovement to update movement_used_ft +
+  // trigger opportunity-attack offers.
+  //
+  // Tokens already use stopPropagation in their PIXI pointerdown,
+  // but PIXI events and DOM events are separate event systems —
+  // so a DOM click on the canvas reaches us regardless. We
+  // distinguish empty-cell clicks from token clicks by checking
+  // if the click cell is occupied; if it is, we abort and let the
+  // token's own click handler (open quick panel etc.) do its thing.
+  const activeTokenInfoForMoveRef = useRef(activeTokenInfo);
+  useEffect(() => { activeTokenInfoForMoveRef.current = activeTokenInfo; }, [activeTokenInfo]);
+  // Mirror tool-mode flags into a ref so the click handler reads the
+  // current value without re-attaching every time a mode toggles.
+  const modeFlagsRef = useRef({
+    ruler: rulerActive, wall: wallActive, text: textActive,
+    draw: drawActive != null, fx: fxActive != null, eraser: eraserActive,
+  });
+  useEffect(() => {
+    modeFlagsRef.current = {
+      ruler: rulerActive, wall: wallActive, text: textActive,
+      draw: drawActive != null, fx: fxActive != null, eraser: eraserActive,
+    };
+  }, [rulerActive, wallActive, textActive, drawActive, fxActive, eraserActive]);
+
+  useEffect(() => {
+    if (!canvasEl) return;
+    function onClick(e: MouseEvent) {
+      const ati = activeTokenInfoForMoveRef.current;
+      if (!ati || !ati.tokenId || !ati.participantId) return;
+      // Block if any tool mode is on — they own canvas clicks.
+      const mf = modeFlagsRef.current;
+      if (mf.ruler || mf.wall || mf.text || mf.draw || mf.fx || mf.eraser) return;
+      // Block if direction-pick is active (handled by its own listener
+      // already, but we're cautious).
+      if (useBattleMapStore.getState().directionPick.active) return;
+      // Ownership: PC tokens move only when the user owns them.
+      // DMs can move any NPC/monster token they control. The
+      // myCharacterId prop carries the user's currently-selected PC;
+      // isDM is the role flag.
+      const isMyCharacter =
+        ati.participantType === 'character' &&
+        props.myCharacterId &&
+        liveTokens[ati.tokenId]?.characterId === props.myCharacterId;
+      const isDmRunning =
+        props.isDM &&
+        (ati.participantType === 'npc' || ati.participantType === 'monster');
+      if (!isMyCharacter && !isDmRunning) return;
+
+      const vp = vpRef.current;
+      if (!canvasEl || !vp) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPoint = vp.toWorld(screenX, screenY);
+
+      // Block clicks outside the world bounds (clicks on the grey
+      // padding around the map shouldn't trigger movement).
+      if (worldPoint.x < 0 || worldPoint.x > WORLD_WIDTH) return;
+      if (worldPoint.y < 0 || worldPoint.y > WORLD_HEIGHT) return;
+
+      // Snap target to nearest cell center.
+      const snapped = snapToCellCenter(worldPoint.x, worldPoint.y, gridSizePx);
+      const targetX = Math.max(0, Math.min(WORLD_WIDTH, snapped.x));
+      const targetY = Math.max(0, Math.min(WORLD_HEIGHT, snapped.y));
+
+      // Block if the target cell is occupied by another token (would
+      // collide with a creature). Cell-radius check: any token whose
+      // snapped position equals our target cell.
+      const targetCellRow = Math.round(targetY / gridSizePx);
+      const targetCellCol = Math.round(targetX / gridSizePx);
+      for (const t of Object.values(liveTokens)) {
+        if (t.id === ati.tokenId) continue; // skip self
+        const tCellRow = Math.round(t.y / gridSizePx);
+        const tCellCol = Math.round(t.x / gridSizePx);
+        if (tCellRow === targetCellRow && tCellCol === targetCellCol) {
+          return; // occupied — abort, let token's own click handler win
+        }
+      }
+
+      // Origin (current token position).
+      const myToken = liveTokens[ati.tokenId];
+      if (!myToken) return;
+      const originX = myToken.x;
+      const originY = myToken.y;
+      // No-op if the click is on our own current cell.
+      if (Math.abs(originX - targetX) < 1 && Math.abs(originY - targetY) < 1) return;
+
+      // Wall-blocked check (same as drag).
+      const walls = Object.values(useBattleMapStore.getState().walls);
+      if (segmentBlockedByWall(originX, originY, targetX, targetY, walls)) {
+        showToast('A wall blocks that path.', 'warn');
+        return;
+      }
+
+      // Distance + movement-budget validation.
+      const fromCellRow = Math.round(originY / gridSizePx);
+      const fromCellCol = Math.round(originX / gridSizePx);
+      const distanceFt = computeChebyshevFt(fromCellRow, fromCellCol, targetCellRow, targetCellCol);
+      const enforceMove = ati.tokenId === ati.tokenId; // trivially true
+      void enforceMove;
+
+      (async () => {
+        const check = await canMove(ati.participantId!, distanceFt);
+        if (!check.allowed) {
+          showToast(
+            `Not enough movement (need ${distanceFt}ft, have ${check.remaining}ft).`,
+            'warn',
+          );
+          return;
+        }
+        // Optimistic local update.
+        useBattleMapStore.getState().updateTokenPosition(ati.tokenId!, targetX, targetY);
+        const result = await tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY);
+        if (!result.ok) {
+          // Roll back on server reject (wall trigger, RLS, etc.).
+          useBattleMapStore.getState().updateTokenPosition(ati.tokenId!, originX, originY);
+          if (result.reason === 'wall_blocked') {
+            showToast('A wall blocks that path.', 'warn');
+          } else {
+            console.error('[BattleMapV2] click-to-move commit failed', result);
+          }
+          return;
+        }
+        if (distanceFt > 0) {
+          try {
+            await logMovement({
+              campaignId: ati.campaignId!,
+              encounterId: ati.encounterId,
+              participantId: ati.participantId!,
+              participantName: ati.participantName!,
+              participantType: ati.participantType!,
+              fromRow: fromCellRow,
+              fromCol: fromCellCol,
+              toRow: targetCellRow,
+              toCol: targetCellCol,
+              distanceFt,
+            });
+          } catch (err) {
+            console.error('[BattleMapV2] click-to-move logMovement threw', err);
+          }
+        }
+      })().catch(err => console.error('[BattleMapV2] click-to-move threw', err));
+    }
+    canvasEl.addEventListener('click', onClick);
+    return () => {
+      canvasEl?.removeEventListener('click', onClick);
+    };
+  }, [canvasEl, liveTokens, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM, showToast]);
+
   // v2.224 — character IDs whose linked tokens should contribute
   // vision polygons. For party-shared sight, every PC in the campaign
   // counts. v2.225 will narrow this to the current user's own
