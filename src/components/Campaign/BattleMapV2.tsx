@@ -150,6 +150,7 @@ import { Application, extend, useApplication } from '@pixi/react';
 import { Assets, ColorMatrixFilter, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useBattleMapStore, type Token, type TokenSize, type Wall, type SceneText, type SceneDrawing, type DrawingKind } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
@@ -3483,25 +3484,23 @@ function TokenLayer(props: {
             event.stopPropagation();
             event.preventDefault();
             const tid = (container as any).__tokenId as string;
-            // v2.361.0 — Compute viewport-relative coords ourselves
-            // instead of trusting event.clientX. Pixi v8's
-            // FederatedMouseEvent.clientX is documented as
-            // "relative to the canvas" (per Pixi v8 type defs),
-            // NOT viewport-relative. The v2.360 fix that switched
-            // from event.nativeEvent.clientX → event.clientX made
-            // the menu offset worse, not better. Source of truth:
-            //   event.global    = canvas-stage coords (top-left = 0,0)
-            //   canvas bounding = canvas top-left in viewport coords
-            //   sum             = viewport coords for the click
-            // No reliance on Pixi's clientX semantics or on the
-            // nativeEvent prop being populated.
-            const rect = canvasEl?.getBoundingClientRect();
-            const vpX = (rect?.left ?? 0) + event.global.x;
-            const vpY = (rect?.top ?? 0) + event.global.y;
+            // v2.362.0 — Read viewport-relative clientX from the
+            // underlying DOM PointerEvent (event.nativeEvent). This
+            // IS viewport-relative (DOM convention) and is what
+            // position:fixed expects. Pre-v2.360 used this same
+            // path; v2.360 wrongly switched to event.clientX (Pixi
+            // canvas-relative); v2.361 wrongly tried event.global +
+            // canvas rect (event.global is world-space, not canvas-
+            // pixel-space). Back to the original path. The actual
+            // bug (menu rendering far off) was that the menu's
+            // position:fixed was being trapped by an animate-fade-
+            // in transform ancestor — fixed via createPortal in
+            // TokenContextMenu's return.
+            const oe = event.nativeEvent as MouseEvent | PointerEvent;
             onContextMenu({
               tokenId: tid,
-              clientX: vpX,
-              clientY: vpY,
+              clientX: oe.clientX,
+              clientY: oe.clientY,
             });
             return;
           }
@@ -3530,18 +3529,18 @@ function TokenLayer(props: {
           // v2.226 — record click-probe state. If pointerup fires soon
           // after with negligible movement, the parent gets onTokenClick
           // instead of (or in addition to) the drag commit.
-          // v2.361.0 — Translate stage coords → viewport coords via
-          // the canvas's bounding rect. event.clientX is canvas-
-          // relative in Pixi v8, so the click-probe's downClientX/Y
-          // were canvas-relative too; pointerup compares against DOM
-          // PointerEvent.clientX which IS viewport-relative,
-          // producing apparent movement of hundreds of px on every
-          // click and breaking the click-vs-drag distinction.
-          const probeRect = canvasEl?.getBoundingClientRect();
+          // v2.362.0 — Read viewport-relative clientX from the
+          // underlying DOM PointerEvent. The pointerup compares
+          // against a DOM PointerEvent.clientX (also viewport-
+          // relative), so both endpoints of the comparison must use
+          // the same coord space. v2.360-2.361 attempts at "fixing"
+          // this with Pixi-relative coords broke click vs drag
+          // detection.
+          const oeProbe = event.nativeEvent as PointerEvent;
           clickProbeRef.current = {
             id: tid,
-            downClientX: (probeRect?.left ?? 0) + event.global.x,
-            downClientY: (probeRect?.top ?? 0) + event.global.y,
+            downClientX: oeProbe.clientX,
+            downClientY: oeProbe.clientY,
             downAtMs: performance.now(),
             didMove: false,
           };
@@ -4698,7 +4697,7 @@ function TokenContextMenu(props: {
   }
 
   if (submenu === 'size') {
-    return (
+    return createPortal(
       <div style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Size
@@ -4718,12 +4717,13 @@ function TokenContextMenu(props: {
             {token.size === sz && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
           </div>
         ))}
-      </div>
+      </div>,
+      document.body,
     );
   }
 
   if (submenu === 'color') {
-    return (
+    return createPortal(
       <div style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Color
@@ -4745,11 +4745,12 @@ function TokenContextMenu(props: {
             />
           ))}
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  return (
+  return createPortal(
     <div style={menuBaseStyle} onMouseDown={stop}>
       <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
         {token.name || 'Token'}
@@ -4863,7 +4864,8 @@ function TokenContextMenu(props: {
       >
         Delete
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
