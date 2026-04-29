@@ -255,7 +255,18 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }
 
  // Mark as used if it has limited uses
- if (cost !== undefined) {
+ // v2.370.0 — Skip the feature_uses write for the PED pool row.
+ // For pool rows (Psionic Energy Dice itself, plus any future
+ // isPool-typed pool tracker), the source of truth is class_resources.
+ // Writing feature_uses alongside is dead data — the chiclet display
+ // ignores it — and risks downstream confusion (long-rest reset
+ // logic, history events, etc.). Pre-v2.370 every Spend Die click
+ // wrote feature_uses['Psionic Energy Dice']++ in addition to
+ // decrementing the pool, which is the suspected cause of the
+ // reported "first die spent gets refunded" bug. Per-feature
+ // limited-use rows (Free Misty Step, Action Surge, etc.) still
+ // write feature_uses since that IS their tracker.
+ if (cost !== undefined && !((ability as any).isPool && (ability as any).psionicDie)) {
  const current = ((character.feature_uses as Record<string, number>) ?? {})[ability.name] ?? 0;
  onUpdate({
  feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [ability.name]: current + 1 }
