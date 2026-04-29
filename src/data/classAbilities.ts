@@ -528,6 +528,39 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       minLevel: 1,
       range: '30 ft',
     },
+    // v2.369.0 — Backfilled the missing base-class abilities. Both
+    // Telekinetic Propel and Telepathic Connection are level-1 features
+    // per classFeatures.ts line 343 ("Psionic Power"); pre-v2.369 they
+    // existed only in description text with no clickable row, so the
+    // user had no way to use them through the UI. Telekinetic Propel
+    // also has a STR save when used with a die — wired through the
+    // v2.247 save resolver so it prompts for a target with the proper
+    // save flow. The free 5ft push/pull (no die spent) is described
+    // in the long text since it doesn't need a save.
+    {
+      name: 'Telekinetic Propel',
+      actionType: 'bonus',
+      description: 'Push or pull a creature within 30 ft. Free 5 ft, or spend 1 PED to move it die × 5 ft (STR save negates).',
+      descriptionLong: 'Bonus Action. Choose a creature you can see within 30 ft of you.\n\n• Free version (no die spent): the creature is pushed or pulled 5 ft in any direction. No saving throw — but you can\'t move targets larger than Large.\n\n• Powered version: spend 1 Psionic Energy Die. The target must succeed on a Strength saving throw against your spell save DC or be pushed or pulled a number of feet equal to the die roll × 5 (and ignores the size cap). On a successful save, no movement.\n\nAt level 3+ a Psi Warper unlocks Warp Propel: when the powered version succeeds, you may teleport the target instead of pushing.',
+      minLevel: 1,
+      range: '30 ft',
+      // STR save only fires on the powered (PED-spent) version. The Use
+      // button always opens the save resolver; for the free version the
+      // DM can mark "Auto-Fail" on every target since there is no save.
+      // Free vs powered toggle isn't modeled yet — costs default to 0
+      // unless the player explicitly types in a die count via cost arg.
+      save: { ability: 'STR', dc: 'spell', targetMode: 'any' },
+    },
+    {
+      name: 'Telepathic Connection',
+      actionType: 'bonus',
+      description: 'Establish telepathy within 30 ft. Spend 1 PED to extend range by die × 10 ft for 1 hour.',
+      descriptionLong: 'Bonus Action. Choose one creature you can see within 30 ft of you. You can speak to that creature telepathically (one-way) for 1 hour.\n\nSpend 1 Psionic Energy Die: extend the range by the die roll × 10 ft. The connection lasts 1 hour and ends early if you become incapacitated.\n\nThe target doesn\'t have to share a language with you, but it has to be able to understand at least one language.',
+      minLevel: 1,
+      range: '30 ft',
+      // No save — telepathic connection is one-way and the target
+      // doesn't get a chance to refuse per UA RAW.
+    },
     // ─── Psi Warper subclass features (v2.187.0) ───────────────────────
     // All 5 active/usable Psi Warper features inserted here so they render
     // under PSION ABILITIES on the Actions tab. We do NOT subclass-gate
@@ -576,6 +609,9 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // button checks pool ≥ pedCost, deducts, broadcasts.
       pedCost: 1,
       range: '60 ft',
+      // v2.369.0 — Shatter's CON save vs spell save DC. AoE; targetMode
+      // 'any' lets the picker include allies in the radius.
+      save: { ability: 'CON', dc: 'spell', targetMode: 'any' },
     },
     {
       name: 'Teleporter Combat',
@@ -602,6 +638,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       minLevel: 14,
       pedCost: 4,
       range: '30/150 ft',
+      // v2.369.0 — WIS save fires for unwilling targets only. targetMode
+      // 'any' so the picker exposes Auto-Pass: the DM marks willing
+      // allies as willing → no save rolled, they teleport. Unwilling
+      // creatures roll the save normally.
+      save: { ability: 'WIS', dc: 'spell', targetMode: 'any' },
     },
   ],
 };
