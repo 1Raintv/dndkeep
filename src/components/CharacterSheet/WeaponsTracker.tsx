@@ -331,9 +331,16 @@ export default function WeaponsTracker({
 
  return (
  <div key={w.id} style={{
- borderRadius: 'var(--r-md)',
+ borderRadius: 8,
+ // v2.374.0 — match SpellsTab + ClassAbilities wrapper aesthetic.
+ // Non-inventory weapons now use var(--c-card) (raised) instead of
+ // #080d14 (darker). Inventory weapons keep their gold tint as a
+ // semantic cue ("this weapon comes from your bag, not your
+ // attack list"). Border normalizes to neutral var(--c-border)
+ // when collapsed; gold tint shows on expand or when the row is
+ // an inventory item.
  border: `1px solid ${isExpanded ? 'rgba(200,146,42,0.45)' : isInv ? 'rgba(200,146,42,0.2)' : 'var(--c-border)'}`,
- background: isInv ? 'rgba(200,146,42,0.03)' : '#080d14',
+ background: isInv ? 'rgba(200,146,42,0.03)' : 'var(--c-card)',
  overflow: 'hidden',
  transition: 'border-color 0.15s',
  }}>
