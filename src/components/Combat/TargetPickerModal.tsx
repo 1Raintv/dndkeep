@@ -83,6 +83,7 @@ export default function TargetPickerModal({
             const hpColor = hpPct >= 0.66 ? '#34d399' : hpPct >= 0.33 ? '#fbbf24' : '#f87171';
             const typeColor: Record<CombatParticipant['participant_type'], string> = {
               character: 'var(--c-gold-l)',
+              creature: '#f87171',
               monster: '#f87171',
               npc: '#60a5fa',
             };

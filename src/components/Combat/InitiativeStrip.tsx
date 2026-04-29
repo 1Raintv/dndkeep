@@ -33,6 +33,10 @@ interface Props {
 
 const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
   character: 'var(--c-gold-l)',
+  // v2.363.0 — 'creature' is the v2.350-unified value; 'monster'/'npc'
+  // kept for backward compat (any in-flight rows). All three render
+  // with the same red since they're DM-controlled.
+  creature: '#f87171',
   monster: '#f87171',
   npc: '#60a5fa',
 };

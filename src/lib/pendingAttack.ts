@@ -72,11 +72,17 @@ export interface DeclareAttackInput {
 
   attackerParticipantId?: string | null;
   attackerName: string;
-  attackerType: 'character' | 'monster' | 'npc' | 'system';
+  // v2.363.0 — 'creature' added to match v2.350 unified schema +
+  // pending_attacks DB CHECK constraint (which only accepts
+  // 'character' | 'creature' | 'system'). Pre-v2.363 the TS union
+  // included 'monster' | 'npc' which were never valid at the DB
+  // layer — they would have rejected on insert. New monster-side
+  // attack paths (v2.363's MonsterActionPanel) pass 'creature'.
+  attackerType: 'character' | 'creature' | 'monster' | 'npc' | 'system';
 
   targetParticipantId?: string | null;
   targetName: string;
-  targetType?: 'character' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
+  targetType?: 'character' | 'creature' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
 
   attackSource?: string;          // 'monster_action' | 'weapon' | 'spell' | 'ability'
   attackName: string;
@@ -201,7 +207,12 @@ export interface DeclareMultiTargetInput
   targets: Array<{
     participantId: string;
     name: string;
-    type: 'character' | 'monster' | 'npc';
+    // v2.363.0 — widened with 'creature' to match v2.350-unified
+    // CombatParticipant.participant_type. Caller code passes through
+    // participant types directly; the inserted DB row's target_type
+    // CHECK accepts 'character' | 'creature' | ... so all three work
+    // at runtime — only the TS surface area was narrow.
+    type: 'character' | 'creature' | 'monster' | 'npc';
     /** v2.146.0 — Phase N pt 4: optional per-target cover override.
      *  Callers with a battle map compute this via
      *  deriveCoverFromWalls(attacker, this target, walls, gridSize) so

@@ -668,7 +668,12 @@ export interface CombatParticipant {
   id: string;
   encounter_id: string;
   campaign_id: string;
-  participant_type: 'character' | 'monster' | 'npc';
+  // v2.350.0 / v2.363.0 — DB CHECK constraint accepts 'character' |
+  // 'creature'. Legacy 'monster'/'npc' still listed for backward
+  // compat with any in-flight code reading older rows; new code
+  // paths (v2.363+ MonsterActionPanel, etc.) compare against
+  // 'creature'.
+  participant_type: 'character' | 'creature' | 'monster' | 'npc';
   entity_id: string;
   name: string;
   initiative: number | null;

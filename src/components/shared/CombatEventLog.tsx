@@ -73,16 +73,20 @@ function visualForEvent(evtType: CombatEventType): { color: string; icon: string
 // Actor badge color
 const ACTOR_COLORS: Record<ActorType, string> = {
   player: 'var(--c-gold-l)',
+  character: 'var(--c-gold-l)',
   dm: '#f87171',
   npc: '#34d399',
+  creature: '#a78bfa',
   monster: '#a78bfa',
   system: 'var(--t-2)',
 };
 
 const ACTOR_LABELS: Record<ActorType, string> = {
   player: 'Player',
+  character: 'Character',
   dm: 'DM',
   npc: 'NPC',
+  creature: 'Creature',
   monster: 'Monster',
   system: 'System',
 };

@@ -107,7 +107,10 @@ export interface TakeDashInput {
   encounterId: string | null;
   participantId: string;
   participantName: string;
-  participantType: 'character' | 'monster' | 'npc';
+  // v2.363.0 — widened to include 'creature' (v2.350-unified). The
+  // downstream branch `isCreatureParticipantType()` already handled
+  // all three values; only the type signature was narrow.
+  participantType: 'character' | 'creature' | 'monster' | 'npc';
 }
 
 // v2.278.0 — Returns a result discriminator so the InitiativeStrip
@@ -175,7 +178,8 @@ export interface TakeDisengageInput {
   encounterId: string | null;
   participantId: string;
   participantName: string;
-  participantType: 'character' | 'monster' | 'npc';
+  // v2.363.0 — see TakeDashInput note.
+  participantType: 'character' | 'creature' | 'monster' | 'npc';
 }
 
 export async function takeDisengage(input: TakeDisengageInput): Promise<MovementActionResult> {
@@ -232,7 +236,8 @@ export interface LogMovementInput {
   encounterId: string | null;
   participantId: string;
   participantName: string;
-  participantType: 'character' | 'monster' | 'npc';
+  // v2.363.0 — see TakeDashInput note. Widened to include 'creature'.
+  participantType: 'character' | 'creature' | 'monster' | 'npc';
   fromRow: number;
   fromCol: number;
   toRow: number;

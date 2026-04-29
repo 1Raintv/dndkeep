@@ -1082,7 +1082,8 @@ export interface OfferOpportunityAttacksInput {
   encounterId: string | null;
   moverParticipantId: string;
   moverName: string;
-  moverType: 'character' | 'monster' | 'npc';
+  // v2.363.0 — widened with 'creature' (v2.350-unified).
+  moverType: 'character' | 'creature' | 'monster' | 'npc';
   moverDisengaged: boolean;
   fromRow: number;
   fromCol: number;

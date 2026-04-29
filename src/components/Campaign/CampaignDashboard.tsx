@@ -43,6 +43,7 @@ import PartyDashboard from './PartyDashboard';
 const BattleMapV2 = lazy(() => import('./BattleMapV2'));
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
+import MonsterActionPanel from '../Combat/MonsterActionPanel';
 import StartCombatButton from '../Combat/StartCombatButton';
 import AttackResolutionModal from '../Combat/AttackResolutionModal';
 import ReactionPromptModal from '../Combat/ReactionPromptModal';
@@ -742,6 +743,11 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     </div>
     {/* v2.96.0 — Phase D: bottom initiative strip renders when active encounter exists */}
     <InitiativeStrip isDM={isOwner} />
+    {/* v2.363.0 — Phase Q.2 pt 1: DM-only monster action panel.
+        Anchored bottom-right, above the InitiativeStrip. Renders
+        only when the current actor is a creature. Self-hides for
+        player turns + when no encounter is active. */}
+    <MonsterActionPanel isDM={isOwner} />
     {/* v2.97.0 — Phase E: auto-opens when a pending attack is in flight (DM only) */}
     <AttackResolutionModal campaignId={campaign.id} isDM={isOwner} />
     {/* v2.98.0 — Phase E: reaction prompt for target player on hit */}
