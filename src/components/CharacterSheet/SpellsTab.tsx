@@ -452,7 +452,7 @@ export default function SpellsTab({
 
  {/* Column headers — show once for cantrips, once for leveled */}
  {lvl === 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '90px 3px 1fr 46px 70px 74px 80px 180px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
  {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', 'EFFECT', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
@@ -573,7 +573,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  <div
  style={{
  display: 'grid',
- gridTemplateColumns: '90px 3px 1fr 46px 70px 74px 80px 180px 16px',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}

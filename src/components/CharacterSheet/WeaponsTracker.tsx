@@ -298,11 +298,14 @@ export default function WeaponsTracker({
  Attacks per Action: 1
  </span>
  </div>
- {/* Table column headers */}
+ {/* Table column headers — v2.371.0 unified 9-col template
+     matches SpellsTab + ClassAbilitiesSection. Weapons don't have
+     level/school/casting-time analogs, so LEAD/BAR/TIME render
+     empty here. */}
  {weapons.length > 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 64px 100px 180px', gap: '0 10px', padding: '0 4px', marginBottom: -2 }}>
- {['ATTACK', 'RANGE', 'HIT / DC', 'DAMAGE', ''].map(h => (
- <span key={h} style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ {['', '', 'ATTACK', '', 'RANGE', 'HIT', 'DAMAGE', '', ''].map((h, i) => (
+ <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
  )}
@@ -345,9 +348,13 @@ export default function WeaponsTracker({
  }}
  style={{
  display: isSaveSpell ? 'flex' : 'grid',
- gridTemplateColumns: isSaveSpell ? undefined : '1fr 70px 64px 100px 180px',
+ // v2.371.0 — Unified template, matches SpellsTab +
+ // ClassAbilitiesSection. Empty cells in LEAD/BAR/TIME for
+ // weapons (no level/school/casting-time analog) so columns
+ // visually line up across all three tabs.
+ gridTemplateColumns: isSaveSpell ? undefined : '70px 3px 1fr 46px 70px 74px 80px 180px 16px',
  alignItems: 'center',
- gap: isSaveSpell ? 10 : '0 10px',
+ gap: isSaveSpell ? 10 : '0 8px',
  padding: '8px 12px',
  cursor: hasNotesPanel ? 'pointer' : 'default',
  }}>
@@ -371,9 +378,15 @@ export default function WeaponsTracker({
  </div>
  </>
  ) : (
- /* Normal weapon — DDB-style grid row */
+ /* Normal weapon — unified 9-col grid row (v2.371.0). */
  <>
- {/* ATTACK name + source */}
+ {/* Col 0: LEAD — empty for weapons (no level/prepare badge analog). */}
+ <div />
+
+ {/* Col 1: BAR — gold stripe matches inventory color. */}
+ <div style={{ width: 3, height: 30, borderRadius: 2, background: 'rgba(200,146,42,0.6)' }} />
+
+ {/* Col 2: NAME — weapon name + source/properties subline. */}
  <div style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{w.name}</span>
@@ -385,15 +398,17 @@ export default function WeaponsTracker({
  </div>
  </div>
 
- {/* RANGE */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center' }}>
+ {/* Col 3: TIME — empty for weapons (action econ implicit). */}
+ <div />
+
+ {/* Col 4: RANGE */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {w.range || 'Melee'}
  </div>
 
  {/* v2.87.0: Unarmed Strike — single STRIKE button that opens the mode
-     picker (Damage / Grapple / Shove). Regular weapons get the original
-     HIT + DMG pair. This keeps the 2024 PHB's three distinct Unarmed
-     Strike uses accessible without cluttering every other weapon row. */}
+     picker (Damage / Grapple / Shove). v2.371.0: spans HIT-DC + EFFECT
+     cols (74 + 80 + gap = 162px). */}
  {w.unarmedModes ? (
  <button
  onClick={() => setUnarmedModal(w)}
@@ -405,7 +420,7 @@ export default function WeaponsTracker({
  background: 'linear-gradient(180deg, rgba(200,146,42,0.2), rgba(200,146,42,0.08))',
  cursor: 'pointer', transition: 'all var(--tr-fast)',
  minHeight: 0, alignSelf: 'center',
- gridColumn: 'span 2', // spans the HIT + DMG columns
+ gridColumn: 'span 2', // spans cols 5 (HIT-DC) + 6 (EFFECT)
  }}
  >
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13, color: 'var(--c-gold-l)', lineHeight: 1 }}>
@@ -417,12 +432,12 @@ export default function WeaponsTracker({
  </button>
  ) : (
  <>
- {/* HIT BUTTON */}
+ {/* Col 5: HIT-DC — to-hit modifier */}
  <button
  onClick={() => handleHit(w)}
  title={`Roll to hit: d20${w.attackBonus >= 0 ? '+' : ''}${w.attackBonus}`}
  style={{
- textAlign: 'center', padding: '5px 8px',
+ textAlign: 'center', padding: '5px 4px',
  borderRadius: 'var(--r-md)',
  border: '1px solid rgba(200,146,42,0.3)',
  background: 'rgba(200,146,42,0.08)',
@@ -438,12 +453,12 @@ export default function WeaponsTracker({
  </div>
  </button>
 
- {/* DMG BUTTON */}
+ {/* Col 6: EFFECT — damage dice */}
  <button
  onClick={() => handleDamage(w)}
  title={`Roll damage: ${w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}${w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
  style={{
- textAlign: 'center', padding: '5px 8px',
+ textAlign: 'center', padding: '5px 4px',
  borderRadius: 'var(--r-md)',
  border: '1px solid rgba(248,113,113,0.3)',
  background: 'rgba(248,113,113,0.08)',
@@ -458,10 +473,13 @@ export default function WeaponsTracker({
  DAMAGE
  </div>
  </button>
+ </>
+ )}
 
- {/* v2.100.0 — Phase F: in-combat attack flow. Renders null when not in
-     an active encounter, so out-of-combat rolls still use the existing
-     Hit / Damage buttons above. */}
+ {/* Col 7: BUTTONS — in-combat PlayerAttackButton + edit/delete.
+     v2.100.0 PlayerAttackButton renders only when in an active
+     encounter; out-of-combat rolls use the Hit/Damage buttons above. */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
  {historyCharacterId && (
  <PlayerAttackButton
  characterId={historyCharacterId}
@@ -473,17 +491,18 @@ export default function WeaponsTracker({
  compact
  />
  )}
- </>
- )} {/* chevron + edit/delete (notes moved to expanded panel below) */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', minWidth: 0 }}>
- {hasNotesPanel && (
- <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▼</span>
- )}
  {!isInv && w.id !== 'unarmed' && (
- <div style={{ display: 'flex', gap: 2, flexShrink: 0, marginLeft: 'auto' }}>
+ <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
  <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '2px 6px', fontSize: 10 }}></button>
  <button className="btn-ghost btn-sm" onClick={() => removeWeapon(w.id)} style={{ padding: '2px 6px', fontSize: 10 }}></button>
  </div>
+ )}
+ </div>
+
+ {/* Col 8: CHEVRON */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ {hasNotesPanel && (
+ <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
  )}
  </div>
  </>

@@ -480,7 +480,11 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  onClick={() => { if (canExpand) setExpandedAbility(isExpanded ? null : ability.name); }}
  style={{
  display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
+ // v2.371.0 — Unified template, matches SpellsTab + WeaponsTracker.
+ // Order: LEAD(70) BAR(3) NAME(1fr) TIME(46) RANGE(70) HIT-DC(74)
+ // EFFECT(80) BUTTONS(180) CHEVRON(16). Empty cells where the
+ // surface doesn't have data so columns line up across tabs.
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px',
  cursor: canExpand ? 'pointer' : 'default',
@@ -568,10 +572,20 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  </div>
 
- {/* Col 3: reserved for future per-ability metadata */}
+ {/* Col 3: TIME — for now empty since action type lives in the LEAD
+     badge. Reserved so the column reserves visual width consistent
+     with SpellsTab. */}
  <div />
 
- {/* Col 4: v2.246.0 — Save chip for save-bearing abilities. Renders
+ {/* Col 4: RANGE — reads ability.range (e.g. "30 ft", "Self",
+     "60 ft"). Empty when the ability has no spatial component
+     (e.g. self-targeting Action Surge). Aligns with SpellsTab's
+     RANGE column for visual consistency across both tabs. */}
+ <div style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+ {(ability as any).range ?? ''}
+ </div>
+
+ {/* Col 5: HIT/DC — Save chip for save-bearing abilities. Renders
      "DC X · YYY" matching the spell modal's save-pill format. Tooltip
      shows the on-fail / on-success consequences when present. Empty
      when the ability has no `save` field — keeps non-save abilities
@@ -606,9 +620,11 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  })()}
  </div>
 
- {/* Col 5: PED cost chip OR last-rolled PED value badge.
-     pedCost and psionicDie are mutually exclusive on a given
-     ability, so this column has a single semantic at a time. */}
+ {/* Col 6: EFFECT — PED cost chip OR last-rolled PED value badge.
+     Aligns with SpellsTab's EFFECT column (where damage dice render
+     for spells); for class abilities this column shows the resource
+     economics. pedCost and psionicDie are mutually exclusive on a
+     given ability. */}
  <div style={{ textAlign: 'center' }}>
  {(ability as any).psionicDie ? (() => {
  const hasRoll = psionicRollHistory.length > 0;
@@ -640,20 +656,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  ) : null}
  </div>
 
- {/* Col 6: chevron — only when there's something to expand. */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
- {canExpand && (
- <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
- )}
- </div>
-
- {/* Col 7: Use button + optional Restore button.
-     Click handlers stop propagation so they don't trigger
-     the row-level expand toggle. */}
+ {/* Col 7: BUTTONS — Use button + optional Restore button.
+     Aligns with SpellsTab's BUTTONS column (Cast + Damage). Click
+     handlers stop propagation so they don't trigger the row-level
+     expand toggle. */}
  <div onClick={e => {
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
- }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+ }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
  {ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
@@ -725,6 +735,15 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </button>
  );
  })()}
+ </div>
+
+ {/* Col 8: CHEVRON — last column, matches SpellsTab. Only renders
+     content when there's an expanded panel; the cell is always
+     present so columns line up regardless. */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ {canExpand && (
+ <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
+ )}
  </div>
  </div>
  );
