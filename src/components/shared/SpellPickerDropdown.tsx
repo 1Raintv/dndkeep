@@ -127,13 +127,17 @@ export default function SpellPickerDropdown({
  if (isKnownCaster && slotsPerLevel && slotsPerLevel[level] !== undefined) {
  return (selectedByLevel[level] ?? 0) >= slotsPerLevel[level];
  }
- // Global "spells known" cap — also KNOWN CASTERS ONLY. For preparers
- // this picker mutates `known_spells` (the spellbook) which is unbounded
- // by RAW; daily prep is enforced separately via canPrepareSpell when
- // the user toggles a spell to "prepared" in the SpellsTab. Showing
- // "14/17 prepared" stays informative in the dropdown header without
- // blocking spellbook additions.
- if (isKnownCaster && prepareMax !== undefined && prepareCount !== undefined) {
+ // Global "spells known" cap — known casters AND non-Wizard
+ // preparer classes. v2.366.0: pre-v2.366 the prepareMax cap
+ // here only applied to known casters because preparers were
+ // assumed to have a Wizard-style unbounded spellbook. Only
+ // Wizard actually works that way RAW; every other preparer
+ // (Cleric, Druid, Paladin, Ranger, Artificer, Psion) writes
+ // prepared list entries via this picker, so the cap should
+ // apply. Wizard still bypasses (its known_spells is a true
+ // spellbook).
+ const enforcePrepareMax = isKnownCaster || (className !== 'Wizard');
+ if (enforcePrepareMax && prepareMax !== undefined && prepareCount !== undefined) {
  return prepareCount >= prepareMax;
  }
  }

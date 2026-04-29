@@ -189,12 +189,29 @@ export function canAddKnownSpell(character: Character, spellId: string): AddChec
     }
     return { allowed: true };
   }
-  // Leveled spell: known casters use known max; preparers don't restrict known_spells
-  // because for them known_spells is the spellbook, not the prepared list.
+  // Leveled spell: known casters use the known max.
   if (isKnownCaster(character.class_name)) {
     const max = getMaxKnown(character.class_name, character.level);
     if (max !== null && counts.known >= max) {
       return { allowed: false, reason: `Spells known limit reached (${counts.known}/${max})` };
+    }
+  }
+  // v2.366.0 — Cap known_spells for non-Wizard preparer classes
+  // (Cleric, Druid, Paladin, Ranger, Artificer, Psion). Pre-v2.366
+  // ALL preparers were exempted from a known-spell cap on the
+  // assumption they had Wizard-style unbounded spellbooks. RAW only
+  // Wizard works that way — every other preparer prepares directly
+  // from their full class list with no intermediate spellbook, and
+  // our app uses known_spells to materialize that prepared list.
+  // Without a cap, users could add unlimited spells (user-reported
+  // bug for Psion specifically; same bug applied to Cleric/Druid/
+  // etc. but Psion was the most visible since it's the new class).
+  // Cap == the prepared count from spellPreparedTables (which Psion
+  // shares with Wizard/Cleric/Druid via FULL_CASTER_PREPARED).
+  if (isPreparer(character.class_name) && character.class_name !== 'Wizard') {
+    const max = getMaxPrepared(character);
+    if (max > 0 && counts.known >= max) {
+      return { allowed: false, reason: `Prepared spell limit reached (${counts.known}/${max})` };
     }
   }
   // Spell level must be castable

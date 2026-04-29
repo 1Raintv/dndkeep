@@ -43,11 +43,48 @@ export default function StepSubclass({ className, selected, onSelect, level }: S
             {className}s choose their subclass at level {subclassUnlockLevel}.
             Your character is level {level} — choose now.
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          {/* v2.366.0 — Compact tile grid (2 columns on desktop). Each
+              tile is just name + UA badge + a one-line feature
+              milestone summary, NOT the full description. The full
+              description renders in the SubclassDetails panel below
+              the grid so the layout doesn't shift when the user
+              cycles between subclasses. */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 'var(--sp-2)',
+            }}
+          >
             {visibleSubclasses.map(sc => (
-              <SubclassCard key={sc.name} subclass={sc} selected={selected === sc.name} onSelect={onSelect} />
+              <SubclassTile
+                key={sc.name}
+                subclass={sc}
+                selected={selected === sc.name}
+                onSelect={onSelect}
+              />
             ))}
           </div>
+          {/* Details panel — only renders once a subclass is selected.
+              Empty state nudges the user to pick one. */}
+          {selected ? (
+            <SubclassDetails subclass={visibleSubclasses.find(s => s.name === selected)} />
+          ) : (
+            <div
+              style={{
+                marginTop: 'var(--sp-3)',
+                padding: 'var(--sp-4)',
+                background: 'var(--c-surface)',
+                border: '1px dashed var(--c-border-m)',
+                borderRadius: 'var(--r-lg)',
+                fontSize: 'var(--fs-sm)',
+                color: 'var(--t-3)',
+                textAlign: 'center' as const,
+              }}
+            >
+              Select a subclass above to see its features and description.
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-lg)', fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
@@ -178,8 +215,61 @@ function LevelRow({ level, features, choices, newSpellLevel, subclassFeature, is
   );
 }
 
-function SubclassCard({ subclass, selected, onSelect }: { subclass: SubclassData; selected: boolean; onSelect: (name: string) => void }) {
-  // Group features by level for display
+// v2.366.0 — Compact tile. No description, no expanded feature list
+// inline — those move to the SubclassDetails panel below the grid.
+// Tile shows name + optional UA badge + a single subtle line
+// summarizing the count of feature levels the subclass adds.
+function SubclassTile({ subclass, selected, onSelect }: { subclass: SubclassData; selected: boolean; onSelect: (name: string) => void }) {
+  const featureLevels = (subclass.features ?? []).reduce<Set<number>>((acc, f) => {
+    acc.add(f.level);
+    return acc;
+  }, new Set<number>());
+
+  return (
+    <button
+      onClick={() => onSelect(subclass.name)}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 4, padding: 'var(--sp-3) var(--sp-4)',
+        borderRadius: 'var(--r-lg)', textAlign: 'left' as const,
+        border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+        background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+        cursor: 'pointer', transition: 'all var(--tr-fast)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: selected ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
+          {selected ? '✓ ' : ''}{subclass.name}
+        </div>
+        {subclass.source === 'ua' && (
+          <span
+            style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
+              color: '#c084fc',
+              background: 'rgba(192,132,252,0.12)',
+              border: '1px solid rgba(192,132,252,0.3)',
+              borderRadius: 999,
+              padding: '1px 6px',
+            }}
+          >
+            UA
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 'var(--fs-xs)', color: selected ? 'var(--c-gold-l)' : 'var(--t-3)', fontWeight: 500 }}>
+        {featureLevels.size} feature{featureLevels.size === 1 ? '' : 's'}
+      </div>
+    </button>
+  );
+}
+
+// v2.366.0 — Full details panel rendered ONCE, below the tile grid,
+// for whichever subclass is currently selected. Description and
+// feature milestones live here so switching tiles doesn't reflow
+// the picker.
+function SubclassDetails({ subclass }: { subclass: SubclassData | undefined }) {
+  if (!subclass) return null;
+
+  // Group features by level for the milestone display.
   const featuresByLevel: Record<number, string[]> = {};
   for (const f of subclass.features ?? []) {
     if (!featuresByLevel[f.level]) featuresByLevel[f.level] = [];
@@ -188,40 +278,73 @@ function SubclassCard({ subclass, selected, onSelect }: { subclass: SubclassData
   const featureLevels = Object.keys(featuresByLevel).map(Number).sort((a, b) => a - b);
 
   return (
-    <button onClick={() => onSelect(subclass.name)} style={{
-      display: 'flex', flexDirection: 'column', gap: 6, padding: 'var(--sp-3) var(--sp-4)',
-      borderRadius: 'var(--r-lg)', textAlign: 'left',
-      border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
-      background: selected ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-      cursor: 'pointer', transition: 'all var(--tr-fast)',
-    }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: selected ? 'var(--c-gold-l)' : 'var(--t-1)', flex: 1 }}>
-          {selected ? '✓ ' : ''}{subclass.name}
+    <div
+      style={{
+        marginTop: 'var(--sp-3)',
+        padding: 'var(--sp-4)',
+        background: 'var(--c-raised)',
+        border: '1px solid var(--c-gold-bdr)',
+        borderRadius: 'var(--r-lg)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--sp-3)',
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
+            textTransform: 'uppercase' as const,
+            color: 'var(--c-gold-l)',
+            marginBottom: 4,
+          }}
+        >
+          Subclass details
         </div>
-        {subclass.source === 'ua' && (
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: '#c084fc', background: 'rgba(192,132,252,0.12)', border: '1px solid rgba(192,132,252,0.3)', borderRadius: 999, padding: '1px 6px' }}>UA</span>
-        )}
+        <div style={{ fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--t-1)' }}>
+          {subclass.name}
+        </div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.5, marginTop: 6 }}>
+          {subclass.description}
+        </div>
       </div>
-      {/* Description */}
-      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.5 }}>{subclass.description}</div>
-      {/* Feature milestones */}
+
       {featureLevels.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 2 }}>
-          {featureLevels.map(lvl => (
-            <span key={lvl} title={featuresByLevel[lvl].join(', ')} style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
-              color: selected ? 'var(--c-gold-l)' : 'var(--t-3)',
-              background: selected ? 'rgba(212,160,23,0.12)' : 'var(--c-surface)',
-              border: `1px solid ${selected ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,
-              borderRadius: 4, padding: '2px 5px',
-            }}>
-              Lv{lvl}: {featuresByLevel[lvl].join(', ')}
-            </span>
-          ))}
+        <div>
+          <div
+            style={{
+              fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--t-3)',
+              textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+              marginBottom: 'var(--sp-2)',
+            }}
+          >
+            Feature milestones
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {featureLevels.map(lvl => (
+              <div key={lvl} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span
+                  style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: 'var(--c-gold-l)',
+                    background: 'rgba(212,160,23,0.12)',
+                    border: '1px solid var(--c-gold-bdr)',
+                    borderRadius: 4,
+                    padding: '2px 6px',
+                    minWidth: 36,
+                    textAlign: 'center' as const,
+                  }}
+                >
+                  Lv {lvl}
+                </span>
+                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
+                  {featuresByLevel[lvl].join(', ')}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-    </button>
+    </div>
   );
 }

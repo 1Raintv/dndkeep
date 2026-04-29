@@ -277,7 +277,17 @@ export default function SpellsTab({
  onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
  cantripMax={cantripMax}
  prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
- prepareCount={isPreparer ? preparedCount : isKnown ? getSpellCounts(character).known : undefined}
+ // v2.366.0 — For non-Wizard preparers (Cleric/Druid/Paladin/
+ // Ranger/Artificer/Psion), known_spells IS the prepared list,
+ // so the picker should gate against current known count, not
+ // currently-prepared count. Wizard keeps prepared-count since
+ // its known_spells is a true unbounded spellbook. Pre-v2.366
+ // all preparers compared against preparedCount, so a Psion
+ // could add unlimited known spells as long as they didn't
+ // mark them prepared (the user-reported bug).
+ prepareCount={isPreparer
+ ? (character.class_name === 'Wizard' ? preparedCount : getSpellCounts(character).known)
+ : isKnown ? getSpellCounts(character).known : undefined}
  isKnownCaster={isKnown}
  slotsPerLevel={slotsPerLevel}
  grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
