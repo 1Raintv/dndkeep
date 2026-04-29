@@ -814,72 +814,112 @@ export default function SpellCastButton({
  </>
  )}
 
- {/* ── CATEGORY 3: SAVE SPELL — damage button only ── */}
- {/* v2.35.1: removed the "CON DC 15" button — HIT/DC column in the row shows this info.
- The damage button below is the functional roll. If the DM needs the save DC relayed,
- casting the spell (via damage button) logs the DC to the action log. */}
+ {/* ── CATEGORY 3: SAVE SPELL — Cast + Damage two-button row (v2.372.0) ── */}
  {mechanics.saveType && !mechanics.isAttack && mechanics.damageDice && (
  <>
- <button
- onClick={() => rollDamage()}
- style={{ ...btnBase, background: dmgColor + '18',
- border: `1px solid ${dmgColor}50`, color: dmgColor }}
- title={`Targets make ${mechanics.saveType} DC ${saveDC} save. Click to roll damage.`}
- >
- {mechanics.damageDice} {mechanics.damageType}
- </button>
- {/* v2.101.0 — Phase F: in-combat save-based single-target spell via
-     PlayerAttackButton.
-     v2.148.0 — Phase O pt 1: for AoE save spells (area_of_effect set),
-     route through SpellTargetPickerModal instead — one pending_attacks
-     row per picked target via declareMultiTargetAttack. PlayerAttackButton
-     remains for single-target save spells (Dissonant Whispers etc.). */}
- {character.id && campaignId && (() => {
+ {/* Cast button (v2.372.0) — always renders, regardless of campaign
+     context. Pre-v2.372 the Cast affordance was buried inside the
+     in-campaign branch with a non-obvious label and didn't render
+     at all out of combat, leaving only the damage button visible.
+     Now: in-campaign with AoE → opens SpellTargetPickerModal (the
+     existing multi-target save resolver auto-rolls damage on save
+     outcomes per target, Option B). In-campaign single-target →
+     PlayerAttackButton with attackKind="save". Out-of-campaign →
+     castUtility, which spends the slot and logs the DC for the DM. */}
+ {(() => {
+ const inCampaign = !!(character.id && campaignId);
+ const isAoE = !!spell.area_of_effect;
  const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
  const dice = upcast.extraDice
  ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
  : mechanics.damageDice!;
- const isAoE = !!spell.area_of_effect;
- if (isAoE) {
-   // Multi-target flow — button opens my picker.
-   const shape = spell.area_of_effect!.type;
-   const size = spell.area_of_effect!.size;
-   return (
-     <button
-       onClick={() => setAoePicker({ slotLevel: effSlot, damageDice: dice })}
-       title={`${size}ft ${shape} · ${mechanics.saveType} DC ${saveDC} save · ${dice} ${mechanics.damageType ?? 'damage'} (half on save). Click to pick targets and declare through the combat pipeline.`}
-       style={{
-         ...btnBase,
-         background: 'rgba(167,139,250,0.15)',
-         border: '1px solid rgba(167,139,250,0.5)',
-         color: '#a78bfa', fontWeight: 700,
-       }}
-     >
-       ⚔ AoE {size}ft · DC {saveDC} {mechanics.saveType}
-     </button>
-   );
- }
- // Single-target save: existing PlayerAttackButton path.
+
+ // In-campaign + AoE: route to SpellTargetPickerModal. Open via
+ // setAoePicker just like the pre-v2.372 ⚔ AoE button did.
+ if (inCampaign && isAoE) {
  return (
-   <PlayerAttackButton
-     characterId={character.id}
-     attackKind="save"
-     saveDC={saveDC}
-     saveAbility={mechanics.saveType as any}
-     saveSuccessEffect="half"
-     damageDice={dice}
-     damageType={mechanics.damageType ?? ''}
-     attackName={spell.name}
-     source="spell"
-     compact
-     label={`⚔ ${mechanics.saveType} DC ${saveDC}`}
-     onDeclared={() => {
-       if (!isCantrip) spendSlot(effSlot);
-       flashCast(effSlot);
-     }}
-   />
+ <button
+ onClick={() => setAoePicker({ slotLevel: effSlot, damageDice: dice })}
+ title={`${spell.area_of_effect!.size}ft ${spell.area_of_effect!.type} · ${mechanics.saveType} DC ${saveDC} save · ${dice} ${mechanics.damageType ?? 'damage'} (half on save). Pick targets to cast.`}
+ style={{
+ ...btnBase,
+ background: recentlyCast ? '#34d399' : 'rgba(167,139,250,0.15)',
+ border: `1px solid ${recentlyCast ? '#34d399' : 'rgba(167,139,250,0.5)'}`,
+ color: recentlyCast ? '#000' : '#a78bfa',
+ fontWeight: recentlyCast ? 800 : 700,
+ transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+ }}
+ >
+ {recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ </button>
+ );
+ }
+
+ // In-campaign + single target: PlayerAttackButton with save kind.
+ // Already declares the attack through the combat pipeline,
+ // resolves saves, and handles the damage flow per target.
+ if (inCampaign && !isAoE) {
+ return (
+ <PlayerAttackButton
+ characterId={character.id}
+ attackKind="save"
+ saveDC={saveDC}
+ saveAbility={mechanics.saveType as any}
+ saveSuccessEffect="half"
+ damageDice={dice}
+ damageType={mechanics.damageType ?? ''}
+ attackName={spell.name}
+ source="spell"
+ compact
+ label={recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ onDeclared={() => {
+ if (!isCantrip) spendSlot(effSlot);
+ flashCast(effSlot);
+ }}
+ />
+ );
+ }
+
+ // Out-of-campaign fallback: spend slot + log DC, no target picking.
+ // Mirrors the save-only spell path at line ~891 (Calm Emotions etc.).
+ return (
+ <button
+ onClick={() => {
+ if (forceSlotLevel !== undefined) {
+ castUtility(forceSlotLevel);
+ return;
+ }
+ if (isCantrip || availableSlots.length <= 1) {
+ castUtility(isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+ } else {
+ setShowModal(true);
+ }
+ }}
+ title={`Targets make ${mechanics.saveType} DC ${saveDC} save. Click to cast (out-of-campaign — DM resolves saves manually).`}
+ style={{ ...btnBase,
+ background: recentlyCast ? '#34d399' : 'rgba(167,139,250,0.15)',
+ border: `1px solid ${recentlyCast ? '#34d399' : 'rgba(167,139,250,0.4)'}`,
+ color: recentlyCast ? '#000' : '#a78bfa',
+ fontWeight: recentlyCast ? 800 : 700,
+ transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+ }}
+ >
+ {recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ </button>
  );
  })()}
+
+ {/* Damage button — explicit manual roll. Unchanged from pre-v2.372;
+     used when the DM needs to roll damage outside the auto-flow
+     (homebrew adjudication, etc.). */}
+ <button
+ onClick={() => rollDamage()}
+ style={{ ...btnBase, background: dmgColor + '18',
+ border: `1px solid ${dmgColor}50`, color: dmgColor }}
+ title={`Roll ${mechanics.damageDice} ${mechanics.damageType} damage independently (manual resolution).`}
+ >
+ {mechanics.damageDice} {mechanics.damageType}
+ </button>
  </>
  )}
 
