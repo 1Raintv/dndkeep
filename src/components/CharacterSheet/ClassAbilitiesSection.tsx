@@ -155,7 +155,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const restoreCost = (ability as any).pedRestoreCost as number | undefined;
  if (typeof restoreCost !== 'number' || restoreCost <= 0) return;
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
- const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
+ // v2.368.0 — When class_resources['psionic-energy-dice'] is undefined
+ // (newly-created Psion who hasn't spent yet), the pre-v2.368 fallback
+ // `?? 0` made this think the pool was empty even though chiclets
+ // showed full from getPsionicDieCount fallback. User-reported bug:
+ // "Free Misty Step doesn't refund like it should." Fix: fall back to
+ // getPsionicDieCount(level), matching the chiclet display source.
+ const fallbackDice = getPsionicDieCount(character.level);
+ const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackDice;
  if (currentDice < restoreCost) {
  showToast(`Not enough Psionic Energy Dice. Need ${restoreCost}, have ${currentDice}.`, 'warn');
  return;
@@ -230,7 +237,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const pedCost = (ability as any).pedCost as number | undefined;
  if (typeof pedCost === 'number' && pedCost > 0) {
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
- const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
+ // v2.368.0 — same uninit fix as restoreUseFromPed: when the pool
+ // hasn't been materialized yet, fall back to getPsionicDieCount
+ // (matches the chiclet display source) instead of 0. Pre-v2.368
+ // a fresh Psion clicking Cast on Warp Space / Mass Teleport /
+ // Duplicitous Target hit "Need N, have 0" toast because the
+ // resource key was undefined.
+ const fallbackDice = getPsionicDieCount(character.level);
+ const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackDice;
  if (currentDice < pedCost) {
  // Insufficient pool — bail before logging or flashing.
  showToast(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`, 'warn');
@@ -654,7 +668,13 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const used = ((character.feature_uses as Record<string, number>) ?? {})[ability.name] ?? 0;
  if (used < maxUses) return null;
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
- const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? 0;
+ // v2.368.0 — Same uninit fix as restoreUseFromPed handler. The
+ // chiclet display falls back to the pool max when the resource
+ // is uninitialized; this disable check has to use the same
+ // fallback or it leaves the button disabled with full chiclets,
+ // which is what the user reported as "doesn't refund."
+ const fallbackDice = getPsionicDieCount(character.level);
+ const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackDice;
  const insufficient = currentDice < restoreCost;
  const flashKey = `restore:${ability.name}`;
  const restoreFlashing = justUsed === flashKey;

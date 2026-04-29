@@ -509,21 +509,14 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       isPool: true,
       psionicDie: true,
     },
-    {
-      name: 'Telekinesis',
-      actionType: 'action',
-      description: 'Spend 1 Psionic Energy Die: move a creature or object up to 30 ft. Or attack with a telepathic force (INT-based).',
-      minLevel: 1,
-      isPool: true,
-      range: '60 ft',
-      // v2.246.0 — first user-visible save chip. Telekinesis forces a STR
-      // save vs the caster's spell save DC when used to move a creature
-      // (objects don't save). targetMode 'any' so the v2.247 picker
-      // exposes Auto-Fail (willing) — useful for Psi Warper combos with
-      // Warp Propel where the caster wants a friendly target's "fail"
-      // to trigger the teleport-instead-of-push rider.
-      save: { ability: 'STR', dc: 'spell', targetMode: 'any' },
-    },
+    // v2.368.0 — Removed bogus 'Telekinesis' entry that previously sat
+    // between Psionic Energy Dice and Subtle Telekinesis. Telekinesis is
+    // a level-5 spell (src/data/spells.ts line 3949, classes include
+    // 'Psion'), not a class ability — having it here caused the spell
+    // to appear twice for Psions (once on Spells tab via the real spell,
+    // once on Actions tab as a fake class ability) and the duplicate had
+    // a STR save flow that doesn't match the real spell's STR contest
+    // mechanic. The real spell renders correctly on the Spells tab.
     // v2.187.0 — Phase Q.0 pt 28: Subtle Telekinesis is a base Psion class
     // feature (not subclass). Cast Mage Hand at-will but invisible. No PED
     // cost. Surfaces here so the player can see + click "Use" to log it.
