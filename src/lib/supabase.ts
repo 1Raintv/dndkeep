@@ -74,7 +74,12 @@ export async function getSession() {
 export async function getProfile(userId: string): Promise<{ data: Profile | null; error: null | Error }> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,email,display_name,subscription_tier,stripe_customer_id,subscription_status,created_at,updated_at')
+    // v2.365.0 — added show_ua_content. Pre-v2.365 the column was
+    // omitted from this explicit list, so the AuthContext's derived
+    // showUaContent flag was always false (undefined !== true) even
+    // when the DB row had the flag set. That hid Psion + UA content
+    // for every user with the flag on.
+    .select('id,email,display_name,subscription_tier,stripe_customer_id,subscription_status,show_ua_content,created_at,updated_at')
     .eq('id', userId)
     .single();
   return { data: data as Profile | null, error: error ? new Error(error.message) : null };
