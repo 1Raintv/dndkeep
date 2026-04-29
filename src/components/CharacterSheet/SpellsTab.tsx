@@ -452,8 +452,8 @@ export default function SpellsTab({
 
  {/* Column headers — show once for cantrips, once for leveled */}
  {lvl === 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
- {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', 'EFFECT', '', ''].map((h, i) => (
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ {['', '', 'NAME', 'TIME', 'RANGE', 'TAGS', 'HIT / DC', 'EFFECT', '', 'CHARGES', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
@@ -573,7 +573,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  <div
  style={{
  display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}
@@ -671,7 +671,8 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  Invisible
  </span>
  )}
- {isConcentrating && <span style={{ fontSize: 8, fontWeight: 800, color: '#a78bfa', flexShrink: 0 }}>● CONC</span>}
+ {/* v2.373.0 — ● CONC inline tag removed; concentration now lives
+     in the dedicated TAGS column (col 5) as a compact "C" chip. */}
  </div>
  <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const }}>
  {spell.school}{spell.ritual ? ' · Ritual' : ''}
@@ -684,7 +685,42 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  {/* Col 4: RANGE */}
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
 
- {/* Col 5: HIT / DC */}
+ {/* Col 5: TAGS — concentration / AoE indicator chips. v2.373.0
+     replaces the inline ● CONC text in the NAME cell. Compact chip
+     column so the user can scan whether a spell needs concentration
+     and whether it's an AoE without reading words. Empty when spell
+     has neither flag. */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
+ {spell.concentration && (
+ <span
+ title="Concentration spell — only one at a time"
+ style={{
+ fontSize: 9, fontWeight: 800,
+ color: '#a78bfa',
+ background: 'rgba(167,139,250,0.16)',
+ border: '1px solid rgba(167,139,250,0.45)',
+ borderRadius: 4, padding: '1px 4px',
+ lineHeight: 1.2, fontFamily: 'var(--ff-stat)',
+ }}
+ >C</span>
+ )}
+ {spell.area_of_effect && (
+ <span
+ title={`AoE: ${spell.area_of_effect.size}ft ${spell.area_of_effect.type}`}
+ style={{
+ fontSize: 8, fontWeight: 800,
+ color: '#fb923c',
+ background: 'rgba(251,146,60,0.14)',
+ border: '1px solid rgba(251,146,60,0.4)',
+ borderRadius: 4, padding: '1px 3px',
+ lineHeight: 1.2, fontFamily: 'var(--ff-stat)',
+ letterSpacing: '0.02em',
+ }}
+ >AoE</span>
+ )}
+ </div>
+
+ {/* Col 6: HIT / DC */}
  <div style={{ textAlign: 'center' }}>
  {hitDC !== '—' ? (
  <span style={{
@@ -708,12 +744,17 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  }}>{effect.label}</span>
  </div>
 
- {/* Col 7: Cast button(s) */}
+ {/* Col 8: Cast button(s) */}
  <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
  {castButton}
  </div>
 
- {/* Col 8: Quick remove + expand chevron */}
+ {/* Col 9: CHARGES — empty for spells (slots tracked in LEAD).
+     Reserved column so spells visually align with class abilities
+     where this column shows the use tracker. */}
+ <div />
+
+ {/* Col 10: Quick remove + expand chevron */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
  {!grantedReason && onRemove && (
  <button

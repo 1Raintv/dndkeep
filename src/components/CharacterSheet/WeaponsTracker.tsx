@@ -303,8 +303,8 @@ export default function WeaponsTracker({
      level/school/casting-time analogs, so LEAD/BAR/TIME render
      empty here. */}
  {weapons.length > 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
- {['', '', 'ATTACK', '', 'RANGE', 'HIT', 'DAMAGE', '', ''].map((h, i) => (
+ <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ {['', '', 'ATTACK', '', 'RANGE', '', 'HIT', 'DAMAGE', '', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
@@ -352,7 +352,7 @@ export default function WeaponsTracker({
  // ClassAbilitiesSection. Empty cells in LEAD/BAR/TIME for
  // weapons (no level/school/casting-time analog) so columns
  // visually line up across all three tabs.
- gridTemplateColumns: isSaveSpell ? undefined : '70px 3px 1fr 46px 70px 74px 80px 180px 16px',
+ gridTemplateColumns: isSaveSpell ? undefined : '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
  alignItems: 'center',
  gap: isSaveSpell ? 10 : '0 8px',
  padding: '8px 12px',
@@ -405,6 +405,10 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {w.range || 'Melee'}
  </div>
+
+ {/* Col 5: TAGS — empty for weapons (no C/AoE concept). Reserved
+     so row aligns with spell rows that DO have tag chips. */}
+ <div />
 
  {/* v2.87.0: Unarmed Strike — single STRIKE button that opens the mode
      picker (Damage / Grapple / Shove). v2.371.0: spans HIT-DC + EFFECT
@@ -499,7 +503,11 @@ export default function WeaponsTracker({
  )}
  </div>
 
- {/* Col 8: CHEVRON */}
+ {/* Col 9: CHARGES — empty for weapons. Reserved for column
+     alignment with class-ability rows that have tracker chiclets. */}
+ <div />
+
+ {/* Col 10: CHEVRON */}
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
  {hasNotesPanel && (
  <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>

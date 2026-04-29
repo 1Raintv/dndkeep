@@ -484,7 +484,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // Order: LEAD(70) BAR(3) NAME(1fr) TIME(46) RANGE(70) HIT-DC(74)
  // EFFECT(80) BUTTONS(180) CHEVRON(16). Empty cells where the
  // surface doesn't have data so columns line up across tabs.
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 80px 180px 16px',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px',
  cursor: canExpand ? 'pointer' : 'default',
@@ -515,60 +515,21 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {ability.name}
  </span>
- {ability.isPool && (
- <span style={{
- fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
- color: '#60a5fa', background: 'rgba(96,165,250,0.1)',
- border: '1px solid rgba(96,165,250,0.35)', borderRadius: 999,
- padding: '1px 7px', flexShrink: 0,
- }} title="Resource pool — track current vs max in the chiclets below">
- Resource
- </span>
- )}
+ {/* v2.373.0 — Resource chip moved to TAGS column (col 5) as a
+     "P" chip. NAME cell stays clean — name only. */}
  </div>
- <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', justifyContent: 'space-between' }}>
+ <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
  <span style={{ flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
   {recoveryLabel}{rangeStr ? ` · ${rangeStr}` : ''}
  </span>
- {/* v2.324.0 — T3: chiclets right-aligned for thumb-tap. Click
-     events stopPropagation so users tapping a slot don't also
-     trigger the row-level expand toggle. PED pool gets the
-     dedicated PsionicDicePool component (purple, sources from
-     class_resources['psionic-energy-dice']); everything else
-     keeps the generic UseTracker. */}
- {isPedPoolRow && maxUses !== undefined ? (
-  <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', flexShrink: 0 }}>
-   {(() => {
-    const resources = (character.class_resources as Record<string, number> | null) ?? {};
-    const remaining = (resources['psionic-energy-dice'] as number | undefined) ?? maxUses;
-    const used = Math.max(0, maxUses - remaining);
-    return (
-     <PsionicDicePool
-      character={character}
-      total={maxUses}
-      used={used}
-      onChange={(newUsed) => {
-       const newRemaining = Math.max(0, maxUses - newUsed);
-       onUpdate({
-        class_resources: { ...resources, 'psionic-energy-dice': newRemaining },
-       });
-      }}
-     />
-    );
-   })()}
-  </span>
- ) : maxUses !== undefined && ability.rest && (
-  <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', flexShrink: 0 }}>
-   <UseTracker
-    abilityName={ability.name}
-    max={maxUses}
-    rest={ability.rest}
-    character={character}
-    onUpdate={onUpdate}
-    palette={trackerPalette}
-   />
-  </span>
- )}
+ {/* v2.373.0 — Chiclets moved out of this subtitle into the
+     dedicated CHARGES column (col 9) at the far right of the
+     row. Per user feedback: "things that have charges...
+     should be off to the right of the cast button so that you
+     can clearly see how many you have left to use." Pre-v2.373
+     the PsionicDicePool / UseTracker rendered inline here in
+     the NAME subtitle, mixing chiclet state with descriptive
+     text. */}
  </div>
  </div>
 
@@ -585,7 +546,43 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  {(ability as any).range ?? ''}
  </div>
 
- {/* Col 5: HIT/DC — Save chip for save-bearing abilities. Renders
+ {/* Col 5: TAGS — small chips signaling AoE / Pool for class
+     abilities. v2.373.0 — class abilities don't carry spell-level
+     concentration (that's tracked at the spell layer), so the C
+     chip is omitted here. The "P" chip replaces the inline
+     Resource chip that previously sat in the NAME cell — moves
+     visual weight to the consistent column position. */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
+ {ability.isPool && (
+ <span
+ title="Resource pool — see remaining charges to the right"
+ style={{
+ fontSize: 9, fontWeight: 800,
+ color: '#60a5fa',
+ background: 'rgba(96,165,250,0.12)',
+ border: '1px solid rgba(96,165,250,0.4)',
+ borderRadius: 4, padding: '1px 4px',
+ lineHeight: 1.2, fontFamily: 'var(--ff-stat)',
+ }}
+ >P</span>
+ )}
+ {(ability as any).isAoE && (
+ <span
+ title="Area-of-effect ability"
+ style={{
+ fontSize: 8, fontWeight: 800,
+ color: '#fb923c',
+ background: 'rgba(251,146,60,0.14)',
+ border: '1px solid rgba(251,146,60,0.4)',
+ borderRadius: 4, padding: '1px 3px',
+ lineHeight: 1.2, fontFamily: 'var(--ff-stat)',
+ letterSpacing: '0.02em',
+ }}
+ >AoE</span>
+ )}
+ </div>
+
+ {/* Col 6: HIT/DC — Save chip for save-bearing abilities. Renders
      "DC X · YYY" matching the spell modal's save-pill format. Tooltip
      shows the on-fail / on-success consequences when present. Empty
      when the ability has no `save` field — keeps non-save abilities
@@ -737,7 +734,48 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  })()}
  </div>
 
- {/* Col 8: CHEVRON — last column, matches SpellsTab. Only renders
+ {/* Col 9: CHARGES — chiclet tracker for limited-use abilities.
+     v2.373.0: moved here from inside the NAME subtitle so the user
+     can scan all "what's left" indicators in a consistent column
+     position at the far right of the row, after the Cast button.
+     PED pool uses PsionicDicePool (purple, sourced from
+     class_resources['psionic-energy-dice']); other limited-use
+     abilities (Free Misty Step, Action Surge, etc.) use UseTracker
+     (sourced from feature_uses[ability.name]). Empty for at-will
+     abilities (no maxUses). */}
+ <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden' }}>
+ {isPedPoolRow && maxUses !== undefined ? (
+ (() => {
+ const resources = (character.class_resources as Record<string, number> | null) ?? {};
+ const remaining = (resources['psionic-energy-dice'] as number | undefined) ?? maxUses;
+ const used = Math.max(0, maxUses - remaining);
+ return (
+ <PsionicDicePool
+ character={character}
+ total={maxUses}
+ used={used}
+ onChange={(newUsed) => {
+ const newRemaining = Math.max(0, maxUses - newUsed);
+ onUpdate({
+ class_resources: { ...resources, 'psionic-energy-dice': newRemaining },
+ });
+ }}
+ />
+ );
+ })()
+ ) : maxUses !== undefined && ability.rest ? (
+ <UseTracker
+ abilityName={ability.name}
+ max={maxUses}
+ rest={ability.rest}
+ character={character}
+ onUpdate={onUpdate}
+ palette={trackerPalette}
+ />
+ ) : null}
+ </div>
+
+ {/* Col 10: CHEVRON — last column, matches SpellsTab. Only renders
      content when there's an expanded panel; the cell is always
      present so columns line up regardless. */}
  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
