@@ -259,6 +259,11 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  const [filter, setFilter] = useState<Filter>('all');
  const [featAddOpen, setFeatAddOpen] = useState(false);
  const [featSearch, setFeatSearch] = useState('');
+ // v2.367.0 — flash state for the inline Use button (mirrors
+ // ClassAbilitiesSection's flash). When a feature is used here,
+ // its button briefly shows "Used!" with a green flash before
+ // settling back to "Use (N/M)".
+ const [justUsed, setJustUsed] = useState<string | null>(null);
  // v2.265.0 — track which feature's expanded body is open. Single-
  // open accordion: clicking a different row collapses the previous.
  // Keyed by the feature name (which is unique within the panel).
@@ -444,13 +449,74 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  <span>{character.class_name} · Lv {feature.level}</span>
  );
 
- // Button column: "View in Actions" for castables (jumps tabs to
- // the existing cast pipeline), passive tag otherwise. Keeps the
- // grid aligned across rows.
- const button = combatAbility ? (
+ // Button column. v2.367.0 — features WITHOUT a save now get an
+ // inline "Use" button that deducts feature_uses directly here,
+ // mirroring the Actions tab button behavior. Save-bearing
+ // features (Telekinesis, etc.) keep "View in Actions" because
+ // they trigger the AttackResolutionModal/save resolver flow
+ // that lives in ClassAbilitiesSection — duplicating it here
+ // would fork the resolution pipeline. Most user-facing features
+ // are non-save (Action Surge, Second Wind, Channel Divinity,
+ // Wild Shape, Bardic Inspiration, etc.) so this covers the
+ // common case the user complained about.
+ const featureUses = (character.feature_uses as Record<string, number> | null) ?? {};
+ const usedCount = featureUses[feature.name] ?? 0;
+ const featureMax = trackerCfg?.max;
+ const featureDepleted = featureMax !== undefined && usedCount >= featureMax;
+ const featureFlashing = justUsed === feature.name;
+ const hasSave = !!(combatAbility as any)?.save;
+ const useInline = combatAbility && !hasSave;
+
+ const handleUseFeature = () => {
+ if (featureDepleted) return;
+ if (featureMax !== undefined) {
+ onUpdate({
+ feature_uses: { ...featureUses, [feature.name]: usedCount + 1 },
+ });
+ }
+ // Flash the button briefly so the user gets visual confirmation
+ // (mirrors the Actions tab "Used!" flash).
+ setJustUsed(feature.name);
+ setTimeout(() => setJustUsed(curr => curr === feature.name ? null : curr), 1800);
+ };
+
+ const button = useInline ? (
+ <button
+ onClick={(e) => { e.stopPropagation(); handleUseFeature(); }}
+ disabled={featureDepleted}
+ title={featureDepleted ? `${feature.name} expended — finish a ${trackerCfg?.rest === 'short' ? 'Short' : 'Long'} Rest to recover` : `Use ${feature.name}`}
+ style={{
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+ padding: '6px 12px', borderRadius: 6,
+ cursor: featureDepleted ? 'not-allowed' : 'pointer',
+ border: featureFlashing
+ ? '1px solid #34d399'
+ : featureDepleted
+ ? '1px solid var(--c-border)'
+ : '1px solid rgba(167,139,250,0.5)',
+ background: featureFlashing
+ ? '#34d399'
+ : featureDepleted
+ ? 'var(--c-surface)'
+ : 'rgba(167,139,250,0.10)',
+ color: featureFlashing
+ ? '#000'
+ : featureDepleted
+ ? 'var(--t-3)'
+ : '#a78bfa',
+ letterSpacing: '0.04em',
+ whiteSpace: 'nowrap' as const,
+ width: '100%',
+ transition: 'all 0.2s',
+ opacity: featureDepleted ? 0.6 : 1,
+ }}
+ >
+ {featureFlashing ? 'Used!' : featureDepleted ? 'Expended' : (featureMax !== undefined ? `Use (${featureMax - usedCount}/${featureMax})` : 'Use')}
+ </button>
+ ) : combatAbility ? (
  <button
  onClick={(e) => { e.stopPropagation(); gotoActionsTab(); }}
- title="Jump to the Actions tab to use this feature"
+ title="This feature requires a save resolution — opens in Actions tab"
  style={{
  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
  padding: '6px 12px', borderRadius: 6, cursor: 'pointer',

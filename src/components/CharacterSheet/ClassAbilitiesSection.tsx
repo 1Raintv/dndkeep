@@ -252,12 +252,18 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // pedCost — clicking Spend Die on that row deducts exactly 1
  // and rolls). For abilities with pedCost set, we skip this
  // branch since deduction already happened above.
+ // v2.367.0 — Fixed: when class_resources['psionic-energy-dice']
+ // is undefined (newly created Psion, never spent before), the
+ // pre-v2.367 guard `!== undefined` skipped the entire deduction
+ // block and the user saw no change. Initialize from
+ // getMaxUses(ability, character) when undefined so the very
+ // first Spend correctly drops the pool from full → full-1.
  if (typeof pedCost !== 'number' && (ability.id === 'psionic-energy-dice' || (ability as any).isPool)) {
- const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
- if (resources['psionic-energy-dice'] !== undefined) {
- resources['psionic-energy-dice'] = Math.max(0, (resources['psionic-energy-dice'] as number) - 1);
- onUpdate({ class_resources: resources });
- }
+  const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
+  const fallbackMax = getMaxUses(ability, character) ?? 0;
+  const current = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackMax;
+  resources['psionic-energy-dice'] = Math.max(0, current - 1);
+  onUpdate({ class_resources: resources });
  }
  // For psionic energy dice — roll the die and show in action log
  let diceExpr: string | undefined;

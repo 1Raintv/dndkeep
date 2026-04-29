@@ -300,7 +300,7 @@ export default function WeaponsTracker({
  </div>
  {/* Table column headers */}
  {weapons.length > 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 64px 100px auto', gap: '0 10px', padding: '0 4px', marginBottom: -2 }}>
+ <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 64px 100px 180px', gap: '0 10px', padding: '0 4px', marginBottom: -2 }}>
  {['ATTACK', 'RANGE', 'HIT / DC', 'DAMAGE', ''].map(h => (
  <span key={h} style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
@@ -345,7 +345,7 @@ export default function WeaponsTracker({
  }}
  style={{
  display: isSaveSpell ? 'flex' : 'grid',
- gridTemplateColumns: isSaveSpell ? undefined : '1fr 70px 64px 100px auto',
+ gridTemplateColumns: isSaveSpell ? undefined : '1fr 70px 64px 100px 180px',
  alignItems: 'center',
  gap: isSaveSpell ? 10 : '0 10px',
  padding: '8px 12px',

@@ -682,9 +682,13 @@ export default function SpellCastButton({
  };
 
  return (
- <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
- {/* v2.35.1: removed the inline range chip — the row's RANGE column already shows it.
- Keeping it here would duplicate "60 feet" on every spell row. */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'nowrap', justifyContent: 'flex-start', width: '100%' }}>
+ {/* v2.367.0 — Lock to no-wrap so the Cast and Hit/Damage buttons
+     stay side-by-side on a single row. Parent grid (SpellsTab,
+     WeaponsTracker) reserves a fixed-width column for this so
+     row alignment stays consistent across the whole table —
+     spells with one button and spells with two now visually
+     align their columns identically. */}
 
  {/* ── CATEGORY 1: UTILITY — cast button only ── */}
  {mechanics.isUtility && (
