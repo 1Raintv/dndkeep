@@ -405,17 +405,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  <div
  key={ability.name}
  style={{
- // v2.374.0 — wrapper aesthetics now match SpellsTab exactly:
- // c-card (lighter, raised) instead of c-surface (darker,
- // recessed); neutral c-border when collapsed instead of
- // always-on action-color tint. Pre-v2.374 every ability row
- // carried a colored border which made the Actions tab feel
- // busier than the Spells tab. Now the action color only
- // surfaces on expand, mirroring how spells light up with
- // school color on expand.
- background: isExpanded ? `${acColor}08` : 'var(--c-card)',
- border: `1px solid ${isExpanded ? `${acColor}45` : 'var(--c-border)'}`,
- borderRadius: 8,
+ // v2.238.0 — wrapper now mirrors the regular spell-row wrapper:
+ // single thin border that recolors on expand, no left-only accent
+ // stripe (the stripe moved INSIDE the row as grid col 1, matching
+ // the spell rows below). Background tint flips on expand using
+ // the action-type color, the same way spell rows tint by school.
+ background: isExpanded ? `${acColor}08` : 'var(--c-surface)',
+ border: `1px solid ${isExpanded ? `${acColor}45` : `${acColor}25`}`,
+ borderRadius: 'var(--r-md)',
  overflow: 'hidden',
  transition: 'all 0.15s',
  }}
