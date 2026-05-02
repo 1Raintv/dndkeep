@@ -470,37 +470,60 @@ interface PickerProps {
 function RangeAwareTargetPicker(props: PickerProps) {
   const { attackerParticipant, participants, action, attackRangeFt, battleMap, onPick, onCancel } = props;
 
-  const targets = useMemo(() => {
+  // v2.384.0 — Surface why the picker may be empty. The valid-target
+  // filter is unchanged (alive non-self), but we now also collect the
+  // participants we filtered out and the reason, so the empty state
+  // can display a dimmed "excluded" list instead of just saying "no
+  // valid targets" with no context. Only consumed by the JSX below
+  // when targets.length === 0; the happy path is byte-identical.
+  const { targets, excluded } = useMemo(() => {
     const attackerLookup: ParticipantForTokenLookup = {
       id: attackerParticipant.id,
       name: attackerParticipant.name,
       participant_type: attackerParticipant.participant_type,
       entity_id: attackerParticipant.entity_id,
     };
-    return participants
-      .filter(p => p.id !== attackerParticipant.id && !p.is_dead)
-      .map(p => {
-        const lookup: ParticipantForTokenLookup = {
-          id: p.id,
-          name: p.name,
-          participant_type: p.participant_type,
-          entity_id: p.entity_id,
-        };
-        const dist = battleMap
-          ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, battleMap)
-          : null;
-        // Fail open when distance unknown.
-        const inRange = dist === null ? true : dist <= attackRangeFt;
-        return { participant: p, distFt: dist, inRange };
-      })
-      .sort((a, b) => {
-        // PCs first, creatures second. Within each group sort by
-        // name for stable reading order.
-        const aIsPC = a.participant.participant_type === 'character' ? 0 : 1;
-        const bIsPC = b.participant.participant_type === 'character' ? 0 : 1;
-        if (aIsPC !== bIsPC) return aIsPC - bIsPC;
-        return a.participant.name.localeCompare(b.participant.name);
-      });
+    const valid: Array<{ participant: CombatParticipant; distFt: number | null; inRange: boolean }> = [];
+    const excl: Array<{ participant: CombatParticipant; reason: 'self' | 'dead' }> = [];
+
+    for (const p of participants) {
+      if (p.id === attackerParticipant.id) {
+        excl.push({ participant: p, reason: 'self' });
+        continue;
+      }
+      if (p.is_dead) {
+        excl.push({ participant: p, reason: 'dead' });
+        continue;
+      }
+      const lookup: ParticipantForTokenLookup = {
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      };
+      const dist = battleMap
+        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, battleMap)
+        : null;
+      // Fail open when distance unknown.
+      const inRange = dist === null ? true : dist <= attackRangeFt;
+      valid.push({ participant: p, distFt: dist, inRange });
+    }
+
+    valid.sort((a, b) => {
+      // PCs first, creatures second. Within each group sort by
+      // name for stable reading order.
+      const aIsPC = a.participant.participant_type === 'character' ? 0 : 1;
+      const bIsPC = b.participant.participant_type === 'character' ? 0 : 1;
+      if (aIsPC !== bIsPC) return aIsPC - bIsPC;
+      return a.participant.name.localeCompare(b.participant.name);
+    });
+    // Excluded: self first (it's about the attacker), then dead by name.
+    excl.sort((a, b) => {
+      if (a.reason !== b.reason) return a.reason === 'self' ? -1 : 1;
+      return a.participant.name.localeCompare(b.participant.name);
+    });
+
+    return { targets: valid, excluded: excl };
   }, [attackerParticipant, participants, battleMap, attackRangeFt]);
 
   return (
@@ -543,8 +566,52 @@ function RangeAwareTargetPicker(props: PickerProps) {
 
         <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {targets.length === 0 && (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
-              No valid targets in this encounter.
+            <div style={{ padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
+                No valid targets in this encounter.
+              </div>
+              {/* v2.384.0 — Surface who got filtered out, and why, so a
+                  fully-empty picker is self-explanatory. */}
+              {excluded.length > 0 && (
+                <>
+                  <div style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', textAlign: 'center', marginTop: 4 }}>
+                    Excluded
+                  </div>
+                  {excluded.map(({ participant: p, reason }) => {
+                    const isPC = p.participant_type === 'character';
+                    return (
+                      <div
+                        key={p.id}
+                        title={reason === 'self' ? `${p.name} is the attacker` : `${p.name} is dead and can't be targeted by this attack`}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '8px 12px', borderRadius: 6,
+                          background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                          opacity: 0.5,
+                        }}
+                      >
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                          color: 'var(--t-3)', minWidth: 32,
+                        }}>
+                          {isPC ? 'PC' : 'CRE'}
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: reason === 'dead' ? 'line-through' : 'none' }}>
+                          {p.name}
+                        </span>
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                          color: reason === 'dead' ? '#fca5a5' : 'var(--c-gold-l)',
+                          fontStyle: 'italic',
+                        }}>
+                          {reason === 'dead' ? 'dead' : 'attacker'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
           {targets.map(({ participant: p, distFt, inRange }) => {
