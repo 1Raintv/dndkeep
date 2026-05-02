@@ -24,6 +24,7 @@
 
 import { supabase } from './supabase';
 import { useBattleMapStore } from './stores/battleMapStore';
+import * as scenesApi from './api/scenes';
 import {
   startEncounter, characterToSeed,
   type SeedSource, type StartEncounterResult,
@@ -43,27 +44,29 @@ type TokenLite = {
 };
 
 async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null> {
-  // Pick a scene — most recently updated wins. Mirrors the
-  // BattleMapV2 mount behavior of "auto-select first scene" closely
-  // enough for a one-shot start. If the campaign has no scenes at
-  // all, return null (caller surfaces as no_scene).
-  const { data: scene, error: sceneErr } = await supabase
-    .from('scenes')
-    .select('id')
-    .eq('campaign_id', campaignId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (sceneErr) {
-    console.error('[startCombatFromMap] scene fetch failed', sceneErr);
-    return null;
-  }
-  if (!scene) return null;
+  // v2.389.0 — Pick the same scene BattleMapV2 will auto-load on
+  // mount, not "most recently updated". Previously this chose by
+  // updated_at DESC; BattleMapV2 mounts and picks `listScenes()[0]`,
+  // which orders by created_at ASC (oldest first). When those
+  // disagreed (DM has multiple scenes; recently edited Scene B but
+  // Scene A is older), Start Combat would seed an encounter from
+  // Scene B's tokens, then auto-navigate would load Scene A on the
+  // map → DM sees the wrong scene during the encounter they just
+  // started. Aligning heuristics fixes it: scene the DM ends up
+  // looking at == scene whose tokens are in the encounter.
+  //
+  // Future polish: persist `last_scene_id` per-campaign so the
+  // chosen scene tracks DM intent rather than creation order.
+  // Out of scope here — would need a schema migration plus plumbing
+  // through both BattleMapV2's mount and this fallback.
+  const scenes = await scenesApi.listScenes(campaignId);
+  if (scenes.length === 0) return null;
+  const sceneId = scenes[0].id;
 
   const { data: rows, error: tokErr } = await supabase
     .from('scene_tokens')
     .select('character_id, creature_id')
-    .eq('scene_id', (scene as { id: string }).id);
+    .eq('scene_id', sceneId);
   if (tokErr) {
     console.error('[startCombatFromMap] scene_tokens fetch failed', tokErr);
     return null;

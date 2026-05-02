@@ -3,6 +3,69 @@
 **Status:** Design. v2.308 ships this doc only — no migrations, no code.
 v2.309+ will land the implementation in stages.
 
+## Status update — as of v2.388
+
+The arc landed for the **combat side** but stalled mid-flight on the
+**visual side**. Reality vs the original plan below:
+
+| Stage from plan | Status | Notes |
+|---|---|---|
+| v2.309 — tables created | ✅ Shipped | `combatants`, `scene_token_placements` exist |
+| v2.310 — initial backfill | ✅ Shipped | Apr 19–26 data; subsequent rows went to `scene_tokens` only |
+| v2.311 — `combatant_id` on CP, dual-write | ✅ Shipped | 100% of CP rows have combatant_id |
+| v2.312 — battlemap dual-path | 🟡 Code shipped, flag never flipped | `tokensApiRouter` XOR-routes; `use_combatants_for_battlemap = false` everywhere |
+| v2.313 — combat reads HP from combatants | ✅ Shipped (via v2.315–v2.319) | `cp_ensure_combatant_link` trigger seeds combatants on CP insert |
+| v2.314 — drop legacy CP columns | ✅ Shipped (v2.321) | `combat_participants` no longer carries HP/conditions |
+| v2.315 — drop `scene_tokens`, etc. | ❌ Not shipped | `scene_tokens` is still the active visual layer |
+
+**What this means today:**
+
+- Combatants is canonical for HP / conditions / death saves / buffs.
+- CP is a thin link table holding initiative + action economy +
+  combatant_id FK.
+- But the **visual layer has not flipped over**. `scene_token_placements`
+  has stale rows from the v2.310 backfill; `scene_tokens` is being
+  written by every placement flow. Flipping the flag now would show
+  the user old data.
+
+**Why the visual side stalled:** the router is XOR (legacy OR new), not
+dual-write. There's no automatic sync between `scene_tokens` and
+`scene_token_placements`, so once the flag stayed off, placements drifted.
+Cutover now requires either (a) a sync trigger to dual-write going
+forward, then a re-backfill, then flag flip; or (b) a one-shot heavy
+backfill that creates combatants for tokens not in combat (e.g., the
+ARDs placed but never fought).
+
+**Known bugs introduced during the pause:**
+
+- `startCombatFromMap.ts` (v2.385) added a DB fallback that hardcodes
+  `scene_tokens`. Will silently miss placements when the flag flips.
+  Fix: route through `tokensApiRouter` or use the new path explicitly.
+- The legacy `homebrew_monsters.visible_to_players` column is **not**
+  dead — `DMScreen` uses it to bucket NPCs into "Hidden / Revealed"
+  for the DM's narrative roster. Distinct from
+  `scene_tokens.visible_to_all` (per-token map visibility, what v2.386
+  wired the per-token Quick Panel toggle to). After Phase 3 cutover,
+  `scene_tokens.visible_to_all` lives on as `scene_token_placements.visible_to_all`.
+
+## Recommended path to finish
+
+| Ship | Goal | Risk |
+|---|---|---|
+| Next | Sync trigger: on `scene_tokens` INSERT/UPDATE/DELETE, mirror to `scene_token_placements`. Trigger handles creating combatants for tokens that have no matching CP. Tokens stay 1:1 with combatants (one combatant per instance) to preserve "same creature placed twice = two HP pools" semantics that DMs use today. | Medium — trigger logic touches campaign-scoped reads + identity heuristics for unlinked tokens |
+| Then | Re-backfill placements from current `scene_tokens` snapshot. Audit row counts and visual fidelity per scene. | Low once sync trigger is proven |
+| Then | Flip `use_combatants_for_battlemap` per-campaign. Dogfood for a session or two. Trigger keeps both tables in sync; router reads from new path. | Low — flag flip is reversible |
+| Then | Drop `scene_tokens`, drop sync trigger, inline `tokensApiRouter`, fix v2.385 fallback. | Medium — irreversible drop, but at this point the new path has been the read path through the trigger period |
+
+## Original design follows
+
+(everything below is the v2.308 design as written; preserved for
+historical context)
+
+---
+
+
+
 ## TL;DR
 
 Today three concerns are tangled across `scene_tokens`, `combat_participants`,
