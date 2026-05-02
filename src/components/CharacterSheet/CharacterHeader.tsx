@@ -153,14 +153,19 @@ export default function CharacterHeader({
  {character.inspiration ? '★ INSPIRED' : '☆ Inspire'}
  </button>
 
- {/* v2.33.3: HP block reordered — actions first, then input, then HP number on the right */}
+ {/* v2.33.3: HP block reordered — actions first, then input, then HP number on the right
+     v2.378.0: Two-row layout. Top row: existing Damage/Heal/Temp + input
+     for arbitrary amounts. Bottom row: -5/-1/+1/+5 quick steppers for
+     common small deltas (recurring tick damage, gradual healing).
+     Steppers call onUpdateHP directly with a fixed delta — no typing. */}
  {onUpdateHP && (
  <div style={{
- display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+ display: 'flex', flexDirection: 'column' as const, gap: 4, flexShrink: 0,
  padding: '6px 10px', borderRadius: 'var(--r-md)',
  background: 'var(--c-card)',
  border: `1px solid ${hpCol}40`,
  }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
  <button
  onClick={applyDamage}
  style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', whiteSpace: 'nowrap' }}
@@ -185,6 +190,7 @@ export default function CharacterHeader({
  value={hpInput}
  onChange={e => setHpInput(e.target.value.replace(/[^0-9]/g, ''))}
  onKeyDown={handleKey}
+ placeholder="0"
  style={{
  width: 48, fontSize: 12, fontFamily: 'var(--ff-stat)', fontWeight: 600,
  textAlign: 'center', padding: '4px 6px', borderRadius: 6,
@@ -207,6 +213,33 @@ export default function CharacterHeader({
  +{character.temp_hp}
  </span>
  )}
+ </div>
+ </div>
+ {/* v2.378.0 — Quick stepper row. -5 and -1 deal damage; +1 and +5
+     heal. Direct call to onUpdateHP with a fixed delta — no
+     typing, no input clearing. For larger amounts, use the
+     Damage/Heal/Temp buttons + input field above. */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'space-between' }}>
+ <button
+ onClick={() => onUpdateHP(-5)}
+ title="Take 5 damage"
+ style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-str-bdr)', background: 'var(--stat-str-bg)', color: 'var(--stat-str)', fontFamily: 'var(--ff-stat)' }}
+ >−5</button>
+ <button
+ onClick={() => onUpdateHP(-1)}
+ title="Take 1 damage"
+ style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.08)', color: 'var(--stat-str)', fontFamily: 'var(--ff-stat)' }}
+ >−1</button>
+ <button
+ onClick={() => onUpdateHP(1)}
+ title="Heal 1 HP"
+ style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(52,211,153,0.25)', background: 'rgba(52,211,153,0.08)', color: 'var(--stat-dex)', fontFamily: 'var(--ff-stat)' }}
+ >+1</button>
+ <button
+ onClick={() => onUpdateHP(5)}
+ title="Heal 5 HP"
+ style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)', fontFamily: 'var(--ff-stat)' }}
+ >+5</button>
  </div>
  </div>
  )}
