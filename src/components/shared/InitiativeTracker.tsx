@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import MonsterAddModal from '../Campaign/MonsterAddModal';
 
 export interface Combatant {
   id: string;
@@ -29,13 +30,6 @@ interface Props {
   characterId?: string;
 }
 
-const CONDITION_ICONS: Record<string, string> = {
-  blinded: '👁️', charmed: '💕', deafened: '🔇', exhaustion: '😴',
-  frightened: '😱', grappled: '🤝', incapacitated: '💫', invisible: '👻',
-  paralyzed: '🧊', petrified: '🪨', poisoned: '🤢', prone: '⬇️',
-  restrained: '⛓️', stunned: '⭐', unconscious: '💤', concentrating: '🎯',
-};
-
 export default function InitiativeTracker({ campaignId, isDM, characterName, characterId }: Props) {
   const [state, setState] = useState<SessionState>({ initiative_order: [], current_turn: 0, round: 1, combat_active: false });
   const [stateId, setStateId] = useState<string | null>(null);
@@ -46,6 +40,13 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
   const [addEmoji, setAddEmoji] = useState('👹');
   const [showAdd, setShowAdd] = useState(false);
   const [loading, setLoading] = useState(true);
+  // v2.383.0 — Drag-to-reorder state ported from the (now deleted) Campaign
+  // copy. draggedId is the combatant being dragged; dropTargetId is the
+  // row it's hovered over. Both clear on drop / dragend.
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  // v2.383.0 — Quick-add NPC picker (MonsterAddModal) toggle.
+  const [showPicker, setShowPicker] = useState(false);
 
   const push = useCallback(async (next: SessionState) => {
     setState(next);
@@ -93,6 +94,44 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
 
   function sorted(order: Combatant[]) {
     return [...order].sort((a, b) => b.initiative - a.initiative);
+  }
+
+  // v2.383.0 — Drag-drop reorder. Mutates the dragged combatant's initiative
+  // value to land it ABOVE the drop target after re-sort. Decimal initiatives
+  // are allowed and serve as natural tiebreakers; D&D 5e RAW doesn't forbid
+  // them. The stored array is kept sorted-by-initiative-desc so render-as-is
+  // continues to work (matches the addCombatant invariant).
+  function reorderCombatant(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const order = state.initiative_order;
+    const dragged = order.find(c => c.id === fromId);
+    if (!dragged) return;
+    const ordered = [...order].sort((a, b) => b.initiative - a.initiative);
+    const filtered = ordered.filter(c => c.id !== fromId);
+    const dropIdx = filtered.findIndex(c => c.id === toId);
+    if (dropIdx < 0) return;
+    // Dragged lands at filtered[dropIdx]'s slot (ABOVE the drop target).
+    //   above = filtered[dropIdx - 1]
+    //   below = filtered[dropIdx]
+    const above = filtered[dropIdx - 1];
+    const below = filtered[dropIdx];
+    let newInit: number;
+    if (!above && !below) newInit = dragged.initiative;
+    else if (!above) newInit = below.initiative + 1;
+    else if (!below) newInit = above.initiative - 1;
+    else newInit = (above.initiative + below.initiative) / 2;
+    const updated = order.map(c =>
+      c.id === fromId ? { ...c, initiative: newInit } : c
+    );
+    push({ ...state, initiative_order: sorted(updated) });
+  }
+
+  // v2.383.0 — Bulk add for the creature picker. Rolls happen in the modal
+  // (each combatant brings its own pre-rolled initiative); we just merge,
+  // sort, and persist.
+  function addCombatants(newOnes: Combatant[]) {
+    if (newOnes.length === 0) return;
+    push({ ...state, initiative_order: sorted([...state.initiative_order, ...newOnes]) });
   }
 
   function addCombatant() {
@@ -190,6 +229,9 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
                 End Combat
               </button>
             )}
+            <button className="btn-ghost btn-sm" onClick={() => setShowPicker(true)} style={{ fontSize: 10, padding: '2px 8px' }} title="Pick from your creature library">
+              + From Creatures
+            </button>
             <button className="btn-ghost btn-sm" onClick={() => setShowAdd(s => !s)} style={{ fontSize: 10, padding: '2px 8px' }}>
               + Add
             </button>
@@ -226,14 +268,66 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
             const isMyChar = c.characterId === characterId || c.name === characterName;
             const hpPct = c.maxHp ? (c.hp ?? 0) / c.maxHp : 1;
             const hpColor = hpPct > 0.5 ? '#22c55e' : hpPct > 0.25 ? '#f59e0b' : '#ef4444';
+            // v2.383.0 — Dead state. Monsters at 0 HP dim, get a strikethrough
+            // name, and swap their conditions area for a DEFEATED badge. PCs
+            // at 0 HP go unconscious — handled by the existing condition flow.
+            const isDead = !c.isPlayer && (c.hp ?? 0) <= 0;
+            const isDropTarget = dropTargetId === c.id && draggedId !== null && draggedId !== c.id;
+            const isDragging = draggedId === c.id;
+            // v2.383.0 — Condition pills. Up to 3 inline; >6-char names are
+            // truncated to 4 chars + ellipsis. Overflow becomes "+N" with the
+            // rest in the title attribute. Hidden when defeated.
+            const conds = c.conditions ?? [];
+            const showConds = !isDead && conds.length > 0;
+            const visibleConds = conds.slice(0, 3);
+            const overflowConds = conds.slice(3);
 
             return (
-              <div key={c.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
-                borderRadius: 8, border: `1.5px solid ${isActive ? '#f59e0b' : isMyChar ? 'var(--c-border-strong, #2d3748)' : 'var(--c-border)'}`,
-                background: isActive ? 'rgba(245,158,11,0.08)' : isMyChar ? 'rgba(255,255,255,0.03)' : 'transparent',
-                transition: 'all .15s',
-              }}>
+              <div
+                key={c.id}
+                draggable={isDM}
+                onDragStart={isDM ? (e) => {
+                  setDraggedId(c.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', c.id);
+                } : undefined}
+                onDragEnd={isDM ? () => {
+                  setDraggedId(null);
+                  setDropTargetId(null);
+                } : undefined}
+                onDragOver={isDM ? (e) => {
+                  if (!draggedId || draggedId === c.id) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dropTargetId !== c.id) setDropTargetId(c.id);
+                } : undefined}
+                onDragLeave={isDM ? () => {
+                  if (dropTargetId === c.id) setDropTargetId(null);
+                } : undefined}
+                onDrop={isDM ? (e) => {
+                  e.preventDefault();
+                  if (draggedId && draggedId !== c.id) reorderCombatant(draggedId, c.id);
+                  setDraggedId(null);
+                  setDropTargetId(null);
+                } : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+                  borderRadius: 8,
+                  border: `1.5px solid ${
+                    isActive ? '#f59e0b'
+                    : isDropTarget ? 'var(--c-gold-l, #fbbf24)'
+                    : isMyChar ? 'var(--c-border-strong, #2d3748)'
+                    : 'var(--c-border)'
+                  }`,
+                  borderStyle: isDropTarget ? 'dashed' : 'solid',
+                  background: isActive ? 'rgba(245,158,11,0.08)'
+                    : isDropTarget ? 'rgba(251,191,36,0.05)'
+                    : isMyChar ? 'rgba(255,255,255,0.03)'
+                    : 'transparent',
+                  opacity: isDead ? 0.45 : isDragging ? 0.5 : 1,
+                  cursor: isDM ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                  transition: 'opacity .15s, border-color .15s, background .15s',
+                }}>
                 {/* Turn indicator */}
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: isActive ? '#f59e0b' : 'transparent', border: `1px solid ${isActive ? '#f59e0b' : 'var(--c-border)'}`, flexShrink: 0 }} />
 
@@ -245,8 +339,23 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
                 {/* Emoji + name */}
                 <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{c.emoji ?? (c.isPlayer ? '🧙' : '👹')}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12, color: isActive ? 'var(--t-1)' : 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{
+                    fontWeight: 700, fontSize: 12,
+                    color: isActive ? 'var(--t-1)' : 'var(--t-2)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    textDecoration: isDead ? 'line-through' : 'none',
+                  }}>
                     {c.name} {isMyChar && <span style={{ fontSize: 9, color: 'var(--c-gold-l)', fontWeight: 400 }}>(you)</span>}
+                    {isDead && (
+                      <span style={{
+                        marginLeft: 6, fontSize: 8, fontWeight: 800, letterSpacing: '0.08em',
+                        color: '#fca5a5', background: 'rgba(239,68,68,0.12)',
+                        border: '1px solid rgba(239,68,68,0.4)',
+                        padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
+                      }}>
+                        Defeated
+                      </span>
+                    )}
                   </div>
                   {/* HP bar */}
                   {c.hp !== undefined && c.maxHp !== undefined && (
@@ -257,15 +366,41 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
                       <span style={{ fontSize: 9, color: hpColor, flexShrink: 0 }}>{c.hp}/{c.maxHp}</span>
                     </div>
                   )}
-                  {/* Conditions */}
-                  {c.conditions && c.conditions.length > 0 && (
-                    <div style={{ display: 'flex', gap: 2, marginTop: 2, flexWrap: 'wrap' }}>
-                      {c.conditions.map(cond => (
-                        <span key={cond} title={cond} style={{ fontSize: 10, cursor: isDM ? 'pointer' : 'default' }}
-                          onClick={() => isDM && toggleCondition(c.id, cond)}>
-                          {CONDITION_ICONS[cond] ?? cond.slice(0, 3)}
+                  {/* Condition pills (v2.383) */}
+                  {showConds && (
+                    <div style={{ display: 'flex', gap: 3, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {visibleConds.map(cond => (
+                        <span
+                          key={cond}
+                          title={cond}
+                          onClick={() => isDM && toggleCondition(c.id, cond)}
+                          onMouseDown={e => e.stopPropagation()}
+                          onDragStart={e => e.preventDefault()}
+                          style={{
+                            fontSize: 8, fontWeight: 700,
+                            color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
+                            border: '1px solid rgba(251,191,36,0.35)',
+                            padding: '1px 5px', borderRadius: 3,
+                            letterSpacing: '0.04em', whiteSpace: 'nowrap',
+                            cursor: isDM ? 'pointer' : 'default',
+                          }}
+                        >
+                          {cond.length > 6 ? cond.slice(0, 4) + '…' : cond}
                         </span>
                       ))}
+                      {overflowConds.length > 0 && (
+                        <span
+                          title={overflowConds.join(', ')}
+                          style={{
+                            fontSize: 8, fontWeight: 700,
+                            color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
+                            border: '1px solid rgba(251,191,36,0.35)',
+                            padding: '1px 5px', borderRadius: 3,
+                          }}
+                        >
+                          +{overflowConds.length}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -278,14 +413,14 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
                 {/* DM HP controls */}
                 {isDM && c.hp !== undefined && (
                   <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                    <button onClick={() => updateHp(c.id, -1)} style={{ width: 18, height: 18, background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: '#f87171', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>−</button>
-                    <button onClick={() => updateHp(c.id, 1)} style={{ width: 18, height: 18, background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: '#4ade80', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>+</button>
+                    <button onClick={() => updateHp(c.id, -1)} onMouseDown={e => e.stopPropagation()} onDragStart={e => e.preventDefault()} style={{ width: 18, height: 18, background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: '#f87171', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>−</button>
+                    <button onClick={() => updateHp(c.id, 1)} onMouseDown={e => e.stopPropagation()} onDragStart={e => e.preventDefault()} style={{ width: 18, height: 18, background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: '#4ade80', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>+</button>
                   </div>
                 )}
 
                 {/* DM remove */}
                 {isDM && (
-                  <button onClick={() => removeCombatant(c.id)} style={{ width: 16, height: 16, background: 'none', border: 'none', color: 'var(--t-3)', fontSize: 11, cursor: 'pointer', flexShrink: 0, opacity: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Remove">✕</button>
+                  <button onClick={() => removeCombatant(c.id)} onMouseDown={e => e.stopPropagation()} onDragStart={e => e.preventDefault()} style={{ width: 16, height: 16, background: 'none', border: 'none', color: 'var(--t-3)', fontSize: 11, cursor: 'pointer', flexShrink: 0, opacity: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Remove">✕</button>
                 )}
               </div>
             );
@@ -303,6 +438,15 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
           </div>
           <button className="btn-primary btn-sm" onClick={nextTurn} style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}>Next →</button>
         </div>
+      )}
+
+      {/* v2.383.0 — Quick-add NPC picker (DM only) */}
+      {isDM && showPicker && (
+        <MonsterAddModal
+          campaignId={campaignId}
+          onAdd={(combatants) => { addCombatants(combatants); setShowPicker(false); }}
+          onClose={() => setShowPicker(false)}
+        />
       )}
     </div>
   );
