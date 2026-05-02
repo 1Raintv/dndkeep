@@ -350,6 +350,7 @@ export type Database = {
           spell_slots: Json;
           prepared_spells: string[];
           known_spells: string[];
+          pinned_spells: string[];
           inventory: Json;
           currency: Json;
           active_conditions: string[];
@@ -433,6 +434,7 @@ export type Database = {
           spell_slots?: Json;
           prepared_spells?: string[];
           known_spells?: string[];
+          pinned_spells?: string[];
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
@@ -516,6 +518,7 @@ export type Database = {
           spell_slots?: Json;
           prepared_spells?: string[];
           known_spells?: string[];
+          pinned_spells?: string[];
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];

@@ -183,6 +183,9 @@ export default function CharacterCreator() {
       skill_expertises: [],
       spell_slots: spellSlots,
       prepared_spells: [],
+      // v2.380.0 — quick-cast favorites bar (max 6, see CharacterSheet).
+      // New characters start with no pins.
+      pinned_spells: [],
       known_spells: (() => {
         const base = [...buildChoices.spells, ...buildChoices.cantrips];
         // Psion gets Mage Hand automatically (invisible, no components)

@@ -2139,6 +2139,79 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── Divider ── */}
  <div style={{ height: 1, background: 'var(--c-border)' }} />
 
+ {/* v2.380.0 — Quick-cast favorites bar. Renders only when at least
+     one spell is pinned. Each chip is a full SpellCastButton (same
+     Cast modal / save resolver / upcast flow as the Spells tab). The
+     small × button next to each chip lets the user unpin without
+     navigating away. Horizontally scrollable on narrow viewports. */}
+ {(character.pinned_spells ?? []).length > 0 && (() => {
+ const pinnedData = (character.pinned_spells ?? [])
+ .map(id => spellMap[id])
+ .filter((s): s is NonNullable<typeof s> => !!s);
+ if (pinnedData.length === 0) return null;
+ return (
+ <div style={{
+ display: 'flex', alignItems: 'center', gap: 6,
+ padding: '6px 10px',
+ background: 'rgba(201,146,42,0.04)',
+ borderBottom: '1px solid var(--c-border)',
+ overflowX: 'auto' as const, flexWrap: 'nowrap' as const,
+ }}>
+ <span style={{
+ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800,
+ letterSpacing: '0.14em', textTransform: 'uppercase' as const,
+ color: 'var(--c-gold-l)',
+ flexShrink: 0, paddingRight: 4,
+ }}>
+ ★ Quick Cast
+ </span>
+ {pinnedData.map(spell => (
+ <div key={spell.id} style={{
+ display: 'flex', alignItems: 'center', gap: 2,
+ background: 'var(--c-card)',
+ border: '1px solid var(--c-border-m)',
+ borderRadius: 'var(--r-md)',
+ padding: '2px 4px 2px 8px',
+ flexShrink: 0,
+ }}>
+ <span style={{
+ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+ color: 'var(--t-1)', whiteSpace: 'nowrap' as const,
+ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis',
+ }} title={spell.name}>
+ {spell.name}
+ </span>
+ <SpellCastButton
+ character={character}
+ spell={spell}
+ onUpdateSlots={handleUpdateSlots}
+ onConcentrationCast={() => setConcentration(spell.id)}
+ userId={userId}
+ campaignId={character.campaign_id}
+ compact
+ />
+ <button
+ onClick={() => {
+ const pinned = character.pinned_spells ?? [];
+ applyUpdate({ pinned_spells: pinned.filter(x => x !== spell.id) }, true);
+ }}
+ title="Unpin from quick-cast"
+ aria-label={`Unpin ${spell.name}`}
+ style={{
+ background: 'transparent', border: 'none',
+ padding: '0 4px', cursor: 'pointer',
+ fontSize: 12, lineHeight: 1, minHeight: 0,
+ color: 'var(--t-3)', flexShrink: 0,
+ }}
+ >
+ ×
+ </button>
+ </div>
+ ))}
+ </div>
+ );
+ })()}
+
  {/* v2.77.0: Turn Economy moved to the vitals column (above Saving Throws)
      per user request. See the top of cs-vitals-col for the actual render. */}
 
@@ -2340,6 +2413,21 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }
  }}
  onConcentrate={id => setConcentration(concentrationSpellId === id ? null : id)}
+ onTogglePinned={id => {
+ // v2.380.0 — Toggle spell ID in/out of pinned_spells.
+ // Always allow removal. Adding gated by 6-pin cap; toast
+ // on overflow so the user knows why nothing happened.
+ const pinned = character.pinned_spells ?? [];
+ if (pinned.includes(id)) {
+ applyUpdate({ pinned_spells: pinned.filter(x => x !== id) }, true);
+ } else {
+ if (pinned.length >= 6) {
+ toast.showToast('Quick-cast bar is full (6 max). Unpin one to add this.', 'warn');
+ return;
+ }
+ applyUpdate({ pinned_spells: [...pinned, id] }, true);
+ }
+ }}
  userId={userId}
  campaignId={character.campaign_id}
  />

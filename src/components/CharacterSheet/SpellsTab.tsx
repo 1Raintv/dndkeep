@@ -22,6 +22,9 @@ interface SpellsTabProps {
  onRemoveSpell: (id: string) => void;
  onTogglePrepared: (id: string) => void;
  onConcentrate: (id: string) => void;
+ // v2.380.0 — Toggle a spell ID in/out of pinned_spells. Cap of 6
+ // is enforced by the parent; this callback just handles the toggle.
+ onTogglePinned: (id: string) => void;
  userId: string;
  campaignId: string | null;
 }
@@ -71,7 +74,7 @@ function getEffectCategory(spell: SpellData): { label: string; color: string } {
 export default function SpellsTab({
  character, computed, knownSpellData, availableSpells, maxSpellLevel,
  concentrationSpellId, hasSpellSlots, onUpdateSlots, onAddSpell,
- onRemoveSpell, onTogglePrepared, onConcentrate, userId, campaignId,
+ onRemoveSpell, onTogglePrepared, onConcentrate, onTogglePinned, userId, campaignId,
 }: SpellsTabProps) {
  const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
  const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
@@ -503,6 +506,8 @@ export default function SpellsTab({
  onTogglePrepared={() => onTogglePrepared(spell.id)}
  onConcentrate={() => onConcentrate(spell.id)}
  onRemove={!spell.isUpcast && character.advanced_spell_edits_unlocked ? () => onRemoveSpell(spell.id) : undefined}
+ pinnedSpells={character.pinned_spells ?? []}
+ onTogglePinned={onTogglePinned}
  />
  ))}
  </div>
@@ -517,7 +522,7 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, showInvisibleBadge }: {
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, showInvisibleBadge, pinnedSpells, onTogglePinned }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
@@ -531,6 +536,12 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  // The cast pipeline doesn't change — this is a RAW reminder, not a
  // mechanical modifier (no spell-data fork).
  showInvisibleBadge?: boolean;
+ // v2.380.0 — Quick-cast pin star. pinnedSpells is the live array
+ // from character.pinned_spells; onTogglePinned toggles this row's
+ // spell ID in/out. Cap of 6 is enforced in the parent's handler;
+ // this component just renders state + dispatches the toggle.
+ pinnedSpells: string[];
+ onTogglePinned: (id: string) => void;
 }) {
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
  const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
@@ -651,6 +662,34 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
  </span>
+ {/* v2.380.0 — Pin star. Click to add/remove from quick-cast
+     favorites bar at top of the sheet. Cap of 6 enforced via
+     onTogglePinned in the parent. Renders for all spells
+     (including cantrips) since you might want a frequently-cast
+     cantrip pinned just as much as a leveled spell. */}
+ {(() => {
+ const pinned = pinnedSpells.includes(spell.id);
+ const atCap = pinnedSpells.length >= 6;
+ const disabled = !pinned && atCap;
+ return (
+ <button
+ onClick={e => { e.stopPropagation(); if (!disabled) onTogglePinned(spell.id); }}
+ title={pinned ? 'Pinned to quick-cast bar — click to unpin' : disabled ? 'Quick-cast bar is full (max 6) — unpin one to add this' : 'Pin to quick-cast bar at top of sheet'}
+ aria-label={pinned ? 'Unpin from quick-cast' : 'Pin to quick-cast'}
+ disabled={disabled}
+ style={{
+ background: 'transparent', border: 'none',
+ padding: '2px 4px', cursor: disabled ? 'not-allowed' : 'pointer',
+ fontSize: 12, lineHeight: 1, minHeight: 0,
+ color: pinned ? 'var(--c-gold-l)' : disabled ? 'var(--t-3)' : 'var(--t-2)',
+ opacity: disabled ? 0.4 : 1,
+ flexShrink: 0,
+ }}
+ >
+ {pinned ? '★' : '☆'}
+ </button>
+ );
+ })()}
  {/* v2.197.0 — Phase Q.0 pt 38: Subtle Telekinesis (Psion class
      feature) makes Mage Hand invisible. Surface as a small chip
      next to the name so the player remembers the modifier when
