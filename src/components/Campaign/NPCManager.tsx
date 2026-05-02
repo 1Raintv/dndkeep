@@ -105,6 +105,73 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null | 'all' | 'unfiled'>('all');
   const [placingId, setPlacingId] = useState<string | null>(null);
   const [placeStatus, setPlaceStatus] = useState<Record<string, 'placed' | 'no-scene' | 'error'>>({});
+
+  // v2.387.0 — Derive real placement state from the live battle-map
+  // store rather than the session-local `placeStatus` map (which was
+  // only set after a click in THIS session and reset on every page
+  // reload, so the "✓ On Map" indicator was lying about everything
+  // placed in prior sessions). The store is the source of truth on
+  // the map tab; we mirror its tokens to a creatureId → count map
+  // and key the button label off that.
+  //
+  // Cold-store guard: if the DM hasn't visited the Battle Map tab
+  // this session, the store has no tokens for the active scene. We
+  // do a one-shot DB fetch to prime correct counts. Subsequent
+  // realtime updates flow through whatever channels BattleMapV2 sets
+  // up when the DM does open the map tab.
+  const storeTokens = useBattleMapStore(s => s.tokens);
+  const storeSceneId = useBattleMapStore(s => s.currentSceneId);
+  const [coldFetchedCounts, setColdFetchedCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    // If the store is already primed for any scene, skip — the live
+    // store IS the truth and the cold cache would just race it.
+    if (Object.keys(storeTokens).length > 0) {
+      setColdFetchedCounts({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      // Find the most-recently-updated scene for this campaign — the
+      // same heuristic startCombatFromMap uses. Then fetch its
+      // creature_id values and tally.
+      const { data: scene } = await supabase
+        .from('scenes')
+        .select('id')
+        .eq('campaign_id', campaignId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !scene) return;
+      const { data: rows } = await supabase
+        .from('scene_tokens')
+        .select('creature_id')
+        .eq('scene_id', (scene as { id: string }).id);
+      if (cancelled || !rows) return;
+      const counts: Record<string, number> = {};
+      for (const r of rows as Array<{ creature_id: string | null }>) {
+        if (r.creature_id) counts[r.creature_id] = (counts[r.creature_id] ?? 0) + 1;
+      }
+      setColdFetchedCounts(counts);
+    })().catch(err => {
+      console.error('[NPCManager] cold-store fetch failed', err);
+    });
+    return () => { cancelled = true; };
+  }, [campaignId, storeTokens]);
+
+  // Live count for each NPC. Prefer the store when it has anything
+  // for the current scene; fall back to the cold-fetched cache.
+  function placedCount(creatureId: string): number {
+    if (storeSceneId) {
+      let n = 0;
+      for (const t of Object.values(storeTokens)) {
+        if (t.sceneId === storeSceneId && t.creatureId === creatureId) n++;
+      }
+      if (n > 0 || Object.keys(storeTokens).length > 0) return n;
+    }
+    return coldFetchedCounts[creatureId] ?? 0;
+  }
+
   // v2.354.0 — Quick Create modal (the user's "click button, type
   // name, maybe HP, that's it" path). Distinct from `editing` which
   // opens the full CreatureFormModal.
@@ -538,26 +605,47 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                               shows up in initiative + becomes
                               targetable by spells. Dead NPCs can
                               still be placed (lore corpses, etc.). */}
-                          {isOwner && (
-                            <button
-                              className="btn-secondary btn-sm"
-                              onClick={() => placeOnMap(npc)}
-                              disabled={placingId === npc.id}
-                              style={{
-                                color: placeStatus[npc.id] === 'placed' ? 'var(--hp-full)'
-                                     : placeStatus[npc.id] === 'no-scene' ? 'var(--c-red-l)'
-                                     : placeStatus[npc.id] === 'error' ? 'var(--c-red-l)'
-                                     : 'var(--c-blue-l, #93c5fd)',
-                              }}
-                              title="Place this creature as a token on the active battle map scene."
-                            >
-                              {placingId === npc.id ? 'Placing…'
-                               : placeStatus[npc.id] === 'placed' ? '✓ On Map'
-                               : placeStatus[npc.id] === 'no-scene' ? 'Open Map First'
-                               : placeStatus[npc.id] === 'error' ? '✕ Failed'
-                               : '🗺 Place on Map'}
-                            </button>
-                          )}
+                          {isOwner && (() => {
+                            // v2.387.0 — Button reads from real placement
+                            // count. Color/label tiers:
+                            //   placing → "Placing…"
+                            //   no-scene/error → red flash from
+                            //     placeStatus (still session-local — only
+                            //     a click can produce these)
+                            //   N>0 → green "✓ N on map · +Place"
+                            //   N=0 → blue default
+                            // Click still places another (legit case:
+                            // multiple goblins) but the DM sees what
+                            // they're stacking before clicking.
+                            const n = placedCount(npc.id);
+                            const status = placeStatus[npc.id];
+                            const isPlacing = placingId === npc.id;
+                            const labelColor =
+                              status === 'no-scene' || status === 'error' ? 'var(--c-red-l)'
+                              : n > 0 ? 'var(--hp-full)'
+                              : 'var(--c-blue-l, #93c5fd)';
+                            const label =
+                              isPlacing ? 'Placing…'
+                              : status === 'no-scene' ? 'Open Map First'
+                              : status === 'error' ? '✕ Failed'
+                              : n > 0 ? `✓ ${n} on map · +Place`
+                              : '🗺 Place on Map';
+                            const tooltip =
+                              n > 0
+                                ? `${n} token${n === 1 ? '' : 's'} of this creature already on the active scene. Click to place another.`
+                                : 'Place this creature as a token on the active battle map scene.';
+                            return (
+                              <button
+                                className="btn-secondary btn-sm"
+                                onClick={() => placeOnMap(npc)}
+                                disabled={isPlacing}
+                                style={{ color: labelColor }}
+                                title={tooltip}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })()}
                           {npc.is_alive && (
                             <button
                               className="btn-secondary btn-sm"
