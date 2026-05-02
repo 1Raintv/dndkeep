@@ -1333,7 +1333,57 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  )}
 
- {/* Concentration banner */}
+ {/* v2.377.0 — Persistent concentration banner. Renders whenever
+     concentration is active (character.concentration_spell set);
+     gives the player a constant visual anchor for "I'm concentrating
+     on X" plus a one-click Drop button. Distinct from the transient
+     "Concentration Check Required" prompt below, which fires only
+     after damage and demands a save roll. Banner stays calm/static;
+     the save prompt pulses for attention. */}
+ {character.concentration_spell && (() => {
+ const concSpell = spellMap[character.concentration_spell];
+ const spellName = concSpell?.name ?? 'Unknown spell';
+ const roundsLeft = (character as any).concentration_rounds_remaining as number | null;
+ return (
+ <div style={{
+ padding: '8px 14px', borderRadius: 10,
+ display: 'flex', alignItems: 'center', gap: 10,
+ background: 'rgba(167,139,250,0.06)',
+ border: '1px solid rgba(167,139,250,0.35)',
+ }}>
+ <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>◉</span>
+ <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 10, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>
+ Concentrating
+ </span>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
+ {spellName}
+ </span>
+ {typeof roundsLeft === 'number' && roundsLeft > 0 && (
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
+ · {roundsLeft} {roundsLeft === 1 ? 'round' : 'rounds'} left
+ </span>
+ )}
+ </div>
+ <button
+ onClick={() => setConcentration(null)}
+ title="Drop concentration on this spell"
+ style={{
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+ padding: '4px 10px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+ background: 'rgba(239,68,68,0.1)',
+ border: '1px solid rgba(239,68,68,0.4)',
+ color: '#fca5a5',
+ letterSpacing: '0.04em',
+ minHeight: 0, flexShrink: 0,
+ }}
+ >
+ Drop
+ </button>
+ </div>
+ );
+ })()}
+
  {/* Concentration Save Prompt — shown when taking damage while concentrating
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
      breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
