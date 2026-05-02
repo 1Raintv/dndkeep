@@ -91,6 +91,10 @@ export default function CharacterHistory({ characterId, limit = 100, maxHeight =
   const [filter, setFilter] = useState<'all' | 'combat' | 'progression' | 'edits'>('all');
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // v2.379.0 — search box + today-only toggle. Compose with the
+  // existing action-type filter via AND (all three must match).
+  const [searchText, setSearchText] = useState('');
+  const [todayOnly, setTodayOnly] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // Initial load + realtime subscription
@@ -152,6 +156,17 @@ export default function CharacterHistory({ characterId, limit = 100, maxHeight =
   }
 
   const filtered = rows.filter(r => {
+    // v2.379.0 — apply text search first (cheapest reject path).
+    if (searchText.trim()) {
+      const needle = searchText.toLowerCase();
+      if (!r.description.toLowerCase().includes(needle)) return false;
+    }
+    // v2.379.0 — today-only filter. "Today" = since local midnight.
+    if (todayOnly) {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      if (new Date(r.created_at).getTime() < midnight.getTime()) return false;
+    }
     if (filter === 'all') return true;
     if (filter === 'combat') {
       return ['hp_change', 'temp_hp_change', 'condition_added', 'condition_removed',
@@ -173,6 +188,39 @@ export default function CharacterHistory({ characterId, limit = 100, maxHeight =
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* v2.379.0 — search row above the filter pills. Search filters
+          by description substring (case-insensitive); Today toggle
+          limits to events since local midnight. Both compose with
+          the action-type pills below via AND. */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          type="search"
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          placeholder="Search events…"
+          aria-label="Search events"
+          style={{
+            flex: 1, minWidth: 0, padding: '5px 10px',
+            borderRadius: 'var(--r-md)', border: '1px solid var(--c-border-m)',
+            background: 'var(--c-raised)', color: 'var(--t-1)',
+            fontFamily: 'var(--ff-body)', fontSize: 12,
+          }}
+        />
+        <button
+          onClick={() => setTodayOnly(v => !v)}
+          title={todayOnly ? 'Showing only today\'s events — click to clear' : 'Show only events from today (since local midnight)'}
+          style={{
+            padding: '4px 12px', borderRadius: 999, cursor: 'pointer', minHeight: 0,
+            border: todayOnly ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+            background: todayOnly ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+            color: todayOnly ? 'var(--c-gold-l)' : 'var(--t-2)',
+            fontSize: 11, fontWeight: todayOnly ? 700 : 500,
+            whiteSpace: 'nowrap' as const,
+          }}
+        >
+          Today
+        </button>
+      </div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
         {(['all', 'combat', 'progression', 'edits'] as const).map(f => (
           <button
@@ -210,7 +258,32 @@ export default function CharacterHistory({ characterId, limit = 100, maxHeight =
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 12 }}>
-            No events yet — changes you make to this character will appear here.
+            {searchText.trim() || todayOnly || filter !== 'all' ? (
+              <>
+                No events match the current filters.
+                {hasMore && (
+                  <>
+                    <br/>
+                    <span style={{ fontSize: 10 }}>Older events may exist — load more to search further back.</span>
+                    <br/>
+                    <button
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      style={{
+                        marginTop: 10, padding: '4px 12px',
+                        background: 'transparent', border: '1px dashed var(--c-border-m)',
+                        borderRadius: 'var(--r-sm)', cursor: loadingMore ? 'default' : 'pointer',
+                        color: 'var(--t-3)', fontSize: 11, fontFamily: 'var(--ff-body)',
+                      }}
+                    >
+                      {loadingMore ? 'Loading…' : 'Load older events'}
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              <>No events yet — changes you make to this character will appear here.</>
+            )}
           </div>
         ) : (
           <>
