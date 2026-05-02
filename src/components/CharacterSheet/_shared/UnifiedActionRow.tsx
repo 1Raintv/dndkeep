@@ -1,12 +1,16 @@
 // v2.265.0 — Unified action row primitive.
+// v2.381.0 — Updated to the 11-column unified template established
+// across SpellsTab / ClassAbilitiesSection / WeaponsTracker in
+// v2.371-v2.373:
 //
-// One visual contract for every "thing a character can do" surface:
-// spells, class abilities, species traits, weapon strikes, and
-// usable items. Mirrors the 8-column grid that SpellCard and
-// ClassAbilitiesSection already use:
+//   [70 LEAD] [3 BAR] [1fr NAME] [46 TIME] [70 RANGE] [36 TAGS]
+//   [74 HIT/DC] [80 EFFECT] [180 BUTTONS] [110 CHARGES] [16 CHEVRON]
 //
-//   [70px lead] [3px stripe] [1fr name+meta] [46px time]
-//   [70px range] [74px hit/dc] [16px chevron] [170px button]
+// Pre-v2.381 this primitive used an 8-column template that was
+// out-of-date relative to the other three surfaces. The Features tab
+// was the only consumer, so the layout drifted. Adding `tags` and
+// `charges` slots lets every "thing a character can do" surface use
+// this one primitive going forward.
 //
 // The lead column is polymorphic — a Prepare toggle for spells, an
 // action-type badge for class abilities (ACTION/BONUS/REACT/SPCL),
@@ -15,9 +19,6 @@
 // The button slot is a ReactNode so each surface can wire its own
 // cast/use/strike handler (spell slot consumption, PED spend, weapon
 // roll, item charge tap) without this primitive needing to know.
-//
-// Goal: stop having three different visual treatments for "tap to do
-// the thing." One look, one click model, one place to fix bugs.
 
 import type { ReactNode } from 'react';
 
@@ -45,12 +46,23 @@ export interface UnifiedActionRowProps {
   time?: string;
   /** Range or area string: "60 ft", "Self", "Touch". 70px col. */
   range?: string;
+  /** v2.381.0 — Compact chips (C/AoE/P) at col 5, 36px. Mirrors
+   *  the TAGS column in SpellsTab/ClassAbilitiesSection. Caller
+   *  composes the chips. */
+  tags?: ReactNode;
   /** Hit bonus or save DC chip. e.g. "+7" or "DEX 15". 74px col. */
   hitDC?: ReactNode;
+  /** v2.381.0 — Damage dice / effect chip at col 7, 80px. Mirrors
+   *  the EFFECT column in SpellsTab/ClassAbilitiesSection. */
+  effect?: ReactNode;
   /** The main affordance — Cast / Use / Strike / Trigger button.
-   *  Sits in the 170px tail column. Caller wires its own handler. */
+   *  Sits in the 180px slot at col 8. Caller wires its own handler. */
   button: ReactNode;
-  /** Whether the row is expandable (renders a chevron in col 6).
+  /** v2.381.0 — Tracker chiclets at col 9, 110px. UseTracker /
+   *  PsionicDicePool / similar. Empty for one-shot abilities and
+   *  passives. */
+  charges?: ReactNode;
+  /** Whether the row is expandable (renders a chevron in col 10).
    *  When true, clicking the row body fires onExpand. */
   expandable?: boolean;
   /** Currently expanded? Drives chevron rotation + tint. */
@@ -70,7 +82,7 @@ export interface UnifiedActionRowProps {
 export default function UnifiedActionRow(props: UnifiedActionRowProps) {
   const {
     lead, accentColor, name, subtitle, nameChips,
-    time, range, hitDC, button,
+    time, range, tags, hitDC, effect, button, charges,
     expandable, isExpanded, onExpand,
     dimmed, highlight, expandedBody,
   } = props;
@@ -94,22 +106,24 @@ export default function UnifiedActionRow(props: UnifiedActionRowProps) {
         onClick={expandable ? onExpand : undefined}
         style={{
           display: 'grid',
-          gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
+          // v2.381.0 — 11-column template matching SpellsTab / Class
+          // AbilitiesSection / WeaponsTracker (v2.373).
+          gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
           alignItems: 'center', gap: '0 8px',
           padding: '7px 10px',
           cursor: expandable ? 'pointer' : 'default',
           minHeight: 44,
         }}
       >
-        {/* Col 0: lead (Prepare / action badge / AT WILL / Lvl badge) */}
+        {/* Col 0: LEAD (Prepare / action badge / AT WILL / Lvl badge) */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
           {lead}
         </div>
 
-        {/* Col 1: vertical color stripe */}
+        {/* Col 1: BAR — vertical color stripe */}
         <div style={{ width: 3, height: 30, borderRadius: 2, background: accentColor, opacity: 0.75 }} />
 
-        {/* Col 2: name + chips + subtitle line */}
+        {/* Col 2: NAME + chips + subtitle line */}
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
             <span style={{
@@ -130,29 +144,45 @@ export default function UnifiedActionRow(props: UnifiedActionRowProps) {
 
         {/* Col 3: TIME */}
         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
-          {time ?? '—'}
+          {time ?? ''}
         </div>
 
         {/* Col 4: RANGE */}
         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {range ?? '—'}
+          {range ?? ''}
         </div>
 
-        {/* Col 5: HIT / DC chip */}
+        {/* Col 5: TAGS — small chips (C/AoE/P) v2.381.0 */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
+          {tags}
+        </div>
+
+        {/* Col 6: HIT / DC chip */}
         <div style={{ textAlign: 'center' }}>
-          {hitDC ?? <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>—</span>}
+          {hitDC}
         </div>
 
-        {/* Col 6: chevron — only when expandable */}
-        <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--t-3)', fontSize: 10 }}>
-          {expandable ? (isExpanded ? '▾' : '▸') : ''}
+        {/* Col 7: EFFECT — damage / scale / resource cost v2.381.0 */}
+        <div style={{ textAlign: 'center' }}>
+          {effect}
         </div>
 
-        {/* Col 7: main button (Cast / Use / Strike / Trigger).
+        {/* Col 8: BUTTONS — Cast / Use / Strike / Trigger.
             stopPropagation so clicking the button doesn't toggle
             row expand. */}
         <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
           {button}
+        </div>
+
+        {/* Col 9: CHARGES — tracker chiclets v2.381.0 */}
+        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden' }}>
+          {charges}
+        </div>
+
+        {/* Col 10: CHEVRON — only when expandable. v2.381.0 moved
+            from col 6 → col 10 to match unified template. */}
+        <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--t-3)', fontSize: 10 }}>
+          {expandable ? (isExpanded ? '▾' : '▸') : ''}
         </div>
       </div>
 
