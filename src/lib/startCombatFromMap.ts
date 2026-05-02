@@ -12,6 +12,15 @@
 // Tokens with no character_id and no creature_id are skipped — they
 // can't be combat participants anyway. Post-v2.353 there's no way to
 // create such tokens, but legacy production rows might exist.
+//
+// v2.385.0 — Cold-start fallback. The original implementation read
+// scene + tokens out of useBattleMapStore, which is only populated
+// after the user has opened the Battle Map tab. If a DM clicked
+// Start Combat without ever visiting the map, the call returned
+// no_scene and the UI nagged them to "open the battle map first."
+// Now: if the store is empty, we hit Postgres directly for the
+// most-recent scene + its scene_tokens. The store path stays as the
+// fast path when it's primed.
 
 import { supabase } from './supabase';
 import { useBattleMapStore } from './stores/battleMapStore';
@@ -26,19 +35,68 @@ export type StartCombatFromMapResult =
   | { ok: true; result: StartEncounterResult; participantCount: number }
   | { ok: false; reason: 'no_scene' | 'no_tokens' | 'start_failed'; message?: string };
 
+// Minimal token shape we need to build seeds. Both the store path
+// and the DB-fallback path normalize into this.
+type TokenLite = {
+  characterId: string | null;
+  creatureId: string | null;
+};
+
+async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null> {
+  // Pick a scene — most recently updated wins. Mirrors the
+  // BattleMapV2 mount behavior of "auto-select first scene" closely
+  // enough for a one-shot start. If the campaign has no scenes at
+  // all, return null (caller surfaces as no_scene).
+  const { data: scene, error: sceneErr } = await supabase
+    .from('scenes')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (sceneErr) {
+    console.error('[startCombatFromMap] scene fetch failed', sceneErr);
+    return null;
+  }
+  if (!scene) return null;
+
+  const { data: rows, error: tokErr } = await supabase
+    .from('scene_tokens')
+    .select('character_id, creature_id')
+    .eq('scene_id', (scene as { id: string }).id);
+  if (tokErr) {
+    console.error('[startCombatFromMap] scene_tokens fetch failed', tokErr);
+    return null;
+  }
+  return (rows ?? []).map(r => ({
+    characterId: (r as { character_id: string | null }).character_id ?? null,
+    creatureId: (r as { creature_id: string | null }).creature_id ?? null,
+  }));
+}
+
 export async function startCombatFromMapTokens(
   campaignId: string,
 ): Promise<StartCombatFromMapResult> {
   const state = useBattleMapStore.getState();
   const sceneId = state.currentSceneId;
-  if (!sceneId) {
-    return { ok: false, reason: 'no_scene' };
+
+  // Fast path: store is primed (DM has the battle map mounted).
+  // Cold path: store is empty — fall back to a direct DB read so
+  // the click works regardless of which tab the DM is on.
+  let tokens: TokenLite[];
+  if (sceneId) {
+    tokens = Object.values(state.tokens)
+      .filter(t => t.sceneId === sceneId)
+      .map(t => ({ characterId: t.characterId ?? null, creatureId: t.creatureId ?? null }));
+  } else {
+    const fromDb = await loadTokensFromDb(campaignId);
+    if (fromDb === null) {
+      // No scene exists for this campaign at all.
+      return { ok: false, reason: 'no_scene' };
+    }
+    tokens = fromDb;
   }
 
-  // Pull tokens for the active scene only. The store may carry tokens
-  // from other scenes if the user has switched scenes during this
-  // session; the sceneId filter is essential.
-  const tokens = Object.values(state.tokens).filter(t => t.sceneId === sceneId);
   if (tokens.length === 0) {
     return { ok: false, reason: 'no_tokens' };
   }

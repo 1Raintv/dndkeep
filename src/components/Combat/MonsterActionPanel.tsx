@@ -470,6 +470,14 @@ interface PickerProps {
 function RangeAwareTargetPicker(props: PickerProps) {
   const { attackerParticipant, participants, action, attackRangeFt, battleMap, onPick, onCancel } = props;
 
+  // v2.385.0 — Lock state for excluded (self / dead) targets.
+  // Default: locked → excluded entries are dimmed and unclickable.
+  // Unlocked: DM has explicitly opted in (e.g. coup de grâce on a
+  // downed PC, self-target rider, weird narrative case). The toggle
+  // is in the modal header; opening the modal resets it to locked
+  // because the unlock is per-action, not per-session.
+  const [excludedUnlocked, setExcludedUnlocked] = useState(false);
+
   // v2.384.0 — Surface why the picker may be empty. The valid-target
   // filter is unchanged (alive non-self), but we now also collect the
   // participants we filtered out and the reason, so the empty state
@@ -553,64 +561,57 @@ function RangeAwareTargetPicker(props: PickerProps) {
         }}
       >
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--c-border)' }}>
-          <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            Pick a target — {attackRangeFt} ft range
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>
-            {action.name}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2 }}>
-            {(action.attack_bonus ?? 0) >= 0 ? '+' : ''}{action.attack_bonus ?? 0} to hit · {action.damage_dice} {action.damage_type}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                Pick a target — {attackRangeFt} ft range
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>
+                {action.name}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2 }}>
+                {(action.attack_bonus ?? 0) >= 0 ? '+' : ''}{action.attack_bonus ?? 0} to hit · {action.damage_dice} {action.damage_type}
+              </div>
+            </div>
+            {/* v2.385.0 — Lock toggle for excluded (self / dead). Only
+                shown when there ARE excluded entries to act on. */}
+            {excluded.length > 0 && (
+              <button
+                onClick={() => setExcludedUnlocked(v => !v)}
+                title={excludedUnlocked
+                  ? 'Excluded targets unlocked — click to re-lock'
+                  : 'Allow targeting self / dead participants (coup de grâce, self-target riders, etc.)'}
+                style={{
+                  flexShrink: 0,
+                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  padding: '4px 8px', borderRadius: 4,
+                  background: excludedUnlocked ? 'rgba(239,68,68,0.15)' : 'var(--c-raised, rgba(255,255,255,0.04))',
+                  color: excludedUnlocked ? '#fca5a5' : 'var(--t-2)',
+                  border: `1px solid ${excludedUnlocked ? 'rgba(239,68,68,0.5)' : 'var(--c-border)'}`,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {excludedUnlocked ? '🔓 Unlocked' : '🔒 Lock'}
+              </button>
+            )}
           </div>
         </div>
 
         <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {targets.length === 0 && (
-            <div style={{ padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
-                No valid targets in this encounter.
-              </div>
-              {/* v2.384.0 — Surface who got filtered out, and why, so a
-                  fully-empty picker is self-explanatory. */}
-              {excluded.length > 0 && (
-                <>
-                  <div style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', textAlign: 'center', marginTop: 4 }}>
-                    Excluded
-                  </div>
-                  {excluded.map(({ participant: p, reason }) => {
-                    const isPC = p.participant_type === 'character';
-                    return (
-                      <div
-                        key={p.id}
-                        title={reason === 'self' ? `${p.name} is the attacker` : `${p.name} is dead and can't be targeted by this attack`}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '8px 12px', borderRadius: 6,
-                          background: 'rgba(255,255,255,0.02)',
-                          border: '1px solid rgba(255,255,255,0.05)',
-                          opacity: 0.5,
-                        }}
-                      >
-                        <span style={{
-                          fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-                          color: 'var(--t-3)', minWidth: 32,
-                        }}>
-                          {isPC ? 'PC' : 'CRE'}
-                        </span>
-                        <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: reason === 'dead' ? 'line-through' : 'none' }}>
-                          {p.name}
-                        </span>
-                        <span style={{
-                          fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-                          color: reason === 'dead' ? '#fca5a5' : 'var(--c-gold-l)',
-                          fontStyle: 'italic',
-                        }}>
-                          {reason === 'dead' ? 'dead' : 'attacker'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </>
+          {targets.length === 0 && excluded.length === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
+              No participants in this encounter.
+            </div>
+          )}
+          {targets.length === 0 && excluded.length > 0 && (
+            <div style={{ padding: '12px 8px 4px 8px', textAlign: 'center', color: 'var(--t-3)', fontSize: 12 }}>
+              No valid targets in this encounter.
+              {!excludedUnlocked && (
+                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.8 }}>
+                  Tap 🔒 above to allow excluded participants.
+                </div>
               )}
             </div>
           )}
@@ -668,6 +669,72 @@ function RangeAwareTargetPicker(props: PickerProps) {
               </button>
             );
           })}
+
+          {/* v2.385.0 — Excluded section (self / dead). Always rendered
+              when there are any. Dimmed and unclickable by default;
+              the lock toggle in the header makes them selectable. The
+              empty-state header above already explains the lock when
+              targets is empty. */}
+          {excluded.length > 0 && (
+            <>
+              {targets.length > 0 && (
+                <div style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                  color: 'var(--t-3)', textAlign: 'center', padding: '8px 0 2px',
+                }}>
+                  Excluded {excludedUnlocked && <span style={{ color: '#fca5a5' }}>· UNLOCKED</span>}
+                </div>
+              )}
+              {excluded.map(({ participant: p, reason }) => {
+                const isPC = p.participant_type === 'character';
+                const clickable = excludedUnlocked;
+                const reasonLabel = reason === 'self' ? 'self' : 'dead';
+                const reasonColor = reason === 'self' ? 'var(--c-gold-l)' : '#fca5a5';
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => clickable && onPick(p)}
+                    disabled={!clickable}
+                    title={clickable
+                      ? `${p.name} (${reasonLabel}) — click to target anyway`
+                      : reason === 'self'
+                        ? `${p.name} is the attacker. Unlock to self-target.`
+                        : `${p.name} is dead. Unlock to target anyway (e.g. coup de grâce).`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 6,
+                      background: clickable ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)',
+                      border: `1px solid ${clickable ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.05)'}`,
+                      cursor: clickable ? 'pointer' : 'not-allowed',
+                      opacity: clickable ? 0.85 : 0.5,
+                      textAlign: 'left',
+                      color: 'var(--t-1)',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                      color: 'var(--t-3)', minWidth: 32,
+                    }}>
+                      {isPC ? 'PC' : 'CRE'}
+                    </span>
+                    <span style={{
+                      flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      textDecoration: reason === 'dead' ? 'line-through' : 'none',
+                    }}>
+                      {p.name}
+                    </span>
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                      color: reasonColor, fontStyle: 'italic',
+                    }}>
+                      {reasonLabel}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
 
         <div style={{ padding: '8px 14px', borderTop: '1px solid var(--c-border)', display: 'flex', justifyContent: 'flex-end' }}>

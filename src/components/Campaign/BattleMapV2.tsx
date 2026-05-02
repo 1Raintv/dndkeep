@@ -3363,19 +3363,42 @@ function TokenLayer(props: {
   // the endpoints. Range: alpha 0.55 → 1.0, scale 1.0 → 1.08 — small
   // enough to read as "alive" without hijacking attention from the
   // moving token.
+  //
+  // v2.385.0 — Same loop now also pulses turnRing on the active-turn
+  // token. The turn-ring comment in the per-token reconcile block
+  // promised this back in v2.339 but the pulse was never wired.
+  // Slower period (1800ms — the user described it as "flashing
+  // yellow slowly almost pulsing") and a tighter alpha range so the
+  // gold halo reads as alive without distracting from action. No
+  // scale change on the turn ring — its purpose is to mark the
+  // ACTIVE TOKEN, and zooming the ring would compete with the
+  // movement-spent visual feedback.
   useEffect(() => {
     let raf = 0;
     const start = performance.now();
     function tick(now: number) {
-      const t = (now - start) / 1200;            // 1.2s per cycle
-      const phase = (Math.sin(t * Math.PI * 2) + 1) / 2; // 0..1
-      const alpha = 0.55 + phase * 0.45;
-      const scale = 1 + phase * 0.08;
+      const elapsed = now - start;
+      // Lock ring (v2.256): 1.2s breath, alpha + scale.
+      const lockT = elapsed / 1200;
+      const lockPhase = (Math.sin(lockT * Math.PI * 2) + 1) / 2; // 0..1
+      const lockAlpha = 0.55 + lockPhase * 0.45;
+      const lockScale = 1 + lockPhase * 0.08;
+      // Turn ring (v2.385): 1.8s breath, alpha only.
+      const turnT = elapsed / 1800;
+      const turnPhase = (Math.sin(turnT * Math.PI * 2) + 1) / 2;
+      const turnAlpha = 0.6 + turnPhase * 0.4;
       for (const entry of gfxMapRef.current.values()) {
-        const ring = entry.lockRing;
-        if (!ring || ring.destroyed) continue;
-        ring.alpha = alpha;
-        ring.scale.set(scale);
+        const lock = entry.lockRing;
+        if (lock && !lock.destroyed) {
+          lock.alpha = lockAlpha;
+          lock.scale.set(lockScale);
+        }
+        const turn = entry.turnRing;
+        // Only pulse when visible; the per-token reconcile flips
+        // .visible to false when the token isn't the active turn.
+        if (turn && !turn.destroyed && turn.visible) {
+          turn.alpha = turnAlpha;
+        }
       }
       raf = requestAnimationFrame(tick);
     }
@@ -6959,6 +6982,57 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       removeOnInterrupt: true,
     });
   }, [currentScene, props.playerCharacters, showToast]);
+
+  // v2.385.0 — External pan-request consumer. The InitiativeStrip
+  // (and other dashboard-level UI that doesn't have a viewport ref)
+  // can call useBattleMapStore.getState().requestPan(x, y) to nudge
+  // the camera. We watch the nonce, animate, and clear. Same 400ms
+  // duration as panToCharacter — keeps both flows feeling identical.
+  // We also zoom in to a comfortable read-the-token level on the
+  // first pan: per the user's spec, "enough to where it shows that
+  // character and maybe one other that is closest to them".
+  //
+  // Cold-mount safety: the InitiativeStrip lives at the dashboard
+  // level. If the user clicks a tile while on a non-map tab, the
+  // dashboard switches to the map tab and BattleMapV2 mounts at
+  // about the same time. vpRef.current is assigned inside a render
+  // callback that hasn't run yet on the first effect tick, so we
+  // rAF-poll for up to ~1s before giving up. After that the
+  // request is cleared so it doesn't re-fire on the next render.
+  const panRequest = useBattleMapStore(s => s.panRequest);
+  useEffect(() => {
+    if (!panRequest) return;
+    let raf = 0;
+    let attempts = 0;
+    const TARGET_CELLS_VISIBLE = 5;
+    const desiredWorldVisible = TARGET_CELLS_VISIBLE * gridSizePx;
+    function tryPan() {
+      const vp = vpRef.current;
+      if (!vp || vp.screenWidth === 0) {
+        if (attempts++ < 60) {
+          raf = requestAnimationFrame(tryPan);
+          return;
+        }
+        // Gave up — clear so future requests still fire.
+        useBattleMapStore.getState().clearPanRequest();
+        return;
+      }
+      const screenShorter = Math.min(vp.screenWidth, vp.screenHeight);
+      const desiredScale = screenShorter / desiredWorldVisible;
+      // Don't force a zoom-OUT — only zoom in if the user is already
+      // way out. (If they're zoomed past our target, leave them alone.)
+      const finalScale = Math.max(vp.scale.x, desiredScale);
+      vp.animate({
+        position: { x: panRequest!.worldX, y: panRequest!.worldY },
+        scale: finalScale,
+        time: 400,
+        removeOnInterrupt: true,
+      });
+      useBattleMapStore.getState().clearPanRequest();
+    }
+    tryPan();
+    return () => cancelAnimationFrame(raf);
+  }, [panRequest, gridSizePx]);
 
   // v2.213 — "+ Add Token" callback. REMOVED in v2.353.0 along with
   // its toolbar button. The original implementation created default

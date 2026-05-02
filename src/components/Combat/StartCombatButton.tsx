@@ -15,9 +15,16 @@ import { startCombatFromMapTokens } from '../../lib/startCombatFromMap';
 
 interface Props {
   campaignId: string;
+  // v2.385.0 — Fired after a successful start so the parent can
+  // switch the user to the battle map tab. The previous flow showed
+  // a "Open the Battle Map tab first so a scene is loaded." nag when
+  // the store was empty; v2.385 added a DB fallback in
+  // startCombatFromMapTokens so the click just works, and this
+  // callback brings the DM where they wanted to be anyway.
+  onStarted?: () => void;
 }
 
-export default function StartCombatButton({ campaignId }: Props) {
+export default function StartCombatButton({ campaignId, onStarted }: Props) {
   const { encounter, refresh } = useCombat();
   const [starting, setStarting] = useState(false);
   // Inline error/info banner. Auto-clears after a few seconds so it
@@ -36,7 +43,10 @@ export default function StartCombatButton({ campaignId }: Props) {
       const r = await startCombatFromMapTokens(campaignId);
       if (!r.ok) {
         if (r.reason === 'no_scene') {
-          flash('error', 'Open the Battle Map tab first so a scene is loaded.');
+          // v2.385.0 — With the DB fallback in place, no_scene now
+          // means the campaign genuinely has no scenes yet. Tell the
+          // DM to make one rather than asking them to switch tabs.
+          flash('error', 'No scene exists yet. Create one in the Battle Map tab.');
         } else if (r.reason === 'no_tokens') {
           flash('error', 'No characters or creatures on the map. Place tokens via the NPC tab.');
         } else {
@@ -46,6 +56,10 @@ export default function StartCombatButton({ campaignId }: Props) {
       }
       flash('info', `Combat started — ${r.participantCount} in initiative.`);
       await refresh();
+      // v2.385.0 — Bring the DM to the map after a successful start
+      // so they're staring at the encounter, not the dashboard tab
+      // they happened to click from.
+      onStarted?.();
     } finally {
       setStarting(false);
     }

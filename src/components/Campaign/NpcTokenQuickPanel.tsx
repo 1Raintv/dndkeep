@@ -147,6 +147,13 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
   // Realtime sync — listen for UPDATE events on this specific npc id.
   // The filter scoping reduces channel chatter when the campaign has
   // many NPCs. Cleaned up on unmount.
+  //
+  // v2.385.0 — Bug fix. The channel previously listened on table
+  // `npcs` which doesn't exist (the table is `homebrew_monsters` as
+  // of the long-ago rename). The channel subscribed cleanly but
+  // never received events, so toggle/edit changes only became
+  // visible after the panel was closed and reopened (forcing the
+  // initial fetch above to re-run). Now points at the right table.
   useEffect(() => {
     const channel = supabase
       .channel(`npc:${npcId}`)
@@ -155,7 +162,7 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'npcs',
+          table: 'homebrew_monsters',
           filter: `id=eq.${npcId}`,
         },
         (payload: any) => {
@@ -264,17 +271,27 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
 
   const toggleVisibility = useCallback(async () => {
     if (!npc) return;
+    // v2.385.0 — Optimistic local update. Even with the realtime
+    // channel fix above, the UPDATE round-trip + Postgres-changes
+    // notification has visible lag (~150-400ms in practice). Flip
+    // the local copy immediately so the toggle button feels instant.
+    // Revert on error so the UI doesn't lie about success.
+    const prev = npc.visible_to_players;
+    setNpc(n => n ? { ...n, visible_to_players: !prev } : n);
     try {
       const { error } = await supabase
         .from('homebrew_monsters')
-        .update({ visible_to_players: !npc.visible_to_players, updated_at: new Date().toISOString() })
+        .update({ visible_to_players: !prev, updated_at: new Date().toISOString() })
         .eq('id', npc.id);
       if (error) {
         console.error('[NpcTokenQuickPanel] visibility toggle failed', error);
         showToast('Failed to update visibility.', 'error');
+        // Revert.
+        setNpc(n => n ? { ...n, visible_to_players: prev } : n);
       }
     } catch (err) {
       console.error('[NpcTokenQuickPanel] visibility toggle threw', err);
+      setNpc(n => n ? { ...n, visible_to_players: prev } : n);
     }
   }, [npc, showToast]);
 

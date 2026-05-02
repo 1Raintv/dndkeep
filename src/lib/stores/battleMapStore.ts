@@ -246,6 +246,24 @@ interface BattleMapStore {
     active: boolean;
     result: { worldX: number; worldY: number } | null;
   };
+  /** v2.385.0 — Cross-component "center the viewport on this token"
+   *  channel. The InitiativeStrip lives at the dashboard level, but
+   *  the viewport lives inside BattleMapV2; rather than threading a
+   *  ref or a callback through React, the strip writes a pan request
+   *  here and BattleMapV2's effect consumes it (and sets it back to
+   *  null after animating). The `nonce` field forces re-fires when
+   *  the same token is clicked twice in a row — a plain value-equal
+   *  Zustand subscription would skip the second click.
+   *
+   *  worldX/Y: viewport-center target in WORLD pixels (token.x/y).
+   *  Consumer animates camera to that point. Null when nothing is
+   *  pending.
+   */
+  panRequest: {
+    worldX: number;
+    worldY: number;
+    nonce: number;
+  } | null;
 
   addToken: (token: Token) => void;
   updateTokenPosition: (id: string, x: number, y: number) => void;
@@ -308,6 +326,11 @@ interface BattleMapStore {
    *  the result. */
   setDirectionPickActive: (active: boolean) => void;
   setDirectionPickResult: (result: { worldX: number; worldY: number } | null) => void;
+  /** v2.385.0 — Setter for the pan-to-token channel. Pass world coords
+   *  (token.x/y are already world pixels). Pass null to clear after
+   *  consuming. */
+  requestPan: (worldX: number, worldY: number) => void;
+  clearPanRequest: () => void;
 }
 
 export const useBattleMapStore = create<BattleMapStore>((set) => ({
@@ -322,6 +345,7 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   aoePreview: null,
   rangePreview: null,
   directionPick: { active: false, result: null },
+  panRequest: null,
 
   addToken: (token) =>
     set((s) => ({ tokens: { ...s.tokens, [token.id]: token } })),
@@ -471,4 +495,14 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
     set((s) => ({ directionPick: { active, result: active ? null : s.directionPick.result } })),
   setDirectionPickResult: (result) =>
     set((s) => ({ directionPick: { ...s.directionPick, result } })),
+  // v2.385.0 — Pan request channel. Each call increments a nonce so
+  // consecutive identical clicks still re-fire the consumer effect.
+  requestPan: (worldX, worldY) =>
+    set((s) => ({
+      panRequest: {
+        worldX, worldY,
+        nonce: (s.panRequest?.nonce ?? 0) + 1,
+      },
+    })),
+  clearPanRequest: () => set({ panRequest: null }),
 }));

@@ -50,6 +50,10 @@ import ReactionPromptModal from '../Combat/ReactionPromptModal';
 import LegendaryResistancePromptModal from '../Combat/LegendaryResistancePromptModal';
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
+// v2.385.0 — Watch the pan-request channel so a click in InitiativeStrip
+// from a non-map tab brings the user to the map automatically. The
+// store is module-scoped, so this is just a subscription — no plumbing.
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -120,6 +124,18 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     const tab = params.get('tab');
     if (tab === 'map') setActiveTab('map');
   }, []);
+
+  // v2.385.0 — InitiativeStrip clicks set a pan request in the
+  // battle-map store. When that fires from a non-map tab, switch to
+  // the map so BattleMapV2 mounts and consumes the request. We watch
+  // the nonce field; the BattleMapV2 effect clears the request after
+  // animating, so this won't fire on stale state.
+  const panRequest = useBattleMapStore(s => s.panRequest);
+  useEffect(() => {
+    if (panRequest && activeTab !== 'map') {
+      setActiveTab('map');
+    }
+  }, [panRequest, activeTab]);
   const [joinCode, setJoinCode] = useState<string>(campaign.join_code ?? '');
   const [refreshingCode, setRefreshingCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -358,7 +374,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           >
             Map
           </button>
-          {isOwner && <StartCombatButton campaignId={campaign.id} />}
+          {isOwner && <StartCombatButton campaignId={campaign.id} onStarted={() => setActiveTab('map')} />}
           {isOwner && (
             <CampaignSettingsButton
               campaign={campaign}

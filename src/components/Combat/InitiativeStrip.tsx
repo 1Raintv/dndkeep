@@ -14,7 +14,6 @@ import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
 import DeclareAttackModal from './DeclareAttackModal';
-import ConditionPickerModal from './ConditionPickerModal';
 import LegendaryActionPopover from './LegendaryActionPopover';
 // v2.140.0 — Phase M pt 3: DM popover for Legendary Resistance
 import LegendaryResistancePopover from './LegendaryResistancePopover';
@@ -25,6 +24,12 @@ import LairActionsConfigModal from './LairActionsConfigModal';
 // Without this, a click that hit an error was indistinguishable from a click
 // that worked-but-rendered-late, since the realtime echo also drives the UI.
 import { useToast } from '../shared/Toast';
+// v2.385.0 — Click-on-tile pans the battle-map viewport to the
+// participant's token (see store.requestPan). Conditions used to live
+// here too; they've moved to the per-token quick panel where they're
+// applied less often than damage/HP, which dominates combat UX.
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
+import { isCreatureParticipantType } from '../../lib/participantType';
 import type { CombatParticipant } from '../../types';
 
 interface Props {
@@ -48,11 +53,9 @@ export default function InitiativeStrip({ isDM }: Props) {
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
   const [showDeclare, setShowDeclare] = useState(false);
-  // v2.112.0 — Phase H pt 3: condition picker popover anchored to a tile
-  const [conditionPicker, setConditionPicker] = useState<{
-    participant: CombatParticipant;
-    anchor: { x: number; y: number };
-  } | null>(null);
+  // v2.385.0 — conditionPicker state removed. Tile click now pans the
+  // map (via store.requestPan); conditions are applied from the
+  // per-token quick panel.
   // v2.126.0 — Phase J pt 4: legendary action popover + config modal for DM
   const [laPopover, setLaPopover] = useState<{
     participant: CombatParticipant;
@@ -260,14 +263,38 @@ export default function InitiativeStrip({ isDM }: Props) {
           const visibleBuffs = buffs.slice(0, VISIBLE_CHIPS);
           const buffOverflow = buffs.length - visibleBuffs.length;
 
-          function handleTileClick(e: React.MouseEvent) {
-            if (!isDM) return;
-            // Anchor the picker centered above the clicked tile
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            setConditionPicker({
-              participant: p,
-              anchor: { x: rect.left + rect.width / 2, y: rect.top },
+          // v2.385.0 — Click pans the battle-map viewport to this
+          // participant's token. Conditions previously lived behind
+          // this click; they've moved entirely to NpcTokenQuickPanel
+          // since (per user feedback) damage/HP changes dominate
+          // combat far more than condition application.
+          //
+          // Linkage: combat_participants.entity_id holds the
+          // character_id (for PCs) or homebrew_monster_id (for
+          // creatures). scene_tokens stores both characterId and
+          // creatureId. We match on participant_type to avoid
+          // cross-contamination.
+          //
+          // No-token-on-scene case: silently no-op. The toast plumbing
+          // isn't trivial from this scope and the visual feedback
+          // (camera doesn't move) is acceptable. The DM will either
+          // place a token or click a different tile.
+          function handleTileClick() {
+            const tokens = useBattleMapStore.getState().tokens;
+            const sceneId = useBattleMapStore.getState().currentSceneId;
+            // sceneId may be null if the DM hasn't opened the map
+            // tab yet — match against any-scene tokens in that case
+            // (the dashboard will switch tabs and BattleMapV2 will
+            // pull the request out of the store on mount).
+            const isCreature = isCreatureParticipantType(p.participant_type);
+            const target = Object.values(tokens).find(t => {
+              if (sceneId && t.sceneId !== sceneId) return false;
+              if (p.participant_type === 'character') return t.characterId === p.entity_id;
+              if (isCreature) return t.creatureId === p.entity_id;
+              return false;
             });
+            if (!target) return;
+            useBattleMapStore.getState().requestPan(target.x, target.y);
           }
 
           async function handleRemoveCondition(e: React.MouseEvent, name: string) {
@@ -298,7 +325,7 @@ export default function InitiativeStrip({ isDM }: Props) {
               key={p.id}
               onClick={handleTileClick}
               title={isDM
-                ? `${p.name} · init ${p.initiative ?? '—'}${p.is_dead ? ' · DEAD' : p.is_stable ? ' · Stable' : ''} · click to apply condition`
+                ? `${p.name} · init ${p.initiative ?? '—'}${p.is_dead ? ' · DEAD' : p.is_stable ? ' · Stable' : ''} · click to focus on map`
                 : `${p.name} · init ${p.initiative ?? '—'}${p.is_dead ? ' · DEAD' : p.is_stable ? ' · Stable' : ''}`}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -679,13 +706,6 @@ export default function InitiativeStrip({ isDM }: Props) {
           campaignId={encounter.campaign_id}
           onClose={() => setShowDeclare(false)}
           onDeclared={() => setShowDeclare(false)}
-        />
-      )}
-      {conditionPicker && (
-        <ConditionPickerModal
-          participant={conditionPicker.participant}
-          anchor={conditionPicker.anchor}
-          onClose={() => setConditionPicker(null)}
         />
       )}
       {/* v2.126.0 — Phase J pt 4: legendary action popover (spend) */}
