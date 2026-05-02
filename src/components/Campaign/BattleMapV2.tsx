@@ -6209,8 +6209,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // character TokenQuickPanel (no class/level/abilities/checks),
   // so it gets its own state slot. Mutually exclusive with
   // clickedToken — opening one clears the other.
+  // v2.386.0 — tokenId added so the panel can act on the specific
+  // scene_tokens row that was clicked. Previously the panel only
+  // had npcId (creature_id), which is fine for HP/conditions but
+  // the wrong granularity for the per-token visibility toggle.
   const [clickedNpcToken, setClickedNpcToken] = useState<{
     npcId: string;
+    tokenId: string;
     x: number;
     y: number;
   } | null>(null);
@@ -9291,7 +9296,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 setClickedToken({ tokenId, x: contextMenu.clientX, y: contextMenu.clientY });
               } else if (t.npcId) {
                 setClickedToken(null);
-                setClickedNpcToken({ npcId: t.npcId, x: contextMenu.clientX, y: contextMenu.clientY });
+                setClickedNpcToken({ npcId: t.npcId, tokenId, x: contextMenu.clientX, y: contextMenu.clientY });
               }
             }}
           />
@@ -9333,6 +9338,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         {clickedNpcToken && (
           <NpcTokenQuickPanel
             npcId={clickedNpcToken.npcId}
+            tokenId={clickedNpcToken.tokenId}
             anchorX={clickedNpcToken.x}
             anchorY={clickedNpcToken.y}
             isDM={isDM}

@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../shared/Toast';
+// v2.386.0 — Hide-from-players now writes scene_tokens.visible_to_all
+// instead of homebrew_monsters.visible_to_players. The latter was
+// never read by any rendering code; the former has full RLS + DM
+// faded-render infra and matches what the right-click context-menu
+// "Hide from Players" item already does. The toggle finally hides
+// things from players for real.
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
+import * as tokensApi from '../../lib/api/sceneTokens';
 // v2.293.0 — Combat-system Phase 2c migration. The Initiative
 // section in this panel used to read/write sessionState.initiative_order
 // (the legacy campaign_sessions JSON column). Modern combat lives on
@@ -38,7 +46,8 @@ import { isCreatureParticipantType } from '../../lib/participantType';
  *   - HP bar + name + AC + roster origin subtitle
  *   - Damage / Heal / Set HP input (DM-only)
  *   - Active conditions chips with apply / remove (DM-only)
- *   - Reveal / Hide toggle for visible_to_players
+ *   - Reveal / Hide toggle for the per-token visibility flag
+ *     (scene_tokens.visible_to_all — RLS-enforced; v2.386 fix)
  *   - Close on Esc or backdrop click
  *
  * Loading: the panel does its own one-shot fetch by npcId on mount
@@ -98,6 +107,12 @@ const ALL_CONDITIONS: string[] = Object.keys(COND_COLOR);
 
 interface Props {
   npcId: string;
+  // v2.386.0 — The scene_tokens.id of the specific token instance
+  // that opened the panel. Required for per-token operations (the
+  // visibility toggle in particular). The panel still does its own
+  // homebrew_monsters fetch by npcId for HP/AC/conditions which are
+  // creature-level, not token-level.
+  tokenId: string;
   anchorX: number;
   anchorY: number;
   isDM: boolean;
@@ -108,7 +123,7 @@ interface Props {
   // and writes directly to combat_participants.
 }
 
-export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onClose }: Props) {
+export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, isDM, onClose }: Props) {
   const { showToast } = useToast();
   // v2.293.0 — Modern combat state. encounter is null when no
   // encounter exists; .status is 'pending' | 'active' | 'completed'.
@@ -269,31 +284,45 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
     }
   }, [npc, condBusy, showToast]);
 
+  // v2.386.0 — Visibility toggle. Writes scene_tokens.visible_to_all
+  // (the per-token flag) rather than homebrew_monsters.visible_to_players
+  // (which the previous implementation wrote and which was a no-op
+  // because no rendering code read it).
+  //
+  // Why per-token: scene_tokens has the RLS infra (players don't
+  // receive hidden rows) and the DM-side faded-render visual
+  // (container.alpha = 0.4 for hidden tokens). The right-click
+  // context menu "Hide from Players" item has been writing this
+  // column correctly all along; this just brings the Quick Panel
+  // toggle in line so both entry points behave identically.
+  //
+  // If the same creature has multiple tokens, this only flips the
+  // one the panel was opened on. That's intentional and matches
+  // the context-menu behavior — DMs can stage multiple instances
+  // and reveal them individually.
+  //
+  // State source: read the live token from the Zustand store, not
+  // the homebrew_monsters fetch (which doesn't carry visibility
+  // anymore as far as this panel is concerned). Write goes through
+  // the same updateTokenFields + tokensApi.updateToken pair the
+  // map's applyPatch uses, so the optimistic UI / realtime echo
+  // / revert-on-error contract is identical.
+  const tokenVisible = useBattleMapStore(s => s.tokens[tokenId]?.visibleToAll ?? true);
+
   const toggleVisibility = useCallback(async () => {
-    if (!npc) return;
-    // v2.385.0 — Optimistic local update. Even with the realtime
-    // channel fix above, the UPDATE round-trip + Postgres-changes
-    // notification has visible lag (~150-400ms in practice). Flip
-    // the local copy immediately so the toggle button feels instant.
-    // Revert on error so the UI doesn't lie about success.
-    const prev = npc.visible_to_players;
-    setNpc(n => n ? { ...n, visible_to_players: !prev } : n);
-    try {
-      const { error } = await supabase
-        .from('homebrew_monsters')
-        .update({ visible_to_players: !prev, updated_at: new Date().toISOString() })
-        .eq('id', npc.id);
-      if (error) {
-        console.error('[NpcTokenQuickPanel] visibility toggle failed', error);
-        showToast('Failed to update visibility.', 'error');
-        // Revert.
-        setNpc(n => n ? { ...n, visible_to_players: prev } : n);
-      }
-    } catch (err) {
+    const next = !tokenVisible;
+    // Optimistic local update.
+    useBattleMapStore.getState().updateTokenFields(tokenId, { visibleToAll: next });
+    const ok = await tokensApi.updateToken(tokenId, { visibleToAll: next }).catch(err => {
       console.error('[NpcTokenQuickPanel] visibility toggle threw', err);
-      setNpc(n => n ? { ...n, visible_to_players: prev } : n);
+      return false;
+    });
+    if (!ok) {
+      showToast('Failed to update visibility.', 'error');
+      // Revert.
+      useBattleMapStore.getState().updateTokenFields(tokenId, { visibleToAll: tokenVisible });
     }
-  }, [npc, showToast]);
+  }, [tokenId, tokenVisible, showToast]);
 
   // v2.293.0 — Initiative integration via modern combat schema.
   // Match by entity_id (the foreign key combat_participants writes to
@@ -522,11 +551,11 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
             onClick={isDM ? toggleVisibility : undefined}
             disabled={!isDM}
             title={isDM
-              ? (npc.visible_to_players ? 'Hide from players' : 'Reveal to players')
+              ? (tokenVisible ? 'Hide this token from players' : 'Reveal this token to players')
               : 'Visibility (DM only)'}
             style={{
-              background: npc.visible_to_players ? 'rgba(52,211,153,0.18)' : 'var(--c-raised)',
-              border: `1px solid ${npc.visible_to_players ? 'rgba(52,211,153,0.55)' : 'var(--c-border)'}`,
+              background: tokenVisible ? 'rgba(52,211,153,0.18)' : 'var(--c-raised)',
+              border: `1px solid ${tokenVisible ? 'rgba(52,211,153,0.55)' : 'var(--c-border)'}`,
               borderRadius: 'var(--r-sm, 4px)',
               padding: '6px 8px',
               textAlign: 'center' as const,
@@ -537,9 +566,9 @@ export default function NpcTokenQuickPanel({ npcId, anchorX, anchorY, isDM, onCl
             <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Players</div>
             <div style={{
               fontSize: 12, fontWeight: 700,
-              color: npc.visible_to_players ? '#34d399' : 'var(--t-3)',
+              color: tokenVisible ? '#34d399' : 'var(--t-3)',
             }}>
-              {npc.visible_to_players ? 'Visible' : 'Hidden'}
+              {tokenVisible ? 'Visible' : 'Hidden'}
             </div>
           </button>
         </div>
