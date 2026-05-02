@@ -27,11 +27,47 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
   const [attackTarget, setAttackTarget] = useState<string>('');
   const [ongoingPrompts, setOngoingPrompts] = useState<{ id: string; name: string; od: OngoingDamage }[]>([]);
   const [concSavePrompt, setConcSavePrompt] = useState<{ combatantId: string; dc: number; damageTaken: number } | null>(null);
+  // v2.382.0 — Drag-to-reorder state. draggedId is the combatant
+  // currently being dragged; dropTargetId is the row hovered over.
+  // Both clear on drop / dragend.
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const combatants: Combatant[] = sessionState?.initiative_order ?? [];
   const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
   const activeTurn = sessionState ? sessionState.current_turn % Math.max(combatants.length, 1) : 0;
   const activeId = sorted[activeTurn]?.id;
+
+  // v2.382.0 — Drag-drop reorder. Adjusts the dragged combatant's
+  // initiative to land it above the drop target in the auto-sort.
+  // We don't store an explicit manual order — instead the initiative
+  // value is mutated to fit between the new neighbors, so the
+  // existing sort-by-initiative-desc logic just works. Decimal
+  // initiatives are allowed (D&D RAW doesn't forbid them and they
+  // serve as natural tiebreakers).
+  function reorderCombatant(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const dragged = combatants.find(c => c.id === fromId);
+    if (!dragged) return;
+    const filtered = sorted.filter(c => c.id !== fromId);
+    const dropIdx = filtered.findIndex(c => c.id === toId);
+    if (dropIdx < 0) return;
+    // The dragged item lands at filtered[dropIdx]'s position — i.e.
+    // ABOVE the drop target. Neighbors after insertion:
+    //   above = filtered[dropIdx - 1] (the one that pushes us down)
+    //   below = filtered[dropIdx]     (the drop target itself)
+    const above = filtered[dropIdx - 1];
+    const below = filtered[dropIdx];
+    let newInit: number;
+    if (!above && !below) newInit = dragged.initiative;
+    else if (!above) newInit = below.initiative + 1;
+    else if (!below) newInit = above.initiative - 1;
+    else newInit = (above.initiative + below.initiative) / 2;
+    const newOrder = combatants.map(c =>
+      c.id === fromId ? { ...c, initiative: newInit } : c
+    );
+    onUpdateSession({ initiative_order: newOrder });
+  }
 
   function addCombatant(name: string, initiative: number, hp: number, ac: number, isPlayer = false) {
     const newCombatant: Combatant = {
@@ -219,13 +255,57 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
             const isActive = c.id === activeId;
             const isExpanded = expandedId === c.id;
             const hpPct = c.max_hp > 0 ? c.current_hp / c.max_hp : 0;
+            // v2.382.0 — Dead state. When HP hits 0 the row dims and
+            // the conditions area swaps for a DEFEATED badge. Only
+            // applies to monsters (PCs at 0 HP go unconscious — the
+            // existing concentration / death save flow handles them).
+            const isDead = c.is_monster && c.current_hp <= 0;
+            const isDropTarget = dropTargetId === c.id && draggedId !== null && draggedId !== c.id;
             return (
-              <div key={c.id} style={{
-                borderRadius: 'var(--r-md)',
-                border: isActive ? '2px solid var(--c-gold)' : '1px solid var(--c-border)',
-                background: isActive ? 'rgba(201,146,42,0.07)' : 'var(--c-surface)',
-                overflow: 'hidden',
-              }}>
+              <div
+                key={c.id}
+                draggable={isOwner}
+                onDragStart={isOwner ? (e) => {
+                  setDraggedId(c.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', c.id);
+                } : undefined}
+                onDragEnd={isOwner ? () => {
+                  setDraggedId(null);
+                  setDropTargetId(null);
+                } : undefined}
+                onDragOver={isOwner ? (e) => {
+                  if (!draggedId || draggedId === c.id) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dropTargetId !== c.id) setDropTargetId(c.id);
+                } : undefined}
+                onDragLeave={isOwner ? () => {
+                  if (dropTargetId === c.id) setDropTargetId(null);
+                } : undefined}
+                onDrop={isOwner ? (e) => {
+                  e.preventDefault();
+                  if (draggedId && draggedId !== c.id) {
+                    reorderCombatant(draggedId, c.id);
+                  }
+                  setDraggedId(null);
+                  setDropTargetId(null);
+                } : undefined}
+                style={{
+                  borderRadius: 'var(--r-md)',
+                  border: isActive ? '2px solid var(--c-gold)'
+                       : isDropTarget ? '2px dashed var(--c-gold-l)'
+                       : '1px solid var(--c-border)',
+                  background: isActive ? 'rgba(201,146,42,0.07)'
+                           : isDropTarget ? 'rgba(201,146,42,0.04)'
+                           : 'var(--c-surface)',
+                  overflow: 'hidden',
+                  // v2.382.0 — dead-creature dim
+                  opacity: isDead ? 0.45 : draggedId === c.id ? 0.5 : 1,
+                  cursor: isOwner ? (draggedId === c.id ? 'grabbing' : 'grab') : 'default',
+                  transition: 'opacity 0.15s, border-color 0.15s, background 0.15s',
+                }}
+              >
                 {/* Main row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
                   {/* Initiative badge */}
@@ -234,6 +314,8 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                       type="number"
                       value={c.initiative}
                       onChange={e => setInitiative(c.id, parseInt(e.target.value) || 0)}
+                      onMouseDown={e => e.stopPropagation()}
+                      onDragStart={e => e.preventDefault()}
                       style={{ width: 44, textAlign: 'center', fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--c-gold-l)', background: 'transparent', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-sm)', padding: '2px 0' }}
                     />
                   ) : (
@@ -243,10 +325,28 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                   {/* Name + type badge */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                      <span style={{ fontFamily: 'var(--ff-body)', fontWeight: isActive ? 700 : 600, color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)', fontSize: 'var(--fs-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{
+                        fontFamily: 'var(--ff-body)', fontWeight: isActive ? 700 : 600,
+                        color: isActive ? 'var(--c-gold-l)' : 'var(--t-1)',
+                        fontSize: 'var(--fs-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        // v2.382.0 — strikethrough dead names
+                        textDecoration: isDead ? 'line-through' : 'none',
+                      }}>
                         {c.name}
                       </span>
                       {!c.is_monster && <span className="badge badge-muted" style={{ fontSize: 9 }}>PC</span>}
+                      {/* v2.382.0 — DEFEATED badge for dead monsters */}
+                      {isDead && (
+                        <span style={{
+                          fontSize: 8, fontWeight: 800, letterSpacing: '0.08em',
+                          color: '#fca5a5', background: 'rgba(239,68,68,0.12)',
+                          border: '1px solid rgba(239,68,68,0.4)',
+                          padding: '1px 6px', borderRadius: 3,
+                          textTransform: 'uppercase' as const,
+                        }}>
+                          Defeated
+                        </span>
+                      )}
                     </div>
                     {/* HP bar */}
                     <div style={{ width: '100%', height: 3, background: '#080d14', borderRadius: 2, marginTop: 3, overflow: 'hidden' }}>
@@ -264,9 +364,43 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                     AC {c.ac}
                   </span>
 
-                  {/* Conditions count */}
-                  {c.conditions.length > 0 && (
-                    <span className="badge badge-crimson">{c.conditions.length}</span>
+                  {/* v2.382.0 — Condition pills (replaces the count badge).
+                      Up to 3 short condition labels render inline; overflow
+                      becomes a "+N" chip with the rest in its title. Hidden
+                      entirely when no conditions or when the creature is
+                      defeated (DEFEATED badge already serves as status). */}
+                  {!isDead && c.conditions.length > 0 && (
+                    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' as const, alignItems: 'center', maxWidth: 200 }}>
+                      {c.conditions.slice(0, 3).map(cond => (
+                        <span
+                          key={cond}
+                          title={cond}
+                          style={{
+                            fontSize: 8, fontWeight: 700,
+                            color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
+                            border: '1px solid rgba(251,191,36,0.35)',
+                            padding: '1px 5px', borderRadius: 3,
+                            letterSpacing: '0.04em',
+                            whiteSpace: 'nowrap' as const,
+                          }}
+                        >
+                          {cond.length > 6 ? cond.slice(0, 4) + '…' : cond}
+                        </span>
+                      ))}
+                      {c.conditions.length > 3 && (
+                        <span
+                          title={c.conditions.slice(3).join(', ')}
+                          style={{
+                            fontSize: 8, fontWeight: 700,
+                            color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
+                            border: '1px solid rgba(251,191,36,0.35)',
+                            padding: '1px 5px', borderRadius: 3,
+                          }}
+                        >
+                          +{c.conditions.length - 3}
+                        </span>
+                      )}
+                    </div>
                   )}
 
                   {/* Expand / remove */}
@@ -275,6 +409,8 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                       <button
                         className="btn-ghost btn-sm"
                         onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                        onMouseDown={e => e.stopPropagation()}
+                        onDragStart={e => e.preventDefault()}
                         style={{ fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
                       >
                         {isExpanded ? 'Less' : 'More'}
@@ -282,6 +418,8 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                       <button
                         className="btn-ghost btn-sm"
                         onClick={() => removeCombatant(c.id)}
+                        onMouseDown={e => e.stopPropagation()}
+                        onDragStart={e => e.preventDefault()}
                         style={{ color: 'var(--t-2)', fontSize: 'var(--fs-xs)', padding: '2px 6px' }}
                       >
                         Remove
