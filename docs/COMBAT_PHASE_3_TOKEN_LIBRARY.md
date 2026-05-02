@@ -3,6 +3,32 @@
 **Status:** Design. v2.308 ships this doc only — no migrations, no code.
 v2.309+ will land the implementation in stages.
 
+## Status update — as of v2.389
+
+**v2.389 landed pt 14: scene_tokens → placements sync trigger.** The first
+of 4 ships needed to finish the visual-side cutover. Placements is now
+a continuously-rebuilt read-model of scene_tokens; both tables are in
+sync after every write.
+
+| Stage from plan | Status | Notes |
+|---|---|---|
+| v2.309 — tables created | ✅ Shipped | `combatants`, `scene_token_placements` exist |
+| v2.310 — initial backfill | ✅ Shipped | Apr 19–26 data; subsequent rows went to `scene_tokens` only — drift cleared at v2.389 |
+| v2.311 — `combatant_id` on CP, dual-write | ✅ Shipped | 100% of CP rows have combatant_id |
+| v2.312 — battlemap dual-path | 🟡 Code shipped, flag never flipped | `tokensApiRouter` XOR-routes; `use_combatants_for_battlemap = false` everywhere |
+| v2.313 — combat reads HP from combatants | ✅ Shipped (via v2.315–v2.319) | `cp_ensure_combatant_link` trigger seeds combatants on CP insert |
+| v2.314 — drop legacy CP columns | ✅ Shipped (v2.321) | `combat_participants` no longer carries HP/conditions |
+| **pt 14 — scene_tokens → placements sync** | **✅ Shipped (v2.389)** | One-way trigger; placements is read-model. Stale v2.310 rows cleared, current scene_tokens replayed. |
+| v2.315 — drop `scene_tokens`, etc. | ❌ Not shipped | Still 3 ships away |
+
+**Phase 3 cutover remaining ships (post-v2.389):**
+
+| Ship | Goal | Risk |
+|---|---|---|
+| Next | Audit pass + fix v2.385 fallback in startCombatFromMap (currently hardcodes scene_tokens; needs to route through tokensApiRouter or read placements when flag is on) | Low |
+| Then | Flip `use_combatants_for_battlemap` for one campaign and dogfood for a session. Trigger keeps tables in sync; if the new path breaks, flip back. | Low — flag flip is reversible |
+| Then | Drop `scene_tokens`, drop sync trigger, inline `tokensApiRouter`, remove dual-path code in BattleMapV2. | Medium — irreversible drop, but at this point the new path has been the read path through the trigger period |
+
 ## Status update — as of v2.388
 
 The arc landed for the **combat side** but stalled mid-flight on the
