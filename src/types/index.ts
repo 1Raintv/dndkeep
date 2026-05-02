@@ -368,6 +368,21 @@ export interface ComputedStats {
 export interface SpeciesTrait {
   name: string;
   description: string;
+  // v2.376.0 — Optional action metadata. When `actionType` is set the
+  // trait surfaces as a clickable row in the Actions tab; when omitted
+  // the trait stays passive (Features tab only). Range/damage/save
+  // mirror the same fields on ClassAbility for consistent rendering.
+  // All optional so pre-v2.376 trait entries remain valid.
+  actionType?: 'action' | 'bonus' | 'reaction' | 'free' | 'special';
+  range?: string;
+  damage?: string;
+  damageType?: string;
+  save?: { ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'; dc: 'spell' | number; targetMode?: 'any' | 'enemies' };
+  // Recovery for limited-use species traits (e.g. Aasimar's Healing
+  // Hands — 1/long rest). Pairs with maxUsesFn-style logic when
+  // surfaced; passive traits leave this undefined.
+  rest?: 'short' | 'long';
+  maxUses?: number;
 }
 
 export interface SpeciesData {

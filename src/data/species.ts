@@ -82,7 +82,7 @@ export const SPECIES: SpeciesData[] = [
     languages: ['Common', 'Draconic'],
     traits: [
       { name: 'Draconic Ancestry', description: 'Choose a dragon type (Black, Blue, Brass, Bronze, Copper, Gold, Green, Red, Silver, or White). This determines your Breath Weapon damage type and Damage Resistance.' },
-      { name: 'Breath Weapon', description: 'As a Bonus Action, exhale destructive energy (15-ft cone or 30-ft line). Dexterity save (DC 8 + CON mod + Prof Bonus). Fail: 1d10 damage (your type), scaling to 4d10 at 17th level. Uses equal to Proficiency Bonus per Long Rest.' },
+      { name: 'Breath Weapon', description: 'As a Bonus Action, exhale destructive energy (15-ft cone or 30-ft line). Dexterity save (DC 8 + CON mod + Prof Bonus). Fail: 1d10 damage (your type), scaling to 4d10 at 17th level. Uses equal to Proficiency Bonus per Long Rest.', actionType: 'bonus' as const, range: '15 ft cone', rest: 'long' as const },
       { name: 'Damage Resistance', description: 'You have resistance to the damage type associated with your Draconic Ancestry.' },
       { name: 'Darkvision', description: 'You can see in dim light within 60 feet as if it were bright light.' },
       { name: 'Draconic Flight', description: 'At 5th level, you can use a Bonus Action to manifest spectral wings, gaining a flying speed equal to your walking speed for 10 minutes. Once per Long Rest.' },
@@ -106,7 +106,7 @@ export const SPECIES: SpeciesData[] = [
     traits: [
       { name: 'Darkvision', description: 'You can see in dim light within 60 feet as if it were bright light, and in darkness as if it were dim light.' },
       { name: 'Celestial Resistance', description: 'You have resistance to Necrotic damage and Radiant damage.' },
-      { name: 'Healing Hands', description: 'As an Action, touch a creature and roll a number of d4s equal to your Proficiency Bonus. The creature regains HP equal to the total. Once per Long Rest.' },
+      { name: 'Healing Hands', description: 'As an Action, touch a creature and roll a number of d4s equal to your Proficiency Bonus. The creature regains HP equal to the total. Once per Long Rest.', actionType: 'action' as const, range: 'Touch', rest: 'long' as const, maxUses: 1 },
       { name: 'Light Bearer', description: 'You know the Light cantrip. Charisma is your spellcasting ability for it.' },
       { name: 'Celestial Revelation', description: 'At 3rd level, use a Bonus Action to unleash celestial energy for 1 minute: Heavenly Wings (fly speed = walk speed), Inner Radiance (bright light 10 ft, enemies take Radiant damage), or Necrotic Shroud (frighten enemies within 10 ft). Once per Long Rest.' },
     ],
@@ -127,10 +127,10 @@ export const SPECIES: SpeciesData[] = [
     size: 'Medium', speed: 35, darkvision: 0,
     languages: ['Common', 'Giant'],
     traits: [
-      { name: 'Large Form', description: 'Starting at 5th level, you can change your size to Large as a Bonus Action if you\'re in a big enough space. This lasts until you return to Medium as a Bonus Action or until you die. Once per Long Rest.' },
+      { name: 'Large Form', description: 'Starting at 5th level, you can change your size to Large as a Bonus Action if you\'re in a big enough space. This lasts until you return to Medium as a Bonus Action or until you die. Once per Long Rest.', actionType: 'bonus' as const, rest: 'long' as const, maxUses: 1 },
       { name: 'Little Giant', description: 'You have proficiency in the Athletics skill, and you count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift.' },
       { name: 'Mountain Born', description: 'You\'re acclimated to high altitude, including elevations above 20,000 feet. You also naturally adapted to cold climates (as per the Dungeon Master\'s Guide).' },
-      { name: 'Stone\'s Endurance', description: 'When you take damage, you can use your Reaction to roll a d12 and add your Constitution modifier. Reduce the damage taken by the total. Uses equal to Proficiency Bonus per Long Rest.' },
+      { name: 'Stone\'s Endurance', description: 'When you take damage, you can use your Reaction to roll a d12 and add your Constitution modifier. Reduce the damage taken by the total. Uses equal to Proficiency Bonus per Long Rest.', actionType: 'reaction' as const, rest: 'long' as const },
     ],
   },
   {
@@ -141,7 +141,7 @@ export const SPECIES: SpeciesData[] = [
       { name: 'Darkvision', description: 'You can see in dim light within 60 feet as if it were bright light, and in darkness as if it were dim light.' },
       { name: 'Cat\'s Claws', description: 'You have retractable claws. Climb speed equal to your walking speed. Claws are natural weapons dealing 1d6 + Strength modifier Slashing damage.' },
       { name: 'Cat\'s Talent', description: 'You have proficiency in Perception and Stealth.' },
-      { name: 'Feline Agility', description: 'Your reflexes let you move with a burst of speed. When you move on your turn, you can double your speed until the end of your turn. Once you do this, you can\'t do it again until you move 0 feet on one of your turns.' },
+      { name: 'Feline Agility', description: 'Your reflexes let you move with a burst of speed. When you move on your turn, you can double your speed until the end of your turn. Once you do this, you can\'t do it again until you move 0 feet on one of your turns.', actionType: 'special' as const },
     ],
   },
   {

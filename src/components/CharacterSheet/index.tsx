@@ -3113,6 +3113,170 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    );
  })()}
 
+ {/* v2.376.0 — SPECIES TRAITS section. Surfaces any species trait
+     with actionType set (e.g. Tabaxi Feline Agility, Dragonborn
+     Breath Weapon, Aasimar Healing Hands, Goliath Large Form /
+     Stone's Endurance) as clickable rows. Passive traits like
+     Darkvision, Fey Ancestry, Cat's Talent stay in Features tab —
+     they have no actionType field and are filtered out here.
+     Tiefling spells go through the dedicated section above; these
+     are non-spell species actions that previously had no surface. */}
+ {(combatFilter === 'all' || combatFilter === 'action' || combatFilter === 'bonus' || combatFilter === 'reaction') &&
+  (contentFilters.size === 0 || contentFilters.has('ability')) && (() => {
+   const speciesData = SPECIES.find(s => s.name === character.species);
+   if (!speciesData) return null;
+   // v2.376.0 — capture into local to preserve TS narrowing through
+   // the .map callback closure below (TS doesn't auto-narrow across
+   // closure boundaries even after the early-return guard).
+   const sd = speciesData;
+   const actionableTraits = sd.traits.filter(t => (t as any).actionType);
+   // Filter Goliath Large Form gate: 5th level minimum per RAW.
+   const visibleTraits = actionableTraits.filter(t => {
+     if (t.name === 'Large Form' && character.level < 5) return false;
+     return true;
+   });
+   if (visibleTraits.length === 0) return null;
+   const actionTypeColors: Record<string, string> = {
+     action: '#ef4444', bonus: '#60a5fa', reaction: '#a78bfa',
+     free: '#34d399', special: '#14b8a6',
+   };
+   const actionTypeLabels: Record<string, string> = {
+     action: 'ACTION', bonus: 'BONUS', reaction: 'REACT',
+     free: 'FREE', special: 'SPECIAL',
+   };
+   return (
+     <div style={{ marginTop: 'var(--sp-3)' }}>
+       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', paddingBottom: 5, marginBottom: 8 }}>
+         <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
+           SPECIES — {sd.name.toUpperCase()}
+         </span>
+       </div>
+       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+         {visibleTraits.map(trait => {
+           const t = trait as any;
+           const acColor = actionTypeColors[t.actionType] ?? '#94a3b8';
+           const acLabel = actionTypeLabels[t.actionType] ?? t.actionType.toUpperCase();
+           const featureKey = `species:${trait.name}`;
+           // Resolve maxUses: numeric literal, or "PB" abilities use prof bonus
+           const profBonus = computed.proficiency_bonus ?? 2;
+           const maxUses: number | undefined = typeof t.maxUses === 'number'
+             ? t.maxUses
+             : (t.rest && (trait.name === 'Stone\'s Endurance' || trait.name === 'Breath Weapon'))
+               ? profBonus
+               : undefined;
+           const used = ((character.feature_uses as Record<string, number>) ?? {})[featureKey] ?? 0;
+           const exhausted = maxUses !== undefined && used >= maxUses;
+           function useTrait() {
+             // Increment feature_uses[species:Name] up to maxUses; log
+             // through the action log so the DM history shows the use.
+             if (maxUses !== undefined) {
+               if (used >= maxUses) return;
+               const fu = ((character.feature_uses as Record<string, number>) ?? {});
+               applyUpdate({ feature_uses: { ...fu, [featureKey]: used + 1 } }, true);
+             }
+             import('../shared/ActionLog').then(({ logAction }) => {
+               logAction({
+                 campaignId: character.campaign_id ?? null,
+                 characterId: character.id,
+                 characterName: character.name,
+                 actionType: 'roll',
+                 actionName: `${trait.name} (${sd.name} species)`,
+                 notes: maxUses !== undefined
+                   ? `${maxUses - used - 1}/${maxUses} uses remaining after this.`
+                   : trait.description.split('.')[0],
+               });
+             }).catch(() => {});
+           }
+           return (
+             <div key={trait.name} style={{
+               background: 'var(--c-card)',
+               border: '1px solid var(--c-border)',
+               borderRadius: 8,
+               overflow: 'hidden',
+               transition: 'all 0.15s',
+             }}>
+               <div style={{
+                 display: 'grid',
+                 gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
+                 alignItems: 'center', gap: '0 8px', padding: '7px 10px', minHeight: 44,
+               }}>
+                 {/* Col 0: action-type badge */}
+                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                   <span style={{
+                     fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 9,
+                     letterSpacing: '0.08em', color: acColor,
+                     background: `${acColor}15`,
+                     border: `1px solid ${acColor}40`,
+                     borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap' as const,
+                   }}>{acLabel}</span>
+                 </div>
+                 {/* Col 1: action color stripe */}
+                 <div style={{ width: 3, height: 30, borderRadius: 2, background: `${acColor}88` }} />
+                 {/* Col 2: NAME */}
+                 <div style={{ minWidth: 0 }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
+                     <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                       {trait.name}
+                     </span>
+                   </div>
+                   <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1 }}>
+                     {sd.name} species{t.rest ? ` · refreshes on ${t.rest === 'long' ? 'Long' : 'Short'} Rest` : ''}
+                   </div>
+                 </div>
+                 {/* Col 3: TIME (empty — action type lives in LEAD) */}
+                 <div />
+                 {/* Col 4: RANGE */}
+                 <div style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                   {t.range ?? ''}
+                 </div>
+                 {/* Col 5: TAGS (empty for species traits) */}
+                 <div />
+                 {/* Col 6: HIT/DC (empty — species saves don't use spell DC) */}
+                 <div />
+                 {/* Col 7: EFFECT (empty — could surface damage in future) */}
+                 <div />
+                 {/* Col 8: BUTTONS — Use */}
+                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', width: '100%' }}>
+                   <button
+                     onClick={useTrait}
+                     disabled={exhausted}
+                     title={exhausted ? `No uses remaining — refreshes on ${t.rest === 'long' ? 'Long' : 'Short'} Rest` : trait.description}
+                     style={{
+                       padding: '4px 12px', borderRadius: 'var(--r-md)',
+                       cursor: exhausted ? 'not-allowed' : 'pointer',
+                       background: exhausted ? 'rgba(148,163,184,0.08)' : `${acColor}20`,
+                       border: `1px solid ${exhausted ? 'rgba(148,163,184,0.2)' : `${acColor}60`}`,
+                       color: exhausted ? 'var(--t-3)' : acColor,
+                       fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+                       letterSpacing: '0.04em', minHeight: 0, flexShrink: 0,
+                       opacity: exhausted ? 0.55 : 1,
+                     }}
+                   >
+                     {exhausted ? 'Used' : 'Use'}
+                   </button>
+                 </div>
+                 {/* Col 9: CHARGES (chiclet tracker for limited-use) */}
+                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                   {maxUses !== undefined && Array.from({ length: maxUses }).map((_, i) => (
+                     <span key={i} style={{
+                       display: 'inline-block', width: 10, height: 10,
+                       borderRadius: 2, marginRight: 3,
+                       border: `1px solid ${acColor}55`,
+                       background: i < (maxUses - used) ? acColor : 'transparent',
+                     }} />
+                   ))}
+                 </div>
+                 {/* Col 10: CHEVRON (empty — no expanded panel for now) */}
+                 <div />
+               </div>
+             </div>
+           );
+         })}
+       </div>
+     </div>
+   );
+ })()}
+
  {/* Health Potions — consumables that are actions on your turn */}
  {(combatFilter === 'all' || combatFilter === 'action') && (contentFilters.size === 0 || contentFilters.has('item')) && (() => {
  const potions = (character.inventory ?? []).filter((item: any) =>

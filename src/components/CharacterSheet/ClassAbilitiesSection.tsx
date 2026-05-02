@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
+import { SPECIES } from '../../data/species';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
@@ -105,6 +106,11 @@ function getMaxUses(ability: ClassAbility, character: Character): number | undef
  const val = ability.maxUsesFn(character);
  if (val === 999) return undefined; // unlimited
  return val;
+ }
+ // v2.376.0 — fall back to flat maxUses (used by species traits like
+ // Healing Hands, Large Form). Returns undefined for unlimited.
+ if (typeof ability.maxUses === 'number') {
+ return ability.maxUses;
  }
  return undefined;
 }
@@ -360,10 +366,40 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }
  const allAbilities = [...abilities, ...disciplineAbilities];
 
+ // v2.376.0 — Surface species traits with an explicit actionType as
+ // clickable rows in the Actions tab. Pre-v2.376 Cat's Claws, Healing
+ // Hands, Stone's Endurance, Breath Weapon, Large Form, Feline Agility
+ // etc. only existed in the Features tab — players had to track them
+ // mentally during combat. Now they render as ClassAbility-shaped rows
+ // here. Passive traits (Darkvision, Brave, Fey Ancestry) have no
+ // actionType so they're correctly excluded.
+ const speciesAbilities: ClassAbility[] = [];
+ const speciesData = SPECIES.find(s => s.name === character.species);
+ if (speciesData) {
+ for (const trait of speciesData.traits) {
+ const t = trait as any;
+ // Only traits with explicit actionType get surfaced. Passive
+ // traits (Darkvision, Brave, etc.) lack actionType and stay
+ // in the Features tab.
+ if (!t.actionType) continue;
+ speciesAbilities.push({
+ name: trait.name,
+ actionType: t.actionType,
+ description: trait.description,
+ minLevel: 1, // species traits available from level 1
+ ...(typeof t.maxUses === 'number' ? { maxUses: t.maxUses } : {}),
+ ...(t.rest ? { rest: t.rest } : {}),
+ ...(t.range ? { range: t.range } : {}),
+ } as any);
+ }
+ }
+ const speciesAbilitySet = new Set(speciesAbilities.map(a => a.name));
+ const allAbilitiesWithSpecies = [...allAbilities, ...speciesAbilities];
+
  // Filter by level and action type
- const filtered = allAbilities.filter(a => {
+ const filtered = allAbilitiesWithSpecies.filter(a => {
  if (a.minLevel > character.level) return false;
- if (combatFilter === 'limited') return a.maxUsesFn !== undefined || (a as any).isPool === true || (a as any).psionicDie === true;
+ if (combatFilter === 'limited') return a.maxUsesFn !== undefined || typeof a.maxUses === 'number' || (a as any).isPool === true || (a as any).psionicDie === true;
  if (combatFilter === 'all') return true;
  if (combatFilter === 'action') return a.actionType === 'action';
  if (combatFilter === 'bonus') return a.actionType === 'bonus';

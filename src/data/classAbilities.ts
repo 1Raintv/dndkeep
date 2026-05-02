@@ -39,6 +39,11 @@ export interface ClassAbility {
    * in a progressive-disclosure panel. Falls back to `description` if absent. */
   descriptionLong?: string | ((character: any) => string);
   minLevel: number;
+  /** v2.376.0 — flat maxUses for non-scaling features (species traits like
+   *  Healing Hands "1× per long rest" or Large Form "1× per long rest").
+   *  Class abilities that scale with level should use maxUsesFn instead.
+   *  getMaxUses prefers maxUsesFn when both are present. */
+  maxUses?: number;
   maxUsesFn?: (c: Character) => number;
   rest?: 'short' | 'long';
   /** If true, it's a resource pool (uses cost, not limited total uses) */
