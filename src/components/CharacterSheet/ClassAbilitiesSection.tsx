@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
@@ -409,9 +409,16 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
 
  if (filtered.length === 0) return null;
 
+ // v2.376.0 — Hide the class section header if only species rows
+ // are rendering (e.g. a level-1 Fighter with Cat's Claws and no
+ // class abilities surfaced yet). Avoids misleading "Fighter
+ // Abilities" header above what are actually species rows.
+ const filteredHasClassAbility = filtered.some(a => !speciesAbilitySet.has(a.name));
+
  return (
  <>
  <div style={{ marginTop: 'var(--sp-3)' }}>
+ {filteredHasClassAbility && (
  <div style={{
  fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700,
  letterSpacing: '0.12em', textTransform: 'uppercase' as const,
@@ -419,6 +426,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }}>
  {character.class_name} Abilities
  </div>
+ )}
 
  {/* Split disciplines into their own sub-section */}
  {disciplineAbilities.length > 0 && filtered.some(a => disciplineAbilities.includes(a)) && (
@@ -428,7 +436,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  )}
  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
- {filtered.map(ability => {
+ {filtered.map((ability, idx) => {
  const maxUses = getMaxUses(ability, character);
  const acColor = ACTION_COLORS[ability.actionType] ?? 'var(--t-3)';
  const descShort = resolveDesc(ability.description, character);
@@ -436,10 +444,27 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  ? resolveDesc((ability as any).descriptionLong, character)
  : null;
  const isExpanded = expandedAbility === ability.name;
+ // v2.376.0 — inject a SPECIES sub-header right before the
+ // first species-sourced row so they're visually separated from
+ // class abilities. speciesAbilitySet is built earlier from the
+ // species traits we injected; we only need to detect the
+ // FIRST species row in the filtered list (any earlier filtered
+ // entries with the same name would be class-sourced, which can't
+ // happen because species traits don't share names with class
+ // abilities, but the idx === first-species-index check is still
+ // the cleanest way to guarantee one header).
+ const isFirstSpecies = speciesAbilitySet.has(ability.name) &&
+ !filtered.slice(0, idx).some(a => speciesAbilitySet.has(a.name));
 
  return (
+ <Fragment key={ability.name}>
+ {isFirstSpecies && (
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+ textTransform: 'uppercase' as const, color: '#fb923c', marginBottom: 2, marginTop: 6 }}>
+ Species Abilities
+ </div>
+ )}
  <div
- key={ability.name}
  style={{
  // v2.238.0 — wrapper now mirrors the regular spell-row wrapper:
  // single thin border that recolors on expand, no left-only accent
@@ -892,6 +917,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  )}
  </div>
+ </Fragment>
  );
  })}
  </div>
