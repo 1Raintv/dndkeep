@@ -25,6 +25,8 @@
 import { supabase } from './supabase';
 import { useBattleMapStore } from './stores/battleMapStore';
 import * as scenesApi from './api/scenes';
+import * as sceneTokensApi from './api/sceneTokens';
+import * as scenePlacementsApi from './api/scenePlacements';
 import {
   startEncounter, characterToSeed,
   type SeedSource, type StartEncounterResult,
@@ -55,6 +57,19 @@ async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null>
   // started. Aligning heuristics fixes it: scene the DM ends up
   // looking at == scene whose tokens are in the encounter.
   //
+  // v2.390.0 — Honor the use_combatants_for_battlemap flag. The
+  // v2.385 fallback hardcoded scene_tokens, which would silently
+  // miss placements the day the flag is flipped on. We now read
+  // the flag here and route to the right backing store. Note we
+  // can't trust `tokensApiRouter.getUseCombatantsPath()` because
+  // its module cache is only set when BattleMapV2 mounts — and
+  // this fallback fires precisely when the DM hasn't opened the
+  // map tab. So we fetch the flag directly each call.
+  //
+  // The extra DB roundtrip for the flag is fine on the cold path:
+  // this function is invoked only when the store is empty, which
+  // is at most once per browser tab session.
+  //
   // Future polish: persist `last_scene_id` per-campaign so the
   // chosen scene tracks DM intent rather than creation order.
   // Out of scope here — would need a schema migration plus plumbing
@@ -63,17 +78,17 @@ async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null>
   if (scenes.length === 0) return null;
   const sceneId = scenes[0].id;
 
-  const { data: rows, error: tokErr } = await supabase
-    .from('scene_tokens')
-    .select('character_id, creature_id')
-    .eq('scene_id', sceneId);
-  if (tokErr) {
-    console.error('[startCombatFromMap] scene_tokens fetch failed', tokErr);
-    return null;
-  }
-  return (rows ?? []).map(r => ({
-    characterId: (r as { character_id: string | null }).character_id ?? null,
-    creatureId: (r as { creature_id: string | null }).creature_id ?? null,
+  // Flag-aware read. Both list functions return the same Token
+  // shape with characterId/creatureId populated — we only need
+  // those two fields here, so the dispatch is transparent.
+  const useNewPath = await scenePlacementsApi.getUseCombatantsFlag(campaignId);
+  const tokens = useNewPath
+    ? await scenePlacementsApi.listPlacements(sceneId)
+    : await sceneTokensApi.listTokens(sceneId);
+
+  return tokens.map(t => ({
+    characterId: t.characterId ?? null,
+    creatureId: t.creatureId ?? null,
   }));
 }
 

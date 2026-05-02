@@ -3,6 +3,39 @@
 **Status:** Design. v2.308 ships this doc only — no migrations, no code.
 v2.309+ will land the implementation in stages.
 
+## Status update — as of v2.390
+
+**v2.390 landed pt 15: cold-path fallbacks honor the flag.** Two
+hardcoded `scene_tokens` reads from earlier ships (v2.385's
+`startCombatFromMap` cold fallback, v2.387's `NPCManager`
+placement-count cold fetch) now check `use_combatants_for_battlemap`
+and route to `listPlacements` or `listTokens` accordingly. Both also
+inherited the v2.389 scene-pick alignment (`listScenes()[0]`,
+matching BattleMapV2's mount).
+
+This was the audit ship before flag flip — both spots could have
+silently miscounted or seeded the wrong tokens once the flag went
+on. Now they're flag-aware.
+
+| Stage from plan | Status | Notes |
+|---|---|---|
+| v2.309 — tables created | ✅ Shipped | `combatants`, `scene_token_placements` exist |
+| v2.310 — initial backfill | ✅ Shipped | Drift cleared at v2.389 |
+| v2.311 — `combatant_id` on CP, dual-write | ✅ Shipped | 100% of CP rows have combatant_id |
+| v2.312 — battlemap dual-path | 🟡 Code shipped, flag never flipped | `tokensApiRouter` XOR-routes; flag still off |
+| v2.313 — combat reads HP from combatants | ✅ Shipped (via v2.315–v2.319) | `cp_ensure_combatant_link` trigger seeds combatants on CP insert |
+| v2.314 — drop legacy CP columns | ✅ Shipped (v2.321) | `combat_participants` no longer carries HP/conditions |
+| pt 14 — scene_tokens → placements sync | ✅ Shipped (v2.389) | One-way trigger; placements is read-model |
+| **pt 15 — cold-path fallbacks honor the flag** | **✅ Shipped (v2.390)** | startCombatFromMap + NPCManager cold-fetch now flag-aware |
+| v2.315 — drop `scene_tokens`, etc. | ❌ Not shipped | Still 2 ships away |
+
+**Phase 3 cutover remaining ships (post-v2.390):**
+
+| Ship | Goal | Risk |
+|---|---|---|
+| Next | Flip `use_combatants_for_battlemap` for one campaign and dogfood for a session. Trigger keeps tables in sync; if the new path breaks, flip back. | Low — flag flip is reversible |
+| Then | Drop `scene_tokens`, drop sync trigger, inline `tokensApiRouter`, remove dual-path code in BattleMapV2. | Medium — irreversible drop, but at this point the new path has been the read path through the trigger period |
+
 ## Status update — as of v2.389
 
 **v2.389 landed pt 14: scene_tokens → placements sync trigger.** The first

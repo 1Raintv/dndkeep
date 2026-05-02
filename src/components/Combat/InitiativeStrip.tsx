@@ -346,6 +346,14 @@ export default function InitiativeStrip({ isDM }: Props) {
                 letterSpacing: '0.04em',
                 whiteSpace: 'nowrap', maxWidth: 96,
                 overflow: 'hidden', textOverflow: 'ellipsis',
+                // v2.391.0 — Strikethrough on dead participants. The
+                // map already gets a red X + strikethrough; mirror in
+                // the initiative tile so the cue is consistent
+                // wherever the DM looks. Kept in addition to the 💀
+                // glyph at top-right so death reads at a glance.
+                textDecoration: p.is_dead ? 'line-through' : 'none',
+                textDecorationColor: p.is_dead ? '#f87171' : undefined,
+                textDecorationThickness: p.is_dead ? 2 : undefined,
               }}>
                 {p.name}
               </span>

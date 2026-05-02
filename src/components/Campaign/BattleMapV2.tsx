@@ -3311,6 +3311,12 @@ function TokenLayer(props: {
     // tick — toggling is cheap. The ✖ is a Graphics with two strokes.
     deadFilter: ColorMatrixFilter | null;
     deadX: Graphics | null;
+    // v2.391.0 — Strikethrough line over the name label when the
+    // token is dead. PIXI Text doesn't support CSS-style line-through,
+    // so we draw a thin red Graphics line across the label's width.
+    // Sized + positioned each reconcile so it tracks label width and
+    // position changes (e.g., HP bar visibility shifting label down).
+    nameStrike: Graphics | null;
     // v2.244 — condition icon strip below the name label. One Container
     // owning N child icons (Graphics-backed circle + Text glyph). We
     // tear it down + rebuild on conditions change rather than diff
@@ -3473,6 +3479,7 @@ function TokenLayer(props: {
           nameLabel: null,
           deadFilter: null,
           deadX: null,
+          nameStrike: null,
           conditionsLayer: null,
           turnRing: null,
           movementBadge: null,
@@ -3892,14 +3899,53 @@ function TokenLayer(props: {
           container.addChild(xMark);
           currentEntry.deadX = xMark;
         }
-        const xR = r * 0.6;
+        // v2.391.0 — Heavier X. User feedback: "thick red X through the
+        // characters portrait." Previous width=4 read as a thin scribble
+        // on larger tokens. Width=8 with full opacity is unmistakable
+        // even on Huge/Gargantuan radii. Reach extended to 0.7×r so the
+        // X spans more of the token area — was 0.6 which left a lot of
+        // visible token corners.
+        const xR = r * 0.7;
         xMark.clear();
-        xMark.setStrokeStyle({ color: 0xef4444, width: 4, alpha: 0.95, cap: 'round' });
+        xMark.setStrokeStyle({ color: 0xef4444, width: 8, alpha: 1, cap: 'round' });
         xMark.moveTo(-xR, -xR);
         xMark.lineTo(xR, xR);
         xMark.moveTo(xR, -xR);
         xMark.lineTo(-xR, xR);
         xMark.stroke();
+
+        // v2.391.0 — Strikethrough on the name label, sized to label
+        // width. Only drawn when there's actually a label visible
+        // (not all tokens have names). Red, mid-thickness — readable
+        // through it ("struck through enough to where you can still
+        // read the name but understand that it is dead").
+        if (currentEntry.nameLabel && !currentEntry.nameLabel.destroyed) {
+          let strike = currentEntry.nameStrike;
+          if (!strike || strike.destroyed) {
+            strike = new Graphics();
+            container.addChild(strike);
+            currentEntry.nameStrike = strike;
+          }
+          const lbl = currentEntry.nameLabel;
+          const labelW = lbl.width;
+          const labelH = lbl.height;
+          const labelCenterY = lbl.position.y + labelH / 2;
+          // Slight horizontal padding so the line extends beyond the
+          // text edges — looks deliberate rather than clipped.
+          const halfW = labelW / 2 + 3;
+          strike.clear();
+          strike.setStrokeStyle({ color: 0xef4444, width: 2.5, alpha: 0.95, cap: 'round' });
+          strike.moveTo(-halfW, labelCenterY);
+          strike.lineTo(halfW, labelCenterY);
+          strike.stroke();
+        } else if (currentEntry.nameStrike) {
+          // Token has no label but had a strike from a previous frame.
+          if (!currentEntry.nameStrike.destroyed) {
+            container.removeChild(currentEntry.nameStrike);
+            currentEntry.nameStrike.destroy();
+          }
+          currentEntry.nameStrike = null;
+        }
       } else {
         if (currentEntry.deadFilter && container.filters) {
           const filtered = (container.filters as any[]).filter(f => f !== currentEntry.deadFilter);
@@ -3911,6 +3957,15 @@ function TokenLayer(props: {
             currentEntry.deadX.destroy();
           }
           currentEntry.deadX = null;
+        }
+        // v2.391.0 — Tear down the strikethrough when the token comes
+        // back to life (heal back above 0 HP, etc.).
+        if (currentEntry.nameStrike) {
+          if (!currentEntry.nameStrike.destroyed) {
+            container.removeChild(currentEntry.nameStrike);
+            currentEntry.nameStrike.destroy();
+          }
+          currentEntry.nameStrike = null;
         }
       }
 

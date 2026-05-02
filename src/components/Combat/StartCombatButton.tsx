@@ -8,10 +8,17 @@
 // initiative for everyone as opposed to it opening a window — anyone
 // on the battle map will then roll initiative."
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { endEncounter } from '../../lib/combatEncounter';
 import { startCombatFromMapTokens } from '../../lib/startCombatFromMap';
+// v2.391.0 — Subscribe to the store so the button can show what
+// scene combat will source from BEFORE the DM clicks. Fixes a class
+// of "I had two ARDs but only one rolled initiative" confusion: the
+// fast path in startCombatFromMapTokens reads from currentSceneId,
+// which can be a different scene than the one the DM thinks they
+// staged. The preview now surfaces this up front.
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 
 interface Props {
   campaignId: string;
@@ -30,6 +37,23 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
   // Inline error/info banner. Auto-clears after a few seconds so it
   // doesn't stick around when the DM moves on.
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
+
+  // v2.391.0 — Live preview of what Start Combat will seed from. The
+  // button title now reads "⚔ Start Combat · 4 tokens ready" when
+  // the DM has the map open with 4 tokens; "no tokens visible" when
+  // empty; bare label otherwise (cold path — fallback fetches the
+  // first scene). Only updates while the store is primed; cold path
+  // would need a DB roundtrip on every render which isn't worth it.
+  const storeTokens = useBattleMapStore(s => s.tokens);
+  const storeSceneId = useBattleMapStore(s => s.currentSceneId);
+  const previewCount = useMemo(() => {
+    if (!storeSceneId) return null;
+    let n = 0;
+    for (const t of Object.values(storeTokens)) {
+      if (t.sceneId === storeSceneId) n++;
+    }
+    return n;
+  }, [storeTokens, storeSceneId]);
 
   function flash(kind: 'error' | 'info', text: string) {
     setMessage({ kind, text });
@@ -102,9 +126,21 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
         disabled={starting}
         className="btn-primary btn-sm"
         style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700 }}
-        title="Start combat. Initiative auto-rolls for every character/creature on the active map."
+        title={
+          starting
+            ? 'Rolling initiative…'
+            : previewCount === null
+              ? 'Start combat. Initiative auto-rolls for every character/creature on the active map.'
+              : previewCount === 0
+                ? 'No tokens visible on the active scene. Place tokens via the NPC tab first.'
+                : `Start combat. Initiative will roll for ${previewCount} token${previewCount === 1 ? '' : 's'} on the currently-viewed scene.`
+        }
       >
-        {starting ? 'Rolling…' : '⚔ Start Combat'}
+        {starting
+          ? 'Rolling…'
+          : previewCount !== null && previewCount > 0
+            ? `⚔ Start Combat · ${previewCount}`
+            : '⚔ Start Combat'}
       </button>
       {message && (
         <span style={{

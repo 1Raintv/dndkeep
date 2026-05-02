@@ -13,6 +13,14 @@ import {
 // v2.354.0 — folder browser sidebar + place-on-map flow.
 import CreatureFolderBrowser from './CreatureFolderBrowser';
 import * as tokensApi from '../../lib/api/tokensApiRouter';
+// v2.390.0 — Direct API access for the cold-fetch path. tokensApiRouter
+// can't be used here because its useNewPath cache is only set after
+// BattleMapV2 mounts, and this cold-fetch fires precisely when the DM
+// has not opened the Battle Map tab yet. We read the flag explicitly
+// via getUseCombatantsFlag and route accordingly.
+import * as scenesApi from '../../lib/api/scenes';
+import * as sceneTokensApi from '../../lib/api/sceneTokens';
+import * as scenePlacementsApi from '../../lib/api/scenePlacements';
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 import type { Token, TokenSize } from '../../lib/stores/battleMapStore';
 
@@ -132,25 +140,31 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
     }
     let cancelled = false;
     (async () => {
-      // Find the most-recently-updated scene for this campaign — the
-      // same heuristic startCombatFromMap uses. Then fetch its
-      // creature_id values and tally.
-      const { data: scene } = await supabase
-        .from('scenes')
-        .select('id')
-        .eq('campaign_id', campaignId)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled || !scene) return;
-      const { data: rows } = await supabase
-        .from('scene_tokens')
-        .select('creature_id')
-        .eq('scene_id', (scene as { id: string }).id);
-      if (cancelled || !rows) return;
+      // v2.390.0 — Aligned with BattleMapV2's mount behavior (pick
+      // listScenes()[0], same `created_at ASC` order). Previously
+      // ordered by `updated_at DESC` here, which could disagree with
+      // the scene the user actually ends up looking at on the map.
+      // Same fix as the v2.389 startCombatFromMap alignment.
+      //
+      // v2.390.0 — Also flag-aware. If `use_combatants_for_battlemap`
+      // is on for this campaign, count placements not scene_tokens.
+      // The cold-fetch path can't piggy-back on tokensApiRouter's
+      // cached flag (BattleMapV2 hasn't mounted yet by definition
+      // when the cold-fetch fires), so we read the flag directly.
+      const scenes = await scenesApi.listScenes(campaignId);
+      if (cancelled || scenes.length === 0) return;
+      const sceneId = scenes[0].id;
+
+      const useNewPath = await scenePlacementsApi.getUseCombatantsFlag(campaignId);
+      if (cancelled) return;
+      const tokens = useNewPath
+        ? await scenePlacementsApi.listPlacements(sceneId)
+        : await sceneTokensApi.listTokens(sceneId);
+      if (cancelled) return;
+
       const counts: Record<string, number> = {};
-      for (const r of rows as Array<{ creature_id: string | null }>) {
-        if (r.creature_id) counts[r.creature_id] = (counts[r.creature_id] ?? 0) + 1;
+      for (const t of tokens) {
+        if (t.creatureId) counts[t.creatureId] = (counts[t.creatureId] ?? 0) + 1;
       }
       setColdFetchedCounts(counts);
     })().catch(err => {
