@@ -105,6 +105,17 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const [pickingFor, setPickingFor] = useState<MonsterAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // v2.409.0 — Stat block snapshot for the active monster. Used to
+  // render the at-a-glance HP / AC / saves panel above the action
+  // list, so the DM has the same reference info that the token
+  // quick-panel surfaces. Same fields that NpcTokenQuickPanel reads.
+  const [monsterStats, setMonsterStats] = useState<{
+    str: number | null; dex: number | null; con: number | null;
+    int: number | null; wis: number | null; cha: number | null;
+    cr: string | number | null;
+    save_proficiencies: string[] | null;
+    ac: number | null;
+  } | null>(null);
 
   // v2.364.0 — Battle map cache for distance computation. Loaded
   // when an attack picker opens. Refreshes on each open so a token
@@ -114,25 +125,40 @@ export default function MonsterActionPanel({ isDM }: Props) {
   useEffect(() => {
     if (!isDM || !currentActor) {
       setActions(null);
+      setMonsterStats(null);
       return;
     }
     if (currentActor.participant_type !== 'creature') {
       setActions(null);
+      setMonsterStats(null);
       return;
     }
     if (!currentActor.entity_id) {
       setActions(null);
+      setMonsterStats(null);
       return;
     }
 
     let cancelled = false;
     setLoadingActions(true);
     (async () => {
+      // v2.409.0 — Pull stats alongside source_monster_id so we can
+      // render the HP/AC/saves block in the same render pass.
       const { data: hb } = await supabase
         .from('homebrew_monsters')
-        .select('source_monster_id')
+        .select('source_monster_id, str, dex, con, int, wis, cha, cr, save_proficiencies, ac')
         .eq('id', currentActor.entity_id)
         .maybeSingle();
+      if (!cancelled && hb) {
+        const h = hb as any;
+        setMonsterStats({
+          str: h.str ?? null, dex: h.dex ?? null, con: h.con ?? null,
+          int: h.int ?? null, wis: h.wis ?? null, cha: h.cha ?? null,
+          cr: h.cr ?? null,
+          save_proficiencies: h.save_proficiencies ?? null,
+          ac: h.ac ?? null,
+        });
+      }
       if (cancelled) return;
       const sourceId = (hb as { source_monster_id?: string } | null)?.source_monster_id;
       if (!sourceId) {
@@ -372,6 +398,112 @@ export default function MonsterActionPanel({ isDM }: Props) {
             {collapsed ? '◂' : '▸'}
           </button>
         </div>
+
+        {/* v2.409.0 — Stat block at-a-glance. HP / AC / Saves for
+            the active monster. Same data flow as NpcTokenQuickPanel:
+            HP comes from currentActor (joined from combatants), AC
+            from monsterStats (template), saves computed from CR-
+            derived PB plus ability mods plus save_proficiencies.
+            Hidden when collapsed or when stats haven't loaded yet. */}
+        {!collapsed && currentActor && (() => {
+          const currHp = (currentActor as any).current_hp ?? 0;
+          const maxHp = (currentActor as any).max_hp ?? 0;
+          const pct = maxHp > 0 ? Math.max(0, Math.min(1, currHp / maxHp)) : 0;
+          const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
+          const ac = monsterStats?.ac ?? (currentActor as any).ac ?? null;
+          // Same PB-from-CR table as NpcTokenQuickPanel.
+          const parseCR = (raw: unknown): number => {
+            if (typeof raw === 'number') return raw;
+            if (typeof raw !== 'string') return 0;
+            const s = raw.trim();
+            if (s.includes('/')) {
+              const [n, d] = s.split('/').map(Number);
+              return d ? n / d : 0;
+            }
+            const n = Number(s);
+            return Number.isFinite(n) ? n : 0;
+          };
+          const cr = parseCR(monsterStats?.cr);
+          const pb = cr >= 29 ? 9 : cr >= 25 ? 8 : cr >= 21 ? 7 : cr >= 17 ? 6
+                   : cr >= 13 ? 5 : cr >= 9 ? 4 : cr >= 5 ? 3 : 2;
+          const mod = (s: number | null) => Math.floor(((s ?? 10) - 10) / 2);
+          const profSaves = monsterStats?.save_proficiencies ?? [];
+          const isProf = (a: string) => profSaves.includes(a) || profSaves.includes(a.toLowerCase());
+          const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+          const abilities: Array<['STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA', number | null]> = [
+            ['STR', monsterStats?.str ?? null],
+            ['DEX', monsterStats?.dex ?? null],
+            ['CON', monsterStats?.con ?? null],
+            ['INT', monsterStats?.int ?? null],
+            ['WIS', monsterStats?.wis ?? null],
+            ['CHA', monsterStats?.cha ?? null],
+          ];
+          return (
+            <div style={{
+              padding: '8px 10px',
+              borderBottom: '1px solid var(--c-border)',
+              flexShrink: 0,
+              display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              {/* HP row */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>HP</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: hpColor }}>
+                    {currHp}<span style={{ fontSize: 9, color: 'var(--t-3)' }}>/{maxHp}</span>
+                  </span>
+                </div>
+                <div style={{
+                  height: 6, background: 'rgba(15,16,18,0.85)',
+                  border: '1px solid var(--c-border)', borderRadius: 3, overflow: 'hidden' as const,
+                }}>
+                  <div style={{
+                    width: `${pct * 100}%`, height: '100%',
+                    background: hpColor, transition: 'width 0.2s, background 0.2s',
+                  }} />
+                </div>
+              </div>
+              {/* AC chip */}
+              {ac != null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+                  <span style={{ color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>AC</span>
+                  <span style={{ color: 'var(--t-1)', fontWeight: 700, fontFamily: 'var(--ff-stat)' }}>{ac}</span>
+                </div>
+              )}
+              {/* Saves grid (only if stats loaded) */}
+              {monsterStats && (
+                <div>
+                  <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 }}>
+                    Saves <span style={{ color: 'var(--t-2)', fontWeight: 700 }}>· PB +{pb}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2 }}>
+                    {abilities.map(([label, score]) => {
+                      const m = mod(score);
+                      const prof = isProf(label);
+                      const total = prof ? m + pb : m;
+                      return (
+                        <div key={label} style={{
+                          padding: '2px 1px',
+                          background: prof ? 'rgba(212,160,23,0.14)' : 'var(--c-raised)',
+                          border: `1px solid ${prof ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
+                          borderRadius: 3,
+                          textAlign: 'center' as const,
+                        }}>
+                          <div style={{ fontSize: 7, color: 'var(--t-3)', fontWeight: 700, letterSpacing: '0.04em' }}>{label}</div>
+                          <div style={{
+                            fontSize: 11, fontWeight: 700,
+                            color: prof ? 'var(--c-gold-l)' : 'var(--t-1)',
+                            fontFamily: 'var(--ff-stat)',
+                          }}>{fmt(total)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {!collapsed && (
           <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>

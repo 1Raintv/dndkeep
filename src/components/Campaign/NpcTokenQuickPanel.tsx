@@ -601,6 +601,88 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
           >×</button>
         </div>
 
+        {/* v2.409.0 — Damage controls hoisted to the top of the panel.
+            User feedback: "I need the damage controls to be at the top
+            and then the other information to be below it" — manual HP
+            adjustment is the most common DM action against an NPC token,
+            so it gets prime real estate. Pre-v2.409 this block sat at the
+            bottom under the conditions list. Same component, same writes;
+            just visually reordered. */}
+        {isDM && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+              DM Controls
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 6 }}>
+              {(['damage', 'heal', 'set'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setHpMode(m)}
+                  style={{
+                    padding: '6px 4px',
+                    background: hpMode === m
+                      ? (m === 'damage' ? 'rgba(248,113,113,0.25)' : m === 'heal' ? 'rgba(52,211,153,0.25)' : 'rgba(167,139,250,0.25)')
+                      : 'var(--c-raised)',
+                    border: `1px solid ${hpMode === m
+                      ? (m === 'damage' ? 'rgba(248,113,113,0.6)' : m === 'heal' ? 'rgba(52,211,153,0.6)' : 'rgba(167,139,250,0.6)')
+                      : 'var(--c-border)'}`,
+                    borderRadius: 'var(--r-sm, 4px)',
+                    color: hpMode === m
+                      ? (m === 'damage' ? '#f87171' : m === 'heal' ? '#34d399' : '#a78bfa')
+                      : 'var(--t-2)',
+                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                    textTransform: 'capitalize' as const, cursor: 'pointer',
+                    minHeight: 0,
+                  }}
+                >{m}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                type="number"
+                value={hpInput}
+                onChange={(e) => setHpInput(e.target.value)}
+                placeholder="Amount"
+                min={0}
+                style={{
+                  flex: 1, padding: '6px 8px',
+                  background: 'var(--c-raised)',
+                  border: '1px solid var(--c-border)',
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: 'var(--t-1)',
+                  fontFamily: 'var(--ff-body)', fontSize: 12,
+                  boxSizing: 'border-box' as const,
+                  outline: 'none',
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyHp(); }}
+              />
+              <button
+                onClick={applyHp}
+                disabled={applying || !hpInput.trim()}
+                style={{
+                  padding: '6px 12px',
+                  background: hpMode === 'damage' ? 'rgba(248,113,113,0.18)'
+                    : hpMode === 'heal' ? 'rgba(52,211,153,0.18)'
+                    : 'rgba(167,139,250,0.18)',
+                  border: `1px solid ${hpMode === 'damage' ? 'rgba(248,113,113,0.55)'
+                    : hpMode === 'heal' ? 'rgba(52,211,153,0.55)'
+                    : 'rgba(167,139,250,0.55)'}`,
+                  borderRadius: 'var(--r-sm, 4px)',
+                  color: hpMode === 'damage' ? '#f87171'
+                    : hpMode === 'heal' ? '#34d399'
+                    : '#a78bfa',
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                  cursor: applying || !hpInput.trim() ? 'not-allowed' : 'pointer',
+                  opacity: applying || !hpInput.trim() ? 0.5 : 1,
+                  minHeight: 0,
+                  textTransform: 'capitalize' as const,
+                }}
+              >
+                {applying ? '…' : hpMode}
+              </button>
+            </div>
+          </div>
+        )}
         {/* HP bar */}
         <div style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
@@ -988,82 +1070,6 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
           )}
         </div>
 
-        {/* DM controls — damage / heal / set */}
-        {isDM && (
-          <div>
-            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
-              DM Controls
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 6 }}>
-              {(['damage', 'heal', 'set'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setHpMode(m)}
-                  style={{
-                    padding: '6px 4px',
-                    background: hpMode === m
-                      ? (m === 'damage' ? 'rgba(248,113,113,0.25)' : m === 'heal' ? 'rgba(52,211,153,0.25)' : 'rgba(167,139,250,0.25)')
-                      : 'var(--c-raised)',
-                    border: `1px solid ${hpMode === m
-                      ? (m === 'damage' ? 'rgba(248,113,113,0.6)' : m === 'heal' ? 'rgba(52,211,153,0.6)' : 'rgba(167,139,250,0.6)')
-                      : 'var(--c-border)'}`,
-                    borderRadius: 'var(--r-sm, 4px)',
-                    color: hpMode === m
-                      ? (m === 'damage' ? '#f87171' : m === 'heal' ? '#34d399' : '#a78bfa')
-                      : 'var(--t-2)',
-                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                    textTransform: 'capitalize' as const, cursor: 'pointer',
-                    minHeight: 0,
-                  }}
-                >{m}</button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input
-                type="number"
-                value={hpInput}
-                onChange={(e) => setHpInput(e.target.value)}
-                placeholder="Amount"
-                min={0}
-                style={{
-                  flex: 1, padding: '6px 8px',
-                  background: 'var(--c-raised)',
-                  border: '1px solid var(--c-border)',
-                  borderRadius: 'var(--r-sm, 4px)',
-                  color: 'var(--t-1)',
-                  fontFamily: 'var(--ff-body)', fontSize: 12,
-                  boxSizing: 'border-box' as const,
-                  outline: 'none',
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyHp(); }}
-              />
-              <button
-                onClick={applyHp}
-                disabled={applying || !hpInput.trim()}
-                style={{
-                  padding: '6px 12px',
-                  background: hpMode === 'damage' ? 'rgba(248,113,113,0.18)'
-                    : hpMode === 'heal' ? 'rgba(52,211,153,0.18)'
-                    : 'rgba(167,139,250,0.18)',
-                  border: `1px solid ${hpMode === 'damage' ? 'rgba(248,113,113,0.55)'
-                    : hpMode === 'heal' ? 'rgba(52,211,153,0.55)'
-                    : 'rgba(167,139,250,0.55)'}`,
-                  borderRadius: 'var(--r-sm, 4px)',
-                  color: hpMode === 'damage' ? '#f87171'
-                    : hpMode === 'heal' ? '#34d399'
-                    : '#a78bfa',
-                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                  cursor: applying || !hpInput.trim() ? 'not-allowed' : 'pointer',
-                  opacity: applying || !hpInput.trim() ? 0.5 : 1,
-                  minHeight: 0,
-                  textTransform: 'capitalize' as const,
-                }}
-              >
-                {applying ? '…' : hpMode}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
