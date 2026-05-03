@@ -107,7 +107,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     current_hp: number | null;
     max_hp: number | null;
     temp_hp: number | null;
-    conditions: string[] | null;
+    active_conditions: string[] | null;
     is_dead: boolean | null;
     is_stable: boolean | null;
   }>>([]);
@@ -310,9 +310,17 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   // map damage / combat damage / quick-panel damage all hit the same
   // table.
   async function loadCombatants() {
+    // v2.403.0 — Fix bug introduced in v2.393: the query used
+    // 'conditions' but the actual column is 'active_conditions'.
+    // The query was 500'ing on every load → combatants stayed []
+    // → tokenStateMap never populated → token HP bars showed
+    // creature-template HP, not per-combatant HP. Damage applied
+    // to combatants.current_hp via applyDamage was correctly
+    // written but never echoed to the map renderer. This fix
+    // restores the v2.393 contract.
     const { data, error } = await supabase
       .from('combatants')
-      .select('id, current_hp, max_hp, temp_hp, conditions, is_dead, is_stable')
+      .select('id, current_hp, max_hp, temp_hp, active_conditions, is_dead, is_stable')
       .eq('campaign_id', campaign.id);
     if (error) {
       console.error('[CampaignDashboard] loadCombatants failed', error);
@@ -820,7 +828,11 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
                 map.set(c.id, {
                   current_hp: c.current_hp,
                   max_hp: c.max_hp,
-                  conditions: c.conditions ?? [],
+                  // v2.403.0 — Column name fix: combatants.active_conditions
+                  // (not .conditions). Same root cause as loadCombatants
+                  // above. Falls back to the legacy field name for any
+                  // in-flight realtime payloads from older code paths.
+                  conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
                   is_dead: !!c.is_dead,
                 });
               }

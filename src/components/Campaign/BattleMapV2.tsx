@@ -3353,6 +3353,11 @@ function TokenLayer(props: {
     actionUsed: boolean;
     bonusUsed: boolean;
     reactionUsed: boolean;
+    // v2.403.0 — entity_id of the currently-active actor. Used for
+    // the fallback match in onPointerUp's enforcement gate when
+    // activeTokenInfo.tokenId picked the wrong instance among
+    // multiple same-creature tokens.
+    participantEntityId: string | null;
   };
 }) {
   const {
@@ -4749,8 +4754,57 @@ function TokenLayer(props: {
           // isn't the active one) skip enforcement entirely — DM
           // pre-staging, NPC re-positioning by DM, all unchanged.
           const ati = activeTokenInfoRef.current;
-          const enforceMove = !wasClick && movedAtAll && !!ati &&
-            ati.tokenId === drag.id && !!ati.participantId;
+          // v2.403.0 — Tightened enforcement check. Pre-v2.403 this
+          // gated on `ati.tokenId === drag.id`. activeTokenInfo.tokenId
+          // is computed by walking liveTokens for one whose npcId or
+          // characterId matches currentActor.entity_id. For
+          // multi-instance creatures (multiple goblins sharing one
+          // homebrew_monsters row → same creature_id on each token)
+          // the walk picks ONE token — which may not be the one the
+          // user is dragging. That dropped enforcement on most
+          // dragged copies. Now we re-check by reading the dragged
+          // token's identifiers directly from the store and matching
+          // them against currentActor.entity_id.
+          let enforceMove = false;
+          let activeMatch = false;
+          if (!wasClick && movedAtAll && ati && ati.participantId) {
+            // Original check — fast path when activeTokenInfo correctly
+            // identified the dragged token.
+            if (ati.tokenId === drag.id) {
+              activeMatch = true;
+            } else {
+              // Fallback: check the dragged token's identifiers.
+              const draggedTok = useBattleMapStore.getState().tokens[drag.id];
+              if (draggedTok) {
+                const activeEntity = ati.participantEntityId ?? '';
+                if (ati.participantType === 'character'
+                    && draggedTok.characterId
+                    && draggedTok.characterId === activeEntity) {
+                  activeMatch = true;
+                } else if (ati.participantType !== 'character'
+                    && draggedTok.npcId
+                    && draggedTok.npcId === activeEntity) {
+                  activeMatch = true;
+                }
+              }
+            }
+            enforceMove = activeMatch;
+          }
+          // v2.403.0 — Diagnostic log so the DM can confirm enforcement
+          // is firing on the right tokens. Remove or quiet once the
+          // movement-enforcement bug class is closed.
+          if (movedAtAll && !wasClick) {
+            // eslint-disable-next-line no-console
+            console.log('[BattleMapV2] drop commit', {
+              tokenId: drag.id,
+              hasAti: !!ati,
+              atiTokenId: ati?.tokenId,
+              atiParticipantId: ati?.participantId,
+              atiEntityId: ati?.participantEntityId,
+              enforceMove,
+              activeMatch,
+            });
+          }
 
           // v2.357.0 — Math.floor (not Math.round). See drawPreview
           // comment for rationale. Tokens stored at center-of-cell
@@ -7754,12 +7808,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     actionUsed: boolean;
     bonusUsed: boolean;
     reactionUsed: boolean;
+    participantEntityId: string | null;
   }>(() => {
     const empty = {
       tokenId: null, used: 0, max: 0, dashed: false,
       participantId: null, participantName: null, participantType: null,
       encounterId: null, campaignId: null,
       actionUsed: false, bonusUsed: false, reactionUsed: false,
+      participantEntityId: null,
     };
     if (!currentActor) return empty;
     let tokenId: string | null = null;
@@ -7793,6 +7849,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       actionUsed: currentActor.action_used === true,
       bonusUsed: currentActor.bonus_used === true,
       reactionUsed: currentActor.reaction_used === true,
+      participantEntityId: (currentActor as any).entity_id ?? null,
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
 
