@@ -14,7 +14,7 @@ import { SPELL_MAP } from '../../data/spells';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
 import { METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS } from '../../data/choiceOptions';
 
-type SettingsTab = 'stats' | 'levelup' | 'automations' | 'export' | 'danger';
+type SettingsTab = 'stats' | 'levelup' | 'campaign' | 'automations' | 'export' | 'danger';
 
 interface CharacterSettingsProps {
   character: Character;
@@ -258,6 +258,77 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
   const [deleting, setDeleting] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
 
+  // v2.394.0 — Campaign tab state. Join code is uppercased on display
+  // because the RPC also uppercases server-side; keeping the user's
+  // input visually matched with what'll be sent prevents
+  // case-confusion bug reports. joinError + joinSuccess are mutually
+  // exclusive; they share the inline-message slot below the input.
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joinSuccess, setJoinSuccess] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
+
+  async function handleJoin() {
+    const code = joinCodeInput.trim().toUpperCase();
+    if (!code) {
+      setJoinError('Enter a code first.');
+      return;
+    }
+    setJoining(true);
+    setJoinError(null);
+    setJoinSuccess(null);
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data, error } = await supabase.rpc('join_campaign_by_code', { p_code: code });
+      if (error) {
+        // Map Postgres SQLSTATE codes to friendly messages. The RPC
+        // raises P0002 for "code not found" and 22023 for empty code;
+        // anything else is unexpected and surfaces verbatim.
+        if (error.code === 'P0002') setJoinError('No campaign matches that code.');
+        else if (error.code === '22023') setJoinError('Enter a code first.');
+        else setJoinError(error.message ?? 'Failed to join campaign.');
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.campaign_id) {
+        setJoinError('Unexpected response from the server.');
+        return;
+      }
+      // Now assign THIS character to the joined campaign so the user
+      // can hop in immediately. (Player can have many characters; this
+      // one is the one they're configuring right now.)
+      onUpdate({ campaign_id: row.campaign_id });
+      setJoinSuccess(
+        row.already_member
+          ? `Already a member of ${row.campaign_name} — character assigned.`
+          : `Joined ${row.campaign_name} — character assigned.`
+      );
+      setJoinCodeInput('');
+    } catch (e: any) {
+      console.error('[CharacterSettings] join failed', e);
+      setJoinError(e?.message ?? 'Failed to join campaign.');
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  async function handleLeave() {
+    if (!activeCampaign) return;
+    setLeaving(true);
+    try {
+      // Just unassign the character from the campaign. We don't
+      // remove the user from campaign_members — they may have other
+      // characters in the same campaign, or want to rejoin later
+      // with a different one. If they truly want out of the campaign
+      // entirely, the DM can remove them from the Members tab.
+      onUpdate({ campaign_id: null });
+      setJoinSuccess('Character removed from campaign.');
+    } finally {
+      setLeaving(false);
+    }
+  }
+
   function setAutomationOverride(key: string, value: AutomationValue | null) {
     const current = character.automation_overrides ?? {};
     const next = { ...current };
@@ -280,6 +351,13 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'stats',       label: 'Edit Stats' },
     { id: 'levelup',     label: 'Level Up' },
+    // v2.394.0 — Campaign tab. Houses join-by-code (so a player can
+    // type the code their DM gave them) plus the leave-campaign
+    // action (so a character can hop between campaigns without the
+    // DM having to invite-and-uninvite). Placed between Level Up
+    // and Automations because it's a session-management thing,
+    // not a stat thing.
+    { id: 'campaign',    label: 'Campaign' },
     { id: 'automations', label: 'Automations' },
     { id: 'export',      label: 'Export' },
     { id: 'danger',      label: 'Danger Zone' },
@@ -931,6 +1009,106 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* v2.394.0 — Campaign tab. Two sections:
+              (1) "Current campaign" — shown when the character has
+                  campaign_id set. Lets the user leave the campaign
+                  (= unassign the character) so they can join a
+                  different one with the same character.
+              (2) "Join with a code" — input + submit. Calls the
+                  join_campaign_by_code RPC, then assigns the
+                  character's campaign_id on success. Works whether
+                  or not the user is already a member of the
+                  destination campaign (RPC is idempotent). */}
+          {tab === 'campaign' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+
+              {/* Current campaign section */}
+              <div style={{ padding: 'var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
+                  Current Campaign
+                </p>
+                {activeCampaign ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--c-gold-l)' }}>
+                          {activeCampaign.name}
+                        </div>
+                        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', marginTop: 2 }}>
+                          {character.name} is assigned to this campaign.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      className="btn-secondary"
+                      onClick={handleLeave}
+                      disabled={leaving}
+                      style={{ alignSelf: 'flex-start' }}
+                      title="Removes this character from the campaign. The campaign membership stays so you can rejoin with a different character; the DM can fully remove you from the Members tab if needed."
+                    >
+                      {leaving ? 'Leaving…' : 'Leave Campaign'}
+                    </button>
+                  </div>
+                ) : (
+                  <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)', margin: 0 }}>
+                    Not in a campaign. Use a join code below to connect this character to your DM's session.
+                  </p>
+                )}
+              </div>
+
+              {/* Join with a code section */}
+              <div style={{ padding: 'var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)' }}>
+                <p style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)', marginBottom: 'var(--sp-2)' }}>
+                  Join with a Code
+                </p>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
+                  Ask your DM for the campaign's join code. Once you join, this character gets assigned automatically.
+                  {activeCampaign && ' Joining a new campaign will move this character there.'}
+                </p>
+                <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'stretch' }}>
+                  <input
+                    value={joinCodeInput}
+                    onChange={e => {
+                      setJoinCodeInput(e.target.value);
+                      // Clear stale messages on edit so the user
+                      // doesn't see a success/error from a prior
+                      // attempt while typing the next one.
+                      if (joinError) setJoinError(null);
+                      if (joinSuccess) setJoinSuccess(null);
+                    }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !joining) handleJoin(); }}
+                    placeholder="ABC123"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    maxLength={32}
+                    style={{
+                      flex: 1, minWidth: 0,
+                      fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-md)',
+                      letterSpacing: '0.15em', textTransform: 'uppercase',
+                    }}
+                  />
+                  <button
+                    className="btn-gold"
+                    onClick={handleJoin}
+                    disabled={joining || !joinCodeInput.trim()}
+                  >
+                    {joining ? 'Joining…' : 'Join'}
+                  </button>
+                </div>
+                {joinError && (
+                  <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)', marginTop: 'var(--sp-2)', marginBottom: 0 }}>
+                    {joinError}
+                  </p>
+                )}
+                {joinSuccess && (
+                  <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--hp-full)', marginTop: 'var(--sp-2)', marginBottom: 0 }}>
+                    {joinSuccess}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
