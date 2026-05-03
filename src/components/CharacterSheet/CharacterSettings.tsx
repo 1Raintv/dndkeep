@@ -411,6 +411,42 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
             ))}
           </div>
 
+          {/*
+            v2.395.0 — Stable-height tab body. Pre-v2.395 each tab branch
+            was a direct child of `.modal`, so the modal's height tracked
+            whichever tab was active: Edit Stats (tall) → modal grows;
+            Campaign (short) → modal shrinks back; click another and it
+            jumps again. User feedback was "jarring" — the click-target
+            for the next tab moves under the cursor between clicks.
+
+            Fix: wrap every tab body in a single container with a fixed
+            min-height + internal scroll. Now the modal sizes to the
+            tallest *possible* layout once on open and stays put as you
+            tab through.
+
+            min-height clamp:
+              - lower bound 360px keeps the modal from collapsing on
+                very short viewports
+              - upper bound 580px caps growth on tall monitors so the
+                modal stays a reasonable card, not a wall of glass
+              - middle term `calc(80vh - 200px)` adapts to viewport
+                height (200px = roughly header + tab strip + padding)
+            overflow-y: auto so long content (Edit Stats) scrolls
+            inside the body rather than pushing the whole modal past
+            its max-height.
+          */}
+          <div style={{
+            minHeight: 'clamp(360px, calc(80vh - 200px), 580px)',
+            overflowY: 'auto',
+            // Negative margin pulls the scroll viewport flush to the
+            // modal's existing horizontal padding so a vertical
+            // scrollbar (when needed) sits at the modal edge, not
+            // floating in the middle. Re-pad with the same value so
+            // content alignment is unchanged.
+            marginRight: 'calc(-1 * var(--sp-6))',
+            paddingRight: 'var(--sp-6)',
+          }}>
+
           {/* Edit Stats */}
           {tab === 'stats' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
@@ -1345,6 +1381,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
               </div>
             </div>
           )}
+          </div>{/* /v2.395.0 stable-height tab body */}
         </div>
       </div>
       </ModalPortal>
