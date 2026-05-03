@@ -248,42 +248,61 @@ export function findTokenForParticipant(
  * optional rules), and distance is measured from the closest square
  * one creature occupies to the closest square the other occupies.
  *
- * v2.397.0 — Centering convention. The token's row/col is the anchor
- * cell (the cell whose center the renderer positions on). For odd
- * sizes (1, 3) the footprint is centered on the anchor; for even
- * sizes (2, 4) the anchor is placed in the upper-left interior cell
- * and the footprint extends 1 (or 2 for Garg) cells to the
- * positive direction. Concretely:
- *   size=1 → row range [r,r]
- *   size=2 → row range [r,   r+1]
- *   size=3 → row range [r-1, r+1]
- *   size=4 → row range [r-1, r+2]
- * (And the same for cols.) This matches how the renderer draws the
- * visual circle (centered on anchor) closely enough that the
- * geometry agrees with what the DM sees.
+ * v2.401.0 — Anchor convention split by size parity, matching the
+ * snap-on-drop behavior in BattleMapV2.snapTokenAnchor:
  *
- * v2.396.0 — Introduced. Pre-v2.396 this was anchor-to-anchor with
- * size hardcoded to 1, so Large+ creatures couldn't melee-reach
- * adjacent targets because the math considered them 2 cells away.
+ *   ODD sizes (1, 3): anchor at cell-center. row = floor(y/cellSize)
+ *     is the index of the anchor cell. Footprint extends (s-1)/2
+ *     cells in each direction.
+ *       size=1: rows [r, r]            (just the anchor cell)
+ *       size=3: rows [r-1, r+1]        (3 cells, centered on r)
+ *
+ *   EVEN sizes (2, 4): anchor at GRID INTERSECTION. row =
+ *     floor(y/cellSize) for an intersection at world y = R*cellSize
+ *     gives R-1 when y > 0 and R when y == R*cellSize... actually
+ *     floor(R*cellSize / cellSize) = R, so row = R for an
+ *     intersection at the R-th gridline. Footprint extends (s/2)
+ *     cells in -direction and (s/2 - 1) cells in +direction... no
+ *     wait. For a 2×2 anchored at grid intersection (140, 140):
+ *     floor(140/70) = 2. Footprint covers cells (1,1), (1,2), (2,1),
+ *     (2,2). So rows [1, 2] = [r-1, r]. Range: [r - s/2, r + s/2 - 1]
+ *     for size=2 → [r-1, r] ✓; size=4 → [r-2, r+1] ✓.
+ *
+ * Pre-v2.401 used a uniform "extend floor((s-1)/2) neg, ceil((s-1)/2)
+ * pos" convention for cell-center anchors regardless of size, which
+ * disagreed with the visual for even sizes once they started
+ * snapping to grid intersections.
  */
+function tokenFootprintRange(t: BattleMapToken): {
+  rMin: number; rMax: number; cMin: number; cMax: number;
+} {
+  const s = Math.max(1, t.size ?? 1);
+  if (s % 2 === 1) {
+    // Odd: anchor is the center cell.
+    const half = Math.floor(s / 2);
+    return {
+      rMin: t.row - half, rMax: t.row + half,
+      cMin: t.col - half, cMax: t.col + half,
+    };
+  }
+  // Even: anchor is at a grid intersection. row = floor(y/cellSize)
+  // for an intersection at gridline R is R. Footprint cells extend
+  // s/2 in -direction and (s/2 - 1) in +direction.
+  const negCells = s / 2;
+  const posCells = s / 2 - 1;
+  return {
+    rMin: t.row - negCells, rMax: t.row + posCells,
+    cMin: t.col - negCells, cMax: t.col + posCells,
+  };
+}
+
 export function distanceBetweenTokensFt(
   a: BattleMapToken,
   b: BattleMapToken,
   feetPerSquare: number = FEET_PER_SQUARE,
 ): number {
-  function footprint(t: BattleMapToken): {
-    rMin: number; rMax: number; cMin: number; cMax: number;
-  } {
-    const s = Math.max(1, t.size ?? 1);
-    const neg = Math.floor((s - 1) / 2);   // cells extending in -row/-col
-    const pos = Math.ceil((s - 1) / 2);    // cells extending in +row/+col
-    return {
-      rMin: t.row - neg, rMax: t.row + pos,
-      cMin: t.col - neg, cMax: t.col + pos,
-    };
-  }
-  const A = footprint(a);
-  const B = footprint(b);
+  const A = tokenFootprintRange(a);
+  const B = tokenFootprintRange(b);
   // Gap in each axis: 0 if the rectangles overlap or touch, else the
   // number of cells separating them.
   const rowGap = Math.max(0, Math.max(A.rMin - B.rMax, B.rMin - A.rMax));

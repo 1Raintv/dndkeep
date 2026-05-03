@@ -407,28 +407,61 @@ function tokenInitials(name: string): string {
 }
 
 export function snapToCellCenter(worldX: number, worldY: number, cellSize = DEFAULT_GRID_SIZE_PX) {
-  // v2.400.0 — Round-to-nearest cell, not floor-to-current-cell.
-  // Pre-v2.400 used Math.floor(worldX / cellSize), which has an
-  // asymmetric "boundary belongs to the right cell" rule:
-  //   x = 69 → cell 0  (snaps left to cell 0 center 35; -34px)
-  //   x = 70 → cell 1  (snaps right to cell 1 center 105; +35px)
-  //   x = 71 → cell 1  (snaps right to cell 1 center 105; +34px)
-  // User dropped a token visually-near a cell boundary and saw it
-  // jump 35px to the right because the float coord was just past
-  // the boundary into the next cell. Round-to-nearest treats the
-  // cell whose center is closest as the snap target — semantically
-  // identical for tokens already inside their cell, but produces
-  // less surprising behavior at the edges.
-  //
-  // Math: cell N's center is at world (N + 0.5) * cellSize. So
-  //   N = (worldX / cellSize) - 0.5 = (worldX - cellSize/2) / cellSize.
-  // Round that to nearest int = nearest cell.
+  // v2.400.0 — Round-to-nearest cell. Default snap target is the
+  // nearest cell center (works correctly for 1×1 / 3×3 tokens
+  // whose anchor is at a cell center). For 2×2 / 4×4 tokens the
+  // caller should use snapTokenAnchor(x, y, size, cellSize) which
+  // dispatches to grid-intersection snap.
   const col = Math.round((worldX - cellSize / 2) / cellSize);
   const row = Math.round((worldY - cellSize / 2) / cellSize);
   return {
     x: col * cellSize + cellSize / 2,
     y: row * cellSize + cellSize / 2,
   };
+}
+
+/**
+ * v2.401.0 — Size-aware snap. The token's anchor coordinate is the
+ * geometric center of its footprint:
+ *   1×1 / 3×3 (odd sizes) → footprint center is a CELL CENTER
+ *                            (e.g., for 1×1, the cell itself; for
+ *                             3×3, the center cell of the 3×3)
+ *   2×2 / 4×4 (even sizes) → footprint center is a GRID INTERSECTION
+ *                            (no single cell sits at the center)
+ *
+ * Pre-v2.401 we always snapped to cell-center, which forced even-
+ * size tokens to anchor on a cell-center — but then their visual
+ * (centered on the anchor) bulged asymmetrically (covering 1
+ * up-left + 1 down-right cell instead of being symmetric about
+ * the geometric center). Dropping a Large dragon "shifted away"
+ * because the snap target didn't match the visual's natural
+ * center. This helper picks the right snap target per size.
+ */
+export function snapTokenAnchor(
+  worldX: number,
+  worldY: number,
+  size: TokenSize,
+  cellSize = DEFAULT_GRID_SIZE_PX,
+): { x: number; y: number } {
+  const cells = (() => {
+    switch (size) {
+      case 'tiny': case 'small': case 'medium': return 1;
+      case 'large': return 2;
+      case 'huge': return 3;
+      case 'gargantuan': return 4;
+      default: return 1;
+    }
+  })();
+  if (cells % 2 === 1) {
+    // Odd sizes: snap to cell centers. (Cell N center at (N+0.5)*cellSize.)
+    const col = Math.round((worldX - cellSize / 2) / cellSize);
+    const row = Math.round((worldY - cellSize / 2) / cellSize);
+    return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
+  }
+  // Even sizes: snap to grid intersections. (Intersection N at N*cellSize.)
+  const col = Math.round(worldX / cellSize);
+  const row = Math.round(worldY / cellSize);
+  return { x: col * cellSize, y: row * cellSize };
 }
 
 function ViewportHost(props: {
@@ -4661,7 +4694,15 @@ function TokenLayer(props: {
           finalX = worldPoint.x - drag.offsetX;
           finalY = worldPoint.y - drag.offsetY;
         }
-        const snapped = snapToCellCenter(finalX, finalY, gridSizePx);
+        // v2.401.0 — Size-aware snap. Even-size tokens (Large 2×2,
+        // Garg 4×4) anchor on grid intersections; odd-size tokens
+        // anchor on cell centers. snapTokenAnchor picks the right
+        // snap target. Pre-v2.401 always snapped to cell center,
+        // which made dropping a Large dragon "shift to a different
+        // spot" because the visual's natural center is a grid
+        // intersection but snap put the anchor at a cell center,
+        // re-centering the visual asymmetrically.
+        const snapped = snapTokenAnchor(finalX, finalY, t.size, gridSizePx);
         const clampedX = Math.max(0, Math.min(worldWidth, snapped.x));
         const clampedY = Math.max(0, Math.min(worldHeight, snapped.y));
         // v2.268.0 — wall-blocked movement check. If the segment from
