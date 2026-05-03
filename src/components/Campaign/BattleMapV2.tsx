@@ -341,9 +341,25 @@ const SIZE_OPTIONS: readonly TokenSize[] = [
 ];
 
 function tokenRadiusForSize(size: TokenSize, cellSize: number): number {
+  // v2.398.0 — Visual circle is inscribed in the FULL footprint
+  // square (size×size cells), not the historical padded cellSpan.
+  // User feedback on Ancient Red Dragon: "the icon needs to be
+  // the entire square instead of one square" — i.e. for a Large+
+  // creature, the visible token should fill its size×size grid
+  // area, not bulge out of just the anchor cell.
+  //
+  // Old cellSpan values (kept here for reference): tiny 0.4,
+  // small 0.85, medium 0.85, large 1.85, huge 2.85, gargantuan 3.85.
+  // Those padded the circle slightly inside an N×N grid for breathing
+  // room. The new convention drops the padding so a Large dragon
+  // visually occupies its full 2x2 area, etc.
+  //
+  // Tiny stays smaller-than-cell for visual distinction (a goblin
+  // token shouldn't fill its cell — that's a Medium creature).
   const cellSpan: Record<TokenSize, number> = {
-    tiny: 0.4, small: 0.85, medium: 0.85,
-    large: 1.85, huge: 2.85, gargantuan: 3.85,
+    tiny: 0.5,
+    small: 0.95, medium: 0.95,
+    large: 2, huge: 3, gargantuan: 4,
   };
   return (cellSpan[size] * cellSize) / 2;
 }
@@ -3692,6 +3708,24 @@ function TokenLayer(props: {
       // future child reorder doesn't drop hits.
       container.hitArea = new Rectangle(-footPx / 2, -footPx / 2, footPx, footPx);
 
+      // v2.398.0 — Footprint square outline for Large+ tokens. With
+      // the v2.398 visual circle now inscribed in the size×size
+      // footprint, the user can see the dragon fills its 3×3 area
+      // — but a faint square outline around the cell boundaries
+      // makes it absolutely unambiguous which cells are occupied,
+      // both at rest and while dragging (the outline moves with the
+      // container). Only drawn for size > 1 because Medium tokens
+      // are 1 cell and the existing circle already conveys that.
+      // Drawn ON the same circle Graphics so we don't add a child
+      // (keeps the gfx tree small + scrubs cleanly between renders
+      // because circle.clear() runs above).
+      if (footCells > 1) {
+        const half = footPx / 2;
+        circle.setStrokeStyle({ color: 0xffffff, width: 1, alpha: 0.18 });
+        circle.rect(-half, -half, footPx, footPx);
+        circle.stroke();
+      }
+
       const newText = tokenInitials(token.name);
       if (initials.text !== newText) initials.text = newText;
       const targetFontSize = Math.max(11, Math.round(r * 0.75));
@@ -4489,8 +4523,26 @@ function TokenLayer(props: {
         previewGfx.stroke();
       }
 
-      // Destination cell marker — square outlined in line color.
-      const mark = gridSizePx * 0.85;
+      // v2.398.0 — Destination footprint marker. Pre-v2.398 this
+      // was hardcoded `gridSizePx * 0.85` — a single-cell preview
+      // square regardless of token size. So when dragging an Ancient
+      // Red Dragon (3×3 footprint), the user saw the full dragon
+      // ghost at the cursor but a tiny single-cell preview square
+      // at the snap target — two visuals that disagreed on the
+      // dragon's size. Now we look up the dragged token's footprint
+      // and draw a marker the size of its actual occupancy.
+      //
+      // The store lookup is cheap (it's a Zustand selector hit on
+      // an object map) and the size only changes via context-menu
+      // resize, so the value is stable for the duration of any
+      // single drag. We still subtract a few px from the marker so
+      // it fits visually inside the footprint cells rather than
+      // pixel-aligned to the grid lines.
+      const draggedToken = drag ? useBattleMapStore.getState().tokens[drag.id] : null;
+      const dragFootCells = draggedToken
+        ? tokenFootprintCells(draggedToken.size)
+        : 1;
+      const mark = (dragFootCells * gridSizePx) - 4;
       previewGfx.setStrokeStyle({ color: lineColor, width: 2, alpha: 0.9 });
       previewGfx.roundRect(tx - mark / 2, ty - mark / 2, mark, mark, 4);
       previewGfx.stroke();
