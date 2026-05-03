@@ -1180,9 +1180,17 @@ export async function offerOpportunityAttacks(
     // — what matters is whether the cell they're moving FROM/TO
     // is in the reactor's reach). STANDARD_REACH_CELLS = 1 still
     // means 5ft on top of the footprint.
+    // v2.397.0 — Footprint centering matches battleMapGeometry's
+    // distanceBetweenTokensFt. Anchor cell sits in the upper-left
+    // interior of the footprint; we extend `floor((s-1)/2)` cells
+    // in the -row/-col direction and `ceil((s-1)/2)` cells in the
+    // +row/+col direction. For odd sizes this is symmetric; for
+    // even sizes the anchor is offset toward the upper-left.
     const reactorSize = Math.max(1, (token.size as number) ?? 1);
-    const reactorRowMin = token.row, reactorRowMax = token.row + reactorSize - 1;
-    const reactorColMin = token.col, reactorColMax = token.col + reactorSize - 1;
+    const negCells = Math.floor((reactorSize - 1) / 2);
+    const posCells = Math.ceil((reactorSize - 1) / 2);
+    const reactorRowMin = token.row - negCells, reactorRowMax = token.row + posCells;
+    const reactorColMin = token.col - negCells, reactorColMax = token.col + posCells;
     function gapToCell(targetRow: number, targetCol: number): number {
       const rowGap = Math.max(0, Math.max(reactorRowMin - targetRow, targetRow - reactorRowMax));
       const colGap = Math.max(0, Math.max(reactorColMin - targetCol, targetCol - reactorColMax));

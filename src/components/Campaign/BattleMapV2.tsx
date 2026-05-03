@@ -147,7 +147,7 @@
 //        pan/zoom). Currently the strip is purely informational.
 
 import { Application, extend, useApplication } from '@pixi/react';
-import { Assets, ColorMatrixFilter, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
+import { Assets, ColorMatrixFilter, Container, FederatedPointerEvent, Graphics, Rectangle, RenderTexture, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -346,6 +346,31 @@ function tokenRadiusForSize(size: TokenSize, cellSize: number): number {
     large: 1.85, huge: 2.85, gargantuan: 3.85,
   };
   return (cellSpan[size] * cellSize) / 2;
+}
+
+/**
+ * v2.397.0 — Footprint cell-count for a token size, per RAW 5e:
+ *   tiny / small / medium → 1
+ *   large                  → 2
+ *   huge                   → 3
+ *   gargantuan             → 4
+ *
+ * Distinct from `tokenRadiusForSize`'s cellSpan values — those are
+ * visual (0.85 etc. for breathing room around the circle). This
+ * function gives the integer cells the creature *occupies* on the
+ * grid for purposes of click-area and reach math.
+ *
+ * Mirrors the SIZE_TO_CELLS map in src/lib/battleMapGeometry.ts; if
+ * you change one, change both.
+ */
+function tokenFootprintCells(size: TokenSize): number {
+  switch (size) {
+    case 'tiny': case 'small': case 'medium': return 1;
+    case 'large': return 2;
+    case 'huge': return 3;
+    case 'gargantuan': return 4;
+    default: return 1;
+  }
 }
 
 function tokenInitials(name: string): string {
@@ -3639,6 +3664,33 @@ function TokenLayer(props: {
       circle.setStrokeStyle({ color: 0xffffff, width: 1, alpha: 0.35 });
       circle.circle(0, 0, r - 2);
       circle.stroke();
+
+      // v2.397.0 — Click/drag area covers the FULL footprint, not just
+      // the visible circle. Pre-v2.397 the container's interactive
+      // bounds were derived from the circle Graphics — for a Large
+      // token the visual circle has cellSpan 1.85 (radius ≈ 0.925
+      // cells), so the corner cells of the 2×2 footprint were
+      // outside the hit region. User reported "the click area is just
+      // one box" — meaning only the anchor cell reliably grabbed the
+      // token. Setting an explicit Rectangle hitArea sized to the
+      // full footprint makes every cell of the footprint draggable.
+      //
+      // Footprint sizing & centering: we use the RAW cell count
+      // (tokenFootprintCells: 1/2/3/4 for medium/large/huge/garg)
+      // and center the rectangle on the anchor. For even sizes
+      // (Large=2, Garg=4), centering means the anchor sits at the
+      // intersection of cells, offset by half a cell from any
+      // single-cell center. That matches what the visual circle
+      // does today, so the click area aligns with what the user
+      // sees.
+      const footCells = tokenFootprintCells(token.size);
+      const footPx = footCells * gridSizePx;
+      // Set on container (the pointer-event target) rather than
+      // circle. Container.eventMode='static' wires the events; its
+      // hitArea drives where they fire. Belt-and-suspenders: also
+      // cover the children with a footprint-sized hit area so any
+      // future child reorder doesn't drop hits.
+      container.hitArea = new Rectangle(-footPx / 2, -footPx / 2, footPx, footPx);
 
       const newText = tokenInitials(token.name);
       if (initials.text !== newText) initials.text = newText;

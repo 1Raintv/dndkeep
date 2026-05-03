@@ -248,39 +248,46 @@ export function findTokenForParticipant(
  * optional rules), and distance is measured from the closest square
  * one creature occupies to the closest square the other occupies.
  *
- * v2.396.0 — Pre-v2.396 this was anchor-to-anchor, ignoring size.
- * That meant a Large+ creature (e.g. an Ancient Red Dragon, 3×3)
- * was treated as a 1×1 point at its anchor cell for reach checks,
- * and adjacent targets ended up "out of melee range" because the
- * anchor sits in the middle of the footprint. Now we compute the
- * Chebyshev gap between the two footprint rectangles, which gives
- * 0 for overlapping/touching footprints and N for footprints
- * separated by N cells. A target one cell outside a 3×3 dragon's
- * body returns 5ft as expected.
+ * v2.397.0 — Centering convention. The token's row/col is the anchor
+ * cell (the cell whose center the renderer positions on). For odd
+ * sizes (1, 3) the footprint is centered on the anchor; for even
+ * sizes (2, 4) the anchor is placed in the upper-left interior cell
+ * and the footprint extends 1 (or 2 for Garg) cells to the
+ * positive direction. Concretely:
+ *   size=1 → row range [r,r]
+ *   size=2 → row range [r,   r+1]
+ *   size=3 → row range [r-1, r+1]
+ *   size=4 → row range [r-1, r+2]
+ * (And the same for cols.) This matches how the renderer draws the
+ * visual circle (centered on anchor) closely enough that the
+ * geometry agrees with what the DM sees.
  *
- * Token row/col is the anchor cell. We assume the footprint extends
- * size×size cells starting at that anchor (the rendering layer
- * draws size as the radius span, and placement snaps to anchor).
- * If the renderer ever centers footprints differently the
- * conversion lives in one place — here.
+ * v2.396.0 — Introduced. Pre-v2.396 this was anchor-to-anchor with
+ * size hardcoded to 1, so Large+ creatures couldn't melee-reach
+ * adjacent targets because the math considered them 2 cells away.
  */
 export function distanceBetweenTokensFt(
   a: BattleMapToken,
   b: BattleMapToken,
   feetPerSquare: number = FEET_PER_SQUARE,
 ): number {
-  const sa = Math.max(1, a.size ?? 1);
-  const sb = Math.max(1, b.size ?? 1);
-  // Footprint A: rows [a.row, a.row + sa - 1], cols [a.col, a.col + sa - 1].
-  // Footprint B: same with sb.
-  const aRowMin = a.row, aRowMax = a.row + sa - 1;
-  const aColMin = a.col, aColMax = a.col + sa - 1;
-  const bRowMin = b.row, bRowMax = b.row + sb - 1;
-  const bColMin = b.col, bColMax = b.col + sb - 1;
+  function footprint(t: BattleMapToken): {
+    rMin: number; rMax: number; cMin: number; cMax: number;
+  } {
+    const s = Math.max(1, t.size ?? 1);
+    const neg = Math.floor((s - 1) / 2);   // cells extending in -row/-col
+    const pos = Math.ceil((s - 1) / 2);    // cells extending in +row/+col
+    return {
+      rMin: t.row - neg, rMax: t.row + pos,
+      cMin: t.col - neg, cMax: t.col + pos,
+    };
+  }
+  const A = footprint(a);
+  const B = footprint(b);
   // Gap in each axis: 0 if the rectangles overlap or touch, else the
   // number of cells separating them.
-  const rowGap = Math.max(0, Math.max(aRowMin - bRowMax, bRowMin - aRowMax));
-  const colGap = Math.max(0, Math.max(aColMin - bColMax, bColMin - aColMax));
+  const rowGap = Math.max(0, Math.max(A.rMin - B.rMax, B.rMin - A.rMax));
+  const colGap = Math.max(0, Math.max(A.cMin - B.cMax, B.cMin - A.cMax));
   const cells = Math.max(rowGap, colGap);
   return cells * feetPerSquare;
 }
