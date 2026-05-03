@@ -146,7 +146,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     current_hp: number | null;
     max_hp: number | null;
     temp_hp: number | null;
-    conditions: string[] | null;
+    active_conditions: string[] | null;
     is_dead: boolean | null;
   } | null>(null);
   const [hpInput, setHpInput] = useState('');
@@ -170,7 +170,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
           .single(),
         supabase
           .from('combatants')
-          .select('id, current_hp, max_hp, temp_hp, conditions, is_dead')
+          .select('id, current_hp, max_hp, temp_hp, active_conditions, is_dead')
           .eq('id', tokenId)
           .maybeSingle(),
       ]);
@@ -324,14 +324,14 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     // to combatants for the same reason as HP above. The combatant's
     // conditions array is what combat reads (and now what map renders
     // via tokenStateMap).
-    const current = combatant?.conditions ?? [];
+    const current = combatant?.active_conditions ?? [];
     if (current.includes(cond)) return;
     setCondBusy(true);
     try {
       const next = [...current, cond];
       const { error } = await supabase
         .from('combatants')
-        .update({ conditions: next, updated_at: new Date().toISOString() })
+        .update({ active_conditions: next, updated_at: new Date().toISOString() })
         .eq('id', tokenId);
       if (error) {
         console.error('[NpcTokenQuickPanel] addCondition failed', error);
@@ -344,14 +344,14 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
 
   const removeCondition = useCallback(async (cond: string) => {
     if (!npc || condBusy) return;
-    const current = combatant?.conditions ?? [];
+    const current = combatant?.active_conditions ?? [];
     if (!current.includes(cond)) return;
     setCondBusy(true);
     try {
       const next = current.filter(x => x !== cond);
       const { error } = await supabase
         .from('combatants')
-        .update({ conditions: next, updated_at: new Date().toISOString() })
+        .update({ active_conditions: next, updated_at: new Date().toISOString() })
         .eq('id', tokenId);
       if (error) {
         console.error('[NpcTokenQuickPanel] removeCondition failed', error);
@@ -551,7 +551,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   const maxHp = combatant?.max_hp ?? npc.max_hp ?? 0;
   const pct = maxHp > 0 ? Math.max(0, Math.min(1, currHp / maxHp)) : 0;
   const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
-  const conditions = combatant?.conditions ?? npc.conditions ?? [];
+  const conditions = combatant?.active_conditions ?? npc.conditions ?? [];
   const availableConds = ALL_CONDITIONS.filter(c => !conditions.includes(c));
 
   return (
@@ -658,6 +658,136 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
             </div>
           </button>
         </div>
+
+        {/* v2.408.0 — Combat State strip (DM-only). Surfaces the
+            multiattack counter, action economy, and movement budget
+            from this NPC's combat_participants row. Pre-v2.408 the
+            panel showed only HP / AC / Initiative — DMs had to track
+            "did the dragon use its multiattack yet" mentally or read
+            the bottom strip. Hidden when no encounter is live or
+            this NPC isn't in initiative. Saving throws section also
+            sits here for quick DM reference when applying out-of-band
+            saves (e.g., trap damage, environmental effect). */}
+        {isDM && myParticipant && encounter?.status === 'active' && (() => {
+          const atkRem = (myParticipant as any).attacks_remaining ?? 0;
+          const atkMax = (myParticipant as any).attacks_per_action ?? 1;
+          const actionUsed = (myParticipant as any).action_used === true;
+          const bonusUsed = (myParticipant as any).bonus_used === true;
+          const reactionUsed = (myParticipant as any).reaction_used === true;
+          const moveUsed = (myParticipant as any).movement_used_ft ?? 0;
+          const moveMax = npc.speed ?? 30;
+          const Cell = ({ label, value, used }: { label: string; value: string; used: boolean }) => (
+            <div style={{
+              flex: 1,
+              padding: '4px 6px',
+              background: used ? 'var(--c-card)' : 'var(--c-raised)',
+              border: `1px solid ${used ? 'var(--c-border)' : 'rgba(212,160,23,0.35)'}`,
+              borderRadius: 4,
+              textAlign: 'center' as const,
+              opacity: used ? 0.55 : 1,
+            }}>
+              <div style={{ fontSize: 8, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: used ? 'var(--t-3)' : 'var(--c-gold-l)', marginTop: 2 }}>{value}</div>
+            </div>
+          );
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+                Combat State
+              </div>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                <Cell label="Attacks" value={`${atkRem}/${atkMax}`} used={atkRem === 0} />
+                <Cell label="Action" value={actionUsed ? 'Used' : 'Open'} used={actionUsed} />
+                <Cell label="Bonus" value={bonusUsed ? 'Used' : 'Open'} used={bonusUsed} />
+                <Cell label="React" value={reactionUsed ? 'Used' : 'Open'} used={reactionUsed} />
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 10, color: 'var(--t-3)',
+              }}>
+                <span style={{ letterSpacing: '0.06em', textTransform: 'uppercase' }}>Movement</span>
+                <span style={{ color: moveUsed >= moveMax ? '#f87171' : 'var(--t-1)', fontWeight: 700 }}>
+                  {moveUsed}/{moveMax} ft
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* v2.408.0 — Saving throws. Standard 5e calculation:
+            ability mod + proficiency bonus (if proficient).
+            Proficiency bonus derived from CR using the standard
+            table (PHB / DMG): CR 0-4 = +2, 5-8 = +3, 9-12 = +4,
+            13-16 = +5, 17-20 = +6, 21-24 = +7, 25-28 = +8,
+            29-30 = +9. Reads ability scores from homebrew_monsters
+            (str/dex/con/int/wis/cha columns) and proficient saves
+            from save_proficiencies. Useful when the DM needs to
+            ask for an out-of-band save (poison cloud, trap, etc.)
+            outside the normal spell/attack flow. */}
+        {(() => {
+          const abilities: Array<['STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA', string]> = [
+            ['STR', 'str'], ['DEX', 'dex'], ['CON', 'con'],
+            ['INT', 'int'], ['WIS', 'wis'], ['CHA', 'cha'],
+          ];
+          const score = (col: string): number => {
+            const v = (npc as any)[col];
+            if (typeof v === 'number') return v;
+            const fromAS = ((npc as any).ability_scores ?? {})[col.toLowerCase()];
+            return typeof fromAS === 'number' ? fromAS : 10;
+          };
+          const mod = (s: number) => Math.floor((s - 10) / 2);
+          // Parse CR. Accepts numeric or strings like "1/4", "1/2", "15".
+          const parseCR = (raw: unknown): number => {
+            if (typeof raw === 'number') return raw;
+            if (typeof raw !== 'string') return 0;
+            const s = raw.trim();
+            if (s.includes('/')) {
+              const [n, d] = s.split('/').map(Number);
+              return d ? n / d : 0;
+            }
+            const n = Number(s);
+            return Number.isFinite(n) ? n : 0;
+          };
+          const cr = parseCR((npc as any).cr);
+          const pb = cr >= 29 ? 9 : cr >= 25 ? 8 : cr >= 21 ? 7 : cr >= 17 ? 6
+                   : cr >= 13 ? 5 : cr >= 9 ? 4 : cr >= 5 ? 3 : 2;
+          const profSaves: string[] = (npc as any).save_proficiencies ?? [];
+          const isProf = (a: string) => profSaves.includes(a) || profSaves.includes(a.toLowerCase());
+          const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+                Saving Throws
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3 }}>
+                {abilities.map(([label, col]) => {
+                  const m = mod(score(col));
+                  const prof = isProf(label);
+                  const total = prof ? m + pb : m;
+                  return (
+                    <div key={label} style={{
+                      padding: '3px 2px',
+                      background: prof ? 'rgba(212,160,23,0.14)' : 'var(--c-raised)',
+                      border: `1px solid ${prof ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
+                      borderRadius: 3,
+                      textAlign: 'center' as const,
+                    }}>
+                      <div style={{ fontSize: 8, color: 'var(--t-3)', fontWeight: 700, letterSpacing: '0.04em' }}>{label}</div>
+                      <div style={{
+                        fontSize: 12, fontWeight: 700,
+                        color: prof ? 'var(--c-gold-l)' : 'var(--t-1)',
+                        fontFamily: 'var(--ff-stat)',
+                      }}>{fmt(total)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 3, textAlign: 'center' as const }}>
+                PB +{pb} · gold = proficient
+              </div>
+            </div>
+          );
+        })()}
 
         {/* v2.293.0 — Initiative section. Reads from useCombat() to
             find this NPC's combat_participant entry (matched by
