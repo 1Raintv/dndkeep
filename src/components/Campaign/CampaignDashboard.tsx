@@ -101,6 +101,16 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     is_alive: boolean | null;
     visible_to_players: boolean | null;
   }>>([]);
+  // v2.393.0 — Per-token combat state. See loadCombatants() below.
+  const [combatants, setCombatants] = useState<Array<{
+    id: string;
+    current_hp: number | null;
+    max_hp: number | null;
+    temp_hp: number | null;
+    conditions: string[] | null;
+    is_dead: boolean | null;
+    is_stable: boolean | null;
+  }>>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -150,6 +160,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     loadMembers();
     loadCharacters();
     loadNpcs();
+    loadCombatants();
 
     // v2.276.0 — campaign-notes realtime channel removed alongside
     // the Notes tab. The `campaigns.notes` column is no longer read
@@ -178,10 +189,18 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     // live as the DM works the panel. INSERT covers roster bulk-add (so
     // newly placed NPC tokens get HP bars without a full reload), DELETE
     // covers DM cleanup.
+    //
+    // v2.393.0 — Channel was subscribed to a table named `npcs` which
+    // hasn't existed since the rename to `homebrew_monsters`. The
+    // subscription succeeded but no events ever flowed, so NPC
+    // template changes from NPCManager / DMScreen never echoed live
+    // to the map. Pointed at the correct table now. Note: this is
+    // for TEMPLATE changes (rename, max_hp adjustments, etc.). The
+    // v2.393.0 combatants channel below handles per-token state.
     const npcsChannel = supabase
       .channel(`campaign-npcs-${campaign.id}`)
       .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'npcs',
+        event: 'UPDATE', schema: 'public', table: 'homebrew_monsters',
         filter: `campaign_id=eq.${campaign.id}`,
       }, (payload: { new: Record<string, unknown> }) => {
         if (!payload.new?.id) return;
@@ -190,7 +209,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         ));
       })
       .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'npcs',
+        event: 'INSERT', schema: 'public', table: 'homebrew_monsters',
         filter: `campaign_id=eq.${campaign.id}`,
       }, (payload: { new: Record<string, unknown> }) => {
         if (!payload.new?.id) return;
@@ -199,7 +218,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
           : [...prev, payload.new as any]);
       })
       .on('postgres_changes', {
-        event: 'DELETE', schema: 'public', table: 'npcs',
+        event: 'DELETE', schema: 'public', table: 'homebrew_monsters',
         filter: `campaign_id=eq.${campaign.id}`,
       }, (payload: { old: Record<string, unknown> }) => {
         if (!payload.old?.id) return;
@@ -207,9 +226,44 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       })
       .subscribe();
 
+    // v2.393.0 — Realtime: per-token combat state. Damage / conditions /
+    // death flips on combatants echo here so map tokens reflect what
+    // happens in combat (or via the Quick Panel) without a refresh.
+    // Inserts and deletes are also handled because the v2.389 sync
+    // trigger creates/deletes combatants in lockstep with scene_tokens.
+    const combatantsChannel = supabase
+      .channel(`campaign-combatants-${campaign.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'combatants',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { new: Record<string, unknown> }) => {
+        if (!payload.new?.id) return;
+        setCombatants(prev => prev.map(c =>
+          c.id === payload.new.id ? { ...c, ...(payload.new as any) } : c
+        ));
+      })
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'combatants',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { new: Record<string, unknown> }) => {
+        if (!payload.new?.id) return;
+        setCombatants(prev => prev.some(c => c.id === payload.new.id)
+          ? prev
+          : [...prev, payload.new as any]);
+      })
+      .on('postgres_changes', {
+        event: 'DELETE', schema: 'public', table: 'combatants',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: { old: Record<string, unknown> }) => {
+        if (!payload.old?.id) return;
+        setCombatants(prev => prev.filter(c => c.id !== payload.old.id));
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(charsChannel);
       supabase.removeChannel(npcsChannel);
+      supabase.removeChannel(combatantsChannel);
     };
   }, [campaign.id]);
 
@@ -240,6 +294,31 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       return;
     }
     setNpcs((data ?? []) as any);
+  }
+
+  // v2.393.0 — Per-token combat state. Combatants is the source of truth
+  // for HP/conditions on map tokens (Phase 3 cutover the combat side
+  // shipped at v2.321; the visual layer caught up via the v2.389 sync
+  // trigger). The v2.389 trigger reuses scene_tokens.id as the combatant
+  // id, so we can key the map's HP/conditions lookup directly by
+  // token.id without joining through homebrew_monsters.id.
+  //
+  // Why this matters: pre-v2.393, the map read npc.hp from
+  // homebrew_monsters (the creature TEMPLATE), so two Goblin tokens
+  // shared one HP pool, and combat damage (which writes to combatants)
+  // never appeared on the map. Now each token has its own state and
+  // map damage / combat damage / quick-panel damage all hit the same
+  // table.
+  async function loadCombatants() {
+    const { data, error } = await supabase
+      .from('combatants')
+      .select('id, current_hp, max_hp, temp_hp, conditions, is_dead, is_stable')
+      .eq('campaign_id', campaign.id);
+    if (error) {
+      console.error('[CampaignDashboard] loadCombatants failed', error);
+      return;
+    }
+    setCombatants((data ?? []) as any);
   }
 
   async function handleInvite(e: FormEvent) {
@@ -725,6 +804,28 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
                 max_hp: n.max_hp ?? 1,
                 conditions: n.conditions ?? [],
               })),
+            // v2.393.0 — Per-token combat state. Combatants table is the
+            // canonical source for HP/conditions on tokens (Phase 3 made
+            // it canonical for combat; the v2.389 sync trigger gave it
+            // 1:1 lockstep with scene_tokens). Keyed by combatant.id
+            // which equals scene_tokens.id, so consumers look up by
+            // token.id directly. RLS already filters out combatants
+            // for tokens the player can't see.
+            tokenStateMap: (() => {
+              const map = new Map<string, {
+                current_hp: number | null; max_hp: number | null;
+                conditions: string[]; is_dead: boolean;
+              }>();
+              for (const c of combatants) {
+                map.set(c.id, {
+                  current_hp: c.current_hp,
+                  max_hp: c.max_hp,
+                  conditions: c.conditions ?? [],
+                  is_dead: !!c.is_dead,
+                });
+              }
+              return map;
+            })(),
           };
           return (
             <div className="battlemap-fullwidth">

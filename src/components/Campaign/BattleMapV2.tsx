@@ -258,6 +258,23 @@ interface BattleMapV2Props {
     max_hp: number;
     conditions: string[];
   }>;
+  // v2.393.0 — Per-token combat state, keyed by scene_token id. The
+  // v2.389 sync trigger reuses scene_tokens.id as combatants.id, so
+  // a token's HP/conditions/death state can be looked up by token id
+  // alone — no join chain needed. When a token has an entry here, it
+  // takes precedence over the legacy npcs[].hp lookup that reads the
+  // creature TEMPLATE.
+  //
+  // Why introduced: pre-v2.393 the map showed identical HP for every
+  // instance of the same creature (all goblins shared one HP pool)
+  // and combat damage didn't appear on map tokens at all. Per-token
+  // state ends both bugs.
+  tokenStateMap?: Map<string, {
+    current_hp: number | null;
+    max_hp: number | null;
+    conditions: string[];
+    is_dead: boolean;
+  }>;
 }
 
 // Default scene config used when creating new scenes. v2.214 lets the
@@ -3174,6 +3191,13 @@ function TokenLayer(props: {
   // differs: bars hide at full HP and only appear once damage has
   // been dealt (keeps the canvas clean during pre-combat setup).
   npcHpMap?: Map<string, { current: number; max: number }>;
+  // v2.393.0 — Per-token state map. See parent prop docs.
+  tokenStateMap?: Map<string, {
+    current_hp: number | null;
+    max_hp: number | null;
+    conditions: string[];
+    is_dead: boolean;
+  }>;
   // v2.244 — condition strip lookup. Keyed by token.id (NOT character/
   // npc id) so the renderer doesn't have to branch. CampaignDashboard +
   // BattleMapV2 build it by walking tokens and resolving each linked
@@ -3239,7 +3263,7 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenConditionsMap,
+    textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, activeTokenInfo,
     recordUndoable, selectedTokenId,
   } = props;
@@ -3778,14 +3802,30 @@ function TokenLayer(props: {
       const pcHpInfo = token.characterId && characterHpMap
         ? characterHpMap.get(token.characterId)
         : null;
-      const npcHpInfo = !pcHpInfo && token.npcId && npcHpMap
+      // v2.393.0 — Per-token combatants state takes precedence over
+      // the legacy creature-template fallback. tokenStateMap is keyed
+      // by token.id (== combatants.id thanks to the v2.389 sync
+      // trigger), so each goblin instance gets its own HP / dead /
+      // conditions independent of its template. Combat damage written
+      // to combatants.current_hp now appears here in real time. Falls
+      // through to npcHpMap (template) for tokens that don't yet have
+      // a combatant — e.g., a token created during a brief window
+      // before the trigger fires, or a custom orphan token where the
+      // template lookup is meaningless anyway.
+      const tokenState = !pcHpInfo && tokenStateMap
+        ? tokenStateMap.get(token.id)
+        : null;
+      const tokenStateHpInfo = (tokenState && tokenState.max_hp != null && tokenState.current_hp != null)
+        ? { current: tokenState.current_hp, max: tokenState.max_hp }
+        : null;
+      const npcHpInfo = !pcHpInfo && !tokenStateHpInfo && token.npcId && npcHpMap
         ? npcHpMap.get(token.npcId)
         : null;
-      const hpInfo = pcHpInfo ?? npcHpInfo ?? null;
+      const hpInfo = pcHpInfo ?? tokenStateHpInfo ?? npcHpInfo ?? null;
       // NPC bars hide at full HP. PC bars stay always-on (existing v2.221
       // behavior; PCs read their HP bar like a personal status indicator).
       const showHpBar = !!hpInfo && hpInfo.max > 0 && (
-        !!pcHpInfo || (npcHpInfo != null && npcHpInfo.current < npcHpInfo.max)
+        !!pcHpInfo || ((tokenStateHpInfo ?? npcHpInfo) != null && hpInfo.current < hpInfo.max)
       );
       if (showHpBar && hpInfo) {
         let bar = currentEntry.hpBar;
@@ -4256,7 +4296,7 @@ function TokenLayer(props: {
         currentEntry.economyPipsLayer.visible = false;
       }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenConditionsMap, activeTokenInfo, selectedTokenId]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap, activeTokenInfo, selectedTokenId]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -6896,8 +6936,15 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         //     map" is the existing fullscreen mode, which gives 100%
         //     viewport coverage with no chrome competing. Default
         //     layout keeps room for the floating tools + InitiativeStrip.
-        const targetH = Math.floor(viewportH * 0.92);
-        h = Math.max(400, Math.min(targetH, 1400));
+        //   v2.393: 0.95 — user requested bigger again. Compromise
+        //     between 0.92 and 0.96 that adds ~30-50px of vertical
+        //     real estate on a 1080p monitor without going aggressive
+        //     enough to hide the tools toolbar (the failure mode in
+        //     v2.358-v2.359). Cap raised 1400→1600 so tall monitors
+        //     get the benefit too. Fullscreen mode remains the right
+        //     answer when the DM wants the full canvas.
+        const targetH = Math.floor(viewportH * 0.95);
+        h = Math.max(400, Math.min(targetH, 1600));
       }
       setDims({ width: w, height: h });
     };
@@ -7453,13 +7500,20 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     const npcConds = new Map<string, string[]>();
     for (const n of props.npcs ?? []) npcConds.set(n.id, n.conditions ?? []);
     for (const t of Object.values(liveTokens)) {
-      const conds = (t.characterId && pcConds.get(t.characterId))
+      // v2.393.0 — prefer per-token combatant conditions when present.
+      // Falls through to PC active_conditions for character tokens
+      // (those are the canonical store for PCs and stay in sync via
+      // the existing characters realtime channel) and template
+      // npcConds for legacy creatures without a combatant yet.
+      const tokenCombatantConds = props.tokenStateMap?.get(t.id)?.conditions ?? null;
+      const conds = tokenCombatantConds
+        || (t.characterId && pcConds.get(t.characterId))
         || (t.npcId && npcConds.get(t.npcId))
         || null;
       if (conds && conds.length > 0) map.set(t.id, conds);
     }
     return map;
-  }, [liveTokens, props.playerCharacters, props.npcs]);
+  }, [liveTokens, props.playerCharacters, props.npcs, props.tokenStateMap]);
 
   // v2.339.0 — BG3 turn UX. Derive on-map signals for active-turn
   // outline + movement-remaining badge from the combat context.
@@ -8552,6 +8606,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     eraserActive={eraserActive}
                     characterHpMap={characterHpMap}
                     npcHpMap={npcHpMap}
+                    tokenStateMap={props.tokenStateMap}
                     tokenConditionsMap={tokenConditionsMap}
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}

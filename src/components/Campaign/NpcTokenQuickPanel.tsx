@@ -109,9 +109,9 @@ interface Props {
   npcId: string;
   // v2.386.0 — The scene_tokens.id of the specific token instance
   // that opened the panel. Required for per-token operations (the
-  // visibility toggle in particular). The panel still does its own
-  // homebrew_monsters fetch by npcId for HP/AC/conditions which are
-  // creature-level, not token-level.
+  // visibility toggle in particular). v2.393.0 — Now also doubles
+  // as the combatant id for per-token HP/conditions reads + writes
+  // (combatants.id == scene_tokens.id via the v2.389 sync trigger).
   tokenId: string;
   anchorX: number;
   anchorY: number;
@@ -134,6 +134,21 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   // strip wouldn't render correctly).
   const { encounter, participants, refresh: refreshCombat } = useCombat();
   const [npc, setNpc] = useState<NpcRow | null>(null);
+  // v2.393.0 — Per-token combat state, sourced from combatants. The
+  // v2.389 sync trigger reuses scene_tokens.id as combatants.id, so we
+  // can fetch by tokenId. This is what HP/conditions writes target;
+  // homebrew_monsters is now ONLY used for template fields (AC, race,
+  // visibility, in_combat). Splits the read so the panel reflects the
+  // per-instance combat state of THIS specific token, not the shared
+  // creature template.
+  const [combatant, setCombatant] = useState<{
+    id: string;
+    current_hp: number | null;
+    max_hp: number | null;
+    temp_hp: number | null;
+    conditions: string[] | null;
+    is_dead: boolean | null;
+  } | null>(null);
   const [hpInput, setHpInput] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
   const [applying, setApplying] = useState(false);
@@ -144,20 +159,38 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from('homebrew_monsters')
-        .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat')
-        .eq('id', npcId)
-        .single();
+      // Fetch template + combatant in parallel. Both keyed off the
+      // panel's two ids: npcId (homebrew_monsters.id) for the template,
+      // tokenId (= combatants.id, v2.389 reuse) for the per-token state.
+      const [tplRes, combRes] = await Promise.all([
+        supabase
+          .from('homebrew_monsters')
+          .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat')
+          .eq('id', npcId)
+          .single(),
+        supabase
+          .from('combatants')
+          .select('id, current_hp, max_hp, temp_hp, conditions, is_dead')
+          .eq('id', tokenId)
+          .maybeSingle(),
+      ]);
       if (cancelled) return;
-      if (error || !data) {
-        console.error('[NpcTokenQuickPanel] fetch failed', error);
+      if (tplRes.error || !tplRes.data) {
+        console.error('[NpcTokenQuickPanel] template fetch failed', tplRes.error);
         return;
       }
-      setNpc(data as NpcRow);
+      setNpc(tplRes.data as NpcRow);
+      // combRes can legitimately be null on a brief race after token
+      // insert and before the v2.389 trigger fires; the panel still
+      // renders the template-only view in that case.
+      if (combRes.error) {
+        console.error('[NpcTokenQuickPanel] combatant fetch failed', combRes.error);
+      } else if (combRes.data) {
+        setCombatant(combRes.data as any);
+      }
     })();
     return () => { cancelled = true; };
-  }, [npcId]);
+  }, [npcId, tokenId]);
 
   // Realtime sync — listen for UPDATE events on this specific npc id.
   // The filter scoping reduces channel chatter when the campaign has
@@ -191,6 +224,33 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     return () => { supabase.removeChannel(channel); };
   }, [npcId]);
 
+  // v2.393.0 — Realtime: per-token combatant state. Combat damage,
+  // condition changes, and death flips written to combatants by
+  // pendingAttack / advanceTurn / etc. echo here so the panel reflects
+  // the current state without forcing the user to close + reopen it.
+  // Scoped to this combatant's id (= tokenId) only.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`npc-combatant:${tokenId}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'combatants',
+          filter: `id=eq.${tokenId}`,
+        },
+        (payload: any) => {
+          const next = payload.new;
+          if (next?.id === tokenId) {
+            setCombatant(prev => prev ? { ...prev, ...next } : (next as any));
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [tokenId]);
+
   // Esc closes.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -221,18 +281,32 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     if (!npc) return;
     const n = parseInt(hpInput.trim(), 10);
     if (!Number.isFinite(n) || n <= 0) return;
-    const currHp = npc.hp ?? 0;
-    const maxHp = npc.max_hp ?? 0;
+    // v2.393.0 — HP read/write target moved from homebrew_monsters
+    // (creature template — shared by every instance, never read by
+    // combat) to combatants (per-token, the canonical Phase 3 source
+    // for HP and what combat damage already writes to). Result: panel
+    // and combat finally agree on a single source. Falls back to
+    // template HP for max only if the combatant row hasn't loaded yet.
+    const currHp = combatant?.current_hp ?? npc.hp ?? 0;
+    const maxHp = combatant?.max_hp ?? npc.max_hp ?? 0;
     let next = currHp;
     if (hpMode === 'damage') next = Math.max(0, currHp - n);
     else if (hpMode === 'heal') next = Math.min(maxHp || currHp + n, currHp + n);
     else next = Math.max(0, maxHp > 0 ? Math.min(maxHp, n) : n);
+    // is_dead flag mirrors HP. v2.393 — combat already does this on
+    // damage application; replicating here so panel-side damage hits
+    // every visual cue (red X, strikethrough, dead state) consistently.
+    const isDead = next <= 0 && maxHp > 0;
     setApplying(true);
     try {
       const { error } = await supabase
-        .from('homebrew_monsters')
-        .update({ hp: next, updated_at: new Date().toISOString() })
-        .eq('id', npc.id);
+        .from('combatants')
+        .update({
+          current_hp: next,
+          is_dead: isDead,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tokenId);
       if (error) {
         console.error('[NpcTokenQuickPanel] HP update failed', error);
         showToast('Failed to update HP. Check console for details.', 'error');
@@ -242,19 +316,23 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     } finally {
       setApplying(false);
     }
-  }, [npc, hpInput, hpMode, showToast]);
+  }, [npc, combatant, hpInput, hpMode, tokenId, showToast]);
 
   const addCondition = useCallback(async (cond: string) => {
     if (!npc || condBusy) return;
-    const current = npc.conditions ?? [];
+    // v2.393.0 — Conditions write target moved from homebrew_monsters
+    // to combatants for the same reason as HP above. The combatant's
+    // conditions array is what combat reads (and now what map renders
+    // via tokenStateMap).
+    const current = combatant?.conditions ?? [];
     if (current.includes(cond)) return;
     setCondBusy(true);
     try {
       const next = [...current, cond];
       const { error } = await supabase
-        .from('homebrew_monsters')
+        .from('combatants')
         .update({ conditions: next, updated_at: new Date().toISOString() })
-        .eq('id', npc.id);
+        .eq('id', tokenId);
       if (error) {
         console.error('[NpcTokenQuickPanel] addCondition failed', error);
         showToast(`Failed to apply ${cond}.`, 'error');
@@ -262,19 +340,19 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     } finally {
       setCondBusy(false);
     }
-  }, [npc, condBusy, showToast]);
+  }, [npc, combatant, condBusy, tokenId, showToast]);
 
   const removeCondition = useCallback(async (cond: string) => {
     if (!npc || condBusy) return;
-    const current = npc.conditions ?? [];
+    const current = combatant?.conditions ?? [];
     if (!current.includes(cond)) return;
     setCondBusy(true);
     try {
       const next = current.filter(x => x !== cond);
       const { error } = await supabase
-        .from('homebrew_monsters')
+        .from('combatants')
         .update({ conditions: next, updated_at: new Date().toISOString() })
-        .eq('id', npc.id);
+        .eq('id', tokenId);
       if (error) {
         console.error('[NpcTokenQuickPanel] removeCondition failed', error);
         showToast(`Failed to remove ${cond}.`, 'error');
@@ -282,7 +360,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     } finally {
       setCondBusy(false);
     }
-  }, [npc, condBusy, showToast]);
+  }, [npc, combatant, condBusy, tokenId, showToast]);
 
   // v2.386.0 — Visibility toggle. Writes scene_tokens.visible_to_all
   // (the per-token flag) rather than homebrew_monsters.visible_to_players
@@ -385,8 +463,11 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         id: npc.id,
         name: npc.name,
         ac: npc.ac ?? undefined,
-        hp: npc.hp ?? undefined,
-        max_hp: npc.max_hp ?? undefined,
+        // v2.393.0 — current per-token HP. If the panel is open,
+        // user might have just damaged the token; we don't want to
+        // seed combat with full template HP and undo their work.
+        hp: combatant?.current_hp ?? npc.hp ?? undefined,
+        max_hp: combatant?.max_hp ?? npc.max_hp ?? undefined,
       });
       const created = await addParticipantToEncounter(
         encounter.id,
@@ -461,11 +542,16 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   }
 
   // Loaded — render the panel.
-  const currHp = npc.hp ?? 0;
-  const maxHp = npc.max_hp ?? 0;
+  // v2.393.0 — Display values come from combatant (per-token) when
+  // available, falling back to npc (template) for the legacy case
+  // where the v2.389 sync trigger hasn't fired yet for a freshly
+  // placed token. Same precedence as the panel's writes for
+  // consistency.
+  const currHp = combatant?.current_hp ?? npc.hp ?? 0;
+  const maxHp = combatant?.max_hp ?? npc.max_hp ?? 0;
   const pct = maxHp > 0 ? Math.max(0, Math.min(1, currHp / maxHp)) : 0;
   const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
-  const conditions = npc.conditions ?? [];
+  const conditions = combatant?.conditions ?? npc.conditions ?? [];
   const availableConds = ALL_CONDITIONS.filter(c => !conditions.includes(c));
 
   return (
