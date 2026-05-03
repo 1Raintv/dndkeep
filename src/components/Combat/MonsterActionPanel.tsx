@@ -37,7 +37,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
 import { supabase } from '../../lib/supabase';
-import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
+import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack } from '../../lib/pendingAttack';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
@@ -221,8 +221,37 @@ export default function MonsterActionPanel({ isDM }: Props) {
         damageDice: a.damage_dice ?? null,
         damageType: a.damage_type ?? null,
       });
+      // v2.402.0 — Auto-resolve creature attacks end-to-end. Pre-v2.402
+      // we stopped at rollAttackRoll, leaving the attack in 'attack_rolled'
+      // state and requiring the DM to click Roll Damage + Apply in
+      // AttackResolutionModal. User feedback: "the hit points aren't
+      // being removed when an attack hits" — they expected the full
+      // chain to run automatically. The DM still sees the AttackResolutionModal
+      // briefly during the chain (each state change echoes via realtime),
+      // and they can still cancel mid-flight if needed (until applyDamage
+      // commits). Reactions: if rollAttackRoll surfaced a pending_lr_decision
+      // (e.g., dragon's Legendary Resistance against a save) the chain
+      // stops at that gate — the DM resolves the LR prompt manually,
+      // then Apply.
       if (attack) {
-        await rollAttackRoll(attack.id);
+        const rolled = await rollAttackRoll(attack.id);
+        if (rolled) {
+          // Skip damage for misses/fumbles (rollDamage internally writes
+          // damage_final=0 for those, but applyDamage on a miss is a no-op
+          // and we'd rather just cancel for cleanliness).
+          if (rolled.hit_result === 'miss' || rolled.hit_result === 'fumble') {
+            await cancelAttack(rolled.id);
+          } else {
+            // Hit or crit. Roll damage, then apply. rollDamage handles
+            // the LR decision gate internally — if pending_lr_decision
+            // is set, it returns without rolling and we leave the attack
+            // for manual DM resolution.
+            const damaged = await rollDamage(rolled.id);
+            if (damaged && damaged.state === 'damage_rolled') {
+              await applyDamage(damaged.id);
+            }
+          }
+        }
       }
       // v2.399.0 — Decrement the multiattack counter. When it
       // reaches 0, also flip action_used so the broader action-
