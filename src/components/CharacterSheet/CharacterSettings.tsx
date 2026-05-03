@@ -366,7 +366,30 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
   return (
     <>
       <ModalPortal>
-      <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-overlay"
+        onClick={onClose}
+        style={{
+          // v2.395.3 — Override the base overlay's `align-items: safe
+          // center`. With center alignment, ANY change in modal height
+          // (even by 1px between tabs) shifts the modal's TOP by half
+          // the delta, which the user sees as "jumping". v2.395.0/.1/.2
+          // tried to lock height; that helped but didn't fully solve
+          // it because base CSS rules + flex-shrink:0 on .modal made
+          // height changes still possible in edge cases.
+          //
+          // Right answer: anchor to the top. Even if the modal does
+          // resize for any reason, growth happens DOWNWARD only —
+          // top stays pinned. That's literally what the user asked
+          // for: "set the top so the top doesn't shift down."
+          //
+          // paddingTop kept generous so the modal sits below any
+          // browser chrome and feels intentional rather than glued
+          // to the viewport edge.
+          alignItems: 'flex-start',
+          paddingTop: 'var(--sp-6)',
+        }}
+      >
         <div
           className="modal"
           style={{
@@ -377,11 +400,49 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
             // .modal-header/.modal-body/.modal-footer children). This component
             // renders content directly inside .modal, so padding lives here.
             padding: 'var(--sp-5) var(--sp-6) var(--sp-6)',
+            // v2.395.1 — Pin the modal to a fixed height instead of
+            // letting it size to its current tab. v2.395.0 only set a
+            // min-height on the tab body; tall tabs (Edit Stats) still
+            // overflowed the min and grew the modal, so switching from
+            // Edit Stats → Level Up shrank the whole frame and the
+            // close button jumped under the cursor.
+            //
+            // Now: modal `height` is locked. The tab body below uses
+            // flex:1 to fill the locked space, with overflow-y:auto for
+            // long content. Result: modal frame is rock-still as you
+            // tab through; only the inside scrolls.
+            //
+            // Height clamp: floor 480px keeps the modal usable on
+            // ~600px viewports; ceiling 760px on tall monitors so it
+            // doesn't become an awkward wall of glass; middle term
+            // `calc(100dvh - 64px)` ≈ viewport minus overlay padding.
+            // Wins over `.modal`'s base `max-height` because we set
+            // height explicitly here.
+            height: 'clamp(480px, calc(100dvh - 64px), 760px)',
+            // v2.395.2 — Override .modal's defaults that fight the
+            // locked-height design.
+            // (1) overflow: hidden — base CSS sets overflow-y:auto on
+            //     the modal itself, which would put a scrollbar on
+            //     the modal frame instead of the body. We want the
+            //     body's overflow:auto to handle scrolling alone.
+            // (2) maxHeight: 'none' — base CSS caps at 100dvh - 32px;
+            //     our explicit height already does the right cap, and
+            //     leaving the base max-height in place can sometimes
+            //     win over our height rule on mobile browsers because
+            //     of dvh fallback ordering.
+            // (3) display: flex / flexDirection: column / flexShrink:
+            //     redundant with the base CSS but stated here so the
+            //     intent is obvious to the next reader.
+            overflow: 'hidden',
+            maxHeight: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            flexShrink: 0,
           }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)', flexShrink: 0 }}>
             <div>
               <h2>Character Settings</h2>
             </div>
@@ -389,7 +450,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--c-border)', marginBottom: 'var(--sp-5)' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--c-border)', marginBottom: 'var(--sp-5)', flexShrink: 0 }}>
             {tabs.map(t => (
               <button
                 key={t.id}
@@ -412,37 +473,31 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
           </div>
 
           {/*
-            v2.395.0 — Stable-height tab body. Pre-v2.395 each tab branch
-            was a direct child of `.modal`, so the modal's height tracked
-            whichever tab was active: Edit Stats (tall) → modal grows;
-            Campaign (short) → modal shrinks back; click another and it
-            jumps again. User feedback was "jarring" — the click-target
-            for the next tab moves under the cursor between clicks.
+            v2.395.1 — Tab body fills the locked modal frame. The
+            modal above is `display: flex; flex-direction: column`
+            (set by the .modal stylesheet), so flex:1 here means
+            "take all remaining space after header + tab strip."
+            v2.395.0 used min-height clamp; that floored the body
+            but tall tabs still overflowed and grew the modal,
+            re-introducing the jump it was trying to fix. Locked
+            modal height + flex:1 body is the actual fix.
 
-            Fix: wrap every tab body in a single container with a fixed
-            min-height + internal scroll. Now the modal sizes to the
-            tallest *possible* layout once on open and stays put as you
-            tab through.
+            overflow-y: auto so long tabs (Edit Stats) scroll inside
+            instead of pushing the modal past its locked height. The
+            negative-margin / repad keeps the scrollbar flush at the
+            modal's right edge.
 
-            min-height clamp:
-              - lower bound 360px keeps the modal from collapsing on
-                very short viewports
-              - upper bound 580px caps growth on tall monitors so the
-                modal stays a reasonable card, not a wall of glass
-              - middle term `calc(80vh - 200px)` adapts to viewport
-                height (200px = roughly header + tab strip + padding)
-            overflow-y: auto so long content (Edit Stats) scrolls
-            inside the body rather than pushing the whole modal past
-            its max-height.
+            minHeight: 0 is required on flex items to let them shrink
+            below their content's natural min-content size — without
+            it, content height "wins" and forces the modal to grow.
+            That was the root cause of the v2.395.0 failure: the body
+            had min-height set but no minHeight: 0, so its
+            min-content propagated up.
           */}
           <div style={{
-            minHeight: 'clamp(360px, calc(80vh - 200px), 580px)',
+            flex: 1,
+            minHeight: 0,
             overflowY: 'auto',
-            // Negative margin pulls the scroll viewport flush to the
-            // modal's existing horizontal padding so a vertical
-            // scrollbar (when needed) sits at the modal edge, not
-            // floating in the middle. Re-pad with the same value so
-            // content alignment is unchanged.
             marginRight: 'calc(-1 * var(--sp-6))',
             paddingRight: 'var(--sp-6)',
           }}>
