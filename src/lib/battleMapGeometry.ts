@@ -158,19 +158,32 @@ export async function loadActiveBattleMap(
     .from('scene_tokens')
     .select('id, x, y, name, character_id, creature_id, size')
     .eq('scene_id', sceneId);
-  const tokens: BattleMapToken[] = (tokenRows ?? []).map(t => ({
-    row: Math.floor(((t.y as number) ?? 0) / gridSizePx),
-    col: Math.floor(((t.x as number) ?? 0) / gridSizePx),
-    name: (t.name as string) ?? undefined,
-    character_id: (t.character_id as string) ?? undefined,
-    // v2.356.0 — creature_id maps to the participant's entity_id for
-    // creature-typed combatants (post-v2.350 unified shape).
-    // findTokenForParticipant matches by entity_id for characters and
-    // by name for creatures; we surface both linkage fields so future
-    // matchers can prefer ID over name.
-    creature_id: (t.creature_id as string) ?? undefined,
-    size: 1, // size column is a label string; cell-occupancy unused for v1 callers
-  }));
+  // v2.396.0 — Translate the scene_tokens.size text label into an
+  // integer cell count for distance/reach math. Pre-v2.396 this was
+  // hardcoded to 1, which made every token look 1×1 to the geometry
+  // layer — large dragons couldn't reach 5ft adjacent targets because
+  // the math was anchor-to-anchor and the dragon's anchor sits in the
+  // middle of its 3×3 footprint, putting "adjacent" cells 2 anchors
+  // away. RAW 5e: distance is measured from any square the creature
+  // occupies, so a Large+ creature reaches 5ft outward from its
+  // entire footprint. The fixed mapping below mirrors the rendering
+  // layer's cellSpan values (BattleMapV2.tokenRadiusForSize) rounded
+  // to RAW: tiny/small/medium = 1, large = 2, huge = 3, gargantuan = 4.
+  const SIZE_TO_CELLS: Record<string, number> = {
+    tiny: 1, small: 1, medium: 1,
+    large: 2, huge: 3, gargantuan: 4,
+  };
+  const tokens: BattleMapToken[] = (tokenRows ?? []).map(t => {
+    const sizeLabel = ((t.size as string) ?? 'medium').toLowerCase();
+    return {
+      row: Math.floor(((t.y as number) ?? 0) / gridSizePx),
+      col: Math.floor(((t.x as number) ?? 0) / gridSizePx),
+      name: (t.name as string) ?? undefined,
+      character_id: (t.character_id as string) ?? undefined,
+      creature_id: (t.creature_id as string) ?? undefined,
+      size: SIZE_TO_CELLS[sizeLabel] ?? 1,
+    };
+  });
 
   // 3. Walls for this scene (v2 system).
   const { data: wallRows } = await supabase
@@ -230,15 +243,45 @@ export function findTokenForParticipant(
 }
 
 /**
- * Chebyshev distance between two tokens in feet. RAW 2024: diagonals
- * count as a single square (not 1.5 like older optional rules).
+ * Footprint-aware Chebyshev distance between two tokens in feet.
+ * RAW 2024: diagonals count as a single square (not 1.5 like older
+ * optional rules), and distance is measured from the closest square
+ * one creature occupies to the closest square the other occupies.
+ *
+ * v2.396.0 — Pre-v2.396 this was anchor-to-anchor, ignoring size.
+ * That meant a Large+ creature (e.g. an Ancient Red Dragon, 3×3)
+ * was treated as a 1×1 point at its anchor cell for reach checks,
+ * and adjacent targets ended up "out of melee range" because the
+ * anchor sits in the middle of the footprint. Now we compute the
+ * Chebyshev gap between the two footprint rectangles, which gives
+ * 0 for overlapping/touching footprints and N for footprints
+ * separated by N cells. A target one cell outside a 3×3 dragon's
+ * body returns 5ft as expected.
+ *
+ * Token row/col is the anchor cell. We assume the footprint extends
+ * size×size cells starting at that anchor (the rendering layer
+ * draws size as the radius span, and placement snaps to anchor).
+ * If the renderer ever centers footprints differently the
+ * conversion lives in one place — here.
  */
 export function distanceBetweenTokensFt(
   a: BattleMapToken,
   b: BattleMapToken,
   feetPerSquare: number = FEET_PER_SQUARE,
 ): number {
-  const cells = Math.max(Math.abs(a.row - b.row), Math.abs(a.col - b.col));
+  const sa = Math.max(1, a.size ?? 1);
+  const sb = Math.max(1, b.size ?? 1);
+  // Footprint A: rows [a.row, a.row + sa - 1], cols [a.col, a.col + sa - 1].
+  // Footprint B: same with sb.
+  const aRowMin = a.row, aRowMax = a.row + sa - 1;
+  const aColMin = a.col, aColMax = a.col + sa - 1;
+  const bRowMin = b.row, bRowMax = b.row + sb - 1;
+  const bColMin = b.col, bColMax = b.col + sb - 1;
+  // Gap in each axis: 0 if the rectangles overlap or touch, else the
+  // number of cells separating them.
+  const rowGap = Math.max(0, Math.max(aRowMin - bRowMax, bRowMin - aRowMax));
+  const colGap = Math.max(0, Math.max(aColMin - bColMax, bColMin - aColMax));
+  const cells = Math.max(rowGap, colGap);
   return cells * feetPerSquare;
 }
 

@@ -1170,18 +1170,26 @@ export async function offerOpportunityAttacks(
     );
     if (!token) continue;
 
-    // Distance to mover's FROM + TO positions, in cells. We pass fake tokens
-    // wrapping the mover's from/to coords so the library computes Chebyshev
-    // uniformly. Both reach thresholds are still cell-based (STANDARD_REACH_
-    // CELLS = 1 → 5 ft) so no conversion needed.
-    const cellsFromStart = Math.max(
-      Math.abs(token.row - input.fromRow),
-      Math.abs(token.col - input.fromCol),
-    );
-    const cellsFromEnd = Math.max(
-      Math.abs(token.row - input.toRow),
-      Math.abs(token.col - input.toCol),
-    );
+    // v2.396.0 — Footprint-aware reach. Pre-v2.396 this was
+    // anchor-to-anchor Chebyshev with size hardcoded to 1, so a
+    // Large+ reactor (e.g. a dragon making an OA) couldn't see
+    // movers passing through cells adjacent to its body — only
+    // adjacent to its anchor. Now we compute the Chebyshev gap
+    // between the reactor's footprint and the mover's 1×1 cell
+    // (the mover's size at any given step doesn't matter for OA
+    // — what matters is whether the cell they're moving FROM/TO
+    // is in the reactor's reach). STANDARD_REACH_CELLS = 1 still
+    // means 5ft on top of the footprint.
+    const reactorSize = Math.max(1, (token.size as number) ?? 1);
+    const reactorRowMin = token.row, reactorRowMax = token.row + reactorSize - 1;
+    const reactorColMin = token.col, reactorColMax = token.col + reactorSize - 1;
+    function gapToCell(targetRow: number, targetCol: number): number {
+      const rowGap = Math.max(0, Math.max(reactorRowMin - targetRow, targetRow - reactorRowMax));
+      const colGap = Math.max(0, Math.max(reactorColMin - targetCol, targetCol - reactorColMax));
+      return Math.max(rowGap, colGap);
+    }
+    const cellsFromStart = gapToCell(input.fromRow, input.fromCol);
+    const cellsFromEnd = gapToCell(input.toRow, input.toCol);
 
     const hadInReach = cellsFromStart <= STANDARD_REACH_CELLS;
     const stillInReach = cellsFromEnd <= STANDARD_REACH_CELLS;

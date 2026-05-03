@@ -3219,6 +3219,11 @@ function TokenLayer(props: {
   // (RLS strips them at SELECT), so the alpha cue only ever applies
   // on the DM surface — players would never see a faded token.
   isDM?: boolean;
+  // v2.396.0 — Player viewer's own PC id. Used to gate HP-bar render:
+  // players see HP bars only on their own character; everyone else's
+  // HP (party members, NPCs, creatures) is hidden so the table can't
+  // meta-game off the bar fill levels. DM ignores this and sees all.
+  myCharacterId?: string | null;
   // v2.358.0 — DM-only token-move undo. Pre-v2.358 useUndoRedo
   // explicitly excluded tokens because of multi-user drag races,
   // but DM-only undo on the DM's own token moves is safe — only one
@@ -3264,7 +3269,7 @@ function TokenLayer(props: {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap,
-    onTokenClick, onMovementBlocked, isDM, activeTokenInfo,
+    onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
     recordUndoable, selectedTokenId,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
@@ -3822,9 +3827,18 @@ function TokenLayer(props: {
         ? npcHpMap.get(token.npcId)
         : null;
       const hpInfo = pcHpInfo ?? tokenStateHpInfo ?? npcHpInfo ?? null;
+      // v2.396.0 — Player privacy gate. Players see HP bars only on
+      // their own PC; everyone else's HP (party, NPCs, creatures) is
+      // hidden. Prevents meta-gaming off bar fill levels — a player
+      // shouldn't be able to look at the dragon and say "ok 75% so
+      // probably ~400hp left". DM ignores this and sees all bars.
+      // The own-PC gate is character-id match: token.characterId
+      // === myCharacterId.
+      const isOwnPcToken = !!myCharacterId && token.characterId === myCharacterId;
+      const visibleToViewer = isDM || isOwnPcToken;
       // NPC bars hide at full HP. PC bars stay always-on (existing v2.221
       // behavior; PCs read their HP bar like a personal status indicator).
-      const showHpBar = !!hpInfo && hpInfo.max > 0 && (
+      const showHpBar = !!hpInfo && hpInfo.max > 0 && visibleToViewer && (
         !!pcHpInfo || ((tokenStateHpInfo ?? npcHpInfo) != null && hpInfo.current < hpInfo.max)
       );
       if (showHpBar && hpInfo) {
@@ -4296,7 +4310,7 @@ function TokenLayer(props: {
         currentEntry.economyPipsLayer.visible = false;
       }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap, activeTokenInfo, selectedTokenId]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -8611,6 +8625,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}
                     isDM={isDM}
+                    myCharacterId={props.myCharacterId}
                     activeTokenInfo={activeTokenInfo}
                     recordUndoable={recordUndoable}
                     selectedTokenId={selectedTokenId}
