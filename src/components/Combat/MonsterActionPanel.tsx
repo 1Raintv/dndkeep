@@ -190,6 +190,17 @@ export default function MonsterActionPanel({ isDM }: Props) {
     if (!encounter || !currentActor || !pickingFor) return;
     if (busy) return;
     const a = pickingFor;
+    // v2.399.0 — Action-economy gate. Block the pick if no attacks
+    // remain this turn. The picker UI shouldn't even open the
+    // target list when remaining=0 (we disable the action button
+    // upstream), but a stale click after the local state changed
+    // could still slip through — guard here too.
+    const remaining = (currentActor as any).attacks_remaining ?? 1;
+    if (remaining <= 0) {
+      console.warn('[MonsterActionPanel] no attacks remaining this turn');
+      setPickingFor(null);
+      return;
+    }
     setPickingFor(null);
     setBusy(true);
     try {
@@ -212,6 +223,26 @@ export default function MonsterActionPanel({ isDM }: Props) {
       });
       if (attack) {
         await rollAttackRoll(attack.id);
+      }
+      // v2.399.0 — Decrement the multiattack counter. When it
+      // reaches 0, also flip action_used so the broader action-
+      // economy gate (Bonus Action features that depend on
+      // "this turn you took the Attack action," etc.) sees a
+      // spent Action. The DM can manually clear via end-of-turn
+      // advance; advanceTurn resets to attacks_per_action.
+      const nextRemaining = Math.max(0, remaining - 1);
+      const updates: Record<string, unknown> = {
+        attacks_remaining: nextRemaining,
+      };
+      if (nextRemaining === 0) {
+        updates.action_used = true;
+      }
+      const { error: upErr } = await supabase
+        .from('combat_participants')
+        .update(updates)
+        .eq('id', currentActor.id);
+      if (upErr) {
+        console.error('[MonsterActionPanel] action-economy update failed', upErr);
       }
     } catch (err) {
       console.error('[MonsterActionPanel] attack declare/roll failed', err);
@@ -330,22 +361,30 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 const hasBonusRider = !!(action.bonus_damage_dice && action.bonus_damage_type);
                 const ab = action.attack_bonus ?? 0;
                 const sub = `${ab >= 0 ? '+' : ''}${ab} to hit · ${action.damage_dice} ${action.damage_type}${hasBonusRider ? ` + ${action.bonus_damage_dice} ${action.bonus_damage_type}` : ''}`;
+                // v2.399.0 — Disable when no attacks remain. Reads
+                // currentActor.attacks_remaining live; the picker
+                // gate also enforces this server-side as a backstop.
+                const noAttacksLeft = ((currentActor as any)?.attacks_remaining ?? 1) <= 0;
                 return (
                   <button
                     key={key}
                     onClick={() => setPickingFor(action)}
-                    disabled={busy}
-                    title={(action.desc || sub) + (hasBonusRider ? '\n\nRider damage (' + action.bonus_damage_dice + ' ' + action.bonus_damage_type + ') is shown but applied manually for now.' : '')}
+                    disabled={busy || noAttacksLeft}
+                    title={
+                      noAttacksLeft
+                        ? 'No attacks remaining this turn — End Turn to refresh.'
+                        : (action.desc || sub) + (hasBonusRider ? '\n\nRider damage (' + action.bonus_damage_dice + ' ' + action.bonus_damage_type + ') is shown but applied manually for now.' : '')
+                    }
                     style={{
                       textAlign: 'left',
                       padding: '8px 10px',
-                      background: 'rgba(248,113,113,0.10)',
-                      border: '1px solid rgba(248,113,113,0.45)',
+                      background: noAttacksLeft ? 'rgba(255,255,255,0.03)' : 'rgba(248,113,113,0.10)',
+                      border: noAttacksLeft ? '1px solid var(--c-border)' : '1px solid rgba(248,113,113,0.45)',
                       borderRadius: 4,
-                      color: 'var(--t-1)',
+                      color: noAttacksLeft ? 'var(--t-3)' : 'var(--t-1)',
                       fontFamily: 'var(--ff-body)',
-                      cursor: busy ? 'wait' : 'pointer',
-                      opacity: busy ? 0.6 : 1,
+                      cursor: busy ? 'wait' : (noAttacksLeft ? 'not-allowed' : 'pointer'),
+                      opacity: busy ? 0.6 : (noAttacksLeft ? 0.45 : 1),
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
@@ -423,6 +462,113 @@ export default function MonsterActionPanel({ isDM }: Props) {
               );
             })}
           </div>
+        )}
+
+        {/*
+          v2.399.0 — Action-economy strip. Pinned to the bottom of
+          the side rail. Four pills: Action / Bonus / Reaction /
+          Movement. Each shows used/total and dims when fully spent.
+          Reads live from currentActor.* — these update via
+          CombatContext when the picker writes to combat_participants
+          (or when advanceTurn resets them). Only rendered for
+          DM (the panel itself is DM-only) and only when the rail
+          is expanded.
+        */}
+        {!collapsed && currentActor && (
+          (() => {
+            const a = currentActor as any;
+            const attacksRemaining = a.attacks_remaining ?? 1;
+            const attacksMax = a.attacks_per_action ?? 1;
+            const actionUsed = !!a.action_used;
+            const bonusUsed = !!a.bonus_used;
+            const reactionUsed = !!a.reaction_used;
+            const moveUsed = a.movement_used_ft ?? 0;
+            const moveMax = a.max_speed_ft ?? 30;
+            const pillBase: React.CSSProperties = {
+              flex: 1,
+              minWidth: 0,
+              padding: '6px 4px',
+              borderRadius: 4,
+              border: '1px solid var(--c-border)',
+              background: 'rgba(255,255,255,0.03)',
+              fontFamily: 'var(--ff-body)',
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              color: 'var(--t-2)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              transition: 'opacity 120ms ease, background 120ms ease',
+            };
+            // "Spent" styling: dimmed background + lower opacity. The
+            // stat number stays readable so the DM can see *how* spent
+            // (e.g., 0/3 attacks vs simply "spent").
+            const spent: React.CSSProperties = { opacity: 0.4 };
+            // "Action" pill: shows attack-counter ratio if multiattack
+            // is in play, else the boolean state. Spent when ratio
+            // hits 0 OR action_used flipped.
+            const actionFullySpent = actionUsed || attacksRemaining <= 0;
+            const bonusFullySpent = bonusUsed;
+            const reactionFullySpent = reactionUsed;
+            const moveFullySpent = moveUsed >= moveMax;
+            return (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  padding: 8,
+                  borderTop: '1px solid var(--c-border)',
+                  background: 'rgba(0,0,0,0.25)',
+                  flexShrink: 0,
+                }}
+                title="Action economy. Resets each turn."
+              >
+                <div style={{ ...pillBase, ...(actionFullySpent ? spent : {}),
+                  borderColor: actionFullySpent ? 'var(--c-border)' : 'rgba(248,113,113,0.45)',
+                  color: actionFullySpent ? 'var(--t-3)' : '#fca5a5',
+                }} title={attacksMax > 1
+                  ? `Action — ${attacksRemaining}/${attacksMax} attacks remaining`
+                  : actionFullySpent ? 'Action used' : 'Action available'}>
+                  <span>Action</span>
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>
+                    {attacksMax > 1
+                      ? `${attacksRemaining}/${attacksMax}`
+                      : (actionFullySpent ? '✗' : '●')}
+                  </span>
+                </div>
+                <div style={{ ...pillBase, ...(bonusFullySpent ? spent : {}),
+                  borderColor: bonusFullySpent ? 'var(--c-border)' : 'rgba(245,158,11,0.45)',
+                  color: bonusFullySpent ? 'var(--t-3)' : '#fcd34d',
+                }} title={bonusFullySpent ? 'Bonus action used' : 'Bonus action available'}>
+                  <span>Bonus</span>
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>
+                    {bonusFullySpent ? '✗' : '●'}
+                  </span>
+                </div>
+                <div style={{ ...pillBase, ...(reactionFullySpent ? spent : {}),
+                  borderColor: reactionFullySpent ? 'var(--c-border)' : 'rgba(167,139,250,0.45)',
+                  color: reactionFullySpent ? 'var(--t-3)' : '#c4b5fd',
+                }} title={reactionFullySpent ? 'Reaction used' : 'Reaction available'}>
+                  <span>React</span>
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>
+                    {reactionFullySpent ? '✗' : '●'}
+                  </span>
+                </div>
+                <div style={{ ...pillBase, ...(moveFullySpent ? spent : {}),
+                  borderColor: moveFullySpent ? 'var(--c-border)' : 'rgba(34,197,94,0.45)',
+                  color: moveFullySpent ? 'var(--t-3)' : '#86efac',
+                }} title={`Movement — ${moveUsed}/${moveMax} ft used`}>
+                  <span>Move</span>
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>
+                    {Math.max(0, moveMax - moveUsed)}ft
+                  </span>
+                </div>
+              </div>
+            );
+          })()
         )}
       </div>
 

@@ -702,6 +702,15 @@ export interface CombatParticipant {
   bonus_used: boolean;
   reaction_used: boolean;
   movement_used_ft: number;
+  /** v2.399.0 — Multiattack support. attacks_per_action is the
+   *  multiattack budget (1 by default; 3 for a creature with a
+   *  Multiattack action; 2 for Fighters L5+). attacks_remaining
+   *  decrements per attack and resets to attacks_per_action on
+   *  turn start (advanceTurn). When it reaches 0, the boolean
+   *  action_used also flips true and the picker blocks further
+   *  attacks until the next turn. */
+  attacks_per_action: number;
+  attacks_remaining: number;
   leveled_spell_cast: boolean;
   hidden_from_players: boolean;
   /** Real column. AC currently lives on combat_participants; combatants has

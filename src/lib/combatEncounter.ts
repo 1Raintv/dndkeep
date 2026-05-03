@@ -77,6 +77,18 @@ export interface SeedSource {
 }
 
 export function characterToSeed(c: Character): SeedSource {
+  // v2.399.0 — Extra Attack heuristic. Fighters/Paladins/Rangers/
+  // Barbarians get a second attack at L5; Fighter alone gets a third
+  // at L11 and a fourth at L20. We only model the L5 step here as
+  // a conservative starting point — the DM can bump live for higher
+  // tiers via the action panel. Multiclass with multiple martial
+  // classes uses the highest individual class level (RAW: Extra
+  // Attack doesn't stack across classes).
+  const klass = (c as any).class as string | undefined;
+  const klassLevel = (c as any).level as number | undefined;
+  const martialClasses = ['fighter', 'paladin', 'ranger', 'barbarian'];
+  const isMartial = klass && martialClasses.includes(klass.toLowerCase());
+  const attacksPerAction = (isMartial && (klassLevel ?? 0) >= 5) ? 2 : 1;
   return {
     type: 'character',
     entityId: c.id,
@@ -88,6 +100,7 @@ export function characterToSeed(c: Character): SeedSource {
     initiativeBonus: (c as any).initiative_bonus ?? 0,
     hiddenFromPlayers: false,
     maxSpeedFt: (c as any).speed ?? 30,
+    attacksPerAction,
   };
 }
 
@@ -223,6 +236,15 @@ export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSo
     legendaryResistance: m.legendary_resistance_count ?? undefined,
     legendaryActionsTotal: hasLa ? 3 : undefined,
     legendaryActionsConfig: hasLa ? laList : undefined,
+    // v2.399.0 — Multiattack heuristic. If any of the monster's
+    // actions has "multiattack" in its name (case-insensitive),
+    // grant 3 attacks per turn as a placeholder. RAW counts vary
+    // (ARD = 3: 1 bite + 2 claws; some bosses = 4-5), but 3 is the
+    // common case and the DM can adjust live. Future ship will
+    // parse the multiattack action's `desc` for the exact count.
+    attacksPerAction: ((m.actions ?? []) as Array<{ name?: string }>).some(
+      a => (a.name ?? '').toLowerCase().includes('multiattack')
+    ) ? 3 : 1,
   };
 }
 
@@ -321,6 +343,10 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
       // Cast: see addParticipantToEncounter for the rationale —
       // MonsterLegendaryAction lacks the Json index signature.
       legendary_actions_config: (s.legendaryActionsConfig ?? []) as unknown as import('../types/supabase').Json,
+      // v2.399.0 — Multiattack counter, mirrored from the per-row
+      // addParticipantToEncounter insert above.
+      attacks_per_action: s.attacksPerAction ?? 1,
+      attacks_remaining: s.attacksPerAction ?? 1,
     };
   });
 
@@ -538,6 +564,10 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       leveled_spell_cast: false,
       dash_used_this_turn: false,
       disengaged_this_turn: false,
+      // v2.399 — Reset per-turn attack counter to the participant's
+      // multiattack count. Reads back attacks_per_action because
+      // that's the source of truth (set at insert + DM-editable later).
+      attacks_remaining: (incomingParticipant as any).attacks_per_action ?? 1,
       ...(needsLaRefill ? { legendary_actions_remaining: laTotal } : {}),
     })
     .eq('id', incomingParticipant.id);
