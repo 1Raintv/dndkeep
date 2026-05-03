@@ -407,8 +407,24 @@ function tokenInitials(name: string): string {
 }
 
 export function snapToCellCenter(worldX: number, worldY: number, cellSize = DEFAULT_GRID_SIZE_PX) {
-  const col = Math.floor(worldX / cellSize);
-  const row = Math.floor(worldY / cellSize);
+  // v2.400.0 — Round-to-nearest cell, not floor-to-current-cell.
+  // Pre-v2.400 used Math.floor(worldX / cellSize), which has an
+  // asymmetric "boundary belongs to the right cell" rule:
+  //   x = 69 → cell 0  (snaps left to cell 0 center 35; -34px)
+  //   x = 70 → cell 1  (snaps right to cell 1 center 105; +35px)
+  //   x = 71 → cell 1  (snaps right to cell 1 center 105; +34px)
+  // User dropped a token visually-near a cell boundary and saw it
+  // jump 35px to the right because the float coord was just past
+  // the boundary into the next cell. Round-to-nearest treats the
+  // cell whose center is closest as the snap target — semantically
+  // identical for tokens already inside their cell, but produces
+  // less surprising behavior at the edges.
+  //
+  // Math: cell N's center is at world (N + 0.5) * cellSize. So
+  //   N = (worldX / cellSize) - 0.5 = (worldX - cellSize/2) / cellSize.
+  // Round that to nearest int = nearest cell.
+  const col = Math.round((worldX - cellSize / 2) / cellSize);
+  const row = Math.round((worldY - cellSize / 2) / cellSize);
   return {
     x: col * cellSize + cellSize / 2,
     y: row * cellSize + cellSize / 2,
@@ -3922,10 +3938,22 @@ function TokenLayer(props: {
       // === myCharacterId.
       const isOwnPcToken = !!myCharacterId && token.characterId === myCharacterId;
       const visibleToViewer = isDM || isOwnPcToken;
-      // NPC bars hide at full HP. PC bars stay always-on (existing v2.221
-      // behavior; PCs read their HP bar like a personal status indicator).
+      // v2.400.0 — DM always sees HP bars on every token (PCs +
+      // creatures, full or damaged). Pre-v2.400 the rule was
+      // "NPC bars hide at full HP" (a v2.244 anti-clutter
+      // heuristic) — but that meant after a fresh combat start
+      // the DM saw NO bars on any creature until someone took
+      // damage, which made tactical planning harder. The privacy
+      // gate (visibleToViewer) is still enforced — players still
+      // see only their own PC's bar.
+      //
+      // For PLAYER viewers, we keep the original "hide at full HP"
+      // for any NPC bar that does slip through (shouldn't, given
+      // visibleToViewer, but defense in depth).
       const showHpBar = !!hpInfo && hpInfo.max > 0 && visibleToViewer && (
-        !!pcHpInfo || ((tokenStateHpInfo ?? npcHpInfo) != null && hpInfo.current < hpInfo.max)
+        isDM
+          ? true  // DM sees every bar, every time
+          : (!!pcHpInfo || ((tokenStateHpInfo ?? npcHpInfo) != null && hpInfo.current < hpInfo.max))
       );
       if (showHpBar && hpInfo) {
         let bar = currentEntry.hpBar;
@@ -4614,7 +4642,26 @@ function TokenLayer(props: {
       }
       const t = useBattleMapStore.getState().tokens[drag.id];
       if (t) {
-        const snapped = snapToCellCenter(t.x, t.y, gridSizePx);
+        // v2.400.0 — Compute final position from the pointerup event
+        // coordinates, not the last pointermove's stored t.x/y. Pre-
+        // v2.400 we snapped t.x/y, which lagged the cursor by however
+        // far it moved between the last 60Hz pointermove and the
+        // pointerup. For a cursor moving even modestly at release,
+        // that gap could be 5-10px — enough to push across a cell
+        // boundary and snap to the wrong cell. Reading clientX/Y
+        // from `e` (the pointerup event itself) gives the exact
+        // release position.
+        let finalX = t.x;
+        let finalY = t.y;
+        if (viewport && canvasEl && e.clientX !== undefined) {
+          const rect = canvasEl.getBoundingClientRect();
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
+          const worldPoint = viewport.toWorld(screenX, screenY);
+          finalX = worldPoint.x - drag.offsetX;
+          finalY = worldPoint.y - drag.offsetY;
+        }
+        const snapped = snapToCellCenter(finalX, finalY, gridSizePx);
         const clampedX = Math.max(0, Math.min(worldWidth, snapped.x));
         const clampedY = Math.max(0, Math.min(worldHeight, snapped.y));
         // v2.268.0 — wall-blocked movement check. If the segment from
