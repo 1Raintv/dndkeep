@@ -231,32 +231,58 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     // happens in combat (or via the Quick Panel) without a refresh.
     // Inserts and deletes are also handled because the v2.389 sync
     // trigger creates/deletes combatants in lockstep with scene_tokens.
+    // v2.404.0 — Reload-on-any-change pattern. Pre-v2.404 we did
+    // incremental state patches on each UPDATE/INSERT/DELETE, but
+    // `setCombatants(prev => prev.map(...))` only mutates EXISTING
+    // entries — if the local state wasn't yet populated (race
+    // between loadCombatants completion and the first UPDATE event),
+    // the patch was silently dropped and the UI never reflected the
+    // damage. Reloading the full list on any change is slightly
+    // chattier but bulletproof against ordering races. Combatants
+    // table is small (~10s of rows per campaign), so the cost is
+    // negligible.
+    // v2.405.0 — Belt-and-suspenders: also watch combat_participants
+    // for changes. Reasoning: applyDamage writes to combatants
+    // directly, but it ALSO updates combat_participants in some
+    // paths (e.g., death cleanup) — and the JOINED_COMBATANT_FIELDS
+    // read in CombatContext effectively means a participant change
+    // is a strong signal that combatant state may have changed too.
+    // If the combatants realtime channel ever silently fails (e.g.,
+    // Supabase realtime dropping events under load), the
+    // participants channel acts as a fallback trigger.
+    const participantsChannel = supabase
+      .channel(`campaign-cp-for-combatants-${campaign.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'combat_participants',
+        filter: `campaign_id=eq.${campaign.id}`,
+      }, (payload: any) => {
+        // eslint-disable-next-line no-console
+        console.log('[CampaignDashboard] CP realtime → reload combatants', {
+          eventType: payload.eventType,
+          cpId: payload.new?.id ?? payload.old?.id,
+        });
+        loadCombatants();
+      })
+      .subscribe();
+
     const combatantsChannel = supabase
       .channel(`campaign-combatants-${campaign.id}`)
       .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'combatants',
+        event: '*', schema: 'public', table: 'combatants',
         filter: `campaign_id=eq.${campaign.id}`,
-      }, (payload: { new: Record<string, unknown> }) => {
-        if (!payload.new?.id) return;
-        setCombatants(prev => prev.map(c =>
-          c.id === payload.new.id ? { ...c, ...(payload.new as any) } : c
-        ));
-      })
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'combatants',
-        filter: `campaign_id=eq.${campaign.id}`,
-      }, (payload: { new: Record<string, unknown> }) => {
-        if (!payload.new?.id) return;
-        setCombatants(prev => prev.some(c => c.id === payload.new.id)
-          ? prev
-          : [...prev, payload.new as any]);
-      })
-      .on('postgres_changes', {
-        event: 'DELETE', schema: 'public', table: 'combatants',
-        filter: `campaign_id=eq.${campaign.id}`,
-      }, (payload: { old: Record<string, unknown> }) => {
-        if (!payload.old?.id) return;
-        setCombatants(prev => prev.filter(c => c.id !== payload.old.id));
+      }, (payload: any) => {
+        // v2.404.0 — Diagnostic log. Verifies the realtime channel is
+        // firing and helps trace HP-not-updating bug reports back to
+        // the source. Includes the post-update HP so the user can
+        // confirm the write reached the channel before the UI render.
+        // eslint-disable-next-line no-console
+        console.log('[CampaignDashboard] combatants realtime', {
+          eventType: payload.eventType,
+          id: payload.new?.id ?? payload.old?.id,
+          current_hp: payload.new?.current_hp,
+          max_hp: payload.new?.max_hp,
+        });
+        loadCombatants();
       })
       .subscribe();
 
@@ -264,6 +290,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       supabase.removeChannel(charsChannel);
       supabase.removeChannel(npcsChannel);
       supabase.removeChannel(combatantsChannel);
+      supabase.removeChannel(participantsChannel);
     };
   }, [campaign.id]);
 
@@ -326,6 +353,15 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       console.error('[CampaignDashboard] loadCombatants failed', error);
       return;
     }
+    // v2.404.0 — Diagnostic log so HP-not-updating bug reports
+    // can confirm the SELECT actually returned the rows the DM
+    // expects to see.
+    // eslint-disable-next-line no-console
+    console.log('[CampaignDashboard] loadCombatants result', {
+      campaignId: campaign.id,
+      count: (data ?? []).length,
+      rows: (data ?? []).map((c: any) => ({ id: c.id, hp: c.current_hp, max: c.max_hp })),
+    });
     setCombatants((data ?? []) as any);
   }
 

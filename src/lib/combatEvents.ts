@@ -182,6 +182,30 @@ export function newChainId(): string {
   });
 }
 
+// v2.406.0 — Type-string normalization. The combat_events CHECK
+// constraints accept actor_type ∈ {'player','dm','creature','system'}
+// and target_type ∈ {'player','creature','object','area','self'} | NULL.
+// The v2.350 migration consolidated DB participant types from
+// ('character','npc','monster') → ('character','creature') but many
+// emitCombatEvent callers were never updated and still pass legacy
+// strings like 'monster', 'npc', or 'character'. Those inserts 400
+// on the CHECK constraint and flood the console with warnings during
+// every attack. We translate at the boundary so the events log works
+// correctly regardless of which caller is wrong.
+function normalizeActorType(t: unknown): string {
+  if (t === 'monster' || t === 'npc' || t === 'creature') return 'creature';
+  if (t === 'character' || t === 'player') return 'player';
+  if (t === 'dm' || t === 'system') return t;
+  return 'system';
+}
+function normalizeTargetType(t: unknown): string | null {
+  if (t == null) return null;
+  if (t === 'monster' || t === 'npc' || t === 'creature') return 'creature';
+  if (t === 'character' || t === 'player') return 'player';
+  if (t === 'object' || t === 'area' || t === 'self') return t;
+  return null;
+}
+
 /**
  * Emit a single combat event. Fire-and-forget.
  * Returns the inserted row's id on success, or null on failure.
@@ -197,10 +221,10 @@ export async function emitCombatEvent(evt: CombatEventInsert): Promise<string | 
         chain_id: chainId,
         sequence: evt.sequence ?? 0,
         parent_event_id: evt.parentEventId ?? null,
-        actor_type: evt.actorType,
+        actor_type: normalizeActorType(evt.actorType),
         actor_id: evt.actorId ?? null,
         actor_name: evt.actorName,
-        target_type: evt.targetType ?? null,
+        target_type: normalizeTargetType(evt.targetType),
         target_id: evt.targetId ?? null,
         target_name: evt.targetName ?? null,
         event_type: evt.eventType,
@@ -239,10 +263,10 @@ export async function emitCombatEventChain(
       chain_id: chainId,
       sequence: i,
       parent_event_id: e.parentEventId ?? null,
-      actor_type: e.actorType,
+      actor_type: normalizeActorType(e.actorType),
       actor_id: e.actorId ?? null,
       actor_name: e.actorName,
-      target_type: e.targetType ?? null,
+      target_type: normalizeTargetType(e.targetType),
       target_id: e.targetId ?? null,
       target_name: e.targetName ?? null,
       event_type: e.eventType,
