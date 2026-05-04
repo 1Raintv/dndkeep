@@ -307,41 +307,70 @@ export default function MonsterActionPanel({ isDM }: Props) {
     (async () => {
       // v2.409.0 — Pull stats alongside source_monster_id so we can
       // render the HP/AC/saves block in the same render pass.
-      // v2.416.0 — Plus resistance/immunity arrays.
+      // v2.417.0 — Resistance/immunity/LR fields LIVE ON `monsters`
+      // (the SRD catalog), NOT on `homebrew_monsters`. v2.416 added
+      // them to this select() and the entire query started failing
+      // silently — symptom: "No catalog actions for this creature"
+      // for every monster in combat. Reverted to the v2.415 column
+      // set here; the resistance/immunity fields are now read in the
+      // separate `monsters` query below.
       const { data: hb } = await supabase
         .from('homebrew_monsters')
-        .select('source_monster_id, str, dex, con, int, wis, cha, cr, save_proficiencies, ac, damage_resistances, damage_immunities, damage_vulnerabilities, condition_immunities, legendary_resistance_count')
+        .select('source_monster_id, str, dex, con, int, wis, cha, cr, save_proficiencies, ac')
         .eq('id', currentActor.entity_id)
         .maybeSingle();
-      if (!cancelled && hb) {
-        const h = hb as any;
-        setMonsterStats({
-          str: h.str ?? null, dex: h.dex ?? null, con: h.con ?? null,
-          int: h.int ?? null, wis: h.wis ?? null, cha: h.cha ?? null,
-          cr: h.cr ?? null,
-          save_proficiencies: h.save_proficiencies ?? null,
-          ac: h.ac ?? null,
-          damage_resistances: h.damage_resistances ?? null,
-          damage_immunities: h.damage_immunities ?? null,
-          damage_vulnerabilities: h.damage_vulnerabilities ?? null,
-          condition_immunities: h.condition_immunities ?? null,
-          legendary_resistance_count: h.legendary_resistance_count ?? null,
-        });
-      }
       if (cancelled) return;
       const sourceId = (hb as { source_monster_id?: string } | null)?.source_monster_id;
+      // Stash the homebrew row pieces; we merge with monsters-row
+      // resistance fields after the second query lands. If there's
+      // no SRD source we still set what we have so the panel can
+      // render the saves grid for fully custom monsters.
+      const hbBase = hb ? (hb as any) : null;
       if (!sourceId) {
+        if (hbBase) {
+          setMonsterStats({
+            str: hbBase.str ?? null, dex: hbBase.dex ?? null, con: hbBase.con ?? null,
+            int: hbBase.int ?? null, wis: hbBase.wis ?? null, cha: hbBase.cha ?? null,
+            cr: hbBase.cr ?? null,
+            save_proficiencies: hbBase.save_proficiencies ?? null,
+            ac: hbBase.ac ?? null,
+            damage_resistances: null,
+            damage_immunities: null,
+            damage_vulnerabilities: null,
+            condition_immunities: null,
+            legendary_resistance_count: null,
+          });
+        }
         setActions([]);
         setLoadingActions(false);
         return;
       }
+      // v2.417.0 — Pull resistance/immunity/LR alongside actions in
+      // a single round-trip. The `monsters` table has all five
+      // columns (added in the original create migration + the LR
+      // backfill migration).
       const { data: m } = await supabase
         .from('monsters')
-        .select('actions')
+        .select('actions, damage_resistances, damage_immunities, damage_vulnerabilities, condition_immunities, legendary_resistance_count')
         .eq('id', sourceId)
         .maybeSingle();
       if (cancelled) return;
-      const arr = (m as { actions?: MonsterAction[] | null } | null)?.actions ?? [];
+      const mRow = m as any;
+      if (hbBase) {
+        setMonsterStats({
+          str: hbBase.str ?? null, dex: hbBase.dex ?? null, con: hbBase.con ?? null,
+          int: hbBase.int ?? null, wis: hbBase.wis ?? null, cha: hbBase.cha ?? null,
+          cr: hbBase.cr ?? null,
+          save_proficiencies: hbBase.save_proficiencies ?? null,
+          ac: hbBase.ac ?? null,
+          damage_resistances: mRow?.damage_resistances ?? null,
+          damage_immunities: mRow?.damage_immunities ?? null,
+          damage_vulnerabilities: mRow?.damage_vulnerabilities ?? null,
+          condition_immunities: mRow?.condition_immunities ?? null,
+          legendary_resistance_count: mRow?.legendary_resistance_count ?? null,
+        });
+      }
+      const arr = (mRow?.actions ?? []) as MonsterAction[];
       setActions(Array.isArray(arr) ? arr : []);
       setLoadingActions(false);
     })().catch(err => {
@@ -431,13 +460,28 @@ export default function MonsterActionPanel({ isDM }: Props) {
           const inferredCondition = inferConditionFromSaveAction(a.name, a.desc);
           let immune = false;
           if (inferredCondition && target.participant_type === 'creature' && target.entity_id) {
-            const { data: tgtRow } = await supabase
+            // v2.417.0 — Same fix as the panel-level stat fetch:
+            // condition_immunities lives on `monsters` (the SRD
+            // catalog), reachable via homebrew_monsters.source_monster_id.
+            // The pre-v2.417 code queried homebrew_monsters directly
+            // for the column, which doesn't exist there — the query
+            // didn't return the column, so `immList` was always empty
+            // and the immunity short-circuit never fired.
+            const { data: tgtHb } = await supabase
               .from('homebrew_monsters')
-              .select('condition_immunities')
+              .select('source_monster_id')
               .eq('id', target.entity_id)
               .maybeSingle();
-            const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
-            immune = immList.some(s => s.toLowerCase() === inferredCondition);
+            const tgtSourceId = (tgtHb as any)?.source_monster_id;
+            if (tgtSourceId) {
+              const { data: tgtRow } = await supabase
+                .from('monsters')
+                .select('condition_immunities')
+                .eq('id', tgtSourceId)
+                .maybeSingle();
+              const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
+              immune = immList.some(s => s.toLowerCase() === inferredCondition);
+            }
           }
           if (immune && inferredCondition) {
             showToast(`${target.name} is immune to ${inferredCondition} — ${a.name} has no effect.`, 'info');
