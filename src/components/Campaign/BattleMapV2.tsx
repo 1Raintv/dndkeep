@@ -3721,57 +3721,60 @@ function TokenLayer(props: {
           }
           const t = useBattleMapStore.getState().tokens[tid];
           if (!t) return;
-          // v2.413.0 — Lock check, scoped to combat only.
+          // v2.414.0 — Unified permission + combat gate.
           //
-          // OUTSIDE COMBAT: locks are ignored entirely. Anyone who
-          // passes the ownership gate below can drag any token. This
-          // matches the user's mental model — locks exist to enforce
-          // "only the active character moves during combat", and
-          // outside combat there's no active turn to enforce.
+          // RULES:
+          //   • DM, OUTSIDE combat: drag anything freely. Locks
+          //     are inert outside combat (locks exist to enforce
+          //     turn-by-turn movement during initiative).
+          //   • DM, IN combat: drag any unlocked token freely; for
+          //     locked tokens, only when active turn + movement
+          //     remaining (BG3-style enforcement). Locks default
+          //     ON for new tokens; DM "Unlock Token" via the
+          //     context menu to override per-token during combat.
+          //   • PLAYER, OUTSIDE combat: cannot drag at all. The
+          //     DM is the only one who can move tokens during
+          //     setup / between encounters / exploration.
+          //   • PLAYER, IN combat: can drag only tokens they own
+          //     (PC by characterId match, OR token granted to them
+          //     via Player Control), only on their active turn,
+          //     only while movement remains.
           //
-          // IN COMBAT: locked tokens are immobile EXCEPT during their
-          // own active turn while movement remains. Once movement is
-          // exhausted the lock re-engages. The Reset Movement button
-          // (InitiativeStrip / MonsterActionPanel) refunds movement
-          // back to start-of-turn for a do-over.
-          //
-          // "In combat" is detected by activeTokenInfoRef.current
-          // being non-null — combat with no active turn doesn't put
-          // any token's drag at stake, so this is the right signal.
-          if ((t as any).isLocked) {
-            const ati = activeTokenInfoRef.current;
-            const inCombat = !!ati;
-            if (inCombat) {
-              const isThisTokenActive = ati!.tokenId === tid;
-              const movementRemaining = Math.max(0, ati!.max - ati!.used);
-              if (!isThisTokenActive || movementRemaining <= 0) {
-                return;
-              }
-            }
-            // else: not in combat → fall through, lock is inert.
-          }
-          // v2.411.0 — player ownership gate. Players may only drag
-          // tokens that represent their own character (token.characterId
-          // matches the player's character). DM bypasses (isDMRef
-          // covers it). For DM-controlled creature tokens this gate is
-          // moot because they have no characterId; for PC tokens the
-          // owning player passes and other players are blocked. Refs
-          // are required since this closure is attached once at token
-          // mount and doesn't see prop changes otherwise.
-          //
-          // v2.413.0 — extended: a player also passes when the DM has
-          // granted them control of this specific token via the
-          // "Grant Player Control" context menu. That writes
-          // scene_tokens.player_id, mirrored on the Token shape as
-          // playerId. Uses the existing scene_tokens RLS UPDATE
-          // policy which already permits player_id = auth.uid().
+          // The "in combat" signal is activeTokenInfoRef.current
+          // being non-null — combat without any active turn means
+          // no token's movement is being tracked, so drag should
+          // behave as out-of-combat.
+          const ati = activeTokenInfoRef.current;
+          const inCombat = !!ati;
+
           if (!isDMRef.current) {
+            // ── PLAYER PATH ───────────────────────────────────────
+            // Outside combat: refuse silently.
+            if (!inCombat) return;
+
+            // Must own this token (PC characterId match OR DM grant).
             const myCid = myCharacterIdRef.current;
             const ownsByCharacter = !!t.characterId && t.characterId === myCid;
             const grantedByDM = !!(t as any).playerId && (t as any).playerId === currentUserId;
-            if (!ownsByCharacter && !grantedByDM) {
-              return;
+            if (!ownsByCharacter && !grantedByDM) return;
+
+            // Must be this token's active turn with movement left.
+            const isThisTokenActive = ati!.tokenId === tid;
+            const movementRemaining = Math.max(0, ati!.max - ati!.used);
+            if (!isThisTokenActive || movementRemaining <= 0) return;
+          } else {
+            // ── DM PATH ───────────────────────────────────────────
+            // Outside combat: free reign.
+            if (inCombat && (t as any).isLocked) {
+              // In combat with a locked token: same active-turn rule
+              // applies even to the DM. Unlocking via context menu
+              // exempts the token from this gate for the rest of
+              // combat (or until re-locked).
+              const isThisTokenActive = ati!.tokenId === tid;
+              const movementRemaining = Math.max(0, ati!.max - ati!.used);
+              if (!isThisTokenActive || movementRemaining <= 0) return;
             }
+            // else: in-combat unlocked, OR out-of-combat → allow.
           }
           const worldPoint = viewport.toWorld(event.global.x, event.global.y);
           dragRef.current = {
@@ -4535,20 +4538,27 @@ function TokenLayer(props: {
       // restore the v2.341 block from git history.
       if (currentEntry.economyPipsLayer) currentEntry.economyPipsLayer.visible = false;
 
-      // ── Unlocked glyph (v2.412.0) ──────────────────────────────────
+      // ── Unlocked glyph (v2.412.0 / v2.414.0) ───────────────────────
       // Open-padlock above any UNLOCKED token, visible ONLY to the
       // DM. Players never see lock state — lock is a DM-side workflow
       // affordance. Locked tokens (the new default) get NO indicator
       // so the map stays uncluttered. The glyph signals "this token
-      // can be moved freely outside its turn" — a deliberately
-      // conspicuous DM warning since unlocked tokens bypass the
-      // active-turn movement gate.
+      // can be moved freely even during the active turn enforcement
+      // — a deliberately conspicuous DM warning since unlocked
+      // tokens bypass the active-turn movement gate.
       //
-      // Lazy-create on first need, toggle .visible thereafter. Position
-      // mirrors movement badge offset (-(r + 18)); offset right when
-      // also the active turn so the badge stays unobstructed.
+      // v2.414.0 — Only render during combat. Outside combat locks
+      // are inert (DM moves anything, players move nothing), so the
+      // 🔓 indicator outside combat communicated nothing useful and
+      // confused the visual. Combat-only display matches the
+      // "tokens unlocked before combat, locked when combat starts"
+      // mental model: outside combat → no indicators (everything
+      // moves freely for the DM); inside combat → 🔓 marks tokens
+      // the DM has explicitly exempted from the active-turn gate.
+      //
+      // Lazy-create on first need, toggle .visible thereafter.
       const tokenIsUnlocked = !((token as any).isLocked);
-      const showUnlockedGlyph = isDM && tokenIsUnlocked;
+      const showUnlockedGlyph = isDM && tokenIsUnlocked && !!activeTokenInfo;
       if (showUnlockedGlyph) {
         if (!currentEntry.lockGlyph) {
           const glyph = new Text({
@@ -4629,10 +4639,21 @@ function TokenLayer(props: {
     }
 
     function drawPreview(originX: number, originY: number, cursorX: number, cursorY: number) {
-      // Snap the cursor to the nearest grid cell center so the preview
-      // matches what will actually commit (snapToCellCenter is what
-      // pointerup uses too — keep them in sync).
-      const snapped = snapToCellCenter(cursorX, cursorY, gridSizePx);
+      // v2.414.0 — Use the same size-aware snap helper that the
+      // pointerup commit uses (snapTokenAnchor). Pre-v2.414 the
+      // preview always called snapToCellCenter — which is correct
+      // only for odd-size tokens (1×1, 3×3). For even-size tokens
+      // (Large 2×2, Gargantuan 4×4) the commit snaps to grid
+      // INTERSECTIONS instead, so the preview marker pointed to one
+      // spot and the dropped token landed at a different one.
+      // Symptom: "the token shifts around when I drop it." Using
+      // snapTokenAnchor here keeps preview and final position in
+      // lockstep regardless of token size.
+      const drag = dragRef.current;
+      const draggedToken = drag ? useBattleMapStore.getState().tokens[drag.id] : null;
+      const snapped = draggedToken
+        ? snapTokenAnchor(cursorX, cursorY, draggedToken.size, gridSizePx)
+        : snapToCellCenter(cursorX, cursorY, gridSizePx);
       const tx = Math.max(0, Math.min(worldWidth, snapped.x));
       const ty = Math.max(0, Math.min(worldHeight, snapped.y));
 
@@ -4655,8 +4676,8 @@ function TokenLayer(props: {
       // is theirs, grade green/amber/red against the budget. Otherwise
       // (DM repositioning monsters out of combat, or non-active token),
       // show a neutral white line so the distance label still helps.
+      // (drag was captured at the top of this function.)
       const ati = activeTokenInfoRef.current;
-      const drag = dragRef.current;
       const inCombatForThisToken = !!(ati && drag && ati.tokenId === drag.id && ati.max > 0);
       let lineColor = 0xffffff;
       let labelColor = 0xffffff;
@@ -4714,7 +4735,7 @@ function TokenLayer(props: {
       // single drag. We still subtract a few px from the marker so
       // it fits visually inside the footprint cells rather than
       // pixel-aligned to the grid lines.
-      const draggedToken = drag ? useBattleMapStore.getState().tokens[drag.id] : null;
+      // (draggedToken was captured at the top of this function.)
       const dragFootCells = draggedToken
         ? tokenFootprintCells(draggedToken.size)
         : 1;

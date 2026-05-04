@@ -36,8 +36,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
+// v2.414.0 — useDiceRoll lets us trigger the 3D dice animation
+// during the auto-resolve attack chain when "Show Combat Rolls" is
+// on. The dice context auto-clears after 4500ms; we await ~1800ms
+// between steps so the user sees the roll settle before damage.
+import { useDiceRoll } from '../../context/DiceRollContext';
 import { supabase } from '../../lib/supabase';
-import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack } from '../../lib/pendingAttack';
+import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack, rollSave, getTargetSaveBonus } from '../../lib/pendingAttack';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
@@ -47,10 +52,11 @@ import {
 // v2.411.0 — Dash + Disengage buttons moved from InitiativeStrip into
 // the MonsterActionPanel for creature turns. Strip retains them too
 // for PC turns (the strip is the only surface a player has).
-// v2.413.0 — Reset Movement removed from this panel (occluded the
-// view); canonical button now lives on the InitiativeStrip's left
-// side. resetMovement no longer imported here.
-import { takeDash, takeDisengage } from '../../lib/movement';
+// v2.414.0 — Reset Movement back in this panel per user request:
+// "The undo movement needs to be in the monster Action window near
+// Dash and Disengage." The v2.413 InitiativeStrip-left location
+// didn't stick.
+import { takeDash, takeDisengage, resetMovement } from '../../lib/movement';
 import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
@@ -69,6 +75,26 @@ interface MonsterAction {
 }
 
 type ActionFlavor = 'attack' | 'save' | 'descriptive';
+
+// v2.414.0 — small Promise-based sleep used by the Show Combat Rolls
+// flow to space out animations between attack-chain steps.
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+// v2.415.0 — Normalize a monster-action `dc_type` field into the
+// 3-letter ability code expected by getTargetSaveBonus + rollSave.
+// Bestiary data is mixed: some entries use 'wisdom' / 'Wisdom' /
+// 'WIS' / 'WIS Save'. Defensive matcher accepts any of these.
+function normalizeSaveAbility(raw: string | undefined | null): 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | null {
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('str')) return 'STR';
+  if (lower.startsWith('dex')) return 'DEX';
+  if (lower.startsWith('con')) return 'CON';
+  if (lower.startsWith('int')) return 'INT';
+  if (lower.startsWith('wis')) return 'WIS';
+  if (lower.startsWith('cha')) return 'CHA';
+  return null;
+}
 
 function classifyAction(a: MonsterAction): ActionFlavor {
   if (typeof a.attack_bonus === 'number' && a.damage_dice) return 'attack';
@@ -116,6 +142,25 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // v2.411.0 — toast for Dash/Disengage failure messages, mirroring
   // InitiativeStrip's pattern.
   const { showToast } = useToast();
+  // v2.414.0 — Dice animation during the attack chain. The
+  // "Fast Combat Rolls" checkbox below toggles this off (instant
+  // resolution, current pre-v2.414 behavior). When unchecked,
+  // attack chains pause to play d20 + damage dice animations.
+  const { triggerRoll } = useDiceRoll();
+  const [fastRolls, setFastRolls] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dndkeep:fastCombatRolls') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('dndkeep:fastCombatRolls', fastRolls ? '1' : '0');
+    } catch {
+      // localStorage may be unavailable (private mode, quota); ignore.
+    }
+  }, [fastRolls]);
 
   // v2.411.0 — Dash + Disengage handlers for creature turns. Same
   // contract as InitiativeStrip.onDash/onDisengage; we duplicate
@@ -151,8 +196,22 @@ export default function MonsterActionPanel({ isDM }: Props) {
     }
   }
 
-  // v2.413.0 — onResetMovement handler removed alongside the button.
-  // The canonical Reset is now on the InitiativeStrip's left side.
+  // v2.414.0 — Reset Movement do-over back in this panel. Refunds
+  // movement_used_ft, dash_used_this_turn, disengaged_this_turn so
+  // the active turn returns to start-of-turn state.
+  async function onResetMovement() {
+    if (!encounter || !currentActor) return;
+    const result = await resetMovement({
+      campaignId: encounter.campaign_id,
+      encounterId: encounter.id,
+      participantId: currentActor.id,
+      participantName: currentActor.name,
+      participantType: currentActor.participant_type,
+    });
+    if (!result.ok) {
+      showToast(`Couldn't reset movement: ${result.reason}`, 'error');
+    }
+  }
 
   // v2.409.0 — Stat block snapshot for the active monster. Used to
   // render the at-a-glance HP / AC / saves panel above the action
@@ -279,6 +338,120 @@ export default function MonsterActionPanel({ isDM }: Props) {
     setPickingFor(null);
     setBusy(true);
     try {
+      // v2.415.0 — Flavor-aware resolution. Attacks use the
+      // declareAttack → rollAttackRoll → rollDamage → applyDamage
+      // chain (kind='attack_roll'). Save-vs-DC actions (Frightening
+      // Presence, breath weapons, gaze, etc.) use the same
+      // pending_attacks table with kind='save': declareAttack
+      // (with saveDC + saveAbility) → rollSave (rolls target's
+      // d20 + ability mod) → optionally rollDamage (for save
+      // actions that deal damage; rollDamage respects save_result
+      // to halve on success when saveSuccessEffect='half') →
+      // applyDamage. For pure save-or-condition actions with no
+      // damage (Frightening Presence, Hold Monster), we skip the
+      // damage steps and toast the result so the DM can apply
+      // the condition manually (auto-condition-on-fail is a
+      // future ship; the bestiary data doesn't currently carry
+      // structured condition info).
+      const flavor = classifyAction(a);
+
+      if (flavor === 'save') {
+        const ability = normalizeSaveAbility(a.dc_type);
+        if (!ability) {
+          showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
+        } else {
+          const attack = await declareAttack({
+            campaignId: encounter.campaign_id,
+            encounterId: encounter.id,
+            attackerParticipantId: currentActor.id,
+            attackerName: currentActor.name,
+            attackerType: 'creature',
+            targetParticipantId: target.id,
+            targetName: target.name,
+            targetType: target.participant_type,
+            attackSource: 'monster_action',
+            attackName: a.name,
+            attackKind: 'save',
+            saveDC: a.dc_value ?? null,
+            saveAbility: ability,
+            saveSuccessEffect: a.dc_success ?? 'none',
+            damageDice: a.damage_dice ?? null,
+            damageType: a.damage_type ?? null,
+          });
+          if (attack) {
+            // Look up the target's save bonus (CR-based for
+            // creatures, level-based for PCs, both with prof check).
+            const sb = await getTargetSaveBonus(target.id, ability);
+            const rolled = await rollSave(attack.id, sb.bonus);
+
+            // v2.414.0 — Show Combat Rolls. Animate the d20 +
+            // modifier + total before continuing.
+            if (!fastRolls && rolled && (rolled as any).save_d20 != null) {
+              const d20 = (rolled as any).save_d20 as number;
+              const total = (rolled as any).save_total as number;
+              const modifier = total - d20;
+              triggerRoll({
+                result: d20,
+                dieType: 20,
+                modifier,
+                total,
+                label: `${target.name} — ${ability} save vs ${a.name} (DC ${a.dc_value ?? '?'})`,
+              });
+              await sleep(1800);
+            }
+
+            // Legendary Resistance gate: if the target may want to
+            // burn an LR charge, leave the attack pending and tell
+            // the DM. The LegendaryResistancePromptModal (already in
+            // the codebase) will pick up pending_lr_decision via
+            // realtime and surface the choice.
+            if (rolled && (rolled as any).pending_lr_decision) {
+              showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
+            } else if (a.damage_dice) {
+              // Save with damage (e.g. dragon breath weapon). Roll
+              // damage; rollDamage halves automatically when
+              // save_result='passed' and saveSuccessEffect='half',
+              // or zeroes when 'none'.
+              const damaged = await rollDamage(rolled?.id ?? attack.id);
+              if (!fastRolls && damaged && (damaged as any).damage_rolls) {
+                const damageDice = a.damage_dice ?? '';
+                const dieMatch = damageDice.match(/d(\d+)/i);
+                const dieType = dieMatch ? parseInt(dieMatch[1], 10) : 6;
+                const rolls = (damaged as any).damage_rolls as number[];
+                const finalDmg = (damaged as any).damage_final as number;
+                if (rolls.length > 0) {
+                  triggerRoll({
+                    allDice: rolls.map(v => ({ die: dieType, value: v })),
+                    result: rolls[0],
+                    dieType,
+                    total: finalDmg,
+                    expression: damageDice,
+                    label: `${a.name} — Damage`,
+                  });
+                  await sleep(1800);
+                }
+              }
+              if (damaged && damaged.state === 'damage_rolled') {
+                await applyDamage(damaged.id);
+              }
+            } else {
+              // Pure save-or-condition action with no damage. Toast
+              // the result; the DM applies the condition described
+              // in `a.desc` via the token's context menu.
+              const passed = (rolled as any)?.save_result === 'passed';
+              if (passed) {
+                showToast(`${target.name} succeeded on ${ability} save vs ${a.name}.`, 'success');
+              } else {
+                showToast(`${target.name} FAILED ${ability} save vs ${a.name}. Apply effect manually (see action description).`, 'info');
+              }
+              // Cancel the lingering pending_attacks row so it
+              // doesn't sit forever in 'declared' state.
+              await cancelAttack(rolled?.id ?? attack.id);
+            }
+          }
+        }
+      } else {
+        // ── Attack chain (kind='attack_roll') ─────────────────────
       const attack = await declareAttack({
         campaignId: encounter.campaign_id,
         encounterId: encounter.id,
@@ -311,6 +484,28 @@ export default function MonsterActionPanel({ isDM }: Props) {
       if (attack) {
         const rolled = await rollAttackRoll(attack.id);
         if (rolled) {
+          // v2.414.0 — Show Combat Rolls. When fastRolls is FALSE
+          // (default), trigger the 3D d20 animation showing the
+          // roll + modifier + total, then pause briefly before
+          // continuing the chain. Attack-roll modifier = total - d20.
+          // The animation is purely visual; the result is already
+          // committed server-side.
+          if (!fastRolls && (rolled as any).attack_d20 != null) {
+            const d20 = (rolled as any).attack_d20 as number;
+            const total = (rolled as any).attack_total as number;
+            const modifier = total - d20;
+            triggerRoll({
+              result: d20,
+              dieType: 20,
+              modifier,
+              total,
+              label: `${a.name} — Attack vs ${target.name}`,
+            });
+            // Pause so the dice settle visibly before the chain
+            // proceeds. The DiceRoller3D animation phase is ~1.5s;
+            // 1800ms gives a moment to read the result.
+            await sleep(1800);
+          }
           // Skip damage for misses/fumbles (rollDamage internally writes
           // damage_final=0 for those, but applyDamage on a miss is a no-op
           // and we'd rather just cancel for cleanliness).
@@ -323,11 +518,33 @@ export default function MonsterActionPanel({ isDM }: Props) {
             // for manual DM resolution.
             const damaged = await rollDamage(rolled.id);
             if (damaged && damaged.state === 'damage_rolled') {
+              // v2.414.0 — Animate damage dice after the attack hits.
+              // damage_dice is "NdM" or "NdM+K"; parse the die type
+              // and feed individual rolls to the animator.
+              if (!fastRolls) {
+                const damageDice = a.damage_dice ?? '';
+                const dieMatch = damageDice.match(/d(\d+)/i);
+                const dieType = dieMatch ? parseInt(dieMatch[1], 10) : 6;
+                const rolls = (damaged as any).damage_rolls as number[] | null;
+                const finalDmg = (damaged as any).damage_final as number;
+                if (rolls && rolls.length > 0) {
+                  triggerRoll({
+                    allDice: rolls.map(v => ({ die: dieType, value: v })),
+                    result: rolls[0],
+                    dieType,
+                    total: finalDmg,
+                    expression: damageDice,
+                    label: `${a.name} — Damage`,
+                  });
+                  await sleep(1800);
+                }
+              }
               await applyDamage(damaged.id);
             }
           }
         }
       }
+      } // end attack flavor branch
       // v2.399.0 — Decrement the multiattack counter. When it
       // reaches 0, also flip action_used so the broader action-
       // economy gate (Bonus Action features that depend on
@@ -453,6 +670,39 @@ export default function MonsterActionPanel({ isDM }: Props) {
           </button>
         </div>
 
+        {/* v2.414.0 — Fast Combat Rolls toggle. When ON the auto-
+            resolve attack chain skips the 3D dice animation between
+            steps (instant resolution; pre-v2.414 behavior). When
+            OFF, attack rolls and damage rolls play the dice
+            animation so the result feels more impactful — d20
+            settles, then damage dice settle, before HP applies.
+            Persisted in localStorage so the DM's preference
+            carries across sessions. */}
+        {!collapsed && (
+          <label
+            title="When on, attacks resolve instantly. When off (default), the d20 and damage dice animate before damage applies."
+            style={{
+              padding: '6px 12px',
+              borderBottom: '1px solid var(--c-border)',
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 10, fontWeight: 700,
+              color: 'var(--t-2)',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              cursor: 'pointer',
+              userSelect: 'none' as const,
+              flexShrink: 0,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={fastRolls}
+              onChange={e => setFastRolls(e.target.checked)}
+              style={{ accentColor: '#a78bfa', cursor: 'pointer' }}
+            />
+            ⚡ Fast Combat Rolls
+          </label>
+        )}
+
         {/* v2.409.0 — Stat block at-a-glance. HP / AC / Saves for
             the active monster. Same data flow as NpcTokenQuickPanel:
             HP comes from currentActor (joined from combatants), AC
@@ -570,6 +820,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
         {!collapsed && currentActor && (() => {
           const dashUsed = !!(currentActor as any).dash_used_this_turn;
           const disengaged = !!(currentActor as any).disengaged_this_turn;
+          // v2.414.0 — Reset Movement back here per user request.
+          // Sits as a third button on the same row as Dash/Disengage.
+          // Disabled when there's nothing to undo.
+          const movementUsed = (currentActor as any).movement_used_ft ?? 0;
+          const nothingToReset = movementUsed === 0 && !dashUsed && !disengaged;
           return (
             <div style={{
               padding: '6px 10px',
@@ -584,7 +839,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 style={{
                   flex: 1, minWidth: 0,
                   fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
-                  padding: '6px 10px', borderRadius: 6,
+                  padding: '6px 8px', borderRadius: 6,
                   border: '1px solid rgba(248,113,113,0.45)',
                   background: dashUsed ? 'rgba(255,255,255,0.03)' : 'rgba(248,113,113,0.10)',
                   color: dashUsed ? 'var(--t-3)' : '#fca5a5',
@@ -602,7 +857,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 style={{
                   flex: 1, minWidth: 0,
                   fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
-                  padding: '6px 10px', borderRadius: 6,
+                  padding: '6px 8px', borderRadius: 6,
                   border: '1px solid rgba(248,113,113,0.45)',
                   background: disengaged ? 'rgba(255,255,255,0.03)' : 'rgba(248,113,113,0.10)',
                   color: disengaged ? 'var(--t-3)' : '#fca5a5',
@@ -613,11 +868,27 @@ export default function MonsterActionPanel({ isDM }: Props) {
               >
                 {disengaged ? '↩ Disengaged' : '↩ Disengage'}
               </button>
-              {/* v2.413.0 — Reset Movement button removed from this
-                  panel. The MonsterActionPanel was occluding the
-                  user's view of it; the canonical Reset button now
-                  lives on the LEFT side of the InitiativeStrip,
-                  always visible regardless of side panels. */}
+              {/* v2.414.0 — Reset Movement (Undo Move) sibling. */}
+              <button
+                onClick={onResetMovement}
+                disabled={nothingToReset}
+                title={nothingToReset
+                  ? 'Nothing to reset — no movement, Dash, or Disengage spent yet this turn.'
+                  : 'Reset movement, Dash, and Disengage back to the start of this turn.'}
+                style={{
+                  flex: 1, minWidth: 0,
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+                  padding: '6px 8px', borderRadius: 6,
+                  border: '1px solid ' + (nothingToReset ? 'var(--c-border)' : 'rgba(167,139,250,0.5)'),
+                  background: nothingToReset ? 'transparent' : 'rgba(167,139,250,0.12)',
+                  color: nothingToReset ? 'var(--t-3)' : '#c4b5fd',
+                  cursor: nothingToReset ? 'default' : 'pointer',
+                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                  opacity: nothingToReset ? 0.55 : 1,
+                }}
+              >
+                ↺ Undo
+              </button>
             </div>
           );
         })()}
@@ -679,17 +950,35 @@ export default function MonsterActionPanel({ isDM }: Props) {
               }
               if (flavor === 'save') {
                 const sub = `DC ${action.dc_value} ${action.dc_type}${action.damage_dice ? ` · ${action.damage_dice} ${action.damage_type ?? ''}` : ''}${action.usage === 'recharge on roll' ? ' · Recharge 5–6' : ''}`;
+                // v2.415.0 — Save-vs-DC actions are now clickable and
+                // resolve via the same target picker as attacks. The
+                // chain auto-rolls the target's save, applies damage
+                // if the action has damage dice (with half-on-success
+                // honoring dc_success='half'), and toasts the result
+                // for pure save-or-condition actions like Frightening
+                // Presence so the DM can apply the condition manually
+                // (auto condition application comes in a future ship).
+                const noAttacksLeft = ((currentActor as any)?.attacks_remaining ?? 1) <= 0;
                 return (
-                  <div
+                  <button
                     key={key}
-                    title={(action.desc ?? '') + '\n\nResolve manually for now. Auto-resolution comes in a future ship.'}
+                    onClick={() => setPickingFor(action)}
+                    disabled={busy || noAttacksLeft}
+                    title={
+                      noAttacksLeft
+                        ? 'No actions remaining this turn — End Turn to refresh.'
+                        : (action.desc || sub)
+                    }
                     style={{
+                      textAlign: 'left',
                       padding: '8px 10px',
-                      background: 'rgba(167,139,250,0.06)',
-                      border: '1px dashed rgba(167,139,250,0.4)',
+                      background: noAttacksLeft ? 'rgba(255,255,255,0.03)' : 'rgba(167,139,250,0.10)',
+                      border: noAttacksLeft ? '1px solid var(--c-border)' : '1px solid rgba(167,139,250,0.45)',
                       borderRadius: 4,
-                      color: 'var(--t-2)',
-                      cursor: 'help',
+                      color: noAttacksLeft ? 'var(--t-3)' : 'var(--t-1)',
+                      fontFamily: 'var(--ff-body)',
+                      cursor: busy ? 'wait' : (noAttacksLeft ? 'not-allowed' : 'pointer'),
+                      opacity: busy ? 0.6 : (noAttacksLeft ? 0.45 : 1),
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
@@ -698,10 +987,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
                     <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd' }}>
                       💫 {action.name}
                     </span>
-                    <span style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 600 }}>
-                      {sub} · resolve manually
+                    <span style={{ fontSize: 10, color: 'var(--t-2)', fontWeight: 600 }}>
+                      {sub}
                     </span>
-                  </div>
+                  </button>
                 );
               }
               return (

@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
-import { takeDash, takeDisengage, resetMovement } from '../../lib/movement';
+import { takeDash, takeDisengage } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -136,23 +136,9 @@ export default function InitiativeStrip({ isDM }: Props) {
     }
   }
 
-  // v2.412.0 — Reset Movement do-over. Refunds movement_used_ft +
-  // Dash + Disengage so the active turn returns to start-of-turn
-  // state. Useful when a token is locked + has spent its movement
-  // and the player/DM wants to reposition before End Turn.
-  async function onResetMovement() {
-    if (!encounter || !currentActor) return;
-    const result = await resetMovement({
-      campaignId: encounter.campaign_id,
-      encounterId: encounter.id,
-      participantId: currentActor.id,
-      participantName: currentActor.name,
-      participantType: currentActor.participant_type,
-    });
-    if (!result.ok) {
-      showToast(`Couldn't reset movement: ${result.reason}`, 'error');
-    }
-  }
+  // v2.414.0 — onResetMovement handler removed from this strip. The
+  // canonical Reset Movement button now lives in MonsterActionPanel
+  // (near Dash/Disengage) per user request.
 
   return (
     <div
@@ -262,42 +248,12 @@ export default function InitiativeStrip({ isDM }: Props) {
         </span>
       </div>
 
-      {/* v2.413.0 — Reset Movement do-over, relocated to the LEFT
-          side of the strip. Previous v2.412 location (between
-          Disengage and End Turn on the right cluster) was getting
-          occluded by the MonsterActionPanel on creature turns. The
-          left side is never overlapped by any side panel, so the
-          button is always visible. Disabled when there's nothing
-          to undo (no movement spent, no Dash, no Disengage). */}
-      {(() => {
-        const movementUsed = (currentActor as any)?.movement_used_ft ?? 0;
-        const dashed = !!currentActor?.dash_used_this_turn;
-        const disengaged = !!currentActor?.disengaged_this_turn;
-        const nothingToReset = !currentActor || (movementUsed === 0 && !dashed && !disengaged);
-        return (
-          <button
-            onClick={onResetMovement}
-            disabled={nothingToReset}
-            title={nothingToReset
-              ? 'Nothing to reset — no movement, Dash, or Disengage spent yet this turn.'
-              : 'Reset movement, Dash, and Disengage back to the start of this turn.'}
-            style={{
-              flexShrink: 0,
-              fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
-              padding: '6px 10px', borderRadius: 6,
-              border: '1px solid ' + (nothingToReset ? 'var(--c-border)' : 'rgba(167,139,250,0.5)'),
-              background: nothingToReset ? 'transparent' : 'rgba(167,139,250,0.12)',
-              color: nothingToReset ? 'var(--t-3)' : '#c4b5fd',
-              cursor: nothingToReset ? 'default' : 'pointer',
-              minHeight: 0,
-              letterSpacing: '0.06em', textTransform: 'uppercase',
-              opacity: nothingToReset ? 0.55 : 1,
-            }}
-          >
-            ↺ Undo Move
-          </button>
-        );
-      })()}
+      {/* v2.414.0 — Reset Movement button moved back to MonsterActionPanel
+          per user request. PCs use the strip-bottom-right cluster's
+          End Turn / Dash / Disengage but not Reset; Reset for PC turns
+          is reachable via the dice log / character sheet undo if
+          needed. (TODO: a per-tile undo on the active PC's tile would
+          be a cleaner path; deferred to a focused ship.) */}
 
       <div style={{
         display: 'flex', gap: 6, flex: 1,
