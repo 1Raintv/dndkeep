@@ -26,6 +26,7 @@ import LairActionsConfigModal from './LairActionsConfigModal';
 // Without this, a click that hit an error was indistinguishable from a click
 // that worked-but-rendered-late, since the realtime echo also drives the UI.
 import { useToast } from '../shared/Toast';
+import { useFastCombatRolls } from '../../lib/useFastCombatRolls';
 // v2.385.0 — Click-on-tile pans the battle-map viewport to the
 // participant's token (see store.requestPan). Conditions used to live
 // here too; they've moved to the per-token quick panel where they're
@@ -54,6 +55,10 @@ export default function InitiativeStrip({ isDM }: Props) {
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
+  // v2.416.0 — Shared preference, also read/written from
+  // MonsterActionPanel. Hooked here so the in-strip checkbox can
+  // toggle it during PC turns where MonsterActionPanel isn't shown.
+  const [fastRolls, setFastRolls] = useFastCombatRolls();
   // v2.411.0 — showDeclare state removed alongside the Attack button.
   // const [showDeclare, setShowDeclare] = useState(false);
   // v2.385.0 — conditionPicker state removed. Tile click now pans the
@@ -246,6 +251,34 @@ export default function InitiativeStrip({ isDM }: Props) {
             );
           })()}
         </span>
+        {/* v2.416.0 — Fast Combat Rolls toggle, moved here from
+            MonsterActionPanel per user request: "should be a box that
+            checks so if you want fast combat rolls" placed underneath
+            the round/actor display. When ON, attack chains resolve
+            instantly. When OFF (default), the d20 and damage dice
+            animate before damage applies. Single source of truth
+            via the useFastCombatRolls hook so MonsterActionPanel
+            and any future surface read the same value. */}
+        <label
+          title="When on, attacks resolve instantly. When off (default), dice animate before damage applies."
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 9, fontWeight: 700,
+            color: 'var(--t-2)',
+            letterSpacing: '0.08em', textTransform: 'uppercase',
+            cursor: 'pointer',
+            userSelect: 'none' as const,
+            marginTop: 1,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={fastRolls}
+            onChange={e => setFastRolls(e.target.checked)}
+            style={{ accentColor: '#a78bfa', cursor: 'pointer', margin: 0 }}
+          />
+          Fast Combat Rolls
+        </label>
       </div>
 
       {/* v2.414.0 — Reset Movement button moved back to MonsterActionPanel
@@ -693,7 +726,7 @@ export default function InitiativeStrip({ isDM }: Props) {
               opacity: currentActor ? 1 : 0.4,
             }}
           >
-            {currentActor?.dash_used_this_turn ? '⚡ Dashed' : '⚡ Dash'}
+            {currentActor?.dash_used_this_turn ? 'Dashed' : 'Dash'}
           </button>
           <button
             onClick={onDisengage}
@@ -717,7 +750,7 @@ export default function InitiativeStrip({ isDM }: Props) {
               opacity: currentActor ? 1 : 0.4,
             }}
           >
-            {currentActor?.disengaged_this_turn ? '↩ Disengaged' : '↩ Disengage'}
+            {currentActor?.disengaged_this_turn ? 'Disengaged' : 'Disengage'}
           </button>
           {/* v2.413.0 — Reset Movement button moved out of this
               right-side cluster (was occluded by MonsterActionPanel)

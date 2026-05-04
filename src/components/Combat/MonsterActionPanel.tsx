@@ -41,6 +41,8 @@ import { useCombat } from '../../context/CombatContext';
 // on. The dice context auto-clears after 4500ms; we await ~1800ms
 // between steps so the user sees the roll settle before damage.
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { useFastCombatRolls } from '../../lib/useFastCombatRolls';
+import { parseMultiattackDesc, type MultiattackStep } from '../../lib/multiattack';
 import { supabase } from '../../lib/supabase';
 import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack, rollSave, getTargetSaveBonus } from '../../lib/pendingAttack';
 import {
@@ -96,6 +98,38 @@ function normalizeSaveAbility(raw: string | undefined | null): 'STR' | 'DEX' | '
   return null;
 }
 
+// v2.416.0 — Infer the condition that a save action would apply on
+// failure, by inspecting the action's name + description text. The
+// bestiary doesn't yet carry structured `applies_condition_on_fail`
+// metadata, so we use a small lookup table that covers the most
+// common save-vs-condition actions. Returns the condition slug
+// (matching `condition_immunities` entries) or null when the action
+// either doesn't apply a condition or we can't infer one.
+//
+// Used to short-circuit the save chain when the target is immune
+// to the condition the action would apply: rolling the save is
+// pointless and confuses the log. Toast tells the player/DM the
+// target is immune so the action is wasted (still consumes the
+// attack slot — same as if the save passed).
+function inferConditionFromSaveAction(name: string, desc: string | null | undefined): string | null {
+  const haystack = `${name} ${desc ?? ''}`.toLowerCase();
+  // Direct condition mentions in the description take priority.
+  const conditionList = [
+    'charmed', 'frightened', 'paralyzed', 'petrified', 'poisoned',
+    'prone', 'restrained', 'stunned', 'unconscious', 'blinded',
+    'deafened', 'grappled', 'incapacitated', 'invisible',
+  ];
+  for (const c of conditionList) {
+    if (haystack.includes(c)) return c;
+  }
+  // Action-name fallback for the canonical cases.
+  const lname = name.toLowerCase();
+  if (lname.includes('frightening presence') || lname.includes('frightful presence')) return 'frightened';
+  if (lname.includes('hold ')) return 'paralyzed';
+  if (lname.includes('flesh to stone')) return 'petrified';
+  return null;
+}
+
 function classifyAction(a: MonsterAction): ActionFlavor {
   if (typeof a.attack_bonus === 'number' && a.damage_dice) return 'attack';
   if (a.dc_type && typeof a.dc_value === 'number') return 'save';
@@ -138,29 +172,36 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const [loadingActions, setLoadingActions] = useState(false);
   const [pickingFor, setPickingFor] = useState<MonsterAction | null>(null);
   const [busy, setBusy] = useState(false);
+  // v2.416.0 — Multiattack guided mode. When the DM clicks the
+  // "Multiattack" action, we parse its desc into an ordered sequence
+  // of (attackName, count) steps. The panel then enters guided mode:
+  //   • All NON-multiattack actions gray out except the next attack
+  //     in the sequence.
+  //   • Picking that attack opens the target picker as usual.
+  //   • Each completed attack decrements the current step's count;
+  //     when count hits 0 we advance to the next step.
+  //   • When the sequence finishes (or the DM cancels), guided mode
+  //     exits and all actions become available again.
+  // The sequence is local-only client state (not persisted in the
+  // DB) — multiattack is a single-turn flow and exits cleanly on
+  // End Turn.
+  interface MultiattackProgress {
+    sequence: MultiattackStep[];   // parsed steps in stated order
+    stepIdx: number;               // index into `sequence`
+    remainingInStep: number;       // count - completed-so-far
+  }
+  const [multiattack, setMultiattack] = useState<MultiattackProgress | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   // v2.411.0 — toast for Dash/Disengage failure messages, mirroring
   // InitiativeStrip's pattern.
   const { showToast } = useToast();
   // v2.414.0 — Dice animation during the attack chain. The
-  // "Fast Combat Rolls" checkbox below toggles this off (instant
-  // resolution, current pre-v2.414 behavior). When unchecked,
-  // attack chains pause to play d20 + damage dice animations.
+  // "Fast Combat Rolls" checkbox (now in InitiativeStrip, v2.416)
+  // toggles this off (instant resolution, current pre-v2.414
+  // behavior). When unchecked, attack chains pause to play
+  // d20 + damage dice animations.
   const { triggerRoll } = useDiceRoll();
-  const [fastRolls, setFastRolls] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('dndkeep:fastCombatRolls') === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem('dndkeep:fastCombatRolls', fastRolls ? '1' : '0');
-    } catch {
-      // localStorage may be unavailable (private mode, quota); ignore.
-    }
-  }, [fastRolls]);
+  const [fastRolls] = useFastCombatRolls();
 
   // v2.411.0 — Dash + Disengage handlers for creature turns. Same
   // contract as InitiativeStrip.onDash/onDisengage; we duplicate
@@ -217,12 +258,21 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // render the at-a-glance HP / AC / saves panel above the action
   // list, so the DM has the same reference info that the token
   // quick-panel surfaces. Same fields that NpcTokenQuickPanel reads.
+  // v2.416.0 — Extended with damage/condition resistance + immunity
+  // fields so the panel surfaces them inline (resists/immunities
+  // are core to running monsters; pre-v2.416 the DM had to leave the
+  // panel to look them up).
   const [monsterStats, setMonsterStats] = useState<{
     str: number | null; dex: number | null; con: number | null;
     int: number | null; wis: number | null; cha: number | null;
     cr: string | number | null;
     save_proficiencies: string[] | null;
     ac: number | null;
+    damage_resistances: string[] | null;
+    damage_immunities: string[] | null;
+    damage_vulnerabilities: string[] | null;
+    condition_immunities: string[] | null;
+    legendary_resistance_count: number | null;
   } | null>(null);
 
   // v2.364.0 — Battle map cache for distance computation. Loaded
@@ -231,6 +281,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
 
   useEffect(() => {
+    // v2.416.0 — Reset multiattack guided-mode state whenever the
+    // active actor changes. Without this, a half-completed sequence
+    // would carry across turns and gray out actions on the next
+    // monster's turn.
+    setMultiattack(null);
     if (!isDM || !currentActor) {
       setActions(null);
       setMonsterStats(null);
@@ -252,9 +307,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
     (async () => {
       // v2.409.0 — Pull stats alongside source_monster_id so we can
       // render the HP/AC/saves block in the same render pass.
+      // v2.416.0 — Plus resistance/immunity arrays.
       const { data: hb } = await supabase
         .from('homebrew_monsters')
-        .select('source_monster_id, str, dex, con, int, wis, cha, cr, save_proficiencies, ac')
+        .select('source_monster_id, str, dex, con, int, wis, cha, cr, save_proficiencies, ac, damage_resistances, damage_immunities, damage_vulnerabilities, condition_immunities, legendary_resistance_count')
         .eq('id', currentActor.entity_id)
         .maybeSingle();
       if (!cancelled && hb) {
@@ -265,6 +321,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
           cr: h.cr ?? null,
           save_proficiencies: h.save_proficiencies ?? null,
           ac: h.ac ?? null,
+          damage_resistances: h.damage_resistances ?? null,
+          damage_immunities: h.damage_immunities ?? null,
+          damage_vulnerabilities: h.damage_vulnerabilities ?? null,
+          condition_immunities: h.condition_immunities ?? null,
+          legendary_resistance_count: h.legendary_resistance_count ?? null,
         });
       }
       if (cancelled) return;
@@ -360,6 +421,29 @@ export default function MonsterActionPanel({ isDM }: Props) {
         if (!ability) {
           showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
         } else {
+          // v2.416.0 — Condition-immunity short-circuit. If this
+          // save action would apply a condition (e.g. Frightening
+          // Presence → frightened) and the target is immune to that
+          // condition, skip the roll entirely and toast the immunity.
+          // Saves the player a useless roll and makes the immunity
+          // legible in the action log. Only applied for creature
+          // targets; PCs don't currently expose condition_immunities.
+          const inferredCondition = inferConditionFromSaveAction(a.name, a.desc);
+          let immune = false;
+          if (inferredCondition && target.participant_type === 'creature' && target.entity_id) {
+            const { data: tgtRow } = await supabase
+              .from('homebrew_monsters')
+              .select('condition_immunities')
+              .eq('id', target.entity_id)
+              .maybeSingle();
+            const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
+            immune = immList.some(s => s.toLowerCase() === inferredCondition);
+          }
+          if (immune && inferredCondition) {
+            showToast(`${target.name} is immune to ${inferredCondition} — ${a.name} has no effect.`, 'info');
+            // Still consume the attack slot so multiattack counters
+            // decrement consistently with hit/miss outcomes.
+          } else {
           const attack = await declareAttack({
             campaignId: encounter.campaign_id,
             encounterId: encounter.id,
@@ -449,6 +533,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
               await cancelAttack(rolled?.id ?? attack.id);
             }
           }
+          } // end "not immune" else block (v2.416.0)
         }
       } else {
         // ── Attack chain (kind='attack_roll') ─────────────────────
@@ -565,6 +650,13 @@ export default function MonsterActionPanel({ isDM }: Props) {
       if (upErr) {
         console.error('[MonsterActionPanel] action-economy update failed', upErr);
       }
+      // v2.416.0 — In guided multiattack mode, advance the sequence.
+      // The local store of attacks_remaining mirrors the DB, but the
+      // sequence is a separate concept (which specific attack is
+      // next, not how many total attacks remain).
+      if (multiattack) {
+        advanceMultiattack();
+      }
     } catch (err) {
       console.error('[MonsterActionPanel] attack declare/roll failed', err);
     } finally {
@@ -577,6 +669,72 @@ export default function MonsterActionPanel({ isDM }: Props) {
     flavor: classifyAction(a),
     action: a,
   }));
+
+  // v2.416.0 — Helpers for multiattack guided mode.
+  //
+  // Click "Multiattack": parse the desc into steps, validate
+  // against the actor's actions list, enter guided mode at step 0.
+  // If parsing fails (no recognizable steps), toast a warning and
+  // stay in free-pick mode — clicking individual attacks still
+  // works since attacks_remaining is already > 1 from the
+  // attacks_per_action seed.
+  function startMultiattack(action: MonsterAction) {
+    const sequence = parseMultiattackDesc(action.desc, (actions ?? []).map(x => x.name));
+    if (sequence.length === 0) {
+      showToast(
+        `Couldn't parse Multiattack sequence — pick attacks individually.`,
+        'info',
+      );
+      return;
+    }
+    setMultiattack({
+      sequence,
+      stepIdx: 0,
+      remainingInStep: sequence[0].count,
+    });
+    showToast(
+      `Multiattack: ${sequence.map(s => `${s.count}× ${s.actionName}`).join(' · ')}`,
+      'info',
+    );
+  }
+
+  function cancelMultiattack() {
+    setMultiattack(null);
+  }
+
+  // While in guided mode, the only attack the DM can fire is the
+  // current step's named action. This helper returns true if
+  // `actionName` is the next-up attack. Save-vs-DC actions and
+  // descriptive-only entries are always disabled while a sequence
+  // is active.
+  function isCurrentMultiattackStep(actionName: string): boolean {
+    if (!multiattack) return false;
+    const step = multiattack.sequence[multiattack.stepIdx];
+    return !!step && step.actionName === actionName;
+  }
+
+  // Called from handlePick after a single attack resolves. Decrements
+  // the current step's remaining count; if zero, advance to the
+  // next step. When the sequence is exhausted, exit guided mode.
+  function advanceMultiattack() {
+    setMultiattack(prev => {
+      if (!prev) return prev;
+      const nextRemaining = prev.remainingInStep - 1;
+      if (nextRemaining > 0) {
+        return { ...prev, remainingInStep: nextRemaining };
+      }
+      const nextStepIdx = prev.stepIdx + 1;
+      if (nextStepIdx >= prev.sequence.length) {
+        // Sequence complete.
+        return null;
+      }
+      return {
+        ...prev,
+        stepIdx: nextStepIdx,
+        remainingInStep: prev.sequence[nextStepIdx].count,
+      };
+    });
+  }
 
   // v2.364.0 — Side rail. Right edge, full vertical (top of viewport
   // down to just above the InitiativeStrip). Width 280px; collapsed
@@ -670,38 +828,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
           </button>
         </div>
 
-        {/* v2.414.0 — Fast Combat Rolls toggle. When ON the auto-
-            resolve attack chain skips the 3D dice animation between
-            steps (instant resolution; pre-v2.414 behavior). When
-            OFF, attack rolls and damage rolls play the dice
-            animation so the result feels more impactful — d20
-            settles, then damage dice settle, before HP applies.
-            Persisted in localStorage so the DM's preference
-            carries across sessions. */}
-        {!collapsed && (
-          <label
-            title="When on, attacks resolve instantly. When off (default), the d20 and damage dice animate before damage applies."
-            style={{
-              padding: '6px 12px',
-              borderBottom: '1px solid var(--c-border)',
-              display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 10, fontWeight: 700,
-              color: 'var(--t-2)',
-              letterSpacing: '0.06em', textTransform: 'uppercase',
-              cursor: 'pointer',
-              userSelect: 'none' as const,
-              flexShrink: 0,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={fastRolls}
-              onChange={e => setFastRolls(e.target.checked)}
-              style={{ accentColor: '#a78bfa', cursor: 'pointer' }}
-            />
-            ⚡ Fast Combat Rolls
-          </label>
-        )}
+        {/* v2.416.0 — Fast Combat Rolls toggle moved to InitiativeStrip
+            (below the round/actor display) so it's visible during PC
+            turns too and easier to find. The MonsterActionPanel now
+            just reads the shared preference via useFastCombatRolls. */}
 
         {/* v2.409.0 — Stat block at-a-glance. HP / AC / Saves for
             the active monster. Same data flow as NpcTokenQuickPanel:
@@ -809,6 +939,80 @@ export default function MonsterActionPanel({ isDM }: Props) {
           );
         })()}
 
+        {/* v2.416.0 — Resistance / Immunity / Vulnerability summary.
+            Three compact rows under the HP/AC/saves block so the DM
+            can see at a glance what the active monster shrugs off
+            before picking a save target. Each row is hidden when
+            empty so the layout stays tight for monsters with no
+            resists/immunities. Damage types render with type chips
+            (color-coded later if useful); condition immunities are
+            plain-text since condition names are short. */}
+        {!collapsed && monsterStats && (() => {
+          const dr = monsterStats.damage_resistances ?? [];
+          const di = monsterStats.damage_immunities ?? [];
+          const dv = monsterStats.damage_vulnerabilities ?? [];
+          const ci = monsterStats.condition_immunities ?? [];
+          const lr = monsterStats.legendary_resistance_count ?? 0;
+          const lrUsed = (currentActor as any)?.legendary_resistance_used ?? 0;
+          const hasAny = dr.length || di.length || dv.length || ci.length || lr > 0;
+          if (!hasAny) return null;
+
+          // Reusable chip-row component inline.
+          const ChipRow = ({ label, items, color }: { label: string; items: string[]; color: string }) => (
+            items.length === 0 ? null : (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, lineHeight: 1.3 }}>
+                <div style={{
+                  fontSize: 8, fontWeight: 800, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: 'var(--t-3)',
+                  width: 32, flexShrink: 0, paddingTop: 2,
+                }}>
+                  {label}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3 }}>
+                  {items.map((it, idx) => (
+                    <span key={idx} style={{
+                      fontSize: 9, fontWeight: 700,
+                      padding: '1px 6px', borderRadius: 3,
+                      background: `${color}22`, border: `1px solid ${color}66`,
+                      color, letterSpacing: '0.02em',
+                    }}>{it}</span>
+                  ))}
+                </div>
+              </div>
+            )
+          );
+          return (
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--c-border)',
+              flexShrink: 0,
+              display: 'flex', flexDirection: 'column', gap: 3,
+            }}>
+              {/* Legendary Resistance counter — top-most because it
+                  affects every save the monster makes today. */}
+              {lr > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.3 }}>
+                  <div style={{
+                    fontSize: 8, fontWeight: 800, letterSpacing: '0.08em',
+                    textTransform: 'uppercase', color: 'var(--t-3)',
+                    width: 32, flexShrink: 0,
+                  }}>LR</div>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: lrUsed >= lr ? 'var(--t-3)' : '#fbbf24',
+                  }}>
+                    {Math.max(0, lr - lrUsed)} / {lr} remaining
+                  </div>
+                </div>
+              )}
+              <ChipRow label="Imm" items={di} color="#a78bfa" />
+              <ChipRow label="Res" items={dr} color="#60a5fa" />
+              <ChipRow label="Vuln" items={dv} color="#f87171" />
+              <ChipRow label="C-Imm" items={ci} color="#34d399" />
+            </div>
+          );
+        })()}
+
         {/* v2.411.0 — Dash + Disengage row. Sits between the HP/AC/
             saves block and the action list. Mirrors the buttons in
             InitiativeStrip (which still has them for PC turns) so the
@@ -848,7 +1052,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                   opacity: dashUsed ? 0.55 : 1,
                 }}
               >
-                {dashUsed ? '⏵⏵ Dashed' : '⏵⏵ Dash'}
+                {dashUsed ? 'Dashed' : 'Dash'}
               </button>
               <button
                 onClick={onDisengage}
@@ -866,7 +1070,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                   opacity: disengaged ? 0.55 : 1,
                 }}
               >
-                {disengaged ? '↩ Disengaged' : '↩ Disengage'}
+                {disengaged ? 'Disengaged' : 'Disengage'}
               </button>
               {/* v2.414.0 — Reset Movement (Undo Move) sibling. */}
               <button
@@ -889,6 +1093,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
               >
                 ↺ Undo
               </button>
+              {/* (text-only revert kept ↺ — it's a universal-undo
+                  glyph rather than a "cute icon", same row context.) */}
             </div>
           );
         })()}
@@ -914,33 +1120,62 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // currentActor.attacks_remaining live; the picker
                 // gate also enforces this server-side as a backstop.
                 const noAttacksLeft = ((currentActor as any)?.attacks_remaining ?? 1) <= 0;
+                // v2.416.0 — In multiattack guided mode, only the
+                // current step's attack is enabled. Other attacks
+                // are visibly grayed out so the DM can't accidentally
+                // skip a step. The next-up attack also shows its
+                // step counter so the DM knows how many of THIS
+                // attack remain in the sequence.
+                const isMultiCurrent = multiattack ? isCurrentMultiattackStep(action.name) : false;
+                const lockedByMulti = !!multiattack && !isMultiCurrent;
+                const disabled = busy || noAttacksLeft || lockedByMulti;
                 return (
                   <button
                     key={key}
                     onClick={() => setPickingFor(action)}
-                    disabled={busy || noAttacksLeft}
+                    disabled={disabled}
                     title={
-                      noAttacksLeft
-                        ? 'No attacks remaining this turn — End Turn to refresh.'
-                        : (action.desc || sub) + (hasBonusRider ? '\n\nRider damage (' + action.bonus_damage_dice + ' ' + action.bonus_damage_type + ') is shown but applied manually for now.' : '')
+                      lockedByMulti
+                        ? `Multiattack in progress — finish ${multiattack!.sequence[multiattack!.stepIdx].actionName} first.`
+                        : noAttacksLeft
+                          ? 'No attacks remaining this turn — End Turn to refresh.'
+                          : (action.desc || sub) + (hasBonusRider ? '\n\nRider damage (' + action.bonus_damage_dice + ' ' + action.bonus_damage_type + ') is shown but applied manually for now.' : '')
                     }
                     style={{
                       textAlign: 'left',
                       padding: '8px 10px',
-                      background: noAttacksLeft ? 'rgba(255,255,255,0.03)' : 'rgba(248,113,113,0.10)',
-                      border: noAttacksLeft ? '1px solid var(--c-border)' : '1px solid rgba(248,113,113,0.45)',
+                      background: disabled
+                        ? 'rgba(255,255,255,0.03)'
+                        : isMultiCurrent
+                          ? 'rgba(248,113,113,0.18)'
+                          : 'rgba(248,113,113,0.10)',
+                      border: disabled
+                        ? '1px solid var(--c-border)'
+                        : isMultiCurrent
+                          ? '2px solid #f87171'
+                          : '1px solid rgba(248,113,113,0.45)',
                       borderRadius: 4,
-                      color: noAttacksLeft ? 'var(--t-3)' : 'var(--t-1)',
+                      color: disabled ? 'var(--t-3)' : 'var(--t-1)',
                       fontFamily: 'var(--ff-body)',
-                      cursor: busy ? 'wait' : (noAttacksLeft ? 'not-allowed' : 'pointer'),
-                      opacity: busy ? 0.6 : (noAttacksLeft ? 0.45 : 1),
+                      cursor: busy ? 'wait' : (disabled ? 'not-allowed' : 'pointer'),
+                      opacity: busy ? 0.6 : (disabled ? 0.45 : 1),
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#fca5a5' }}>
-                      ⚔ {action.name}
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#fca5a5', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>⚔ {action.name}</span>
+                      {isMultiCurrent && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, color: '#fbbf24',
+                          padding: '1px 6px', borderRadius: 3,
+                          background: 'rgba(251,191,36,0.18)',
+                          letterSpacing: '0.06em',
+                        }}>
+                          {multiattack!.remainingInStep} LEFT
+                        </span>
+                      )}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--t-2)', fontWeight: 600 }}>
                       {sub}
@@ -959,26 +1194,34 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // Presence so the DM can apply the condition manually
                 // (auto condition application comes in a future ship).
                 const noAttacksLeft = ((currentActor as any)?.attacks_remaining ?? 1) <= 0;
+                // v2.416.0 — Save actions are locked while a
+                // multiattack sequence is in progress (Tarrasque
+                // doesn't get to fire Frightening Presence in the
+                // middle of its bite-claw-claw-horn-tail combo).
+                const lockedByMulti = !!multiattack;
+                const disabled = busy || noAttacksLeft || lockedByMulti;
                 return (
                   <button
                     key={key}
                     onClick={() => setPickingFor(action)}
-                    disabled={busy || noAttacksLeft}
+                    disabled={disabled}
                     title={
-                      noAttacksLeft
-                        ? 'No actions remaining this turn — End Turn to refresh.'
-                        : (action.desc || sub)
+                      lockedByMulti
+                        ? `Multiattack in progress — finish the sequence first.`
+                        : noAttacksLeft
+                          ? 'No actions remaining this turn — End Turn to refresh.'
+                          : (action.desc || sub)
                     }
                     style={{
                       textAlign: 'left',
                       padding: '8px 10px',
-                      background: noAttacksLeft ? 'rgba(255,255,255,0.03)' : 'rgba(167,139,250,0.10)',
-                      border: noAttacksLeft ? '1px solid var(--c-border)' : '1px solid rgba(167,139,250,0.45)',
+                      background: disabled ? 'rgba(255,255,255,0.03)' : 'rgba(167,139,250,0.10)',
+                      border: disabled ? '1px solid var(--c-border)' : '1px solid rgba(167,139,250,0.45)',
                       borderRadius: 4,
-                      color: noAttacksLeft ? 'var(--t-3)' : 'var(--t-1)',
+                      color: disabled ? 'var(--t-3)' : 'var(--t-1)',
                       fontFamily: 'var(--ff-body)',
-                      cursor: busy ? 'wait' : (noAttacksLeft ? 'not-allowed' : 'pointer'),
-                      opacity: busy ? 0.6 : (noAttacksLeft ? 0.45 : 1),
+                      cursor: busy ? 'wait' : (disabled ? 'not-allowed' : 'pointer'),
+                      opacity: busy ? 0.6 : (disabled ? 0.45 : 1),
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
@@ -989,6 +1232,57 @@ export default function MonsterActionPanel({ isDM }: Props) {
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--t-2)', fontWeight: 600 }}>
                       {sub}
+                    </span>
+                  </button>
+                );
+              }
+              // v2.416.0 — Special-case the "Multiattack" descriptive
+              // entry: clickable to enter guided mode. The descriptive
+              // branch below catches any action that isn't attack/save
+              // — Multiattack is one such case.
+              const isMultiattackAction = action.name.toLowerCase().includes('multiattack');
+              if (isMultiattackAction) {
+                const active = !!multiattack;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => active ? cancelMultiattack() : startMultiattack(action)}
+                    disabled={busy}
+                    title={active
+                      ? 'Cancel the in-progress multiattack sequence.'
+                      : (action.desc || 'Start guided multiattack — picks attacks one at a time.')}
+                    style={{
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      background: active ? 'rgba(251,191,36,0.18)' : 'rgba(248,113,113,0.10)',
+                      border: active ? '2px solid #fbbf24' : '1px solid rgba(248,113,113,0.45)',
+                      borderRadius: 4,
+                      color: 'var(--t-1)',
+                      fontFamily: 'var(--ff-body)',
+                      cursor: busy ? 'wait' : 'pointer',
+                      opacity: busy ? 0.6 : 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 800, color: active ? '#fbbf24' : '#fca5a5' }}>
+                      {active ? '◉ Multiattack — Cancel' : '⚔⚔ Multiattack'}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: 'var(--t-3)',
+                        fontWeight: 500,
+                        overflow: 'hidden',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {active
+                        ? `Step ${multiattack!.stepIdx + 1} of ${multiattack!.sequence.length}: ${multiattack!.remainingInStep}× ${multiattack!.sequence[multiattack!.stepIdx].actionName} remaining`
+                        : action.desc}
                     </span>
                   </button>
                 );
@@ -1007,6 +1301,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 2,
+                    opacity: multiattack ? 0.4 : 1,
                   }}
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--t-1)' }}>

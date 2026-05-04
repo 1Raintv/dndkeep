@@ -127,7 +127,33 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   // land on Members (where they assign their PC and see who else is in).
   // Inlined comparison rather than referencing `isOwner` because
   // `isOwner` is declared after this hook (TDZ).
-  const [activeTab, setActiveTab] = useState<'members' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>(campaignProp.owner_id === user?.id ? 'party' : 'members');
+  // v2.416.0 — Default tab is the Battle Map (was: 'party' for DMs,
+  // 'members' for players). Per user request: "the default location
+  // should be the battle map." Also persist the user's last-selected
+  // tab to sessionStorage so any incidental page refresh / focus
+  // re-init doesn't dump them back to a default they didn't pick.
+  // Per-campaign key so different campaigns don't bleed state.
+  const tabStorageKey = `dndkeep:activeTab:${campaignProp.id}`;
+  const [activeTab, setActiveTab] = useState<'members' | 'session' | 'party' | 'log' | 'chat' | 'schedule' | 'npcs' | 'dm' | 'discord' | 'map'>(() => {
+    try {
+      const saved = sessionStorage.getItem(tabStorageKey);
+      // Whitelist guards against (a) stale tab values from removed
+      // tabs and (b) garbage in storage. 'session' / 'dm' are
+      // removed in v2.416 so we filter them out even if persisted.
+      const valid = ['members', 'party', 'log', 'chat', 'schedule', 'npcs', 'discord', 'map'];
+      if (saved && valid.includes(saved)) return saved as any;
+    } catch {
+      // sessionStorage unavailable (private mode quota etc) — ignore.
+    }
+    // Players who haven't joined yet still default to the Members
+    // tab so they can claim a character; everyone else lands on the
+    // Battle Map.
+    return campaignProp.owner_id === user?.id ? 'map' : 'members';
+  });
+  // Persist whenever the user picks a tab.
+  useEffect(() => {
+    try { sessionStorage.setItem(tabStorageKey, activeTab); } catch {}
+  }, [activeTab, tabStorageKey]);
   // Handle deep-link ?tab=map from character sheet Map button
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -534,12 +560,23 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
             invites + removals from Settings → Members now. Players
             keep the dashboard tab so they can still assign their PC
             and see the roster. */}
-        {([...(isOwner ? [] : ['members'] as const), 'party', ...(isOwner ? ['dm'] : []), 'map', 'session', 'log', 'chat', 'npcs', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
+        {/* v2.416.0 — Tab order changed to "Battle Map → Party →
+            NPCs → Log → Chat → Schedule (→ Discord for DM)" per
+            user request. Removed Combat ('session') and DM Screen
+            ('dm') tabs:
+              • Combat tab: combat now flows through the
+                StartCombatButton in the header + the InitiativeStrip
+                at the bottom of the page; the Combat tab was a
+                duplicate surface and unused.
+              • DM Screen tab: covered by the dedicated DM Screen
+                page route (no longer needs to live as a campaign
+                tab too). */}
+        {([...(isOwner ? [] : ['members'] as const), 'map', 'party', 'npcs', 'log', 'chat', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
-            members: 'Members', session: 'Combat',
+            members: 'Members',
             party: 'Party', log: 'Log', chat: 'Chat',
             schedule: 'Schedule', npcs: 'NPCs',
-            dm: 'DM Screen', discord: 'Discord', map: 'Battle Map',
+            discord: 'Discord', map: 'Battle Map',
           };
           return (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab as typeof activeTab)}>

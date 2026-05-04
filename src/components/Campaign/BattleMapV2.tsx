@@ -3777,10 +3777,40 @@ function TokenLayer(props: {
             // else: in-combat unlocked, OR out-of-combat → allow.
           }
           const worldPoint = viewport.toWorld(event.global.x, event.global.y);
+          // v2.416.0 — For even-size tokens (Large 2×2, Gargantuan
+          // 4×4) the anchor sits at a grid intersection (the
+          // top-left corner of the footprint, not the visual center).
+          // Pre-v2.416 we computed offset = cursor − anchor, so
+          // clicking on the *bottom-right* cell of a Tarrasque set
+          // a ~120px offset. The drag then tracked the click point
+          // correctly during pointermove, but at pointerup
+          // snapTokenAnchor snapped the ANCHOR — not the cursor —
+          // and the relationship between "where the cursor sits"
+          // and "where the snap target is" was off by one or two
+          // cells. Symptom: drop a Tarrasque and watch it shift
+          // to a neighboring grid cell.
+          //
+          // Fix: for even-size tokens, zero the offset so the
+          // anchor follows the cursor directly. The visual jump on
+          // grab is acceptable (the token re-centers under your
+          // pointer) and the drop lands exactly where you released.
+          // Odd-size tokens (1×1, 3×3) anchor on cell centers — the
+          // cursor → center relationship is intuitive — so we keep
+          // the natural cursor-to-anchor offset for those.
+          const cells = (() => {
+            switch (t.size) {
+              case 'large': return 2;
+              case 'gargantuan': return 4;
+              default: return 1; // tiny/small/medium/huge handled as odd
+            }
+          })();
+          const evenSize = cells % 2 === 0;
+          const offsetX = evenSize ? 0 : worldPoint.x - t.x;
+          const offsetY = evenSize ? 0 : worldPoint.y - t.y;
           dragRef.current = {
             id: tid,
-            offsetX: worldPoint.x - t.x,
-            offsetY: worldPoint.y - t.y,
+            offsetX,
+            offsetY,
             // v2.268 — remember where the token was when the drag began so
             // wall-collision validation has both endpoints of the segment.
             originX: t.x,
