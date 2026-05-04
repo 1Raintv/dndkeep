@@ -110,6 +110,23 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
         table: 'combat_participants',
         filter: `campaign_id=eq.${campaignId}`,
       }, () => { load(); })
+      // v2.410.0 — Subscribe to combatants too. The 11 virtual fields
+      // on CombatParticipant (current_hp, max_hp, temp_hp, is_dead,
+      // active_conditions, etc.) are joined from combatants at load
+      // time via JOINED_COMBATANT_FIELDS. Pre-v2.410 we only listened
+      // for combat_participants events, so a HP write to combatants
+      // (which is what applyDamage and the QuickPanel both do) didn't
+      // refresh currentActor.current_hp. Result: the MonsterActionPanel's
+      // HP bar and the InitiativeStrip's per-tile HP bar (added in
+      // v2.410) stayed stale until something else triggered a reload.
+      // Now any combatant change reloads the participant list with
+      // fresh joined HP.
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'combatants',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, () => { load(); })
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };

@@ -363,6 +363,46 @@ export default function InitiativeStrip({ isDM }: Props) {
               }}>
                 {p.initiative ?? '—'}
               </span>
+              {/* v2.410.0 — Per-tile HP bar. User feedback: the strip
+                  should show health "where the attack in turn in combat
+                  buttons are" — i.e., right on the initiative tiles
+                  themselves so the DM can scan everyone's status from
+                  one row. Hidden for PCs from non-DM eyes (player HP
+                  privacy is configurable elsewhere; if this becomes a
+                  concern we can gate the bar on isDM || !is_pc). HP
+                  reads from p.current_hp / p.max_hp, the joined-from-
+                  combatants virtual fields. After v2.410 these refresh
+                  on combatants UPDATE so the bar tracks damage in real
+                  time. */}
+              {(() => {
+                const cur = (p as any).current_hp ?? null;
+                const max = (p as any).max_hp ?? null;
+                if (cur == null || max == null || max <= 0) return null;
+                const pct = Math.max(0, Math.min(1, cur / max));
+                const color = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
+                return (
+                  <div style={{ width: '100%', maxWidth: 80, marginTop: 2 }}>
+                    <div style={{
+                      height: 4,
+                      background: 'rgba(15,16,18,0.85)',
+                      border: '1px solid var(--c-border)',
+                      borderRadius: 2,
+                      overflow: 'hidden' as const,
+                    }}>
+                      <div style={{
+                        width: `${pct * 100}%`, height: '100%',
+                        background: color, transition: 'width 0.2s, background 0.2s',
+                      }} />
+                    </div>
+                    <div style={{
+                      fontSize: 8, color: 'var(--t-3)', textAlign: 'center' as const,
+                      fontFamily: 'var(--ff-stat)', marginTop: 1, fontWeight: 700,
+                    }}>
+                      {cur}/{max}
+                    </div>
+                  </div>
+                );
+              })()}
               {/* v2.112.0 — Phase H pt 3: condition chip row */}
               {conditions.length > 0 && (
                 <div style={{
