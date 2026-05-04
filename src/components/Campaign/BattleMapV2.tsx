@@ -3716,14 +3716,34 @@ function TokenLayer(props: {
           }
           const t = useBattleMapStore.getState().tokens[tid];
           if (!t) return;
-          // v2.411.0 — refuse drag on locked tokens. The DM can toggle
-          // is_locked on any token via the context menu. Locked tokens
-          // are immobile by everyone (DM included) until unlocked. The
-          // visual padlock glyph above the token communicates the
-          // state; here we silently ignore the press to match the
-          // remoteDragLocks behavior above.
+          // v2.412.0 — Lock check with active-turn bypass.
+          //
+          // Tokens default LOCKED (v2.412 default flip). The lock
+          // makes a token immobile EXCEPT during its own active turn,
+          // and only while it still has movement remaining. Once
+          // movement is exhausted the lock re-engages and the token
+          // is stuck — at that point the DM/player can press the
+          // Reset Movement button on InitiativeStrip /
+          // MonsterActionPanel to refund movement, or the DM can
+          // unlock the token entirely via the context menu.
+          //
+          // Outside an active turn (no combat, between turns, or a
+          // different token's turn) the lock check refuses the press
+          // outright. This is intentional — the BG3-style flow only
+          // wants the active actor moving during combat.
+          //
+          // activeTokenInfoRef holds the current activeTokenInfo
+          // (the closure attaches once at token mount and would
+          // otherwise capture a stale value).
           if ((t as any).isLocked) {
-            return;
+            const ati = activeTokenInfoRef.current;
+            const isThisTokenActive = !!ati && ati.tokenId === tid;
+            const movementRemaining = ati ? Math.max(0, ati.max - ati.used) : 0;
+            if (!isThisTokenActive || movementRemaining <= 0) {
+              return;
+            }
+            // else: fall through — locked token is on its own turn
+            // with movement to spend, so allow the drag.
           }
           // v2.411.0 — player ownership gate. Players may only drag
           // tokens that represent their own character (token.characterId
@@ -4501,19 +4521,24 @@ function TokenLayer(props: {
       // restore the v2.341 block from git history.
       if (currentEntry.economyPipsLayer) currentEntry.economyPipsLayer.visible = false;
 
-      // ── Lock glyph (v2.411.0) ──────────────────────────────────────
-      // Padlock above any locked token. Lazy-create on first lock,
-      // toggle .visible thereafter. Position mirrors the movement
-      // badge (-(r + 18)) but offset right by 16px so badge + glyph
-      // don't collide on the rare DM-controlled creature whose turn
-      // is active AND whose token was locked. For tokens without a
-      // turn ring the glyph just floats above the token at center-
-      // right.
-      const tokenIsLocked = !!(token as any).isLocked;
-      if (tokenIsLocked) {
+      // ── Unlocked glyph (v2.412.0) ──────────────────────────────────
+      // Open-padlock above any UNLOCKED token, visible ONLY to the
+      // DM. Players never see lock state — lock is a DM-side workflow
+      // affordance. Locked tokens (the new default) get NO indicator
+      // so the map stays uncluttered. The glyph signals "this token
+      // can be moved freely outside its turn" — a deliberately
+      // conspicuous DM warning since unlocked tokens bypass the
+      // active-turn movement gate.
+      //
+      // Lazy-create on first need, toggle .visible thereafter. Position
+      // mirrors movement badge offset (-(r + 18)); offset right when
+      // also the active turn so the badge stays unobstructed.
+      const tokenIsUnlocked = !((token as any).isLocked);
+      const showUnlockedGlyph = isDM && tokenIsUnlocked;
+      if (showUnlockedGlyph) {
         if (!currentEntry.lockGlyph) {
           const glyph = new Text({
-            text: '🔒',
+            text: '🔓',
             style: new TextStyle({
               fontFamily: 'sans-serif',
               fontSize: 16,
@@ -4526,9 +4551,6 @@ function TokenLayer(props: {
           currentEntry.lockGlyph = glyph;
         }
         const glyph = currentEntry.lockGlyph;
-        // Shift right when this token is also the active turn so the
-        // glyph clears the movement badge. Otherwise sit at the top-
-        // center of the token.
         const offsetX = isActiveTurn ? 18 : 0;
         glyph.position.set(offsetX, -(r + 18));
         glyph.visible = true;
@@ -7568,9 +7590,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         // be confusing UX. (The other players also see PC tokens —
         // intended behavior, players know who's in the party.)
         visibleToAll: true,
-        // v2.411.0: tokens default to unlocked. DM can toggle per-token
-        // via the context menu (locks affect drag eligibility).
-        isLocked: false,
+        // v2.412.0 — default LOCKED. PCs are typically immobile until
+        // their initiative comes around; the active-turn bypass in
+        // pointerdown lets the owning player drag during their own
+        // turn while movement remains.
+        isLocked: true,
       };
     });
 

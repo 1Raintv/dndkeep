@@ -168,7 +168,11 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
         npcId: c.id,
         creatureId: c.id,
         visibleToAll: c.visible_to_players ?? true,
-        isLocked: false,
+        // v2.412.0 — default LOCKED. DM unlocks via context menu when
+        // they want to reposition. Active-turn bypass in BattleMapV2
+        // pointerdown lets the token move during its own turn while
+        // movement remains.
+        isLocked: true,
       };
 
       useBattleMapStore.getState().addToken(token);

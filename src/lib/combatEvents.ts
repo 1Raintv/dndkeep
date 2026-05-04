@@ -122,7 +122,12 @@ export type CombatEventType =
   | 'participant_died'
   | 'resistance_applied'
   | 'spell_counterspell_resolved'
-  | 'spell_declared';
+  | 'spell_declared'
+  // v2.412.0 — Reset Movement do-over button. Emitted by
+  // resetMovement() in src/lib/movement.ts; refunds movement_used_ft,
+  // dash_used_this_turn, disengaged_this_turn back to start-of-turn
+  // values for a single participant.
+  | 'reset_movement';
 
 export interface CombatEventInsert {
   campaignId?: string | null;

@@ -303,3 +303,87 @@ export async function logMovement(input: LogMovementInput): Promise<void> {
     toCol: input.toCol,
   });
 }
+
+// ─── Reset Movement ──────────────────────────────────────────────
+// v2.412.0 — Per-participant "do-over" for the active turn. Resets
+// movement_used_ft to 0 AND clears Dash + Disengage flags so the
+// turn returns to its start-of-turn state. Useful when a player
+// (or DM) misclicks during the active turn and wants to undo the
+// movement / Dash / Disengage choice without ending the turn.
+//
+// What this does NOT reset:
+//   • action_used / bonus_used / reaction_used — those are spent
+//     by attacks and other deliberate clicks. If the user wants
+//     attack do-overs they have other paths (cancelAttack, etc.).
+//   • attacks_remaining — same reason.
+//   • Concentration, conditions, hp — orthogonal to movement.
+//
+// The function emits a 'reset_movement' combat event so the log
+// reflects the do-over for transparency.
+
+export interface ResetMovementInput {
+  campaignId: string;
+  encounterId: string | null;
+  participantId: string;
+  participantName: string;
+  participantType: 'character' | 'creature' | 'monster' | 'npc';
+}
+
+export async function resetMovement(input: ResetMovementInput): Promise<MovementActionResult> {
+  const { data: cur, error: curErr } = await supabase
+    .from('combat_participants')
+    .select('movement_used_ft, dash_used_this_turn, disengaged_this_turn, max_speed_ft')
+    .eq('id', input.participantId)
+    .single();
+  if (curErr) {
+    console.error('[resetMovement] fetch failed:', curErr);
+    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
+  }
+  if (!cur) return { ok: false, reason: 'Participant not found' };
+
+  const previousUsed = (cur as any).movement_used_ft ?? 0;
+  const previousDash = !!(cur as any).dash_used_this_turn;
+  const previousDisengage = !!(cur as any).disengaged_this_turn;
+
+  // Nothing to do — silently succeed so a stray button click on a
+  // fresh turn doesn't flood the log with no-op events.
+  if (previousUsed === 0 && !previousDash && !previousDisengage) {
+    return { ok: true };
+  }
+
+  const { error: updErr } = await supabase
+    .from('combat_participants')
+    .update({
+      movement_used_ft: 0,
+      dash_used_this_turn: false,
+      disengaged_this_turn: false,
+    })
+    .eq('id', input.participantId);
+  if (updErr) {
+    console.error('[resetMovement] update failed:', updErr);
+    return { ok: false, reason: updErr.message ?? 'Failed to reset movement' };
+  }
+
+  const chainId = newChainId();
+  await emitCombatEvent({
+    campaignId: input.campaignId,
+    encounterId: input.encounterId,
+    chainId,
+    sequence: 0,
+    actorType:
+      input.participantType === 'character' ? 'player'
+      : isCreatureParticipantType(input.participantType) ? 'creature'
+      : 'system',
+    actorName: input.participantName,
+    targetType: null,
+    targetName: null,
+    eventType: 'reset_movement',
+    payload: {
+      previous_used_ft: previousUsed,
+      previous_dashed: previousDash,
+      previous_disengaged: previousDisengage,
+      max_speed_ft: (cur as any).max_speed_ft ?? 30,
+    },
+  });
+  return { ok: true };
+}

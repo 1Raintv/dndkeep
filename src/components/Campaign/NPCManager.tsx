@@ -364,7 +364,8 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
         npcId: npc.id,        // legacy mirror for existing readers
         creatureId: npc.id,   // post-v2.350 canonical link
         visibleToAll: npc.visible_to_players ?? true,
-        isLocked: false,
+        // v2.412.0 — default LOCKED.
+        isLocked: true,
       };
       // Optimistic store update so the token appears immediately if
       // the user switches to the map tab.
