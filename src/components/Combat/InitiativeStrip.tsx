@@ -13,7 +13,9 @@ import { takeDash, takeDisengage } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
-import DeclareAttackModal from './DeclareAttackModal';
+// v2.411.0 — DeclareAttackModal import removed. The ⚔ Attack button
+// that mounted it was removed in this same ship.
+// import DeclareAttackModal from './DeclareAttackModal';
 import LegendaryActionPopover from './LegendaryActionPopover';
 // v2.140.0 — Phase M pt 3: DM popover for Legendary Resistance
 import LegendaryResistancePopover from './LegendaryResistancePopover';
@@ -52,7 +54,8 @@ export default function InitiativeStrip({ isDM }: Props) {
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
-  const [showDeclare, setShowDeclare] = useState(false);
+  // v2.411.0 — showDeclare state removed alongside the Attack button.
+  // const [showDeclare, setShowDeclare] = useState(false);
   // v2.385.0 — conditionPicker state removed. Tile click now pans the
   // map (via store.requestPan); conditions are applied from the
   // per-token quick panel.
@@ -705,20 +708,12 @@ export default function InitiativeStrip({ isDM }: Props) {
           >
             {currentActor?.disengaged_this_turn ? '↩ Disengaged' : '↩ Disengage'}
           </button>
-          <button
-            onClick={() => setShowDeclare(true)}
-            style={{
-              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
-              padding: '6px 14px', borderRadius: 6,
-              border: '1px solid rgba(248,113,113,0.5)',
-              background: 'rgba(248,113,113,0.12)',
-              color: '#f87171',
-              cursor: 'pointer', minHeight: 0,
-              letterSpacing: '0.06em', textTransform: 'uppercase',
-            }}
-          >
-            ⚔ Attack
-          </button>
+          {/* v2.411.0 — ⚔ Attack button removed. The DeclareAttackModal
+              flow it opened was non-functional in the post-v2.402
+              auto-resolve combat path (creature attacks resolve
+              end-to-end via MonsterActionPanel, and PC attacks go
+              through PlayerAttackButton on the character sheet).
+              Removing the orphaned button + its modal mount + state. */}
           <button
             onClick={onEndTurn}
             style={{
@@ -749,13 +744,8 @@ export default function InitiativeStrip({ isDM }: Props) {
           </button>
         </div>
       )}
-      {showDeclare && encounter && (
-        <DeclareAttackModal
-          campaignId={encounter.campaign_id}
-          onClose={() => setShowDeclare(false)}
-          onDeclared={() => setShowDeclare(false)}
-        />
-      )}
+      {/* v2.411.0 — DeclareAttackModal mount removed alongside the
+          ⚔ Attack button above. */}
       {/* v2.126.0 — Phase J pt 4: legendary action popover (spend) */}
       {laPopover && encounter && (
         <LegendaryActionPopover

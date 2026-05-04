@@ -46,6 +46,11 @@ export function dbRowToToken(row: any): Token {
     // visual cue. Default true to match the DB default for any
     // legacy rows that predate the column.
     visibleToAll: row.visible_to_all ?? true,
+    // v2.411.0: read is_locked. Column added in migration
+    // add_is_locked_to_scene_tokens_v2_411; default false. Cast
+    // through any to tolerate stale generated supabase types until
+    // the next type-regen pass.
+    isLocked: (row as any).is_locked ?? false,
   };
 }
 
@@ -75,6 +80,10 @@ function tokenToInsertRow(token: Token): SceneTokenInsert {
     // caller marked hidden actually go to the DB hidden. Without
     // this the DB default (true) would override the caller's intent.
     visible_to_all: token.visibleToAll,
+    // v2.411.0: persist is_locked. Cast the row type through any —
+    // the generated supabase types will pick up the column after the
+    // next regen, but this write is safe today against the live DB.
+    ...({ is_locked: token.isLocked } as any),
   };
 }
 
@@ -147,7 +156,7 @@ export async function updateTokenPos(id: string, x: number, y: number): Promise<
  *  path — kept the rest of the API surface identical. */
 export async function updateToken(
   id: string,
-  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll'>>
+  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'isLocked'>>
 ): Promise<boolean> {
   const dbPatch: SceneTokenUpdate = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -156,6 +165,10 @@ export async function updateToken(
   if (patch.rotation !== undefined) dbPatch.rotation = patch.rotation;
   if (patch.imageStoragePath !== undefined) dbPatch.image_storage_path = patch.imageStoragePath;
   if (patch.visibleToAll !== undefined) dbPatch.visible_to_all = patch.visibleToAll;
+  // v2.411.0: pass-through for is_locked. Patch through any since the
+  // generated supabase types haven't been regenerated to include the
+  // new column yet.
+  if (patch.isLocked !== undefined) (dbPatch as any).is_locked = patch.isLocked;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id);
   if (error) {

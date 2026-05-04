@@ -145,6 +145,16 @@ export interface Token {
   // Maps to scene_tokens.visible_to_all (column already existed; the
   // ship just wired the client to read/write it).
   visibleToAll: boolean;
+  // v2.411.0: lock token to prevent drag. When true, BattleMapV2's
+  // pointerdown handler refuses to start a drag on this token. The
+  // DM toggles this via the token context menu (Lock/Unlock). A small
+  // padlock glyph renders above any locked token. Players can never
+  // drag locked tokens (the player ownership gate runs first anyway,
+  // but locks apply uniformly across DM + player views). Maps to
+  // scene_tokens.is_locked (added in migration
+  // add_is_locked_to_scene_tokens_v2_411, default false → existing
+  // tokens behave identically).
+  isLocked: boolean;
   // Future fields (DB has them; store doesn't mirror yet):
   //   playerId: string | null    (ownership / RLS)
   //   zIndex: number

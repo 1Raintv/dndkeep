@@ -3405,6 +3405,16 @@ function TokenLayer(props: {
   // value at drag-move and drop time.
   const activeTokenInfoRef = useRef(activeTokenInfo);
   useEffect(() => { activeTokenInfoRef.current = activeTokenInfo; }, [activeTokenInfo]);
+  // v2.411.0: same ref pattern for isDM + myCharacterId. The
+  // pointerdown handler is a stable closure attached once per token,
+  // so it can't read the live React-prop values directly. The player
+  // ownership gate (only the owning player may drag a player-linked
+  // token; DM may drag anything) needs both to be current at the
+  // moment of pointerdown.
+  const isDMRef = useRef(isDM);
+  useEffect(() => { isDMRef.current = isDM; }, [isDM]);
+  const myCharacterIdRef = useRef(myCharacterId);
+  useEffect(() => { myCharacterIdRef.current = myCharacterId; }, [myCharacterId]);
 
   interface TokenGfx {
     container: Container;
@@ -3474,6 +3484,21 @@ function TokenLayer(props: {
     // mutate child fills in place for cheap per-frame updates.
     economyPipsLayer: Container | null;
     economyPipsRefs: Array<{ dot: Graphics; glyph: Text; key: 'A' | 'B' | 'R' }> | null;
+    // v2.411.0 — Outer halo ring for the active-turn pulse. Sits at
+    // r + 8 with low alpha (0.3) so the inner turnRing reads as the
+    // primary signal while the halo gives a softer "active" glow.
+    // Lazily created on first activation, toggled .visible afterwards.
+    // Same per-frame pulse + rotation as turnRing; we rotate the
+    // halo's container so the dashed/segmented stroke pattern (drawn
+    // once at create time) appears to spin.
+    turnHaloRing: Graphics | null;
+    // v2.411.0 — Padlock glyph rendered above any locked token (a
+    // token with isLocked=true). Lazy-created on first lock event,
+    // visibility toggles thereafter. Position mirrors movement badge
+    // offset (-(r + 18)) but shifted right of center so the badge
+    // doesn't collide when both are present (active turn AND locked
+    // is rare but possible on a DM-controlled creature mid-combat).
+    lockGlyph: Text | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   // v2.268.0 — added originX/originY so the drop handler can validate
@@ -3514,9 +3539,19 @@ function TokenLayer(props: {
       const lockAlpha = 0.55 + lockPhase * 0.45;
       const lockScale = 1 + lockPhase * 0.08;
       // Turn ring (v2.385): 1.8s breath, alpha only.
+      // v2.411.0 — add slow rotation. We rotate the inner turnRing
+      // around its center; the halo (v2.411 outer ring) rotates the
+      // opposite direction so the two-ring system reads as alive.
+      // Rotation rate is small (~0.4 rad/sec) to match the "almost
+      // pulsing" pace of the alpha breath without becoming
+      // distracting. We do NOT rotate the container — only the ring
+      // graphics so other children (HP bar, name, badges) stay put.
       const turnT = elapsed / 1800;
       const turnPhase = (Math.sin(turnT * Math.PI * 2) + 1) / 2;
       const turnAlpha = 0.6 + turnPhase * 0.4;
+      const haloAlpha = 0.18 + turnPhase * 0.22; // 0.18..0.40
+      const turnRotation = (elapsed / 1000) * 0.4;     // CW
+      const haloRotation = -(elapsed / 1000) * 0.25;   // CCW, slower
       for (const entry of gfxMapRef.current.values()) {
         const lock = entry.lockRing;
         if (lock && !lock.destroyed) {
@@ -3528,6 +3563,14 @@ function TokenLayer(props: {
         // .visible to false when the token isn't the active turn.
         if (turn && !turn.destroyed && turn.visible) {
           turn.alpha = turnAlpha;
+          turn.rotation = turnRotation;
+        }
+        // v2.411.0 — outer halo: same visibility check, opposite-
+        // direction rotation, lower alpha range.
+        const halo = entry.turnHaloRing;
+        if (halo && !halo.destroyed && halo.visible) {
+          halo.alpha = haloAlpha;
+          halo.rotation = haloRotation;
         }
       }
       raf = requestAnimationFrame(tick);
@@ -3611,6 +3654,9 @@ function TokenLayer(props: {
           selectionRing: null,
           economyPipsLayer: null,
           economyPipsRefs: null,
+          // v2.411.0
+          turnHaloRing: null,
+          lockGlyph: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -3670,6 +3716,29 @@ function TokenLayer(props: {
           }
           const t = useBattleMapStore.getState().tokens[tid];
           if (!t) return;
+          // v2.411.0 — refuse drag on locked tokens. The DM can toggle
+          // is_locked on any token via the context menu. Locked tokens
+          // are immobile by everyone (DM included) until unlocked. The
+          // visual padlock glyph above the token communicates the
+          // state; here we silently ignore the press to match the
+          // remoteDragLocks behavior above.
+          if ((t as any).isLocked) {
+            return;
+          }
+          // v2.411.0 — player ownership gate. Players may only drag
+          // tokens that represent their own character (token.characterId
+          // matches the player's character). DM bypasses (isDMRef
+          // covers it). For DM-controlled creature tokens this gate is
+          // moot because they have no characterId; for PC tokens the
+          // owning player passes and other players are blocked. Refs
+          // are required since this closure is attached once at token
+          // mount and doesn't see prop changes otherwise.
+          if (!isDMRef.current) {
+            const myCid = myCharacterIdRef.current;
+            if (!t.characterId || t.characterId !== myCid) {
+              return;
+            }
+          }
           const worldPoint = viewport.toWorld(event.global.x, event.global.y);
           dragRef.current = {
             id: tid,
@@ -4291,8 +4360,41 @@ function TokenLayer(props: {
         ring.circle(0, 0, r + 4);
         ring.stroke();
         ring.visible = true;
-      } else if (currentEntry.turnRing) {
-        currentEntry.turnRing.visible = false;
+        // v2.411.0 — Outer halo ring at r + 8 with low alpha. Drawn
+        // as a single Graphics under the turnRing so it sits below in
+        // z-order (halo → turnRing → token body → sprite). Same color
+        // as the inner ring; the rAF loop animates rotation and
+        // alpha. We also lay down four short arc segments to give
+        // the rotation something visible to track — a solid circle
+        // would be invisibly rotating.
+        if (!currentEntry.turnHaloRing) {
+          const halo = new Graphics();
+          // Insert below turnRing — turnRing was added at index 0,
+          // so addChildAt(0) again pushes turnRing to index 1.
+          container.addChildAt(halo, 0);
+          currentEntry.turnHaloRing = halo;
+        }
+        const halo = currentEntry.turnHaloRing;
+        halo.clear();
+        // Outer base ring at low alpha — the always-on glow.
+        halo.setStrokeStyle({ color: ringColor, width: 6, alpha: 1.0 });
+        halo.circle(0, 0, r + 8);
+        halo.stroke();
+        // Four bright arc segments distributed around the ring so
+        // the rotation reads as motion. Each arc spans ~30°. The
+        // overall halo alpha is animated by the rAF loop, so we
+        // just set the arc strokeStyle to opaque here.
+        halo.setStrokeStyle({ color: ringColor, width: 4, alpha: 1.0 });
+        for (let i = 0; i < 4; i++) {
+          const a0 = (i * Math.PI) / 2;
+          const a1 = a0 + Math.PI / 6;
+          halo.arc(0, 0, r + 8, a0, a1);
+          halo.stroke();
+        }
+        halo.visible = true;
+      } else {
+        if (currentEntry.turnRing) currentEntry.turnRing.visible = false;
+        if (currentEntry.turnHaloRing) currentEntry.turnHaloRing.visible = false;
       }
 
       // ── Selection ring (v2.358.0) ──────────────────────────────────
@@ -4390,76 +4492,48 @@ function TokenLayer(props: {
       // first activation and only mutate fills/alpha thereafter.
       // That avoids tearing down + rebuilding on every state flip
       // (action flips every couple seconds during play).
-      if (isActiveTurn) {
-        if (!currentEntry.economyPipsLayer) {
-          const layer = new Container();
-          const refs: Array<{ dot: Graphics; glyph: Text; key: 'A' | 'B' | 'R' }> = [];
-          const PIP_RADIUS = 7;
-          const PIP_GAP = 4;
-          const totalWidth = 3 * (PIP_RADIUS * 2) + 2 * PIP_GAP;
-          let cursorX = -totalWidth / 2 + PIP_RADIUS;
-          for (const key of ['A', 'B', 'R'] as const) {
-            const dot = new Graphics();
-            dot.position.set(cursorX, 0);
-            layer.addChild(dot);
-            const glyph = new Text({
-              text: key,
-              style: new TextStyle({
-                fontFamily: 'sans-serif',
-                fontWeight: '900',
-                fontSize: 9,
-                fill: 0x0a0c10,
-                align: 'center',
-              }),
-            });
-            glyph.anchor.set(0.5, 0.5);
-            glyph.position.set(cursorX, 0);
-            layer.addChild(glyph);
-            refs.push({ dot, glyph, key });
-            cursorX += PIP_RADIUS * 2 + PIP_GAP;
-          }
-          container.addChild(layer);
-          currentEntry.economyPipsLayer = layer;
-          currentEntry.economyPipsRefs = refs;
+      // v2.411.0 — Action / Bonus / Reaction pips above tokens removed
+      // per UX feedback (the strip duplicates info already visible on
+      // the InitiativeStrip + MonsterActionPanel and was visually
+      // noisy directly above the token). Keep the layer ref so a
+      // legacy entry (e.g. from a hot-reload) gets cleanly hidden,
+      // and skip create+update entirely. If we want them back later,
+      // restore the v2.341 block from git history.
+      if (currentEntry.economyPipsLayer) currentEntry.economyPipsLayer.visible = false;
+
+      // ── Lock glyph (v2.411.0) ──────────────────────────────────────
+      // Padlock above any locked token. Lazy-create on first lock,
+      // toggle .visible thereafter. Position mirrors the movement
+      // badge (-(r + 18)) but offset right by 16px so badge + glyph
+      // don't collide on the rare DM-controlled creature whose turn
+      // is active AND whose token was locked. For tokens without a
+      // turn ring the glyph just floats above the token at center-
+      // right.
+      const tokenIsLocked = !!(token as any).isLocked;
+      if (tokenIsLocked) {
+        if (!currentEntry.lockGlyph) {
+          const glyph = new Text({
+            text: '🔒',
+            style: new TextStyle({
+              fontFamily: 'sans-serif',
+              fontSize: 16,
+              fill: 0xffffff,
+              align: 'center',
+            }),
+          });
+          glyph.anchor.set(0.5, 0.5);
+          container.addChild(glyph);
+          currentEntry.lockGlyph = glyph;
         }
-        // Position layer below the movement badge: badge sits at
-        // -(r + 18); badge is ~20px tall so center the pip strip
-        // at -(r + 36). Tweakable later if it needs more breathing
-        // room from the badge.
-        currentEntry.economyPipsLayer.position.set(0, -(r + 36));
-        const pipMap: Record<'A' | 'B' | 'R', boolean> = {
-          A: !activeTokenInfo!.actionUsed,
-          B: !activeTokenInfo!.bonusUsed,
-          R: !activeTokenInfo!.reactionUsed,
-        };
-        for (const ref of currentEntry.economyPipsRefs!) {
-          const available = pipMap[ref.key];
-          ref.dot.clear();
-          // Available: gold fill + dark stroke + black glyph (high contrast).
-          // Consumed: charcoal fill + faint stroke + dim glyph (low contrast).
-          if (available) {
-            ref.dot.setFillStyle({ color: 0xd4a017, alpha: 1.0 });
-            ref.dot.circle(0, 0, 7);
-            ref.dot.fill();
-            ref.dot.setStrokeStyle({ color: 0x0a0c10, width: 1, alpha: 0.85 });
-            ref.dot.circle(0, 0, 7);
-            ref.dot.stroke();
-            (ref.glyph.style as TextStyle).fill = 0x0a0c10;
-            ref.glyph.alpha = 1.0;
-          } else {
-            ref.dot.setFillStyle({ color: 0x1a1a26, alpha: 0.85 });
-            ref.dot.circle(0, 0, 7);
-            ref.dot.fill();
-            ref.dot.setStrokeStyle({ color: 0x444450, width: 1, alpha: 0.6 });
-            ref.dot.circle(0, 0, 7);
-            ref.dot.stroke();
-            (ref.glyph.style as TextStyle).fill = 0x6b7280;
-            ref.glyph.alpha = 0.7;
-          }
-        }
-        currentEntry.economyPipsLayer.visible = true;
-      } else if (currentEntry.economyPipsLayer) {
-        currentEntry.economyPipsLayer.visible = false;
+        const glyph = currentEntry.lockGlyph;
+        // Shift right when this token is also the active turn so the
+        // glyph clears the movement badge. Otherwise sit at the top-
+        // center of the token.
+        const offsetX = isActiveTurn ? 18 : 0;
+        glyph.position.set(offsetX, -(r + 18));
+        glyph.visible = true;
+      } else if (currentEntry.lockGlyph) {
+        currentEntry.lockGlyph.visible = false;
       }
     }
   }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
@@ -5179,6 +5253,20 @@ function TokenContextMenu(props: {
         </div>
       )}
       {[
+        // v2.411.0: Lock/Unlock toggle. DM-only. Locked tokens refuse
+        // drag for everyone (DM included) until unlocked. Visual state
+        // is communicated by a padlock glyph drawn above the token.
+        // Place this FIRST so it's the most prominent DM control —
+        // typically a DM locks scene-furniture tokens (statues, traps,
+        // map markers) once at scene setup, and want it on the top of
+        // the menu rather than buried below resize/recolor.
+        ...(isDM ? [{
+          label: (token as any).isLocked ? '🔓 Unlock Token' : '🔒 Lock Token',
+          onClick: () => {
+            applyPatch({ isLocked: !(token as any).isLocked } as any);
+            onClose();
+          },
+        }] : []),
         // v2.282: Hide/Show toggle. DM-only — RLS already gates the
         // write, but no point offering an action that will error.
         // Eye icon flips state on click; we close the menu after so
@@ -7480,6 +7568,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         // be confusing UX. (The other players also see PC tokens —
         // intended behavior, players know who's in the party.)
         visibleToAll: true,
+        // v2.411.0: tokens default to unlocked. DM can toggle per-token
+        // via the context menu (locks affect drag eligibility).
+        isLocked: false,
       };
     });
 

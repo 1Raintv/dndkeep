@@ -168,6 +168,7 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
         npcId: c.id,
         creatureId: c.id,
         visibleToAll: c.visible_to_players ?? true,
+        isLocked: false,
       };
 
       useBattleMapStore.getState().addToken(token);

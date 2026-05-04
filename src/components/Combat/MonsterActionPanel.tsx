@@ -44,6 +44,11 @@ import {
   type ActiveBattleMap,
   type ParticipantForTokenLookup,
 } from '../../lib/battleMapGeometry';
+// v2.411.0 — Dash + Disengage buttons moved from InitiativeStrip into
+// the MonsterActionPanel for creature turns. Strip retains them too
+// for PC turns (the strip is the only surface a player has).
+import { takeDash, takeDisengage } from '../../lib/movement';
+import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
 interface MonsterAction {
@@ -105,6 +110,43 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const [pickingFor, setPickingFor] = useState<MonsterAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // v2.411.0 — toast for Dash/Disengage failure messages, mirroring
+  // InitiativeStrip's pattern.
+  const { showToast } = useToast();
+
+  // v2.411.0 — Dash + Disengage handlers for creature turns. Same
+  // contract as InitiativeStrip.onDash/onDisengage; we duplicate
+  // intentionally rather than hoisting into a shared hook because
+  // the bodies are 8 lines each and the rest of MonsterActionPanel
+  // is monster-specific.
+  async function onDash() {
+    if (!encounter || !currentActor) return;
+    if ((currentActor as any).dash_used_this_turn) return;
+    const result = await takeDash({
+      campaignId: encounter.campaign_id,
+      encounterId: encounter.id,
+      participantId: currentActor.id,
+      participantName: currentActor.name,
+      participantType: currentActor.participant_type,
+    });
+    if (!result.ok) {
+      showToast(`Couldn't Dash: ${result.reason}`, 'error');
+    }
+  }
+  async function onDisengage() {
+    if (!encounter || !currentActor) return;
+    if ((currentActor as any).disengaged_this_turn) return;
+    const result = await takeDisengage({
+      campaignId: encounter.campaign_id,
+      encounterId: encounter.id,
+      participantId: currentActor.id,
+      participantName: currentActor.name,
+      participantType: currentActor.participant_type,
+    });
+    if (!result.ok) {
+      showToast(`Couldn't Disengage: ${result.reason}`, 'error');
+    }
+  }
   // v2.409.0 — Stat block snapshot for the active monster. Used to
   // render the at-a-glance HP / AC / saves panel above the action
   // list, so the DM has the same reference info that the token
@@ -322,7 +364,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
       <div
         style={{
           position: 'fixed',
-          top: 12,
+          // v2.411.0 — was top: 12. Lowered to 80 so toasts (which
+          // anchor at top: var(--sp-4) ≈ 16px, top-right) render above
+          // the panel header rather than being occluded by it. The
+          // panel still has plenty of vertical room (bottom: 88 for
+          // the InitiativeStrip clearance).
+          top: 80,
           right: 12,
           // 88px = InitiativeStrip height + bottom margin. Strip has
           // right:80 inset already (v2.360); this rail's 12px right
@@ -501,6 +548,64 @@ export default function MonsterActionPanel({ isDM }: Props) {
                   </div>
                 </div>
               )}
+            </div>
+          );
+        })()}
+
+        {/* v2.411.0 — Dash + Disengage row. Sits between the HP/AC/
+            saves block and the action list. Mirrors the buttons in
+            InitiativeStrip (which still has them for PC turns) so the
+            DM doesn't have to reach down to the strip during a
+            creature turn. Disabled state reads
+            currentActor.dash_used_this_turn / disengaged_this_turn —
+            same flags that gate the strip buttons + that takeDash/
+            takeDisengage check server-side. */}
+        {!collapsed && currentActor && (() => {
+          const dashUsed = !!(currentActor as any).dash_used_this_turn;
+          const disengaged = !!(currentActor as any).disengaged_this_turn;
+          return (
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--c-border)',
+              flexShrink: 0,
+              display: 'flex', gap: 6,
+            }}>
+              <button
+                onClick={onDash}
+                disabled={dashUsed}
+                title={dashUsed ? 'Already Dashed this turn' : 'Dash: double speed for the rest of this turn'}
+                style={{
+                  flex: 1,
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+                  padding: '6px 10px', borderRadius: 6,
+                  border: '1px solid rgba(248,113,113,0.45)',
+                  background: dashUsed ? 'rgba(255,255,255,0.03)' : 'rgba(248,113,113,0.10)',
+                  color: dashUsed ? 'var(--t-3)' : '#fca5a5',
+                  cursor: dashUsed ? 'default' : 'pointer',
+                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                  opacity: dashUsed ? 0.55 : 1,
+                }}
+              >
+                {dashUsed ? '⏵⏵ Dashed' : '⏵⏵ Dash'}
+              </button>
+              <button
+                onClick={onDisengage}
+                disabled={disengaged}
+                title={disengaged ? 'Already Disengaged this turn' : `Disengage: suppress Opportunity Attacks from ${currentActor.name}'s remaining movement`}
+                style={{
+                  flex: 1,
+                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+                  padding: '6px 10px', borderRadius: 6,
+                  border: '1px solid rgba(248,113,113,0.45)',
+                  background: disengaged ? 'rgba(255,255,255,0.03)' : 'rgba(248,113,113,0.10)',
+                  color: disengaged ? 'var(--t-3)' : '#fca5a5',
+                  cursor: disengaged ? 'default' : 'pointer',
+                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                  opacity: disengaged ? 0.55 : 1,
+                }}
+              >
+                {disengaged ? '↩ Disengaged' : '↩ Disengage'}
+              </button>
             </div>
           );
         })()}

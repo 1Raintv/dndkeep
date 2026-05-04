@@ -114,6 +114,11 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     npcId,
     creatureId,
     visibleToAll: row.visible_to_all ?? true,
+    // v2.411.0: scene_token_placements does not yet have is_locked
+    // (the new column lives on scene_tokens for now). Default false
+    // so the legacy placement path tokens render unlocked. If we
+    // later move locks to placements, mirror is_locked here.
+    isLocked: false,
     // v2.312: new field. Always populated when this path is used.
     combatantId: row.combatant_id,
   };
