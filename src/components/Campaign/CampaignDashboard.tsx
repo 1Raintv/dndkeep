@@ -825,6 +825,11 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               skill_expertises: c.skill_expertises ?? [],
               // v2.231 — needed by PartyVitalsBar to render slot pips.
               spell_slots: c.spell_slots ?? {},
+              // v2.413.0 — owning user_id for the "Grant Player Control"
+              // context menu in BattleMapV2. The DM picks a character
+              // (the player's PC) and the token's player_id is set to
+              // that character's owner — granting drag rights via RLS.
+              user_id: c.user_id ?? null,
             })),
             // v2.296.0 — sessionState/onUpdateSession dropped from
             // mount. session_states table dropped this ship; the

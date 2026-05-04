@@ -119,6 +119,13 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     // so the legacy placement path tokens render unlocked. If we
     // later move locks to placements, mirror is_locked here.
     isLocked: false,
+    // v2.413.0: same situation for player_id — scene_token_placements
+    // doesn't carry the grant column. Default null; Grant Player
+    // Control via context menu writes to scene_tokens.player_id which
+    // takes effect for tokens that round-trip through the scene_tokens
+    // path. The legacy combatants placement path is read-only for
+    // ownership purposes.
+    playerId: null,
     // v2.312: new field. Always populated when this path is used.
     combatantId: row.combatant_id,
   };

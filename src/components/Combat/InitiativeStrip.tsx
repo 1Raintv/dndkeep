@@ -262,6 +262,43 @@ export default function InitiativeStrip({ isDM }: Props) {
         </span>
       </div>
 
+      {/* v2.413.0 — Reset Movement do-over, relocated to the LEFT
+          side of the strip. Previous v2.412 location (between
+          Disengage and End Turn on the right cluster) was getting
+          occluded by the MonsterActionPanel on creature turns. The
+          left side is never overlapped by any side panel, so the
+          button is always visible. Disabled when there's nothing
+          to undo (no movement spent, no Dash, no Disengage). */}
+      {(() => {
+        const movementUsed = (currentActor as any)?.movement_used_ft ?? 0;
+        const dashed = !!currentActor?.dash_used_this_turn;
+        const disengaged = !!currentActor?.disengaged_this_turn;
+        const nothingToReset = !currentActor || (movementUsed === 0 && !dashed && !disengaged);
+        return (
+          <button
+            onClick={onResetMovement}
+            disabled={nothingToReset}
+            title={nothingToReset
+              ? 'Nothing to reset — no movement, Dash, or Disengage spent yet this turn.'
+              : 'Reset movement, Dash, and Disengage back to the start of this turn.'}
+            style={{
+              flexShrink: 0,
+              fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+              padding: '6px 10px', borderRadius: 6,
+              border: '1px solid ' + (nothingToReset ? 'var(--c-border)' : 'rgba(167,139,250,0.5)'),
+              background: nothingToReset ? 'transparent' : 'rgba(167,139,250,0.12)',
+              color: nothingToReset ? 'var(--t-3)' : '#c4b5fd',
+              cursor: nothingToReset ? 'default' : 'pointer',
+              minHeight: 0,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              opacity: nothingToReset ? 0.55 : 1,
+            }}
+          >
+            ↺ Undo Move
+          </button>
+        );
+      })()}
+
       <div style={{
         display: 'flex', gap: 6, flex: 1,
         overflowX: 'auto', padding: '0 4px',
@@ -726,38 +763,10 @@ export default function InitiativeStrip({ isDM }: Props) {
           >
             {currentActor?.disengaged_this_turn ? '↩ Disengaged' : '↩ Disengage'}
           </button>
-          {/* v2.412.0 — Reset Movement do-over. Refunds movement,
-              Dash, and Disengage so the active turn returns to
-              start-of-turn state. Disabled when there's nothing to
-              reset (no movement spent, no Dash, no Disengage). */}
-          {(() => {
-            const movementUsed = (currentActor as any)?.movement_used_ft ?? 0;
-            const dashed = !!currentActor?.dash_used_this_turn;
-            const disengaged = !!currentActor?.disengaged_this_turn;
-            const nothingToReset = !currentActor || (movementUsed === 0 && !dashed && !disengaged);
-            return (
-              <button
-                onClick={onResetMovement}
-                disabled={nothingToReset}
-                title={nothingToReset
-                  ? 'Nothing to reset — no movement, Dash, or Disengage spent yet this turn.'
-                  : 'Reset movement, Dash, and Disengage back to the start of this turn.'}
-                style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                  padding: '6px 10px', borderRadius: 6,
-                  border: '1px solid var(--c-border)',
-                  background: nothingToReset ? 'transparent' : 'rgba(167,139,250,0.10)',
-                  color: nothingToReset ? 'var(--t-3)' : '#c4b5fd',
-                  cursor: nothingToReset ? 'default' : 'pointer',
-                  minHeight: 0,
-                  letterSpacing: '0.06em', textTransform: 'uppercase',
-                  opacity: nothingToReset ? 0.55 : 1,
-                }}
-              >
-                ↺ Reset
-              </button>
-            );
-          })()}
+          {/* v2.413.0 — Reset Movement button moved out of this
+              right-side cluster (was occluded by MonsterActionPanel)
+              into the leftmost section of the strip, alongside the
+              round badge. See above. */}
           {/* v2.411.0 — ⚔ Attack button removed. The DeclareAttackModal
               flow it opened was non-functional in the post-v2.402
               auto-resolve combat path (creature attacks resolve

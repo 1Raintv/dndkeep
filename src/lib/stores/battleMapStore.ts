@@ -155,6 +155,16 @@ export interface Token {
   // add_is_locked_to_scene_tokens_v2_411, default false → existing
   // tokens behave identically).
   isLocked: boolean;
+  // v2.413.0: per-token grant of drag control to a player. When set
+  // to a user_id (auth.users.id) other than the DM, that user is
+  // allowed to drag the token in BattleMapV2 even if the token isn't
+  // their PC. Implements the "Grant Player Control" workflow — the
+  // DM hands a creature/familiar/ally to a specific player. Maps to
+  // scene_tokens.player_id (column exists since v2.208 migration;
+  // RLS already permits UPDATE when player_id = auth.uid()). Null
+  // means no player has been granted control — only DM and the PC's
+  // owner (via characterId match) can drag.
+  playerId: string | null;
   // Future fields (DB has them; store doesn't mirror yet):
   //   playerId: string | null    (ownership / RLS)
   //   zIndex: number

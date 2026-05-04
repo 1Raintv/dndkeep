@@ -366,6 +366,8 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
         visibleToAll: npc.visible_to_players ?? true,
         // v2.412.0 — default LOCKED.
         isLocked: true,
+        // v2.413.0 — no granted controller by default.
+        playerId: null,
       };
       // Optimistic store update so the token appears immediately if
       // the user switches to the map tab.

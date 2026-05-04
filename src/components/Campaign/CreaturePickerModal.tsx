@@ -173,6 +173,9 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
         // pointerdown lets the token move during its own turn while
         // movement remains.
         isLocked: true,
+        // v2.413.0 — no granted controller by default; DM uses the
+        // context menu's "Grant Player Control" submenu to assign.
+        playerId: null,
       };
 
       useBattleMapStore.getState().addToken(token);

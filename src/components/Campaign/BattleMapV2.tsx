@@ -239,6 +239,11 @@ interface BattleMapV2Props {
     // because not every campaign sources spell-slot data, and not every
     // character is a caster.
     spell_slots?: import('../../types').SpellSlots;
+    // v2.413.0 — the owning user's auth.users.id. Needed by the
+    // "Grant Player Control" context menu action so the DM can pick
+    // a player to receive drag rights on a non-PC token. Optional
+    // for backward compat with callers that haven't been widened.
+    user_id?: string | null;
   }>;
   // v2.296.0 — sessionState/onUpdateSession dropped. session_states
   // table dropped this ship. The "v2.231 initiative tracker bar"
@@ -3716,34 +3721,34 @@ function TokenLayer(props: {
           }
           const t = useBattleMapStore.getState().tokens[tid];
           if (!t) return;
-          // v2.412.0 — Lock check with active-turn bypass.
+          // v2.413.0 — Lock check, scoped to combat only.
           //
-          // Tokens default LOCKED (v2.412 default flip). The lock
-          // makes a token immobile EXCEPT during its own active turn,
-          // and only while it still has movement remaining. Once
-          // movement is exhausted the lock re-engages and the token
-          // is stuck — at that point the DM/player can press the
-          // Reset Movement button on InitiativeStrip /
-          // MonsterActionPanel to refund movement, or the DM can
-          // unlock the token entirely via the context menu.
+          // OUTSIDE COMBAT: locks are ignored entirely. Anyone who
+          // passes the ownership gate below can drag any token. This
+          // matches the user's mental model — locks exist to enforce
+          // "only the active character moves during combat", and
+          // outside combat there's no active turn to enforce.
           //
-          // Outside an active turn (no combat, between turns, or a
-          // different token's turn) the lock check refuses the press
-          // outright. This is intentional — the BG3-style flow only
-          // wants the active actor moving during combat.
+          // IN COMBAT: locked tokens are immobile EXCEPT during their
+          // own active turn while movement remains. Once movement is
+          // exhausted the lock re-engages. The Reset Movement button
+          // (InitiativeStrip / MonsterActionPanel) refunds movement
+          // back to start-of-turn for a do-over.
           //
-          // activeTokenInfoRef holds the current activeTokenInfo
-          // (the closure attaches once at token mount and would
-          // otherwise capture a stale value).
+          // "In combat" is detected by activeTokenInfoRef.current
+          // being non-null — combat with no active turn doesn't put
+          // any token's drag at stake, so this is the right signal.
           if ((t as any).isLocked) {
             const ati = activeTokenInfoRef.current;
-            const isThisTokenActive = !!ati && ati.tokenId === tid;
-            const movementRemaining = ati ? Math.max(0, ati.max - ati.used) : 0;
-            if (!isThisTokenActive || movementRemaining <= 0) {
-              return;
+            const inCombat = !!ati;
+            if (inCombat) {
+              const isThisTokenActive = ati!.tokenId === tid;
+              const movementRemaining = Math.max(0, ati!.max - ati!.used);
+              if (!isThisTokenActive || movementRemaining <= 0) {
+                return;
+              }
             }
-            // else: fall through — locked token is on its own turn
-            // with movement to spend, so allow the drag.
+            // else: not in combat → fall through, lock is inert.
           }
           // v2.411.0 — player ownership gate. Players may only drag
           // tokens that represent their own character (token.characterId
@@ -3753,9 +3758,18 @@ function TokenLayer(props: {
           // owning player passes and other players are blocked. Refs
           // are required since this closure is attached once at token
           // mount and doesn't see prop changes otherwise.
+          //
+          // v2.413.0 — extended: a player also passes when the DM has
+          // granted them control of this specific token via the
+          // "Grant Player Control" context menu. That writes
+          // scene_tokens.player_id, mirrored on the Token shape as
+          // playerId. Uses the existing scene_tokens RLS UPDATE
+          // policy which already permits player_id = auth.uid().
           if (!isDMRef.current) {
             const myCid = myCharacterIdRef.current;
-            if (!t.characterId || t.characterId !== myCid) {
+            const ownsByCharacter = !!t.characterId && t.characterId === myCid;
+            const grantedByDM = !!(t as any).playerId && (t as any).playerId === currentUserId;
+            if (!ownsByCharacter && !grantedByDM) {
               return;
             }
           }
@@ -5090,12 +5104,21 @@ function TokenContextMenu(props: {
   // bare context menu for unlinked). Lets users still get to the
   // panel after we made plain left-click into "just select."
   onOpenQuickPanel?: (tokenId: string) => void;
+  // v2.413.0 — drives the "Grant Player Control" submenu. The DM
+  // picks a character; the token's player_id is set to that
+  // character's owning user_id, granting drag rights via the
+  // existing scene_tokens RLS UPDATE policy.
+  playerCharacters?: Array<{
+    id: string;
+    name: string;
+    user_id?: string | null;
+  }>;
 }) {
-  const { state, isDM, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel } = props;
+  const { state, isDM, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel, playerCharacters } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
-  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color'>('none');
+  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant'>('none');
   // v2.241 — modal handle for the rename prompt.
   const { prompt: promptModal } = useModal();
 
@@ -5196,6 +5219,52 @@ function TokenContextMenu(props: {
     );
   }
 
+  // v2.413.0 — Grant Player Control submenu. Lists campaign members
+  // (via playerCharacters which carry user_id). Pick one to write
+  // scene_tokens.player_id; pick "(no one)" to clear the grant.
+  if (submenu === 'grant') {
+    const currentGrant = (token as any).playerId as string | null;
+    return createPortal(
+      <div style={menuBaseStyle} onMouseDown={stop}>
+        <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+          Player Control
+        </div>
+        <div
+          style={{
+            ...itemStyle,
+            background: !currentGrant ? 'rgba(167,139,250,0.12)' : undefined,
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = !currentGrant ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+          onClick={() => { applyPatch({ playerId: null } as any); onClose(); }}
+        >
+          <span style={{ color: 'var(--t-2)' }}>(no one)</span>
+          {!currentGrant && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
+        </div>
+        {(playerCharacters ?? []).map(pc => {
+          if (!pc.user_id) return null;
+          const active = currentGrant === pc.user_id;
+          return (
+            <div
+              key={pc.id}
+              style={{
+                ...itemStyle,
+                background: active ? 'rgba(167,139,250,0.12)' : undefined,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+              onClick={() => { applyPatch({ playerId: pc.user_id! } as any); onClose(); }}
+            >
+              <span>{pc.name}</span>
+              {active && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
+            </div>
+          );
+        })}
+      </div>,
+      document.body,
+    );
+  }
+
   if (submenu === 'color') {
     return createPortal(
       <div style={menuBaseStyle} onMouseDown={stop}>
@@ -5288,6 +5357,20 @@ function TokenContextMenu(props: {
             applyPatch({ isLocked: !(token as any).isLocked } as any);
             onClose();
           },
+        }] : []),
+        // v2.413.0: Grant Player Control. DM-only, non-PC tokens
+        // only (PC tokens already have an owner via characterId).
+        // Opens a submenu listing campaign members; pick one to set
+        // scene_tokens.player_id, granting drag rights via the
+        // existing RLS UPDATE policy. Selecting "(no one)" clears
+        // the grant. Useful for familiars, summoned allies, NPC
+        // companions, or any creature the DM wants a specific
+        // player to maneuver during combat.
+        ...(isDM && !token.characterId && playerCharacters && playerCharacters.length > 0 ? [{
+          label: ((token as any).playerId
+            ? '🎮 Player Control ▸'
+            : '🎮 Grant Player Control ▸'),
+          onClick: () => setSubmenu('grant'),
         }] : []),
         // v2.282: Hide/Show toggle. DM-only — RLS already gates the
         // write, but no point offering an action that will error.
@@ -7595,6 +7678,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         // pointerdown lets the owning player drag during their own
         // turn while movement remains.
         isLocked: true,
+        // v2.413.0 — no granted controller. The owning player drags
+        // their own PC token via the characterId match path; player_id
+        // is reserved for DM-granted control of non-PC tokens.
+        playerId: null,
       };
     });
 
@@ -9772,6 +9859,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             onClose={() => setContextMenu(null)}
             onRequestUpload={handleRequestUpload}
             onOpenCharacter={handleOpenCharacter}
+            // v2.413.0 — playerCharacters drives the "Grant Player
+            // Control" submenu so the DM can hand drag rights to a
+            // specific party member.
+            playerCharacters={props.playerCharacters}
             onOpenQuickPanel={(tokenId) => {
               // v2.358.0 — Resolve which panel based on token type.
               // Mirrors the pre-v2.358 handleTokenClick branching but

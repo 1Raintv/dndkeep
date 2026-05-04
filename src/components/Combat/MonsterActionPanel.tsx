@@ -47,8 +47,10 @@ import {
 // v2.411.0 — Dash + Disengage buttons moved from InitiativeStrip into
 // the MonsterActionPanel for creature turns. Strip retains them too
 // for PC turns (the strip is the only surface a player has).
-// v2.412.0 — adds resetMovement: do-over button next to Dash/Disengage.
-import { takeDash, takeDisengage, resetMovement } from '../../lib/movement';
+// v2.413.0 — Reset Movement removed from this panel (occluded the
+// view); canonical button now lives on the InitiativeStrip's left
+// side. resetMovement no longer imported here.
+import { takeDash, takeDisengage } from '../../lib/movement';
 import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
@@ -149,24 +151,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
     }
   }
 
-  // v2.412.0 — Reset Movement do-over. Refunds movement_used_ft,
-  // dash_used_this_turn, disengaged_this_turn so the active turn
-  // returns to its start-of-turn state. Useful when the active
-  // token is locked + has exhausted its movement and the DM/player
-  // wants another chance to position before End Turn.
-  async function onResetMovement() {
-    if (!encounter || !currentActor) return;
-    const result = await resetMovement({
-      campaignId: encounter.campaign_id,
-      encounterId: encounter.id,
-      participantId: currentActor.id,
-      participantName: currentActor.name,
-      participantType: currentActor.participant_type,
-    });
-    if (!result.ok) {
-      showToast(`Couldn't reset movement: ${result.reason}`, 'error');
-    }
-  }
+  // v2.413.0 — onResetMovement handler removed alongside the button.
+  // The canonical Reset is now on the InitiativeStrip's left side.
+
   // v2.409.0 — Stat block snapshot for the active monster. Used to
   // render the at-a-glance HP / AC / saves panel above the action
   // list, so the DM has the same reference info that the token
@@ -583,16 +570,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
         {!collapsed && currentActor && (() => {
           const dashUsed = !!(currentActor as any).dash_used_this_turn;
           const disengaged = !!(currentActor as any).disengaged_this_turn;
-          // v2.412.0 — Reset disabled when there's nothing to undo
-          // (no movement spent, no Dash, no Disengage).
-          const movementUsed = (currentActor as any).movement_used_ft ?? 0;
-          const nothingToReset = movementUsed === 0 && !dashUsed && !disengaged;
           return (
             <div style={{
               padding: '6px 10px',
               borderBottom: '1px solid var(--c-border)',
               flexShrink: 0,
-              display: 'flex', gap: 6, flexWrap: 'wrap',
+              display: 'flex', gap: 6,
             }}>
               <button
                 onClick={onDash}
@@ -630,29 +613,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
               >
                 {disengaged ? '↩ Disengaged' : '↩ Disengage'}
               </button>
-              {/* v2.412.0 — Reset Movement do-over. Sits on its own
-                  row (flex-wrap) so the three buttons read as
-                  primary actions rather than crammed thirds. */}
-              <button
-                onClick={onResetMovement}
-                disabled={nothingToReset}
-                title={nothingToReset
-                  ? 'Nothing to reset — no movement, Dash, or Disengage spent yet this turn.'
-                  : 'Reset movement, Dash, and Disengage back to the start of this turn.'}
-                style={{
-                  flexBasis: '100%',
-                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
-                  padding: '5px 10px', borderRadius: 6,
-                  border: '1px solid var(--c-border)',
-                  background: nothingToReset ? 'transparent' : 'rgba(167,139,250,0.10)',
-                  color: nothingToReset ? 'var(--t-3)' : '#c4b5fd',
-                  cursor: nothingToReset ? 'default' : 'pointer',
-                  letterSpacing: '0.06em', textTransform: 'uppercase',
-                  opacity: nothingToReset ? 0.55 : 1,
-                }}
-              >
-                ↺ Reset Movement
-              </button>
+              {/* v2.413.0 — Reset Movement button removed from this
+                  panel. The MonsterActionPanel was occluding the
+                  user's view of it; the canonical Reset button now
+                  lives on the LEFT side of the InitiativeStrip,
+                  always visible regardless of side panels. */}
             </div>
           );
         })()}

@@ -33,6 +33,10 @@ export default function CatalogImportModal({ onPick, onClose }: Props) {
   const [rows, setRows] = useState<CatalogMonsterRow[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  // v2.413.0 — CR filter chip state. null = "All"; otherwise the
+  // exact CR string (e.g. '1/4', '5'). Combines with the search box
+  // — both narrow the list independently.
+  const [crFilter, setCrFilter] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -54,15 +58,40 @@ export default function CatalogImportModal({ onPick, onClose }: Props) {
     return () => { alive = false; };
   }, []);
 
+  // v2.413.0 — Unique CR values present in the catalog, sorted
+  // numerically (so '1/8' comes before '1', '2' before '10', etc.).
+  // Re-derived from loaded rows; doesn't change unless the catalog
+  // itself changes.
+  const crValues = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      if (r.cr != null && r.cr.trim()) set.add(r.cr.trim());
+    }
+    const parseCR = (raw: string): number => {
+      if (raw.includes('/')) {
+        const [n, d] = raw.split('/').map(Number);
+        return d ? n / d : 0;
+      }
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : -1;
+    };
+    return Array.from(set).sort((a, b) => parseCR(a) - parseCR(b));
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(r =>
-      r.name.toLowerCase().includes(q) ||
-      (r.type ?? '').toLowerCase().includes(q) ||
-      (r.cr ?? '').toLowerCase() === q,
-    );
-  }, [rows, search]);
+    return rows.filter(r => {
+      // CR chip narrows first — exact match against the row's CR.
+      if (crFilter != null && (r.cr ?? '').trim() !== crFilter) return false;
+      // Search narrows second.
+      if (!q) return true;
+      return (
+        r.name.toLowerCase().includes(q) ||
+        (r.type ?? '').toLowerCase().includes(q) ||
+        (r.cr ?? '').toLowerCase() === q
+      );
+    });
+  }, [rows, search, crFilter]);
 
   return createPortal(
     <div
@@ -92,6 +121,56 @@ export default function CatalogImportModal({ onPick, onClose }: Props) {
             autoFocus
             style={{ width: '100%' }}
           />
+          {/* v2.413.0 — CR filter chips. Click a CR to narrow the
+              list to just creatures of that rating; click again (or
+              "All") to clear. Sits below the search input so both
+              filters are visible simultaneously. */}
+          {!loading && crValues.length > 0 && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: 6,
+              marginTop: 10, alignItems: 'center',
+            }}>
+              <span style={{
+                fontSize: 'var(--fs-xs)', color: 'var(--t-2)',
+                fontWeight: 700, letterSpacing: '0.06em',
+                textTransform: 'uppercase', marginRight: 4,
+              }}>
+                CR
+              </span>
+              <button
+                onClick={() => setCrFilter(null)}
+                style={{
+                  padding: '3px 10px', borderRadius: 999,
+                  border: '1px solid ' + (crFilter == null ? 'var(--c-accent, #a78bfa)' : 'var(--c-border)'),
+                  background: crFilter == null ? 'rgba(167,139,250,0.18)' : 'transparent',
+                  color: crFilter == null ? '#c4b5fd' : 'var(--t-2)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                All
+              </button>
+              {crValues.map(cr => {
+                const active = crFilter === cr;
+                return (
+                  <button
+                    key={cr}
+                    onClick={() => setCrFilter(active ? null : cr)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 999,
+                      border: '1px solid ' + (active ? 'var(--c-accent, #a78bfa)' : 'var(--c-border)'),
+                      background: active ? 'rgba(167,139,250,0.18)' : 'transparent',
+                      color: active ? '#c4b5fd' : 'var(--t-2)',
+                      fontSize: 'var(--fs-xs)', fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {cr}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
