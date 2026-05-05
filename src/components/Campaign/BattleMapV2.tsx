@@ -3333,6 +3333,13 @@ function TokenLayer(props: {
   // because TokenLayer is also used in test contexts that don't
   // wire realtime.
   onCommitPos?: (tokenId: string, x: number, y: number) => void;
+  // v2.423.0 — Optimistic-budget hooks for the movement gate.
+  // getEffectiveUsed returns the larger of (server-echoed used,
+  // local prediction) so fast successive drags can't overspend the
+  // budget while waiting for realtime echo. recordMoved is called
+  // after a successful logMovement to bump the local prediction.
+  getEffectiveUsed?: (participantId: string | null, echoedUsed: number) => number;
+  recordMoved?: (participantId: string, distanceFt: number, echoedUsed: number) => void;
   // v2.358.0 — Token id currently selected by left-click. TokenLayer
   // renders a thin cyan ring around this token to indicate selection.
   // Distinct from activeTokenInfo.tokenId (gold ring, driven by
@@ -3378,7 +3385,7 @@ function TokenLayer(props: {
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
-    recordUndoable, selectedTokenId, onCommitPos,
+    recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -3851,7 +3858,27 @@ function TokenLayer(props: {
       }
       const { container, circle, initials } = entry!;
 
-      container.position.set(token.x, token.y);
+      // v2.423.0 — Center the visual on the FOOTPRINT, not the
+      // anchor. For odd-size tokens (1×1, 3×3) the anchor IS the
+      // cell center, so no offset needed. For even-size tokens
+      // (Large 2×2, Gargantuan 4×4) the anchor sits on the
+      // top-left grid intersection of the footprint — drawing the
+      // circle at (0,0) inside the container puts the visual in
+      // the WRONG place (overhanging the cell up-and-left of the
+      // footprint). Symptom user reported: "the large token still
+      // doesnt art right when dropping it" — visual lands a cell
+      // off because every child renders relative to the anchor,
+      // not the footprint center.
+      //
+      // Fix: shift the container BY half the footprint span for
+      // even-size tokens. Children all stay at (0,0) and render at
+      // the proper visual center. snap math, click-area math, and
+      // distance math all keep using token.x/token.y as the anchor
+      // (they don't read container.position) so this is render-only.
+      const footprintCells = tokenFootprintCells(token.size);
+      const evenSize = footprintCells % 2 === 0;
+      const visualOffset = evenSize ? (footprintCells * gridSizePx) / 2 : 0;
+      container.position.set(token.x + visualOffset, token.y + visualOffset);
 
       // v2.282 — DM-side visual cue for hidden tokens. Players never
       // get this code path (RLS strips visibleToAll=false rows from
@@ -4997,7 +5024,16 @@ function TokenLayer(props: {
           // local cache was stale due to another concurrent action),
           // but by then the user has already seen the snap.
           if (enforceMove) {
-            const remaining = Math.max(0, ati!.max - ati!.used);
+            // v2.423.0 — Effective `used` is the max of the echoed
+            // server value and our local optimistic prediction. Without
+            // this, fast successive drags read a stale server `used`
+            // value and over-spend the budget. The prediction lives
+            // in BattleMapV2 (ref) and is read via getEffectiveUsed
+            // since this code is inside TokenLayer.
+            const effectiveUsed = getEffectiveUsed
+              ? getEffectiveUsed(ati!.participantId, ati!.used)
+              : ati!.used;
+            const remaining = Math.max(0, ati!.max - effectiveUsed);
             if (distanceFt > remaining) {
               // Snap back instantly. Skip both the optimistic position
               // commit AND the canMove round-trip. No DB write; the
@@ -5069,6 +5105,14 @@ function TokenLayer(props: {
                   toCol: toCellCol,
                   distanceFt,
                 });
+                // v2.423.0 — Predict the server-side movement_used_ft
+                // post-write so the next drag this turn sees the
+                // correct remaining budget without waiting for the
+                // realtime echo. The ref lives in BattleMapV2; we call
+                // recordMoved to bump it from inside TokenLayer.
+                if (recordMoved) {
+                  recordMoved(ati!.participantId!, distanceFt, ati!.used);
+                }
               } catch (err) {
                 console.error('[BattleMapV2] logMovement threw', err);
               }
@@ -5145,7 +5189,7 @@ function TokenLayer(props: {
         // — safe to ignore on teardown.
       }
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved]);
 
   return null;
 }
@@ -7371,6 +7415,43 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // quiet OR a non-matching echo (different x/y, indicating a
   // legitimate peer-driven update or a server-side reposition).
   const recentSelfWritesRef = useRef<Map<string, { x: number; y: number; t: number }>>(new Map());
+  // v2.423.0 — Optimistic movement budget tracking. The pre-v2.423
+  // budget check `distanceFt > (max - used)` reads `used` from
+  // currentActor.movement_used_ft, which is the SERVER-side counter.
+  // After a successful drag, logMovement writes to the DB → realtime
+  // echo arrives → CombatContext reloads → `used` updates locally.
+  // That round trip is 100-500ms.
+  //
+  // If the user starts a SECOND drag before the echo lands, `used`
+  // is still the pre-first-move value and the budget appears full.
+  // Symptom: token has 5ft left, user drags it 30ft because the
+  // first drag's logMovement hasn't echoed yet, second drag thinks
+  // 30ft is still available.
+  //
+  // Fix: track the predicted server-side `movement_used_ft` value
+  // we expect after our last logMovement settles. Use it (max'd
+  // with the current echoed value) as the effective `used` in the
+  // budget check. Cleared when the echoed value catches up.
+  const pendingMoveRef = useRef<{ participantId: string | null; predictedUsed: number }>({ participantId: null, predictedUsed: 0 });
+  // v2.423.0 — Stable refs for the budget helpers so the TokenLayer
+  // dep array doesn't re-fire pointermove subscription on every render.
+  // Defined as `useRef`-wrapped functions; the actual logic reads/writes
+  // pendingMoveRef directly. Both are no-side-effect on the React tree.
+  const getEffectiveUsed = useCallback((participantId: string | null, echoedUsed: number): number => {
+    const pm = pendingMoveRef.current;
+    if (!participantId || pm.participantId !== participantId) return echoedUsed;
+    return Math.max(echoedUsed, pm.predictedUsed);
+  }, []);
+  const recordMoved = useCallback((participantId: string, distanceFt: number, echoedUsed: number): void => {
+    const pm = pendingMoveRef.current;
+    const baseUsed = pm.participantId === participantId
+      ? Math.max(pm.predictedUsed, echoedUsed)
+      : echoedUsed;
+    pendingMoveRef.current = {
+      participantId,
+      predictedUsed: baseUsed + distanceFt,
+    };
+  }, []);
   const ECHO_SUPPRESS_MS = 2500; // sliding window
   function markSelfWrite(tokenId: string, x: number, y: number) {
     recentSelfWritesRef.current.set(tokenId, { x, y, t: performance.now() });
@@ -8183,6 +8264,31 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       participantEntityId: (currentActor as any).entity_id ?? null,
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
+
+  // v2.423.0 — Reset pending-move counter when:
+  //   (a) the active actor changes (turn ended or someone else's
+  //       turn now), OR
+  //   (b) the server-side `movement_used_ft` echo catches up to or
+  //       past our predicted value (the realtime echo arrived).
+  // Either condition means the local prediction is no longer needed.
+  useEffect(() => {
+    const pm = pendingMoveRef.current;
+    if (!currentActor) {
+      if (pm.predictedUsed !== 0) {
+        pendingMoveRef.current = { participantId: null, predictedUsed: 0 };
+      }
+      return;
+    }
+    if (pm.participantId && pm.participantId !== currentActor.id) {
+      pendingMoveRef.current = { participantId: null, predictedUsed: 0 };
+      return;
+    }
+    const serverUsed = currentActor.movement_used_ft ?? 0;
+    if (pm.participantId === currentActor.id && serverUsed >= pm.predictedUsed) {
+      // Echo caught up — clear prediction.
+      pendingMoveRef.current = { participantId: null, predictedUsed: 0 };
+    }
+  }, [currentActor?.id, currentActor?.movement_used_ft]);
 
   // v2.346.0 — Click-to-move (BG3 alt input).
   //
@@ -9210,6 +9316,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     recordUndoable={recordUndoable}
                     selectedTokenId={selectedTokenId}
                     onCommitPos={markSelfWrite}
+                    getEffectiveUsed={getEffectiveUsed}
+                    recordMoved={recordMoved}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
