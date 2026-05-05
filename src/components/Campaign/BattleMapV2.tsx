@@ -4854,39 +4854,37 @@ function TokenLayer(props: {
       previewLabel.visible = false;
     }
 
-    // v2.430.0 — Persistent drag preview. Pre-v2.430 the preview was
-    // only redrawn on pointermove, so a stationary hold (cursor not
-    // moving while still pressed) showed nothing. The preview line +
-    // destination marker would appear during motion, then disappear
-    // the instant the user stopped — which read as "constantly
-    // flashing" to the user. Roll20 keeps the path visible for the
-    // entire duration of the drag regardless of cursor motion.
+    // v2.430.0 / v2.436.0 — Persistent drag preview. Pre-v2.430 the
+    // preview was only redrawn on pointermove, so a stationary hold
+    // (cursor not moving while still pressed) showed nothing. v2.430
+    // introduced a rAF loop, but it appears not to fire reliably in
+    // production (rate-counter showed essentially zero extra rAF
+    // calls during stationary holds via instrumentation in
+    // v2.435.0 → v2.436.0 investigation). Switching to setInterval,
+    // which is a dumb timer that fires regardless of rAF scheduling.
     //
-    // Fix: track the latest cursor world position in a ref, kick off
-    // a rAF loop on drag start, and call drawPreview on every frame
-    // while a drag is active. Cancelled on pointerup. The redraw is
-    // cheap (one Graphics + one Text per frame) and the rAF cap
-    // keeps the rate sane.
+    // Roll20 keeps the path visible for the entire duration of the
+    // drag regardless of cursor motion; we want the same.
     let lastCursor: { originX: number; originY: number; cursorX: number; cursorY: number } | null = null;
-    let previewRafId: number | null = null;
-    function previewTick() {
-      if (!dragRef.current) {
-        previewRafId = null;
-        return;
-      }
-      if (lastCursor) {
-        drawPreview(lastCursor.originX, lastCursor.originY, lastCursor.cursorX, lastCursor.cursorY);
-      }
-      previewRafId = requestAnimationFrame(previewTick);
-    }
+    let previewIntervalId: ReturnType<typeof setInterval> | null = null;
     function startPreviewLoop() {
-      if (previewRafId !== null) return;
-      previewRafId = requestAnimationFrame(previewTick);
+      if (previewIntervalId !== null) return;
+      // 33ms = ~30Hz. Plenty for a pulsing/static preview overlay.
+      // Lower than 60Hz to keep the GPU work modest.
+      previewIntervalId = setInterval(() => {
+        if (!dragRef.current) {
+          stopPreviewLoop();
+          return;
+        }
+        if (lastCursor) {
+          drawPreview(lastCursor.originX, lastCursor.originY, lastCursor.cursorX, lastCursor.cursorY);
+        }
+      }, 33);
     }
     function stopPreviewLoop() {
-      if (previewRafId !== null) {
-        cancelAnimationFrame(previewRafId);
-        previewRafId = null;
+      if (previewIntervalId !== null) {
+        clearInterval(previewIntervalId);
+        previewIntervalId = null;
       }
       lastCursor = null;
     }
