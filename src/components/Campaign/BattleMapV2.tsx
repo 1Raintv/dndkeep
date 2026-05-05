@@ -3358,6 +3358,10 @@ function TokenLayer(props: {
   // after a successful logMovement to bump the local prediction.
   getEffectiveUsed?: (participantId: string | null, echoedUsed: number) => number;
   recordMoved?: (participantId: string, distanceFt: number, echoedUsed: number) => void;
+  // v2.429.0 — Animated drop-snap. Called instead of updatePos for
+  // the post-pointerup snap so the token visually transitions to
+  // the snap target over ~120ms instead of teleporting.
+  onSnapAnimate?: (tokenId: string, fromX: number, fromY: number, toX: number, toY: number) => void;
   // v2.358.0 — Token id currently selected by left-click. TokenLayer
   // renders a thin cyan ring around this token to indicate selection.
   // Distinct from activeTokenInfo.tokenId (gold ring, driven by
@@ -3403,7 +3407,7 @@ function TokenLayer(props: {
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
-    recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved,
+    recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -4418,6 +4422,12 @@ function TokenLayer(props: {
       // label so it doesn't fight the HP bar for vertical space. We
       // tear down + rebuild on every conditions change rather than
       // diff child-by-child — conditions change rarely and the cost is
+      // v2.429.0 — isActiveTurn is referenced both here (to position
+      // status dots ABOVE the active-turn ring) and further below (for
+      // movement badge / turn ring rendering). Pre-v2.429 the conditions
+      // strip rendered below the token so it didn't need this — it does
+      // now that the strip is positioned above per Roll20-style chrome.
+      const isActiveTurn = !!activeTokenInfo && activeTokenInfo.tokenId === token.id;
       // a handful of cheap Graphics. Conditions without a COND_ICON
       // entry are skipped silently (still surface as chips in the
       // quick panel).
@@ -4443,12 +4453,22 @@ function TokenLayer(props: {
           currentEntry.conditionsLayer = null;
         }
         const layer = new Container();
-        const ICON_SIZE = 12;            // diameter of each colored circle
+        // v2.429.0 — Roll20-style status dot row. Smaller dots
+        // (10px) stacked horizontally ABOVE the token, leaving the
+        // area below clear for the v2.429 action ring. Pre-v2.429
+        // these sat under the name label; moved up for parity with
+        // Roll20's status-dot row and to declutter the bottom of
+        // the token.
+        const ICON_SIZE = 10;            // diameter of each colored circle
         const ICON_GAP = 2;
         const totalWidth = iconConds.length * ICON_SIZE + (iconConds.length - 1) * ICON_GAP;
-        // Position: under the name label (which sits at r + 6 + hpBarOffset).
-        // Add a fixed 14px for the label line height.
-        const stripY = r + 6 + (showHpBar ? 14 : 0) + 14;
+        // Position: above the token. Sit just above the active-turn
+        // ring (r + 8) and any movement badge that may render there.
+        // The active turn badge owns y = -(r + 18); place dots at
+        // y = -(r + 32) so they live just above the badge without
+        // overlap. For non-active tokens with no badge they sit at
+        // -(r + 18), tight against the top edge of the token.
+        const stripY = isActiveTurn ? -(r + 32) : -(r + 18);
         let cursorX = -totalWidth / 2 + ICON_SIZE / 2;
         for (const cond of iconConds) {
           const color = COND_COLOR_HEX[cond] ?? 0x94a3b8;
@@ -4466,7 +4486,7 @@ function TokenLayer(props: {
             style: new TextStyle({
               fontFamily: 'sans-serif',
               fontWeight: '800',
-              fontSize: 9,
+              fontSize: 8,
               fill: 0x0a0c10,
               align: 'center',
             }),
@@ -4502,7 +4522,7 @@ function TokenLayer(props: {
       // Y from container origin) — far enough up that the HP bar and
       // name label below stay uncluttered. Hidden when not the active
       // turn, redrawn on movement-spent change.
-      const isActiveTurn = !!activeTokenInfo && activeTokenInfo.tokenId === token.id;
+      // (isActiveTurn declared earlier in v2.429.0 conditions strip.)
 
       // ── Turn ring ──────────────────────────────────────────────────
       if (isActiveTurn) {
@@ -4570,6 +4590,13 @@ function TokenLayer(props: {
       // Drawn when this token is the user's currently-selected token
       // (left-click select). Cyan, thin, outside the active-turn ring
       // so both can read simultaneously without visual collision.
+      // v2.429.0 — Roll20-style footprint rectangle. Replaces the
+      // pre-v2.429 circular halo with a thin rectangle that exactly
+      // matches the token's footprint cells (1×1 for Medium, 2×2 for
+      // Large, 4×4 for Gargantuan). Provides crisp visual confirmation
+      // of "this is which cells the token occupies" — separate from
+      // the token visual itself. Modeled on the blue selection
+      // rectangle Roll20 draws around selected tokens.
       const isSelected = selectedTokenId === token.id;
       if (isSelected) {
         if (!currentEntry.selectionRing) {
@@ -4581,9 +4608,18 @@ function TokenLayer(props: {
         }
         const ring = currentEntry.selectionRing;
         ring.clear();
-        ring.setStrokeStyle({ color: 0x67e8f9, width: 1.5, alpha: 0.9 });
-        ring.circle(0, 0, r + 9);
+        const halfFootPx = (footprintCells * gridSizePx) / 2;
+        // 2px stroke at slightly transparent cyan, sitting just outside
+        // the cell border so the line is visible against any map color
+        // without crowding the token glyph. ~1.5px outset.
+        ring.setStrokeStyle({ color: 0x67e8f9, width: 2, alpha: 0.95 });
+        ring.rect(-halfFootPx - 1.5, -halfFootPx - 1.5, footprintCells * gridSizePx + 3, footprintCells * gridSizePx + 3);
         ring.stroke();
+        // Subtle interior glow so the rectangle reads even when the
+        // token is mid-map on busy terrain. 8% fill.
+        ring.setFillStyle({ color: 0x67e8f9, alpha: 0.08 });
+        ring.rect(-halfFootPx, -halfFootPx, footprintCells * gridSizePx, footprintCells * gridSizePx);
+        ring.fill();
         ring.visible = true;
       } else if (currentEntry.selectionRing) {
         currentEntry.selectionRing.visible = false;
@@ -5116,7 +5152,20 @@ function TokenLayer(props: {
           // immediately. If validation fails, we'll snap it back
           // below — most drags succeed, so this avoids a perceptible
           // pause on the common path.
-          updatePos(drag.id, clampedX, clampedY);
+          // v2.429.0 — Animate the snap from current cursor position
+          // to the snap target over ~120ms with an ease-out curve
+          // (Roll20-feel). Falls back to instant updatePos when no
+          // animator is wired (test envs / dragless scenarios).
+          if (onSnapAnimate) {
+            const cur = useBattleMapStore.getState().tokens[drag.id];
+            if (cur) {
+              onSnapAnimate(drag.id, cur.x, cur.y, clampedX, clampedY);
+            } else {
+              updatePos(drag.id, clampedX, clampedY);
+            }
+          } else {
+            updatePos(drag.id, clampedX, clampedY);
+          }
           onDragMove?.(drag.id, clampedX, clampedY);
 
           const commit = async () => {
@@ -5256,7 +5305,7 @@ function TokenLayer(props: {
         // — safe to ignore on teardown.
       }
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate]);
 
   return null;
 }
@@ -7506,6 +7555,51 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // with the current echoed value) as the effective `used` in the
   // budget check. Cleared when the echoed value catches up.
   const pendingMoveRef = useRef<{ participantId: string | null; predictedUsed: number }>({ participantId: null, predictedUsed: 0 });
+  // v2.429.0 — Snap-drop animation. Roll20-style: when a drag ends,
+  // the token position interpolates from "where the cursor was" to
+  // "the snapped grid cell" over ~120ms with an ease-out curve,
+  // instead of teleporting. Reads as physical and forgiving rather
+  // than digital and abrupt. Tracking the active animation by token
+  // id lets us cancel mid-flight if the same token gets dragged
+  // again before the animation completes.
+  const snapAnimRef = useRef<Map<string, number>>(new Map());
+  const animateSnap = useCallback((tokenId: string, fromX: number, fromY: number, toX: number, toY: number) => {
+    // Cancel any in-flight animation for this token.
+    const prev = snapAnimRef.current.get(tokenId);
+    if (prev !== undefined) {
+      cancelAnimationFrame(prev);
+      snapAnimRef.current.delete(tokenId);
+    }
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    // If the snap delta is essentially zero, write directly. Saves a
+    // frame's worth of churn for drags that happen to end right on
+    // a grid point.
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+      useBattleMapStore.getState().updateTokenPosition(tokenId, toX, toY);
+      return;
+    }
+    const start = performance.now();
+    const DURATION = 120; // ms — Roll20-feel snap
+    const tick = () => {
+      const elapsed = performance.now() - start;
+      const t = Math.min(1, elapsed / DURATION);
+      // Ease-out cubic. Quick start, gentle landing.
+      const eased = 1 - Math.pow(1 - t, 3);
+      const x = fromX + dx * eased;
+      const y = fromY + dy * eased;
+      useBattleMapStore.getState().updateTokenPosition(tokenId, x, y);
+      if (t < 1) {
+        snapAnimRef.current.set(tokenId, requestAnimationFrame(tick));
+      } else {
+        snapAnimRef.current.delete(tokenId);
+        // Final write at the exact target so float drift can't leave
+        // the token off-snap by a sub-pixel.
+        useBattleMapStore.getState().updateTokenPosition(tokenId, toX, toY);
+      }
+    };
+    snapAnimRef.current.set(tokenId, requestAnimationFrame(tick));
+  }, []);
   // v2.423.0 — Stable refs for the budget helpers so the TokenLayer
   // dep array doesn't re-fire pointermove subscription on every render.
   // Defined as `useRef`-wrapped functions; the actual logic reads/writes
@@ -9455,6 +9549,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     onCommitPos={markSelfWrite}
                     getEffectiveUsed={getEffectiveUsed}
                     recordMoved={recordMoved}
+                    onSnapAnimate={animateSnap}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
