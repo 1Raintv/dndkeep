@@ -4806,6 +4806,43 @@ function TokenLayer(props: {
       previewLabel.visible = false;
     }
 
+    // v2.430.0 — Persistent drag preview. Pre-v2.430 the preview was
+    // only redrawn on pointermove, so a stationary hold (cursor not
+    // moving while still pressed) showed nothing. The preview line +
+    // destination marker would appear during motion, then disappear
+    // the instant the user stopped — which read as "constantly
+    // flashing" to the user. Roll20 keeps the path visible for the
+    // entire duration of the drag regardless of cursor motion.
+    //
+    // Fix: track the latest cursor world position in a ref, kick off
+    // a rAF loop on drag start, and call drawPreview on every frame
+    // while a drag is active. Cancelled on pointerup. The redraw is
+    // cheap (one Graphics + one Text per frame) and the rAF cap
+    // keeps the rate sane.
+    let lastCursor: { originX: number; originY: number; cursorX: number; cursorY: number } | null = null;
+    let previewRafId: number | null = null;
+    function previewTick() {
+      if (!dragRef.current) {
+        previewRafId = null;
+        return;
+      }
+      if (lastCursor) {
+        drawPreview(lastCursor.originX, lastCursor.originY, lastCursor.cursorX, lastCursor.cursorY);
+      }
+      previewRafId = requestAnimationFrame(previewTick);
+    }
+    function startPreviewLoop() {
+      if (previewRafId !== null) return;
+      previewRafId = requestAnimationFrame(previewTick);
+    }
+    function stopPreviewLoop() {
+      if (previewRafId !== null) {
+        cancelAnimationFrame(previewRafId);
+        previewRafId = null;
+      }
+      lastCursor = null;
+    }
+
     function drawPreview(originX: number, originY: number, cursorX: number, cursorY: number) {
       // v2.414.0 — Use the same size-aware snap helper that the
       // pointerup commit uses (snapTokenAnchor). Pre-v2.414 the
@@ -4948,8 +4985,13 @@ function TokenLayer(props: {
       // v2.340.0 — live drag preview. Only show after the user has
       // actually moved (probe.didMove guards against firing on a
       // pure-click landing on the token).
+      // v2.430.0 — Persistent: capture cursor and let the rAF loop
+      // keep redrawing on stationary holds. The loop kicks off on
+      // first move and runs until pointerup.
       if (probe?.didMove) {
+        lastCursor = { originX: drag.originX, originY: drag.originY, cursorX: newX, cursorY: newY };
         drawPreview(drag.originX, drag.originY, newX, newY);
+        startPreviewLoop();
       }
 
       // Throttled broadcast to peers.
@@ -5266,6 +5308,7 @@ function TokenLayer(props: {
       // v2.340.0 — always clear the preview overlay on pointerup.
       // Even on click drops or rejected drops, the dashes shouldn't
       // linger after the gesture ends.
+      stopPreviewLoop();
       clearPreview();
       const entry = gfxMapRef.current.get(drag.id);
       if (entry) {
@@ -5291,6 +5334,11 @@ function TokenLayer(props: {
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      // v2.430.0 — kill the preview rAF loop if a drag was in flight
+      // when the effect tore down (rare — mostly happens on hot-reload
+      // during dev). Without this the rAF callback fires once more
+      // after teardown and writes to a destroyed Graphics → crash.
+      stopPreviewLoop();
       // v2.340.0 — tear down the persistent drag-preview overlay so
       // it doesn't leak between viewport remounts (rare, but happens
       // on scene change). destroy() releases the Graphics + Text
