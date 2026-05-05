@@ -3823,23 +3823,25 @@ function TokenLayer(props: {
           // cells. Symptom: drop a Tarrasque and watch it shift
           // to a neighboring grid cell.
           //
-          // Fix: for even-size tokens, zero the offset so the
-          // anchor follows the cursor directly. The visual jump on
-          // grab is acceptable (the token re-centers under your
-          // pointer) and the drop lands exactly where you released.
-          // Odd-size tokens (1×1, 3×3) anchor on cell centers — the
-          // cursor → center relationship is intuitive — so we keep
-          // the natural cursor-to-anchor offset for those.
-          const cells = (() => {
-            switch (t.size) {
-              case 'large': return 2;
-              case 'gargantuan': return 4;
-              default: return 1; // tiny/small/medium/huge handled as odd
-            }
-          })();
-          const evenSize = cells % 2 === 0;
-          const offsetX = evenSize ? 0 : worldPoint.x - t.x;
-          const offsetY = evenSize ? 0 : worldPoint.y - t.y;
+          // v2.428.1 — Use the natural cursor-to-anchor offset for
+          // ALL sizes (odd + even). Pre-v2.423, the even-size branch
+          // used offsetX=0 because visual = anchor for even sizes
+          // (both at the top-left intersection), so zeroing the
+          // offset put the visual top-left under the cursor — fine
+          // back then. After v2.423 added a visual offset for even
+          // sizes (centering the visual on the footprint instead of
+          // its top-left corner), offsetX=0 means the cursor is no
+          // longer over the visual at all — visual sits half a
+          // footprint to the south-east of the cursor while
+          // dragging, and on release the snap target was relative
+          // to the anchor under the cursor, so the token "fell"
+          // to where the anchor was rather than where the visual
+          // appeared. WYSIWYG drag requires the cursor-to-visual
+          // relationship to be preserved, which the natural
+          // (cursor - anchor) offset accomplishes for both even
+          // and odd sizes given v2.423's centering math.
+          const offsetX = worldPoint.x - t.x;
+          const offsetY = worldPoint.y - t.y;
           dragRef.current = {
             id: tid,
             offsetX,
