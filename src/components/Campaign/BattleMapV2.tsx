@@ -4969,9 +4969,26 @@ function TokenLayer(props: {
       // marker at the destination. PIXI v8 has no native dashed-line
       // helper, so we manually segment the line with `moveTo / lineTo`
       // jumps. ~6px on / 6px off reads as obviously-temporary.
+      // v2.435.0 — Line endpoints adjusted for even-size tokens. For
+      // odd sizes (Medium, Huge) origin/tx are cell CENTERS, so the
+      // dashed line correctly goes center→center. For even sizes
+      // (Large, Gargantuan) origin/tx are top-left intersections of
+      // the footprint, so the unadjusted line went from one NW corner
+      // to another NW corner — pointing at the white marker's NW
+      // corner instead of where the visual will land. Add halfFootPx
+      // to put the line endpoints at the FOOTPRINT CENTER for even-
+      // size tokens; visual center == footprint center, so the line
+      // now correctly points at where the token will visually sit.
       previewGfx.clear();
-      const dx = tx - originX;
-      const dy = ty - originY;
+      const lineEvenAdjust = dragRef.current && draggedToken && tokenFootprintCells(draggedToken.size) % 2 === 0
+        ? (tokenFootprintCells(draggedToken.size) * gridSizePx) / 2
+        : 0;
+      const lineOriginX = originX + lineEvenAdjust;
+      const lineOriginY = originY + lineEvenAdjust;
+      const lineTargetX = tx + lineEvenAdjust;
+      const lineTargetY = ty + lineEvenAdjust;
+      const dx = lineTargetX - lineOriginX;
+      const dy = lineTargetY - lineOriginY;
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len > 1) {
         const nx = dx / len;
@@ -4983,8 +5000,8 @@ function TokenLayer(props: {
         while (traveled < len) {
           const segStart = traveled;
           const segEnd = Math.min(traveled + dashOn, len);
-          previewGfx.moveTo(originX + nx * segStart, originY + ny * segStart);
-          previewGfx.lineTo(originX + nx * segEnd, originY + ny * segEnd);
+          previewGfx.moveTo(lineOriginX + nx * segStart, lineOriginY + ny * segStart);
+          previewGfx.lineTo(lineOriginX + nx * segEnd, lineOriginY + ny * segEnd);
           traveled += dashOn + dashOff;
         }
         previewGfx.stroke();
@@ -5010,8 +5027,25 @@ function TokenLayer(props: {
         ? tokenFootprintCells(draggedToken.size)
         : 1;
       const mark = (dragFootCells * gridSizePx) - 4;
+      // v2.435.0 — Footprint position depends on whether the snap
+      // returned an ANCHOR (top-left of footprint, for even-size
+      // tokens) or a CENTER (for odd-size tokens). Pre-v2.435 the
+      // marker was always centered on (tx, ty), which was correct
+      // only for odd sizes — for Large/Gargantuan it placed the
+      // marker 2 cells NW of where the actual drop would land,
+      // because the visual renders at anchor + halfFootPx (v2.423
+      // visual offset). User screenshot showed the white square
+      // floating NW of the AW dragon mid-drag.
+      //
+      // Fix: for even-size tokens, draw the marker with TOP-LEFT
+      // at (tx, ty), since tx/ty IS the top-left anchor of the
+      // footprint. For odd sizes, keep the existing center-on-
+      // (tx, ty) draw because tx/ty IS the cell center for those.
+      const dragEvenSize = dragFootCells % 2 === 0 && !!draggedToken;
+      const markX = dragEvenSize ? tx + 2 : tx - mark / 2;
+      const markY = dragEvenSize ? ty + 2 : ty - mark / 2;
       previewGfx.setStrokeStyle({ color: lineColor, width: 2, alpha: 0.9 });
-      previewGfx.roundRect(tx - mark / 2, ty - mark / 2, mark, mark, 4);
+      previewGfx.roundRect(markX, markY, mark, mark, 4);
       previewGfx.stroke();
 
       previewGfx.visible = true;
@@ -5021,7 +5055,10 @@ function TokenLayer(props: {
       // zoom — readable at 1x, hugs the cell at 4x. Acceptable.
       previewLabel.text = costLabel;
       (previewLabel.style as TextStyle).fill = labelColor;
-      previewLabel.position.set(tx, ty - mark / 2 - 4);
+      // v2.435.0 — Label sits above the marker's TOP edge.
+      const labelY = dragEvenSize ? markY - 4 : ty - mark / 2 - 4;
+      const labelX = dragEvenSize ? tx + (dragFootCells * gridSizePx) / 2 : tx;
+      previewLabel.position.set(labelX, labelY);
       previewLabel.visible = true;
     }
 
