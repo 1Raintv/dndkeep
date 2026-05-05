@@ -5317,6 +5317,32 @@ function TokenLayer(props: {
               useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
               onDragMove?.(drag.id, drag.originX, drag.originY);
               onMovementBlocked?.();
+              // v2.438.0 — Full pointerup cleanup BEFORE returning.
+              // Pre-v2.438 the rejection branch did `return;` early,
+              // which skipped the cleanup at the bottom of the
+              // pointerup handler:
+              //   - dragRef.current = null
+              //   - clickProbeRef.current = null
+              //   - setDragging(null)
+              //   - onDragEnd?.(drag.id)
+              // With dragRef.current still set, the NEXT pointermove
+              // (without the mouse button held) was treated as a
+              // continuation of the original drag — `updatePos`
+              // continued moving the token to wherever the cursor
+              // was. The user could then click anywhere to finalize
+              // a position that was supposed to have been rejected.
+              // User report: "click drag and drop outside total
+              // distance, then click again, the token drops at the
+              // far cell."
+              //
+              // Now: do the full cleanup synchronously on the
+              // rejection path so the state machine returns to
+              // "no drag in progress" cleanly. Subsequent pointer
+              // events start fresh.
+              onDragEnd?.(drag.id);
+              dragRef.current = null;
+              clickProbeRef.current = null;
+              setDragging(null);
               return;
             }
           }
