@@ -285,6 +285,18 @@ export default function MonsterActionPanel({ isDM }: Props) {
     // active actor changes. Without this, a half-completed sequence
     // would carry across turns and gray out actions on the next
     // monster's turn.
+    //
+    // v2.419.0 — Subsequent-attack regression fix. CombatContext
+    // creates a NEW currentActor object reference on every realtime
+    // echo (including the target's HP-drop echo after a hit). The
+    // pre-v2.419 dep array used the full object, so the effect
+    // re-fired after every attack and wiped the in-progress
+    // multiattack sequence. Symptom: "first attack works, the rest
+    // are broken." Now the effect's identity-based deps are
+    // currentActor.id + entity_id + participant_type — all the
+    // fields the body actually reads. The body still reads other
+    // fields on currentActor (movement, hp) but those don't need
+    // to retrigger this load.
     setMultiattack(null);
     if (!isDM || !currentActor) {
       setActions(null);
@@ -381,7 +393,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
       }
     });
     return () => { cancelled = true; };
-  }, [isDM, currentActor]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- v2.419: intentional identity-based deps
+  }, [isDM, currentActor?.id, currentActor?.entity_id, currentActor?.participant_type]);
 
   // Reload battle map when picker opens. The same map drives all
   // target distance reads in a single picker session.
@@ -454,23 +467,23 @@ export default function MonsterActionPanel({ isDM }: Props) {
         if (!ability) {
           showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
         } else {
-          // v2.416.0 — Condition-immunity short-circuit. If this
-          // save action would apply a condition (e.g. Frightening
-          // Presence → frightened) and the target is immune to that
-          // condition, skip the roll entirely and toast the immunity.
-          // Saves the player a useless roll and makes the immunity
-          // legible in the action log. Only applied for creature
-          // targets; PCs don't currently expose condition_immunities.
+          // v2.419.0 — Roll FIRST, immunity flavor LAST. Pre-v2.419
+          // we short-circuited the entire save chain when the target
+          // was immune to the inferred condition. User feedback:
+          // the player should still see their character roll the
+          // save — the immunity is something the DM narrates AFTER
+          // the result. So now we always run the full chain
+          // (declare → save → optional damage), and if the action's
+          // primary effect is a condition the target is immune to
+          // AND the save FAILED, we toast the immunity AFTER the
+          // roll. Passes are noted as normal successes (the
+          // immunity is moot since the save passed anyway).
+          //
+          // Lookup is the same as v2.417 — condition_immunities lives
+          // on `monsters` reachable via homebrew_monsters.source_monster_id.
           const inferredCondition = inferConditionFromSaveAction(a.name, a.desc);
-          let immune = false;
+          let targetImmuneToCondition = false;
           if (inferredCondition && target.participant_type === 'creature' && target.entity_id) {
-            // v2.417.0 — Same fix as the panel-level stat fetch:
-            // condition_immunities lives on `monsters` (the SRD
-            // catalog), reachable via homebrew_monsters.source_monster_id.
-            // The pre-v2.417 code queried homebrew_monsters directly
-            // for the column, which doesn't exist there — the query
-            // didn't return the column, so `immList` was always empty
-            // and the immunity short-circuit never fired.
             const { data: tgtHb } = await supabase
               .from('homebrew_monsters')
               .select('source_monster_id')
@@ -484,14 +497,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 .eq('id', tgtSourceId)
                 .maybeSingle();
               const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
-              immune = immList.some(s => s.toLowerCase() === inferredCondition);
+              targetImmuneToCondition = immList.some(s => s.toLowerCase() === inferredCondition);
             }
           }
-          if (immune && inferredCondition) {
-            showToast(`${target.name} is immune to ${inferredCondition} — ${a.name} has no effect.`, 'info');
-            // Still consume the attack slot so multiattack counters
-            // decrement consistently with hit/miss outcomes.
-          } else {
+
           const attack = await declareAttack({
             campaignId: encounter.campaign_id,
             encounterId: encounter.id,
@@ -570,9 +579,21 @@ export default function MonsterActionPanel({ isDM }: Props) {
               // Pure save-or-condition action with no damage. Toast
               // the result; the DM applies the condition described
               // in `a.desc` via the token's context menu.
+              //
+              // v2.419.0 — Immunity flavor. If the save FAILED but
+              // the target is immune to the inferred condition, the
+              // failure has no effect. Toast that fact AFTER the
+              // roll so the DM can narrate the immunity (the player
+              // still saw their character roll, which is what they
+              // wanted).
               const passed = (rolled as any)?.save_result === 'passed';
               if (passed) {
                 showToast(`${target.name} succeeded on ${ability} save vs ${a.name}.`, 'success');
+              } else if (targetImmuneToCondition && inferredCondition) {
+                showToast(
+                  `${target.name} failed the save vs ${a.name} but is IMMUNE to ${inferredCondition} — no effect.`,
+                  'info',
+                );
               } else {
                 showToast(`${target.name} FAILED ${ability} save vs ${a.name}. Apply effect manually (see action description).`, 'info');
               }
@@ -581,7 +602,6 @@ export default function MonsterActionPanel({ isDM }: Props) {
               await cancelAttack(rolled?.id ?? attack.id);
             }
           }
-          } // end "not immune" else block (v2.416.0)
         }
       } else {
         // ── Attack chain (kind='attack_roll') ─────────────────────

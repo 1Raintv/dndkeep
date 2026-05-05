@@ -118,7 +118,12 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
       // experienced as "the dice roll in the background, a little
       // grayed out." The dice now sit on top with their existing
       // dim+blur backdrop.
-      position: 'fixed', inset: 0, zIndex: 12000,
+      // v2.419.0 — Raised AGAIN to 30000. The combat resolution
+      // modals (AttackResolutionModal at 20002, TargetPickerModal
+      // at 20003, DeclareAttackModal at 20001) sit above 12000 and
+      // were still occluding the dice during the auto-resolve
+      // chain. 30000 clears the entire combat modal stack.
+      position: 'fixed', inset: 0, zIndex: 30000,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       pointerEvents: 'all', cursor: 'pointer',
       background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)',

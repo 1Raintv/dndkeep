@@ -64,6 +64,34 @@ function doubleDice(expr: string): string {
   return `${count}d${sides}${mod}`;
 }
 
+// v2.419.0 — DM-side house rule readers. The rule engine runs in
+// browser context so localStorage is available. We read fresh on
+// every call rather than caching, so a DM toggle in Settings takes
+// effect immediately on the next roll without a page refresh. The
+// readers are intentionally defined HERE (not imported from the
+// React hook) so the rule engine doesn't pull React into its
+// dependency graph — pendingAttack.ts is a pure-logic module.
+function getCritRule(): 'double_dice' | 'max_plus_roll' {
+  try {
+    const raw = localStorage.getItem('dndkeep:houseRules');
+    if (!raw) return 'double_dice';
+    const parsed = JSON.parse(raw) as { critRule?: string };
+    return parsed.critRule === 'max_plus_roll' ? 'max_plus_roll' : 'double_dice';
+  } catch {
+    return 'double_dice';
+  }
+}
+function getNat1AutoFails(): boolean {
+  try {
+    const raw = localStorage.getItem('dndkeep:houseRules');
+    if (!raw) return true;
+    const parsed = JSON.parse(raw) as { nat1AutoFails?: boolean };
+    return parsed.nat1AutoFails !== false;
+  } catch {
+    return true;
+  }
+}
+
 // ─── Declare ─────────────────────────────────────────────────────
 
 export interface DeclareAttackInput {
@@ -450,7 +478,13 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   let hitResult: HitResult;
   if (coverLevel === 'total') hitResult = 'miss';
   else if (d20 === 20) hitResult = 'crit';
-  else if (d20 === 1) hitResult = 'fumble';
+  // v2.419.0 — Nat-1 house rule. RAW (and our default): a 1 on the
+  // d20 attack roll is an automatic miss regardless of modifiers.
+  // Some tables prefer "1 is just a 1" (modifiers can still connect
+  // against low AC). The DM toggles this in Settings → House Rules.
+  // Lazy import to avoid a top-of-file circular dep with the
+  // settings hook (which imports React).
+  else if (d20 === 1 && getNat1AutoFails()) hitResult = 'fumble';
   else if (autoCrit && total >= effectiveAc) hitResult = 'crit';   // hit + auto-crit trigger
   else if (autoCrit && total < effectiveAc) hitResult = 'miss';    // miss stays a miss
   else if (total >= effectiveAc) hitResult = 'hit';
@@ -859,9 +893,30 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     }
   }
 
-  // Crit doubles dice count (modifier unchanged)
+  // v2.419.0 — Crit damage house rule. Two options:
+  //   • 'double_dice'   (default RAW): roll 2× the damage dice on a
+  //                                   crit; modifier unchanged.
+  //   • 'max_plus_roll' (Perkins/Brutal style): take the maximum
+  //                                   possible value of the base
+  //                                   dice, then roll the dice once
+  //                                   and ADD that to the total.
+  //                                   Modifier unchanged. Tends to
+  //                                   produce higher floors with
+  //                                   the same expected ceiling.
+  // The DM toggles this in Settings → House Rules. Save-DC actions
+  // never go through hit_result='crit' (saves don't crit), so the
+  // rule branch only matters for attack-roll attacks.
   const isCrit = atk.hit_result === 'crit';
-  const diceExpr = isCrit ? doubleDice(atk.damage_dice) : atk.damage_dice;
+  const critRule = getCritRule();
+
+  // Default path: roll the (possibly doubled) dice expression once.
+  // For 'max_plus_roll' we still go through this rolling path so
+  // damage_group reuse semantics + buff-rider eligibility stay
+  // intact, then patch the rolls below.
+  const diceExprForRoll =
+    isCrit && critRule === 'double_dice'
+      ? doubleDice(atk.damage_dice)
+      : atk.damage_dice;
 
   // v2.104.0 — Phase F: multi-target damage reuse. If this attack is in a
   // damage_group and a sibling already rolled, reuse those dice results so
@@ -888,12 +943,36 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
       modifier = total - sum;
       reusedFromGroup = true;
     } else {
-      const fresh = rollDiceExpr(diceExpr);
+      const fresh = rollDiceExpr(diceExprForRoll);
       rolls = fresh.rolls; modifier = fresh.modifier; total = fresh.total;
     }
   } else {
-    const fresh = rollDiceExpr(diceExpr);
+    const fresh = rollDiceExpr(diceExprForRoll);
     rolls = fresh.rolls; modifier = fresh.modifier; total = fresh.total;
+  }
+
+  // v2.419.0 — Apply 'max_plus_roll' crit. After the standard roll
+  // (which produced a normal-die-count roll set), add the maximum-
+  // possible-value of the base damage dice on top. For "3d8+2" with
+  // rolls [4,7,3] mod=+2 base=14:
+  //   max_plus_roll: max=24 (3 × 8) → total = 14 + 24 = 38
+  //   double_dice : would roll 6d8+2 instead, average ~29
+  // We compute max from the base atk.damage_dice (NOT the doubled
+  // expression, which we didn't roll on this branch) and add it
+  // to the total. We also extend the rolls[] array with synthetic
+  // "max" entries so the UI animation shows them and the log
+  // breakdown reads sensibly.
+  if (isCrit && critRule === 'max_plus_roll' && !reusedFromGroup) {
+    const m = (atk.damage_dice ?? '').match(/^(\d+)d(\d+)/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      const sides = parseInt(m[2], 10);
+      const maxDamage = n * sides;
+      // Synthesize "max" entries for the animation/log so it's clear
+      // these are crit-bonus dice, not natural rolls.
+      for (let i = 0; i < n; i++) rolls.push(sides);
+      total = total + maxDamage;
+    }
   }
 
   // v2.113.0 — Phase H pt 4: damage riders from attacker buffs (Hunter's
@@ -979,7 +1058,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     eventType: 'damage_rolled',
     payload: {
       action_name: atk.attack_name,
-      dice_expression: diceExpr,
+      dice_expression: diceExprForRoll,
       individual_results: rolls,
       modifier,
       total: finalDamage,

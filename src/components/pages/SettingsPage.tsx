@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { signOut, getCharacters, deleteCharacter, supabase } from '../../lib/supabase';
 import { redirectToCheckout, redirectToCustomerPortal, STRIPE_PRICES } from '../../lib/stripe';
 import { usePushNotifications } from '../../lib/usePushNotifications';
+import { useHouseRules, type CritRule } from '../../lib/useHouseRules';
 
 export default function SettingsPage() {
   const { user, profile, isPro, refreshProfile } = useAuth();
@@ -16,6 +17,8 @@ export default function SettingsPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // v2.419.0 — DM-side natural-20 / natural-1 house rules.
+  const [houseRules, setHouseRules] = useHouseRules();
 
   const refreshProfileRef = useRef(refreshProfile);
   refreshProfileRef.current = refreshProfile;
@@ -279,6 +282,65 @@ export default function SettingsPage() {
             {error}
           </div>
         )}
+      </div>
+
+      {/* v2.419.0 — DM house rules. Two sections:
+            • Natural 20s — pick crit damage rule (radio, mutex)
+            • Natural 1s — toggle auto-fail on attack rolls
+          Stored in localStorage; the rule engine in pendingAttack.ts
+          reads on every roll so changes take effect immediately. */}
+      <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
+        <div className="section-header">House Rules</div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginBottom: 'var(--sp-5)' }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Natural 20s — Crit Damage
+          </div>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)', cursor: 'pointer', padding: 'var(--sp-2)', borderRadius: 'var(--r-sm, 4px)', background: houseRules.critRule === 'double_dice' ? 'rgba(212,160,23,0.10)' : 'transparent', border: `1px solid ${houseRules.critRule === 'double_dice' ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}` }}>
+            <input
+              type="radio"
+              name="critRule"
+              checked={houseRules.critRule === 'double_dice'}
+              onChange={() => setHouseRules({ ...houseRules, critRule: 'double_dice' as CritRule })}
+              style={{ marginTop: 3, accentColor: '#d4a017' }}
+            />
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>Double Dice <span style={{ color: 'var(--t-3)', fontWeight: 500 }}>(default, RAW)</span></span>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.4 }}>Roll twice the damage dice. A 3d8 attack rolls 6d8 on a crit.</span>
+            </span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)', cursor: 'pointer', padding: 'var(--sp-2)', borderRadius: 'var(--r-sm, 4px)', background: houseRules.critRule === 'max_plus_roll' ? 'rgba(212,160,23,0.10)' : 'transparent', border: `1px solid ${houseRules.critRule === 'max_plus_roll' ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}` }}>
+            <input
+              type="radio"
+              name="critRule"
+              checked={houseRules.critRule === 'max_plus_roll'}
+              onChange={() => setHouseRules({ ...houseRules, critRule: 'max_plus_roll' as CritRule })}
+              style={{ marginTop: 3, accentColor: '#d4a017' }}
+            />
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>Max + Roll <span style={{ color: 'var(--t-3)', fontWeight: 500 }}>(Perkins-style)</span></span>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.4 }}>Take maximum damage from the base dice, then roll the dice once and add it. A 3d8 attack scores 24 + (3d8) on a crit — higher floor, same ceiling.</span>
+            </span>
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Natural 1s — Attack Rolls
+          </div>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={houseRules.nat1AutoFails}
+              onChange={e => setHouseRules({ ...houseRules, nat1AutoFails: e.target.checked })}
+              style={{ marginTop: 3, accentColor: '#d4a017' }}
+            />
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)' }}>Nat 1 auto-fails attack rolls <span style={{ color: 'var(--t-3)', fontWeight: 500 }}>(default ON)</span></span>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', lineHeight: 1.4 }}>When ON, rolling a 1 on a d20 attack roll always misses regardless of modifiers. When OFF, modifiers can still connect against low AC. This rule applies to attack rolls only — never damage dice.</span>
+            </span>
+          </label>
+        </div>
       </div>
 
       {!isPro && (
