@@ -474,33 +474,10 @@ export function snapTokenAnchor(
     const row = Math.round((worldY - cellSize / 2) / cellSize);
     return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
   }
-  // Even sizes: snap so the FOOTPRINT CENTER lands on the nearest grid
-  // intersection. The returned anchor (top-left of footprint) is then
-  // `intersection - halfFootPx` so the N×N footprint is centered around
-  // the intersection.
-  //
-  // v2.433.0 — Pre-v2.433 returned the intersection itself as the
-  // anchor, which placed the footprint to the bottom-right of the
-  // intersection (e.g., cells (col, row) through (col+N-1, row+N-1)).
-  // The v2.423 visual offset (+halfFootPx) then put the visual center
-  // at intersection + halfFootPx — TWO cells SE of the snap target
-  // for Gargantuan. User saw the visual jump 2 cells SE of where they
-  // grabbed, with the selection rectangle (anchored at the snapped
-  // intersection) appearing to the NW of the visual. Symptoms exactly
-  // matched.
-  //
-  // Now: snap the FOOTPRINT CENTER to intersection. Returned anchor
-  // = intersection - halfFootPx. With v2.423's container.position.set
-  // (token.x + halfFootPx, token.y + halfFootPx), the visual ends up
-  // at the snapped intersection — where the user aimed. Selection
-  // rectangle still hugs the footprint (cells (col-N/2, row-N/2)
-  // through (col+N/2-1, row+N/2-1)).
-  const halfFoot = (cells * cellSize) / 2;
+  // Even sizes: snap to grid intersections. (Intersection N at N*cellSize.)
   const col = Math.round(worldX / cellSize);
   const row = Math.round(worldY / cellSize);
-  const intersectionX = col * cellSize;
-  const intersectionY = row * cellSize;
-  return { x: intersectionX - halfFoot, y: intersectionY - halfFoot };
+  return { x: col * cellSize, y: row * cellSize };
 }
 
 function ViewportHost(props: {
