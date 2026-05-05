@@ -5381,6 +5381,21 @@ function TokenLayer(props: {
             // budget on the next combat-state push. Also fires
             // opportunity-attack offers for adjacent enemies.
             if (enforceMove && distanceFt > 0) {
+              // v2.437.0 — Bump the optimistic budget BEFORE awaiting
+              // logMovement, not after. Pre-v2.437 recordMoved was
+              // called only after the network round-trip completed,
+              // which left a window during which a fast second drag
+              // could pass its pre-check (remaining = max - echoedUsed
+              // = max - 0 still) and commit, even though the first
+              // drag had already used the budget. User report: "it's
+              // possible to move a token outside its movement range
+              // by clicking it twice." Bumping predictedUsed
+              // synchronously closes that window — the second drag's
+              // pre-check now reads the predicted-post-first-move
+              // remaining and rejects correctly.
+              if (recordMoved) {
+                recordMoved(ati!.participantId!, distanceFt, ati!.used);
+              }
               try {
                 await logMovement({
                   campaignId: ati!.campaignId!,
@@ -5394,16 +5409,20 @@ function TokenLayer(props: {
                   toCol: toCellCol,
                   distanceFt,
                 });
-                // v2.423.0 — Predict the server-side movement_used_ft
-                // post-write so the next drag this turn sees the
-                // correct remaining budget without waiting for the
-                // realtime echo. The ref lives in BattleMapV2; we call
-                // recordMoved to bump it from inside TokenLayer.
-                if (recordMoved) {
-                  recordMoved(ati!.participantId!, distanceFt, ati!.used);
-                }
               } catch (err) {
                 console.error('[BattleMapV2] logMovement threw', err);
+                // logMovement failed (network glitch, server error).
+                // The optimistic predictedUsed is now stale — we
+                // bumped it before the await, but the server didn't
+                // record the move. The next combat-state echo will
+                // overwrite ati.used with the server's true value
+                // (which is the pre-move value), and getEffectiveUsed
+                // will continue returning the stale local prediction
+                // until the user's turn ends or the page is refreshed.
+                // Acceptable: erring on the side of MORE conservative
+                // budget enforcement is better than the over-spend
+                // bug we're fixing here. Document this in case the
+                // tradeoff needs revisiting.
               }
             }
             // v2.358.0 — Record token-move undo (DM only).
