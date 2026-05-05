@@ -3325,6 +3325,14 @@ function TokenLayer(props: {
   // user is moving the token. Player tokens still don't record (the
   // commit path checks isDM before calling this).
   recordUndoable?: (action: import('../../lib/hooks/useUndoRedo').UndoableAction) => void;
+  // v2.418.0 — Self-write echo suppression hook. Called immediately
+  // before each tokensApi.updateTokenPos commit so the realtime
+  // postgres_changes echo handler can recognize and skip the
+  // resulting UPDATE event for THIS row, avoiding the bulk
+  // listTokens roundtrip that caused visible drop-jiggle. Optional
+  // because TokenLayer is also used in test contexts that don't
+  // wire realtime.
+  onCommitPos?: (tokenId: string, x: number, y: number) => void;
   // v2.358.0 — Token id currently selected by left-click. TokenLayer
   // renders a thin cyan ring around this token to indicate selection.
   // Distinct from activeTokenInfo.tokenId (gold ring, driven by
@@ -3370,7 +3378,7 @@ function TokenLayer(props: {
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
-    recordUndoable, selectedTokenId,
+    recordUndoable, selectedTokenId, onCommitPos,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -5025,6 +5033,13 @@ function TokenLayer(props: {
             if (wasClick) return; // pure click — no commit needed
             // v2.213 commit (existing path) — wall-trigger rejection
             // handling is preserved verbatim from pre-v2.340.
+            // v2.418.0 — Stamp the upcoming write so the realtime
+            // echo handler skips the bulk re-fetch when this same
+            // row comes back to us. Stamp BEFORE the await so the
+            // echo (which can race the await's resolve) sees it.
+            // Implemented via the onCommitPos prop the parent wires
+            // up; the actual markSelfWrite ref lives in BattleMapV2.
+            onCommitPos?.(drag.id, clampedX, clampedY);
             const result = await tokensApi.updateTokenPos(drag.id, clampedX, clampedY);
             if (!result.ok) {
               if (result.reason === 'wall_blocked') {
@@ -5130,7 +5145,7 @@ function TokenLayer(props: {
         // — safe to ignore on teardown.
       }
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos]);
 
   return null;
 }
@@ -7017,6 +7032,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newRow = payload.new;
             if (newRow?.scene_id !== sceneId) return;
+            // v2.418.0 — Suppress echo of our own write. If this row
+            // matches a recent local commit, the store is already
+            // correct; a bulk re-fetch only risks regressing back to
+            // a momentarily-stale DB read while the server settles.
+            if (shouldSuppressEcho(newRow)) {
+              return;
+            }
             if (useNewPath) {
               // The placement realtime payload doesn't carry the
               // combatants JOIN. Re-fetch via the router so the store
@@ -7322,6 +7344,40 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // previous scene doesn't carry over. userId is stable across
   // scenes, so we track() fresh on each subscription.
   const dragChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // v2.418.0 — Self-write echo suppression. After we commit a token
+  // position via tokensApi.updateTokenPos, the postgres_changes
+  // realtime channel echoes the UPDATE back to us — same row, same
+  // values, but the handler bulk-refetches every token in the scene
+  // and replaces the store. The bulk replace causes a visible
+  // "jiggle" on the dragged token (the optimistic snap → bulk
+  // replace round-trips a few ms apart, sometimes with a stale
+  // x/y from the DB while the server-side write is still settling).
+  // Symptom: drop a Tarrasque, it jiggles back-and-forth, settles.
+  //
+  // Fix: stamp each self-write with the (id, x, y, timestamp) tuple.
+  // When an echo arrives matching the stamp within a short window,
+  // skip the bulk refetch — our optimistic store state is already
+  // canonical for that row. Other tokens' echoes (HP, conditions,
+  // peer drags) still trigger the full refresh.
+  const recentSelfWritesRef = useRef<Map<string, { x: number; y: number; t: number }>>(new Map());
+  const ECHO_SUPPRESS_MS = 1500; // long enough for slow networks
+  function markSelfWrite(tokenId: string, x: number, y: number) {
+    recentSelfWritesRef.current.set(tokenId, { x, y, t: performance.now() });
+  }
+  function shouldSuppressEcho(row: { id?: string; x?: number; y?: number } | null | undefined): boolean {
+    if (!row?.id) return false;
+    const stamp = recentSelfWritesRef.current.get(row.id);
+    if (!stamp) return false;
+    if (performance.now() - stamp.t > ECHO_SUPPRESS_MS) {
+      recentSelfWritesRef.current.delete(row.id);
+      return false;
+    }
+    // Coordinate match within a half-pixel — should be exact since
+    // we snap before writing, but tolerate floating-point noise.
+    const dx = Math.abs((row.x ?? 0) - stamp.x);
+    const dy = Math.abs((row.y ?? 0) - stamp.y);
+    return dx < 0.5 && dy < 0.5;
+  }
   useEffect(() => {
     if (!currentScene?.id || !userId) return;
     const sceneId = currentScene.id;
@@ -9131,6 +9187,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     activeTokenInfo={activeTokenInfo}
                     recordUndoable={recordUndoable}
                     selectedTokenId={selectedTokenId}
+                    onCommitPos={markSelfWrite}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions

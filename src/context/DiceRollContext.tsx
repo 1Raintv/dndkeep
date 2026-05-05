@@ -110,7 +110,15 @@ function DiceRollOverlay({ event, onDismiss }: { event: DiceRollEvent; onDismiss
 
   return (
     <div onClick={onDismiss} style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
+      // v2.418.0 — Raised from 9999 to 12000 so dice render ABOVE
+      // MonsterActionPanel (10000) and the target picker overlay
+      // (10100). Pre-v2.418 the dice fell behind those surfaces
+      // during attack/damage rolls — visible through panel
+      // transparency but visually backgrounded, which the user
+      // experienced as "the dice roll in the background, a little
+      // grayed out." The dice now sit on top with their existing
+      // dim+blur backdrop.
+      position: 'fixed', inset: 0, zIndex: 12000,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       pointerEvents: 'all', cursor: 'pointer',
       background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)',

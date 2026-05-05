@@ -839,7 +839,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
   return createPortal(
     <div ref={mountRef} onClick={onDismiss}
       onContextMenu={e=>{e.preventDefault();onDismiss();}}
-      style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.08)',cursor:'pointer',overflow:'hidden'}}>
+      style={{position:'fixed',inset:0,zIndex:12000,background:'rgba(0,0,0,0.08)',cursor:'pointer',overflow:'hidden'}}>
       <div style={{position:'absolute',bottom:14,left:0,right:0,textAlign:'center',pointerEvents:'none',fontFamily:'var(--ff-body)',fontSize:11,color:'rgba(255,255,255,0.5)',textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>Click anywhere to dismiss</div>
       <style>{`@keyframes rr{from{opacity:0;transform:translateX(-50%) scale(0.5)}to{opacity:1;transform:translateX(-50%) scale(1)}}@keyframes nat20Pulse{0%{opacity:0;transform:scale(0.5)}50%{opacity:1}100%{opacity:0;transform:scale(2)}}@keyframes nat1Flash{0%{opacity:0.8}100%{opacity:0}}@keyframes nat20Badge{from{opacity:0;transform:scale(0.5) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
     </div>,

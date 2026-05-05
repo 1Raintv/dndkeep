@@ -419,8 +419,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
     // target list when remaining=0 (we disable the action button
     // upstream), but a stale click after the local state changed
     // could still slip through — guard here too.
+    // v2.418.0 — Bypass during multiattack guided mode. The
+    // sequence is the canonical gate during multiattack; the
+    // attacks_remaining counter may briefly lag the realtime
+    // echo and we don't want that to halt the flow.
     const remaining = (currentActor as any).attacks_remaining ?? 1;
-    if (remaining <= 0) {
+    if (remaining <= 0 && !multiattack) {
       console.warn('[MonsterActionPanel] no attacks remaining this turn');
       setPickingFor(null);
       return;
@@ -722,7 +726,16 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // stay in free-pick mode — clicking individual attacks still
   // works since attacks_remaining is already > 1 from the
   // attacks_per_action seed.
-  function startMultiattack(action: MonsterAction) {
+  //
+  // v2.418.0 — Subsequent-attack bug fix. The pre-v2.418 code
+  // didn't sync attacks_remaining with the parsed sequence total.
+  // Tarrasque has a 5-attack multiattack (1+2+1+1) but the
+  // attacks_per_action seed defaults to 3 (v2.399 placeholder),
+  // so attacks_remaining hit 0 after the third pick and the
+  // remaining steps grayed out (the noAttacksLeft gate fired).
+  // We now write the sequence total to attacks_remaining when
+  // entering guided mode so every step in the sequence can run.
+  async function startMultiattack(action: MonsterAction) {
     const sequence = parseMultiattackDesc(action.desc, (actions ?? []).map(x => x.name));
     if (sequence.length === 0) {
       showToast(
@@ -731,6 +744,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       );
       return;
     }
+    const totalAttacks = sequence.reduce((sum, s) => sum + s.count, 0);
     setMultiattack({
       sequence,
       stepIdx: 0,
@@ -740,6 +754,22 @@ export default function MonsterActionPanel({ isDM }: Props) {
       `Multiattack: ${sequence.map(s => `${s.count}× ${s.actionName}`).join(' · ')}`,
       'info',
     );
+    // Sync attacks_remaining to the parsed total + clear action_used
+    // so the per-pick decrement in handlePick can run through every
+    // step. The multiattack sequence IS this monster's action, so
+    // action_used can stay false until the sequence completes.
+    if (currentActor) {
+      const { error } = await supabase
+        .from('combat_participants')
+        .update({
+          attacks_remaining: totalAttacks,
+          action_used: false,
+        })
+        .eq('id', currentActor.id);
+      if (error) {
+        console.error('[MonsterActionPanel] failed to sync attacks_remaining for multiattack', error);
+      }
+    }
   }
 
   function cancelMultiattack() {
@@ -992,9 +1022,45 @@ export default function MonsterActionPanel({ isDM }: Props) {
             (color-coded later if useful); condition immunities are
             plain-text since condition names are short. */}
         {!collapsed && monsterStats && (() => {
-          const dr = monsterStats.damage_resistances ?? [];
-          const di = monsterStats.damage_immunities ?? [];
-          const dv = monsterStats.damage_vulnerabilities ?? [];
+          // v2.418.0 — Damage-type normalizer. SRD imports store free-form
+          // strings like "bludgeoning, piercing, slashing from nonmagical
+          // attacks that aren't silvered". The UI was rendering each chip
+          // separately AND showing the magical-weapon caveat — clutter the
+          // user wanted gone. We:
+          //   1. Strip "from nonmagical attacks ..." trailers (the rule is
+          //      already implicit; magic weapons bypass these anyway).
+          //   2. Detect when a string contains all of bludgeoning, piercing,
+          //      slashing and collapse to a single "B / P / S" chip.
+          //   3. Pass everything else through unchanged.
+          // Operates on a single text[] entry's contents — input is one
+          // string per array element, output is the rendered chip set.
+          function normalizeDamageEntries(entries: string[]): string[] {
+            const out: string[] = [];
+            for (const raw of entries) {
+              if (!raw) continue;
+              // Strip the "from nonmagical attacks ..." / "from
+              // nonmagical weapons ..." trailing clause and any
+              // leading delimiter punctuation.
+              const stripped = raw
+                .replace(/\s+from\s+nonmagical\s+(attacks?|weapons?)[^,;]*/gi, '')
+                .replace(/[,;]\s*$/g, '')
+                .trim();
+              if (!stripped) continue;
+              const lower = stripped.toLowerCase();
+              const hasB = /\bbludgeoning\b/.test(lower);
+              const hasP = /\bpiercing\b/.test(lower);
+              const hasS = /\bslashing\b/.test(lower);
+              if (hasB && hasP && hasS) {
+                out.push('B / P / S');
+              } else {
+                out.push(stripped);
+              }
+            }
+            return out;
+          }
+          const dr = normalizeDamageEntries(monsterStats.damage_resistances ?? []);
+          const di = normalizeDamageEntries(monsterStats.damage_immunities ?? []);
+          const dv = normalizeDamageEntries(monsterStats.damage_vulnerabilities ?? []);
           const ci = monsterStats.condition_immunities ?? [];
           const lr = monsterStats.legendary_resistance_count ?? 0;
           const lrUsed = (currentActor as any)?.legendary_resistance_used ?? 0;
@@ -1163,7 +1229,15 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // v2.399.0 — Disable when no attacks remain. Reads
                 // currentActor.attacks_remaining live; the picker
                 // gate also enforces this server-side as a backstop.
-                const noAttacksLeft = ((currentActor as any)?.attacks_remaining ?? 1) <= 0;
+                // v2.418.0 — Bypass this gate while a multiattack
+                // sequence is active. The sequence IS the gate; the
+                // attacks_remaining counter is just bookkeeping that
+                // gets resynced when multiattack ends. Without this
+                // bypass, a brief realtime echo lag between the
+                // attacks_remaining write and the sequence advance
+                // could flicker the next attack into a "no attacks
+                // left" state and break the flow.
+                const noAttacksLeft = !multiattack && (((currentActor as any)?.attacks_remaining ?? 1) <= 0);
                 // v2.416.0 — In multiattack guided mode, only the
                 // current step's attack is enabled. Other attacks
                 // are visibly grayed out so the DM can't accidentally
