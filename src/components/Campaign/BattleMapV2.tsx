@@ -7355,12 +7355,23 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // Symptom: drop a Tarrasque, it jiggles back-and-forth, settles.
   //
   // Fix: stamp each self-write with the (id, x, y, timestamp) tuple.
-  // When an echo arrives matching the stamp within a short window,
-  // skip the bulk refetch — our optimistic store state is already
-  // canonical for that row. Other tokens' echoes (HP, conditions,
-  // peer drags) still trigger the full refresh.
+  // When an echo arrives matching the stamp, skip the bulk refetch —
+  // our optimistic store state is already canonical for that row.
+  // Other tokens' echoes (HP, conditions, peer drags) still trigger
+  // the full refresh.
+  //
+  // v2.420.0 — Multi-echo handling. The pre-v2.420 timestamp window
+  // (1500ms) was too short for the Tarrasque case the user reported:
+  // a single drop fires multiple downstream echoes (the
+  // sync_scene_token_to_placement trigger writes to placements,
+  // logMovement writes to combat_participants, both of which echo
+  // through their own channels and may also touch scene_tokens
+  // updated_at). Now suppression EXTENDS the timestamp on every
+  // matching echo (sliding window) and only lifts after 2.5s of
+  // quiet OR a non-matching echo (different x/y, indicating a
+  // legitimate peer-driven update or a server-side reposition).
   const recentSelfWritesRef = useRef<Map<string, { x: number; y: number; t: number }>>(new Map());
-  const ECHO_SUPPRESS_MS = 1500; // long enough for slow networks
+  const ECHO_SUPPRESS_MS = 2500; // sliding window
   function markSelfWrite(tokenId: string, x: number, y: number) {
     recentSelfWritesRef.current.set(tokenId, { x, y, t: performance.now() });
   }
@@ -7376,7 +7387,18 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     // we snap before writing, but tolerate floating-point noise.
     const dx = Math.abs((row.x ?? 0) - stamp.x);
     const dy = Math.abs((row.y ?? 0) - stamp.y);
-    return dx < 0.5 && dy < 0.5;
+    if (dx < 0.5 && dy < 0.5) {
+      // Sliding window: matching echo extends the suppression so
+      // chained echoes (trigger writebacks, downstream channels)
+      // all stay suppressed until a real change arrives.
+      stamp.t = performance.now();
+      return true;
+    }
+    // Coordinate mismatch — a real position change from elsewhere
+    // (peer drag, server reposition). Lift suppression and let
+    // the bulk refresh apply the new value.
+    recentSelfWritesRef.current.delete(row.id);
+    return false;
   }
   useEffect(() => {
     if (!currentScene?.id || !userId) return;

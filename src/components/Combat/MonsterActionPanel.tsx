@@ -444,6 +444,20 @@ export default function MonsterActionPanel({ isDM }: Props) {
     }
     setPickingFor(null);
     setBusy(true);
+    // v2.420.0 — Diagnostic. Tells us exactly which action+target pair
+    // is being resolved AND what the multiattack state looks like at
+    // entry. Pairs with the advanceMultiattack logs to trace
+    // sequence transitions. Filter DevTools by "multiattack" tag.
+    if (multiattack) {
+      console.debug('[multiattack] handlePick fired', {
+        action: a.name,
+        target: target.name,
+        currentStep: multiattack.sequence[multiattack.stepIdx]?.actionName,
+        stepIdx: multiattack.stepIdx,
+        remainingInStep: multiattack.remainingInStep,
+        attacks_remaining: (currentActor as any).attacks_remaining,
+      });
+    }
     try {
       // v2.415.0 — Flavor-aware resolution. Attacks use the
       // declareAttack → rollAttackRoll → rollDamage → applyDamage
@@ -757,6 +771,16 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // entering guided mode so every step in the sequence can run.
   async function startMultiattack(action: MonsterAction) {
     const sequence = parseMultiattackDesc(action.desc, (actions ?? []).map(x => x.name));
+    // v2.420.0 — Diagnostic. Tells us exactly what the parser produced
+    // from the user's monster's desc. If subsequent attacks are firing
+    // the wrong action, the sequence here will show whether the
+    // parser misidentified a step (e.g. "tail" matching to a "Bite"-
+    // adjacent action, or a duplicated step).
+    console.debug('[multiattack] startMultiattack — parsed sequence', {
+      desc: action.desc,
+      availableActions: (actions ?? []).map(x => x.name),
+      sequence,
+    });
     if (sequence.length === 0) {
       showToast(
         `Couldn't parse Multiattack sequence — pick attacks individually.`,
@@ -807,26 +831,50 @@ export default function MonsterActionPanel({ isDM }: Props) {
     return !!step && step.actionName === actionName;
   }
 
-  // Called from handlePick after a single attack resolves. Decrements
-  // the current step's remaining count; if zero, advance to the
-  // next step. When the sequence is exhausted, exit guided mode.
+  // v2.420.0 — Diagnostic logs for the multiattack guided-mode
+  // flow. The user reports "horn attack then bite again" — sequence
+  // appears to revert to step 0 after Horns. Logging at every state
+  // transition + every handlePick entry will pinpoint whether the
+  // bug is in advanceMultiattack (state computation), startMultiattack
+  // (re-entry resetting to 0), or the action-load effect (premature
+  // reset). Cheap to keep — gated behind a single console.debug
+  // namespace so the user can filter the DevTools console.
   function advanceMultiattack() {
     setMultiattack(prev => {
-      if (!prev) return prev;
+      if (!prev) {
+        console.debug('[multiattack] advance called with prev=null — already complete?');
+        return prev;
+      }
       const nextRemaining = prev.remainingInStep - 1;
       if (nextRemaining > 0) {
-        return { ...prev, remainingInStep: nextRemaining };
+        const next = { ...prev, remainingInStep: nextRemaining };
+        console.debug('[multiattack] advance → same step, count--', {
+          stepIdx: next.stepIdx,
+          remainingInStep: next.remainingInStep,
+          step: next.sequence[next.stepIdx],
+        });
+        return next;
       }
       const nextStepIdx = prev.stepIdx + 1;
       if (nextStepIdx >= prev.sequence.length) {
-        // Sequence complete.
+        console.debug('[multiattack] advance → SEQUENCE COMPLETE', {
+          finishedStep: prev.sequence[prev.stepIdx],
+          totalSteps: prev.sequence.length,
+        });
         return null;
       }
-      return {
+      const next = {
         ...prev,
         stepIdx: nextStepIdx,
         remainingInStep: prev.sequence[nextStepIdx].count,
       };
+      console.debug('[multiattack] advance → next step', {
+        from: prev.sequence[prev.stepIdx].actionName,
+        to: next.sequence[next.stepIdx].actionName,
+        stepIdx: next.stepIdx,
+        remainingInStep: next.remainingInStep,
+      });
+      return next;
     });
   }
 
