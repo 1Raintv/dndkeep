@@ -312,11 +312,27 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       })
       .subscribe();
 
+    // v2.422.0 — Force-reload escape hatch. The combatants realtime
+    // channel CAN drop or arrive >300ms after the actual DB write,
+    // which means the token HP bars (driven by `combatants` →
+    // tokenStateMap) lag behind the InitiativeStrip / MonsterActionPanel
+    // (driven by CombatContext, which we refresh eagerly in
+    // MonsterActionPanel after each applyDamage).
+    //
+    // To keep all three views in lockstep, MonsterActionPanel
+    // dispatches a `dndkeep:hp-applied` window event after each
+    // applyDamage. Here we listen for it and force-reload the
+    // combatants state, bypassing the realtime echo. Cheap (single
+    // SELECT) and only fires during active combat resolution.
+    const onHpApplied = () => { loadCombatants(); };
+    window.addEventListener('dndkeep:hp-applied', onHpApplied);
+
     return () => {
       supabase.removeChannel(charsChannel);
       supabase.removeChannel(npcsChannel);
       supabase.removeChannel(combatantsChannel);
       supabase.removeChannel(participantsChannel);
+      window.removeEventListener('dndkeep:hp-applied', onHpApplied);
     };
   }, [campaign.id]);
 

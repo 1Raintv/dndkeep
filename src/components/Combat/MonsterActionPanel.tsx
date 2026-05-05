@@ -597,6 +597,13 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // not synced." Cheap (single SELECT) and runs
                 // off the critical path.
                 refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
+                // v2.422.0 — Also force the dashboard's combatants
+                // state to reload so token HP bars (which read from
+                // `combatants` → tokenStateMap, NOT from CombatContext)
+                // stay in lockstep with the InitiativeStrip and the
+                // MonsterActionPanel. CampaignDashboard listens for
+                // this window event and calls loadCombatants().
+                window.dispatchEvent(new Event('dndkeep:hp-applied'));
               }
             } else {
               // Pure save-or-condition action with no damage. Toast
@@ -720,6 +727,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
               // the next attack in a multiattack chain reads
               // up-to-date HP for the target list.
               refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
+              // v2.422.0 — Sync token HP bars (read from `combatants`
+              // via CampaignDashboard's tokenStateMap, not from
+              // CombatContext). Window event handled in
+              // CampaignDashboard's combat-realtime useEffect.
+              window.dispatchEvent(new Event('dndkeep:hp-applied'));
             }
           }
         }
