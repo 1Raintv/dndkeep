@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Allow: /srd
+
+# Keep app routes private
+Disallow: /lobby
+Disallow: /creator
+Disallow: /character/
+Disallow: /campaigns/
+Disallow: /settings
+Disallow: /homebrew
+Disallow: /spells
+Disallow: /combat
+Disallow: /dice
+
+Sitemap: https://dndkeep.vercel.app/sitemap.xml
