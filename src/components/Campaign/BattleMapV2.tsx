@@ -4608,17 +4608,65 @@ function TokenLayer(props: {
         }
         const ring = currentEntry.selectionRing;
         ring.clear();
+        // v2.431.0 — Compute the rectangle in WORLD space relative to
+        // the footprint cells the token actually occupies, then convert
+        // to container-local coordinates. Pre-v2.431 we drew the rect
+        // centered on the container origin (-halfFootPx, -halfFootPx)
+        // assuming "container origin = visual center = footprint
+        // center." User report: "the box is a little bit off-centered
+        // to the top left" for Gargantuan. Symptoms suggest the
+        // rectangle is being drawn at a position that doesn't match
+        // the actual occupied cells — possibly because the visual
+        // offset math has an edge case for some rows or the render
+        // is using a stale offset.
+        //
+        // Defensive fix: derive the cell range from token.x/token.y
+        // (the canonical anchor) and gridSizePx, then convert to
+        // container-local coords by subtracting container.position.
+        // For an even-size token, anchor sits on a grid intersection
+        // and the footprint occupies cells (anchor_col, anchor_row)
+        // through (anchor_col + N - 1, anchor_row + N - 1). For an
+        // odd-size token, anchor sits on a cell center and the
+        // footprint occupies cells around it. Either way, the
+        // RECTANGLE bounds are at world positions:
+        //   left = token.x  (for even) OR token.x - cellSize/2  (for odd, 1×1)
+        //                    OR token.x - cellSize * (N-1)/2 - cellSize/2  (odd, 3×3)
+        //   = token.x - cellSize/2 * (1 if N=1, else N-2 if N=3) — too
+        //     fiddly. Simpler: compute the visual center directly,
+        //     since that's already correct, then draw the rect
+        //     centered on it — but in CONTAINER-LOCAL coords the
+        //     visual center is at (0, 0) by v2.423 design. So rect
+        //     coords don't change... unless container.position is
+        //     wrong, which is what we're trying to defend against.
+        //
+        // Alternative defensive approach: ignore container.position
+        // entirely and convert the rect to its parent (viewport)
+        // coords directly. ring.position.set is then absolute.
         const halfFootPx = (footprintCells * gridSizePx) / 2;
+        // Anchor world coords (token.x/y is the canonical anchor —
+        // cell center for odd, intersection for even).
+        // For odd sizes: footprint center == anchor.
+        // For even sizes: footprint center == anchor + (halfFootPx, halfFootPx).
+        const footprintCenterWorldX = token.x + (evenSize ? halfFootPx : 0);
+        const footprintCenterWorldY = token.y + (evenSize ? halfFootPx : 0);
+        // Convert footprint center to container-local coords. After
+        // v2.423, container.position == footprintCenterWorld, so this
+        // should evaluate to (0, 0). If not, the v2.423 offset is
+        // out of sync with what we expect — and using the WORLD-derived
+        // value rather than (0, 0) makes the rectangle land in the
+        // right place regardless.
+        const localCx = footprintCenterWorldX - container.position.x;
+        const localCy = footprintCenterWorldY - container.position.y;
         // 2px stroke at slightly transparent cyan, sitting just outside
         // the cell border so the line is visible against any map color
         // without crowding the token glyph. ~1.5px outset.
         ring.setStrokeStyle({ color: 0x67e8f9, width: 2, alpha: 0.95 });
-        ring.rect(-halfFootPx - 1.5, -halfFootPx - 1.5, footprintCells * gridSizePx + 3, footprintCells * gridSizePx + 3);
+        ring.rect(localCx - halfFootPx - 1.5, localCy - halfFootPx - 1.5, footprintCells * gridSizePx + 3, footprintCells * gridSizePx + 3);
         ring.stroke();
         // Subtle interior glow so the rectangle reads even when the
         // token is mid-map on busy terrain. 8% fill.
         ring.setFillStyle({ color: 0x67e8f9, alpha: 0.08 });
-        ring.rect(-halfFootPx, -halfFootPx, footprintCells * gridSizePx, footprintCells * gridSizePx);
+        ring.rect(localCx - halfFootPx, localCy - halfFootPx, footprintCells * gridSizePx, footprintCells * gridSizePx);
         ring.fill();
         ring.visible = true;
       } else if (currentEntry.selectionRing) {
