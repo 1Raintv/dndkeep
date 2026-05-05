@@ -4156,10 +4156,24 @@ function TokenLayer(props: {
       // combat had actually damaged the dragon's combatants.current_hp.
       // The secondary index keyed by `${type}:${id}` recovers the
       // right row whether or not the sync trigger fired.
-      let tokenState = !pcHpInfo && tokenStateMap
-        ? tokenStateMap.get(token.id)
-        : null;
-      if (!pcHpInfo && !tokenState && tokenStateMapByDef) {
+      // v2.428.0 — Order changed: definition-keyed lookup is now the
+      // PRIMARY path, with token.id-keyed lookup as a fallback. User
+      // logs showed combat_participants → combatants JOIN was working
+      // but the token bar still didn't update. Root cause: there are
+      // duplicate combatants rows for the dragon — the v2.389 trigger
+      // created one keyed by token.id (full HP, never damaged) and
+      // an earlier creation path made another keyed by a different
+      // UUID that combat_participants.combatant_id points to (this
+      // is the one being damaged). tokenStateMap.get(token.id) found
+      // the orphan row; the canonical damaged row was invisible.
+      //
+      // tokenStateMapByDef in v2.428 is built from CombatContext's
+      // participants array (which reads through combat_participants
+      // → JOIN combatants with v2.426 fallbacks), so it ALWAYS points
+      // to the canonical damaged row that the InitiativeStrip and
+      // MonsterActionPanel already use.
+      let tokenState: { current_hp: number | null; max_hp: number | null; conditions: string[]; is_dead: boolean } | null = null;
+      if (!pcHpInfo && tokenStateMapByDef) {
         // Build the definition key from the token's own linkage. Tokens
         // that link to PCs use 'character', NPC roster tokens use
         // 'npc', creature/monster spawns use 'monster'. Token shape
@@ -4175,6 +4189,12 @@ function TokenLayer(props: {
             ?? tokenStateMapByDef.get(`monster:${token.npcId}`)
             ?? null;
         }
+      }
+      // Fallback to the token.id-keyed map for tokens not in active
+      // combat (no participant entry, but maybe still has a combatants
+      // row from a previous encounter).
+      if (!pcHpInfo && !tokenState && tokenStateMap) {
+        tokenState = tokenStateMap.get(token.id) ?? null;
       }
       const tokenStateHpInfo = (tokenState && tokenState.max_hp != null && tokenState.current_hp != null)
         ? { current: tokenState.current_hp, max: tokenState.max_hp }
@@ -8209,6 +8229,49 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     return map;
   }, [props.npcs]);
 
+  // v2.428.0 — Authoritative token state map derived from CombatContext
+  // participants (which read through the combat_participants → combatants
+  // JOIN with v2.426 fallbacks for broken FKs). This is the SAME data
+  // path the InitiativeStrip and MonsterActionPanel use, so the token
+  // bar can't disagree with them.
+  //
+  // Why a NEW map instead of reusing tokenStateMap from props? The
+  // upstream tokenStateMap is built in CampaignDashboard from a flat
+  // `combatants` SELECT keyed by combatants.id. When the v2.389 sync
+  // trigger doesn't fire (or there are duplicate combatants for one
+  // token from earlier sync misses), tokenStateMap.get(token.id) lands
+  // on a stale combatant row that nobody is damaging — token bar
+  // never updates.
+  //
+  // Keying by definition (entity_id from combat_participants) gives us
+  // the canonical combatant per active participant. participants is
+  // small (N actors per encounter) so this map rebuild is trivial.
+  // Keys: `${participant_type}:${entity_id}` matching the tokenStateMapByDef
+  // shape from v2.427.
+  const { currentActor, encounter, participants } = useCombat();
+  const liveTokenStateByDef = useMemo(() => {
+    const map = new Map<string, {
+      current_hp: number | null;
+      max_hp: number | null;
+      conditions: string[];
+      is_dead: boolean;
+    }>();
+    for (const p of (participants ?? []) as any[]) {
+      if (!p?.entity_id || !p?.participant_type) continue;
+      const key = `${p.participant_type}:${p.entity_id}`;
+      // First wins per definition; subsequent participants for the
+      // same entity (shouldn't happen in normal play) are ignored.
+      if (map.has(key)) continue;
+      map.set(key, {
+        current_hp: p.current_hp ?? null,
+        max_hp: p.max_hp ?? null,
+        conditions: p.active_conditions ?? [],
+        is_dead: !!p.is_dead,
+      });
+    }
+    return map;
+  }, [participants]);
+
   // v2.244 — token.id → conditions[]. Walks the live token store and
   // resolves each token to its linked PC (active_conditions) or NPC
   // (conditions). Keyed by token.id rather than character/npc id so
@@ -8232,14 +8295,18 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // when token.id != combatant.id, try the secondary index
       // keyed by `${definition_type}:${definition_id}` before falling
       // through to template conds.
+      // v2.428.0 — Use liveTokenStateByDef (built from CombatContext
+      // participants) instead of the upstream tokenStateMapByDef from
+      // props. Same fix path as the HP bar — see comment near
+      // liveTokenStateByDef declaration above.
       let tokenCombatantConds = props.tokenStateMap?.get(t.id)?.conditions ?? null;
-      if (!tokenCombatantConds && props.tokenStateMapByDef) {
+      if (!tokenCombatantConds && liveTokenStateByDef) {
         if (t.characterId) {
-          tokenCombatantConds = props.tokenStateMapByDef.get(`character:${t.characterId}`)?.conditions ?? null;
+          tokenCombatantConds = liveTokenStateByDef.get(`character:${t.characterId}`)?.conditions ?? null;
         }
         if (!tokenCombatantConds && t.npcId) {
-          tokenCombatantConds = props.tokenStateMapByDef.get(`npc:${t.npcId}`)?.conditions
-            ?? props.tokenStateMapByDef.get(`monster:${t.npcId}`)?.conditions
+          tokenCombatantConds = liveTokenStateByDef.get(`npc:${t.npcId}`)?.conditions
+            ?? liveTokenStateByDef.get(`monster:${t.npcId}`)?.conditions
             ?? null;
         }
       }
@@ -8250,7 +8317,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (conds && conds.length > 0) map.set(t.id, conds);
     }
     return map;
-  }, [liveTokens, props.playerCharacters, props.npcs, props.tokenStateMap, props.tokenStateMapByDef]);
+  }, [liveTokens, props.playerCharacters, props.npcs, props.tokenStateMap, liveTokenStateByDef]);
 
   // v2.339.0 — BG3 turn UX. Derive on-map signals for active-turn
   // outline + movement-remaining badge from the combat context.
@@ -8271,7 +8338,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // TokensLayer reads these via props and stamps a gold pulse + a
   // "Xft / Yft" Text node above the matching token. Cheap to
   // recompute — the heavy lift is upstream in useCombat.
-  const { currentActor, encounter } = useCombat();
+  // (currentActor / encounter / participants destructure moved
+  // above the conditions useMemo in v2.428.0 so liveTokenStateByDef
+  // can feed both surfaces.)
   const activeTokenInfo = useMemo<{
     tokenId: string | null;
     used: number;
@@ -9372,7 +9441,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     characterHpMap={characterHpMap}
                     npcHpMap={npcHpMap}
                     tokenStateMap={props.tokenStateMap}
-                    tokenStateMapByDef={props.tokenStateMapByDef}
+                    tokenStateMapByDef={liveTokenStateByDef}
                     tokenConditionsMap={tokenConditionsMap}
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}
