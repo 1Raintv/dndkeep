@@ -4907,8 +4907,25 @@ function TokenLayer(props: {
       const snapped = draggedToken
         ? snapTokenAnchor(cursorX, cursorY, draggedToken.size, gridSizePx)
         : snapToCellCenter(cursorX, cursorY, gridSizePx);
-      const tx = Math.max(0, Math.min(worldWidth, snapped.x));
-      const ty = Math.max(0, Math.min(worldHeight, snapped.y));
+      // v2.432.0 — Footprint-aware clamping. See note in pointerup
+      // commit below; same rules so the preview marker can't show
+      // a target the actual drop won't accept.
+      let tx: number, ty: number;
+      if (draggedToken) {
+        const footCellsP = tokenFootprintCells(draggedToken.size);
+        const evenP = footCellsP % 2 === 0;
+        const footPxP = footCellsP * gridSizePx;
+        const halfP = footPxP / 2;
+        const minXp = evenP ? 0 : halfP;
+        const maxXp = evenP ? worldWidth - footPxP : worldWidth - halfP;
+        const minYp = evenP ? 0 : halfP;
+        const maxYp = evenP ? worldHeight - footPxP : worldHeight - halfP;
+        tx = Math.max(minXp, Math.min(maxXp, snapped.x));
+        ty = Math.max(minYp, Math.min(maxYp, snapped.y));
+      } else {
+        tx = Math.max(0, Math.min(worldWidth, snapped.x));
+        ty = Math.max(0, Math.min(worldHeight, snapped.y));
+      }
 
       // Compute Chebyshev distance in feet using the canonical math
       // from lib/movement.ts. Convert from world pixels → cells via
@@ -5097,8 +5114,39 @@ function TokenLayer(props: {
         // intersection but snap put the anchor at a cell center,
         // re-centering the visual asymmetrically.
         const snapped = snapTokenAnchor(finalX, finalY, t.size, gridSizePx);
-        const clampedX = Math.max(0, Math.min(worldWidth, snapped.x));
-        const clampedY = Math.max(0, Math.min(worldHeight, snapped.y));
+        // v2.432.0 — Footprint-aware clamping. Pre-v2.432 the clamp
+        // used `Math.max(0, Math.min(worldWidth, snapped.x))`, which
+        // bounded the ANCHOR to (0, worldWidth). For odd-size tokens
+        // (anchor on cell center) that's mostly fine — the visual
+        // extends ½ cell past the anchor in each direction, so a
+        // token anchored at the right edge has its right half
+        // hanging off the map. For even-size tokens (Large 2×2,
+        // Gargantuan 4×4) the anchor is the TOP-LEFT intersection
+        // of the footprint, so anchoring at (worldWidth, worldHeight)
+        // puts the ENTIRE 4×4 footprint off the map. User report:
+        // "you can throw the entire token off of the map" — the
+        // Ancient White Dragon was at (2100, 1400) on a
+        // 2100×1400 world, with all 4×4 cells off-map.
+        //
+        // Fix: clamp the anchor based on the footprint occupancy
+        // rules so the visual stays inside the map. For odd sizes
+        // (1×1, 3×3) the visual extends `cellSize * footCells / 2`
+        // in each direction from the anchor, so anchor must be in
+        // [halfFoot, worldWidth - halfFoot]. For even sizes the
+        // footprint extends `cellSize * footCells` to the bottom-
+        // right of the anchor, so anchor must be in
+        // [0, worldWidth - footCells*cellSize] (anchor top-left,
+        // bottom-right at anchor + footPx).
+        const footCellsForClamp = tokenFootprintCells(t.size);
+        const evenSizeForClamp = footCellsForClamp % 2 === 0;
+        const footPxForClamp = footCellsForClamp * gridSizePx;
+        const halfFootForClamp = footPxForClamp / 2;
+        const minX = evenSizeForClamp ? 0 : halfFootForClamp;
+        const maxX = evenSizeForClamp ? worldWidth - footPxForClamp : worldWidth - halfFootForClamp;
+        const minY = evenSizeForClamp ? 0 : halfFootForClamp;
+        const maxY = evenSizeForClamp ? worldHeight - footPxForClamp : worldHeight - halfFootForClamp;
+        const clampedX = Math.max(minX, Math.min(maxX, snapped.x));
+        const clampedY = Math.max(minY, Math.min(maxY, snapped.y));
         // v2.268.0 — wall-blocked movement check. If the segment from
         // the drag origin to the (clamped, snapped) drop point crosses
         // any wall with blocksMovement=true (and not an open door), the
