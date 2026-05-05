@@ -280,6 +280,17 @@ interface BattleMapV2Props {
     conditions: string[];
     is_dead: boolean;
   }>;
+  // v2.427.0 — Secondary index keyed by `${definition_type}:${definition_id}`
+  // for fallback lookups when a token's combatant.id doesn't match
+  // the token's id (i.e., the v2.389 sync trigger didn't fire for
+  // this token). Token render uses tokenStateMap first, then this
+  // map, then the legacy npcHpMap template, in priority order.
+  tokenStateMapByDef?: Map<string, {
+    current_hp: number | null;
+    max_hp: number | null;
+    conditions: string[];
+    is_dead: boolean;
+  }>;
 }
 
 // Default scene config used when creating new scenes. v2.214 lets the
@@ -3293,6 +3304,13 @@ function TokenLayer(props: {
     conditions: string[];
     is_dead: boolean;
   }>;
+  // v2.427.0 — Definition-keyed fallback (see parent prop docs).
+  tokenStateMapByDef?: Map<string, {
+    current_hp: number | null;
+    max_hp: number | null;
+    conditions: string[];
+    is_dead: boolean;
+  }>;
   // v2.244 — condition strip lookup. Keyed by token.id (NOT character/
   // npc id) so the renderer doesn't have to branch. CampaignDashboard +
   // BattleMapV2 build it by walking tokens and resolving each linked
@@ -3383,7 +3401,7 @@ function TokenLayer(props: {
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
-    textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap,
+    textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
     recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved,
   } = props;
@@ -4128,9 +4146,36 @@ function TokenLayer(props: {
       // a combatant — e.g., a token created during a brief window
       // before the trigger fires, or a custom orphan token where the
       // template lookup is meaningless anyway.
-      const tokenState = !pcHpInfo && tokenStateMap
+      //
+      // v2.427.0 — Secondary lookup by definition. When token.id !=
+      // combatant.id (sync trigger missed for some tokens — observed
+      // for at least the Adult Gold Dragon roster spawn the user
+      // reported), the primary tokenStateMap.get(token.id) misses
+      // and the renderer falls through to npcHpInfo (template HP,
+      // always full). That made the token bar show full HP while
+      // combat had actually damaged the dragon's combatants.current_hp.
+      // The secondary index keyed by `${type}:${id}` recovers the
+      // right row whether or not the sync trigger fired.
+      let tokenState = !pcHpInfo && tokenStateMap
         ? tokenStateMap.get(token.id)
         : null;
+      if (!pcHpInfo && !tokenState && tokenStateMapByDef) {
+        // Build the definition key from the token's own linkage. Tokens
+        // that link to PCs use 'character', NPC roster tokens use
+        // 'npc', creature/monster spawns use 'monster'. Token shape
+        // exposes characterId and npcId; monsters share npcId for
+        // roster-spawned creature instances.
+        if (token.characterId) {
+          tokenState = tokenStateMapByDef.get(`character:${token.characterId}`) ?? null;
+        }
+        if (!tokenState && token.npcId) {
+          // npc roster combatants use definition_type='npc'; creature
+          // template combatants use 'monster'. Try both.
+          tokenState = tokenStateMapByDef.get(`npc:${token.npcId}`)
+            ?? tokenStateMapByDef.get(`monster:${token.npcId}`)
+            ?? null;
+        }
+      }
       const tokenStateHpInfo = (tokenState && tokenState.max_hp != null && tokenState.current_hp != null)
         ? { current: tokenState.current_hp, max: tokenState.max_hp }
         : null;
@@ -4647,7 +4692,7 @@ function TokenLayer(props: {
         currentEntry.lockGlyph.visible = false;
       }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenConditionsMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
@@ -8183,7 +8228,21 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // (those are the canonical store for PCs and stay in sync via
       // the existing characters realtime channel) and template
       // npcConds for legacy creatures without a combatant yet.
-      const tokenCombatantConds = props.tokenStateMap?.get(t.id)?.conditions ?? null;
+      // v2.427.0 — Same definition-keyed fallback as the HP bar:
+      // when token.id != combatant.id, try the secondary index
+      // keyed by `${definition_type}:${definition_id}` before falling
+      // through to template conds.
+      let tokenCombatantConds = props.tokenStateMap?.get(t.id)?.conditions ?? null;
+      if (!tokenCombatantConds && props.tokenStateMapByDef) {
+        if (t.characterId) {
+          tokenCombatantConds = props.tokenStateMapByDef.get(`character:${t.characterId}`)?.conditions ?? null;
+        }
+        if (!tokenCombatantConds && t.npcId) {
+          tokenCombatantConds = props.tokenStateMapByDef.get(`npc:${t.npcId}`)?.conditions
+            ?? props.tokenStateMapByDef.get(`monster:${t.npcId}`)?.conditions
+            ?? null;
+        }
+      }
       const conds = tokenCombatantConds
         || (t.characterId && pcConds.get(t.characterId))
         || (t.npcId && npcConds.get(t.npcId))
@@ -8191,7 +8250,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (conds && conds.length > 0) map.set(t.id, conds);
     }
     return map;
-  }, [liveTokens, props.playerCharacters, props.npcs, props.tokenStateMap]);
+  }, [liveTokens, props.playerCharacters, props.npcs, props.tokenStateMap, props.tokenStateMapByDef]);
 
   // v2.339.0 — BG3 turn UX. Derive on-map signals for active-turn
   // outline + movement-remaining badge from the combat context.
@@ -9313,6 +9372,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     characterHpMap={characterHpMap}
                     npcHpMap={npcHpMap}
                     tokenStateMap={props.tokenStateMap}
+                    tokenStateMapByDef={props.tokenStateMapByDef}
                     tokenConditionsMap={tokenConditionsMap}
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}

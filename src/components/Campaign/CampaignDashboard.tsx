@@ -102,8 +102,15 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     visible_to_players: boolean | null;
   }>>([]);
   // v2.393.0 — Per-token combat state. See loadCombatants() below.
+  // v2.427.0 — Added definition_type/definition_id for fallback
+  // lookup. Tokens normally key into this map by token.id (via the
+  // v2.389 sync trigger). When that link is broken, BattleMapV2
+  // can fall back to looking up by token's definition (npcId,
+  // characterId, etc.) instead.
   const [combatants, setCombatants] = useState<Array<{
     id: string;
+    definition_type: string | null;
+    definition_id: string | null;
     current_hp: number | null;
     max_hp: number | null;
     temp_hp: number | null;
@@ -389,7 +396,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     // restores the v2.393 contract.
     const { data, error } = await supabase
       .from('combatants')
-      .select('id, current_hp, max_hp, temp_hp, active_conditions, is_dead, is_stable')
+      .select('id, definition_type, definition_id, current_hp, max_hp, temp_hp, active_conditions, is_dead, is_stable')
       .eq('campaign_id', campaign.id);
     if (error) {
       console.error('[CampaignDashboard] loadCombatants failed', error);
@@ -926,6 +933,38 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
                   // (not .conditions). Same root cause as loadCombatants
                   // above. Falls back to the legacy field name for any
                   // in-flight realtime payloads from older code paths.
+                  conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
+                  is_dead: !!c.is_dead,
+                });
+              }
+              return map;
+            })(),
+            // v2.427.0 — Secondary index keyed by `${type}:${id}` for
+            // fallback lookups when token.id != combatant.id (i.e., the
+            // v2.389 sync trigger didn't run for this token, so the
+            // primary tokenStateMap lookup misses). User report: "the
+            // token is health bar is still out of sync from its actual
+            // health pool" — root cause was the token rendering falling
+            // through to npc template HP because the primary lookup
+            // missed. Now the renderer can try this index next.
+            tokenStateMapByDef: (() => {
+              const map = new Map<string, {
+                current_hp: number | null; max_hp: number | null;
+                conditions: string[]; is_dead: boolean;
+              }>();
+              for (const c of combatants) {
+                if (!c.definition_type || !c.definition_id) continue;
+                const key = `${c.definition_type}:${c.definition_id}`;
+                // First combatant for a given definition wins.
+                // (For multi-instance rosters this is fine because each
+                // unique instance gets a different definition_id; only
+                // the legacy "two combatants for the same monster"
+                // scenario could collide, and there the user wants
+                // either one — not stale template HP.)
+                if (map.has(key)) continue;
+                map.set(key, {
+                  current_hp: c.current_hp,
+                  max_hp: c.max_hp,
                   conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
                   is_dead: !!c.is_dead,
                 });
