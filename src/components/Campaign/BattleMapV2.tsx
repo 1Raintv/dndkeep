@@ -6782,19 +6782,40 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // overlays like the InitiativeStrip, dice/log buttons, toasts, and
   // modals — all of which mount via document.body). The CSS approach
   // keeps every portal layer correctly stacked above the map.
-  // Persisted per-user in localStorage so the choice survives page
-  // reloads. Esc exits fullscreen as a convenience.
+  // v2.424.0 — Default to fullscreen ON. User feedback: "the map is
+  // very small and needs to be more of the screen ... full screen menu
+  // that you're zooming in and out of." The pre-v2.424 default was
+  // OFF — a 95%-of-viewport-height map embedded inside the campaign
+  // page chrome. That left the floating tools toolbar cramped against
+  // the left edge of the constrained map box (which was narrower than
+  // the viewport because of the campaign sidebar + .app-main padding).
+  //
+  // Now fullscreen mode is the default and the DM exits it with the
+  // existing ⛶ Exit Fullscreen button or Esc. Old preference values
+  // ('0' from a user who had explicitly turned it off) are still
+  // respected so we don't overwrite a deliberate choice.
   const FULLSCREEN_KEY = 'dndkeep:battlemap:fullscreen';
   const [mapFullscreen, setMapFullscreen] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    try { return localStorage.getItem(FULLSCREEN_KEY) === '1'; } catch { return false; }
+    if (typeof window === 'undefined') return true;
+    try {
+      const v = localStorage.getItem(FULLSCREEN_KEY);
+      // null  → never set, default to TRUE (new default)
+      // '0'   → explicitly opted out, respect it
+      // '1'   → explicitly opted in, respect it
+      if (v === null) return true;
+      return v === '1';
+    } catch { return true; }
   });
   const toggleMapFullscreen = useCallback(() => {
     setMapFullscreen(prev => {
       const next = !prev;
       try {
-        if (next) localStorage.setItem(FULLSCREEN_KEY, '1');
-        else localStorage.removeItem(FULLSCREEN_KEY);
+        // v2.424.0 — Always write the explicit choice so the new
+        // default-on doesn't keep flipping it back. Pre-v2.424 we
+        // removed the key on "off" which made it indistinguishable
+        // from "never set" — fine when default was OFF, broken
+        // now that default is ON.
+        localStorage.setItem(FULLSCREEN_KEY, next ? '1' : '0');
       } catch { /* ignore */ }
       return next;
     });
@@ -6821,7 +6842,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMapFullscreen(false);
-        try { localStorage.removeItem(FULLSCREEN_KEY); } catch { /* ignore */ }
+        // v2.424.0 — Write '0' explicitly so the v2.424 default-on
+        // doesn't immediately re-enable on next render. Pre-v2.424
+        // we removed the key, which was indistinguishable from
+        // "never set" — fine then, broken now.
+        try { localStorage.setItem(FULLSCREEN_KEY, '0'); } catch { /* ignore */ }
       }
     };
     window.addEventListener('keydown', handler);

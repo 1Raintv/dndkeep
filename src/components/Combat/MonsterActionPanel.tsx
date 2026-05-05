@@ -1027,6 +1027,62 @@ export default function MonsterActionPanel({ isDM }: Props) {
           </button>
         </div>
 
+        {/* v2.424.0 — Vertical "MONSTER ACTIONS" label + actor name
+            shown when the panel is collapsed. User feedback: "the box
+            when minimized needs to say monster actions written down
+            the side of it so that the DM can clearly see where it is
+            and that they don't get lost when minimizing it." Sits in
+            the 36px-wide column under the toggle button, written
+            top-to-bottom via writingMode: vertical-rl. The actor
+            name is appended below the static label so the DM also
+            sees whose turn it is at a glance. */}
+        {collapsed && currentActor && (
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column' as const,
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              padding: '8px 0',
+              gap: 12,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                writingMode: 'vertical-rl' as const,
+                transform: 'rotate(180deg)',
+                fontSize: 9,
+                fontWeight: 800,
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase' as const,
+                color: '#f87171',
+                whiteSpace: 'nowrap' as const,
+              }}
+            >
+              Monster Actions
+            </div>
+            <div
+              title={currentActor.name}
+              style={{
+                writingMode: 'vertical-rl' as const,
+                transform: 'rotate(180deg)',
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--t-1)',
+                whiteSpace: 'nowrap' as const,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxHeight: '60vh',
+              }}
+            >
+              {currentActor.name}
+            </div>
+          </div>
+        )}
+
         {/* v2.416.0 — Fast Combat Rolls toggle moved to InitiativeStrip
             (below the round/actor display) so it's visible during PC
             turns too and easier to find. The MonsterActionPanel now

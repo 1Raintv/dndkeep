@@ -295,9 +295,24 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
         setJoinError('Unexpected response from the server.');
         return;
       }
-      // Now assign THIS character to the joined campaign so the user
-      // can hop in immediately. (Player can have many characters; this
-      // one is the one they're configuring right now.)
+
+      // v2.424.0 — Write the character's campaign_id DIRECTLY here
+      // instead of via the upstream onUpdate → applyUpdate → debounced
+      // flush chain. Pre-v2.424 the character UPDATE was fire-and-
+      // forget through the parent's pendingRef, which meant a silent
+      // RLS / network failure left us showing "Joined …" while the
+      // character row was still unattached. Now we await the write
+      // and surface any error to the user. We also call onUpdate so
+      // the parent re-renders with the new campaign_id immediately.
+      const { error: charErr } = await supabase
+        .from('characters')
+        .update({ campaign_id: row.campaign_id })
+        .eq('id', character.id);
+      if (charErr) {
+        console.error('[CharacterSettings] character campaign_id update failed', charErr);
+        setJoinError(`Joined the campaign but couldn't assign your character: ${charErr.message}`);
+        return;
+      }
       onUpdate({ campaign_id: row.campaign_id });
       setJoinSuccess(
         row.already_member

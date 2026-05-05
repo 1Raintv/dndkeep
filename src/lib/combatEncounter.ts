@@ -832,6 +832,94 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
     return { ok: false, reason: updErr.message ?? 'Failed to end encounter' };
   }
 
+  // v2.424.0 — HP carry-over. User feedback: "the health needs to
+  // carry over once the combat is complete." During combat, damage
+  // is written to `combatants.current_hp` (the per-encounter snapshot,
+  // see migration v2.319). The authoritative `characters.current_hp`
+  // and `npcs.hp` rows aren't touched mid-combat so a player can
+  // re-enter the same character into a future encounter without
+  // losing their original HP. But that means combat damage is
+  // ALSO not persisted back to the authoritative row when combat
+  // ends — the character "heals to full" between combats, which
+  // contradicts the long-rest-required RAW.
+  //
+  // Fix: walk all combatants for this encounter that link back to
+  // a character or NPC, and copy current_hp/temp_hp/death_save_*
+  // back to the authoritative table. Combatants for monsters and
+  // homebrew_monster instances are encounter-scoped and don't carry
+  // back (each spawn is a separate creature).
+  try {
+    const { data: cps } = await supabase
+      .from('combat_participants')
+      .select('combatant_id, participant_type, entity_id')
+      .eq('encounter_id', encounterId);
+    if (cps && cps.length) {
+      // Group combatant ids by destination table.
+      const characterCombatantIds: { combatantId: string; characterId: string }[] = [];
+      const npcCombatantIds: { combatantId: string; npcId: string }[] = [];
+      for (const cp of cps as Array<{ combatant_id: string | null; participant_type: string; entity_id: string | null }>) {
+        if (!cp.combatant_id || !cp.entity_id) continue;
+        if (cp.participant_type === 'character') {
+          characterCombatantIds.push({ combatantId: cp.combatant_id, characterId: cp.entity_id });
+        } else if (cp.participant_type === 'npc') {
+          npcCombatantIds.push({ combatantId: cp.combatant_id, npcId: cp.entity_id });
+        }
+      }
+      // Fetch the post-combat HP from combatants for everyone we care
+      // about, then write back per-row. Two separate UPDATE loops; the
+      // counts are bounded (party + a few NPCs per encounter, ~10 rows
+      // typical) so the cost is small.
+      const allCombIds = [
+        ...characterCombatantIds.map(x => x.combatantId),
+        ...npcCombatantIds.map(x => x.combatantId),
+      ];
+      if (allCombIds.length) {
+        const { data: combRows } = await (supabase as any)
+          .from('combatants')
+          .select('id, current_hp, temp_hp, death_save_successes, death_save_failures, is_stable, is_dead')
+          .in('id', allCombIds);
+        const combMap = new Map<string, any>();
+        for (const r of (combRows ?? []) as any[]) combMap.set(r.id, r);
+
+        for (const { combatantId, characterId } of characterCombatantIds) {
+          const c = combMap.get(combatantId);
+          if (!c) continue;
+          const updates: Record<string, unknown> = { current_hp: c.current_hp };
+          if (c.temp_hp != null) updates.temp_hp = c.temp_hp;
+          if (c.death_save_successes != null) updates.death_save_successes = c.death_save_successes;
+          if (c.death_save_failures != null) updates.death_save_failures = c.death_save_failures;
+          if (c.is_stable != null) updates.is_stable = c.is_stable;
+          if (c.is_dead != null) updates.is_dead = c.is_dead;
+          const { error: chErr } = await supabase
+            .from('characters')
+            .update(updates)
+            .eq('id', characterId);
+          if (chErr) {
+            console.error('[endEncounter] character HP carry-over failed', { characterId, error: chErr });
+          }
+        }
+        for (const { combatantId, npcId } of npcCombatantIds) {
+          const c = combMap.get(combatantId);
+          if (!c) continue;
+          // npcs table uses `hp` (not `current_hp`) per the legacy
+          // schema. Death-save tracking isn't on npcs (no PHB death
+          // save mechanic for non-PCs), so we only carry HP.
+          const { error: npcErr } = await (supabase as any)
+            .from('npcs')
+            .update({ hp: c.current_hp })
+            .eq('id', npcId);
+          if (npcErr) {
+            console.error('[endEncounter] npc HP carry-over failed', { npcId, error: npcErr });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Carry-over failure should NOT block ending the encounter —
+    // the encounter is already marked 'ended' above. Log and move on.
+    console.error('[endEncounter] HP carry-over threw', err);
+  }
+
   if (enc) {
     const durationSec = enc.started_at
       ? Math.floor((Date.now() - new Date(enc.started_at).getTime()) / 1000)
