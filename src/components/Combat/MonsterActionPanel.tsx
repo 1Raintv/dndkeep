@@ -167,7 +167,7 @@ interface Props {
 }
 
 export default function MonsterActionPanel({ isDM }: Props) {
-  const { encounter, participants, currentActor } = useCombat();
+  const { encounter, participants, currentActor, refresh } = useCombat();
   const [actions, setActions] = useState<MonsterAction[] | null>(null);
   const [loadingActions, setLoadingActions] = useState(false);
   const [pickingFor, setPickingFor] = useState<MonsterAction | null>(null);
@@ -588,6 +588,15 @@ export default function MonsterActionPanel({ isDM }: Props) {
               }
               if (damaged && damaged.state === 'damage_rolled') {
                 await applyDamage(damaged.id);
+                // v2.421.0 — Force CombatContext refresh so the
+                // next attack in the multiattack sequence sees the
+                // updated HP immediately instead of waiting for the
+                // realtime echo to land. Without this, fast picks
+                // see stale HP in the target picker between hits,
+                // which the user reported as "the health menu is
+                // not synced." Cheap (single SELECT) and runs
+                // off the critical path.
+                refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
               }
             } else {
               // Pure save-or-condition action with no damage. Toast
@@ -707,6 +716,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 }
               }
               await applyDamage(damaged.id);
+              // v2.421.0 — See note above; same eager refresh so
+              // the next attack in a multiattack chain reads
+              // up-to-date HP for the target list.
+              refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
             }
           }
         }
@@ -718,7 +731,39 @@ export default function MonsterActionPanel({ isDM }: Props) {
       // "this turn you took the Attack action," etc.) sees a
       // spent Action. The DM can manually clear via end-of-turn
       // advance; advanceTurn resets to attacks_per_action.
-      const nextRemaining = Math.max(0, remaining - 1);
+      //
+      // v2.421.0 — During multiattack guided mode, derive the
+      // next remaining count from the SEQUENCE PROGRESS rather
+      // than `remaining - 1`. The pre-v2.421 flow read
+      // `currentActor.attacks_remaining` at the top of handlePick,
+      // but that value lags the realtime echo from the previous
+      // attack's write. If the DM resolves attacks faster than the
+      // echo settles, every pick reads the stale value (e.g., 5)
+      // and writes (5-1)=4. The counter never reaches 0 across the
+      // full Tarrasque sequence — the action stays "available"
+      // after multiattack completes, which is what the user
+      // reported as "doesn't exhaust the action."
+      //
+      // Sequence-based derivation: total attacks in sequence minus
+      // attacks already finished. After this pick, the count of
+      // FINISHED attacks is (steps before current step) + (count
+      // already done in current step) + 1 (this very pick). The
+      // remaining count is (total - finished). When this reaches 0,
+      // we've fired the last attack of the sequence and can flip
+      // action_used.
+      let nextRemaining: number;
+      if (multiattack) {
+        const total = multiattack.sequence.reduce((s, x) => s + x.count, 0);
+        let finishedBefore = 0;
+        for (let i = 0; i < multiattack.stepIdx; i++) {
+          finishedBefore += multiattack.sequence[i].count;
+        }
+        const finishedInCurrent = multiattack.sequence[multiattack.stepIdx].count - multiattack.remainingInStep;
+        const finishedTotal = finishedBefore + finishedInCurrent + 1; // +1 = this pick
+        nextRemaining = Math.max(0, total - finishedTotal);
+      } else {
+        nextRemaining = Math.max(0, remaining - 1);
+      }
       const updates: Record<string, unknown> = {
         attacks_remaining: nextRemaining,
       };
