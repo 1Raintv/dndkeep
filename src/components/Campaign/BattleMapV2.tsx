@@ -7844,9 +7844,23 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     };
   }, []);
   const ECHO_SUPPRESS_MS = 2500; // sliding window
-  function markSelfWrite(tokenId: string, x: number, y: number) {
+  // v2.439.0 — useCallback so the reference is stable across renders.
+  // Pre-v2.439 this was a plain function declaration, which produced
+  // a fresh reference on every render of BattleMapV2. It's passed to
+  // TokenLayer as the `onCommitPos` prop, and TokenLayer's pointer-
+  // handler useEffect lists `onCommitPos` in its dep array — so the
+  // effect tore down and recreated on EVERY BattleMapV2 render.
+  // During a drag, that's every pointermove (each move bumps the
+  // token store via updatePos, BattleMapV2 subscribes to tokens, so
+  // it re-renders, so onCommitPos is fresh, so the effect resets).
+  // The teardown destroyed previewGfx, so on stationary holds (no
+  // pointermove → no recreate) the preview vanished. Wrapping in
+  // useCallback with stable deps (`recentSelfWritesRef` is a ref,
+  // never changes) keeps the reference stable through the drag and
+  // lets the preview rAF/interval loop survive across re-renders.
+  const markSelfWrite = useCallback((tokenId: string, x: number, y: number) => {
     recentSelfWritesRef.current.set(tokenId, { x, y, t: performance.now() });
-  }
+  }, []);
   function shouldSuppressEcho(row: { id?: string; x?: number; y?: number } | null | undefined): boolean {
     if (!row?.id) return false;
     const stamp = recentSelfWritesRef.current.get(row.id);
