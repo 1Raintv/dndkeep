@@ -5339,6 +5339,16 @@ function TokenLayer(props: {
               // rejection path so the state machine returns to
               // "no drag in progress" cleanly. Subsequent pointer
               // events start fresh.
+              //
+              // v2.440.0 — Also stop the preview loop and clear the
+              // preview graphics. Pre-v2.440 the dashed line + white
+              // marker stayed visible on screen after a rejected
+              // drop because v2.438 added the dragRef cleanup but
+              // forgot the preview teardown. The "movement blocked"
+              // toast already communicates the rejection — leftover
+              // preview marks are just noise.
+              stopPreviewLoop();
+              clearPreview();
               onDragEnd?.(drag.id);
               dragRef.current = null;
               clickProbeRef.current = null;
@@ -8842,10 +8852,43 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       if (worldPoint.x < 0 || worldPoint.x > WORLD_WIDTH) return;
       if (worldPoint.y < 0 || worldPoint.y > WORLD_HEIGHT) return;
 
-      // Snap target to nearest cell center.
-      const snapped = snapToCellCenter(worldPoint.x, worldPoint.y, gridSizePx);
-      const targetX = Math.max(0, Math.min(WORLD_WIDTH, snapped.x));
-      const targetY = Math.max(0, Math.min(WORLD_HEIGHT, snapped.y));
+      // v2.440.0 — Size-aware snap. Pre-v2.440 always called
+      // snapToCellCenter, which is correct only for odd-size tokens
+      // (Medium, Huge). For even-size tokens (Large 2×2, Gargantuan
+      // 4×4), the renderer expects an anchor at a grid INTERSECTION,
+      // not a cell center. Click-to-moving an even-size token via
+      // cell-center snap produced positions like (875, 315) — half-
+      // cell offsets that the renderer treated as broken. User report
+      // after v2.439 testing: "the preview move and the token are
+      // not linked up anymore" — that was the AW dragon stuck at a
+      // cell-center position from a prior click-to-move.
+      //
+      // Fix: route through snapTokenAnchor with the active token's
+      // size so even-size tokens snap to intersections (footprint
+      // centered on the clicked cell area).
+      const myTokenForSnap = liveTokens[ati.tokenId];
+      const tokenSize = myTokenForSnap?.size ?? 'medium';
+      const snapped = snapTokenAnchor(worldPoint.x, worldPoint.y, tokenSize, gridSizePx);
+      // Footprint-aware clamping (same rules as drag commit) so
+      // click-to-move can't push even-size tokens off the map.
+      const footCellsCtm = (() => {
+        switch (tokenSize) {
+          case 'tiny': case 'small': case 'medium': return 1;
+          case 'large': return 2;
+          case 'huge': return 3;
+          case 'gargantuan': return 4;
+          default: return 1;
+        }
+      })();
+      const evenCtm = footCellsCtm % 2 === 0;
+      const footPxCtm = footCellsCtm * gridSizePx;
+      const halfCtm = footPxCtm / 2;
+      const minXCtm = evenCtm ? 0 : halfCtm;
+      const maxXCtm = evenCtm ? WORLD_WIDTH - footPxCtm : WORLD_WIDTH - halfCtm;
+      const minYCtm = evenCtm ? 0 : halfCtm;
+      const maxYCtm = evenCtm ? WORLD_HEIGHT - footPxCtm : WORLD_HEIGHT - halfCtm;
+      const targetX = Math.max(minXCtm, Math.min(maxXCtm, snapped.x));
+      const targetY = Math.max(minYCtm, Math.min(maxYCtm, snapped.y));
 
       // Block if the target cell is occupied by another token (would
       // collide with a creature). Cell-radius check: any token whose
@@ -8939,10 +8982,22 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         const SPEED_PX_PER_MS = (120 * gridSizePx / 5) / 1000; // 120 ft/s in px/ms
         // Convert path cells to world-pixel waypoints. Path[0] is the
         // current cell; we start the slide from path[1].
-        const waypoints = path.map(c => ({
-          x: (c.col + 0.5) * gridSizePx,
-          y: (c.row + 0.5) * gridSizePx,
-        }));
+        // v2.440.0 — Size-aware waypoint conversion. For odd-size
+        // tokens (Medium/Huge), the token anchor is the cell center
+        // → (col + 0.5) * cellSize. For even-size tokens (Large/
+        // Gargantuan), the anchor is the top-left intersection of
+        // the footprint at the path cell — which means anchor =
+        // (col, row) * cellSize.
+        const waypoints = path.map(c => {
+          if (evenCtm) {
+            // Even-size: anchor at intersection. The path cell
+            // (col, row) represents the cell at the footprint's
+            // top-left; anchor is the intersection at (col, row).
+            return { x: c.col * gridSizePx, y: c.row * gridSizePx };
+          }
+          // Odd-size: anchor at cell center.
+          return { x: (c.col + 0.5) * gridSizePx, y: (c.row + 0.5) * gridSizePx };
+        });
         // Total path length in pixels — used for total-duration calc.
         let totalDistPx = 0;
         for (let i = 1; i < waypoints.length; i++) {
