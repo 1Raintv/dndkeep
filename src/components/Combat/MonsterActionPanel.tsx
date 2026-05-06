@@ -59,6 +59,11 @@ import {
 // Dash and Disengage." The v2.413 InitiativeStrip-left location
 // didn't stick.
 import { takeDash, takeDisengage, resetMovement } from '../../lib/movement';
+// v2.442.0 — applyCondition lets us auto-tag the target with the
+// inferred condition on save fail (Frightened on Frightful Presence,
+// Prone on Wing Attack, etc.) so the DM doesn't have to reach for
+// the token context menu after every save.
+import { applyCondition } from '../../lib/conditions';
 import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
@@ -162,6 +167,47 @@ function parseAttackRangeFt(desc: string | undefined): number {
   return 60;
 }
 
+// v2.442.0 — Range parser for save-style actions (auras, breath
+// weapons, AOE saves). Unlike `parseAttackRangeFt`, the fingerprint
+// here is "within X feet" or "X-foot cone/radius/line/sphere". We
+// also handle "ft." abbreviation. Returns the largest plausible
+// range so the multi-target picker errs on the side of "let the
+// DM see them" rather than blocking valid plays.
+//
+// Falls back to 120ft (matches FP and most large-creature auras)
+// when no number can be extracted — most AOE saves aren't tighter
+// than this, and "see them all" is the right default for the DM.
+function parseSaveRangeFt(desc: string | undefined): number {
+  if (!desc) return 120;
+  // Pattern A: "within X feet" / "within X ft."
+  const withinMatch = desc.match(/within\s+(\d+)\s*(?:feet|ft\.?)/i);
+  if (withinMatch) return parseInt(withinMatch[1], 10);
+  // Pattern B: "X-foot cone/radius/line/sphere/cube/cylinder"
+  const aoeMatch = desc.match(/(\d+)[-\s]?foot\s+(?:cone|radius|line|sphere|cube|cylinder)/i);
+  if (aoeMatch) return parseInt(aoeMatch[1], 10);
+  // Pattern C: "in a X-foot ..."
+  const inAMatch = desc.match(/in\s+a\s+(\d+)[-\s]?foot/i);
+  if (inAMatch) return parseInt(inAMatch[1], 10);
+  return 120;
+}
+
+// v2.442.0 — Detect multi-target save actions. Single-target save
+// actions exist (e.g. Hold Person targets one creature), but the
+// classic AOE/aura savers — Frightful Presence, breath weapons —
+// say things like "Each creature ... within X feet" or "Each
+// creature in that area". When we see those phrases, the picker
+// should be multi-select. Also matches "of <X>'s choice" since
+// FP-style abilities let the actor pick whom to target.
+function isMultiTargetSaveAction(desc: string | undefined): boolean {
+  if (!desc) return false;
+  const lower = desc.toLowerCase();
+  if (/each\s+creature/.test(lower)) return true;
+  if (/all\s+creatures/.test(lower)) return true;
+  if (/of\s+\w+'?s?\s+choice/.test(lower)) return true;
+  if (/in\s+(that|the)\s+area/.test(lower)) return true;
+  return false;
+}
+
 interface Props {
   isDM: boolean;
 }
@@ -171,6 +217,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const [actions, setActions] = useState<MonsterAction[] | null>(null);
   const [loadingActions, setLoadingActions] = useState(false);
   const [pickingFor, setPickingFor] = useState<MonsterAction | null>(null);
+  // v2.442.0 — Separate state for multi-target save actions
+  // (Frightful Presence, Cold Breath in cone-target form, etc.).
+  // When non-null, MultiTargetSavePicker renders instead of the
+  // single-target picker. Mutually exclusive with `pickingFor` —
+  // we only ever open one picker at a time.
+  const [multiSavePickingFor, setMultiSavePickingFor] = useState<MonsterAction | null>(null);
   const [busy, setBusy] = useState(false);
   // v2.416.0 — Multiattack guided mode. When the DM clicks the
   // "Multiattack" action, we parse its desc into an ordered sequence
@@ -607,8 +659,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
               }
             } else {
               // Pure save-or-condition action with no damage. Toast
-              // the result; the DM applies the condition described
-              // in `a.desc` via the token's context menu.
+              // the result; on a failed save we now (v2.442.0) auto-
+              // apply the inferred condition (Frightened on FP, Prone
+              // on Wing Attack, etc.) so the DM doesn't have to dig
+              // through the token context menu after every save. The
+              // condition is tagged with a source so future cleanup
+              // (e.g. concentration loss) can find it.
               //
               // v2.419.0 — Immunity flavor. If the save FAILED but
               // the target is immune to the inferred condition, the
@@ -624,6 +680,31 @@ export default function MonsterActionPanel({ isDM }: Props) {
                   `${target.name} failed the save vs ${a.name} but is IMMUNE to ${inferredCondition} — no effect.`,
                   'info',
                 );
+              } else if (inferredCondition) {
+                // v2.442.0 — Auto-apply the condition. inferredCondition
+                // is lowercase ("frightened"); applyCondition expects the
+                // capitalized form that matches CONDITION_MAP keys.
+                const conditionName = inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1);
+                try {
+                  await applyCondition({
+                    participantId: target.id,
+                    conditionName,
+                    source: `monster_action:${a.name}:${currentActor.id}`,
+                    casterParticipantId: currentActor.id,
+                    campaignId: encounter.campaign_id,
+                    encounterId: encounter.id,
+                  });
+                  showToast(
+                    `${target.name} FAILED ${ability} save vs ${a.name} — ${conditionName} applied.`,
+                    'info',
+                  );
+                } catch (err) {
+                  console.error('[MonsterActionPanel] applyCondition failed', err);
+                  showToast(
+                    `${target.name} FAILED ${ability} save vs ${a.name}. Apply ${conditionName} manually.`,
+                    'info',
+                  );
+                }
               } else {
                 showToast(`${target.name} FAILED ${ability} save vs ${a.name}. Apply effect manually (see action description).`, 'info');
               }
@@ -798,6 +879,208 @@ export default function MonsterActionPanel({ isDM }: Props) {
       }
     } catch (err) {
       console.error('[MonsterActionPanel] attack declare/roll failed', err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // v2.442.0 — Multi-target save resolution. Used by AOE/aura saves
+  // like Frightful Presence ("Each creature of the dragon's choice
+  // within 120 feet") and Cold Breath ("Each creature in that
+  // area"). Loops through the DM-selected targets, rolls each
+  // target's save, applies damage (with half-on-success when
+  // dc_success='half') OR auto-applies the inferred condition
+  // (Frightened on FP, Prone on Wing Attack) on a failed save.
+  //
+  // Action economy: ONE pick is consumed for the entire batch (it's
+  // a single action regardless of how many targets it touched).
+  // During multiattack guided mode, the multiattack step advances
+  // once at the end. attacks_remaining decrements by 1.
+  async function handleMultiSavePick(targets: CombatParticipant[]) {
+    if (!encounter || !currentActor || !multiSavePickingFor) return;
+    if (busy) return;
+    const a = multiSavePickingFor;
+    setMultiSavePickingFor(null);
+    if (targets.length === 0) return; // DM cancelled / no picks
+    setBusy(true);
+    try {
+      const ability = normalizeSaveAbility(a.dc_type);
+      if (!ability) {
+        showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
+        return;
+      }
+      const inferredCondition = inferConditionFromSaveAction(a.name, a.desc);
+      // Capitalized form for applyCondition (matches CONDITION_MAP keys).
+      const conditionName = inferredCondition
+        ? inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1)
+        : null;
+
+      // v2.442.0 — Per-target outcome counters for the summary toast.
+      let passedCount = 0;
+      let failedCount = 0;
+      let conditionAppliedCount = 0;
+
+      for (const target of targets) {
+        // Skip targets that died mid-batch (e.g. earlier Cold Breath
+        // damage knocked them out). Belt-and-suspenders — the picker
+        // already filters dead targets, but the loop is async and
+        // a parallel write could change is_dead between iterations.
+        if (target.is_dead) continue;
+
+        // Per-target immunity check, mirroring the single-target
+        // save branch in handlePick.
+        let targetImmuneToCondition = false;
+        if (inferredCondition && target.participant_type === 'creature' && target.entity_id) {
+          const { data: tgtHb } = await supabase
+            .from('homebrew_monsters')
+            .select('source_monster_id')
+            .eq('id', target.entity_id)
+            .maybeSingle();
+          const tgtSourceId = (tgtHb as any)?.source_monster_id;
+          if (tgtSourceId) {
+            const { data: tgtRow } = await supabase
+              .from('monsters')
+              .select('condition_immunities')
+              .eq('id', tgtSourceId)
+              .maybeSingle();
+            const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
+            targetImmuneToCondition = immList.some(s => s.toLowerCase() === inferredCondition);
+          }
+        }
+
+        const attack = await declareAttack({
+          campaignId: encounter.campaign_id,
+          encounterId: encounter.id,
+          attackerParticipantId: currentActor.id,
+          attackerName: currentActor.name,
+          attackerType: 'creature',
+          targetParticipantId: target.id,
+          targetName: target.name,
+          targetType: target.participant_type,
+          attackSource: 'monster_action',
+          attackName: a.name,
+          attackKind: 'save',
+          saveDC: a.dc_value ?? null,
+          saveAbility: ability,
+          saveSuccessEffect: a.dc_success ?? 'none',
+          damageDice: a.damage_dice ?? null,
+          damageType: a.damage_type ?? null,
+        });
+        if (!attack) continue;
+
+        const sb = await getTargetSaveBonus(target.id, ability);
+        const rolled = await rollSave(attack.id, sb.bonus);
+        const passed = (rolled as any)?.save_result === 'passed';
+
+        // v2.442.0 — Per-target dice animation, scaled. Single-target
+        // saves linger 1800ms; for batch saves we shrink to 700ms so
+        // a 5-target Cold Breath doesn't stall combat for 9 seconds.
+        // The DM can disable entirely with Fast Combat Rolls.
+        if (!fastRolls && rolled && (rolled as any).save_d20 != null) {
+          const d20 = (rolled as any).save_d20 as number;
+          const total = (rolled as any).save_total as number;
+          const modifier = total - d20;
+          triggerRoll({
+            result: d20,
+            dieType: 20,
+            modifier,
+            total,
+            label: `${target.name} — ${ability} save vs ${a.name} (DC ${a.dc_value ?? '?'})`,
+          });
+          await sleep(700);
+        }
+
+        // Skip LR-pending targets — DM should resolve via the modal.
+        if (rolled && (rolled as any).pending_lr_decision) {
+          showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
+          continue;
+        }
+
+        if (a.damage_dice) {
+          // Save-with-damage path (Cold Breath, Wing Attack). rollDamage
+          // halves automatically on save_result='passed' when the
+          // pending row's saveSuccessEffect='half'.
+          const damaged = await rollDamage(rolled?.id ?? attack.id);
+          if (damaged && damaged.state === 'damage_rolled') {
+            await applyDamage(damaged.id);
+          }
+          // No per-target dice animation for damage in batch mode —
+          // it would compound the delay too much. The HP bars update
+          // via the realtime echo + window event.
+          if (passed) passedCount++;
+          else failedCount++;
+        } else {
+          // Pure save-or-condition path (Frightful Presence). On a
+          // failed save, auto-apply the inferred condition unless
+          // the target is immune to it.
+          if (passed) {
+            passedCount++;
+          } else if (targetImmuneToCondition && conditionName) {
+            // Failed save but immune — count as failed but no condition.
+            failedCount++;
+          } else if (conditionName) {
+            try {
+              await applyCondition({
+                participantId: target.id,
+                conditionName,
+                source: `monster_action:${a.name}:${currentActor.id}`,
+                casterParticipantId: currentActor.id,
+                campaignId: encounter.campaign_id,
+                encounterId: encounter.id,
+              });
+              conditionAppliedCount++;
+            } catch (err) {
+              console.error('[MonsterActionPanel] applyCondition failed', err);
+            }
+            failedCount++;
+          } else {
+            failedCount++;
+          }
+          await cancelAttack(rolled?.id ?? attack.id);
+        }
+      }
+
+      // Refresh combat context once at the end so UI reflects new
+      // HP / condition state without waiting for the realtime echo.
+      refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
+      window.dispatchEvent(new Event('dndkeep:hp-applied'));
+
+      // Summary toast — keeps the log clean even with many targets.
+      const parts = [`${a.name}: ${passedCount} saved · ${failedCount} failed`];
+      if (conditionAppliedCount > 0 && conditionName) {
+        parts.push(`${conditionName} ×${conditionAppliedCount}`);
+      }
+      showToast(parts.join(' · '), failedCount > 0 ? 'info' : 'success');
+
+      // ── ONE accounting decrement for the whole batch ──────────
+      // Mirrors the single-target accounting at the end of handlePick.
+      const remaining = (currentActor as any).attacks_remaining ?? 1;
+      let nextRemaining: number;
+      if (multiattack) {
+        const total = multiattack.sequence.reduce((s, x) => s + x.count, 0);
+        let finishedBefore = 0;
+        for (let i = 0; i < multiattack.stepIdx; i++) {
+          finishedBefore += multiattack.sequence[i].count;
+        }
+        const finishedInCurrent = multiattack.sequence[multiattack.stepIdx].count - multiattack.remainingInStep;
+        const finishedTotal = finishedBefore + finishedInCurrent + 1;
+        nextRemaining = Math.max(0, total - finishedTotal);
+      } else {
+        nextRemaining = Math.max(0, remaining - 1);
+      }
+      const updates: Record<string, unknown> = { attacks_remaining: nextRemaining };
+      if (nextRemaining === 0) updates.action_used = true;
+      const { error: upErr } = await supabase
+        .from('combat_participants')
+        .update(updates)
+        .eq('id', currentActor.id);
+      if (upErr) {
+        console.error('[MonsterActionPanel] action-economy update failed', upErr);
+      }
+      if (multiattack) advanceMultiattack();
+    } catch (err) {
+      console.error('[MonsterActionPanel] multi-save resolution failed', err);
+      showToast('Something went wrong resolving the multi-target save. Check console.', 'error');
     } finally {
       setBusy(false);
     }
@@ -1493,20 +1776,33 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // Presence so the DM can apply the condition manually
                 // (auto condition application comes in a future ship).
                 const noAttacksLeft = ((currentActor as any)?.attacks_remaining ?? 1) <= 0;
-                // v2.416.0 — Save actions are locked while a
-                // multiattack sequence is in progress (Tarrasque
-                // doesn't get to fire Frightening Presence in the
-                // middle of its bite-claw-claw-horn-tail combo).
-                const lockedByMulti = !!multiattack;
+                // v2.442.0 — Save actions can now be the current
+                // step of a multiattack sequence (e.g. Ancient White
+                // Dragon's Multiattack starts with Frightful Presence).
+                // The button is locked when a sequence is active AND
+                // this action isn't the current step. Pre-v2.442 the
+                // button was hard-disabled in any multiattack mode,
+                // which made FP unreachable inside the dragon's combo.
+                const isMultiCurrent = multiattack ? isCurrentMultiattackStep(action.name) : false;
+                const lockedByMulti = !!multiattack && !isMultiCurrent;
                 const disabled = busy || noAttacksLeft || lockedByMulti;
+                // v2.442.0 — Route to the multi-target picker for
+                // AOE/aura saves ("Each creature within X feet",
+                // "Each creature in that area", "of the dragon's
+                // choice"). Single-target save actions keep the
+                // existing single-target picker.
+                const isMulti = isMultiTargetSaveAction(action.desc);
                 return (
                   <button
                     key={key}
-                    onClick={() => setPickingFor(action)}
+                    onClick={() => {
+                      if (isMulti) setMultiSavePickingFor(action);
+                      else setPickingFor(action);
+                    }}
                     disabled={disabled}
                     title={
                       lockedByMulti
-                        ? `Multiattack in progress — finish the sequence first.`
+                        ? `Multiattack in progress — finish ${multiattack!.sequence[multiattack!.stepIdx].actionName} first.`
                         : noAttacksLeft
                           ? 'No actions remaining this turn — End Turn to refresh.'
                           : (action.desc || sub)
@@ -1514,8 +1810,16 @@ export default function MonsterActionPanel({ isDM }: Props) {
                     style={{
                       textAlign: 'left',
                       padding: '8px 10px',
-                      background: disabled ? 'rgba(255,255,255,0.03)' : 'rgba(167,139,250,0.10)',
-                      border: disabled ? '1px solid var(--c-border)' : '1px solid rgba(167,139,250,0.45)',
+                      background: disabled
+                        ? 'rgba(255,255,255,0.03)'
+                        : isMultiCurrent
+                          ? 'rgba(167,139,250,0.18)'
+                          : 'rgba(167,139,250,0.10)',
+                      border: disabled
+                        ? '1px solid var(--c-border)'
+                        : isMultiCurrent
+                          ? '2px solid #c4b5fd'
+                          : '1px solid rgba(167,139,250,0.45)',
                       borderRadius: 4,
                       color: disabled ? 'var(--t-3)' : 'var(--t-1)',
                       fontFamily: 'var(--ff-body)',
@@ -1526,8 +1830,18 @@ export default function MonsterActionPanel({ isDM }: Props) {
                       gap: 2,
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd' }}>
-                      💫 {action.name}
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>💫 {action.name}</span>
+                      {isMultiCurrent && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, color: '#fbbf24',
+                          padding: '1px 6px', borderRadius: 3,
+                          background: 'rgba(251,191,36,0.18)',
+                          letterSpacing: '0.06em',
+                        }}>
+                          NEXT
+                        </span>
+                      )}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--t-2)', fontWeight: 600 }}>
                       {sub}
@@ -1742,6 +2056,20 @@ export default function MonsterActionPanel({ isDM }: Props) {
           battleMap={battleMap}
           onPick={handlePick}
           onCancel={() => setPickingFor(null)}
+        />
+      )}
+      {/* v2.442.0 — Multi-target save picker for AOE/aura saves
+          like Frightful Presence and Cold Breath. Distinct state
+          from `pickingFor` so the two pickers can never both render. */}
+      {multiSavePickingFor && currentActor && (
+        <MultiTargetSavePicker
+          attackerParticipant={currentActor}
+          participants={participants}
+          action={multiSavePickingFor}
+          rangeFt={parseSaveRangeFt(multiSavePickingFor.desc)}
+          battleMap={battleMap}
+          onConfirm={handleMultiSavePick}
+          onCancel={() => setMultiSavePickingFor(null)}
         />
       )}
     </>,
@@ -2062,6 +2390,356 @@ function RangeAwareTargetPicker(props: PickerProps) {
           >
             Cancel
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// MultiTargetSavePicker (v2.442.0)
+//
+// Multi-select target picker for AOE/aura save actions. Sibling of
+// RangeAwareTargetPicker — same range filtering, same PC-first sort,
+// same dead/self exclusion — but with checkbox selection and a
+// "Save N targets" Confirm button. Used by Frightful Presence (DM
+// picks creatures within 120ft) and as a fallback for cone/AOE
+// breath weapons until the cone-targeting overlay ships.
+//
+// Range semantics: "within X feet" / "X-foot cone" — out-of-range
+// rows are dimmed and unselectable. The DM can still expand the
+// excluded section to opt in to dead / self targets if narrative
+// calls for it (mass condition removal, friendly-fire situations).
+//
+// Action economy: returns ALL selected targets to the parent in
+// one onConfirm call. The parent runs a single accounting decrement
+// for the entire batch.
+// ───────────────────────────────────────────────────────────────────
+
+interface MultiPickerProps {
+  attackerParticipant: CombatParticipant;
+  participants: CombatParticipant[];
+  action: MonsterAction;
+  rangeFt: number;
+  battleMap: ActiveBattleMap | null;
+  onConfirm: (targets: CombatParticipant[]) => void;
+  onCancel: () => void;
+}
+
+function MultiTargetSavePicker(props: MultiPickerProps) {
+  const { attackerParticipant, participants, action, rangeFt, battleMap, onConfirm, onCancel } = props;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const { targets, excluded } = useMemo(() => {
+    const attackerLookup: ParticipantForTokenLookup = {
+      id: attackerParticipant.id,
+      name: attackerParticipant.name,
+      participant_type: attackerParticipant.participant_type,
+      entity_id: attackerParticipant.entity_id,
+    };
+    const valid: Array<{ participant: CombatParticipant; distFt: number | null; inRange: boolean }> = [];
+    const excl: Array<{ participant: CombatParticipant; reason: 'self' | 'dead' }> = [];
+
+    for (const p of participants) {
+      if (p.id === attackerParticipant.id) {
+        excl.push({ participant: p, reason: 'self' });
+        continue;
+      }
+      if (p.is_dead) {
+        excl.push({ participant: p, reason: 'dead' });
+        continue;
+      }
+      const lookup: ParticipantForTokenLookup = {
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      };
+      const dist = battleMap
+        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, battleMap)
+        : null;
+      const inRange = dist === null ? true : dist <= rangeFt;
+      valid.push({ participant: p, distFt: dist, inRange });
+    }
+
+    valid.sort((a, b) => {
+      const aIsPC = a.participant.participant_type === 'character' ? 0 : 1;
+      const bIsPC = b.participant.participant_type === 'character' ? 0 : 1;
+      if (aIsPC !== bIsPC) return aIsPC - bIsPC;
+      return a.participant.name.localeCompare(b.participant.name);
+    });
+
+    return { targets: valid, excluded: excl };
+  }, [attackerParticipant, participants, battleMap, rangeFt]);
+
+  const inRangeIds = useMemo(
+    () => new Set(targets.filter(t => t.inRange).map(t => t.participant.id)),
+    [targets],
+  );
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllInRange() {
+    setSelected(new Set(inRangeIds));
+  }
+
+  function clearAll() {
+    setSelected(new Set());
+  }
+
+  function confirm() {
+    const out: CombatParticipant[] = [];
+    const byId = new Map(participants.map(p => [p.id, p]));
+    for (const id of selected) {
+      const p = byId.get(id);
+      if (p) out.push(p);
+    }
+    onConfirm(out);
+  }
+
+  const ability = action.dc_type ?? '?';
+  const dc = action.dc_value ?? '?';
+  const damageHint = action.damage_dice
+    ? ` · ${action.damage_dice} ${action.damage_type ?? ''}`
+    : '';
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10100,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(460px, 96vw)',
+          maxHeight: '85vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--c-card)',
+          border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-md, 8px)',
+          boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+          fontFamily: 'var(--ff-body)',
+          color: 'var(--t-1)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--c-border)' }}>
+          <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Pick targets — within {rangeFt} ft
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2, color: '#c4b5fd' }}>
+            💫 {action.name}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2 }}>
+            DC {dc} {ability} save{damageHint}
+          </div>
+          {action.desc && (
+            <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 6, fontStyle: 'italic', lineHeight: 1.4 }}>
+              {action.desc}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button
+              onClick={selectAllInRange}
+              disabled={inRangeIds.size === 0}
+              style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
+                padding: '4px 8px', borderRadius: 4,
+                background: 'rgba(167,139,250,0.12)',
+                border: '1px solid rgba(167,139,250,0.4)',
+                color: '#c4b5fd',
+                cursor: inRangeIds.size === 0 ? 'not-allowed' : 'pointer',
+                opacity: inRangeIds.size === 0 ? 0.4 : 1,
+              }}
+            >
+              Select all in range ({inRangeIds.size})
+            </button>
+            <button
+              onClick={clearAll}
+              disabled={selected.size === 0}
+              style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
+                padding: '4px 8px', borderRadius: 4,
+                background: 'transparent',
+                border: '1px solid var(--c-border)',
+                color: 'var(--t-2)',
+                cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
+                opacity: selected.size === 0 ? 0.4 : 1,
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {targets.length === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
+              No participants in this encounter.
+            </div>
+          )}
+          {targets.map(({ participant: p, distFt, inRange }) => {
+            const isPC = p.participant_type === 'character';
+            const hpPct = p.max_hp && p.max_hp > 0 ? (p.current_hp ?? 0) / p.max_hp : 1;
+            const hpColor = hpPct >= 0.66 ? '#34d399' : hpPct >= 0.33 ? '#fbbf24' : '#f87171';
+            const distLabel = distFt === null ? '(no map)' : `${Math.round(distFt)} ft`;
+            const isSelected = selected.has(p.id);
+            return (
+              <button
+                key={p.id}
+                onClick={() => inRange && toggle(p.id)}
+                disabled={!inRange}
+                title={inRange
+                  ? `${p.name} · ${distLabel}${p.ac ? ` · AC ${p.ac}` : ''}`
+                  : `${p.name} is out of range (${distLabel}; ${rangeFt} ft max)`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 12px', borderRadius: 6,
+                  background: !inRange
+                    ? 'rgba(255,255,255,0.02)'
+                    : isSelected
+                      ? 'rgba(167,139,250,0.20)'
+                      : (isPC ? 'rgba(234,179,8,0.06)' : 'rgba(248,113,113,0.05)'),
+                  border: '1px solid ' + (
+                    !inRange
+                      ? 'rgba(255,255,255,0.05)'
+                      : isSelected
+                        ? 'rgba(167,139,250,0.7)'
+                        : 'var(--c-border)'
+                  ),
+                  cursor: inRange ? 'pointer' : 'not-allowed',
+                  opacity: inRange ? 1 : 0.45,
+                  textAlign: 'left',
+                  color: 'var(--t-1)',
+                }}
+              >
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 18, height: 18, borderRadius: 3,
+                  border: '1.5px solid ' + (isSelected ? '#c4b5fd' : 'var(--c-border)'),
+                  background: isSelected ? '#c4b5fd' : 'transparent',
+                  color: isSelected ? '#1a1a1a' : 'transparent',
+                  fontSize: 12, fontWeight: 900, lineHeight: 1,
+                  flexShrink: 0,
+                }}>
+                  ✓
+                </span>
+                <span
+                  style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                    color: isPC ? 'var(--c-gold-l)' : '#f87171',
+                    minWidth: 32,
+                  }}
+                >
+                  {isPC ? 'PC' : 'CRE'}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</span>
+                  <span style={{ fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
+                    {distLabel}{p.ac ? ` · AC ${p.ac}` : ''}
+                  </span>
+                </span>
+                {p.max_hp ? (
+                  <span style={{ fontSize: 10, color: hpColor, fontWeight: 700, minWidth: 64, textAlign: 'right' }}>
+                    {p.current_hp ?? 0}/{p.max_hp}
+                  </span>
+                ) : null}
+                {!inRange && (
+                  <span style={{ fontSize: 9, color: 'var(--t-3)', fontStyle: 'italic' }}>
+                    out of range
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {excluded.length > 0 && (
+            <div style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+              color: 'var(--t-3)', textAlign: 'center', padding: '8px 0 2px',
+            }}>
+              Excluded — {excluded.length}
+            </div>
+          )}
+          {excluded.map(({ participant: p, reason }) => (
+            <div
+              key={p.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px', borderRadius: 6,
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                opacity: 0.5,
+                fontSize: 12,
+              }}
+            >
+              <span style={{ flex: 1, textDecoration: reason === 'dead' ? 'line-through' : 'none' }}>
+                {p.name}
+              </span>
+              <span style={{ fontSize: 9, color: 'var(--t-3)', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                {reason}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          padding: '8px 14px', borderTop: '1px solid var(--c-border)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontSize: 11, color: 'var(--t-2)' }}>
+            {selected.size} selected
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={onCancel}
+              style={{
+                padding: '6px 14px',
+                background: 'transparent',
+                border: '1px solid var(--c-border)',
+                borderRadius: 4,
+                color: 'var(--t-2)',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirm}
+              disabled={selected.size === 0}
+              style={{
+                padding: '6px 14px',
+                background: selected.size === 0 ? 'rgba(167,139,250,0.10)' : 'rgba(167,139,250,0.30)',
+                border: '1px solid rgba(167,139,250,0.6)',
+                borderRadius: 4,
+                color: selected.size === 0 ? 'var(--t-3)' : '#c4b5fd',
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
+                opacity: selected.size === 0 ? 0.5 : 1,
+              }}
+            >
+              Save {selected.size > 0 ? `${selected.size} target${selected.size === 1 ? '' : 's'}` : ''}
+            </button>
+          </div>
         </div>
       </div>
     </div>
