@@ -3362,6 +3362,11 @@ function TokenLayer(props: {
   // the post-pointerup snap so the token visually transitions to
   // the snap target over ~120ms instead of teleporting.
   onSnapAnimate?: (tokenId: string, fromX: number, fromY: number, toX: number, toY: number) => void;
+  // v2.441.0 — Notification fired in pointerup when the pointer
+  // actually moved (probe.didMove=true). Lets the parent stamp a
+  // "drag just ended" timestamp so click-to-move can swallow the
+  // synthetic click that fires on the same tick as pointerup.
+  onDragMotionEnded?: () => void;
   // v2.358.0 — Token id currently selected by left-click. TokenLayer
   // renders a thin cyan ring around this token to indicate selection.
   // Distinct from activeTokenInfo.tokenId (gold ring, driven by
@@ -3407,7 +3412,7 @@ function TokenLayer(props: {
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
-    recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate,
+    recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -5114,6 +5119,13 @@ function TokenLayer(props: {
         !probe.didMove &&
         performance.now() - probe.downAtMs < 250
       );
+      // v2.441.0 — If the pointer actually moved during this gesture,
+      // notify the parent so it can stamp the time and have click-to-
+      // move ignore the synthetic 'click' event the browser fires on
+      // the same tick as this pointerup.
+      if (probe?.didMove) {
+        onDragMotionEnded?.();
+      }
 
       if (!drag) {
         clickProbeRef.current = null;
@@ -5539,7 +5551,7 @@ function TokenLayer(props: {
         // — safe to ignore on teardown.
       }
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded]);
 
   return null;
 }
@@ -7771,6 +7783,17 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // quiet OR a non-matching echo (different x/y, indicating a
   // legitimate peer-driven update or a server-side reposition).
   const recentSelfWritesRef = useRef<Map<string, { x: number; y: number; t: number }>>(new Map());
+  // v2.441.0 — Synthetic-click suppression after drag.
+  // Browsers fire a synthetic 'click' event at the release coordinates
+  // after every pointer drag, even drags with significant motion. Pixi
+  // uses pointer events (not legacy mouse events), so the browser's
+  // normal click suppression for drags doesn't apply. The click-to-move
+  // handler was treating every post-drag synthetic click as a new
+  // movement command and re-snapping the token to the cursor's release
+  // cell — typically SE of the actual snap target. We stamp the time
+  // a real drag motion ended; click-to-move ignores clicks within 100ms
+  // of that stamp.
+  const lastDragEndedAtRef = useRef<number>(0);
   // v2.423.0 — Optimistic movement budget tracking. The pre-v2.423
   // budget check `distanceFt > (max - used)` reads `used` from
   // currentActor.movement_used_ft, which is the SERVER-side counter.
@@ -7870,6 +7893,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // lets the preview rAF/interval loop survive across re-renders.
   const markSelfWrite = useCallback((tokenId: string, x: number, y: number) => {
     recentSelfWritesRef.current.set(tokenId, { x, y, t: performance.now() });
+  }, []);
+  // v2.441.0 — Stable callback for TokenLayer to notify when a drag
+  // motion ends (i.e. pointerup after non-zero movement). Stamps the
+  // current performance.now() so click-to-move can ignore the synthetic
+  // click that follows the same pointerup tick.
+  const stampDragEnded = useCallback(() => {
+    lastDragEndedAtRef.current = performance.now();
   }, []);
   function shouldSuppressEcho(row: { id?: string; x?: number; y?: number } | null | undefined): boolean {
     if (!row?.id) return false;
@@ -8819,6 +8849,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   useEffect(() => {
     if (!canvasEl) return;
     function onClick(e: MouseEvent) {
+      // v2.441.0 — Suppress the synthetic 'click' the browser fires on
+      // the same tick as a drag's pointerup. Without this, every drag
+      // ends with a follow-up click-to-move animation that re-snaps the
+      // token to the cursor's release cell — typically SE of the
+      // intended drop target. 100ms covers the same-tick case (~0ms
+      // between pointerup and click) plus jitter.
+      if (performance.now() - lastDragEndedAtRef.current < 100) return;
       const ati = activeTokenInfoForMoveRef.current;
       if (!ati || !ati.tokenId || !ati.participantId) return;
       // Block if any tool mode is on — they own canvas clicks.
@@ -9843,6 +9880,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     getEffectiveUsed={getEffectiveUsed}
                     recordMoved={recordMoved}
                     onSnapAnimate={animateSnap}
+                    onDragMotionEnded={stampDragEnded}
                   />
                   {/* v2.234 — TextLayer renders text annotations and
                       handles the placement/edit/delete interactions
