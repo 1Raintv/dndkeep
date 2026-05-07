@@ -148,6 +148,79 @@ function inferConditionFromSaveAction(name: string, desc: string | null | undefi
   return null;
 }
 
+// v2.445.0 — Parse a duration phrase like "for 1 minute" out of an
+// action's desc text. Returns the duration in COMBAT ROUNDS (1 round
+// = 6 seconds; 1 minute = 10 rounds). Returns null when no duration
+// phrase is found, which means "permanent until removed".
+//
+// Patterns matched (case-insensitive):
+//   "for 1 minute"       → 10 rounds
+//   "for 10 minutes"     → 100 rounds (Banishment et al.)
+//   "for 1 hour"         → 600 rounds
+//   "for 1 round"        → 1 round
+//   "for 3 rounds"       → 3 rounds
+//
+// We deliberately don't match "until dispelled" / "permanent" / etc.
+// — those are the implicit default (no duration field).
+function inferConditionDurationRounds(desc: string | null | undefined): number | null {
+  if (!desc) return null;
+  const lower = desc.toLowerCase();
+  // "for N minute(s)"
+  const mMin = lower.match(/for\s+(\d+)\s+minute/);
+  if (mMin) return parseInt(mMin[1], 10) * 10;
+  // "for N hour(s)"
+  const mHr = lower.match(/for\s+(\d+)\s+hour/);
+  if (mHr) return parseInt(mHr[1], 10) * 600;
+  // "for N round(s)"
+  const mR = lower.match(/for\s+(\d+)\s+round/);
+  if (mR) return parseInt(mR[1], 10);
+  return null;
+}
+
+// v2.445.0 — Detect the "repeat the saving throw at the end of each
+// of its turns" pattern. When present, return a save spec mirroring
+// the original save's DC + ability so end-of-turn re-saves can fire.
+// Returns null when the desc doesn't grant a re-save (the condition
+// just runs out via duration).
+//
+// Why we need this signal at all: not every duration-bearing
+// condition gets re-saves. Banishment, for example, lasts 1 minute
+// concentration with NO end-of-turn re-save. Frightful Presence
+// DOES grant end-of-turn re-saves. The phrase is the differentiator.
+function inferSaveToEnd(
+  desc: string | null | undefined,
+  ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA' | null,
+  dc: number | null | undefined,
+): { ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'; dc: number } | null {
+  if (!desc || !ability || typeof dc !== 'number') return null;
+  const lower = desc.toLowerCase();
+  // Common phrasings:
+  //   "repeat the saving throw at the end of each of its turns"
+  //   "make another saving throw at the end of its turns"
+  //   "another DC X saving throw at the end of each of its turns"
+  if (/repeat\s+the\s+saving\s+throw\s+at\s+the\s+end\s+of/.test(lower)) {
+    return { ability, dc };
+  }
+  if (/another\s+saving\s+throw\s+at\s+the\s+end\s+of/.test(lower)) {
+    return { ability, dc };
+  }
+  if (/saving\s+throw\s+at\s+the\s+end\s+of\s+each/.test(lower)) {
+    return { ability, dc };
+  }
+  return null;
+}
+
+// v2.445.0 — Slugify an action name for use as the source-kind portion
+// of an immunity key. "Frightful Presence" → "frightful_presence".
+// Lowercase, alphanumerics + underscores only — keeps the JSONB key
+// simple and safe to compare directly.
+function actionNameToSourceKind(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 function classifyAction(a: MonsterAction): ActionFlavor {
   if (typeof a.attack_bonus === 'number' && a.damage_dice) return 'attack';
   if (a.dc_type && typeof a.dc_value === 'number') return 'save';
@@ -835,6 +908,13 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // is lowercase ("frightened"); applyCondition expects the
                 // capitalized form that matches CONDITION_MAP keys.
                 const conditionName = inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1);
+                // v2.445.0 — Infer duration + end-of-turn re-save spec
+                // from the action's desc. When present, applyCondition
+                // stores them on the source row so advanceTurn's
+                // processor can auto-roll re-saves and auto-expire.
+                const durationRounds = inferConditionDurationRounds(a.desc);
+                const saveToEnd = inferSaveToEnd(a.desc, ability, a.dc_value);
+                const sourceKind = actionNameToSourceKind(a.name);
                 try {
                   await applyCondition({
                     participantId: target.id,
@@ -843,9 +923,17 @@ export default function MonsterActionPanel({ isDM }: Props) {
                     casterParticipantId: currentActor.id,
                     campaignId: encounter.campaign_id,
                     encounterId: encounter.id,
+                    ...(durationRounds ? { durationRounds, currentRound: encounter.round_number } : {}),
+                    ...(saveToEnd ? { saveToEnd } : {}),
+                    sourceKind,
+                    sourceAttackerId: currentActor.id,
                   });
+                  // Build a more informative toast when there's a duration.
+                  const durationLabel = durationRounds
+                    ? ` (${durationRounds === 10 ? '1 min' : `${durationRounds} rd`})`
+                    : '';
                   showToast(
-                    `${target.name} FAILED ${ability} save vs ${a.name} — ${conditionName} applied.`,
+                    `${target.name} FAILED ${ability} save vs ${a.name} — ${conditionName} applied${durationLabel}.`,
                     'info',
                   );
                 } catch (err) {
@@ -1064,6 +1152,14 @@ export default function MonsterActionPanel({ isDM }: Props) {
       const conditionName = inferredCondition
         ? inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1)
         : null;
+      // v2.445.0 — Pre-compute duration + save-to-end + source-kind
+      // once per batch (they're action-level properties, not target-
+      // level). The per-target loop below passes them into
+      // applyCondition. When durationRounds is null, applyCondition
+      // falls through to v2.444 "permanent until removed" behavior.
+      const durationRounds = inferConditionDurationRounds(a.desc);
+      const saveToEnd = inferSaveToEnd(a.desc, ability, a.dc_value);
+      const sourceKind = actionNameToSourceKind(a.name);
 
       // v2.442.0 — Per-target outcome counters for the summary toast.
       // v2.443.0 — Now incremented atomically inside Promise.all because
@@ -1157,6 +1253,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
                   casterParticipantId: currentActor.id,
                   campaignId: encounter.campaign_id,
                   encounterId: encounter.id,
+                  // v2.445.0 — Duration tracking + end-of-turn re-save.
+                  // Same metadata for every target in the batch.
+                  ...(durationRounds ? { durationRounds, currentRound: encounter.round_number } : {}),
+                  ...(saveToEnd ? { saveToEnd } : {}),
+                  sourceKind,
+                  sourceAttackerId: currentActor.id,
                 });
                 conditionAppliedCount++;
               } catch (err) {

@@ -34,6 +34,32 @@ export interface ApplyConditionInput {
   campaignId?: string;
   encounterId?: string | null;
   emitEvent?: boolean;              // default true
+  // v2.445.0 — Duration tracking + end-of-turn re-save support.
+  // ALL of these are optional; conditions without them behave exactly
+  // as in v2.444 ("permanent until manually removed"). Pass them when
+  // the action's text says "for X minutes", "for X rounds", or "repeat
+  // the saving throw at the end of each of its turns".
+  /** Duration in rounds. 1 minute = 10 rounds. Combined with current
+   *  round at write-time to compute expires_at_round. Omit for
+   *  "until removed" semantics. */
+  durationRounds?: number;
+  /** Current encounter round at apply time. Required when
+   *  durationRounds is set; advanceTurn's processor reads
+   *  expires_at_round to know when to auto-remove. */
+  currentRound?: number;
+  /** Save spec the target re-rolls at end of each of its turns. Pass
+   *  the same DC + ability the original failed save used. The end-of-
+   *  turn processor in advanceTurn auto-rolls this; success removes
+   *  the condition AND grants source-keyed immunity. */
+  saveToEnd?: { ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'; dc: number };
+  /** Source kind slug — used as the immunity key. e.g. 'frightful_presence'.
+   *  When combined with sourceAttackerId it produces "<kind>:<attackerId>"
+   *  which is the lookup key in combatants.condition_source_immunities. */
+  sourceKind?: string;
+  /** Who inflicted the condition. Combined with sourceKind into the
+   *  immunity key. Without sourceKind+sourceAttackerId, immunity
+   *  doesn't get tracked even on a successful re-save. */
+  sourceAttackerId?: string;
 }
 
 const CASCADE: Record<string, string[]> = {
@@ -70,6 +96,25 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
 
   const existing: string[] = (part.active_conditions ?? []) as string[];
   const sources = { ...((part.condition_sources ?? {}) as Record<string, any>) };
+
+  // v2.445.0 — Source-keyed immunity check. If the target has a live
+  // immunity to this exact source (e.g. "frightful_presence:dragon-id"),
+  // skip the apply silently. The save that triggered this call still
+  // happened — the failure is just no-op'd here. Caller is expected to
+  // surface "but is IMMUNE" in their toast (we don't echo it from
+  // applyCondition because the caller has the user-facing context).
+  if (input.sourceKind && input.sourceAttackerId) {
+    const immunityKey = `${input.sourceKind}:${input.sourceAttackerId}`;
+    const immunities = (part.condition_source_immunities ?? {}) as Record<string, { expires_at_round: number | null }>;
+    const entry = immunities[immunityKey];
+    if (entry) {
+      // expires_at_round=null → "rest of encounter" (no expiry).
+      // expires_at_round=N → still immune iff currentRound < N.
+      const currentR = input.currentRound ?? 0;
+      const stillImmune = entry.expires_at_round == null || currentR < entry.expires_at_round;
+      if (stillImmune) return;
+    }
+  }
 
   const toApply = new Set<string>();
   toApply.add(input.conditionName);
@@ -122,6 +167,32 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
       actuallyApplied.push(c);
       // Cascaded conditions get a synthetic source so removal can clean them
       const isCascade = c !== input.conditionName;
+      // v2.445.0 — Compute optional duration fields. Only attached to
+      // the PRIMARY (non-cascade) condition — cascaded children inherit
+      // their lifecycle from the parent's removal (handled by the
+      // 'cascade:' source prefix). All fields are optional so existing
+      // entries without them keep "permanent until removed" semantics.
+      let durationFields: Record<string, unknown> = {};
+      if (!isCascade && input.durationRounds && input.durationRounds > 0 && typeof input.currentRound === 'number') {
+        durationFields = {
+          applied_at_round: input.currentRound,
+          duration_rounds: input.durationRounds,
+          expires_at_round: input.currentRound + input.durationRounds,
+        };
+      }
+      let saveToEndFields: Record<string, unknown> = {};
+      if (!isCascade && input.saveToEnd) {
+        saveToEndFields = {
+          save_to_end: { ability: input.saveToEnd.ability, dc: input.saveToEnd.dc },
+        };
+      }
+      let sourceKindFields: Record<string, unknown> = {};
+      if (!isCascade && input.sourceKind && input.sourceAttackerId) {
+        sourceKindFields = {
+          source_kind: input.sourceKind,
+          source_attacker_id: input.sourceAttackerId,
+        };
+      }
       sources[c] = {
         source: isCascade
           ? `cascade:${input.conditionName}`
@@ -129,6 +200,9 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
         ...(input.casterParticipantId && !isCascade
           ? { casterParticipantId: input.casterParticipantId }
           : {}),
+        ...durationFields,
+        ...saveToEndFields,
+        ...sourceKindFields,
       };
     }
   }

@@ -543,6 +543,34 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
     roundIncremented = true;
   }
 
+  // v2.445.0 — End-of-turn condition processing for the OUTGOING
+  // participant. Re-rolls saves for any condition with a save_to_end
+  // spec (Frightful Presence-style 1-minute auras), removes
+  // duration-expired conditions, and grants source-keyed immunity
+  // on success/expiry. Runs BEFORE we write the encounter row so
+  // any condition_resave events appear in the log right before
+  // turn_ended (matches the natural narrative order).
+  const outgoingForConditions = active[currentIdx] ?? null;
+  if (outgoingForConditions) {
+    try {
+      const { processEndOfTurnConditions } = await import('./endOfTurnConditions');
+      await processEndOfTurnConditions({
+        participantId: outgoingForConditions.id,
+        campaignId: outgoingForConditions.campaign_id as string,
+        encounterId,
+        currentRound: encounter.round_number,
+        participantName: outgoingForConditions.name as string,
+        participantType: outgoingForConditions.participant_type as 'character' | 'creature' | 'monster' | 'npc',
+        hiddenFromPlayers: !!outgoingForConditions.hidden_from_players,
+      });
+    } catch (err) {
+      // Defensive: a failure here shouldn't block turn advance.
+      // The condition will simply persist into next turn — DM can
+      // remove manually.
+      console.error('[advanceTurn] end-of-turn condition processing failed', err);
+    }
+  }
+
   // Reset per-turn budgets for the incoming actor
   const incomingParticipant = active[nextIdx];
 
