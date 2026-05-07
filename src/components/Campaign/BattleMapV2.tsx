@@ -9002,7 +9002,29 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // Path includes both endpoints. Distance = (cells-1) * 5ft.
       const distanceFt = (path.length - 1) * 5;
 
+      // v2.447.0 — Optimistic budget pre-check using getEffectiveUsed.
+      // Mirrors the drag-drop pre-check (line ~5321). Pre-v2.447 click-
+      // to-move only consulted canMove (server-authoritative), which
+      // doesn't account for in-flight drags whose logMovement hasn't
+      // landed yet. A fast "drag 30ft, then click-to-move 30ft" combo
+      // could pass canMove (server still shows 0 used) and over-spend.
+      // This local pre-check reads the predicted-post-pending-moves
+      // remaining and rejects before any work fires.
+      const effectiveUsed = getEffectiveUsed(ati.participantId, ati.used);
+      const remaining = Math.max(0, ati.max - effectiveUsed);
+      if (distanceFt > remaining) {
+        showToast(
+          `Not enough movement (need ${distanceFt}ft, have ${remaining}ft).`,
+          'warn',
+        );
+        return;
+      }
+
       (async () => {
+        // Authoritative server check as a backstop. The local pre-
+        // check above passed, so this only fires when the local cache
+        // was stale (rare). Failure path is the same as the local
+        // rejection — toast and bail.
         const check = await canMove(ati.participantId!, distanceFt);
         if (!check.allowed) {
           showToast(
@@ -9122,6 +9144,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           return;
         }
         if (distanceFt > 0) {
+          // v2.447.0 — Bump the optimistic budget BEFORE awaiting
+          // logMovement, mirroring the drag-drop pattern (v2.437).
+          // This closes the race window where a fast follow-up move
+          // could read a stale used value and pass its pre-check.
+          recordMoved(ati.participantId!, distanceFt, ati.used);
           try {
             await logMovement({
               campaignId: ati.campaignId!,
