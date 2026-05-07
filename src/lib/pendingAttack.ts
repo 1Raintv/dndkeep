@@ -44,6 +44,19 @@ export function rollD20(): number {
 // Parses dice expressions like "2d8+3" or "1d6" and returns the individual
 // rolls + modifier. Falls back to [0, 0] on parse failure.
 export function rollDiceExpr(expr: string): { rolls: number[]; modifier: number; total: number } {
+  // v2.448.0 — Bare-integer support. Some bestiary entries (Crab,
+  // Weasel, etc. — 19 tiny creatures total) record damage as a
+  // literal "1" because the SRD says "Hit: 1 piercing damage" with
+  // no dice expression. Treat a bare positive integer as a constant
+  // total: zero rolls, modifier=N, total=N. Rolls go in the modifier
+  // (not the rolls array) because there's no random component to
+  // animate. Pre-v2.448 these returned total=0 — the attack would
+  // hit and deal nothing.
+  const bareInt = /^\s*(\d+)\s*$/.exec(expr);
+  if (bareInt) {
+    const n = parseInt(bareInt[1], 10);
+    return { rolls: [], modifier: n, total: n };
+  }
   const m = /^\s*(\d+)d(\d+)\s*([+-]\s*\d+)?\s*$/i.exec(expr);
   if (!m) return { rolls: [], modifier: 0, total: 0 };
   const count = parseInt(m[1], 10);
