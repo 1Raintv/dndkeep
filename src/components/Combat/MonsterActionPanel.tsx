@@ -92,6 +92,32 @@ interface MonsterAction {
   dc_value?: number;
   dc_success?: 'none' | 'half' | 'other';
   usage?: string;
+  // v2.449.0 — Multi-option breath weapons. When present, this action
+  // is a CHOICE between two saves (e.g. Adult Gold = Fire Breath OR
+  // Weakening Breath). The parent action carries shared recharge state
+  // via `usage`; each option carries its own structured save fields.
+  // When non-empty, the DM gets a sub-picker first; on pick we
+  // synthesize a concrete MonsterAction from the option and dispatch
+  // through the normal save flow.
+  breath_options?: BreathOption[];
+}
+
+// v2.449.0 — Single breath-weapon option within a multi-option action.
+// Shape mirrors the parsed structure produced by the v2.449 migration
+// (parse_breath_option in Postgres). All structural fields are optional
+// because some options are condition-only ("save or fall unconscious")
+// while others are damage-only or both.
+interface BreathOption {
+  name: string;
+  dc_type: string;
+  dc_value: number;
+  dc_success: 'none' | 'half' | 'other';
+  damage_dice?: string;
+  damage_type?: string;
+  area_shape: 'cone' | 'line';
+  area_size_ft: number;
+  area_width_ft?: number;   // line-only
+  desc: string;
 }
 
 type ActionFlavor = 'attack' | 'save' | 'descriptive';
@@ -224,6 +250,11 @@ function actionNameToSourceKind(name: string): string {
 function classifyAction(a: MonsterAction): ActionFlavor {
   if (typeof a.attack_bonus === 'number' && a.damage_dice) return 'attack';
   if (a.dc_type && typeof a.dc_value === 'number') return 'save';
+  // v2.449.0 — Multi-option breath weapons don't carry top-level
+  // dc_type/dc_value (those are per-option), but they're functionally
+  // save actions — the DM picks an option, then runs a save batch.
+  // Classify as 'save' so the button renders as clickable.
+  if (a.breath_options && a.breath_options.length >= 2) return 'save';
   return 'descriptive';
 }
 
@@ -315,6 +346,16 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // action is in flight + the parsed cone length so the consumer
   // effect can configure aoePreview and resolve targets on click.
   const [conePickingFor, setConePickingFor] = useState<{ action: MonsterAction; lengthFt: number } | null>(null);
+  // v2.449.0 — When the DM clicks a multi-option breath weapon (e.g.
+  // Adult Gold Dragon's "Breath Weapons" with Fire Breath + Weakening
+  // Breath), we first show a sub-picker to choose ONE of the options.
+  // On choice we synthesize a concrete MonsterAction from the option
+  // (with its dc_value, damage_dice, area shape/size + the option's
+  // own desc so the cone parser picks up "X-foot cone"), then
+  // dispatch through the existing cone/multi-target/single-target
+  // routing. The recharge state on the parent action is unchanged —
+  // it ticks once for whichever option fires.
+  const [breathOptionPickingFor, setBreathOptionPickingFor] = useState<MonsterAction | null>(null);
   const [busy, setBusy] = useState(false);
   // v2.416.0 — Multiattack guided mode. When the DM clicks the
   // "Multiattack" action, we parse its desc into an ordered sequence
@@ -2002,7 +2043,15 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 );
               }
               if (flavor === 'save') {
-                const sub = `DC ${action.dc_value} ${action.dc_type}${action.damage_dice ? ` · ${action.damage_dice} ${action.damage_type ?? ''}` : ''}${action.usage === 'recharge on roll' ? ' · Recharge 5–6' : ''}`;
+                // v2.449.0 — Multi-option breath weapons render a
+                // distinct subtitle ("Choose 1 of N · Recharge 5-6")
+                // because the parent action has no top-level dc_value
+                // / damage_dice — those are per-option and surfaced in
+                // the BreathOptionPicker that opens on click.
+                const isMultiOptionBreathSub = (action.breath_options?.length ?? 0) >= 2;
+                const sub = isMultiOptionBreathSub
+                  ? `Choose 1 of ${action.breath_options!.length}${action.usage === 'recharge on roll' ? ' · Recharge 5–6' : ''}`
+                  : `DC ${action.dc_value} ${action.dc_type}${action.damage_dice ? ` · ${action.damage_dice} ${action.damage_type ?? ''}` : ''}${action.usage === 'recharge on roll' ? ' · Recharge 5–6' : ''}`;
                 // v2.415.0 — Save-vs-DC actions are now clickable and
                 // resolve via the same target picker as attacks. The
                 // chain auto-rolls the target's save, applies damage
@@ -2035,11 +2084,19 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // single-target picker as before.
                 const coneLengthFt = parseConeReachFt(action.desc);
                 const isMulti = isMultiTargetSaveAction(action.desc);
+                // v2.449.0 — Multi-option breath weapons take priority
+                // over the cone/multi-target routing — we need to know
+                // WHICH option to fire before we can pick a shape. The
+                // chosen option is synthesized into a concrete action
+                // and re-dispatched through this same routing on pick.
+                const isMultiOptionBreath = (action.breath_options?.length ?? 0) >= 2;
                 return (
                   <button
                     key={key}
                     onClick={() => {
-                      if (coneLengthFt != null) {
+                      if (isMultiOptionBreath) {
+                        setBreathOptionPickingFor(action);
+                      } else if (coneLengthFt != null) {
                         setConePickingFor({ action, lengthFt: coneLengthFt });
                       } else if (isMulti) {
                         setMultiSavePickingFor(action);
@@ -2374,7 +2431,151 @@ export default function MonsterActionPanel({ isDM }: Props) {
           </button>
         </div>
       )}
+      {/* v2.449.0 — Multi-option breath weapon sub-picker. Renders a
+          two-button overlay listing the option names + their key stats
+          (DC, ability, damage, area shape). On click, synthesizes a
+          concrete MonsterAction from the picked option and re-routes
+          through the cone / multi-target picker as appropriate. */}
+      {breathOptionPickingFor && (
+        <BreathOptionPicker
+          action={breathOptionPickingFor}
+          onCancel={() => setBreathOptionPickingFor(null)}
+          onPick={(opt) => {
+            // Synthesize a concrete action carrying the picked option's
+            // structured fields. Critically, we use the option's OWN
+            // desc (which contains "X-foot cone" / "X-foot line") so
+            // downstream parsers (parseConeReachFt, parseSaveRangeFt)
+            // hit on the option's geometry, not the parent's preamble.
+            const concrete: MonsterAction = {
+              name: opt.name,
+              desc: opt.desc,
+              dc_type: opt.dc_type,
+              dc_value: opt.dc_value,
+              dc_success: opt.dc_success,
+              ...(opt.damage_dice ? { damage_dice: opt.damage_dice } : {}),
+              ...(opt.damage_type ? { damage_type: opt.damage_type } : {}),
+              usage: breathOptionPickingFor.usage,
+            };
+            setBreathOptionPickingFor(null);
+            // Dispatch by area shape. Cones go through v2.444's cone
+            // overlay. Lines fall back to the multi-target picker —
+            // line geometry overlay is a future ship; the picker still
+            // works for resolution.
+            if (opt.area_shape === 'cone') {
+              setConePickingFor({ action: concrete, lengthFt: opt.area_size_ft });
+            } else {
+              setMultiSavePickingFor(concrete);
+            }
+          }}
+        />
+      )}
     </>,
+    document.body,
+  );
+}
+
+// v2.449.0 — Inline picker for choosing one of two breath-weapon
+// options. Centered modal, click-away dismisses, ESC dismisses.
+// Each option button shows the name, save DC + ability, damage tuple
+// (when present), and AOE shape — enough info for the DM to pick at
+// a glance without opening the desc text.
+function BreathOptionPicker({
+  action, onPick, onCancel,
+}: {
+  action: MonsterAction;
+  onPick: (opt: BreathOption) => void;
+  onCancel: () => void;
+}) {
+  const opts = action.breath_options ?? [];
+  // ESC closes. Mounted via document.body portal so we don't fight
+  // the parent panel's stacking context.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 30200,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div style={{
+        width: 'min(520px, 96vw)',
+        background: 'var(--c-card)',
+        border: '1px solid var(--c-border)',
+        borderRadius: 8,
+        boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
+        fontFamily: 'var(--ff-body)',
+        color: 'var(--t-1)',
+        overflow: 'hidden',
+      }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--c-border)' }}>
+          <div style={{ fontSize: 10, color: 'var(--t-3)', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Choose a breath weapon
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{action.name}</div>
+        </div>
+        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {opts.map((opt, i) => (
+            <button
+              key={`${opt.name}-${i}`}
+              onClick={() => onPick(opt)}
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 4,
+                padding: '10px 12px', borderRadius: 6,
+                background: 'rgba(167,139,250,0.10)',
+                border: '1px solid rgba(167,139,250,0.5)',
+                cursor: 'pointer', textAlign: 'left',
+                color: 'var(--t-1)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#c4b5fd', flex: 1 }}>{opt.name}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-2)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  {opt.area_shape === 'cone' ? `${opt.area_size_ft}ft cone` : `${opt.area_size_ft}ft line${opt.area_width_ft ? ` (${opt.area_width_ft}ft wide)` : ''}`}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--t-2)' }}>
+                <span>DC {opt.dc_value} {opt.dc_type}</span>
+                {opt.damage_dice && (
+                  <span>· {opt.damage_dice} {opt.damage_type ?? ''} ({opt.dc_success === 'half' ? 'half on save' : 'no half'})</span>
+                )}
+                {!opt.damage_dice && (
+                  <span>· save-or-effect</span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4, marginTop: 2 }}>
+                {opt.desc.replace(/^[^.]+\.\s*/, '')}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: '8px 14px', borderTop: '1px solid var(--c-border)', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '6px 12px',
+              background: 'transparent',
+              border: '1px solid var(--c-border)',
+              borderRadius: 4,
+              color: 'var(--t-2)',
+              fontSize: 11, fontWeight: 700,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
     document.body,
   );
 }
