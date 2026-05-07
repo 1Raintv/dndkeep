@@ -9,9 +9,12 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { spendLegendaryAction } from '../../lib/legendaryActions';
-import type { CombatParticipant } from '../../types';
+import type { CombatParticipant, MonsterLegendaryAction } from '../../types';
 import LegendaryActionConfigModal from './LegendaryActionConfigModal';
+// v2.446.0 — The resolver runs the actual action mechanics (attack
+// chain / save batch / ability check) instead of just decrementing
+// the LA pool. Spending happens inside the resolver on confirm.
+import LegendaryActionResolverModal from './LegendaryActionResolverModal';
 
 interface Props {
   participant: CombatParticipant;
@@ -22,32 +25,24 @@ interface Props {
 }
 
 export default function LegendaryActionPopover({ participant, campaignId, encounterId, anchor, onClose }: Props) {
-  const [busy, setBusy] = useState<string | null>(null);   // action name being spent
   const [showConfig, setShowConfig] = useState(false);
+  // v2.446.0 — When non-null, the resolver modal is open with this LA
+  // option queued. Closing the resolver returns control to the popover
+  // (it stays open in case the DM wants to spend another LA point).
+  const [resolving, setResolving] = useState<MonsterLegendaryAction | null>(null);
 
   const actions = participant.legendary_actions_config ?? [];
   const remaining = participant.legendary_actions_remaining ?? 0;
   const total = participant.legendary_actions_total ?? 0;
 
-  async function handleSpend(actionName: string, cost: number, desc?: string) {
-    if (busy) return;
-    setBusy(actionName);
-    try {
-      await spendLegendaryAction({
-        participantId: participant.id,
-        actionName,
-        actionCost: cost,
-        actionDesc: desc,
-        campaignId,
-        encounterId,
-        actorType: participant.participant_type as any,
-        actorName: participant.name,
-        hiddenFromPlayers: participant.hidden_from_players,
-      });
-    } finally {
-      setBusy(null);
-      onClose();
-    }
+  // v2.446.0 — Open the resolver modal. The actual LA-point spend
+  // happens inside the resolver on Confirm (so cancelled / aborted
+  // resolutions don't waste a point). The popover hides itself
+  // while the resolver is open to avoid a stacking confusion.
+  function handleOpen(option: MonsterLegendaryAction) {
+    const cost = option.cost ?? 1;
+    if (cost > remaining) return;
+    setResolving(option);
   }
 
   // Close on escape
@@ -69,6 +64,22 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
       <LegendaryActionConfigModal
         participant={participant}
         onClose={() => { setShowConfig(false); onClose(); }}
+      />
+    );
+  }
+
+  // v2.446.0 — Resolver takes over the screen while open. The popover's
+  // backdrop click-away below would close us if we rendered both, so
+  // we hide the popover entirely while the resolver is up.
+  if (resolving) {
+    return (
+      <LegendaryActionResolverModal
+        participant={participant}
+        campaignId={campaignId}
+        encounterId={encounterId}
+        laOption={resolving}
+        cost={resolving.cost ?? 1}
+        onClose={() => { setResolving(null); onClose(); }}
       />
     );
   }
@@ -131,12 +142,11 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
             {actions.map((a, i) => {
               const cost = a.cost ?? 1;
               const canAfford = cost <= remaining;
-              const isBusy = busy === a.name;
               return (
                 <button
                   key={`${a.name}-${i}`}
-                  onClick={() => handleSpend(a.name, cost, a.desc)}
-                  disabled={!canAfford || isBusy}
+                  onClick={() => handleOpen(a)}
+                  disabled={!canAfford}
                   title={a.desc || a.name}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
