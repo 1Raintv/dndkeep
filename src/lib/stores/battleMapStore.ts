@@ -346,6 +346,13 @@ interface BattleMapStore {
    *  the result. */
   setDirectionPickActive: (active: boolean) => void;
   setDirectionPickResult: (result: { worldX: number; worldY: number } | null) => void;
+  /** v2.444.0 — Live-update only the direction fields of the active
+   *  AoE preview (cone or line). No-op if aoePreview is null. Used by
+   *  BattleMapV2's direction-pick mousemove handler so cone overlays
+   *  rotate continuously with the cursor before the player commits a
+   *  direction with a click. Cheaper than setAoePreview() because we
+   *  don't rebuild the whole object. */
+  setAoePreviewDirection: (worldX: number, worldY: number) => void;
   /** v2.385.0 — Setter for the pan-to-token channel. Pass world coords
    *  (token.x/y are already world pixels). Pass null to clear after
    *  consuming. */
@@ -515,6 +522,20 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
     set((s) => ({ directionPick: { active, result: active ? null : s.directionPick.result } })),
   setDirectionPickResult: (result) =>
     set((s) => ({ directionPick: { ...s.directionPick, result } })),
+  // v2.444.0 — Live cone/line direction update. Splices new direction
+  // fields into the active aoePreview without rebuilding the object.
+  // No-op when aoePreview is null (no overlay to update).
+  setAoePreviewDirection: (worldX, worldY) =>
+    set((s) => {
+      if (!s.aoePreview) return {};
+      return {
+        aoePreview: {
+          ...s.aoePreview,
+          directionWorldX: worldX,
+          directionWorldY: worldY,
+        },
+      };
+    }),
   // v2.385.0 — Pan request channel. Each call increments a nonce so
   // consecutive identical clicks still re-fire the consumer effect.
   requestPan: (worldX, worldY) =>

@@ -69,6 +69,14 @@ import { applyCondition } from '../../lib/conditions';
 // with one. Per-target save+damage+apply chains still run client-side
 // but in parallel via Promise.all.
 import { declareSaveBatch } from '../../lib/saveBatch';
+// v2.444.0 — Cone targeting. Detect cone-shape save actions in the
+// desc, then route through the BattleMapV2 cone overlay (already
+// used by spell AoE). Hit-detection picks targets whose token center
+// falls inside the cone; those targets are then resolved via the
+// existing multi-target save batch flow.
+import { findParticipantsInCone, parseConeReachFt, type ConeTarget } from '../../lib/coneGeometry';
+import { useBattleMapStore } from '../../lib/stores/battleMapStore';
+import { findTokenForParticipant } from '../../lib/battleMapGeometry';
 import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
@@ -228,6 +236,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // single-target picker. Mutually exclusive with `pickingFor` —
   // we only ever open one picker at a time.
   const [multiSavePickingFor, setMultiSavePickingFor] = useState<MonsterAction | null>(null);
+  // v2.444.0 — Cone-target picker state. Set when the DM clicks a
+  // cone-shape save action (parsed via parseConeReachFt). The map
+  // overlay handles the actual aim — this state just records which
+  // action is in flight + the parsed cone length so the consumer
+  // effect can configure aoePreview and resolve targets on click.
+  const [conePickingFor, setConePickingFor] = useState<{ action: MonsterAction; lengthFt: number } | null>(null);
   const [busy, setBusy] = useState(false);
   // v2.416.0 — Multiattack guided mode. When the DM clicks the
   // "Multiattack" action, we parse its desc into an ordered sequence
@@ -455,8 +469,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
 
   // Reload battle map when picker opens. The same map drives all
   // target distance reads in a single picker session.
+  // v2.444.0 — Also fire on multiSavePickingFor and conePickingFor;
+  // both rely on token positions to compute distances / cone hits.
   useEffect(() => {
-    if (!pickingFor || !encounter) {
+    const anyPickerOpen = !!pickingFor || !!multiSavePickingFor || !!conePickingFor;
+    if (!anyPickerOpen || !encounter) {
       setBattleMap(null);
       return;
     }
@@ -468,7 +485,135 @@ export default function MonsterActionPanel({ isDM }: Props) {
       console.error('[MonsterActionPanel] map load failed', err);
     });
     return () => { cancelled = true; };
-  }, [pickingFor, encounter]);
+  }, [pickingFor, multiSavePickingFor, conePickingFor, encounter]);
+
+  // v2.444.0 — Cone-pick lifecycle. Three phases:
+  //   1. Setup (conePickingFor + battleMap both present, directionPick
+  //      not yet active): write aoePreview with shape='cone', activate
+  //      directionPick, push initial direction one cell east of apex
+  //      so the cone has SOMETHING visible before the first mousemove.
+  //   2. Live aim (directionPick active): BattleMapV2's mousemove
+  //      handler updates aoePreview.directionWorldX/Y on every move.
+  //      We don't need to do anything here.
+  //   3. Click resolved (directionPick.result set): compute targets
+  //      in the cone via findParticipantsInCone, hand off to
+  //      handleMultiSavePick, then clear the overlay state.
+  const setAoePreview = useBattleMapStore(s => s.setAoePreview);
+  const setDirectionPickActive = useBattleMapStore(s => s.setDirectionPickActive);
+  const setDirectionPickResult = useBattleMapStore(s => s.setDirectionPickResult);
+  const directionPickResult = useBattleMapStore(s => s.directionPick.result);
+
+  // Compute apex world coords for the active actor's token. Cached
+  // by useMemo so the setup effect doesn't re-fire on unrelated
+  // re-renders.
+  const coneApex = useMemo(() => {
+    if (!conePickingFor || !battleMap || !currentActor) return null;
+    const lookup: ParticipantForTokenLookup = {
+      id: currentActor.id,
+      name: currentActor.name,
+      participant_type: currentActor.participant_type,
+      entity_id: currentActor.entity_id,
+    };
+    const token = findTokenForParticipant(lookup, battleMap.tokens);
+    if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') return null;
+    // Match the cone renderer's convention: world center of cell
+    // (col, row) = (col*size + size/2, row*size + size/2).
+    return {
+      worldX: token.col * battleMap.grid_size + battleMap.grid_size / 2,
+      worldY: token.row * battleMap.grid_size + battleMap.grid_size / 2,
+    };
+  }, [conePickingFor, battleMap, currentActor]);
+
+  // Phase 1: setup. Fires once per cone-pick session (or when battleMap
+  // arrives late). Cleanup on unmount or cancel clears the overlay.
+  useEffect(() => {
+    if (!conePickingFor || !coneApex) return;
+    setAoePreview({
+      centerWorldX: coneApex.worldX,
+      centerWorldY: coneApex.worldY,
+      sizeFt: conePickingFor.lengthFt,
+      shape: 'cone',
+      // Seed direction one cell east of apex so the cone is visible
+      // before the first mousemove. Will be replaced as soon as the
+      // user moves the cursor over the canvas.
+      directionWorldX: coneApex.worldX + (battleMap?.grid_size ?? 70),
+      directionWorldY: coneApex.worldY,
+    });
+    setDirectionPickActive(true);
+    return () => {
+      setAoePreview(null);
+      setDirectionPickActive(false);
+      setDirectionPickResult(null);
+    };
+  }, [conePickingFor, coneApex, battleMap, setAoePreview, setDirectionPickActive, setDirectionPickResult]);
+
+  // Phase 3: consume the click result. Compute targets in cone and
+  // hand off to handleMultiSavePick.
+  useEffect(() => {
+    if (!conePickingFor || !coneApex || !battleMap || !directionPickResult || !currentActor) return;
+    const { action, lengthFt } = conePickingFor;
+    const dirX = directionPickResult.worldX;
+    const dirY = directionPickResult.worldY;
+
+    // Build candidate world positions for every other participant.
+    // Skip the actor (you can't auto-cone yourself), dead targets,
+    // and any participant whose token isn't on the active scene.
+    const candidates: ConeTarget<CombatParticipant>[] = [];
+    for (const p of participants) {
+      if (p.id === currentActor.id) continue;
+      if (p.is_dead) continue;
+      const lookup: ParticipantForTokenLookup = {
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      };
+      const token = findTokenForParticipant(lookup, battleMap.tokens);
+      if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') continue;
+      candidates.push({
+        participant: p,
+        worldX: token.col * battleMap.grid_size + battleMap.grid_size / 2,
+        worldY: token.row * battleMap.grid_size + battleMap.grid_size / 2,
+      });
+    }
+
+    const hits = findParticipantsInCone(
+      coneApex.worldX, coneApex.worldY,
+      dirX, dirY,
+      lengthFt,
+      battleMap.grid_size,
+      candidates,
+    );
+    const targets = hits.map(h => h.participant);
+
+    // Clear cone-pick state BEFORE handoff so the overlay disappears
+    // immediately. handleMultiSavePick runs the save batch + condition
+    // application + summary toast — all the existing flow.
+    setConePickingFor(null);
+    setDirectionPickResult(null);
+
+    if (targets.length === 0) {
+      showToast(`No creatures in the ${lengthFt}-ft cone.`, 'info');
+      return;
+    }
+
+    // Reuse the multi-save pipeline by setting state then
+    // immediately calling its handler. handleMultiSavePick reads
+    // multiSavePickingFor at entry, so we set it synchronously then
+    // call. (The setState is processed async, but the function
+    // closes over `a` from its arg, not from state, so we can also
+    // just call it directly with a constructed action ref.)
+    //
+    // Simpler: drive directly via a one-shot wrapper that mirrors
+    // handleMultiSavePick's body. To avoid a near-duplicate, we
+    // re-route through the same handler by setting the state and
+    // queueing the handler in a microtask.
+    setMultiSavePickingFor(action);
+    queueMicrotask(() => {
+      handleMultiSavePick(targets);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMultiSavePick is stable in usage; including it would loop
+  }, [directionPickResult, conePickingFor, coneApex, battleMap, currentActor, participants]);
 
   const visible = useMemo(() => {
     if (!isDM) return false;
@@ -1780,13 +1925,25 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // "Each creature in that area", "of the dragon's
                 // choice"). Single-target save actions keep the
                 // existing single-target picker.
+                // v2.444.0 — Cone-shape actions get their own
+                // routing path. parseConeReachFt picks up "X-foot
+                // cone" patterns. When matched, conePickingFor is
+                // set and the map overlay handles aim. When not,
+                // the action falls through to the multi-target or
+                // single-target picker as before.
+                const coneLengthFt = parseConeReachFt(action.desc);
                 const isMulti = isMultiTargetSaveAction(action.desc);
                 return (
                   <button
                     key={key}
                     onClick={() => {
-                      if (isMulti) setMultiSavePickingFor(action);
-                      else setPickingFor(action);
+                      if (coneLengthFt != null) {
+                        setConePickingFor({ action, lengthFt: coneLengthFt });
+                      } else if (isMulti) {
+                        setMultiSavePickingFor(action);
+                      } else {
+                        setPickingFor(action);
+                      }
                     }}
                     disabled={disabled}
                     title={
@@ -2060,6 +2217,60 @@ export default function MonsterActionPanel({ isDM }: Props) {
           onConfirm={handleMultiSavePick}
           onCancel={() => setMultiSavePickingFor(null)}
         />
+      )}
+      {/* v2.444.0 — Cone-pick instruction banner. Shown across the top
+          of the viewport while a cone-shape save action is being aimed.
+          The map underneath stays interactive (directionPick captures
+          mousemove + click); the banner is purely an instruction +
+          escape hatch. */}
+      {conePickingFor && currentActor && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 16px',
+            background: 'rgba(20,20,30,0.95)',
+            border: '1px solid rgba(167,139,250,0.5)',
+            borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            fontFamily: 'var(--ff-body)',
+            color: 'var(--t-1)',
+            pointerEvents: 'auto',
+          }}
+        >
+          <span style={{ fontSize: 18 }}>🎯</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              {conePickingFor.action.name} — {conePickingFor.lengthFt}-ft cone
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--t-2)' }}>
+              Move cursor to aim · Click to confirm direction
+            </span>
+          </div>
+          <button
+            onClick={() => setConePickingFor(null)}
+            style={{
+              padding: '6px 12px',
+              background: 'transparent',
+              border: '1px solid var(--c-border)',
+              borderRadius: 4,
+              color: 'var(--t-2)',
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
       )}
     </>,
     document.body,

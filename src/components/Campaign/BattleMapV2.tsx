@@ -8126,6 +8126,11 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   const directionPickActiveStore = useBattleMapStore(s => s.directionPick.active);
   const setDirectionPickResultStore = useBattleMapStore(s => s.setDirectionPickResult);
   const setDirectionPickActiveStore = useBattleMapStore(s => s.setDirectionPickActive);
+  // v2.444.0 — Live direction updater for cone/line overlays. While
+  // directionPick is active, every mousemove pushes cursor world coords
+  // into aoePreview.directionWorldX/Y so the cone rotates continuously
+  // with the cursor. Click commits + deactivates as before.
+  const setAoePreviewDirectionStore = useBattleMapStore(s => s.setAoePreviewDirection);
   useEffect(() => {
     if (!canvasEl || !directionPickActiveStore) return;
     const prevCursor = canvasEl.style.cursor;
@@ -8142,14 +8147,28 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       setDirectionPickResultStore({ worldX: worldPoint.x, worldY: worldPoint.y });
       setDirectionPickActiveStore(false);
     }
+    // v2.444.0 — Live preview tracking. Throttling not needed; the
+    // store update is a single object splice and the Pixi cone redraw
+    // is gated by requestAnimationFrame in the renderer's effect.
+    function onMouseMove(e: MouseEvent) {
+      const vp = vpRef.current;
+      if (!canvasEl || !vp) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPoint = vp.toWorld(screenX, screenY);
+      setAoePreviewDirectionStore(worldPoint.x, worldPoint.y);
+    }
     canvasEl.addEventListener('click', onClick, true);
+    canvasEl.addEventListener('mousemove', onMouseMove);
     return () => {
       if (canvasEl) {
         canvasEl.removeEventListener('click', onClick, true);
+        canvasEl.removeEventListener('mousemove', onMouseMove);
         canvasEl.style.cursor = prevCursor;
       }
     };
-  }, [canvasEl, directionPickActiveStore, setDirectionPickResultStore, setDirectionPickActiveStore]);
+  }, [canvasEl, directionPickActiveStore, setDirectionPickResultStore, setDirectionPickActiveStore, setAoePreviewDirectionStore]);
 
   // v2.239.0 — Pan-to-token. Click a PartyVitalsBar card → camera
   // animates to that PC's linked token on the current scene. Lifts
