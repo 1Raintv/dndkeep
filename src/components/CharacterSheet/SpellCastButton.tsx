@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
@@ -9,11 +9,18 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
-import BuffTargetPickerModal from '../Combat/BuffTargetPickerModal';
-import DeclareSpellCastModal from '../Combat/DeclareSpellCastModal';
-import SpellTargetPickerModal from '../Combat/SpellTargetPickerModal';
-import MultiAttackPickerModal from '../Combat/MultiAttackPickerModal';
-import SpellHealPickerModal from '../Combat/SpellHealPickerModal';
+// v2.443.0 — Lazy-load all five spell-cast modals. They open
+// conditionally based on spell type (buff / declare / AoE save /
+// multi-beam / heal), so a typical spell-cast click only ever loads
+// one of them. Pre-v2.443 this file dragged ~2253 lines of modal
+// code into every character sheet's first paint. Suspense fallback
+// is a tiny inline spinner — the user explicitly clicked Cast and
+// expects a brief beat before the picker appears.
+const BuffTargetPickerModal = lazy(() => import('../Combat/BuffTargetPickerModal'));
+const DeclareSpellCastModal = lazy(() => import('../Combat/DeclareSpellCastModal'));
+const SpellTargetPickerModal = lazy(() => import('../Combat/SpellTargetPickerModal'));
+const MultiAttackPickerModal = lazy(() => import('../Combat/MultiAttackPickerModal'));
+const SpellHealPickerModal = lazy(() => import('../Combat/SpellHealPickerModal'));
 import { findMultiAttackSpell, computeDefaultAttackCount } from '../../lib/multiAttackSpells';
 import { findHealSpell, type HealSpellDef } from '../../lib/healSpells';
 import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
@@ -1290,6 +1297,11 @@ export default function SpellCastButton({
  </div>,
  document.body
  )}
+ {/* v2.443.0 — One Suspense boundary for all five lazy-loaded
+     spell modals. Only one is ever rendered at a time (states
+     are mutually exclusive), but a single boundary keeps the
+     fallback simple and centralizes the loading fade. */}
+ <Suspense fallback={null}>
  {/* v2.115.0 — Phase H pt 6: buff target picker for registry spells */}
  {buffPickerOpen && campaignId && (
  <BuffTargetPickerModal
@@ -1389,6 +1401,7 @@ export default function SpellCastButton({
  }}
  />
  )}
+ </Suspense>
  </>
  );
 }

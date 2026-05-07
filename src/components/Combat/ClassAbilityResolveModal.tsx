@@ -53,19 +53,13 @@ import type { ClassAbility, SaveSpec } from '../../data/classAbilities';
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
 
-export type SaveOutcome = 'pending' | 'passed' | 'failed' | 'auto-failed';
-
-export interface TargetOutcome {
-  participantId: string;
-  participantName: string;
-  outcome: SaveOutcome;
-  d20?: number;
-  // v2.249.0 — total includes the bonus applied at roll time. Used by
-  // the action log so the line reads "(d20=12 +3 = 15)" rather than
-  // just the raw d20.
-  total?: number;
-  bonus?: number;
-}
+// v2.443.0 — TargetOutcome / SaveOutcome / formatOutcomesLog moved
+// to src/lib/classAbilityOutcomes.ts so the parent (ClassAbilitiesSection)
+// can import them without dragging in the entire modal. Re-exported
+// here for backward compat with any other consumers.
+export type { SaveOutcome, TargetOutcome } from '../../lib/classAbilityOutcomes';
+export { formatOutcomesLog } from '../../lib/classAbilityOutcomes';
+import type { SaveOutcome, TargetOutcome } from '../../lib/classAbilityOutcomes';
 
 interface Props {
   open: boolean;
@@ -549,25 +543,12 @@ function btnStyle(color: string, active = false): React.CSSProperties {
  * d20+bonus=total. Falls back to the v2.247 d20-only format for
  * outcomes recorded via Mark Pass/Mark Fail before any roll happened.
  */
-export function formatOutcomesLog(
-  abilityName: string,
-  saveDC: number,
-  saveAbility: string,
-  outcomes: TargetOutcome[],
-): string {
-  if (outcomes.length === 0) return `${abilityName} · DC ${saveDC} ${saveAbility} · no targets`;
-  const parts = outcomes.map(o => {
-    const rollDetail = o.total != null && o.bonus != null && o.d20 != null
-      ? ` (d20=${o.d20}${o.bonus >= 0 ? '+' : ''}${o.bonus}=${o.total})`
-      : o.d20 != null ? ` (d20=${o.d20})` : '';
-    const tag = o.outcome === 'auto-failed' ? 'willing' :
-                o.outcome === 'passed' ? `passed${rollDetail}` :
-                o.outcome === 'failed' ? `failed${rollDetail}` :
-                'pending';
-    return `${o.participantName}: ${tag}`;
-  });
-  return `${abilityName} · DC ${saveDC} ${saveAbility} · ${parts.join(' · ')}`;
+export function formatOutcomesLog_DEPRECATED_INLINE(): never {
+  throw new Error('formatOutcomesLog moved to src/lib/classAbilityOutcomes.ts');
 }
+// (The actual function is re-exported at the top of this file from the
+// new module; this stub exists only to avoid line-number drift in any
+// stack-trace breadcrumbs left around from earlier sessions.)
 
 // Re-export logAction for the parent so it doesn't need a separate import
 // path just to log after onConfirmed.

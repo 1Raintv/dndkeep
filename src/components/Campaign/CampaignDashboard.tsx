@@ -45,9 +45,17 @@ import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import MonsterActionPanel from '../Combat/MonsterActionPanel';
 import StartCombatButton from '../Combat/StartCombatButton';
-import AttackResolutionModal from '../Combat/AttackResolutionModal';
-import ReactionPromptModal from '../Combat/ReactionPromptModal';
-import LegendaryResistancePromptModal from '../Combat/LegendaryResistancePromptModal';
+// v2.443.0 — Lazy-load combat modals. These are mounted at the
+// dashboard root and listen for state to open themselves, but the
+// vast majority of the time they're not rendering anything (closed
+// state returns null). Keeping their JSX off the initial bundle
+// shaves ~1200 lines of code from the dashboard's first paint.
+// Pre-v2.443 they were eagerly imported; the open-flag check ran
+// every render but the dead code still had to be parsed and
+// evaluated up front.
+const AttackResolutionModal = lazy(() => import('../Combat/AttackResolutionModal'));
+const ReactionPromptModal = lazy(() => import('../Combat/ReactionPromptModal'));
+const LegendaryResistancePromptModal = lazy(() => import('../Combat/LegendaryResistancePromptModal'));
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
 // v2.385.0 — Watch the pan-request channel so a click in InitiativeStrip
@@ -1010,12 +1018,18 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         only when the current actor is a creature. Self-hides for
         player turns + when no encounter is active. */}
     <MonsterActionPanel isDM={isOwner} />
-    {/* v2.97.0 — Phase E: auto-opens when a pending attack is in flight (DM only) */}
-    <AttackResolutionModal campaignId={campaign.id} isDM={isOwner} />
-    {/* v2.98.0 — Phase E: reaction prompt for target player on hit */}
-    <ReactionPromptModal campaignId={campaign.id} />
-    {/* v2.139.0 — Phase M pt 2: DM-only LR prompt on failed monster saves */}
-    <LegendaryResistancePromptModal campaignId={campaign.id} isDM={isOwner} />
+    {/* v2.443.0 — Suspense boundary for the lazy-loaded modals.
+        They listen on state to self-open, so the fallback is null
+        (no flicker if they haven't loaded yet — they only render
+        anything when state says they should). */}
+    <Suspense fallback={null}>
+      {/* v2.97.0 — Phase E: auto-opens when a pending attack is in flight (DM only) */}
+      <AttackResolutionModal campaignId={campaign.id} isDM={isOwner} />
+      {/* v2.98.0 — Phase E: reaction prompt for target player on hit */}
+      <ReactionPromptModal campaignId={campaign.id} />
+      {/* v2.139.0 — Phase M pt 2: DM-only LR prompt on failed monster saves */}
+      <LegendaryResistancePromptModal campaignId={campaign.id} isDM={isOwner} />
+    </Suspense>
     </CombatProvider>
   );
 }

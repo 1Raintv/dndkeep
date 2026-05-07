@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
@@ -9,9 +9,15 @@ import { useSpells } from '../../lib/hooks/useSpells';
 import { rechargeOnLongRest } from '../../lib/charges';
 import { CombatProvider, useCombat } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
-import ReactionPromptModal from '../Combat/ReactionPromptModal';
-import ConcentrationSavePromptModal from '../Combat/ConcentrationSavePromptModal';
-import DeathSavePromptModal from '../Combat/DeathSavePromptModal';
+// v2.443.0 — Lazy-load combat modals on the character sheet. Same
+// rationale as CampaignDashboard: these listen for state to self-
+// open and render null otherwise. Eager-importing them dragged ~860
+// lines of code into the character sheet's first paint for no
+// benefit. Suspense fallback={null} since they're invisible until
+// triggered anyway.
+const ReactionPromptModal = lazy(() => import('../Combat/ReactionPromptModal'));
+const ConcentrationSavePromptModal = lazy(() => import('../Combat/ConcentrationSavePromptModal'));
+const DeathSavePromptModal = lazy(() => import('../Combat/DeathSavePromptModal'));
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, legacySpellFeatureKey, type TieflingLegacy } from '../../data/speciesChoices';
@@ -4464,13 +4470,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  {/* v2.96.0 — Phase D: initiative strip for players on their sheet */}
  <InitiativeStrip isDM={false} />
- {/* v2.98.0 — Phase E: reaction prompt for this character */}
- {character.campaign_id && <ReactionPromptModal campaignId={character.campaign_id} />}
- {/* v2.118.0 — Phase I pt 2: concentration save prompt when automation is 'prompt' */}
- <ConcentrationSavePromptModal characterId={character.id} />
- {/* v2.144.0 — Phase N pt 2: death save prompt when the downed character
-     starts their turn at 0 HP and automation resolves to 'prompt' */}
- {character.campaign_id && <DeathSavePromptModal characterId={character.id} campaignId={character.campaign_id} />}
+ {/* v2.443.0 — Suspense boundary for lazy modals. They self-open
+     based on state, so fallback={null} doesn't flicker. */}
+ <Suspense fallback={null}>
+   {/* v2.98.0 — Phase E: reaction prompt for this character */}
+   {character.campaign_id && <ReactionPromptModal campaignId={character.campaign_id} />}
+   {/* v2.118.0 — Phase I pt 2: concentration save prompt when automation is 'prompt' */}
+   <ConcentrationSavePromptModal characterId={character.id} />
+   {/* v2.144.0 — Phase N pt 2: death save prompt when the downed character
+       starts their turn at 0 HP and automation resolves to 'prompt' */}
+   {character.campaign_id && <DeathSavePromptModal characterId={character.id} campaignId={character.campaign_id} />}
+ </Suspense>
  </CombatProvider>
  );
 }

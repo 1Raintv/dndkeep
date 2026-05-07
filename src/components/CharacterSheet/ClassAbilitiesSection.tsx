@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, lazy, Suspense } from 'react';
 import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
@@ -7,7 +7,11 @@ import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
 import { computeStats } from '../../lib/gameUtils';
-import ClassAbilityResolveModal, { formatOutcomesLog, type TargetOutcome } from '../Combat/ClassAbilityResolveModal';
+// v2.443.0 — Lazy-load the resolve modal. The helper (formatOutcomesLog)
+// and types come from src/lib/classAbilityOutcomes so the parent
+// can call them without dragging the modal into first paint.
+const ClassAbilityResolveModal = lazy(() => import('../Combat/ClassAbilityResolveModal'));
+import { formatOutcomesLog, type TargetOutcome } from '../../lib/classAbilityOutcomes';
 import { supabase } from '../../lib/supabase';
 import SlotBoxes, { PALETTE_TEAL, PALETTE_PSI, type SlotBoxesPalette } from './_shared/SlotBoxes';
 import PsionicDicePool from './_shared/PsionicDicePool';
@@ -928,6 +932,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      out of any nested overflow:hidden so it covers the sheet
      properly. */}
  {resolveModal && campaignId && (
+ <Suspense fallback={null}>
  <ClassAbilityResolveModal
  open={!!resolveModal}
  onClose={() => setResolveModal(null)}
@@ -945,6 +950,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  finalizeAbilityUse(m.ability, m.cost, outcomes);
  }}
  />
+ </Suspense>
  )}
  </>
  );

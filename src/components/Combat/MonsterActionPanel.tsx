@@ -64,6 +64,11 @@ import { takeDash, takeDisengage, resetMovement } from '../../lib/movement';
 // Prone on Wing Attack, etc.) so the DM doesn't have to reach for
 // the token context menu after every save.
 import { applyCondition } from '../../lib/conditions';
+// v2.443.0 — Batch declare RPC for multi-target save actions.
+// Replaces N×3 sequential round-trips (homebrew → monsters → declare)
+// with one. Per-target save+damage+apply chains still run client-side
+// but in parallel via Promise.all.
+import { declareSaveBatch } from '../../lib/saveBatch';
 import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
@@ -916,129 +921,113 @@ export default function MonsterActionPanel({ isDM }: Props) {
         : null;
 
       // v2.442.0 — Per-target outcome counters for the summary toast.
+      // v2.443.0 — Now incremented atomically inside Promise.all because
+      // the per-target chains run concurrently. JavaScript's single-
+      // threaded execution model means ++ is safe here (no actual race).
       let passedCount = 0;
       let failedCount = 0;
       let conditionAppliedCount = 0;
+      let lrPendingCount = 0;
 
-      for (const target of targets) {
-        // Skip targets that died mid-batch (e.g. earlier Cold Breath
-        // damage knocked them out). Belt-and-suspenders — the picker
-        // already filters dead targets, but the loop is async and
-        // a parallel write could change is_dead between iterations.
-        if (target.is_dead) continue;
+      // v2.443.0 — Batch declare. One round-trip to:
+      //   - insert N pending_attacks rows (state='declared')
+      //   - return per-target condition-immunity flag (server-computed
+      //     via homebrew_monsters → monsters lookup chain)
+      // Replaces 2N+N sequential client round-trips.
+      const liveTargets = targets.filter(t => !t.is_dead);
+      const batch = await declareSaveBatch({
+        campaignId: encounter.campaign_id,
+        encounterId: encounter.id,
+        attacker: {
+          id: currentActor.id,
+          name: currentActor.name,
+          type: 'creature',
+        },
+        attackName: a.name,
+        saveDC: a.dc_value ?? 0,
+        saveAbility: ability,
+        saveSuccessEffect: (a.dc_success ?? 'none') as 'none' | 'half' | 'other',
+        damageDice: a.damage_dice ?? null,
+        damageType: a.damage_type ?? null,
+        inferredCondition,
+        targets: liveTargets,
+      });
 
-        // Per-target immunity check, mirroring the single-target
-        // save branch in handlePick.
-        let targetImmuneToCondition = false;
-        if (inferredCondition && target.participant_type === 'creature' && target.entity_id) {
-          const { data: tgtHb } = await supabase
-            .from('homebrew_monsters')
-            .select('source_monster_id')
-            .eq('id', target.entity_id)
-            .maybeSingle();
-          const tgtSourceId = (tgtHb as any)?.source_monster_id;
-          if (tgtSourceId) {
-            const { data: tgtRow } = await supabase
-              .from('monsters')
-              .select('condition_immunities')
-              .eq('id', tgtSourceId)
-              .maybeSingle();
-            const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
-            targetImmuneToCondition = immList.some(s => s.toLowerCase() === inferredCondition);
-          }
-        }
-
-        const attack = await declareAttack({
-          campaignId: encounter.campaign_id,
-          encounterId: encounter.id,
-          attackerParticipantId: currentActor.id,
-          attackerName: currentActor.name,
-          attackerType: 'creature',
-          targetParticipantId: target.id,
-          targetName: target.name,
-          targetType: target.participant_type,
-          attackSource: 'monster_action',
-          attackName: a.name,
-          attackKind: 'save',
-          saveDC: a.dc_value ?? null,
-          saveAbility: ability,
-          saveSuccessEffect: a.dc_success ?? 'none',
-          damageDice: a.damage_dice ?? null,
-          damageType: a.damage_type ?? null,
-        });
-        if (!attack) continue;
-
-        const sb = await getTargetSaveBonus(target.id, ability);
-        const rolled = await rollSave(attack.id, sb.bonus);
-        const passed = (rolled as any)?.save_result === 'passed';
-
-        // v2.442.0 — Per-target dice animation, scaled. Single-target
-        // saves linger 1800ms; for batch saves we shrink to 700ms so
-        // a 5-target Cold Breath doesn't stall combat for 9 seconds.
-        // The DM can disable entirely with Fast Combat Rolls.
-        if (!fastRolls && rolled && (rolled as any).save_d20 != null) {
-          const d20 = (rolled as any).save_d20 as number;
-          const total = (rolled as any).save_total as number;
-          const modifier = total - d20;
-          triggerRoll({
-            result: d20,
-            dieType: 20,
-            modifier,
-            total,
-            label: `${target.name} — ${ability} save vs ${a.name} (DC ${a.dc_value ?? '?'})`,
-          });
-          await sleep(700);
-        }
-
-        // Skip LR-pending targets — DM should resolve via the modal.
-        if (rolled && (rolled as any).pending_lr_decision) {
-          showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
-          continue;
-        }
-
-        if (a.damage_dice) {
-          // Save-with-damage path (Cold Breath, Wing Attack). rollDamage
-          // halves automatically on save_result='passed' when the
-          // pending row's saveSuccessEffect='half'.
-          const damaged = await rollDamage(rolled?.id ?? attack.id);
-          if (damaged && damaged.state === 'damage_rolled') {
-            await applyDamage(damaged.id);
-          }
-          // No per-target dice animation for damage in batch mode —
-          // it would compound the delay too much. The HP bars update
-          // via the realtime echo + window event.
-          if (passed) passedCount++;
-          else failedCount++;
-        } else {
-          // Pure save-or-condition path (Frightful Presence). On a
-          // failed save, auto-apply the inferred condition unless
-          // the target is immune to it.
-          if (passed) {
-            passedCount++;
-          } else if (targetImmuneToCondition && conditionName) {
-            // Failed save but immune — count as failed but no condition.
-            failedCount++;
-          } else if (conditionName) {
-            try {
-              await applyCondition({
-                participantId: target.id,
-                conditionName,
-                source: `monster_action:${a.name}:${currentActor.id}`,
-                casterParticipantId: currentActor.id,
-                campaignId: encounter.campaign_id,
-                encounterId: encounter.id,
-              });
-              conditionAppliedCount++;
-            } catch (err) {
-              console.error('[MonsterActionPanel] applyCondition failed', err);
-            }
-            failedCount++;
-          } else {
-            failedCount++;
-          }
-          await cancelAttack(rolled?.id ?? attack.id);
-        }
+      if (!batch) {
+        showToast(
+          'Couldn\'t declare the multi-target save batch. Check console.',
+          'error',
+        );
+        return;
       }
+
+      // v2.443.0 — Per-target chain: getTargetSaveBonus → rollSave →
+      // (rollDamage + applyDamage | applyCondition + cancelAttack).
+      // Each chain is independent so we run them all in Promise.all.
+      // For a 5-target Cold Breath this runs 5 chains concurrently
+      // instead of 5×4-7 sequential calls.
+      //
+      // We disable the per-target dice animation in batch mode to
+      // avoid stutter — when chains run concurrently, sequencing
+      // sleeps would either serialize them again or stack visually.
+      // The DM still has the dice modal turned on for single-target
+      // attacks; multi-save batches instead get a summary toast.
+      await Promise.all(batch.rows.map(async (row) => {
+        const { target, pendingAttackId, immuneToCondition } = row;
+        try {
+          const sb = await getTargetSaveBonus(target.id, ability);
+          const rolled = await rollSave(pendingAttackId, sb.bonus);
+          const passed = (rolled as any)?.save_result === 'passed';
+
+          // LR-pending targets pause here; the LR modal will pick
+          // up the pending row via realtime and resolve out-of-band.
+          if (rolled && (rolled as any).pending_lr_decision) {
+            lrPendingCount++;
+            showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
+            return;
+          }
+
+          if (a.damage_dice) {
+            // Save-with-damage path. rollDamage halves automatically
+            // when save_result='passed' AND saveSuccessEffect='half'.
+            const damaged = await rollDamage(rolled?.id ?? pendingAttackId);
+            if (damaged && damaged.state === 'damage_rolled') {
+              await applyDamage(damaged.id);
+            }
+            if (passed) passedCount++;
+            else failedCount++;
+          } else {
+            // Save-or-condition path (FP). Apply inferred condition on
+            // failed save unless the target is immune.
+            if (passed) {
+              passedCount++;
+            } else if (immuneToCondition && conditionName) {
+              failedCount++;
+            } else if (conditionName) {
+              try {
+                await applyCondition({
+                  participantId: target.id,
+                  conditionName,
+                  source: `monster_action:${a.name}:${currentActor.id}`,
+                  casterParticipantId: currentActor.id,
+                  campaignId: encounter.campaign_id,
+                  encounterId: encounter.id,
+                });
+                conditionAppliedCount++;
+              } catch (err) {
+                console.error('[MonsterActionPanel] applyCondition failed', err);
+              }
+              failedCount++;
+            } else {
+              failedCount++;
+            }
+            await cancelAttack(rolled?.id ?? pendingAttackId);
+          }
+        } catch (err) {
+          console.error(`[MonsterActionPanel] save chain failed for ${target.name}`, err);
+          failedCount++;
+        }
+      }));
 
       // Refresh combat context once at the end so UI reflects new
       // HP / condition state without waiting for the realtime echo.
