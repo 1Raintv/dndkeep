@@ -1608,8 +1608,12 @@ function VisionLayer(props: {
       }
     } else if (shape === 'line') {
       // Thick rectangle from origin (caster) toward direction target,
-      // length = radiusPx, width = 1 cell (5ft per RAW). The line is
-      // drawn as a 4-vertex polygon hugging both sides of the path.
+      // length = radiusPx, width = aoePreview.widthFt (5ft default per
+      // RAW for every dragon breath line). The line is drawn as a
+      // 4-vertex polygon hugging both sides of the path. v2.450.0
+      // upgraded width from a hardcoded 1 cell to data-driven so the
+      // visual matches whatever lineGeometry.findParticipantsInLine
+      // selects against — both read the same widthFt.
       const dx = (aoePreview.directionWorldX ?? cx) - cx;
       const dy = (aoePreview.directionWorldY ?? cy) - cy;
       const dirLen = Math.sqrt(dx * dx + dy * dy);
@@ -1618,7 +1622,8 @@ function VisionLayer(props: {
         const ndy = dy / dirLen;
         const px = -ndy;
         const py = ndx;
-        const halfWidthPx = gridSizePx / 2; // 2.5ft per side = 1 cell total
+        const widthFt = aoePreview.widthFt ?? 5;
+        const halfWidthPx = (widthFt / 5) * gridSizePx / 2;
         const farX = cx + ndx * radiusPx;
         const farY = cy + ndy * radiusPx;
         ring.setFillStyle({ color: FILL_COLOR, alpha: FILL_ALPHA });

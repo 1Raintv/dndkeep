@@ -228,6 +228,15 @@ interface BattleMapStore {
     shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line';
     directionWorldX?: number;
     directionWorldY?: number;
+    /** v2.450.0 — Line-shape width in feet. Optional; defaults to 5ft
+     *  in the renderer when absent (matches every dragon breath line
+     *  in the SRD). Ignored by sphere/cube/cylinder/cone, which read
+     *  sizeFt as their single dimension. Plumbing it here keeps the
+     *  geometry source-of-truth aligned: data → preview → render →
+     *  hit-test (lineGeometry.findParticipantsInLine consumes the
+     *  same widthFt) — so a 10ft-wide line displays + selects
+     *  identically. */
+    widthFt?: number;
   } | null;
   /** v2.344.0 — Single-target spell range overlay. Set by the spell
    *  picker for non-AoE spells with a numeric range, drawn by the map
@@ -331,6 +340,7 @@ interface BattleMapStore {
       shape: 'sphere' | 'cone' | 'cube' | 'cylinder' | 'line';
       directionWorldX?: number;
       directionWorldY?: number;
+      widthFt?: number;
     } | null,
   ) => void;
   /** v2.344.0 — Single-target spell range setter. Pass null to clear. */

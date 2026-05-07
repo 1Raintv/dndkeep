@@ -75,6 +75,15 @@ import { declareSaveBatch } from '../../lib/saveBatch';
 // falls inside the cone; those targets are then resolved via the
 // existing multi-target save batch flow.
 import { findParticipantsInCone, parseConeReachFt, type ConeTarget } from '../../lib/coneGeometry';
+// v2.450.0 — Line-shape AOE save targeting (parallel to v2.444's cone).
+// Lines need full footprint hit-testing because at narrow angles a
+// 5ft-wide line can miss a Large+ token's cell center while clearly
+// clipping the footprint. SAT-based intersection in lineGeometry.
+import {
+  findParticipantsInLine,
+  parseLineDimensionsFt,
+  type LineTarget,
+} from '../../lib/lineGeometry';
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 import { findTokenForParticipant } from '../../lib/battleMapGeometry';
 import { useToast } from '../shared/Toast';
@@ -346,6 +355,16 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // action is in flight + the parsed cone length so the consumer
   // effect can configure aoePreview and resolve targets on click.
   const [conePickingFor, setConePickingFor] = useState<{ action: MonsterAction; lengthFt: number } | null>(null);
+  // v2.450.0 — Line-target picker state. Parallel to conePickingFor:
+  // set when the DM clicks a line-shape save action (parsed via
+  // parseLineDimensionsFt) or picks a 'line' option from the
+  // BreathOptionPicker. lengthFt + widthFt drive both the overlay
+  // rectangle and the SAT hit-test in findParticipantsInLine.
+  const [linePickingFor, setLinePickingFor] = useState<{
+    action: MonsterAction;
+    lengthFt: number;
+    widthFt: number;
+  } | null>(null);
   // v2.449.0 — When the DM clicks a multi-option breath weapon (e.g.
   // Adult Gold Dragon's "Breath Weapons" with Fire Breath + Weakening
   // Breath), we first show a sub-picker to choose ONE of the options.
@@ -585,8 +604,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // target distance reads in a single picker session.
   // v2.444.0 — Also fire on multiSavePickingFor and conePickingFor;
   // both rely on token positions to compute distances / cone hits.
+  // v2.450.0 — linePickingFor joins the same set.
   useEffect(() => {
-    const anyPickerOpen = !!pickingFor || !!multiSavePickingFor || !!conePickingFor;
+    const anyPickerOpen = !!pickingFor || !!multiSavePickingFor || !!conePickingFor || !!linePickingFor;
     if (!anyPickerOpen || !encounter) {
       setBattleMap(null);
       return;
@@ -599,7 +619,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       console.error('[MonsterActionPanel] map load failed', err);
     });
     return () => { cancelled = true; };
-  }, [pickingFor, multiSavePickingFor, conePickingFor, encounter]);
+  }, [pickingFor, multiSavePickingFor, conePickingFor, linePickingFor, encounter]);
 
   // v2.444.0 — Cone-pick lifecycle. Three phases:
   //   1. Setup (conePickingFor + battleMap both present, directionPick
@@ -728,6 +748,128 @@ export default function MonsterActionPanel({ isDM }: Props) {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMultiSavePick is stable in usage; including it would loop
   }, [directionPickResult, conePickingFor, coneApex, battleMap, currentActor, participants]);
+
+  // v2.450.0 — Line-pick lifecycle. Mirrors the cone three-phase flow
+  // (apex memo → setup effect → resolve effect) but with two
+  // differences: shape='line' on the preview and full footprint
+  // hit-testing on resolve. Footprint AABBs respect the odd/even
+  // anchor convention from v2.423 (col,row = cell-CENTER for
+  // tiny/small/medium/huge; col,row = TOP-LEFT cell of the footprint
+  // for large/gargantuan), so a Large dragon's 60ft line correctly
+  // enumerates the 4 cells it occupies, not just the head cell.
+  const lineApex = useMemo(() => {
+    if (!linePickingFor || !battleMap || !currentActor) return null;
+    const lookup: ParticipantForTokenLookup = {
+      id: currentActor.id,
+      name: currentActor.name,
+      participant_type: currentActor.participant_type,
+      entity_id: currentActor.entity_id,
+    };
+    const token = findTokenForParticipant(lookup, battleMap.tokens);
+    if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') return null;
+    return {
+      worldX: token.col * battleMap.grid_size + battleMap.grid_size / 2,
+      worldY: token.row * battleMap.grid_size + battleMap.grid_size / 2,
+    };
+  }, [linePickingFor, battleMap, currentActor]);
+
+  // Phase 1: setup. Fires once per line-pick session. Cleanup on
+  // unmount/cancel clears the overlay and direction-pick state.
+  useEffect(() => {
+    if (!linePickingFor || !lineApex) return;
+    setAoePreview({
+      centerWorldX: lineApex.worldX,
+      centerWorldY: lineApex.worldY,
+      sizeFt: linePickingFor.lengthFt,
+      shape: 'line',
+      widthFt: linePickingFor.widthFt,
+      // Seed direction one cell east of apex so the rectangle is
+      // visible before the first mousemove. Replaced as soon as the
+      // user moves the cursor over the canvas.
+      directionWorldX: lineApex.worldX + (battleMap?.grid_size ?? 70),
+      directionWorldY: lineApex.worldY,
+    });
+    setDirectionPickActive(true);
+    return () => {
+      setAoePreview(null);
+      setDirectionPickActive(false);
+      setDirectionPickResult(null);
+    };
+  }, [linePickingFor, lineApex, battleMap, setAoePreview, setDirectionPickActive, setDirectionPickResult]);
+
+  // Phase 3: consume the click result. Build LineTarget candidates
+  // (with footprint AABBs) and call findParticipantsInLine, then
+  // hand off to handleMultiSavePick the same way cone does.
+  useEffect(() => {
+    if (!linePickingFor || !lineApex || !battleMap || !directionPickResult || !currentActor) return;
+    const { action, lengthFt, widthFt } = linePickingFor;
+    const dirX = directionPickResult.worldX;
+    const dirY = directionPickResult.worldY;
+    const grid = battleMap.grid_size;
+
+    const candidates: LineTarget<CombatParticipant>[] = [];
+    for (const p of participants) {
+      if (p.id === currentActor.id) continue;
+      if (p.is_dead) continue;
+      const lookup: ParticipantForTokenLookup = {
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      };
+      const token = findTokenForParticipant(lookup, battleMap.tokens);
+      if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') continue;
+      // Footprint AABB. col/row anchor semantics differ by parity:
+      //   odd N (1,3): col,row is the CENTER cell → footprint extends
+      //                (N-1)/2 cells on each side.
+      //   even N (2,4): col,row is the TOP-LEFT cell → footprint
+      //                extends 0 left / N-1 right.
+      const sizeCells = typeof token.size === 'number' && token.size > 0 ? token.size : 1;
+      let minCol: number;
+      let minRow: number;
+      if (sizeCells % 2 === 0) {
+        minCol = token.col;
+        minRow = token.row;
+      } else {
+        const half = (sizeCells - 1) / 2;
+        minCol = token.col - half;
+        minRow = token.row - half;
+      }
+      const maxCol = minCol + sizeCells - 1;
+      const maxRow = minRow + sizeCells - 1;
+      candidates.push({
+        participant: p,
+        minX: minCol * grid,
+        minY: minRow * grid,
+        maxX: (maxCol + 1) * grid,
+        maxY: (maxRow + 1) * grid,
+      });
+    }
+
+    const hits = findParticipantsInLine(
+      lineApex.worldX, lineApex.worldY,
+      dirX, dirY,
+      lengthFt,
+      widthFt,
+      grid,
+      candidates,
+    );
+    const targets = hits.map(h => h.participant);
+
+    setLinePickingFor(null);
+    setDirectionPickResult(null);
+
+    if (targets.length === 0) {
+      showToast(`No creatures in the ${lengthFt}-ft line.`, 'info');
+      return;
+    }
+
+    setMultiSavePickingFor(action);
+    queueMicrotask(() => {
+      handleMultiSavePick(targets);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMultiSavePick stable; mirrors cone effect
+  }, [directionPickResult, linePickingFor, lineApex, battleMap, currentActor, participants]);
 
   const visible = useMemo(() => {
     if (!isDM) return false;
@@ -2083,6 +2225,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // the action falls through to the multi-target or
                 // single-target picker as before.
                 const coneLengthFt = parseConeReachFt(action.desc);
+                // v2.450.0 — Line-shape detection. Tried after cone so
+                // a desc that contains both phrases (rare) still
+                // prefers the cone routing — but in practice each
+                // breath action is either-or.
+                const lineDims = parseLineDimensionsFt(action.desc);
                 const isMulti = isMultiTargetSaveAction(action.desc);
                 // v2.449.0 — Multi-option breath weapons take priority
                 // over the cone/multi-target routing — we need to know
@@ -2098,6 +2245,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
                         setBreathOptionPickingFor(action);
                       } else if (coneLengthFt != null) {
                         setConePickingFor({ action, lengthFt: coneLengthFt });
+                      } else if (lineDims != null) {
+                        setLinePickingFor({
+                          action,
+                          lengthFt: lineDims.lengthFt,
+                          widthFt: lineDims.widthFt,
+                        });
                       } else if (isMulti) {
                         setMultiSavePickingFor(action);
                       } else {
@@ -2431,6 +2584,61 @@ export default function MonsterActionPanel({ isDM }: Props) {
           </button>
         </div>
       )}
+      {/* v2.450.0 — Line-pick instruction banner. Mirrors the cone
+          banner; cyan accent distinguishes it visually so the DM
+          knows at a glance whether they're aiming a cone or a line.
+          Same "click to confirm direction" affordance — the canvas
+          underneath is fully interactive via directionPick. */}
+      {linePickingFor && currentActor && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 16px',
+            background: 'rgba(20,20,30,0.95)',
+            border: '1px solid rgba(103,232,249,0.5)',
+            borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            fontFamily: 'var(--ff-body)',
+            color: 'var(--t-1)',
+            pointerEvents: 'auto',
+          }}
+        >
+          <span style={{ fontSize: 18 }}>⟶</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#67e8f9', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              {linePickingFor.action.name} — {linePickingFor.lengthFt}-ft line
+              {linePickingFor.widthFt !== 5 ? ` (${linePickingFor.widthFt}ft wide)` : ''}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--t-2)' }}>
+              Move cursor to aim · Click to confirm direction
+            </span>
+          </div>
+          <button
+            onClick={() => setLinePickingFor(null)}
+            style={{
+              padding: '6px 12px',
+              background: 'transparent',
+              border: '1px solid var(--c-border)',
+              borderRadius: 4,
+              color: 'var(--t-2)',
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {/* v2.449.0 — Multi-option breath weapon sub-picker. Renders a
           two-button overlay listing the option names + their key stats
           (DC, ability, damage, area shape). On click, synthesizes a
@@ -2458,13 +2666,17 @@ export default function MonsterActionPanel({ isDM }: Props) {
             };
             setBreathOptionPickingFor(null);
             // Dispatch by area shape. Cones go through v2.444's cone
-            // overlay. Lines fall back to the multi-target picker —
-            // line geometry overlay is a future ship; the picker still
-            // works for resolution.
+            // overlay; lines go through v2.450's line overlay (both
+            // share the directionPick + aoePreview infra and route
+            // their results into handleMultiSavePick).
             if (opt.area_shape === 'cone') {
               setConePickingFor({ action: concrete, lengthFt: opt.area_size_ft });
             } else {
-              setMultiSavePickingFor(concrete);
+              setLinePickingFor({
+                action: concrete,
+                lengthFt: opt.area_size_ft,
+                widthFt: opt.area_width_ft ?? 5,
+              });
             }
           }}
         />
