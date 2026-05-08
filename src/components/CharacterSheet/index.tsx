@@ -18,6 +18,10 @@ import InitiativeStrip from '../Combat/InitiativeStrip';
 const ReactionPromptModal = lazy(() => import('../Combat/ReactionPromptModal'));
 const ConcentrationSavePromptModal = lazy(() => import('../Combat/ConcentrationSavePromptModal'));
 const DeathSavePromptModal = lazy(() => import('../Combat/DeathSavePromptModal'));
+// v2.452.0 — Player-side end-of-turn re-save toast surfacing. Filtered
+// by character name so a player only sees toasts about their own
+// character's saves.
+const EndOfTurnResaveListener = lazy(() => import('../Combat/EndOfTurnResaveListener'));
 import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, legacySpellFeatureKey, type TieflingLegacy } from '../../data/speciesChoices';
@@ -4480,6 +4484,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    {/* v2.144.0 — Phase N pt 2: death save prompt when the downed character
        starts their turn at 0 HP and automation resolves to 'prompt' */}
    {character.campaign_id && <DeathSavePromptModal characterId={character.id} campaignId={character.campaign_id} />}
+   {/* v2.452.0 — Re-save toast surfacing, filtered by character name
+       so a player only sees their own character's end-of-turn rolls. */}
+   {character.campaign_id && (
+     <EndOfTurnResaveListener
+       campaignId={character.campaign_id}
+       forActorName={character.name}
+       isDM={false}
+     />
+   )}
  </Suspense>
  </CombatProvider>
  );

@@ -66,6 +66,14 @@ export type CombatEventType =
   | 'condition_applied'
   | 'condition_removed'
   | 'exhaustion_changed'
+  // v2.452.0 — End-of-turn re-save event. Emitted by
+  // endOfTurnConditions.processEndOfTurnConditions for each condition
+  // with a save_to_end spec (Frightful Presence-style 1-minute
+  // auras). Was being inserted as a string literal pre-v2.452 but
+  // never added to this union; works at runtime since emitCombatEvent
+  // is structurally typed at the DB boundary, but the type checker
+  // couldn't see it. Surfaced in the player UI by EndOfTurnResaveListener.
+  | 'condition_resave'
   // Resources
   | 'spell_slot_used'
   | 'spell_slot_restored'

@@ -44,6 +44,10 @@ const BattleMapV2 = lazy(() => import('./BattleMapV2'));
 import { CombatProvider } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
 import MonsterActionPanel from '../Combat/MonsterActionPanel';
+// v2.452.0 — Subscribes to combat_events condition_resave inserts and
+// surfaces them as toasts so the DM sees end-of-turn re-saves happening
+// in real time. Player-side mount lives in CharacterSheet/index.tsx.
+import EndOfTurnResaveListener from '../Combat/EndOfTurnResaveListener';
 import StartCombatButton from '../Combat/StartCombatButton';
 // v2.443.0 — Lazy-load combat modals. These are mounted at the
 // dashboard root and listen for state to open themselves, but the
@@ -1013,6 +1017,10 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     </div>
     {/* v2.96.0 — Phase D: bottom initiative strip renders when active encounter exists */}
     <InitiativeStrip isDM={isOwner} />
+    {/* v2.452.0 — DM-side end-of-turn re-save toast surfacing. Mounts
+        for both DM and player roles in this view (isDM flag controls
+        visibility filtering). */}
+    {isOwner && <EndOfTurnResaveListener campaignId={campaign.id} isDM={true} />}
     {/* v2.363.0 — Phase Q.2 pt 1: DM-only monster action panel.
         Anchored bottom-right, above the InitiativeStrip. Renders
         only when the current actor is a creature. Self-hides for

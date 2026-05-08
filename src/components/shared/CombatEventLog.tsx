@@ -51,6 +51,8 @@ const EVENT_GROUPS: Record<EventFilter, Set<CombatEventType>> = {
   condition: new Set<CombatEventType>([
     'condition_applied', 'condition_removed', 'exhaustion_changed',
     'death_save_rolled', 'death_save_turn_prompt',
+    // v2.452.0 — surfaced in log under the Conditions filter.
+    'condition_resave',
   ]),
 };
 
