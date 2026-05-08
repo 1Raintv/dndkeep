@@ -13,6 +13,12 @@ import { takeDash, takeDisengage } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
+// v2.457.0 — Concentration indicator. Pulls a campaign-wide map of
+// who's concentrating on what (character side only — NPCs/monsters
+// don't track concentration in this field, see hook docstring), plus
+// a spell-id→name lookup so we render "Bless" instead of a UUID.
+import { useCampaignConcentrations } from '../../lib/hooks/useCampaignConcentrations';
+import { useSpells } from '../../lib/hooks/useSpells';
 // v2.411.0 — DeclareAttackModal import removed. The ⚔ Attack button
 // that mounted it was removed in this same ship.
 // import DeclareAttackModal from './DeclareAttackModal';
@@ -51,6 +57,11 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 
 export default function InitiativeStrip({ isDM }: Props) {
   const { encounter, participants, currentActor } = useCombat();
+  // v2.457.0 — Concentration map for the active campaign. Empty until
+  // useCombat resolves the encounter; the inner subscription handles
+  // late-arriving data without a flicker.
+  const concentrationMap = useCampaignConcentrations(encounter?.campaign_id ?? null);
+  const { spellMap } = useSpells();
   // v2.278.0 — surface action-button failures to the user. Pre-2.278
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
@@ -304,6 +315,19 @@ export default function InitiativeStrip({ isDM }: Props) {
           const visibleConds = conditions.slice(0, VISIBLE_CHIPS);
           const overflowCount = conditions.length - visibleConds.length;
 
+          // v2.457.0 — Concentration entry for character participants.
+          // Lookup is participant.entity_id → characters.id in the
+          // hook's map. Non-character participants (monsters/npcs) are
+          // never in the map (per hook's scope limitation), so this
+          // resolves to undefined cleanly — no per-row branching needed.
+          const concentration =
+            p.participant_type === 'character' && p.entity_id
+              ? concentrationMap[p.entity_id]
+              : undefined;
+          const concentrationName = concentration
+            ? (spellMap[concentration.spellId]?.name ?? null)
+            : null;
+
           // v2.114.0 — Phase H pt 5: active buffs chip row (Bless, Hunter's
           // Mark, Hex, Divine Favor, Absorb Elements rider).
           const buffs = p.active_buffs ?? [];
@@ -450,6 +474,44 @@ export default function InitiativeStrip({ isDM }: Props) {
                   </div>
                 );
               })()}
+              {/* v2.457.0 — Concentration chip. Sits above the
+                  conditions row for visual priority — concentration is
+                  a spell-loss risk every player needs to track at a
+                  glance. Purple to match the established concentration
+                  color throughout the app (CharacterSheet banner,
+                  PartyHPPanel chip). Title shows full spell name +
+                  rounds-remaining for hover detail. Rendered for
+                  characters only; monsters/NPCs don't track this
+                  field. */}
+              {concentrationName && (
+                <div style={{
+                  display: 'flex', gap: 2, marginTop: 2,
+                  justifyContent: 'center', maxWidth: 100,
+                }}>
+                  <span
+                    title={
+                      concentration?.roundsRemaining != null && concentration.roundsRemaining > 0
+                        ? `Concentrating on ${concentrationName} — ${concentration.roundsRemaining} ${concentration.roundsRemaining === 1 ? 'round' : 'rounds'} left`
+                        : `Concentrating on ${concentrationName}`
+                    }
+                    style={{
+                      fontSize: 8, fontWeight: 800,
+                      padding: '1px 4px', borderRadius: 2,
+                      background: 'rgba(167,139,250,0.20)',
+                      color: '#a78bfa',
+                      border: '1px solid rgba(167,139,250,0.55)',
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      lineHeight: 1.2, whiteSpace: 'nowrap',
+                      maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}
+                  >
+                    ◉ {concentrationName}
+                    {concentration?.roundsRemaining != null && concentration.roundsRemaining > 0 && (
+                      <span style={{ opacity: 0.75 }}> · {concentration.roundsRemaining}r</span>
+                    )}
+                  </span>
+                </div>
+              )}
               {/* v2.112.0 — Phase H pt 3: condition chip row */}
               {conditions.length > 0 && (
                 <div style={{

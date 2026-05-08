@@ -1655,6 +1655,85 @@ function VisionLayer(props: {
     ring.visible = true;
   }, [aoePreview, gridSizePx]);
 
+  // v2.459.0 — Reach visualization overlay.
+  //
+  // Reads battleMapStore.reachPreview. When the DM hovers a melee
+  // attack action button in MonsterActionPanel, the panel writes the
+  // active token's footprint center + reach in feet to the store;
+  // this effect draws a translucent red rectangle covering every
+  // cell within Chebyshev reach of the footprint. Hover-leave clears
+  // the preview.
+  //
+  // Geometry: a creature with footprint N cells and reach R feet
+  // can attack any cell within Chebyshev distance R/5 of any cell it
+  // occupies. The reachable area is therefore a square of side
+  // (N + 2*R/5) cells, axis-aligned, centered on the footprint.
+  // We render this as a single translucent rectangle — the
+  // creature's own footprint is technically inside the rectangle
+  // but that's visually fine (it doesn't add information loss vs.
+  // cutting it out, and it keeps the geometry trivial).
+  //
+  // Color: red-orange (#f87171) at 12% fill + 60% stroke. Distinct
+  // from the yellow AoE preview (sphere ring), the cyan range
+  // preview (dashed circle), and the cyan target highlight (per-
+  // token ring). Reach is a "danger zone" indicator — what the
+  // active creature CAN HIT — and the warm color reads that way at
+  // a glance without being so loud it competes with active combat
+  // animations.
+  const reachPreview = useBattleMapStore(s => s.reachPreview);
+  const reachRectRef = useRef<Graphics | null>(null);
+  useEffect(() => {
+    if (!viewport) return;
+    const rect = new Graphics();
+    rect.eventMode = 'none';
+    rect.visible = false;
+    viewport.addChild(rect);
+    reachRectRef.current = rect;
+    return () => {
+      try {
+        if (rect.parent && !viewport.destroyed) viewport.removeChild(rect);
+        if (!rect.destroyed) rect.destroy();
+      } catch { /* viewport torn down */ }
+      reachRectRef.current = null;
+    };
+  }, [viewport]);
+
+  useEffect(() => {
+    const rect = reachRectRef.current;
+    if (!rect || rect.destroyed) return;
+    if (!reachPreview) {
+      rect.visible = false;
+      return;
+    }
+    const { centerWorldX: cx, centerWorldY: cy, footprintCells, reachFt } = reachPreview;
+    rect.clear();
+
+    // Half-extent in world pixels: footprint half + reach. Footprint
+    // contributes (footprintCells/2) cells from the center; reach
+    // contributes (reachFt/5) cells beyond that.
+    const halfFootPx = (footprintCells * gridSizePx) / 2;
+    const reachPx = (reachFt / 5) * gridSizePx;
+    const extent = halfFootPx + reachPx;
+    const x = cx - extent;
+    const y = cy - extent;
+    const side = extent * 2;
+
+    rect.setFillStyle({ color: 0xf87171, alpha: 0.12 });
+    rect.rect(x, y, side, side);
+    rect.fill();
+    rect.setStrokeStyle({ color: 0xf87171, width: 2, alpha: 0.60 });
+    rect.rect(x, y, side, side);
+    rect.stroke();
+    // Subtle inner stroke at the footprint boundary so the DM can
+    // mentally separate "creature body" from "reach donut" without
+    // explicit cutout geometry. 1px stroke at low alpha — informative
+    // without competing with the outer reach boundary.
+    rect.setStrokeStyle({ color: 0xf87171, width: 1, alpha: 0.35 });
+    rect.rect(cx - halfFootPx, cy - halfFootPx, halfFootPx * 2, halfFootPx * 2);
+    rect.stroke();
+    rect.visible = true;
+  }, [reachPreview, gridSizePx]);
+
   // v2.344.0 — single-target spell range overlay.
   //
   // Reads battleMapStore.rangePreview. When the spell picker is open
@@ -3564,6 +3643,15 @@ function TokenLayer(props: {
     // compete with the halo's rotation animation.
     actionEconomyRing: Graphics | null;
     actionEconomyLabels: Text[] | null;
+    // v2.456.0 — Hover-targeting preview ring. Drawn around any token
+    // whose participant ID appears in aoePreviewTargetIds (populated by
+    // the cone/line picker's hover-preview subscriber in
+    // MonsterActionPanel). Red-orange (#f87171), thicker than the
+    // selection ring (3px), sits OUTSIDE the action-economy ring at
+    // r + 18 so it doesn't fight the existing decoration. Lazy-created
+    // on first highlight; visibility toggled imperatively from a
+    // dedicated effect so we don't piggyback on the giant render loop.
+    targetHighlight: Graphics | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   // v2.268.0 — added originX/originY so the drop handler can validate
@@ -3725,6 +3813,8 @@ function TokenLayer(props: {
           // v2.453.0
           actionEconomyRing: null,
           actionEconomyLabels: null,
+          // v2.456.0
+          targetHighlight: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -8317,6 +8407,78 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       }
     };
   }, [canvasEl, directionPickActiveStore, setDirectionPickResultStore, setDirectionPickActiveStore, setAoePreviewDirectionStore]);
+
+  // v2.456.0 — Hover-targeting preview render. Subscribes to
+  // aoePreviewTargetTokenIds (populated by the cone/line picker's
+  // hover subscriber in MonsterActionPanel on every direction change)
+  // and toggles a red highlight ring around each matching token. Lazy
+  // -created on first highlight, kept around between activations so a
+  // common toggle-back path is just a .visible flip + redraw.
+  //
+  // Decoupled from the giant per-token reconcile effect on purpose:
+  // hits change at mousemove rate, and we don't want to invalidate
+  // the whole render dep array on every pixel of cursor motion. This
+  // effect only re-runs when the target list changes; it does its own
+  // gfxMap walk to find the affected entries.
+  const aoeTargetIds = useBattleMapStore(s => s.aoePreviewTargetTokenIds);
+  useEffect(() => {
+    const gfxMap = gfxMapRef.current;
+    const targetSet = new Set(aoeTargetIds);
+    for (const [tokenId, entry] of gfxMap.entries()) {
+      const isTarget = targetSet.has(tokenId);
+      if (isTarget) {
+        if (!entry.targetHighlight) {
+          const ring = new Graphics();
+          // Insert at index 0 so it sits UNDER the token sprite/circle
+          // (reads as a halo behind, not an overlay). Same z-order
+          // convention as turnRing/selectionRing.
+          entry.container.addChildAt(ring, 0);
+          entry.targetHighlight = ring;
+        }
+        const ring = entry.targetHighlight;
+        // Re-derive radius from the entry's current state. r isn't
+        // stored on the entry; the circle is the source of truth — its
+        // bounds tell us radius. Cheap fallback: read .width/2 from the
+        // circle Graphics. For tokens with images (sprite) we still
+        // have the underlying circle as a sibling. To keep this robust
+        // we reconstruct r from the token's footprintCells × gridSizePx
+        // anchor convention used elsewhere — but the simplest reliable
+        // value is the token's own visual width: container bounds give
+        // us that. We cap to gridSizePx * footprintCells / 2 to avoid
+        // over-large rings when the container has decoration overflow.
+        // v2.459.0 fix — `tokens` isn't in BattleMapV2's outer scope
+        // (only inside the per-token reconcile effect's closure). Pull
+        // a fresh snapshot from the store on each highlight pass. Cheap:
+        // O(1) lookup since the store keeps tokens as Record<id, Token>.
+        // Token size is effectively immutable mid-encounter, so reading
+        // via getState() rather than via a hook subscription avoids
+        // re-rendering on every token movement.
+        const tokenObj = useBattleMapStore.getState().tokens[tokenId];
+        const footprintCells =
+          tokenObj?.size === 'large'      ? 2 :
+          tokenObj?.size === 'huge'       ? 3 :
+          tokenObj?.size === 'gargantuan' ? 4 : 1;
+        const r = (footprintCells * gridSizePx) / 2;
+        ring.clear();
+        // Red-orange (#f87171) at 95% — bright enough to stand out
+        // against any map. Ring radius r + 14 (just outside the action
+        // economy ring at r + 14 for active token; for non-active it's
+        // free space). 3px stroke matches the visual weight of the
+        // turnRing without overpowering it on simultaneous-active hits.
+        ring.setStrokeStyle({ color: 0xf87171, width: 3, alpha: 0.95 });
+        ring.circle(0, 0, r + 14);
+        ring.stroke();
+        // Subtle interior fill so the ring reads even if the token
+        // visual is on busy terrain.
+        ring.setFillStyle({ color: 0xf87171, alpha: 0.10 });
+        ring.circle(0, 0, r + 14);
+        ring.fill();
+        ring.visible = true;
+      } else if (entry.targetHighlight) {
+        entry.targetHighlight.visible = false;
+      }
+    }
+  }, [aoeTargetIds, gridSizePx]);
 
   // v2.239.0 — Pan-to-token. Click a PartyVitalsBar card → camera
   // animates to that PC's linked token on the current scene. Lifts

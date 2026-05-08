@@ -238,6 +238,30 @@ interface BattleMapStore {
      *  identically. */
     widthFt?: number;
   } | null;
+  /** v2.456.0 — TOKEN IDs of the would-be-hit tokens for the active
+   *  AoE preview shape. Populated by the cone/line picker's hover
+   *  subscriber in MonsterActionPanel after running the SAT hit-test;
+   *  consumed by the renderer in BattleMapV2 to draw a red highlight
+   *  ring around each matching token. Empty when no picker is open or
+   *  no targets are in the cone/line. Token IDs (not participant IDs)
+   *  because that's what the renderer keys by — the picker does the
+   *  participant→token mapping before writing here. */
+  aoePreviewTargetTokenIds: string[];
+  /** v2.459.0 — Reach visualization. Set when the DM hovers a melee
+   *  attack action button; cleared on mouse-leave. Renderer in
+   *  BattleMapV2 draws a translucent rectangle covering every cell
+   *  within Chebyshev reach of the active token's footprint
+   *  (footprint cells are inside the rect; the visible "donut" of
+   *  reach extends `reachFt` outward in every direction). Distinct
+   *  from aoePreview because reach is a single-token attack envelope
+   *  (informational, never targeted) — different visual treatment
+   *  (orange/red danger zone, not yellow AOE). */
+  reachPreview: {
+    centerWorldX: number;     // footprint geometric center
+    centerWorldY: number;
+    footprintCells: number;   // 1 (Tiny–Medium), 2 (Large), 3 (Huge), 4 (Gargantuan)
+    reachFt: number;          // 5, 10, 15, 20...
+  } | null;
   /** v2.344.0 — Single-target spell range overlay. Set by the spell
    *  picker for non-AoE spells with a numeric range, drawn by the map
    *  as a faint circle around the caster's token. Distinct from
@@ -363,6 +387,18 @@ interface BattleMapStore {
    *  direction with a click. Cheaper than setAoePreview() because we
    *  don't rebuild the whole object. */
   setAoePreviewDirection: (worldX: number, worldY: number) => void;
+  /** v2.456.0 — Setter for the hover-highlight target list. Pass
+   *  empty array to clear. */
+  setAoePreviewTargetTokenIds: (ids: string[]) => void;
+  /** v2.459.0 — Reach visualization setter. Pass null to clear. */
+  setReachPreview: (
+    p: {
+      centerWorldX: number;
+      centerWorldY: number;
+      footprintCells: number;
+      reachFt: number;
+    } | null,
+  ) => void;
   /** v2.385.0 — Setter for the pan-to-token channel. Pass world coords
    *  (token.x/y are already world pixels). Pass null to clear after
    *  consuming. */
@@ -380,6 +416,8 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   currentSceneId: null,
   loading: false,
   aoePreview: null,
+  aoePreviewTargetTokenIds: [],
+  reachPreview: null,
   rangePreview: null,
   directionPick: { active: false, result: null },
   panRequest: null,
@@ -520,13 +558,22 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
         // v2.342.0 — clear AoE preview on scene change so a stale
         // ring from one scene doesn't bleed into the next.
         aoePreview: null,
+        // v2.456.0 — clear hover-highlight targets too.
+        aoePreviewTargetTokenIds: [],
+        // v2.459.0 — clear reach preview on scene change.
+        reachPreview: null,
         // v2.344.0 — same for range preview.
         rangePreview: null,
         // v2.345.0 — same for direction-pick state.
         directionPick: { active: false, result: null },
       };
     }),
-  setAoePreview: (p) => set({ aoePreview: p }),
+  // v2.456.0 — Whenever the AoE preview is replaced or cleared we
+  // also reset the hover-highlight target list so a stale ring from
+  // a previous picker doesn't linger between activations.
+  setAoePreview: (p) => set({ aoePreview: p, aoePreviewTargetTokenIds: [] }),
+  setAoePreviewTargetTokenIds: (ids) => set({ aoePreviewTargetTokenIds: ids }),
+  setReachPreview: (p) => set({ reachPreview: p }),
   setRangePreview: (p) => set({ rangePreview: p }),
   setDirectionPickActive: (active) =>
     set((s) => ({ directionPick: { active, result: active ? null : s.directionPick.result } })),

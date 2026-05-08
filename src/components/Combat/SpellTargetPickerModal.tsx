@@ -37,6 +37,15 @@ import {
   loadActiveBattleMap,
   buildParticipantPositions,
   findParticipantsInArea,
+  // v2.458.0 — footprint-aware Chebyshev for picker distance display.
+  // Replaces the inline anchor-to-anchor math at line ~750 which
+  // ignored token sizes (a Large dragon at "10 cells away" was reported
+  // as 50ft when the correct, footprint-aware distance is 45ft —
+  // mattered for spell range edge cases like a 30ft Healing Word on a
+  // Large ally just inside reach).
+  distanceBetweenParticipantsFtUsingMap,
+  type ActiveBattleMap,
+  type ParticipantForTokenLookup,
   type AoeShape,
   type ParticipantPosition,
 } from '../../lib/battleMapGeometry';
@@ -111,6 +120,12 @@ export default function SpellTargetPickerModal({
   // a new UI section lets the player pick a center + click to auto-
   // select all tokens within radius.
   const [positions, setPositions] = useState<Map<string, ParticipantPosition> | null>(null);
+  // v2.458.0 — Stash full battleMap for footprint-aware distance lookups.
+  // Pre-v2.458 the picker computed distance via anchor-to-anchor Chebyshev
+  // on the positions map, which ignored token sizes. Switching to
+  // distanceBetweenParticipantsFtUsingMap matches the v2.401+ convention
+  // used by every other distance call in the codebase.
+  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
   const [gridSize, setGridSize] = useState<number>(50);
   const [centerId, setCenterId] = useState<string | null>(null);
   const autoTargetable = !!(spell.area_of_effect?.size && positions && positions.size > 0);
@@ -267,6 +282,7 @@ export default function SpellTargetPickerModal({
       setError(null);
       setPicked(new Set());
       setPositions(null);
+      setBattleMap(null);
       setCenterId(null);
       setCoverByTarget({});
       // Find the active encounter for this campaign.
@@ -336,6 +352,7 @@ export default function SpellTargetPickerModal({
           ];
           const computed = buildParticipantPositions(posInput, map.tokens);
           setPositions(computed);
+          setBattleMap(map);
           setGridSize(map.grid_size);
           // Default center = caster. Player can change via dropdown.
           if (computed.has(caster.id as string)) {
@@ -741,17 +758,35 @@ export default function SpellTargetPickerModal({
                 // mean we shouldn't HARD block; we just dim the row and
                 // surface the distance so the player knows. If they're
                 // sure it's reachable they tick the box anyway.
+                //
+                // v2.458.0 — Two upgrades:
+                //   1. Footprint-aware via distanceBetweenParticipantsFtUsingMap.
+                //      Pre-v2.458 this used inline anchor-to-anchor Chebyshev
+                //      that ignored token sizes; a Large dragon at "10 cells"
+                //      now correctly reads 45ft instead of 50ft.
+                //   2. Distance is shown for ALL targets when known, not just
+                //      OOR. Players want to know "I'm 25ft away — comfortable"
+                //      vs "I'm 4ft from the OOR threshold — tight". The OOR
+                //      badge keeps its loud red treatment; in-range gets a
+                //      quiet inline "20ft" next to the participant type.
                 let outOfRange = false;
                 let distanceFt: number | null = null;
-                if (positions && casterParticipantId && rangeFt != null && rangeFt > 0) {
-                  const casterPos = positions.get(casterParticipantId);
-                  const targetPos = positions.get(p.id);
-                  if (casterPos && targetPos) {
-                    const cells = Math.max(
-                      Math.abs(casterPos.row - targetPos.row),
-                      Math.abs(casterPos.col - targetPos.col),
-                    );
-                    distanceFt = cells * 5;
+                if (battleMap && casterParticipantId) {
+                  const casterLookup: ParticipantForTokenLookup = {
+                    id: casterParticipantId,
+                    name: character.name,
+                    participant_type: 'character',
+                    entity_id: character.id,
+                  };
+                  const targetLookup: ParticipantForTokenLookup = {
+                    id: p.id, name: p.name,
+                    participant_type: p.participant_type,
+                    entity_id: p.entity_id,
+                  };
+                  distanceFt = distanceBetweenParticipantsFtUsingMap(
+                    casterLookup, targetLookup, battleMap,
+                  );
+                  if (distanceFt !== null && rangeFt != null && rangeFt > 0) {
                     outOfRange = distanceFt > rangeFt;
                   }
                 }
@@ -779,6 +814,17 @@ export default function SpellTargetPickerModal({
                       {p.name}
                       <span style={{ color: 'var(--t-3)', marginLeft: 6, fontSize: 10 }}>
                         · {p.participant_type}
+                        {/* v2.458.0 — Quiet in-range distance. Same dim
+                            color as participant_type so it sits
+                            informationally without competing with the
+                            checkbox or OOR badge. Only rendered when
+                            we have a battle map AND the target isn't
+                            OOR (OOR rows get the loud badge instead). */}
+                        {distanceFt !== null && !outOfRange && (
+                          <span style={{ marginLeft: 6 }}>
+                            · {distanceFt} ft
+                          </span>
+                        )}
                       </span>
                     </span>
                     {outOfRange && (

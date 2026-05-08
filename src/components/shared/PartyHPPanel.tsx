@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+// v2.457.0 — Resolve spell IDs to names. Pre-v2.457 the concentration
+// chip rendered the raw spell ID (cosmetic bug — characters store
+// concentration_spell as a UUID, not a name).
+import { useSpells } from '../../lib/hooks/useSpells';
 
 type HpMode = 'hidden' | 'exact' | 'states';
 
@@ -41,6 +45,8 @@ export default function PartyHPPanel({ campaignId, isDM, userId, myCharacterId }
  const [members, setMembers] = useState<PartyMember[]>([]);
  const [mode, setMode] = useState<HpMode>('hidden');
  const [loading, setLoading] = useState(true);
+ // v2.457.0 — Used to resolve concentration_spell ID → spell name.
+ const { spellMap } = useSpells();
 
  useEffect(() => {
  loadData();
@@ -126,7 +132,7 @@ export default function PartyHPPanel({ campaignId, isDM, userId, myCharacterId }
  {/* Conditions & concentration */}
  {(m.active_conditions?.length > 0 || m.concentration_spell) && (
  <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
- {m.concentration_spell && <span style={{ fontSize: 9, color: '#a78bfa', background: 'rgba(139,92,246,0.15)', borderRadius: 3, padding: '1px 4px' }}> {m.concentration_spell}</span>}
+ {m.concentration_spell && <span title={`Concentrating on ${spellMap[m.concentration_spell]?.name ?? 'spell'}`} style={{ fontSize: 9, color: '#a78bfa', background: 'rgba(139,92,246,0.15)', borderRadius: 3, padding: '1px 4px' }}>◉ {spellMap[m.concentration_spell]?.name ?? 'Concentrating'}</span>}
  {m.active_conditions?.slice(0, 3).map(c => (
  <span key={c} style={{ fontSize: 9, color: 'var(--t-3)', background: 'var(--c-surface)', borderRadius: 3, padding: '1px 4px' }}>{c}</span>
  ))}

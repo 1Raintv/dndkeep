@@ -183,6 +183,42 @@ function tokenFootprintAABBPx(
   };
 }
 
+// v2.459.0 — Detect "reach X ft" from a melee action description and
+// return reach in feet. Returns null when the desc isn't a melee
+// attack (no reach phrase) — the caller uses null as the gate for
+// whether to show a reach-preview overlay on hover.
+//
+// Patterns matched (case-insensitive):
+//   "Melee Weapon Attack: +9 to hit, reach 5 ft."
+//   "Melee Spell Attack: +7 to hit, reach 5 ft."
+//   "reach 10 ft."
+//   "reach 15 ft, one target"
+//
+// Patterns NOT matched (correctly returning null):
+//   "Ranged Weapon Attack: +7 to hit, range 80/320 ft." (range, not reach)
+//   "60-foot cone" (AOE save)
+//   "60-foot line"
+function parseMeleeReachFt(desc: string | undefined): number | null {
+  if (!desc) return null;
+  const m = desc.match(/reach\s+(\d+)\s*ft/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// v2.459.0 — Map a TokenSize string to the integer cell-count the
+// renderer + footprint helpers use. Mirrors the table in
+// battleMapGeometry.ts:172 (tiny/small/medium=1, large=2, huge=3,
+// gargantuan=4). Inlined here because we only need it for the
+// reach-preview hover and don't want a cross-file dependency on the
+// internal `SIZE_CELLS` constant in geometry.
+function sizeToFootprintCells(size: unknown): number {
+  if (size === 'large') return 2;
+  if (size === 'huge') return 3;
+  if (size === 'gargantuan') return 4;
+  return 1; // tiny / small / medium / unknown
+}
+
 // v2.415.0 — Normalize a monster-action `dc_type` field into the
 // 3-letter ability code expected by getTargetSaveBonus + rollSave.
 // Bestiary data is mixed: some entries use 'wisdom' / 'Wisdom' /
@@ -648,14 +684,19 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- v2.419: intentional identity-based deps
   }, [isDM, currentActor?.id, currentActor?.entity_id, currentActor?.participant_type]);
 
-  // Reload battle map when picker opens. The same map drives all
-  // target distance reads in a single picker session.
-  // v2.444.0 — Also fire on multiSavePickingFor and conePickingFor;
-  // both rely on token positions to compute distances / cone hits.
-  // v2.450.0 — linePickingFor joins the same set.
+  // Load the active battle map when the panel is visible. The same
+  // map drives all distance reads, cone/line hit-tests, and reach
+  // hover overlays.
+  // v2.444.0 — Was gated on multiSavePickingFor + conePickingFor.
+  // v2.450.0 — linePickingFor joined the same set.
+  // v2.459.0 — Reach hover wants the map pre-loaded so it can render
+  // overlay without a request flicker. Switched gate from "any picker
+  // open" to "panel visible & has encounter" so the map is available
+  // for all interactions including hover. Loads once per encounter,
+  // discarded on encounter change. Same realtime cost as before
+  // (single fetch on open).
   useEffect(() => {
-    const anyPickerOpen = !!pickingFor || !!multiSavePickingFor || !!conePickingFor || !!linePickingFor;
-    if (!anyPickerOpen || !encounter) {
+    if (!encounter || !currentActor) {
       setBattleMap(null);
       return;
     }
@@ -667,7 +708,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       console.error('[MonsterActionPanel] map load failed', err);
     });
     return () => { cancelled = true; };
-  }, [pickingFor, multiSavePickingFor, conePickingFor, linePickingFor, encounter]);
+  }, [encounter, currentActor]);
 
   // v2.444.0 — Cone-pick lifecycle. Three phases:
   //   1. Setup (conePickingFor + battleMap both present, directionPick
@@ -684,6 +725,14 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const setDirectionPickActive = useBattleMapStore(s => s.setDirectionPickActive);
   const setDirectionPickResult = useBattleMapStore(s => s.setDirectionPickResult);
   const directionPickResult = useBattleMapStore(s => s.directionPick.result);
+  // v2.456.0 — Hover-targeting preview setter. Read via the imperative
+  // store API inside the subscriber effect (not as a hook) to avoid
+  // re-rendering MonsterActionPanel on every mousemove pixel.
+  const setAoePreviewTargetTokenIds = useBattleMapStore(s => s.setAoePreviewTargetTokenIds);
+  // v2.459.0 — Reach preview setter for melee attack hover. Called
+  // from onMouseEnter/onMouseLeave on attack buttons (see below).
+  // Pulls the token's footprint center out of battleMap on demand.
+  const setReachPreview = useBattleMapStore(s => s.setReachPreview);
 
   // Compute apex world coords for the active actor's token. Cached
   // by useMemo so the setup effect doesn't re-fire on unrelated
@@ -903,6 +952,100 @@ export default function MonsterActionPanel({ isDM }: Props) {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMultiSavePick stable; mirrors cone effect
   }, [directionPickResult, linePickingFor, lineApex, battleMap, currentActor, participants]);
+
+  // v2.456.0 — Live hover-targeting preview for cone + line pickers.
+  // Subscribes once per picker activation; on every aoePreview direction
+  // change (which fires per-mousemove from BattleMapV2's directionPick
+  // handler) re-runs the SAT hit-test and writes the resulting
+  // participant IDs to aoePreviewTargetTokenIds. The renderer reads that
+  // array and draws a red highlight ring around would-be-hit tokens
+  // before the player commits the click. No tooltip / no popup — just
+  // a visible "this is who you'll hit" signal.
+  //
+  // Imperative store subscription instead of selector hook because we
+  // don't want MonsterActionPanel re-rendering on every mousemove —
+  // the candidate list is captured at effect setup, and updates happen
+  // entirely as side effects.
+  useEffect(() => {
+    const apex = conePickingFor ? coneApex : linePickingFor ? lineApex : null;
+    const picker: { kind: 'cone' | 'line'; lengthFt: number; widthFt?: number } | null =
+      conePickingFor ? { kind: 'cone', lengthFt: conePickingFor.lengthFt } :
+      linePickingFor ? { kind: 'line', lengthFt: linePickingFor.lengthFt, widthFt: linePickingFor.widthFt } :
+      null;
+    if (!picker || !apex || !battleMap || !currentActor) return;
+
+    // Build candidates ONCE per picker session. Same pattern as the
+    // resolve effects (which still build their own at click time —
+    // we don't share state because a slow mousemove that lands on
+    // click should re-evaluate against the freshest token positions,
+    // not a snapshot from when the picker opened).
+    //
+    // Stash tokenId on each candidate so the hit-test result maps
+    // straight to the token ID the renderer keys highlights by.
+    type Candidate = { participant: CombatParticipant; tokenId: string;
+      minX: number; minY: number; maxX: number; maxY: number };
+    const candidates: Candidate[] = participants
+      .filter(p => p.id !== currentActor.id && !p.is_dead)
+      .map(p => {
+        const lookup: ParticipantForTokenLookup = {
+          id: p.id, name: p.name,
+          participant_type: p.participant_type, entity_id: p.entity_id,
+        };
+        const token = findTokenForParticipant(lookup, battleMap.tokens);
+        if (!token) return null;
+        const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+        if (!aabb) return null;
+        return { participant: p, tokenId: token.id, ...aabb } as Candidate;
+      })
+      .filter((c): c is Candidate => c !== null);
+
+    function recompute() {
+      const aoe = useBattleMapStore.getState().aoePreview;
+      if (!aoe || aoe.directionWorldX == null || aoe.directionWorldY == null) {
+        setAoePreviewTargetTokenIds([]);
+        return;
+      }
+      const dirX = aoe.directionWorldX;
+      const dirY = aoe.directionWorldY;
+      // The hit-test types are generic over the candidate shape —
+      // ConeTarget<T> / LineTarget<T> just require {minX,minY,maxX,maxY}
+      // alongside whatever T the caller wants stamped on each hit. We
+      // pass our Candidate (with tokenId) so the result preserves it.
+      const hits = picker!.kind === 'cone'
+        ? findParticipantsInCone(
+            apex!.worldX, apex!.worldY, dirX, dirY,
+            picker!.lengthFt, battleMap!.grid_size, candidates,
+          )
+        : findParticipantsInLine(
+            apex!.worldX, apex!.worldY, dirX, dirY,
+            picker!.lengthFt, picker!.widthFt ?? 5, battleMap!.grid_size, candidates,
+          );
+      // hits is ConeHit/LineHit<Candidate>; .participant is our Candidate
+      // (the generic param shadows the field name "participant" — it's
+      // semantic-free in the geometry layer, just "the thing we got").
+      setAoePreviewTargetTokenIds(hits.map(h => (h.participant as Candidate).tokenId));
+    }
+
+    // Run once for the seeded direction (setup effect placed it at
+    // apex + 1 cell east) so the highlight is correct before the
+    // first mousemove. Then subscribe to all subsequent updates.
+    recompute();
+    const unsub = useBattleMapStore.subscribe((state, prev) => {
+      const a = state.aoePreview;
+      const pa = prev.aoePreview;
+      if (a?.directionWorldX !== pa?.directionWorldX ||
+          a?.directionWorldY !== pa?.directionWorldY) {
+        recompute();
+      }
+    });
+    return () => {
+      unsub();
+      setAoePreviewTargetTokenIds([]);
+    };
+  }, [
+    conePickingFor, linePickingFor, coneApex, lineApex,
+    battleMap, currentActor, participants, setAoePreviewTargetTokenIds,
+  ]);
 
   const visible = useMemo(() => {
     if (!isDM) return false;
@@ -1350,6 +1493,40 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // a single action regardless of how many targets it touched).
   // During multiattack guided mode, the multiattack step advances
   // once at the end. attacks_remaining decrements by 1.
+  // v2.459.0 — Reach preview hover handlers. onEnter parses the
+  // action's reach and writes the active token's footprint center +
+  // reach to the store. onLeave clears. Called from attack buttons
+  // below; safe to call when battleMap or token is missing (we just
+  // skip writing in those cases — the overlay stays cleared).
+  function handleAttackHoverEnter(action: MonsterAction) {
+    const reachFt = parseMeleeReachFt(action.desc);
+    if (reachFt == null) return; // not a melee attack — no overlay
+    if (!battleMap || !currentActor) return;
+    const lookup: ParticipantForTokenLookup = {
+      id: currentActor.id, name: currentActor.name,
+      participant_type: currentActor.participant_type,
+      entity_id: currentActor.entity_id,
+    };
+    const token = findTokenForParticipant(lookup, battleMap.tokens);
+    if (!token) return;
+    const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+    if (!aabb) return;
+    setReachPreview({
+      centerWorldX: (aabb.minX + aabb.maxX) / 2,
+      centerWorldY: (aabb.minY + aabb.maxY) / 2,
+      footprintCells: sizeToFootprintCells((token as { size?: unknown }).size),
+      reachFt,
+    });
+  }
+  function handleAttackHoverLeave() {
+    setReachPreview(null);
+  }
+  // Cleanup on unmount: clear any lingering reach preview if the
+  // panel disappears mid-hover (turn advance, encounter ends, etc.).
+  useEffect(() => {
+    return () => { setReachPreview(null); };
+  }, [setReachPreview]);
+
   async function handleMultiSavePick(targets: CombatParticipant[]) {
     if (!encounter || !currentActor || !multiSavePickingFor) return;
     if (busy) return;
@@ -2166,7 +2343,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 return (
                   <button
                     key={key}
-                    onClick={() => setPickingFor(action)}
+                    onClick={() => { setReachPreview(null); setPickingFor(action); }}
+                    onMouseEnter={() => handleAttackHoverEnter(action)}
+                    onMouseLeave={handleAttackHoverLeave}
                     disabled={disabled}
                     title={
                       lockedByMulti

@@ -26,6 +26,10 @@ import {
   deriveCoverFromWalls,
   loadActiveBattleMap,
   buildParticipantPositions,
+  // v2.458.0 — Footprint-aware Chebyshev for inline distance display.
+  distanceBetweenParticipantsFtUsingMap,
+  type ActiveBattleMap,
+  type ParticipantForTokenLookup,
 } from '../../lib/battleMapGeometry';
 import { logAction } from '../shared/ActionLog';
 import type { SpellData, CombatParticipant, Character } from '../../types';
@@ -66,6 +70,12 @@ export default function MultiAttackPickerModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [coverByTarget, setCoverByTarget] = useState<Record<string, 'half' | 'three_quarters' | 'total'>>({});
+  // v2.458.0 — Stash the battle map for inline distance display in
+  // each target row. Spell.range_ft on this picker isn't enforced
+  // (the parent declares the slot + delegates per-beam attack rolls
+  // — range checking happens at attack time), so we don't compute
+  // OOR here, just expose the raw distance for the player's planning.
+  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
 
   // Reset state when the modal opens. `defaultAttackCount` might differ
   // across sequential casts (e.g. Warlock leveling up between sessions).
@@ -125,8 +135,13 @@ export default function MultiAttackPickerModal({
       // Cover preview if a map with walls exists. Per-beam cover applies
       // to every beam targeting that creature, so we compute once per
       // target, not once per beam.
+      // v2.458.0 — Always stash the map (for distance display); cover
+      // work still gated on walls being present.
       try {
         const map = await loadActiveBattleMap(campaignId);
+        if (!cancelled && map) {
+          setBattleMap(map);
+        }
         if (!cancelled && map && map.walls.length > 0) {
           const posInput = [
             {
@@ -337,6 +352,28 @@ export default function MultiAttackPickerModal({
                                  : null;
                 const coverLabel = cover === 'three_quarters' ? '¾' : cover;
                 const active = count > 0;
+                // v2.458.0 — Footprint-aware Chebyshev distance for inline
+                // display. Players using Scorching Ray (120ft) or EB (120ft)
+                // with multiple targets benefit from knowing each target's
+                // distance — informs which to target first if any are
+                // approaching range edge. Null when no map / no positions.
+                let distanceFt: number | null = null;
+                if (battleMap && casterParticipantId) {
+                  const casterLookup: ParticipantForTokenLookup = {
+                    id: casterParticipantId,
+                    name: character.name,
+                    participant_type: 'character',
+                    entity_id: character.id,
+                  };
+                  const targetLookup: ParticipantForTokenLookup = {
+                    id: p.id, name: p.name,
+                    participant_type: p.participant_type,
+                    entity_id: p.entity_id,
+                  };
+                  distanceFt = distanceBetweenParticipantsFtUsingMap(
+                    casterLookup, targetLookup, battleMap,
+                  );
+                }
                 return (
                   <div key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
@@ -348,6 +385,11 @@ export default function MultiAttackPickerModal({
                       {p.name}
                       <span style={{ color: 'var(--t-3)', marginLeft: 6, fontSize: 10 }}>
                         · {p.participant_type}
+                        {distanceFt !== null && (
+                          <span style={{ marginLeft: 6 }}>
+                            · {distanceFt} ft
+                          </span>
+                        )}
                       </span>
                     </span>
                     {cover && coverColor && (
