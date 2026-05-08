@@ -3553,6 +3553,17 @@ function TokenLayer(props: {
     // doesn't collide when both are present (active turn AND locked
     // is rare but possible on a DM-controlled creature mid-combat).
     lockGlyph: Text | null;
+    // v2.453.0 — Action Economy Ring. Three 60° arc segments around
+    // the active token at radius r + 14, encoding A/B/R availability
+    // (bright cyan = available, dim charcoal = consumed). Replaces the
+    // v2.341 pip strip approach (reverted in v2.411 for visual noise)
+    // — arcs sit OUTSIDE the existing turnHaloRing so they don't fight
+    // it for vertical real estate above the token. Three letter labels
+    // (A/B/R) at arc midpoints make the encoding self-explanatory
+    // without needing legend or hover. Static (no rAF) so they don't
+    // compete with the halo's rotation animation.
+    actionEconomyRing: Graphics | null;
+    actionEconomyLabels: Text[] | null;
   }
   const gfxMapRef = useRef<Map<string, TokenGfx>>(new Map());
   // v2.268.0 — added originX/originY so the drop handler can validate
@@ -3711,6 +3722,9 @@ function TokenLayer(props: {
           // v2.411.0
           turnHaloRing: null,
           lockGlyph: null,
+          // v2.453.0
+          actionEconomyRing: null,
+          actionEconomyLabels: null,
         };
         gfxMap.set(token.id, entry);
 
@@ -4593,9 +4607,102 @@ function TokenLayer(props: {
           halo.stroke();
         }
         halo.visible = true;
+
+        // ── Action Economy Ring (v2.453.0) ─────────────────────────
+        // Three 60° arcs at r + 14, fixed positions:
+        //   • TOP (12 o'clock) — Action
+        //   • BOTTOM-LEFT (8 o'clock) — Bonus
+        //   • BOTTOM-RIGHT (4 o'clock) — Reaction
+        // Bright cyan when available, dim charcoal when consumed.
+        // Letter labels (A/B/R) at arc midpoints. The arcs sit
+        // OUTSIDE the rotating turnHaloRing (r + 8) so the halo's
+        // animation doesn't visually shred them. Static — no rAF.
+        //
+        // Action economy state lives on activeTokenInfo (plumbed from
+        // combat_participants.action_used / bonus_used / reaction_used,
+        // toggled by the corresponding standard-action flows). For
+        // tokens that aren't the active actor we never draw this — only
+        // the active actor has live action-economy state in scope.
+        if (!currentEntry.actionEconomyRing) {
+          const aeRing = new Graphics();
+          // addChildAt(0) puts it at the bottom of the container so it
+          // sits UNDER the token circle/sprite — mirroring turnRing's
+          // z-order convention.
+          container.addChildAt(aeRing, 0);
+          currentEntry.actionEconomyRing = aeRing;
+        }
+        const aeRing = currentEntry.actionEconomyRing;
+        aeRing.clear();
+
+        const aeRadius = r + 14;
+        const aeWidth = 4;
+        const aeArcSpan = Math.PI / 3;       // 60° per arc
+        // Three slot midpoints. Pixi: angle 0 = +x (3 o'clock),
+        // PI/2 = +y (6 o'clock, since y grows downward in screen space).
+        // 12 o'clock = -PI/2.
+        const slots: Array<{ midAngle: number; consumed: boolean; letter: 'A' | 'B' | 'R' }> = [
+          { midAngle: -Math.PI / 2,                    consumed: !!activeTokenInfo!.actionUsed,   letter: 'A' },
+          { midAngle: -Math.PI / 2 + (4 * Math.PI) / 3, consumed: !!activeTokenInfo!.bonusUsed,    letter: 'B' }, // 8 o'clock
+          { midAngle: -Math.PI / 2 + (2 * Math.PI) / 3, consumed: !!activeTokenInfo!.reactionUsed, letter: 'R' }, // 4 o'clock
+        ];
+        for (const slot of slots) {
+          const a0 = slot.midAngle - aeArcSpan / 2;
+          const a1 = slot.midAngle + aeArcSpan / 2;
+          const color = slot.consumed ? 0x4b5563 : 0x67e8f9; // gray vs cyan
+          const alpha = slot.consumed ? 0.55 : 0.95;
+          aeRing.setStrokeStyle({ color, width: aeWidth, alpha });
+          aeRing.arc(0, 0, aeRadius, a0, a1);
+          aeRing.stroke();
+        }
+        aeRing.visible = true;
+
+        // Letter labels at arc midpoints. Lazy-create the 3 Text
+        // nodes and reuse them on subsequent activations — text
+        // positions don't change, only fill alpha.
+        if (!currentEntry.actionEconomyLabels) {
+          const labels: Text[] = [];
+          for (const slot of slots) {
+            const t = new Text({
+              text: slot.letter,
+              style: new TextStyle({
+                fontFamily: 'sans-serif',
+                fontWeight: '800',
+                fontSize: 9,
+                fill: 0xffffff,
+                align: 'center',
+                stroke: { color: 0x0a0c10, width: 2 },
+              }),
+            });
+            t.anchor.set(0.5, 0.5);
+            // Sit slightly OUTSIDE the arc radius so the letter is
+            // legible without the arc cutting through it.
+            const lr = aeRadius + 1;
+            t.position.set(Math.cos(slot.midAngle) * lr, Math.sin(slot.midAngle) * lr);
+            container.addChild(t);
+            labels.push(t);
+          }
+          currentEntry.actionEconomyLabels = labels;
+        }
+        // Per-frame: dim consumed labels (we mutate alpha rather than
+        // tearing down + rebuilding the Text nodes).
+        if (currentEntry.actionEconomyLabels) {
+          for (let i = 0; i < currentEntry.actionEconomyLabels.length; i++) {
+            const t = currentEntry.actionEconomyLabels[i];
+            const consumed = slots[i].consumed;
+            t.alpha = consumed ? 0.5 : 1.0;
+            t.visible = true;
+          }
+        }
       } else {
         if (currentEntry.turnRing) currentEntry.turnRing.visible = false;
         if (currentEntry.turnHaloRing) currentEntry.turnHaloRing.visible = false;
+        // v2.453.0 — hide action economy ring + labels for non-active
+        // tokens. Created on first activation, kept around for the
+        // common toggle-back case (turn flips back to this token).
+        if (currentEntry.actionEconomyRing) currentEntry.actionEconomyRing.visible = false;
+        if (currentEntry.actionEconomyLabels) {
+          for (const t of currentEntry.actionEconomyLabels) t.visible = false;
+        }
       }
 
       // ── Selection ring (v2.358.0) ──────────────────────────────────
