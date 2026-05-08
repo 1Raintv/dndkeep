@@ -1120,7 +1120,7 @@ export async function offerOpportunityAttacks(
   // produces no offers) — this is the correct behavior for OA specifically
   // because movement without grid positions doesn't model reach at all;
   // compare to Counterspell/HR which fail OPEN for theater-of-the-mind play.
-  const { loadActiveBattleMap, findTokenForParticipant } =
+  const { loadActiveBattleMap, findTokenForParticipant, tokenFootprintRange } =
     await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   if (!bmap || bmap.tokens.length === 0) return 0;
@@ -1181,24 +1181,16 @@ export async function offerOpportunityAttacks(
     // is in the reactor's reach). STANDARD_REACH_CELLS = 1 still
     // means 5ft on top of the footprint.
     // v2.401.0 — Footprint convention split by size parity, matching
-    // BattleMapV2.snapTokenAnchor + battleMapGeometry.distanceBetweenTokensFt.
-    //   ODD sizes  (1, 3): anchor at cell-center; footprint extends
-    //                       (s-1)/2 cells each way symmetrically.
-    //   EVEN sizes (2, 4): anchor at grid intersection; row/col is
-    //                       the gridline index. Footprint spans
-    //                       [r - s/2, r + s/2 - 1].
-    const reactorSize = Math.max(1, (token.size as number) ?? 1);
-    let negCells: number;
-    let posCells: number;
-    if (reactorSize % 2 === 1) {
-      negCells = Math.floor(reactorSize / 2);
-      posCells = Math.floor(reactorSize / 2);
-    } else {
-      negCells = reactorSize / 2;
-      posCells = reactorSize / 2 - 1;
-    }
-    const reactorRowMin = token.row - negCells, reactorRowMax = token.row + posCells;
-    const reactorColMin = token.col - negCells, reactorColMax = token.col + posCells;
+    // BattleMapV2.snapTokenAnchor + battleMapGeometry.tokenFootprintRange.
+    // v2.455.0 — Inline duplicate replaced with the canonical
+    // tokenFootprintRange helper. Pre-v2.455 this reproduced the wrong
+    // even-size convention (anchor=bottom-right cell, opposite of
+    // renderer): a Large+ reactor's OA reach was offset by one cell
+    // (checked rows north of the body, missed rows south of it). Now
+    // rows match the visual footprint exactly.
+    const reactorFootprint = tokenFootprintRange(token);
+    const reactorRowMin = reactorFootprint.rMin, reactorRowMax = reactorFootprint.rMax;
+    const reactorColMin = reactorFootprint.cMin, reactorColMax = reactorFootprint.cMax;
     function gapToCell(targetRow: number, targetCol: number): number {
       const rowGap = Math.max(0, Math.max(reactorRowMin - targetRow, targetRow - reactorRowMax));
       const colGap = Math.max(0, Math.max(reactorColMin - targetCol, targetCol - reactorColMax));

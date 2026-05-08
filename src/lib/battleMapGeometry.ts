@@ -243,37 +243,31 @@ export function findTokenForParticipant(
 }
 
 /**
- * Footprint-aware Chebyshev distance between two tokens in feet.
- * RAW 2024: diagonals count as a single square (not 1.5 like older
- * optional rules), and distance is measured from the closest square
- * one creature occupies to the closest square the other occupies.
+ * Footprint cell range (rMin..rMax, cMin..cMax) for a token, given the
+ * row/col anchor convention used elsewhere in the codebase.
  *
- * v2.401.0 — Anchor convention split by size parity, matching the
- * snap-on-drop behavior in BattleMapV2.snapTokenAnchor:
+ * v2.455.0 — Convention unified with the renderer (BattleMapV2.tsx
+ * footprintCenterWorld math, mirrored in MonsterActionPanel's
+ * tokenFootprintAABBPx helper for v2.450/v2.451 cone+line geometry):
  *
- *   ODD sizes (1, 3): anchor at cell-center. row = floor(y/cellSize)
- *     is the index of the anchor cell. Footprint extends (s-1)/2
- *     cells in each direction.
- *       size=1: rows [r, r]            (just the anchor cell)
- *       size=3: rows [r-1, r+1]        (3 cells, centered on r)
+ *   ODD  (1, 3): row/col is the CENTER cell. Footprint extends
+ *                (s-1)/2 each way symmetrically.
+ *   EVEN (2, 4): row/col is the TOP-LEFT cell of the footprint.
+ *                Footprint spans [row, row + s - 1].
  *
- *   EVEN sizes (2, 4): anchor at GRID INTERSECTION. row =
- *     floor(y/cellSize) for an intersection at world y = R*cellSize
- *     gives R-1 when y > 0 and R when y == R*cellSize... actually
- *     floor(R*cellSize / cellSize) = R, so row = R for an
- *     intersection at the R-th gridline. Footprint extends (s/2)
- *     cells in -direction and (s/2 - 1) cells in +direction... no
- *     wait. For a 2×2 anchored at grid intersection (140, 140):
- *     floor(140/70) = 2. Footprint covers cells (1,1), (1,2), (2,1),
- *     (2,2). So rows [1, 2] = [r-1, r]. Range: [r - s/2, r + s/2 - 1]
- *     for size=2 → [r-1, r] ✓; size=4 → [r-2, r+1] ✓.
+ * Pre-v2.455 this used the OPPOSITE even-size convention
+ * (anchor = bottom-right cell, footprint spans [row - s/2, row + s/2 - 1]).
+ * Symmetric pair-distance math (distanceBetweenTokensFt) was unaffected
+ * because both rectangles got the same systematic offset and gaps
+ * cancelled. But pendingReaction's OA reach calc (reactor footprint vs
+ * mover's single cell) is asymmetric — that one was a real bug, fixed
+ * in the same ship by replacing its inline duplicate with this helper.
  *
- * Pre-v2.401 used a uniform "extend floor((s-1)/2) neg, ceil((s-1)/2)
- * pos" convention for cell-center anchors regardless of size, which
- * disagreed with the visual for even sizes once they started
- * snapping to grid intersections.
+ * Pre-v2.401 used a "extend floor((s-1)/2) neg, ceil((s-1)/2) pos" for
+ * cell-center anchors regardless of size, which disagreed with the
+ * visual once even sizes started snapping to grid intersections.
  */
-function tokenFootprintRange(t: BattleMapToken): {
+export function tokenFootprintRange(t: BattleMapToken): {
   rMin: number; rMax: number; cMin: number; cMax: number;
 } {
   const s = Math.max(1, t.size ?? 1);
@@ -285,17 +279,23 @@ function tokenFootprintRange(t: BattleMapToken): {
       cMin: t.col - half, cMax: t.col + half,
     };
   }
-  // Even: anchor is at a grid intersection. row = floor(y/cellSize)
-  // for an intersection at gridline R is R. Footprint cells extend
-  // s/2 in -direction and (s/2 - 1) in +direction.
-  const negCells = s / 2;
-  const posCells = s / 2 - 1;
+  // Even: anchor is the TOP-LEFT cell of the footprint. Footprint
+  // extends RIGHT and DOWN from the anchor. Matches the renderer
+  // (token.x = grid intersection at top-left corner; footprint cells
+  // are anchor_col..anchor_col+s-1, anchor_row..anchor_row+s-1).
   return {
-    rMin: t.row - negCells, rMax: t.row + posCells,
-    cMin: t.col - negCells, cMax: t.col + posCells,
+    rMin: t.row, rMax: t.row + s - 1,
+    cMin: t.col, cMax: t.col + s - 1,
   };
 }
 
+/**
+ * Footprint-aware Chebyshev distance between two tokens in feet.
+ * RAW 2024: diagonals count as a single square; distance is measured
+ * from the closest square one creature occupies to the closest square
+ * the other occupies. Returns 0 when footprints overlap or are
+ * adjacent. Anchor/footprint conventions delegated to tokenFootprintRange.
+ */
 export function distanceBetweenTokensFt(
   a: BattleMapToken,
   b: BattleMapToken,
