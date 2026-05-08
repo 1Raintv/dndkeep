@@ -8244,11 +8244,42 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // directionPick is active, every mousemove pushes cursor world coords
   // into aoePreview.directionWorldX/Y so the cone rotates continuously
   // with the cursor. Click commits + deactivates as before.
+  // v2.454.0 — 8-way direction snapping. Mousemove + click both snap
+  // the cursor angle around the apex to the nearest of N/NE/E/SE/S/SW/W/NW
+  // (PI/4 increments). Default ON because continuous mousemove makes
+  // sub-pixel cursor wobble visually translate to the cone wobble; the
+  // snap removes that without compromising aim. Hold Shift to bypass
+  // for fine control. Distance from apex is preserved — only the angle
+  // gets snapped — so the cursor's read as "you're aiming this far in
+  // this direction" stays intact.
   const setAoePreviewDirectionStore = useBattleMapStore(s => s.setAoePreviewDirection);
   useEffect(() => {
     if (!canvasEl || !directionPickActiveStore) return;
     const prevCursor = canvasEl.style.cursor;
     canvasEl.style.cursor = 'crosshair';
+    // Snap (px, py) world point to the nearest 8-way axis around
+    // (apexX, apexY). Returns the snapped world point. Apex is read
+    // from the live store (aoePreview.centerWorldX/Y) — when no
+    // overlay is active this returns the input unchanged so we don't
+    // accidentally collapse points to (0,0).
+    function snapTo8Way(px: number, py: number): { x: number; y: number } {
+      const aoe = useBattleMapStore.getState().aoePreview;
+      if (!aoe) return { x: px, y: py };
+      const dx = px - aoe.centerWorldX;
+      const dy = py - aoe.centerWorldY;
+      const distSq = dx * dx + dy * dy;
+      // Sub-pixel distance: snapping is meaningless and would zero out
+      // the dir vector. Skip.
+      if (distSq < 1) return { x: px, y: py };
+      const angle = Math.atan2(dy, dx);
+      const step = Math.PI / 4;
+      const snapped = Math.round(angle / step) * step;
+      const dist = Math.sqrt(distSq);
+      return {
+        x: aoe.centerWorldX + Math.cos(snapped) * dist,
+        y: aoe.centerWorldY + Math.sin(snapped) * dist,
+      };
+    }
     function onClick(e: MouseEvent) {
       const vp = vpRef.current;
       if (!canvasEl || !vp) return;
@@ -8258,7 +8289,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPoint = vp.toWorld(screenX, screenY);
-      setDirectionPickResultStore({ worldX: worldPoint.x, worldY: worldPoint.y });
+      // Shift held → fine aim (no snap). Default → 8-way snap.
+      const point = e.shiftKey ? worldPoint : snapTo8Way(worldPoint.x, worldPoint.y);
+      setDirectionPickResultStore({ worldX: point.x, worldY: point.y });
       setDirectionPickActiveStore(false);
     }
     // v2.444.0 — Live preview tracking. Throttling not needed; the
@@ -8271,7 +8304,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPoint = vp.toWorld(screenX, screenY);
-      setAoePreviewDirectionStore(worldPoint.x, worldPoint.y);
+      const point = e.shiftKey ? worldPoint : snapTo8Way(worldPoint.x, worldPoint.y);
+      setAoePreviewDirectionStore(point.x, point.y);
     }
     canvasEl.addEventListener('click', onClick, true);
     canvasEl.addEventListener('mousemove', onMouseMove);

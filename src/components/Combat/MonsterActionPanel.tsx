@@ -2595,7 +2595,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
               {conePickingFor.action.name} — {conePickingFor.lengthFt}-ft cone
             </span>
             <span style={{ fontSize: 11, color: 'var(--t-2)' }}>
-              Move cursor to aim · Click to confirm direction
+              Move cursor to aim · Click to confirm · Hold Shift for fine aim
             </span>
           </div>
           <button
@@ -2650,7 +2650,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
               {linePickingFor.widthFt !== 5 ? ` (${linePickingFor.widthFt}ft wide)` : ''}
             </span>
             <span style={{ fontSize: 11, color: 'var(--t-2)' }}>
-              Move cursor to aim · Click to confirm direction
+              Move cursor to aim · Click to confirm · Hold Shift for fine aim
             </span>
           </div>
           <button
