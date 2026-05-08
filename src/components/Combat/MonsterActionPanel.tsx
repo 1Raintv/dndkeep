@@ -135,6 +135,54 @@ type ActionFlavor = 'attack' | 'save' | 'descriptive';
 // flow to space out animations between attack-chain steps.
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+// v2.451.0 — Footprint AABB in world pixels for any token, respecting
+// odd/even anchor semantics (renderer convention from v2.423; ground
+// truth: BattleMapV2 line ~4660 footprintCenterWorld math).
+//
+//   Odd sizes  (1=tiny/small/medium, 3=huge): col,row is the CENTER
+//                cell. Footprint extends (N-1)/2 cells in every dir.
+//   Even sizes (2=large, 4=gargantuan): col,row is the TOP-LEFT cell
+//                of the footprint (token.x = grid intersection at
+//                top-left corner). Footprint extends right + down.
+//
+// Returns null when the token has no row/col (untracked / off-scene).
+// Used by coneApex + lineApex (apex = footprint center, not head-cell
+// center — fixes the cone-from-corner regression for Large+ casters)
+// AND by the cone/line resolve effects for SAT hit-testing against
+// every candidate's full footprint.
+//
+// Note: battleMapGeometry.ts's tokenFootprintRange uses the OPPOSITE
+// convention for even sizes (anchor = bottom-right cell). It's used
+// only by distance-between-tokens math where the asymmetry cancels;
+// don't reuse it for AOE geometry.
+function tokenFootprintAABBPx(
+  token: { row?: unknown; col?: unknown; size?: unknown },
+  gridPx: number,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (typeof token.row !== 'number' || typeof token.col !== 'number') return null;
+  const sizeCells = typeof token.size === 'number' && token.size > 0
+    ? Math.floor(token.size)
+    : 1;
+  let minCol: number;
+  let minRow: number;
+  if (sizeCells % 2 === 0) {
+    minCol = token.col;
+    minRow = token.row;
+  } else {
+    const half = (sizeCells - 1) / 2;
+    minCol = token.col - half;
+    minRow = token.row - half;
+  }
+  const maxCol = minCol + sizeCells - 1;
+  const maxRow = minRow + sizeCells - 1;
+  return {
+    minX: minCol * gridPx,
+    minY: minRow * gridPx,
+    maxX: (maxCol + 1) * gridPx,
+    maxY: (maxRow + 1) * gridPx,
+  };
+}
+
 // v2.415.0 — Normalize a monster-action `dc_type` field into the
 // 3-letter ability code expected by getTargetSaveBonus + rollSave.
 // Bestiary data is mixed: some entries use 'wisdom' / 'Wisdom' /
@@ -639,7 +687,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
 
   // Compute apex world coords for the active actor's token. Cached
   // by useMemo so the setup effect doesn't re-fire on unrelated
-  // re-renders.
+  // re-renders. v2.451.0 — apex is the geometric CENTER of the
+  // caster's footprint, not the head-cell center. Matters for
+  // Large+ casters (Adult/Ancient dragons): pre-v2.451 their cone
+  // shot from the top-left cell, visibly offset from the rendered
+  // token circle.
   const coneApex = useMemo(() => {
     if (!conePickingFor || !battleMap || !currentActor) return null;
     const lookup: ParticipantForTokenLookup = {
@@ -649,12 +701,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
       entity_id: currentActor.entity_id,
     };
     const token = findTokenForParticipant(lookup, battleMap.tokens);
-    if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') return null;
-    // Match the cone renderer's convention: world center of cell
-    // (col, row) = (col*size + size/2, row*size + size/2).
+    if (!token) return null;
+    const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+    if (!aabb) return null;
     return {
-      worldX: token.col * battleMap.grid_size + battleMap.grid_size / 2,
-      worldY: token.row * battleMap.grid_size + battleMap.grid_size / 2,
+      worldX: (aabb.minX + aabb.maxX) / 2,
+      worldY: (aabb.minY + aabb.maxY) / 2,
     };
   }, [conePickingFor, battleMap, currentActor]);
 
@@ -689,9 +741,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
     const dirX = directionPickResult.worldX;
     const dirY = directionPickResult.worldY;
 
-    // Build candidate world positions for every other participant.
+    // Build candidate footprint AABBs for every other participant.
     // Skip the actor (you can't auto-cone yourself), dead targets,
     // and any participant whose token isn't on the active scene.
+    // v2.451.0 — switched from single cell-center point to full
+    // footprint AABB so SAT-based hit-testing in findParticipantsInCone
+    // correctly handles Large+ creatures clipped at the cone edge.
     const candidates: ConeTarget<CombatParticipant>[] = [];
     for (const p of participants) {
       if (p.id === currentActor.id) continue;
@@ -703,12 +758,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
         entity_id: p.entity_id,
       };
       const token = findTokenForParticipant(lookup, battleMap.tokens);
-      if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') continue;
-      candidates.push({
-        participant: p,
-        worldX: token.col * battleMap.grid_size + battleMap.grid_size / 2,
-        worldY: token.row * battleMap.grid_size + battleMap.grid_size / 2,
-      });
+      if (!token) continue;
+      const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+      if (!aabb) continue;
+      candidates.push({ participant: p, ...aabb });
     }
 
     const hits = findParticipantsInCone(
@@ -766,10 +819,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
       entity_id: currentActor.entity_id,
     };
     const token = findTokenForParticipant(lookup, battleMap.tokens);
-    if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') return null;
+    if (!token) return null;
+    const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+    if (!aabb) return null;
     return {
-      worldX: token.col * battleMap.grid_size + battleMap.grid_size / 2,
-      worldY: token.row * battleMap.grid_size + battleMap.grid_size / 2,
+      worldX: (aabb.minX + aabb.maxX) / 2,
+      worldY: (aabb.minY + aabb.maxY) / 2,
     };
   }, [linePickingFor, battleMap, currentActor]);
 
@@ -818,32 +873,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
         entity_id: p.entity_id,
       };
       const token = findTokenForParticipant(lookup, battleMap.tokens);
-      if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') continue;
-      // Footprint AABB. col/row anchor semantics differ by parity:
-      //   odd N (1,3): col,row is the CENTER cell → footprint extends
-      //                (N-1)/2 cells on each side.
-      //   even N (2,4): col,row is the TOP-LEFT cell → footprint
-      //                extends 0 left / N-1 right.
-      const sizeCells = typeof token.size === 'number' && token.size > 0 ? token.size : 1;
-      let minCol: number;
-      let minRow: number;
-      if (sizeCells % 2 === 0) {
-        minCol = token.col;
-        minRow = token.row;
-      } else {
-        const half = (sizeCells - 1) / 2;
-        minCol = token.col - half;
-        minRow = token.row - half;
-      }
-      const maxCol = minCol + sizeCells - 1;
-      const maxRow = minRow + sizeCells - 1;
-      candidates.push({
-        participant: p,
-        minX: minCol * grid,
-        minY: minRow * grid,
-        maxX: (maxCol + 1) * grid,
-        maxY: (maxRow + 1) * grid,
-      });
+      if (!token) continue;
+      const aabb = tokenFootprintAABBPx(token, grid);
+      if (!aabb) continue;
+      candidates.push({ participant: p, ...aabb });
     }
 
     const hits = findParticipantsInLine(

@@ -1567,13 +1567,14 @@ function VisionLayer(props: {
       ring.stroke();
       void halfPx; // silence: used only by sphere; kept readable above
     } else if (shape === 'cone') {
-      // Triangular wedge from apex (caster) opening 53° on each side
-      // toward the target direction. cos(53.13°) ≈ 0.6 → tan ≈ 1.333.
-      // At distance L from apex, half-width = L * tan(53.13°) ≈ L.
-      // Practical RAW interpretation: cone is "as wide as it is long"
-      // at its far edge — half-width at far edge equals length.
-      // We render this as a filled isoceles triangle with one vertex
-      // at the apex, two vertices at the corners of the far edge.
+      // Triangular wedge from apex (caster's footprint center) toward
+      // the target direction. v2.451.0 — RAW 5e cone: apex angle
+      // 2 × atan(0.5) = 53.13°. Half-width at distance d = d / 2, so
+      // at the far edge half-width = lengthPx / 2 (cone is as wide
+      // as it is long at full reach). Pre-v2.451 used 90° (half-width
+      // = forward), which over-selected by ~38% area; tightened here
+      // and in coneGeometry.findParticipantsInCone together so visual
+      // = selection still holds.
       const dx = (aoePreview.directionWorldX ?? cx) - cx;
       const dy = (aoePreview.directionWorldY ?? cy) - cy;
       const dirLen = Math.sqrt(dx * dx + dy * dy);
@@ -1584,13 +1585,14 @@ function VisionLayer(props: {
         const px = -ndy;
         const py = ndx;
         // Far edge at distance = radiusPx (length in pixels).
-        // Half-width at far edge = radiusPx (cone is as wide as long).
+        // Half-width at far edge = radiusPx / 2 (RAW 53.13°).
+        const halfFarPx = radiusPx / 2;
         const farX = cx + ndx * radiusPx;
         const farY = cy + ndy * radiusPx;
-        const cornerLeftX = farX + px * radiusPx;
-        const cornerLeftY = farY + py * radiusPx;
-        const cornerRightX = farX - px * radiusPx;
-        const cornerRightY = farY - py * radiusPx;
+        const cornerLeftX = farX + px * halfFarPx;
+        const cornerLeftY = farY + py * halfFarPx;
+        const cornerRightX = farX - px * halfFarPx;
+        const cornerRightY = farY - py * halfFarPx;
         ring.setFillStyle({ color: FILL_COLOR, alpha: FILL_ALPHA });
         ring.poly([
           cx, cy,
