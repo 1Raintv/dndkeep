@@ -66,6 +66,13 @@ import CampaignSettings from './CampaignSettings';
 // from a non-map tab brings the user to the map automatically. The
 // store is module-scoped, so this is just a subscription — no plumbing.
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
+// v2.472.0 — Single source of truth for character concentration. Same
+// hook InitiativeStrip uses; replaces the previous inline IIFE map
+// (v2.460) that re-derived from the local characters list. Both paths
+// produced identical data; consolidating to one keeps the realtime
+// subscription canonical (no chance of one stalling while the other
+// updates) and shrinks the consumer-side cognitive surface.
+import { useCampaignConcentrations } from '../../lib/hooks/useCampaignConcentrations';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -98,6 +105,12 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   useEffect(() => { setCampaign(campaignProp); }, [campaignProp.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [members, setMembers] = useState<(CampaignMember & { display_name: string | null; email: string })[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  // v2.472.0 — Hoisted concentration map. Same hook that
+  // InitiativeStrip uses; we hand the result down to BattleMapV2 via
+  // commonProps so the token glyph and the initiative chip read from
+  // a single in-memory map (one realtime subscription per consumer
+  // tree, deduped by Supabase).
+  const concentrationMap = useCampaignConcentrations(campaign.id);
   // v2.244 — Phase Q.1 pt 32: NPC combat state for the BattleMap.
   // Mirrors the `characters` state pattern: load on mount, keep live
   // via Realtime UPDATE/INSERT/DELETE on `npcs`. We only project the
@@ -983,21 +996,17 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               }
               return map;
             })(),
-            // v2.460.0 — Concentration map for token concentration glyph.
-            // Built from the characters list (already loaded for this
-            // campaign with realtime updates flowing in via the existing
-            // characters channel — we don't need a separate subscription).
-            // BattleMapV2 reads characterId on each token and looks up
-            // here; absent = not concentrating = no glyph.
+            // v2.472.0 — Concentration map for token concentration glyph.
+            // Sourced from the shared useCampaignConcentrations hook
+            // (hoisted to the dashboard scope). Wrapping the hook's
+            // Record<characterId, entry> as a Map keeps the BattleMapV2
+            // prop shape stable; the map is rebuilt only when the
+            // hook's identity changes (i.e. the underlying record
+            // mutated), so this isn't on the hot path.
             characterConcentrationMap: (() => {
               const map = new Map<string, { spellId: string; roundsRemaining: number | null }>();
-              for (const c of characters) {
-                const spellId = (c as { concentration_spell?: string | null }).concentration_spell;
-                if (!spellId) continue;
-                map.set(c.id, {
-                  spellId,
-                  roundsRemaining: (c as { concentration_rounds_remaining?: number | null }).concentration_rounds_remaining ?? null,
-                });
+              for (const charId in concentrationMap) {
+                map.set(charId, concentrationMap[charId]);
               }
               return map;
             })(),

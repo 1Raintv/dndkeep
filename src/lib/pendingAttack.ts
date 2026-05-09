@@ -1353,11 +1353,15 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
           .eq('id', tgt.id)
           .maybeSingle();
 
-        // Drop concentration on character's DB row
+        // Drop concentration on character's DB row.
+        // v2.472.0: clear value standardized to '' across the codebase
+        // (matches the column's `text DEFAULT ''` schema definition and
+        // the 7 other write sites). Pre-v2.472 this was `null`, which
+        // worked but diverged from every other clear path.
         if (deadRow?.participant_type === 'character' && deadRow.entity_id) {
           await supabase
             .from('characters')
-            .update({ concentration_spell: null, concentration_rounds_remaining: null })
+            .update({ concentration_spell: '', concentration_rounds_remaining: null })
             .eq('id', deadRow.entity_id);
         }
 
@@ -1845,9 +1849,11 @@ export async function performConcentrationSave(
   });
 
   if (!saved) {
+    // v2.472.0: clear value standardized to '' (see paired note in the
+    // death-cleanup path above).
     await supabase
       .from('characters')
-      .update({ concentration_spell: null, concentration_rounds_remaining: null })
+      .update({ concentration_spell: '', concentration_rounds_remaining: null })
       .eq('id', charId);
 
     // v2.471.0: removed the no-op UPDATE on combat_participants that
