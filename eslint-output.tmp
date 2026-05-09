@@ -1,0 +1,1024 @@
+
+C:\dev\DNDKeep\src\App.tsx
+  212:93   error    Empty block statement                     no-empty
+  221:63   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  223:62   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  539:102  error    Empty block statement                     no-empty
+
+C:\dev\DNDKeep\src\components\Campaign\AISummary.tsx
+  38:41  warning  React Hook useEffect has a missing dependency: 'loadSummaries'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Campaign\BattleMap.tsx
+   177:10   error    'uploadingImg' is assigned a value but never used. Allowed unused vars must match /^_/u                                         @typescript-eslint/no-unused-vars
+   548:120  error    'mapW' is defined but never used. Allowed unused args must match /^_/u                                                          @typescript-eslint/no-unused-vars
+   548:125  error    'mapH' is defined but never used. Allowed unused args must match /^_/u                                                          @typescript-eslint/no-unused-vars
+   650:35   warning  React Hook useEffect has a missing dependency: 'loadRoster'. Either include it or remove the dependency array                   react-hooks/exhaustive-deps
+   680:25   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   680:55   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   759:47   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   943:5    warning  React Hook useEffect has a missing dependency: 'activeMap'. Either include it or remove the dependency array                    react-hooks/exhaustive-deps
+   978:5    warning  React Hook useEffect has a missing dependency: 'loadMaps'. Either include it or remove the dependency array                     react-hooks/exhaustive-deps
+   989:5    warning  React Hook useEffect has missing dependencies: 'activeMap' and 'loadNotes'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  1001:9    error    'liveChars' is never reassigned. Use 'const' instead                                                                            prefer-const
+  1223:9    warning  Unused eslint-disable directive (no problems were reported from 'no-alert')
+  1471:83   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\BattleMapV2.tsx
+   425:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                   react-refresh/only-export-components
+   456:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                   react-refresh/only-export-components
+   503:32  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   504:34  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   561:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  1820:22  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  1820:48  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  1965:23  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  1985:15  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  2010:30  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  2202:30  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  2444:23  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  2450:13  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  2453:6   warning  React Hook useEffect has a missing dependency: 'drawShapeInto'. Either include it or remove the dependency array                                                                                                                                                                 react-hooks/exhaustive-deps
+  2513:30  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  2671:30  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3268:47  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3772:17  warning  The ref value 'gfxMapRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'gfxMapRef.current' to a variable inside the effect, and use that variable in the cleanup function                react-hooks/exhaustive-deps
+  3841:23  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3864:39  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3887:37  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3931:41  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3931:64  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  3941:35  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  4476:55  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  4535:50  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  4573:61  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  4635:19  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  5005:43  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  5074:6   warning  React Hook useEffect has a missing dependency: 'onDragStart'. Either include it or remove the dependency array                                                                                                                                                                   react-hooks/exhaustive-deps
+  5612:13  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  5885:6   warning  React Hook useEffect has a missing dependency: 'isDM'. Either include it or remove the dependency array                                                                                                                                                                          react-hooks/exhaustive-deps
+  6029:36  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6042:61  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6059:72  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6158:28  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6160:47  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6160:66  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6173:29  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  6297:6   warning  React Hook useEffect has missing dependencies: 'scene.gridSizePx', 'scene.heightCells', 'scene.isPublished', 'scene.name', and 'scene.widthCells'. Either include them or remove the dependency array                                                                            react-hooks/exhaustive-deps
+  7634:6   warning  React Hook useCallback has a missing dependency: 'showToast'. Either include it or remove the dependency array                                                                                                                                                                   react-hooks/exhaustive-deps
+  7728:6   warning  React Hook useEffect has a missing dependency: 'campaignId'. Either include it or remove the dependency array                                                                                                                                                                    react-hooks/exhaustive-deps
+  7763:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7770:25  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7838:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7845:25  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7887:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7894:19  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7925:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7932:19  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7958:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7965:19  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  7995:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  8002:19  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  8269:59  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  8283:55  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  8739:6   warning  React Hook useCallback has missing dependencies: 'campaignId' and 'showToast'. Either include them or remove the dependency array                                                                                                                                                react-hooks/exhaustive-deps
+  9017:45  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  9156:45  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  9183:6   warning  React Hook useEffect has a missing dependency: 'currentActor'. Either include it or remove the dependency array                                                                                                                                                                  react-hooks/exhaustive-deps
+  9540:6   warning  React Hook useEffect has missing dependencies: 'getEffectiveUsed', 'heightCells', 'recordMoved', and 'widthCells'. Either include them or remove the dependency array                                                                                                            react-hooks/exhaustive-deps
+  9670:24  warning  The ref value 'hoverPreviewRefs.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'hoverPreviewRefs.current' to a variable inside the effect, and use that variable in the cleanup function  react-hooks/exhaustive-deps
+  9672:6   warning  React Hook useEffect has an unnecessary dependency: 'vpRef.current'. Either exclude it or remove the dependency array. Mutable values like 'vpRef.current' aren't valid dependencies because mutating them doesn't re-render the component                                       react-hooks/exhaustive-deps
+  9722:6   warning  React Hook useCallback has a missing dependency: 'showToast'. Either include it or remove the dependency array                                                                                                                                                                   react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Campaign\CampaignDashboard.tsx
+  163:59  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  174:69  error    Empty block statement                                                                                                                                                 no-empty
+  253:64  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  263:38  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  303:20  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  304:9   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  318:20  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  323:9   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  356:6   warning  React Hook useEffect has missing dependencies: 'loadCharacters', 'loadCombatants', 'loadMembers', and 'loadNpcs'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  384:29  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  420:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  424:34  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  426:35  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  948:37  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  948:69  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  980:37  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+  980:69  warning  Unexpected any. Specify a different type                                                                                                                              @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\CampaignSettings.tsx
+  367:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\CreatureFormModal.tsx
+   62:62  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   65:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  157:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\DMScreen.tsx
+   47:16  warning  Unexpected any. Specify a different type                                                                                       @typescript-eslint/no-explicit-any
+  107:51  warning  Unexpected any. Specify a different type                                                                                       @typescript-eslint/no-explicit-any
+  135:6   warning  React Hook useEffect has missing dependencies: 'loadNPCs' and 'loadParty'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  170:61  warning  Unexpected any. Specify a different type                                                                                       @typescript-eslint/no-explicit-any
+  194:14  warning  Unexpected any. Specify a different type                                                                                       @typescript-eslint/no-explicit-any
+  199:14  warning  Unexpected any. Specify a different type                                                                                       @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\DMlobby.tsx
+  110:62  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\DiscordSettings.tsx
+  29:32  warning  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Campaign\InitiativeTracker.tsx
+   28:10  error  'ongoingPrompts' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   29:10  error  'concSavePrompt' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  100:12  error  'nextTurn' is defined but never used. Allowed unused vars must match /^_/u                 @typescript-eslint/no-unused-vars
+  199:12  error  'addOngoingDamage' is defined but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+  204:12  error  'removeOngoingDamage' is defined but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\Campaign\NPCManager.tsx
+  200:32  warning  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Campaign\NpcTokenQuickPanel.tsx
+  189:38  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  209:31  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  216:19  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  236:31  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  243:19  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  246:73  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  495:6   warning  React Hook useCallback has missing dependencies: 'combatant?.current_hp' and 'combatant?.max_hp'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  754:44  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  755:44  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  756:48  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  757:47  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  758:50  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  759:46  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  815:31  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  817:37  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  833:38  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+  836:47  warning  Unexpected any. Specify a different type                                                                                                              @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\PartyChat.tsx
+  131:6  warning  React Hook useEffect has a missing dependency: 'loadMessages'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  218:5  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+
+C:\dev\DNDKeep\src\components\Campaign\PartyDashboard.tsx
+     8:3    error    'rollCheck' is defined but never used. Allowed unused vars must match /^_/u                                        @typescript-eslint/no-unused-vars
+     8:14   error    'checkModifier' is defined but never used. Allowed unused vars must match /^_/u                                    @typescript-eslint/no-unused-vars
+     8:29   error    'encodeCheckPrompt' is defined but never used. Allowed unused vars must match /^_/u                                @typescript-eslint/no-unused-vars
+     9:8    error    'CheckTarget' is defined but never used. Allowed unused vars must match /^_/u                                      @typescript-eslint/no-unused-vars
+     9:26   error    'CheckRollResult' is defined but never used. Allowed unused vars must match /^_/u                                  @typescript-eslint/no-unused-vars
+    77:10   error    'xpNote' is assigned a value but never used. Allowed unused vars must match /^_/u                                  @typescript-eslint/no-unused-vars
+   137:6    warning  React Hook useEffect has a missing dependency: 'loadCharacters'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+   201:21   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   211:22   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   333:31   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   359:31   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   373:55   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   422:55   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   423:52   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   425:51   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   513:20   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   530:37   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   633:74   error    Expected an assignment or function call and instead saw an expression                                              @typescript-eslint/no-unused-expressions
+   688:61   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   925:29   error    'hasSaveProf' is assigned a value but never used. Allowed unused vars must match /^_/u                             @typescript-eslint/no-unused-vars
+  1216:44   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1216:70   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1216:115  warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1220:12   error    'removeSpell' is defined but never used. Allowed unused vars must match /^_/u                                      @typescript-eslint/no-unused-vars
+  1227:12   error    'resetSlotLevel' is defined but never used. Allowed unused vars must match /^_/u                                   @typescript-eslint/no-unused-vars
+  1234:12   error    'useSlot' is defined but never used. Allowed unused vars must match /^_/u                                          @typescript-eslint/no-unused-vars
+  1245:58   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1249:17   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1254:9    error    'knownSpells' is assigned a value but never used. Allowed unused vars must match /^_/u                             @typescript-eslint/no-unused-vars
+  1456:63   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1473:70   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1503:92   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1579:50   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  1641:55   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Campaign\PartyView.tsx
+  43:6  warning  React Hook useEffect has a missing dependency: 'loadParty'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Campaign\PlayerBattleMap.tsx
+  197:55  error    'myCharacterId' is defined but never used. Allowed unused args must match /^_/u                             @typescript-eslint/no-unused-vars
+  241:5   warning  React Hook useEffect has a missing dependency: 'loadMap'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  252:9   error    'liveChars' is never reassigned. Use 'const' instead                                                        prefer-const
+
+C:\dev\DNDKeep\src\components\Campaign\RollRequest.tsx
+   79:6  warning  React Hook useEffect has a missing dependency: 'loadPending'. Either include it or remove the dependency array   react-hooks/exhaustive-deps
+  240:6  warning  React Hook useEffect has a missing dependency: 'loadRequests'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Campaign\SessionScheduler.tsx
+  72:6  warning  React Hook useEffect has a missing dependency: 'loadSchedules'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\CharacterCreator\StepAbilityScores.tsx
+  14:7  error    'FULL_NAME' is assigned a value but never used. Allowed unused vars must match /^_/u                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+  79:6  warning  React Hook useEffect has missing dependencies: 'method', 'onScoresChange', and 'priority'. Either include them or remove the dependency array. If 'onScoresChange' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\CharacterCreator\StepBuild.tsx
+   29:14   warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                react-refresh/only-export-components
+   49:102  error    'onBack' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                      @typescript-eslint/no-unused-vars
+   49:110  error    'onNext' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                      @typescript-eslint/no-unused-vars
+   51:9    warning  The 'progression' logical expression could make the dependencies of useMemo Hook (at line 66) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'progression' in its own useMemo() Hook  react-hooks/exhaustive-deps
+   76:74   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  210:65   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  210:92   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  212:53   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  293:10   error    'countNeeded' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                                                                 @typescript-eslint/no-unused-vars
+  443:10   error    'SpellPicker' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                                                                 @typescript-eslint/no-unused-vars
+  512:19   error    'countAtLevel' is assigned a value but never used. Allowed unused vars must match /^_/u                                                                                                                                                       @typescript-eslint/no-unused-vars
+  736:27   error    'label' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                       @typescript-eslint/no-unused-vars
+  737:23   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  751:21   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  752:9    warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  763:28   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  828:42   warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  854:26   error    'label' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                       @typescript-eslint/no-unused-vars
+  948:164  warning  Unexpected any. Specify a different type                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterCreator\StepClass.tsx
+  40:54  error    'selectedSkills' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  40:80  error    'onLevelChange' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+  40:95  error    'onSkillToggle' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+  46:69  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterCreator\StepSubclass.tsx
+  29:9  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\AoEBadge.tsx
+  4:9  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\CampaignBar.tsx
+  23:6   warning  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  37:37  warning  Unexpected any. Specify a different type                                                                 @typescript-eslint/no-explicit-any
+  39:29  warning  Unexpected any. Specify a different type                                                                 @typescript-eslint/no-explicit-any
+  56:32  warning  Unexpected any. Specify a different type                                                                 @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\CharacterSettings.tsx
+   323:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   785:64  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   786:64  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   800:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   881:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1054:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1055:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1059:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1060:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\ClassAbilitiesSection.tsx
+  143:84   error    'userId' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  165:34   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  247:30   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  279:42   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  279:69   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  296:90   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  306:18   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  312:39   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  326:26   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  329:26   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  335:21   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  340:18   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  353:71   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  354:34   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  368:7    warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  384:21   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  397:7    warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  406:109  warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  406:139  warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  447:31   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  448:28   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  508:26   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  516:14   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  517:14   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  527:16   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  528:16   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  534:62   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  537:31   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  541:37   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  611:15   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  634:15   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  691:15   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  749:15   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  750:34   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  869:26   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  870:31   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  902:15   warning  Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\ClassResourcesPanel.tsx
+  189:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  197:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\components\CharacterSheet\CombatStats.tsx
+  32:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\DamageEffect.tsx
+   29:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  256:49  error    Empty block statement                     no-empty
+
+C:\dev\DNDKeep\src\components\CharacterSheet\FeatsPanel.tsx
+  59:11  error  'addFeat' is defined but never used. Allowed unused vars must match /^_/u             @typescript-eslint/no-unused-vars
+  73:8   error  'available' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\CharacterSheet\FeaturesAndTraitsPanel.tsx
+  467:38  warning  Unexpected any. Specify a different type                           @typescript-eslint/no-explicit-any
+  653:18  error    Unexpected control character(s) in regular expression: \x08, \x08  no-control-regex
+
+C:\dev\DNDKeep\src\components\CharacterSheet\HPStatsPanel.tsx
+   32:24   error    'onUpdateAC' is defined but never used. Allowed unused args must match /^_/u              @typescript-eslint/no-unused-vars
+   32:36   error    'onUpdateSpeed' is defined but never used. Allowed unused args must match /^_/u           @typescript-eslint/no-unused-vars
+   32:51   error    'onToggleInspiration' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+   32:117  error    'acTooltip' is defined but never used. Allowed unused args must match /^_/u               @typescript-eslint/no-unused-vars
+   45:9    error    'editsUnlocked' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  378:29   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  382:32   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  382:57   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  386:47   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  386:72   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  392:23   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  394:27   warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\Inventory.tsx
+  463:31  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+  670:11  error    'toggleEquipped' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  700:28  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+  701:27  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+  702:32  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+  703:33  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+  704:31  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+  869:2   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+C:\dev\DNDKeep\src\components\CharacterSheet\LevelUp.tsx
+  113:65  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  116:63  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\LevelUpWizard.tsx
+  405:177  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  408:41   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  413:26   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  415:48   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  417:54   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  448:28   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  485:100  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  594:58   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  601:7    warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  609:25   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  676:79   error    'totalBoosts' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  676:119  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  865:131  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  887:54   warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  898:53   error    'level' is defined but never used. Allowed unused args must match /^_/u        @typescript-eslint/no-unused-vars
+  952:4    warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\QuickRoll.tsx
+   18:10  error    'isNat' is defined but never used. Allowed unused vars must match /^_/u                                                         @typescript-eslint/no-unused-vars
+   23:23  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   95:5   warning  React Hook useEffect has a missing dependency: 'rollAll'. Either include it or remove the dependency array                      react-hooks/exhaustive-deps
+  107:54  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  164:11  error    'clearQueue' is defined but never used. Allowed unused vars must match /^_/u                                                    @typescript-eslint/no-unused-vars
+  197:2   error    'total' is assigned a value but never used. Allowed unused vars must match /^_/u                                                @typescript-eslint/no-unused-vars
+  228:8   error    'has20' is assigned a value but never used. Allowed unused vars must match /^_/u                                                @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\CharacterSheet\RollHistory.tsx
+  20:52  error    'userId' is defined but never used. Allowed unused args must match /^_/u                                      @typescript-eslint/no-unused-vars
+  39:6   warning  React Hook useEffect has a missing dependency: 'loadRolls'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\CharacterSheet\RollLog.tsx
+  20:35  error    'characterId' is defined but never used. Allowed unused args must match /^_/u                                 @typescript-eslint/no-unused-vars
+  36:6   warning  React Hook useEffect has a missing dependency: 'loadRolls'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\CharacterSheet\SessionTab.tsx
+   66:27  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+  126:14  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+  320:8   error    'dieColors' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\CharacterSheet\SkillsList.tsx
+  42:54  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\SpellCastButton.tsx
+   160:23  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   161:25  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   162:25  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   163:25  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   164:23  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   165:28  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   170:12  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   293:7   warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   322:26  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   400:17  error    'logSaveDC' is defined but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+   401:8   error    'saveColor' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   500:13  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   510:13  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   522:25  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   523:25  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   674:8   error    'saveColor' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   874:37  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   977:35  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+  1057:43  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+  1067:13  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\SpellCompletionBanner.tsx
+  28:8   error    'classCantrips' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  50:26  warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\SpellsTab.tsx
+   55:23  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+   56:25  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+   57:25  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+   58:25  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+   59:23  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+   75:39  error    'availableSpells' is defined but never used. Allowed unused args must match /^_/u                         @typescript-eslint/no-unused-vars
+   92:8   error    'spellAbilityMod' is assigned a value but never used. Allowed unused vars must match /^_/u                @typescript-eslint/no-unused-vars
+  118:8   error    'currentCantripCount' is assigned a value but never used. Allowed unused vars must match /^_/u            @typescript-eslint/no-unused-vars
+  119:6   error    'count' is never reassigned. Use 'const' instead                                                          prefer-const
+  130:27  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  130:57  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  163:5   warning  React Hook useMemo has a missing dependency: 'isKnown'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  305:30  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  551:23  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  552:25  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  553:25  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  554:25  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  555:23  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  767:58  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\UnifiedHistory.tsx
+  107:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  142:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  304:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  362:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  372:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\CharacterSheet\WeaponsTracker.tsx
+   26:16  warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  278:8   error    'customWeapons' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\CharacterSheet\WildshapeTracker.tsx
+  11:7  error  'BEAST_FILTERS' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\CharacterSheet\_shared\SlotBoxes.tsx
+  52:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  60:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  68:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\components\CharacterSheet\_shared\UnifiedActionRow.tsx
+  244:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\components\CharacterSheet\index.tsx
+    38:10   error    'itemRequiresAttunement' is defined but never used. Allowed unused vars must match /^_/u          @typescript-eslint/no-unused-vars
+    40:10   error    'getMagicItemById' is defined but never used. Allowed unused vars must match /^_/u                @typescript-eslint/no-unused-vars
+   123:103  error    'isPro' is assigned a value but never used. Allowed unused args must match /^_/u                  @typescript-eslint/no-unused-vars
+   203:29   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+   213:56   error    Empty block statement                                                                             no-empty
+   217:57   error    Empty block statement                                                                             no-empty
+   246:29   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+   372:33   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+   778:11   error    'handleLevelUp' is defined but never used. Allowed unused vars must match /^_/u                   @typescript-eslint/no-unused-vars
+   792:9    error    'actionsShowUpcasts' is assigned a value but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+   792:29   error    'setActionsShowUpcasts' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   804:9    error    'isDM' is assigned a value but never used. Allowed unused vars must match /^_/u                   @typescript-eslint/no-unused-vars
+   809:49   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+   891:11   error    'rollHitDie' is defined but never used. Allowed unused vars must match /^_/u                      @typescript-eslint/no-unused-vars
+   958:58   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+   988:4    warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  1040:53   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1042:28   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1044:47   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1075:70   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1147:23   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1147:45   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1149:28   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1265:9    warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1265:45   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1265:68   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1271:10   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1356:35   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  1921:44   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2017:48   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2061:7    warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2261:101  warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2301:27   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2322:38   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2348:38   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2456:57   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2470:23   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2776:65   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2783:29   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2824:50   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  2858:54   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3030:39   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3031:41   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3032:41   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3033:41   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3034:39   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3111:50   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3280:57   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3304:31   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3430:60   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3436:131  error    Expected a `const` instead of a literal type assertion                                            @typescript-eslint/prefer-as-const
+  3439:60   error    Expected a `const` instead of a literal type assertion                                            @typescript-eslint/prefer-as-const
+  3440:22   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3516:131  error    Expected a `const` instead of a literal type assertion                                            @typescript-eslint/prefer-as-const
+  3531:48   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3544:66   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3550:8    error    'maxSlotLevel' is assigned a value but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  3564:8    error    'hasAnySlots' is assigned a value but never used. Allowed unused vars must match /^_/u            @typescript-eslint/no-unused-vars
+  3581:132  error    Expected a `const` instead of a literal type assertion                                            @typescript-eslint/prefer-as-const
+  3650:60   error    Expected a `const` instead of a literal type assertion                                            @typescript-eslint/prefer-as-const
+  3715:24   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3716:31   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3735:23   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3736:25   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3737:25   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3738:25   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3739:23   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3870:24   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  3926:24   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  4115:8    error    'sectionIcons' is assigned a value but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  4208:3    error    Unexpected constant truthiness on the left-hand side of a `&&` expression                         no-constant-binary-expression
+  4270:60   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  4273:43   warning  Unexpected any. Specify a different type                                                          @typescript-eslint/no-explicit-any
+  4504:10   error    'SpellRow' is defined but never used. Allowed unused vars must match /^_/u                        @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\Combat\AttackResolutionModal.tsx
+  121:6  warning  React Hook useEffect has a missing dependency: 'atk'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\Combat\BuffTargetPickerModal.tsx
+  112:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  118:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\ClassAbilityResolveModal.tsx
+   61:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  105:10  error    'casterParticipantId' is assigned a value but never used. Allowed unused vars must match /^_/u                                  @typescript-eslint/no-unused-vars
+  156:51  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  161:34  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  195:6   warning  React Hook useEffect has a missing dependency: 'ability.save'. Either include it or remove the dependency array                 react-hooks/exhaustive-deps
+  546:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  555:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\components\Combat\DeclareAttackModal.tsx
+   36:58   warning  Unexpected any. Specify a different type                                                                                    @typescript-eslint/no-explicit-any
+  133:6    warning  React Hook useEffect has missing dependencies: 'attacker' and 'target'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  188:6    warning  React Hook useEffect has a missing dependency: 'attacker'. Either include it or remove the dependency array                 react-hooks/exhaustive-deps
+  680:105  warning  Unexpected any. Specify a different type                                                                                    @typescript-eslint/no-explicit-any
+  733:59   warning  Unexpected any. Specify a different type                                                                                    @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\DeclareSpellCastModal.tsx
+  114:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\InitiativeStrip.tsx
+  449:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  450:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\LegendaryActionResolverModal.tsx
+  259:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  267:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  269:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  270:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  271:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  272:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  273:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  274:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  275:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  276:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  505:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\LegendaryResistancePromptModal.tsx
+  62:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\MonsterActionPanel.tsx
+   501:26  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+   515:26  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+   628:34  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+   658:25  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1083:40  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1102:45  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1150:43  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1157:43  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1188:52  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1189:38  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1190:40  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1207:38  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1215:56  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1219:43  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1220:46  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1267:41  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1364:40  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1365:36  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1366:38  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1399:43  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1400:46  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1571:11  error    'lrPendingCount' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  1621:37  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1625:36  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  1693:42  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2017:43  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2018:42  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2021:59  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2166:43  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2235:47  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2236:49  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2240:49  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2340:74  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2424:57  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+  2631:39  warning  Unexpected any. Specify a different type                                                   @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\MultiAttackPickerModal.tsx
+  124:51  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  129:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\ReactionPromptModal.tsx
+  108:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  199:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  203:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  224:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  414:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\SpellHealPickerModal.tsx
+   92:51  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   97:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  149:12  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\SpellTargetPickerModal.tsx
+  320:51  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  325:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\Combat\StartCombatModal.tsx
+  310:68  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  329:70  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\DiceRoller3D.tsx
+  137:10  error    'faceUpQuat' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                                                                                                                                                                               @typescript-eslint/no-unused-vars
+  347:24  error    'insc' is assigned a value but never used. Allowed unused vars must match /^_/u                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+  513:5   error    Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                      @typescript-eslint/no-unused-expressions
+  560:29  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-explicit-any
+  671:16  error    'e' is defined but never used                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  671:18  error    Empty block statement                                                                                                                                                                                                                                                                                                                                      no-empty
+  687:16  error    'e' is defined but never used                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  687:18  error    Empty block statement                                                                                                                                                                                                                                                                                                                                      no-empty
+  770:31  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-explicit-any
+  778:17  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-explicit-any
+  779:38  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-explicit-any
+  837:5   warning  React Hook useEffect has missing dependencies: 'activeSkin', 'event.allDice', 'event.dieType', 'event.flatBonus', 'event.label', 'event.modifier', 'event.result', and 'onResult'. Either include them or remove the dependency array. If 'onResult' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\ErrorBoundary.tsx
+  1:1  error  Do not use "@ts-nocheck" because it alters compilation errors  @typescript-eslint/ban-ts-comment
+
+C:\dev\DNDKeep\src\components\SpellCastButton.tsx
+  6:15  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\SpellsTab.tsx
+  8:15  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\pages\ClassCompendiumPage.tsx
+   57:32   error    'subclassSlug' is assigned a value but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+  112:29   warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  173:30   warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  208:36   warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  215:36   warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  263:54   warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  263:110  warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  318:29   error    'isSubclassLevel' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  319:29   error    'isASILevel' is assigned a value but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+  363:65   warning  Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\pages\HomebrewPage.tsx
+   24:20   error    'loading' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   36:24   warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  239:16   warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  239:122  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  247:10   warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  248:17   warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  254:23   warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  330:137  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  335:121  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  380:139  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  504:180  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\pages\LobbyPage.tsx
+   45:76  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   81:10  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  227:49  error    'onDuplicate' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\pages\SettingsPage.tsx
+  47:6  warning  React Hook useEffect has missing dependencies: 'profile?.extra_character_slots' and 'user'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\shared\ActionLog.tsx
+   45:23  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components    react-refresh/only-export-components
+  104:62  error    'mode' is assigned a value but never used. Allowed unused args must match /^_/u                                                   @typescript-eslint/no-unused-vars
+  131:6   warning  React Hook useEffect has missing dependencies: 'loadAll' and 'loadReactions'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  178:54  warning  Unexpected any. Specify a different type                                                                                          @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\components\shared\AvatarPicker.tsx
+  33:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\components\shared\CombatEventLog.tsx
+  180:7  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+C:\dev\DNDKeep\src\components\shared\FeatPicker.tsx
+  25:11  error  'dropHeight' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\shared\InitiativeTracker.tsx
+  93:6  warning  React Hook useEffect has a missing dependency: 'characterId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\shared\Modal.tsx
+  341:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\components\shared\MonsterBrowser.tsx
+   74:39  warning  Unexpected any. Specify a different type                                             @typescript-eslint/no-explicit-any
+   79:54  warning  Unexpected any. Specify a different type                                             @typescript-eslint/no-explicit-any
+  471:9   error    'savesStr' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  729:10  error    'Stat' is defined but never used. Allowed unused vars must match /^_/u               @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\components\shared\PartyHPPanel.tsx
+  44:58  error    'userId' is defined but never used. Allowed unused args must match /^_/u                                     @typescript-eslint/no-unused-vars
+  62:5   warning  React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\shared\SpellPickerDropdown.tsx
+  160:5  warning  React Hook useMemo has unnecessary dependencies: 'grantedSpellIds' and 'selected'. Either exclude them or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\components\shared\Toast.tsx
+  121:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\context\AuthContext.tsx
+  75:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\context\CampaignContext.tsx
+  66:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\context\CombatContext.tsx
+   43:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   78:53  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  132:55  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  150:53  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  154:39  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  155:43  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\context\DiceRollContext.tsx
+  41:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  96:10  error    'DiceRollOverlay' is defined but never used. Allowed unused vars must match /^_/u                                               @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\context\ScreenFlashContext.tsx
+  29:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\dev\DNDKeep\src\data\classAbilities.ts
+   35:38  warning  Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   40:43  warning  Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   87:10  error    'wis' is defined but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+   91:10  error    'prof' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  498:24  warning  Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  505:28  warning  Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  513:22  warning  Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\data\classFeatures.ts
+  345:404  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\data\classResources.ts
+  457:3  error  'abilityScores' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\lib\api\sceneDrawings.ts
+  22:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  26:30  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\api\sceneTexts.ts
+  15:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\api\sceneTokens.ts
+   25:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   53:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   90:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  178:49  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\api\sceneWalls.ts
+  17:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\api\scenes.ts
+   40:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  121:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\buffs.ts
+   53:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   76:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   89:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  111:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  133:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  146:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  234:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\characterHistory.ts
+  111:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  158:11  error    'key' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  160:29  warning  Unexpected any. Specify a different type                                        @typescript-eslint/no-explicit-any
+  161:32  warning  Unexpected any. Specify a different type                                        @typescript-eslint/no-explicit-any
+  388:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+C:\dev\DNDKeep\src\lib\classRegistry.ts
+   69:51  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  112:6   warning  React Hook useEffect has a missing dependency: 'refresh'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\lib\combatEncounter.ts
+   87:23  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+   88:28  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  100:28  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  102:23  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  195:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  232:23  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  285:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  359:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  388:35  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  400:9   error    'chainId' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  512:64  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  598:50  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  630:34  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  631:40  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  690:18  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  700:89  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  746:37  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  755:51  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  759:28  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  905:55  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  909:41  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  910:45  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  935:56  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\combatEvents.ts
+  250:7  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  256:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  294:7  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  300:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+C:\dev\DNDKeep\src\lib\conditions.ts
+   89:48  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+   98:74  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  130:22  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  155:18  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  163:7   error    'actuallyApplied' is never reassigned. Use 'const' instead  prefer-const
+  219:22  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  236:44  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  271:48  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  282:74  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  300:22  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  317:44  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  354:44  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  371:54  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  430:28  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  440:28  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  444:69  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  580:48  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  602:33  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  618:22  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  631:44  warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\deathSaves.ts
+   81:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  114:51  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  153:37  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  167:22  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\encumbrance.ts
+  120:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  220:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  248:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\endOfTurnConditions.ts
+   95:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  203:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\gameUtils.ts
+  311:51  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  311:70  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\healSpells.ts
+  160:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  183:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  197:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\hooks\useMagicItems.ts
+   78:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  127:11  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+C:\dev\DNDKeep\src\lib\hooks\useNotifications.ts
+  98:6  warning  React Hook useEffect has a missing dependency: 'announcementVisibleTo'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\dev\DNDKeep\src\lib\hooks\useWeaponStrike.ts
+  61:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\inventoryWeapon.ts
+  28:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  29:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  39:49  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  56:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  57:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  63:14  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  68:38  error    Unnecessary escape character: \-          no-useless-escape
+  81:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  81:82  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  82:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  82:82  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\movement.ts
+   53:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  344:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  345:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  346:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  385:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\multiattack.ts
+  81:11  error  'm' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\lib\pendingAttack.ts
+   179:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+   322:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+   388:20  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   393:20  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   418:37  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   420:25  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   425:38  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   426:38  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   646:50  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   997:7   error    'rolledDamageRiders' is never reassigned. Use 'const' instead                  prefer-const
+  1007:50  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1163:49  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1325:38  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1329:28  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1368:30  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1385:57  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1389:42  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1391:76  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1427:69  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1628:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1629:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1630:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1631:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1632:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1633:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1642:34  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1645:37  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1685:57  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1700:16  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1701:20  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1727:27  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1728:27  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1729:40  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1752:35  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  1787:25  warning  Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\pendingReaction.ts
+    90:50  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+    91:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   108:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   160:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   254:50  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   255:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   270:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   311:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   312:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   390:50  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   391:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   415:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   438:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   439:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   440:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   444:56  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   466:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   466:86  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   485:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   533:50  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   534:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   540:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   562:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   598:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   660:24  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   772:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   777:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   804:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   808:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   818:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   925:61  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   926:66  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1115:85  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1130:49  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1134:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1149:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\spellLimits.ts
+  244:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\src\lib\spellParser.ts
+  119:9  error  'isBuff' is assigned a value but never used. Allowed unused vars must match /^_/u    @typescript-eslint/no-unused-vars
+  123:9  error  'isSummon' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\dev\DNDKeep\src\main.tsx
+  10:1  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+C:\dev\DNDKeep\src\types\index.ts
+  237:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\dev\DNDKeep\supabase\functions\stripe-webhook\index.ts
+  45:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 782 problems (119 errors, 663 warnings)
+  10 errors and 25 warnings potentially fixable with the `--fix` option.
+

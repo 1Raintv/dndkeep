@@ -23,7 +23,7 @@ export interface UseLairActionInput {
  * Returns true on success, false if the round's action was already used or
  * the encounter isn't in_lair.
  */
-export async function useLairAction(input: UseLairActionInput): Promise<boolean> {
+export async function triggerLairAction(input: UseLairActionInput): Promise<boolean> {
   // Load current state
   const { data: enc } = await supabase
     .from('combat_encounters')

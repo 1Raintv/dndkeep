@@ -13,12 +13,18 @@ interface StepSubclassProps {
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 
 export default function StepSubclass({ className, selected, onSelect, level }: StepSubclassProps) {
+  // v2.463.0 fix — Hoisted ahead of the `if (!cls) return null` early
+  // return below so the hook count stays consistent across renders.
+  // (rules-of-hooks lint violation; latent bug — only crashes if
+  // className changes from a known class to an unknown one mid-mount,
+  // which doesn't happen in the current creator flow but isn't a safe
+  // assumption to encode.)
+  const { showUaContent } = useAuth();
   const cls = CLASS_MAP[className];
   if (!cls) return null;
   // v2.329.0 — T7: filter UA subclasses out of the picker for accounts
   // without show_ua_content. Today only Psion has UA-flagged subclasses;
   // scaling to future UA additions is automatic.
-  const { showUaContent } = useAuth();
   const visibleSubclasses = cls.subclasses.filter(
     (s: any) => showUaContent || s.source !== 'ua',
   );

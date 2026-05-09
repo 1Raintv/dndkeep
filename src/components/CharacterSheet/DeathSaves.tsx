@@ -21,6 +21,23 @@ interface DeathSavesProps {
 export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
   const { triggerRoll } = useDiceRoll();
 
+  // v2.463.0 fix — Hoisted ahead of the `if (character.current_hp > 0)
+  // return null` early return at line ~30 so the hook count stays
+  // consistent across renders. (rules-of-hooks lint violation; latent
+  // bug — DeathSaves does mount/unmount cleanly when HP toggles between
+  // 0 and >0, but if a downed PC's HP is restored mid-frame while the
+  // panel is still in render, hook order would diverge.) Body is a
+  // no-op marker comment retained from the original location.
+  const successesForEffect = Math.min(3, Math.max(0, character.death_saves_successes ?? 0));
+  useEffect(() => {
+    if (successesForEffect >= 3) {
+      // Auto-stabilize at 3 successes (manual-click path safety;
+      // rollDeathSave resolves its own state above). Currently a marker
+      // for future use — no action taken (don't change HP, just keep
+      // the success counter so the panel renders the "Stable" branch).
+    }
+  }, [successesForEffect]);
+
   if (character.current_hp > 0) return null;
 
   const successes = Math.min(3, Math.max(0, character.death_saves_successes ?? 0));
@@ -101,16 +118,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
     });
   }
 
-  // Auto-stabilize at 3 successes (manual-click path safety; rollDeathSave
-  // resolves its own state above).
-  useEffect(() => {
-    if (successes >= 3) {
-      // Stable: don't change HP, just keep the success counter so the
-      // panel renders the "Stable" branch. Player clicks Regain 1 HP
-      // when they want to wake up.
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [successes]);
+  // (v2.463.0 hoisted above to satisfy rules-of-hooks — see fix comment.)
 
   const borderColor = isDead        ? 'rgba(107,20,20,1)'
                     : isStabilized  ? 'var(--hp-full)'

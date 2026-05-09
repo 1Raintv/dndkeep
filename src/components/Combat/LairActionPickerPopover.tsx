@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLairAction } from '../../lib/lairActions';
+import { triggerLairAction } from '../../lib/lairActions';
 import type { CombatEncounter } from '../../types';
 
 interface Props {
@@ -24,7 +24,7 @@ export default function LairActionPickerPopover({ encounter, anchor, onClose, on
     if (busy || alreadyUsed) return;
     setBusy(actionName);
     try {
-      await useLairAction({
+      await triggerLairAction({
         encounterId: encounter.id,
         campaignId: encounter.campaign_id,
         actionName,

@@ -3,9 +3,9 @@ setlocal EnableDelayedExpansion
 title DNDKeep Deploy
 
 REM =================================================================
-REM  v2.18.4 deploy.bat — bulletproof version
+REM  v2.18.4 deploy.bat - bulletproof version
 REM  Every command logs to deploy-log.txt so we can diagnose failures.
-REM  Window will NEVER auto-close — always waits for a keypress at the end.
+REM  Window will NEVER auto-close - always waits for a keypress at the end.
 REM =================================================================
 
 cd /d "C:\dev\DNDKeep" 2>nul
@@ -20,7 +20,7 @@ if %errorlevel% neq 0 (
 )
 
 REM Start fresh log
-echo DNDKeep deploy log — %DATE% %TIME% > deploy-log.txt
+echo DNDKeep deploy log - %DATE% %TIME% > deploy-log.txt
 echo Working dir: %CD% >> deploy-log.txt
 echo. >> deploy-log.txt
 
@@ -90,7 +90,7 @@ if not exist "node_modules\vite\package.json" set NEEDS_INSTALL=1
 if not exist "node_modules\typescript\package.json" set NEEDS_INSTALL=1
 
 if "%NEEDS_INSTALL%"=="1" (
-    echo        Missing dependencies — running npm install...
+    echo        Missing dependencies - running npm install...
     call npm install >>deploy-log.txt 2>&1
     if !errorlevel! neq 0 (
         echo  [ERROR] npm install failed. See deploy-log.txt
@@ -119,6 +119,7 @@ if %errorlevel% == 0 (
 )
 del ts-output.tmp >nul 2>&1
 echo        No undefined references.
+echo        (Hook + extended TS checks live in lint.bat - run separately.)
 
 REM ---- Step 4 ----
 
@@ -132,7 +133,7 @@ REM and writes the entire dist/ tree, the process crashes during
 REM shutdown with:
 REM   "Assertion failed: !(handle->flags ^& UV_HANDLE_CLOSING),
 REM    file src\win\async.c, line 76"
-REM This fires during esbuild worker-pool teardown — the build output
+REM This fires during esbuild worker-pool teardown - the build output
 REM is already complete, dist/ is intact, but errorlevel is non-zero.
 REM We grep for "built in" (Vite's success line, e.g. "built in 3.91s")
 REM as the authoritative success signal. If that line is present,
