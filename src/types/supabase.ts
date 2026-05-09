@@ -715,7 +715,6 @@ export type Database = {
           is_stable: boolean;
           is_dead: boolean;
           active_conditions: string[];
-          concentration_spell_id: string | null;
           created_at: string;
           updated_at: string;
           persistent_cover: Json;
@@ -756,7 +755,6 @@ export type Database = {
           is_stable?: boolean;
           is_dead?: boolean;
           active_conditions?: string[];
-          concentration_spell_id?: string | null;
           created_at?: string;
           updated_at?: string;
           persistent_cover?: Json;
@@ -797,7 +795,6 @@ export type Database = {
           is_stable?: boolean;
           is_dead?: boolean;
           active_conditions?: string[];
-          concentration_spell_id?: string | null;
           created_at?: string;
           updated_at?: string;
           persistent_cover?: Json;

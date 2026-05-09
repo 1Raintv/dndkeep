@@ -1162,7 +1162,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {
     const { data: tgtRaw } = await (supabase as any)
       .from('combat_participants')
-      .select('id, combatant_id, name, campaign_id, participant_type, hidden_from_players, concentration_spell_id, ' + JOINED_COMBATANT_FIELDS)
+      .select('id, combatant_id, name, campaign_id, participant_type, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .single();
   const tgt = tgtRaw ? normalizeParticipantRow(tgtRaw) : tgtRaw;
@@ -1349,7 +1349,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       if (isDead && !tgt.is_dead) {
         const { data: deadRow } = await supabase
           .from('combat_participants')
-          .select('concentration_spell_id, entity_id, participant_type')
+          .select('entity_id, participant_type')
           .eq('id', tgt.id)
           .maybeSingle();
 
@@ -1361,21 +1361,18 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
             .eq('id', deadRow.entity_id);
         }
 
-        // Clear own buffs + concentration pointer on the participant.
-        // v2.318: active_buffs write goes to combatants; concentration_spell_id
-        // stays on combat_participants (no equivalent on combatants).
+        // Clear own buffs on the participant.
+        // v2.318: active_buffs lives on combatants.
+        // v2.471.0: the cp UPDATE that cleared concentration_spell_id was
+        // removed alongside the column. Character-side concentration is
+        // already dropped above; the broad cleanup walk below handles
+        // every condition/buff this caster placed via concentration.
         if (tgtCombatantId) {
           await (supabase as any)
             .from('combatants')
             .update({ active_buffs: [] })
             .eq('id', tgtCombatantId);
         }
-        await supabase
-          .from('combat_participants')
-          .update({
-            concentration_spell_id: null,
-          })
-          .eq('id', tgt.id);
 
         // Walk the campaign for anything this caster had placed via
         // concentration. We don't know the spell name (concentration_spell
@@ -1853,10 +1850,11 @@ export async function performConcentrationSave(
       .update({ concentration_spell: null, concentration_rounds_remaining: null })
       .eq('id', charId);
 
-    await supabase
-      .from('combat_participants')
-      .update({ concentration_spell_id: null })
-      .eq('id', ctx.participantId);
+    // v2.471.0: removed the no-op UPDATE on combat_participants that
+    // cleared the now-dropped concentration_spell_id column. The
+    // characters.concentration_spell update above is the source of
+    // truth; the broad cleanup walk in clearConditionsFromConcentration
+    // / clearBuffsFromConcentration below handles dependent state.
 
     await emitCombatEvent({
       campaignId: ctx.campaignId,

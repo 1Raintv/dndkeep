@@ -757,7 +757,9 @@ export interface CombatParticipant {
     onlyRanged?: boolean;
     singleUse?: boolean;                  // v2.114.0 — Absorb Elements rider
   }>;
-  concentration_spell_id: string | null;
+  /** v2.471.0 — concentration_spell_id was dropped from
+   *  combat_participants. The character-side source of truth is
+   *  `characters.concentration_spell`. */
   /** v2.107.0 — Phase G: persisted max walking speed in feet, captured at
    *  encounter-start time from the underlying character/monster. */
   max_speed_ft?: number;

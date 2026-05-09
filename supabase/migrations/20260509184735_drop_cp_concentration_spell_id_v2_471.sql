@@ -1,0 +1,51 @@
+-- v2.471.0 — Drop combat_participants.concentration_spell_id.
+--
+-- Background:
+--   The column was introduced in the original Phase D combat state-
+--   machine migration (20260421234038_phase_d_combat_state_machine.sql)
+--   and survived the v2.321 legacy-column cleanup with the rationale
+--   "no equivalent on combatants" (see
+--   20260427144253_combat_phase_3_pt_13_drop_legacy_cp_columns_v2_321.sql
+--   lines 21–23).
+--
+-- Why drop it now:
+--   A code audit confirmed the column is purely vestigial. Across the
+--   entire codebase:
+--     - Two SELECTs fetch it (pendingAttack.ts:1165, 1352) but never
+--       read the value off the resulting row.
+--     - Two UPDATEs touch it, both setting it to NULL on death /
+--       failed CON save (pendingAttack.ts:1376, 1858).
+--     - No path EVER writes a non-null spell ID into the column.
+--
+--   The actual character-side concentration source-of-truth is
+--   `characters.concentration_spell` (string, holds the spell ID
+--   despite the `_spell`-not-`_spell_id` name). Death cleanup at
+--   pendingAttack.ts:1357–1361 already clears that column directly.
+--   The downstream broad-cleanup walk (pendingAttack.ts:1380–1395)
+--   doesn't need to know the spell name — it removes every
+--   condition/buff whose `casterParticipantId` matches the dead
+--   participant, regardless of spell.
+--
+-- NPC concentration:
+--   NPCs/monsters never had a participant-side concentration field
+--   that worked. If/when monster concentration tracking lands, the
+--   column belongs on `combatants` (the v2.321 consolidation target
+--   for runtime combat state) and should be added then with a fresh
+--   migration. Keeping a dead column "just in case" is the wrong
+--   shape — the column is unused today and the future home is a
+--   different table.
+--
+-- Risk:
+--   Zero behavior change. Every read ignores the value; every write
+--   was a no-op clear. Application code is updated in this same ship
+--   (v2.471.0) to drop the column from SELECTs/UPDATEs and from the
+--   TypeScript type definitions, so the deploy ordering is:
+--     1. Apply this migration (column gone from DB)
+--     2. Deploy v2.471.0 app build (column gone from queries)
+--   In practice the order doesn't matter — a stale app referencing
+--   a dropped column would fail those specific queries, but the
+--   column was already a no-op, so the failed clears would be
+--   silent and harmless.
+
+ALTER TABLE public.combat_participants
+  DROP COLUMN IF EXISTS concentration_spell_id;
