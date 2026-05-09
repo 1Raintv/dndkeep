@@ -5073,6 +5073,69 @@ function TokenLayer(props: {
     }
   }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap, characterConcentrationMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
 
+  // v2.456.0 — Hover-targeting preview render. Subscribes to
+  // aoePreviewTargetTokenIds (populated by the cone/line picker's
+  // hover subscriber in MonsterActionPanel on every direction change)
+  // and toggles a red highlight ring around each matching token. Lazy
+  // -created on first highlight, kept around between activations so a
+  // common toggle-back path is just a .visible flip + redraw.
+  //
+  // Decoupled from the giant per-token reconcile effect on purpose:
+  // hits change at mousemove rate, and we don't want to invalidate
+  // the whole render dep array on every pixel of cursor motion. This
+  // effect only re-runs when the target list changes; it does its own
+  // gfxMap walk to find the affected entries.
+  //
+  // v2.461.0 fix — Was originally placed in BattleMapV2's outer scope
+  // (line ~8488) where gfxMapRef isn't defined. Compiled-but-broken
+  // since v2.456 — reproduced as TS2552 not TS2304 so the deploy
+  // script's TS2304-specific gate missed it. Component crashed on
+  // first mount with "Cannot find name 'gfxMapRef'" the moment React
+  // tried to call this effect. Moved inside TokenLayer — that's where
+  // gfxMapRef lives, and where the per-token reconcile already
+  // operates. Same effect, correct scope.
+  const aoeTargetIds = useBattleMapStore(s => s.aoePreviewTargetTokenIds);
+  useEffect(() => {
+    const gfxMap = gfxMapRef.current;
+    const targetSet = new Set(aoeTargetIds);
+    for (const [tokenId, entry] of gfxMap.entries()) {
+      const isTarget = targetSet.has(tokenId);
+      if (isTarget) {
+        if (!entry.targetHighlight) {
+          const ring = new Graphics();
+          // Insert at index 0 so it sits UNDER the token sprite/circle
+          // (reads as a halo behind, not an overlay). Same z-order
+          // convention as turnRing/selectionRing.
+          entry.container.addChildAt(ring, 0);
+          entry.targetHighlight = ring;
+        }
+        const ring = entry.targetHighlight;
+        // Re-derive radius from the token's size + grid. Same convention
+        // as the per-token reconcile uses for the inner circle.
+        const tokenObj = useBattleMapStore.getState().tokens[tokenId];
+        const footprintCells =
+          tokenObj?.size === 'large'      ? 2 :
+          tokenObj?.size === 'huge'       ? 3 :
+          tokenObj?.size === 'gargantuan' ? 4 : 1;
+        const r = (footprintCells * gridSizePx) / 2;
+        ring.clear();
+        // Red-orange (#f87171). 3px stroke matches the visual weight of
+        // the turnRing without overpowering it on simultaneous active+
+        // hit cases. Subtle 10% interior fill so the ring reads on busy
+        // terrain backgrounds.
+        ring.setStrokeStyle({ color: 0xf87171, width: 3, alpha: 0.95 });
+        ring.circle(0, 0, r + 14);
+        ring.stroke();
+        ring.setFillStyle({ color: 0xf87171, alpha: 0.10 });
+        ring.circle(0, 0, r + 14);
+        ring.fill();
+        ring.visible = true;
+      } else if (entry.targetHighlight) {
+        entry.targetHighlight.visible = false;
+      }
+    }
+  }, [aoeTargetIds, gridSizePx]);
+
   useEffect(() => {
     if (!viewport || !canvasEl) return;
 
@@ -8471,78 +8534,6 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       }
     };
   }, [canvasEl, directionPickActiveStore, setDirectionPickResultStore, setDirectionPickActiveStore, setAoePreviewDirectionStore]);
-
-  // v2.456.0 — Hover-targeting preview render. Subscribes to
-  // aoePreviewTargetTokenIds (populated by the cone/line picker's
-  // hover subscriber in MonsterActionPanel on every direction change)
-  // and toggles a red highlight ring around each matching token. Lazy
-  // -created on first highlight, kept around between activations so a
-  // common toggle-back path is just a .visible flip + redraw.
-  //
-  // Decoupled from the giant per-token reconcile effect on purpose:
-  // hits change at mousemove rate, and we don't want to invalidate
-  // the whole render dep array on every pixel of cursor motion. This
-  // effect only re-runs when the target list changes; it does its own
-  // gfxMap walk to find the affected entries.
-  const aoeTargetIds = useBattleMapStore(s => s.aoePreviewTargetTokenIds);
-  useEffect(() => {
-    const gfxMap = gfxMapRef.current;
-    const targetSet = new Set(aoeTargetIds);
-    for (const [tokenId, entry] of gfxMap.entries()) {
-      const isTarget = targetSet.has(tokenId);
-      if (isTarget) {
-        if (!entry.targetHighlight) {
-          const ring = new Graphics();
-          // Insert at index 0 so it sits UNDER the token sprite/circle
-          // (reads as a halo behind, not an overlay). Same z-order
-          // convention as turnRing/selectionRing.
-          entry.container.addChildAt(ring, 0);
-          entry.targetHighlight = ring;
-        }
-        const ring = entry.targetHighlight;
-        // Re-derive radius from the entry's current state. r isn't
-        // stored on the entry; the circle is the source of truth — its
-        // bounds tell us radius. Cheap fallback: read .width/2 from the
-        // circle Graphics. For tokens with images (sprite) we still
-        // have the underlying circle as a sibling. To keep this robust
-        // we reconstruct r from the token's footprintCells × gridSizePx
-        // anchor convention used elsewhere — but the simplest reliable
-        // value is the token's own visual width: container bounds give
-        // us that. We cap to gridSizePx * footprintCells / 2 to avoid
-        // over-large rings when the container has decoration overflow.
-        // v2.459.0 fix — `tokens` isn't in BattleMapV2's outer scope
-        // (only inside the per-token reconcile effect's closure). Pull
-        // a fresh snapshot from the store on each highlight pass. Cheap:
-        // O(1) lookup since the store keeps tokens as Record<id, Token>.
-        // Token size is effectively immutable mid-encounter, so reading
-        // via getState() rather than via a hook subscription avoids
-        // re-rendering on every token movement.
-        const tokenObj = useBattleMapStore.getState().tokens[tokenId];
-        const footprintCells =
-          tokenObj?.size === 'large'      ? 2 :
-          tokenObj?.size === 'huge'       ? 3 :
-          tokenObj?.size === 'gargantuan' ? 4 : 1;
-        const r = (footprintCells * gridSizePx) / 2;
-        ring.clear();
-        // Red-orange (#f87171) at 95% — bright enough to stand out
-        // against any map. Ring radius r + 14 (just outside the action
-        // economy ring at r + 14 for active token; for non-active it's
-        // free space). 3px stroke matches the visual weight of the
-        // turnRing without overpowering it on simultaneous-active hits.
-        ring.setStrokeStyle({ color: 0xf87171, width: 3, alpha: 0.95 });
-        ring.circle(0, 0, r + 14);
-        ring.stroke();
-        // Subtle interior fill so the ring reads even if the token
-        // visual is on busy terrain.
-        ring.setFillStyle({ color: 0xf87171, alpha: 0.10 });
-        ring.circle(0, 0, r + 14);
-        ring.fill();
-        ring.visible = true;
-      } else if (entry.targetHighlight) {
-        entry.targetHighlight.visible = false;
-      }
-    }
-  }, [aoeTargetIds, gridSizePx]);
 
   // v2.239.0 — Pan-to-token. Click a PartyVitalsBar card → camera
   // animates to that PC's linked token on the current scene. Lifts
