@@ -291,6 +291,16 @@ interface BattleMapV2Props {
     conditions: string[];
     is_dead: boolean;
   }>;
+  // v2.470.0 — Concentration map keyed by character.id. Built in
+  // CampaignDashboard from the realtime characters list (same path as
+  // characterHpMap) and passed straight through to TokenLayer where
+  // the v2.460 purple ◉ glyph renderer reads it. v2.460 declared this
+  // prop on TokenLayer and wired the renderer but forgot the
+  // BattleMapV2 → TokenLayer pass-through, so the map was always
+  // undefined inside TokenLayer and the glyph never rendered. This
+  // adds the missing declaration; the JSX edit further down passes
+  // it through.
+  characterConcentrationMap?: Map<string, { spellId: string; roundsRemaining: number | null }>;
 }
 
 // Default scene config used when creating new scenes. v2.214 lets the
@@ -10303,6 +10313,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     tokenStateMap={props.tokenStateMap}
                     tokenStateMapByDef={liveTokenStateByDef}
                     tokenConditionsMap={tokenConditionsMap}
+                    characterConcentrationMap={props.characterConcentrationMap}
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}
                     isDM={isDM}
