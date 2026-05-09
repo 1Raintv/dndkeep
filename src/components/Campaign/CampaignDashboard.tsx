@@ -983,6 +983,24 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               }
               return map;
             })(),
+            // v2.460.0 — Concentration map for token concentration glyph.
+            // Built from the characters list (already loaded for this
+            // campaign with realtime updates flowing in via the existing
+            // characters channel — we don't need a separate subscription).
+            // BattleMapV2 reads characterId on each token and looks up
+            // here; absent = not concentrating = no glyph.
+            characterConcentrationMap: (() => {
+              const map = new Map<string, { spellId: string; roundsRemaining: number | null }>();
+              for (const c of characters) {
+                const spellId = (c as { concentration_spell?: string | null }).concentration_spell;
+                if (!spellId) continue;
+                map.set(c.id, {
+                  spellId,
+                  roundsRemaining: (c as { concentration_rounds_remaining?: number | null }).concentration_rounds_remaining ?? null,
+                });
+              }
+              return map;
+            })(),
           };
           return (
             <div className="battlemap-fullwidth">

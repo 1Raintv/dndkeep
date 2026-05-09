@@ -3402,6 +3402,14 @@ function TokenLayer(props: {
   // BattleMapV2 build it by walking tokens and resolving each linked
   // PC or NPC. Tokens not in the map render no strip.
   tokenConditionsMap?: Map<string, string[]>;
+  // v2.460.0 — Concentration map for character-linked tokens. Keyed
+  // by character.id; values are { spellId, roundsRemaining }. NPCs
+  // and monsters omit (the underlying field is character-only — see
+  // useCampaignConcentrations docstring). Tokens with characterId in
+  // the map render a purple ◉ glyph above the HP bar so DMs see
+  // concentration at a glance while scanning the map. Complements
+  // the v2.457 InitiativeStrip chip — same data, different surface.
+  characterConcentrationMap?: Map<string, { spellId: string; roundsRemaining: number | null }>;
   // v2.226 — left-click-without-drag opens the token quick-info panel.
   // Fires only after the user releases the pointer with negligible
   // movement (and the token wasn't dragged). Receives world-screen
@@ -3497,6 +3505,7 @@ function TokenLayer(props: {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap,
+    characterConcentrationMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
     recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded,
   } = props;
@@ -3632,6 +3641,15 @@ function TokenLayer(props: {
     // doesn't collide when both are present (active turn AND locked
     // is rare but possible on a DM-controlled creature mid-combat).
     lockGlyph: Text | null;
+    // v2.460.0 — Concentration glyph rendered above any character
+    // token whose linked character is concentrating. Purple ◉ at
+    // -(r + 18) — same vertical band as the lock glyph but on the
+    // opposite side (left of center) so they coexist when both apply.
+    // Lazy-created on first concentration, .visible toggled thereafter.
+    // Only character-linked tokens get this; NPC/monster tokens skip
+    // entirely (they don't track concentration in this field — see
+    // useCampaignConcentrations docstring).
+    concentrationGlyph: Text | null;
     // v2.453.0 — Action Economy Ring. Three 60° arc segments around
     // the active token at radius r + 14, encoding A/B/R availability
     // (bright cyan = available, dim charcoal = consumed). Replaces the
@@ -3810,6 +3828,8 @@ function TokenLayer(props: {
           // v2.411.0
           turnHaloRing: null,
           lockGlyph: null,
+          // v2.460.0
+          concentrationGlyph: null,
           // v2.453.0
           actionEconomyRing: null,
           actionEconomyLabels: null,
@@ -5006,8 +5026,52 @@ function TokenLayer(props: {
       } else if (currentEntry.lockGlyph) {
         currentEntry.lockGlyph.visible = false;
       }
+
+      // v2.460.0 — Concentration glyph for character tokens. Sits at
+      // -(r + 18) shifted left (-18px) when the active-turn ring is
+      // present, mirroring the lock glyph's right-shift convention so
+      // they don't overlap when both apply (active turn + concentrating
+      // is common — bards, clerics, druids all concentrate every fight).
+      // Reads characterConcentrationMap directly each pass; absence in
+      // the map = not concentrating = hide.
+      const charId = (token as { characterId?: string }).characterId;
+      const isConcentrating = !!(charId && characterConcentrationMap?.has(charId));
+      if (isConcentrating) {
+        if (!currentEntry.concentrationGlyph) {
+          const glyph = new Text({
+            text: '◉',
+            style: new TextStyle({
+              fontFamily: 'sans-serif',
+              fontWeight: '900',
+              fontSize: 16,
+              fill: 0xa78bfa, // purple — matches v2.457 chip + CharacterSheet banner
+              align: 'center',
+              stroke: { color: 0x0a0c10, width: 3 },
+            }),
+          });
+          glyph.anchor.set(0.5, 0.5);
+          container.addChild(glyph);
+          currentEntry.concentrationGlyph = glyph;
+        }
+        const cglyph = currentEntry.concentrationGlyph;
+        // Mirror the lock glyph's offset logic: when active turn ring
+        // is present, the lock glyph shifts +18 (right). Concentration
+        // shifts -18 (left). When inactive, lock sits at center; we
+        // sit at center-but-up if alone (then push left -18 if lock
+        // is also present — wait, lock is already at center. Use a
+        // simpler rule: always offset left by 18 from center when
+        // active-turn, otherwise sit center. This keeps concentration
+        // visible during the most common case (active actor) without
+        // overlapping the lock glyph; on inactive tokens, lock isn't
+        // shown except in DM debug states so collision is rare.)
+        const offsetX = isActiveTurn ? -18 : 0;
+        cglyph.position.set(offsetX, -(r + 18));
+        cglyph.visible = true;
+      } else if (currentEntry.concentrationGlyph) {
+        currentEntry.concentrationGlyph.visible = false;
+      }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap, characterConcentrationMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
 
   useEffect(() => {
     if (!viewport || !canvasEl) return;
