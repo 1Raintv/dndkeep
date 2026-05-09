@@ -733,6 +733,16 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // from onMouseEnter/onMouseLeave on attack buttons (see below).
   // Pulls the token's footprint center out of battleMap on demand.
   const setReachPreview = useBattleMapStore(s => s.setReachPreview);
+  // v2.461.0 fix — Cleanup on unmount: clear any lingering reach
+  // preview if the panel disappears mid-hover (turn advance, encounter
+  // ends, etc.). MUST live BEFORE the `if (!visible) return null` early
+  // return at line ~1058 — placing it after the early return means the
+  // hook count differs across renders when `visible` toggles, which is
+  // the React rules-of-hooks violation that crashed v2.459-v2.460
+  // (React error #310).
+  useEffect(() => {
+    return () => { setReachPreview(null); };
+  }, [setReachPreview]);
 
   // Compute apex world coords for the active actor's token. Cached
   // by useMemo so the setup effect doesn't re-fire on unrelated
@@ -1521,11 +1531,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
   function handleAttackHoverLeave() {
     setReachPreview(null);
   }
-  // Cleanup on unmount: clear any lingering reach preview if the
-  // panel disappears mid-hover (turn advance, encounter ends, etc.).
-  useEffect(() => {
-    return () => { setReachPreview(null); };
-  }, [setReachPreview]);
+  // (v2.459.0 unmount cleanup hoisted above to the setter declaration —
+  // see v2.461.0 fix comment there.)
 
   async function handleMultiSavePick(targets: CombatParticipant[]) {
     if (!encounter || !currentActor || !multiSavePickingFor) return;
