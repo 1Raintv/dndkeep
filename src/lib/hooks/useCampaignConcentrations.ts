@@ -63,8 +63,35 @@ export function useCampaignConcentrations(campaignId: string | null | undefined)
     }
 
     load();
+    // v2.475.0 — Channel name is per-hook-instance, NOT shared across
+    // hook callers on the same channel.
+    //
+    // Background: v2.472 consolidated callers to use this hook (one
+    // in CampaignDashboard for the BattleMap glyph, one in
+    // InitiativeStrip for the chip). The v2.472 ship comment claimed
+    // "Supabase dedupes the underlying realtime subscription per
+    // channel name" — that was wrong. Supabase's .channel(name)
+    // returns a reference to the EXISTING channel if one with that
+    // name is already registered; calling .on() against that channel
+    // after its previous .subscribe() throws "cannot add
+    // postgres_changes callbacks ... after subscribe()". Pre-v2.474
+    // this didn't surface because the chunk layout happened to mount
+    // the two consumers in an order that... well, it crashed there
+    // too in principle, but only after Start Combat (when both
+    // consumers are mounted simultaneously) — and that's exactly
+    // when the user reported it.
+    //
+    // Fix: append a per-instance random suffix so each hook gets its
+    // own channel. Both subscriptions independently receive the same
+    // postgres_changes events; slight bandwidth overhead but
+    // guaranteed correct. Using crypto.randomUUID for collision
+    // safety; falls back to Math.random for older runtimes.
+    const instanceId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
     const ch = supabase
-      .channel(`conc-${campaignId}`)
+      .channel(`conc-${campaignId}-${instanceId}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'characters',
         filter: `campaign_id=eq.${campaignId}`,
