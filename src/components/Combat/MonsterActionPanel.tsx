@@ -151,10 +151,16 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 // AND by the cone/line resolve effects for SAT hit-testing against
 // every candidate's full footprint.
 //
-// Note: battleMapGeometry.ts's tokenFootprintRange uses the OPPOSITE
-// convention for even sizes (anchor = bottom-right cell). It's used
-// only by distance-between-tokens math where the asymmetry cancels;
-// don't reuse it for AOE geometry.
+// v2.473.0 — Comment corrected. Pre-v2.455 battleMapGeometry.ts's
+// tokenFootprintRange used the OPPOSITE convention for even sizes
+// (anchor = bottom-right cell). v2.455 unified it with the renderer
+// + this AABB helper (anchor = top-left for even, anchor = center for
+// odd), and v2.455 also replaced pendingReaction.ts's inline duplicate
+// with the canonical helper. The two helpers now agree; the only
+// reason they're not deduped is that this one returns a pixel AABB
+// (for SAT hit-testing) while the canonical one returns a cell range
+// (for Chebyshev distance). Either can be derived from the other —
+// dedup target if the call sites grow.
 function tokenFootprintAABBPx(
   token: { row?: unknown; col?: unknown; size?: unknown },
   gridPx: number,
