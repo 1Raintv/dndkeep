@@ -7,8 +7,11 @@
 //   1. End-of-turn re-saves: any condition whose source row carries
 //      a `save_to_end: { ability, dc }` spec gets a fresh d20 + bonus
 //      roll. On success the condition is removed AND a source-keyed
-//      immunity entry is written to combatants.condition_source_immunities
-//      so the same source can't immediately re-apply this turn.
+//      immunity row is granted in campaign_condition_immunities so
+//      the same source can't immediately re-apply.
+//      (Pre-v2.479 this also wrote a per-encounter entry to
+//      combatants.condition_source_immunities; that column was
+//      dropped in Ship 5 of the immunity arc.)
 //
 //   2. Round-bound expiry: any condition whose source row has
 //      `expires_at_round: N` is removed when current_round >= N.
@@ -108,10 +111,17 @@ export async function processEndOfTurnConditions(
   const sources = { ...((part.condition_sources ?? {}) as Record<string, ConditionSourceEntry>) };
   if (conds.length === 0) return result;
 
-  // Track immunity grants in a single object so we write once at the end.
-  const immunityGrants: Record<string, { expires_at_round: number | null }> = {
-    ...((part.condition_source_immunities ?? {}) as Record<string, { expires_at_round: number | null }>),
-  };
+  // v2.479.0 — Legacy combatants.condition_source_immunities column
+  // was dropped (Ship 5 of immunity arc). The cross-encounter write
+  // path below is now the only persisted immunity. We still collect
+  // the grant tuples here as we walk Phase A + Phase B so the
+  // single write at the end has the full set.
+  //
+  // Pre-v2.479: this was a Record<string, { expires_at_round: number | null }>
+  // built from the legacy column to preserve pre-existing entries.
+  // No longer needed — the new table's UPSERT semantics handle
+  // pre-existing entries via the unique constraint.
+  const grantTuples: Array<{ sourceKind: string; sourceParticipantId: string }> = [];
 
   // Phase A — Re-save for any condition with a save_to_end spec.
   // Iterate over a snapshot of `conds` because removeCondition mutates
@@ -161,8 +171,10 @@ export async function processEndOfTurnConditions(
         encounterId: input.encounterId,
       });
       if (src.source_kind && src.source_attacker_id) {
-        const key = `${src.source_kind}:${src.source_attacker_id}`;
-        immunityGrants[key] = { expires_at_round: null }; // null = rest of encounter
+        grantTuples.push({
+          sourceKind: src.source_kind,
+          sourceParticipantId: src.source_attacker_id,
+        });
       }
       result.endedBySave.push(condName);
       // Also remove from local sources so phase B doesn't touch it.
@@ -193,102 +205,61 @@ export async function processEndOfTurnConditions(
     // "If a creature's saving throw is successful or the effect ends
     // for it, the creature is immune..."
     if (src.source_kind && src.source_attacker_id) {
-      const key = `${src.source_kind}:${src.source_attacker_id}`;
-      immunityGrants[key] = { expires_at_round: null };
+      grantTuples.push({
+        sourceKind: src.source_kind,
+        sourceParticipantId: src.source_attacker_id,
+      });
     }
   }
 
-  // Write immunity grants (single round-trip) if any were added.
-  // We wrote them onto a copy of the existing record to avoid losing
-  // pre-existing entries from earlier in the encounter.
-  if (result.endedBySave.length > 0 || result.expired.length > 0) {
-    const { error } = await (supabase as any)
-      .from('combatants')
-      .update({ condition_source_immunities: immunityGrants })
-      .eq('id', combatantId);
-    if (error) {
-      console.error('[processEndOfTurnConditions] immunity write failed', error);
-    }
-
-    // v2.476.0 — Cross-encounter dual-write (Ship 2 of immunity arc).
-    //
-    // Mirror every grant above into campaign_condition_immunities so
-    // the new table is populated alongside the legacy column. Three
-    // resolution steps differ from the legacy write:
-    //
-    //   1. Target identity. Legacy keys on combatants.id (encounter-
-    //      scoped). New table keys on the authoritative entity. We
-    //      resolve via the participant we already loaded — its
-    //      participant_type + entity_id (read from partRaw above) is
-    //      exactly what the new helper wants.
-    //
-    //   2. Source identity. Legacy keys on combat_participants.id
-    //      (encounter-scoped — different participant id per encounter).
-    //      New table keys on entity_id so the same dragon across
-    //      multiple encounters shares one immunity. We batch-resolve
-    //      unique source_attacker_ids before writing.
-    //
-    //   3. Duration. Legacy uses `expires_at_round: null` for
-    //      "rest of encounter" (no real timer). New table grants 24h
-    //      (14400 rounds) by default — the strict RAW reading of
-    //      Frightful Presence and similar effects. Sources that
-    //      explicitly want a different duration can carry a
-    //      `cross_encounter_duration_rounds` hint on
-    //      ConditionSourceEntry; not yet wired but the slot is here.
-    //
-    // Failures here are logged + swallowed; the legacy column write
-    // above already succeeded so the user-visible behavior (per-
-    // encounter immunity) is intact regardless. Migration must be
-    // applied for these writes to actually land.
+  // v2.479.0 — Single immunity write (new table only). Pre-v2.479
+  // this was a dual-write: the legacy combatants.condition_source_immunities
+  // JSONB column got the per-encounter map AND the new
+  // campaign_condition_immunities table got the cross-encounter row.
+  // Ship 5 dropped the legacy column; only the new-table write remains.
+  //
+  // grantTuples was populated as we walked Phase A + Phase B above —
+  // it carries (sourceKind, sourceParticipantId) for every condition
+  // that ended via save or auto-expiry. We resolve unique source
+  // participant_ids → entity_ids in batch and UPSERT one row per
+  // grant against campaign_condition_immunities.
+  //
+  // Identity translation:
+  //   - Target: this.participantId (the saving creature) →
+  //     entity_id via resolveParticipantToEntity.
+  //   - Source: grantTuples[].sourceParticipantId (the attacker that
+  //     placed the condition) → entity_id via the same helper.
+  //     Same dragon across multiple encounters shares one immunity
+  //     because the new table keys on entity_id, not participant_id.
+  //
+  // Duration:
+  //   24h = 14400 rounds (1 round = 6 sec). Strict RAW reading of
+  //   Frightful Presence and similar effects. Per-source override
+  //   slot exists in code but unused; sources that need a different
+  //   duration would set src.cross_encounter_duration_rounds (not
+  //   yet wired anywhere).
+  //
+  // Failures: logged + swallowed. The condition was already removed
+  // (Phase A / Phase B's removeCondition call), so the user-visible
+  // condition state is correct regardless of whether the immunity
+  // row landed. Worst case the next attempt to apply the condition
+  // succeeds because the immunity wasn't recorded — recoverable by
+  // a fresh save.
+  if (grantTuples.length > 0) {
     try {
-      // Resolve our own participant_id to its entity (the saving creature
-      // is the IMMUNITY TARGET — the entity earning protection).
       const target = await resolveParticipantToEntity(input.participantId);
       if (target) {
-        // Collect (sourceKind, sourceParticipantId) pairs from the
-        // grants we just wrote into immunityGrants. Re-derive from
-        // the raw source rows because immunityGrants was keyed as a
-        // composite string and parsing back would be brittle.
-        const grantSources: Array<{ sourceKind: string; sourceParticipantId: string }> = [];
-        for (const condName of result.endedBySave) {
-          // Re-look at the original source — sources[] was mutated above
-          // (deleted on success), so use part.condition_sources from the
-          // pre-mutation read.
-          const origSources = (part.condition_sources ?? {}) as Record<string, ConditionSourceEntry>;
-          const src = origSources[condName];
-          if (src?.source_kind && src?.source_attacker_id) {
-            grantSources.push({
-              sourceKind: src.source_kind,
-              sourceParticipantId: src.source_attacker_id,
-            });
-          }
-        }
-        for (const condName of result.expired) {
-          const origSources = (part.condition_sources ?? {}) as Record<string, ConditionSourceEntry>;
-          const src = origSources[condName];
-          if (src?.source_kind && src?.source_attacker_id) {
-            grantSources.push({
-              sourceKind: src.source_kind,
-              sourceParticipantId: src.source_attacker_id,
-            });
-          }
-        }
-
-        // Batch-resolve unique participant_ids → entity_ids. Cuts the
-        // SELECT count from one-per-grant to one-per-unique-source.
-        const uniqueSourcePids = Array.from(new Set(grantSources.map(g => g.sourceParticipantId)));
+        // Batch-resolve unique source participant_ids → entity_ids.
+        // Cuts the SELECT count from one-per-grant to one-per-unique-source.
+        const uniqueSourcePids = Array.from(new Set(grantTuples.map(g => g.sourceParticipantId)));
         const sourceEntityCache = new Map<string, ResolvedEntity | null>();
         for (const pid of uniqueSourcePids) {
           sourceEntityCache.set(pid, await resolveParticipantToEntity(pid));
         }
 
-        // Default 24h (14400 rounds) for cross-encounter immunity.
-        // RAW Frightful Presence: "immune ... for the next 24 hours."
-        // Per-source override slot (src.cross_encounter_duration_rounds)
-        // is stubbed for future need; current sources all use 24h.
         const DEFAULT_DURATION_ROUNDS_24H = 14400;
 
-        for (const { sourceKind, sourceParticipantId } of grantSources) {
+        for (const { sourceKind, sourceParticipantId } of grantTuples) {
           const sourceEntity = sourceEntityCache.get(sourceParticipantId);
           if (!sourceEntity) continue; // attacker has no entity_id (legacy free-text); skip
           await grantImmunity({
@@ -302,9 +273,7 @@ export async function processEndOfTurnConditions(
         }
       }
     } catch (err) {
-      // Defensive: any failure in the new-table dual-write must not
-      // disrupt the legacy column write that already succeeded.
-      console.error('[processEndOfTurnConditions] cross-encounter dual-write failed', err);
+      console.error('[processEndOfTurnConditions] immunity grant failed', err);
     }
   }
 

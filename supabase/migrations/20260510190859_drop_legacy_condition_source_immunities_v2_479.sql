@@ -1,0 +1,48 @@
+-- v2.479.0 — Drop legacy combatants.condition_source_immunities (Ship 5/5).
+--
+-- Background:
+--   The cross-encounter immunity arc (Ships 1–4 of v2.474–v2.478)
+--   moved source-keyed condition immunity off the per-encounter
+--   `combatants.condition_source_immunities` JSONB column and onto
+--   the campaign-scoped `campaign_condition_immunities` table
+--   (created in v2.474). Ships 2–4 ran a dual-write/dual-read scheme
+--   so the legacy column kept producing correct behavior in parallel
+--   with the new table.
+--
+--   This ship is the cleanup: drop the legacy column, drop the
+--   dual-write/dual-read code paths, and let the new table own
+--   immunity tracking outright.
+--
+-- Why now:
+--   - Ship 4 added the character-sheet UI for active immunities
+--     reading from characters.active_immunities (the carry-over
+--     snapshot). All user-visible flows go through the new table.
+--   - Pre-Ship 5 dual-read returned "immune" if EITHER source agreed.
+--     New table is now the only source; behavior shifts from
+--     "OR both sources" to "new table only." The legacy column was
+--     populated by the same writes (dual-write), so any entry that
+--     existed in legacy also exists in the new table — this is a
+--     no-op behavior change.
+--
+-- Risk:
+--   - In-flight encounters at the moment of deploy: the encounter's
+--     combatants row currently holds a JSONB map of per-encounter
+--     immunities that were granted DURING that encounter. The new
+--     table also holds those entries (from the v2.476 dual-write).
+--     So dropping the column does not lose data for any encounter
+--     run after v2.476 deployed. For encounters that started before
+--     v2.476 and are still ongoing, the legacy column has entries
+--     the new table doesn't — those will be lost on column drop.
+--     This is bounded to a single encounter per active session and
+--     the user-visible impact is "a creature that should be immune
+--     to Frightful Presence within this fight is no longer marked
+--     immune mid-encounter." Worst case the DM re-rolls; recoverable.
+--   - Dropping the column in the same deploy as the code change is
+--     order-sensitive. If app deploys first and migration lags, the
+--     normalize helper's SELECT will fail because PostgREST will
+--     complain about the missing column in the projection. Mitigation:
+--     this migration must apply BEFORE the v2.479 app build, or both
+--     can run together (Vercel + Supabase deploys are independent).
+
+ALTER TABLE public.combatants
+  DROP COLUMN IF EXISTS condition_source_immunities;

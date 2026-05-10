@@ -29,7 +29,7 @@ import type { Json } from '../types/supabase';
  *  Supabase's PostgREST FK join. */
 export const JOINED_COMBATANT_FIELDS =
   'combatants:combatant_id ( current_hp, max_hp, temp_hp, ' +
-  'active_conditions, condition_sources, condition_source_immunities, active_buffs, ' +
+  'active_conditions, condition_sources, active_buffs, ' +
   'exhaustion_level, death_save_successes, death_save_failures, ' +
   'is_stable, is_dead )';
 
@@ -39,8 +39,9 @@ interface JoinedCombatant {
   temp_hp?: number | null;
   active_conditions?: string[] | null;
   condition_sources?: Json | null;
-  // v2.445.0 — Per-encounter immunity map: { source_key → { expires_at_round | null } }.
-  condition_source_immunities?: Json | null;
+  // v2.479.0 — condition_source_immunities was dropped. The
+  // campaign_condition_immunities table (v2.474) is now the sole
+  // source-keyed immunity store.
   active_buffs?: Json | null;
   exhaustion_level?: number | null;
   death_save_successes?: number | null;
@@ -56,7 +57,6 @@ interface RowWithCombatant {
   temp_hp?: number | null;
   active_conditions?: string[] | null;
   condition_sources?: Json | null;
-  condition_source_immunities?: Json | null;
   active_buffs?: Json | null;
   exhaustion_level?: number | null;
   death_save_successes?: number | null;
@@ -89,7 +89,6 @@ export function normalizeParticipantRow<T extends RowWithCombatant>(row: T): T {
     temp_hp:              cb.temp_hp,
     active_conditions:    cb.active_conditions,
     condition_sources:    cb.condition_sources,
-    condition_source_immunities: cb.condition_source_immunities,
     active_buffs:         cb.active_buffs,
     exhaustion_level:     cb.exhaustion_level,
     death_save_successes: cb.death_save_successes,

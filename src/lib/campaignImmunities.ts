@@ -1,15 +1,22 @@
 // v2.476.0 — Cross-encounter condition immunity helper.
 //
 // Wraps reads/writes against the campaign_condition_immunities table
-// (created in v2.474). Source of truth for cross-encounter immunity
-// (Frightful Presence et al.). characters.active_immunities and
-// npcs.active_immunities are denormalized snapshots populated at end
-// of encounter (Ship 3); this helper writes to the table directly.
+// (created in v2.474). Source of truth for source-keyed condition
+// immunity (Frightful Presence et al.). characters.active_immunities
+// and npcs.active_immunities are denormalized snapshots populated
+// at end of encounter (Ship 3); this helper writes to the table
+// directly.
 //
-// Ship 2 (this ship) wires the auto-grant + check paths through here,
-// behind a dual-write/dual-read scheme so the legacy
-// combatants.condition_source_immunities column keeps working in
-// parallel until Ship 5 drops it.
+// Ship history:
+//   v2.474 (Ship 1): table + columns created
+//   v2.476 (Ship 2): auto-grant + dual-write/dual-read with legacy
+//                    combatants.condition_source_immunities column
+//   v2.477 (Ship 3): end-of-encounter carry-over to character/npc
+//                    denormalized snapshots
+//   v2.478 (Ship 4): character sheet UI + manual remove
+//   v2.479 (Ship 5): legacy combatants.condition_source_immunities
+//                    column dropped; this helper is the sole source
+//                    of truth for grants/checks
 //
 // Design decisions:
 //   - Keys on AUTHORITATIVE entity_id (character.id / npc.id /
@@ -152,11 +159,9 @@ export async function grantImmunity(input: {
  * expires_at_rounds is either null (no expiry) or > current campaign
  * clock.
  *
- * Returns false on any DB failure. Callers chain this BEFORE the
- * legacy combatants.condition_source_immunities check; if either
- * source says "immune", the apply is suppressed. False positive (we
- * say not-immune when we should be immune) is the worst case here,
- * and the legacy column will still catch it within the same encounter.
+ * Returns false on any DB failure. Pre-v2.479 this was wrapped in
+ * a dual-read fallback to combatants.condition_source_immunities;
+ * Ship 5 dropped the legacy column so this is now the sole check.
  */
 export async function isImmune(input: {
   campaignId: string;

@@ -52,13 +52,17 @@ export interface ApplyConditionInput {
    *  turn processor in advanceTurn auto-rolls this; success removes
    *  the condition AND grants source-keyed immunity. */
   saveToEnd?: { ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'; dc: number };
-  /** Source kind slug — used as the immunity key. e.g. 'frightful_presence'.
-   *  When combined with sourceAttackerId it produces "<kind>:<attackerId>"
-   *  which is the lookup key in combatants.condition_source_immunities. */
+  /** Source kind slug for source-keyed immunity tracking. e.g.
+   *  'frightful_presence'. Combined with sourceAttackerId, this is
+   *  what we look up against campaign_condition_immunities to decide
+   *  whether the target is immune to a re-apply. v2.479.0: previously
+   *  also keyed combatants.condition_source_immunities (dropped). */
   sourceKind?: string;
-  /** Who inflicted the condition. Combined with sourceKind into the
-   *  immunity key. Without sourceKind+sourceAttackerId, immunity
-   *  doesn't get tracked even on a successful re-save. */
+  /** Who inflicted the condition (combat_participants.id). Resolved
+   *  to entity_id at save time so cross-encounter immunity can be
+   *  granted in campaign_condition_immunities. Without
+   *  sourceKind+sourceAttackerId, immunity doesn't get tracked even
+   *  on a successful re-save. */
   sourceAttackerId?: string;
 }
 
@@ -97,24 +101,29 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
   const existing: string[] = (part.active_conditions ?? []) as string[];
   const sources = { ...((part.condition_sources ?? {}) as Record<string, any>) };
 
-  // v2.445.0 — Source-keyed immunity check. If the target has a live
-  // immunity to this exact source (e.g. "frightful_presence:dragon-id"),
-  // skip the apply silently. The save that triggered this call still
-  // happened — the failure is just no-op'd here. Caller is expected to
-  // surface "but is IMMUNE" in their toast (we don't echo it from
-  // applyCondition because the caller has the user-facing context).
+  // v2.479.0 — Cross-encounter immunity check (new table only).
   //
-  // v2.476.0 — Dual-read (Ship 2 of immunity arc). Check the new
-  // cross-encounter table FIRST; if it says immune, short-circuit.
-  // Otherwise fall through to the legacy per-encounter column. Either
-  // source returning "immune" suppresses the apply. False negatives
-  // from the new table (e.g. migration not yet applied → table read
-  // fails → returns false) cleanly degrade to legacy-only behavior.
-  // Once Ship 5 drops the legacy column, this falls through to the
-  // new-table-only path naturally.
+  // Pre-v2.479 this was a dual-read: check the new table first, fall
+  // through to combatants.condition_source_immunities. Ship 5 dropped
+  // the legacy column; only the new table remains. The dual-read
+  // wrapper kept the legacy fallback alive while migrations rolled
+  // out — that's no longer needed.
+  //
+  // Behavior: if a row exists in campaign_condition_immunities for
+  // (target_entity, source_kind, source_entity) AND its
+  // expires_at_rounds is null OR > current campaign clock, suppress
+  // the apply silently. The save that triggered this call still
+  // happened — the failure is just no-op'd here. Caller is expected
+  // to surface "but is IMMUNE" in their toast (we don't echo it
+  // from applyCondition because the caller has the user-facing
+  // context).
+  //
+  // sourceAttackerId is a participant_id; resolve to entity_id
+  // before querying. Both target + attacker need to resolve to a
+  // backing entity for the check to be meaningful — if either
+  // resolution fails (legacy free-text combatant, missing entity
+  // link), we skip the immunity check and let the apply proceed.
   if (input.sourceKind && input.sourceAttackerId) {
-    // New table check: needs entity_id, not participant_id. Resolve
-    // both target + attacker before querying.
     try {
       const { resolveParticipantToEntity, isImmune } = await import('./campaignImmunities');
       const target = await resolveParticipantToEntity(input.participantId);
@@ -129,22 +138,10 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
         if (crossEncounterImmune) return;
       }
     } catch (err) {
-      // Cross-encounter check failed (migration not applied, network,
-      // etc.) — fall through to legacy column. Don't let the new path
-      // break apply altogether.
-      console.warn('[applyCondition] cross-encounter immunity check failed; falling through to legacy', err);
-    }
-
-    // Legacy per-encounter column check.
-    const immunityKey = `${input.sourceKind}:${input.sourceAttackerId}`;
-    const immunities = (part.condition_source_immunities ?? {}) as Record<string, { expires_at_round: number | null }>;
-    const entry = immunities[immunityKey];
-    if (entry) {
-      // expires_at_round=null → "rest of encounter" (no expiry).
-      // expires_at_round=N → still immune iff currentRound < N.
-      const currentR = input.currentRound ?? 0;
-      const stillImmune = entry.expires_at_round == null || currentR < entry.expires_at_round;
-      if (stillImmune) return;
+      // Read failed (network, schema mismatch, etc.). Log + proceed
+      // with the apply. Worst case: a creature that should be immune
+      // takes a condition for one round; recoverable on next save.
+      console.warn('[applyCondition] immunity check failed; proceeding with apply', err);
     }
   }
 
