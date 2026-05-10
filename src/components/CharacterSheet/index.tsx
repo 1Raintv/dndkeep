@@ -74,6 +74,8 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import { SKILLS as SKILL_LIST_STATIC } from '../../data/skills';
 import { useScreenFlash } from '../../context/ScreenFlashContext';
 import { resolveAutomation } from '../../lib/automations';
+// v2.478.0 — Cross-encounter immunity panel (Ship 4 of arc).
+import ActiveImmunitiesPanel from './ActiveImmunitiesPanel';
 
 type Tab = 'actions' | 'abilities' | 'features' | 'spells' | 'inventory' | 'bio' | 'history';
 
@@ -1819,6 +1821,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  );
  })()}
+
+ {/* v2.478.0 — Active Immunities (cross-encounter, Ship 4 of arc).
+     Renders below Active Conditions when present; self-hides when
+     character.active_immunities is empty. */}
+ <ActiveImmunitiesPanel
+   character={character}
+   applyUpdate={applyUpdate}
+   showToast={toast.showToast}
+ />
 
  {/* ── HUD TWO-COLUMN LAYOUT ── */}
  <div className="cs-hud-layout">
