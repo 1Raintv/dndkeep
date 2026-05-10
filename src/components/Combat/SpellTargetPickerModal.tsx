@@ -44,10 +44,16 @@ import {
   // mattered for spell range edge cases like a 30ft Healing Word on a
   // Large ally just inside reach).
   distanceBetweenParticipantsFtUsingMap,
+  // v2.481.0 — footprint-aware AOE inclusion. Replaces the
+  // findParticipantsInArea call below for the auto-target button so
+  // Large+ creatures with bodies inside a Fireball aren't missed.
+  buildParticipantFootprints,
+  findParticipantsInAreaFootprint,
   type ActiveBattleMap,
   type ParticipantForTokenLookup,
   type AoeShape,
   type ParticipantPosition,
+  type ParticipantFootprint,
 } from '../../lib/battleMapGeometry';
 // v2.344.0 — single-target range visualization + out-of-range flagging.
 import { parseSpellRange, resolveRangeFt } from '../../lib/spellRange';
@@ -120,6 +126,15 @@ export default function SpellTargetPickerModal({
   // a new UI section lets the player pick a center + click to auto-
   // select all tokens within radius.
   const [positions, setPositions] = useState<Map<string, ParticipantPosition> | null>(null);
+  // v2.481.0 — Parallel footprints map. Used by the AOE auto-target
+  // call below for RAW "any part of the creature's space" inclusion.
+  // Built from the same tokens as `positions`. The render-time
+  // geometry (cone arc, radius circle, line preview) keeps using
+  // anchor-only positions because that's how the math is drawn —
+  // the visual is anchor-centered and the inclusion check is
+  // footprint-aware, which mirrors how a DM rules a Fireball
+  // visually drawn near a Large dragon.
+  const [footprints, setFootprints] = useState<Map<string, ParticipantFootprint> | null>(null);
   // v2.458.0 — Stash full battleMap for footprint-aware distance lookups.
   // Pre-v2.458 the picker computed distance via anchor-to-anchor Chebyshev
   // on the positions map, which ignored token sizes. Switching to
@@ -352,6 +367,8 @@ export default function SpellTargetPickerModal({
           ];
           const computed = buildParticipantPositions(posInput, map.tokens);
           setPositions(computed);
+          // v2.481.0 — Build footprints from the same input.
+          setFootprints(buildParticipantFootprints(posInput, map.tokens));
           setBattleMap(map);
           setGridSize(map.grid_size);
           // Default center = caster. Player can change via dropdown.
@@ -686,21 +703,47 @@ export default function SpellTargetPickerModal({
                           if (!cp) return;
                           origin = cp;
                         }
-                        const matches = findParticipantsInArea(
-                          participants.map(p => ({
-                            id: p.id,
-                            name: p.name,
-                            participant_type: p.participant_type,
-                            entity_id: p.entity_id,
-                          })),
-                          positions,
-                          aoeShape as AoeShape,
-                          aoeSize,
-                          origin,
-                          toward,
-                          null,
-                          gridSize,
-                        );
+                        // v2.481.0 — Footprint-aware AOE inclusion.
+                        // RAW 2024 PHB: a creature is in an area if any
+                        // part of its space is in the area. Pre-v2.481
+                        // this used findParticipantsInArea (anchor-only)
+                        // which missed Large+ creatures whose body
+                        // extended into the area but whose anchor cell
+                        // didn't. The visual preview on the map is
+                        // anchor-centered (drawn the same way a DM
+                        // would sketch the spell), and the inclusion
+                        // check now matches RAW.
+                        const matches = footprints
+                          ? findParticipantsInAreaFootprint(
+                              participants.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                participant_type: p.participant_type,
+                                entity_id: p.entity_id,
+                              })),
+                              footprints,
+                              aoeShape as AoeShape,
+                              aoeSize,
+                              origin,
+                              toward,
+                              null,
+                              gridSize,
+                            )
+                          : findParticipantsInArea(
+                              participants.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                participant_type: p.participant_type,
+                                entity_id: p.entity_id,
+                              })),
+                              positions,
+                              aoeShape as AoeShape,
+                              aoeSize,
+                              origin,
+                              toward,
+                              null,
+                              gridSize,
+                            );
                         setPicked(new Set(matches.map(m => m.participant.id)));
                       }}
                       disabled={

@@ -370,6 +370,42 @@ export interface ParticipantPosition {
 }
 
 /**
+ * v2.481.0 — Footprint-aware participant position. Carries the full
+ * cell range a participant's token occupies (computed via
+ * tokenFootprintRange), so AOE inclusion tests can apply RAW
+ * "any part of the creature's space" semantics for Large+ tokens.
+ *
+ * For a 1×1 token this collapses to a single cell ({rMin: r, rMax: r, ...}).
+ * Callers that don't need footprint-awareness can keep using the
+ * legacy ParticipantPosition + buildParticipantPositions path.
+ */
+export interface ParticipantFootprint {
+  rMin: number;
+  rMax: number;
+  cMin: number;
+  cMax: number;
+}
+
+/**
+ * Build a `participantId → ParticipantFootprint` map. Mirrors
+ * buildParticipantPositions but preserves token size via
+ * tokenFootprintRange. RAW AOE inclusion ("any part of the
+ * creature's space is in the area") needs the full range.
+ */
+export function buildParticipantFootprints(
+  participants: ParticipantForTokenLookup[],
+  tokens: BattleMapToken[],
+): Map<string, ParticipantFootprint> {
+  const map = new Map<string, ParticipantFootprint>();
+  for (const p of participants) {
+    const token = findTokenForParticipant(p, tokens);
+    if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') continue;
+    map.set(p.id, tokenFootprintRange(token));
+  }
+  return map;
+}
+
+/**
  * Build a `participantId → {row, col}` map from a list of participants and
  * the active map's tokens. Participants without a matching token are simply
  * absent from the map — callers treat "no position" as "not on the grid" and
@@ -721,6 +757,223 @@ export function findParticipantsInArea<P extends ParticipantForTokenLookup>(
       const perp = Math.abs(cdx * ndy - cdy * ndx);
       if (perp > halfWidthCells) continue;
       results.push({ participant: p, distanceFt: Math.round(along) * feetPerSquare });
+    }
+    return results;
+  }
+
+  return results;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// v2.481.0 — Footprint-aware AOE inclusion helpers.
+//
+// RAW 2024 (PHB pp. 21–22, "Areas of Effect"): a creature is in an
+// area effect if any part of its space is in the area. Pre-v2.481
+// the existing findParticipantsInRadius / findParticipantsInArea
+// flattened every participant to a single anchor cell — fine for
+// 1×1 tokens, but a Large+ creature whose anchor sits one cell
+// outside the radius would be wrongly excluded even though most of
+// its body is inside.
+//
+// The footprint-aware variants below take the same arguments as the
+// legacy helpers but with `Map<id, ParticipantFootprint>` instead of
+// `Map<id, ParticipantPosition>`. For each participant they walk
+// the cells in the footprint and short-circuit on the first cell
+// that passes the area test. distanceFt reports the closest cell to
+// the relevant reference (center, apex, line projection).
+//
+// Both versions ship in parallel — callers that explicitly want
+// point-target behavior (rare) keep the legacy path; callers that
+// want RAW correctness opt into the footprint variant.
+//
+// Performance: per-participant cost is O(footprint cells), which is
+// 1, 4, 9, or 16 (sizes 1–4). For the typical encounter (≤12 living
+// participants, mostly 1×1) this adds a handful of comparisons total
+// per AOE — well under any perceivable threshold.
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Footprint-aware variant of findParticipantsInRadius.
+ *
+ * A participant is included if ANY cell in their footprint is within
+ * `radiusFt` (Chebyshev) of the center. distanceFt is the Chebyshev
+ * distance from the center to the closest cell of the footprint.
+ */
+export function findParticipantsInRadiusFootprint<P extends ParticipantForTokenLookup>(
+  participants: P[],
+  footprints: Map<string, ParticipantFootprint>,
+  center: ParticipantPosition,
+  radiusFt: number,
+  excludeIds?: ReadonlySet<string> | null,
+  feetPerSquare: number = FEET_PER_SQUARE,
+): RadiusMatch<P>[] {
+  const radiusCells = Math.floor(radiusFt / feetPerSquare);
+  const results: RadiusMatch<P>[] = [];
+  for (const p of participants) {
+    if (excludeIds && excludeIds.has(p.id)) continue;
+    const fp = footprints.get(p.id);
+    if (!fp) continue;
+    // Closest cell of the footprint to the center: clamp center
+    // coordinates into the footprint range.
+    const closestRow = Math.max(fp.rMin, Math.min(fp.rMax, center.row));
+    const closestCol = Math.max(fp.cMin, Math.min(fp.cMax, center.col));
+    const cells = Math.max(
+      Math.abs(closestRow - center.row),
+      Math.abs(closestCol - center.col),
+    );
+    if (cells <= radiusCells) {
+      results.push({ participant: p, distanceFt: cells * feetPerSquare });
+    }
+  }
+  return results;
+}
+
+/**
+ * Footprint-aware variant of findParticipantsInArea. RAW "any part
+ * of the creature's space" semantics for sphere / cube / cone / line.
+ *
+ * Implementation: rather than reimplementing each shape's geometry,
+ * we generate the cells of each participant's footprint and run the
+ * original point-target predicates against each cell. First match
+ * accepts the participant. Slightly more allocation than the
+ * point-target version, but the participant count is small in
+ * practice (~12 typical, ~30 worst-case); not a hot path.
+ *
+ * For sphere/cylinder this delegates to findParticipantsInRadiusFootprint
+ * to keep one canonical implementation.
+ */
+export function findParticipantsInAreaFootprint<P extends ParticipantForTokenLookup>(
+  participants: P[],
+  footprints: Map<string, ParticipantFootprint>,
+  shape: AoeShape,
+  sizeFt: number,
+  origin: ParticipantPosition,
+  toward: ParticipantPosition | null,
+  excludeIds?: ReadonlySet<string> | null,
+  feetPerSquare: number = FEET_PER_SQUARE,
+): RadiusMatch<P>[] {
+  if (shape === 'sphere' || shape === 'cylinder') {
+    return findParticipantsInRadiusFootprint(
+      participants, footprints, origin, sizeFt, excludeIds, feetPerSquare,
+    );
+  }
+
+  const results: RadiusMatch<P>[] = [];
+
+  if (shape === 'cube') {
+    // Same axis-aligned box as the point-target version, but admit a
+    // participant if ANY cell of its footprint overlaps the box.
+    const sizeCells = Math.floor(sizeFt / feetPerSquare);
+    const half = Math.floor(sizeCells / 2);
+    const boxMinRow = origin.row - half;
+    const boxMaxRow = origin.row + (sizeCells - half - 1);
+    const boxMinCol = origin.col - half;
+    const boxMaxCol = origin.col + (sizeCells - half - 1);
+    for (const p of participants) {
+      if (excludeIds && excludeIds.has(p.id)) continue;
+      const fp = footprints.get(p.id);
+      if (!fp) continue;
+      // AABB-AABB overlap: NOT (entirely above/below/left/right).
+      if (fp.rMax < boxMinRow || fp.rMin > boxMaxRow) continue;
+      if (fp.cMax < boxMinCol || fp.cMin > boxMaxCol) continue;
+      // Distance for reporting: closest cell to origin (Chebyshev).
+      const closestRow = Math.max(fp.rMin, Math.min(fp.rMax, origin.row));
+      const closestCol = Math.max(fp.cMin, Math.min(fp.cMax, origin.col));
+      const dCells = Math.max(
+        Math.abs(closestRow - origin.row),
+        Math.abs(closestCol - origin.col),
+      );
+      results.push({ participant: p, distanceFt: dCells * feetPerSquare });
+    }
+    return results;
+  }
+
+  if (shape === 'cone') {
+    // Cone hit: a participant is in the cone if any of its footprint
+    // cells (a) are within length, (b) lie within the cone's half-
+    // angle relative to the apex direction. Walk every footprint
+    // cell, short-circuit on first hit.
+    if (!toward) return results;
+    const lengthCells = Math.ceil(sizeFt / feetPerSquare);
+    const dx = toward.col - origin.col;
+    const dy = toward.row - origin.row;
+    const dirLen = Math.sqrt(dx * dx + dy * dy);
+    if (dirLen < 1e-6) return results;
+    const ndx = dx / dirLen;
+    const ndy = dy / dirLen;
+    for (const p of participants) {
+      if (excludeIds && excludeIds.has(p.id)) continue;
+      const fp = footprints.get(p.id);
+      if (!fp) continue;
+      let bestCellLen: number | null = null;
+      // Walk cells. For a 1×1 token this is one iteration; for 4×4
+      // (Gargantuan) it's 16. Tiny constant.
+      outer: for (let r = fp.rMin; r <= fp.rMax; r++) {
+        for (let c = fp.cMin; c <= fp.cMax; c++) {
+          const cdx = c - origin.col;
+          const cdy = r - origin.row;
+          const candLen = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (candLen < 1e-6) {
+            // Cell coincides with apex — counts as inside (the
+            // caster's own footprint cell at the cone origin).
+            bestCellLen = 0;
+            break outer;
+          }
+          if (candLen > lengthCells) continue;
+          const dot = (cdx * ndx + cdy * ndy) / candLen;
+          if (dot >= CONE_COSINE_HALF_ANGLE) {
+            if (bestCellLen === null || candLen < bestCellLen) {
+              bestCellLen = candLen;
+            }
+            // Don't break — keep looking for closer cells of the
+            // same footprint to report a tighter distanceFt.
+          }
+        }
+      }
+      if (bestCellLen !== null) {
+        results.push({
+          participant: p,
+          distanceFt: Math.round(bestCellLen) * feetPerSquare,
+        });
+      }
+    }
+    return results;
+  }
+
+  if (shape === 'line') {
+    if (!toward) return results;
+    const lengthCells = sizeFt / feetPerSquare;
+    const halfWidthCells = LINE_HALF_WIDTH_FT / feetPerSquare;
+    const dx = toward.col - origin.col;
+    const dy = toward.row - origin.row;
+    const dirLen = Math.sqrt(dx * dx + dy * dy);
+    if (dirLen < 1e-6) return results;
+    const ndx = dx / dirLen;
+    const ndy = dy / dirLen;
+    for (const p of participants) {
+      if (excludeIds && excludeIds.has(p.id)) continue;
+      const fp = footprints.get(p.id);
+      if (!fp) continue;
+      let bestAlong: number | null = null;
+      for (let r = fp.rMin; r <= fp.rMax; r++) {
+        for (let c = fp.cMin; c <= fp.cMax; c++) {
+          const cdx = c - origin.col;
+          const cdy = r - origin.row;
+          const along = cdx * ndx + cdy * ndy;
+          if (along < 0 || along > lengthCells) continue;
+          const perp = Math.abs(cdx * ndy - cdy * ndx);
+          if (perp > halfWidthCells) continue;
+          if (bestAlong === null || along < bestAlong) {
+            bestAlong = along;
+          }
+        }
+      }
+      if (bestAlong !== null) {
+        results.push({
+          participant: p,
+          distanceFt: Math.round(bestAlong) * feetPerSquare,
+        });
+      }
     }
     return results;
   }

@@ -9,7 +9,16 @@ import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
 import { declareAttack, declareMultiTargetAttack } from '../../lib/pendingAttack';
 import { emitCombatEvent } from '../../lib/combatEvents';
-import { buildParticipantPositions, findParticipantsInRadius, loadActiveBattleMap, deriveCoverFromWalls } from '../../lib/battleMapGeometry';
+import {
+  buildParticipantPositions,
+  loadActiveBattleMap,
+  deriveCoverFromWalls,
+  // v2.481.0 — Footprint-aware AOE inclusion (RAW: any part of the
+  // creature's space in the area is hit). Replaces the point-target
+  // findParticipantsInRadius previously used for AOE auto-select.
+  buildParticipantFootprints,
+  findParticipantsInRadiusFootprint,
+} from '../../lib/battleMapGeometry';
 import type { CombatParticipant } from '../../types';
 import type { ActiveBattleMap } from '../../lib/battleMapGeometry';
 
@@ -78,6 +87,25 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   const participantPositions = useMemo(() => {
     if (!battleMapTokens) return new Map<string, { row: number; col: number }>();
     return buildParticipantPositions(
+      participants.map(p => ({
+        id: p.id,
+        name: p.name,
+        participant_type: p.participant_type,
+        entity_id: p.entity_id,
+      })),
+      battleMapTokens,
+    );
+  }, [battleMapTokens, participants]);
+
+  // v2.481.0 — Parallel footprint map for AOE auto-select. Built from
+  // the same tokens but preserves token size so RAW "any part of the
+  // creature's space" semantics work for Large+ tokens. The legacy
+  // point-target positions map above stays in use for wall-cover
+  // derivation (which uses center-to-center LoS rays where size
+  // doesn't change the answer for the typical case).
+  const participantFootprints = useMemo(() => {
+    if (!battleMapTokens) return new Map();
+    return buildParticipantFootprints(
       participants.map(p => ({
         id: p.id,
         name: p.name,
@@ -194,14 +222,21 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
     // v2.129.0 — Phase K pt 2: delegates to findParticipantsInRadius.
     // Excludes the attacker (self-harm prevention — the caster still opts in
     // via manual checkbox if they want to eat their own Fireball).
-    const matches = findParticipantsInRadius(
+    //
+    // v2.481.0 — Switched to footprint-aware variant. RAW 2024 PHB:
+    // "an effect's area includes a creature if any part of the
+    // creature's space is in the area." A Large dragon with its
+    // anchor cell 30ft from a 25ft Fireball is now correctly included
+    // when its body extends inside the radius — pre-v2.481 the
+    // anchor-only test missed it.
+    const matches = findParticipantsInRadiusFootprint(
       participants.filter(p => !p.is_dead).map(p => ({
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
         entity_id: p.entity_id,
       })),
-      participantPositions,
+      participantFootprints,
       centerPos,
       radius,
       new Set([attackerId]),
