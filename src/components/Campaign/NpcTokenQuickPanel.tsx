@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../shared/Toast';
+// v2.482.0 — Cross-encounter immunity panel surfaces on this
+// DM-side NPC quick-panel. Same shape as the character sheet's
+// ActiveImmunitiesPanel (v2.478) but reads/writes against
+// homebrew_monsters.active_immunities instead of
+// characters.active_immunities. NPC quick-panel is the only DM-
+// facing UI surface for creature instances, so this is where
+// the parity panel belongs.
+import { revokeImmunity } from '../../lib/campaignImmunities';
+import { useImmunitySourceNames } from '../../lib/hooks/useImmunitySourceNames';
+import type { ActiveImmunity } from '../../types';
 // v2.386.0 — Hide-from-players now writes scene_tokens.visible_to_all
 // instead of homebrew_monsters.visible_to_players. The latter was
 // never read by any rendering code; the former has full RLS + DM
@@ -80,6 +90,9 @@ interface NpcRow {
   conditions: string[] | null;
   visible_to_players: boolean;
   in_combat: boolean;
+  // v2.482.0 — Cross-encounter immunity snapshot, populated by
+  // endEncounter carry-over. JSONB array of ActiveImmunity entries.
+  active_immunities?: ActiveImmunity[] | null;
 }
 
 // Mirror of the character panel's COND_COLOR. Kept inline so the panel
@@ -104,6 +117,19 @@ const COND_COLOR: Record<string, string> = {
 };
 
 const ALL_CONDITIONS: string[] = Object.keys(COND_COLOR);
+
+/** v2.482.0 — Title-case a source_kind slug for the immunity panel.
+ *  'frightful_presence' → 'Frightful Presence'. Mirrors the helper in
+ *  CharacterSheet/ActiveImmunitiesPanel.tsx; kept inline so the NPC
+ *  panel stays self-contained. If a third surface ever needs it,
+ *  promote to a shared util. */
+function formatSourceKind(slug: string): string {
+  return slug
+    .split('_')
+    .filter(Boolean)
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ');
+}
 
 interface Props {
   npcId: string;
@@ -155,6 +181,15 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   const [condBusy, setCondBusy] = useState(false);
   const [showCondPicker, setShowCondPicker] = useState(false);
 
+  // v2.482.0 — Cross-encounter immunity panel data. immunities is the
+  // current snapshot from homebrew_monsters.active_immunities;
+  // immunitySourceIds + immunitySourceNames resolve human labels for
+  // the source attackers. Computed via the same hook the character
+  // sheet uses (v2.478) so behavior is identical across surfaces.
+  const immunities: ActiveImmunity[] = (npc?.active_immunities ?? []) as ActiveImmunity[];
+  const immunitySourceIds = immunities.map(i => i.source_id).filter(Boolean);
+  const immunitySourceNames = useImmunitySourceNames(immunitySourceIds);
+
   // Initial fetch.
   useEffect(() => {
     let cancelled = false;
@@ -165,7 +200,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       const [tplRes, combRes] = await Promise.all([
         supabase
           .from('homebrew_monsters')
-          .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat')
+          .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat, active_immunities')
           .eq('id', npcId)
           .single(),
         supabase
@@ -361,6 +396,46 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       setCondBusy(false);
     }
   }, [npc, combatant, condBusy, tokenId, showToast]);
+
+  // v2.482.0 — Manual immunity revoke. Mirrors the character sheet's
+  // ActiveImmunitiesPanel handler (v2.478) but writes against
+  // homebrew_monsters.active_immunities instead of characters.*.
+  // Two-step:
+  //   1. revokeImmunity() — deletes the row in
+  //      campaign_condition_immunities (the source of truth).
+  //   2. UPDATE homebrew_monsters.active_immunities to the filtered
+  //      array so the panel reflects the change immediately. Realtime
+  //      will echo this back through the existing channel handler.
+  const removeImmunity = useCallback(async (entry: ActiveImmunity) => {
+    if (!npc || !npc.campaign_id) return;
+    const ok = await revokeImmunity({
+      campaignId: npc.campaign_id,
+      target: { type: 'creature', id: npc.id },
+      sourceKind: entry.source_kind,
+      sourceId: entry.source_id,
+    });
+    if (!ok) {
+      showToast('Failed to remove immunity.', 'error');
+      return;
+    }
+    const current = (npc.active_immunities ?? []) as ActiveImmunity[];
+    const next = current.filter(
+      i => !(i.source_kind === entry.source_kind && i.source_id === entry.source_id),
+    );
+    const { error } = await (supabase as any)
+      .from('homebrew_monsters')
+      .update({ active_immunities: next })
+      .eq('id', npc.id);
+    if (error) {
+      // Source-of-truth row was deleted but the snapshot didn't update.
+      // The next end-of-encounter carry-over would re-snapshot from
+      // the (now empty) table — self-healing. Log + toast and move on.
+      console.error('[NpcTokenQuickPanel] active_immunities snapshot update failed', error);
+      showToast('Removed in DB but local snapshot may be stale until reload.', 'warn');
+      return;
+    }
+    showToast('Immunity removed.', 'success');
+  }, [npc, showToast]);
 
   // v2.386.0 — Visibility toggle. Writes scene_tokens.visible_to_all
   // (the per-token flag) rather than homebrew_monsters.visible_to_players
@@ -1069,6 +1144,56 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
             </div>
           )}
         </div>
+
+        {/* v2.482.0 — Active Immunities (cross-encounter, Ship 6 of arc).
+            Mirrors the character sheet's ActiveImmunitiesPanel. Self-
+            hides when no immunities. DM-only in current scope (this
+            panel is DM-only by mount). Click chip to remove. */}
+        {isDM && immunities.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              marginBottom: 4,
+            }}>
+              <span style={{
+                fontSize: 9,
+                color: '#67e8f9',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}>
+                Active Immunities
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+              {immunities.map(entry => {
+                const sourceLabel = immunitySourceNames.get(entry.source_id) ?? '…';
+                const kindLabel = formatSourceKind(entry.source_kind);
+                return (
+                  <button
+                    key={`${entry.source_kind}:${entry.source_id}`}
+                    onClick={() => removeImmunity(entry)}
+                    title={`Click to remove. Granted in encounter ${entry.encounter_id ? entry.encounter_id.slice(0, 8) : 'unknown'}.`}
+                    style={{
+                      padding: '2px 8px',
+                      background: 'rgba(34,211,238,0.12)',
+                      border: '1px solid rgba(34,211,238,0.35)',
+                      borderRadius: 999,
+                      fontSize: 10, fontWeight: 700,
+                      color: '#67e8f9',
+                      cursor: 'pointer',
+                      userSelect: 'none' as const,
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      minHeight: 0,
+                    }}
+                  >
+                    🛡️ {sourceLabel} — {kindLabel}
+                    <span style={{ opacity: 0.6, fontWeight: 500 }}>×</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

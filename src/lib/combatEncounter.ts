@@ -923,27 +923,52 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
       // Group combatant ids by destination table.
       const characterCombatantIds: { combatantId: string; characterId: string }[] = [];
       const npcCombatantIds: { combatantId: string; npcId: string }[] = [];
+      // v2.482.0 — Creature group (target_type='creature' →
+      // homebrew_monsters). Only immunity is carried over for these
+      // because homebrew_monsters is a template, not a per-instance
+      // row — writing HP/conditions back would corrupt the template
+      // for future spawns. The per-token combat state lives on
+      // `combatants` and is torn down with the encounter; immunity
+      // is the only thing that meaningfully outlives the encounter
+      // for a creature template.
+      const creatureCombatantIds: { combatantId: string; creatureId: string }[] = [];
       for (const cp of cps as Array<{ combatant_id: string | null; participant_type: string; entity_id: string | null }>) {
         if (!cp.combatant_id || !cp.entity_id) continue;
         if (cp.participant_type === 'character') {
           characterCombatantIds.push({ combatantId: cp.combatant_id, characterId: cp.entity_id });
         } else if (cp.participant_type === 'npc') {
           npcCombatantIds.push({ combatantId: cp.combatant_id, npcId: cp.entity_id });
+        } else if (cp.participant_type === 'creature' || cp.participant_type === 'monster') {
+          creatureCombatantIds.push({ combatantId: cp.combatant_id, creatureId: cp.entity_id });
         }
       }
       // Fetch the post-combat HP from combatants for everyone we care
       // about, then write back per-row. Two separate UPDATE loops; the
       // counts are bounded (party + a few NPCs per encounter, ~10 rows
       // typical) so the cost is small.
+      //
+      // v2.482.0 — Creature combatant ids are included in the gate
+      // (so creature-only encounters still trigger the carry-over
+      // block for immunity prefetch + write), but NOT in the HP-fetch
+      // SELECT — homebrew_monsters carry-over only handles immunity,
+      // never HP/conditions (would corrupt the template). The
+      // combMap is consulted only by the character + npc loops.
       const allCombIds = [
+        ...characterCombatantIds.map(x => x.combatantId),
+        ...npcCombatantIds.map(x => x.combatantId),
+        ...creatureCombatantIds.map(x => x.combatantId),
+      ];
+      const hpFetchCombIds = [
         ...characterCombatantIds.map(x => x.combatantId),
         ...npcCombatantIds.map(x => x.combatantId),
       ];
       if (allCombIds.length) {
-        const { data: combRows } = await (supabase as any)
-          .from('combatants')
-          .select('id, current_hp, temp_hp, death_save_successes, death_save_failures, is_stable, is_dead, active_conditions, active_buffs')
-          .in('id', allCombIds);
+        const { data: combRows } = hpFetchCombIds.length
+          ? await (supabase as any)
+              .from('combatants')
+              .select('id, current_hp, temp_hp, death_save_successes, death_save_failures, is_stable, is_dead, active_conditions, active_buffs')
+              .in('id', hpFetchCombIds)
+          : { data: [] };
         const combMap = new Map<string, any>();
         for (const r of (combRows ?? []) as any[]) combMap.set(r.id, r);
 
@@ -954,11 +979,16 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         // time so we issue two reads max (character / npc); the
         // immunity table is small per campaign so we filter client-side
         // by entity_id rather than N separate .in() queries.
+        //
+        // v2.482.0 — Added creature prefetch for homebrew_monsters
+        // immunities. Three batched reads now (character / npc / creature).
         let charImmRows: any[] = [];
         let npcImmRows: any[] = [];
+        let creatureImmRows: any[] = [];
         try {
           const characterIds = characterCombatantIds.map(x => x.characterId);
           const npcIds = npcCombatantIds.map(x => x.npcId);
+          const creatureIds = creatureCombatantIds.map(x => x.creatureId);
           if (characterIds.length) {
             const { data: rows } = await (supabase as any)
               .from('campaign_condition_immunities')
@@ -976,6 +1006,15 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
               .eq('target_type', 'npc')
               .in('target_id', npcIds);
             npcImmRows = rows ?? [];
+          }
+          if (creatureIds.length) {
+            const { data: rows } = await (supabase as any)
+              .from('campaign_condition_immunities')
+              .select('target_id, source_kind, source_id, granted_at_rounds, expires_at_rounds, encounter_id')
+              .eq('campaign_id', enc.campaign_id)
+              .eq('target_type', 'creature')
+              .in('target_id', creatureIds);
+            creatureImmRows = rows ?? [];
           }
         } catch (immErr) {
           // Table may not exist yet (migration not applied); degraded
@@ -1009,6 +1048,8 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         }
         const charImmsByTarget = groupImmsByTarget(charImmRows);
         const npcImmsByTarget = groupImmsByTarget(npcImmRows);
+        // v2.482.0 — Creature immunity grouping for homebrew_monsters.
+        const creatureImmsByTarget = groupImmsByTarget(creatureImmRows);
 
         for (const { combatantId, characterId } of characterCombatantIds) {
           const c = combMap.get(combatantId);
@@ -1071,6 +1112,35 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
             .eq('id', npcId);
           if (npcErr) {
             console.error('[endEncounter] npc carry-over failed', { npcId, error: npcErr });
+          }
+        }
+
+        // v2.482.0 — Creature (homebrew_monsters) immunity carry-over.
+        //
+        // Unlike characters and npcs (which are one-row-per-instance
+        // tables where HP/conditions naturally outlive an encounter),
+        // homebrew_monsters is a TEMPLATE shared across every spawn
+        // of that creature. Writing HP/conditions back would corrupt
+        // the template — the next encounter that spawns this creature
+        // would start at post-combat HP instead of fresh max HP.
+        //
+        // So this loop carries ONLY active_immunities. Two ancient
+        // red dragons spawned from the same template share an
+        // entity_id, which means they share immunity rows in
+        // campaign_condition_immunities — RAW-defensible (the
+        // "creature template" is the source identity for the dragon's
+        // Frightful Presence) and matches how the source-of-truth
+        // table is keyed.
+        for (const { creatureId } of creatureCombatantIds) {
+          const creatureUpdates: Record<string, unknown> = {
+            active_immunities: creatureImmsByTarget.get(creatureId) ?? [],
+          };
+          const { error: creatureErr } = await (supabase as any)
+            .from('homebrew_monsters')
+            .update(creatureUpdates)
+            .eq('id', creatureId);
+          if (creatureErr) {
+            console.error('[endEncounter] creature immunity carry-over failed', { creatureId, error: creatureErr });
           }
         }
       }
