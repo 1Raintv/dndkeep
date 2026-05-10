@@ -942,10 +942,73 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
       if (allCombIds.length) {
         const { data: combRows } = await (supabase as any)
           .from('combatants')
-          .select('id, current_hp, temp_hp, death_save_successes, death_save_failures, is_stable, is_dead')
+          .select('id, current_hp, temp_hp, death_save_successes, death_save_failures, is_stable, is_dead, active_conditions, active_buffs')
           .in('id', allCombIds);
         const combMap = new Map<string, any>();
         for (const r of (combRows ?? []) as any[]) combMap.set(r.id, r);
+
+        // v2.477.0 — Cross-encounter immunity snapshot (Ship 3 of arc).
+        // Pre-fetch every immunity row for every entity we're about to
+        // write to, batched by target_type. Avoids N+1 reads in the
+        // per-row loop below. The new helper queries one type at a
+        // time so we issue two reads max (character / npc); the
+        // immunity table is small per campaign so we filter client-side
+        // by entity_id rather than N separate .in() queries.
+        let charImmRows: any[] = [];
+        let npcImmRows: any[] = [];
+        try {
+          const characterIds = characterCombatantIds.map(x => x.characterId);
+          const npcIds = npcCombatantIds.map(x => x.npcId);
+          if (characterIds.length) {
+            const { data: rows } = await (supabase as any)
+              .from('campaign_condition_immunities')
+              .select('target_id, source_kind, source_id, granted_at_rounds, expires_at_rounds, encounter_id')
+              .eq('campaign_id', enc.campaign_id)
+              .eq('target_type', 'character')
+              .in('target_id', characterIds);
+            charImmRows = rows ?? [];
+          }
+          if (npcIds.length) {
+            const { data: rows } = await (supabase as any)
+              .from('campaign_condition_immunities')
+              .select('target_id, source_kind, source_id, granted_at_rounds, expires_at_rounds, encounter_id')
+              .eq('campaign_id', enc.campaign_id)
+              .eq('target_type', 'npc')
+              .in('target_id', npcIds);
+            npcImmRows = rows ?? [];
+          }
+        } catch (immErr) {
+          // Table may not exist yet (migration not applied); degraded
+          // mode is "no immunity carry-over" which is the pre-v2.474
+          // baseline. Don't block HP carry-over.
+          console.warn('[endEncounter] immunity prefetch failed (migration may be pending)', immErr);
+        }
+        // v2.477.0 — Group immunity rows by target_id for O(1) lookup
+        // in the per-row loop. Map<target_id, ActiveImmunity[]>.
+        // Shape mirrors the ActiveImmunity TS type. source_name is
+        // resolved best-effort below (we don't have a name for the
+        // source attacker on hand here — Ship 4's UI can resolve at
+        // display time; for now we pass an empty string and the sheet
+        // shows the source_kind label).
+        function groupImmsByTarget(rows: any[]): Map<string, any[]> {
+          const m = new Map<string, any[]>();
+          for (const r of rows) {
+            const entry = {
+              source_kind: r.source_kind,
+              source_id: r.source_id,
+              source_name: '',
+              granted_at_rounds: r.granted_at_rounds,
+              expires_at_rounds: r.expires_at_rounds,
+              encounter_id: r.encounter_id,
+            };
+            const list = m.get(r.target_id) ?? [];
+            list.push(entry);
+            m.set(r.target_id, list);
+          }
+          return m;
+        }
+        const charImmsByTarget = groupImmsByTarget(charImmRows);
+        const npcImmsByTarget = groupImmsByTarget(npcImmRows);
 
         for (const { combatantId, characterId } of characterCombatantIds) {
           const c = combMap.get(combatantId);
@@ -956,12 +1019,32 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
           if (c.death_save_failures != null) updates.death_save_failures = c.death_save_failures;
           if (c.is_stable != null) updates.is_stable = c.is_stable;
           if (c.is_dead != null) updates.is_dead = c.is_dead;
+          // v2.477.0 — Carry conditions and buffs to the character.
+          // User intent: "things that are applied to the character
+          // should just stay on a character after a fight ... it
+          // should just apply it to the character ... and then from
+          // that point on it stays there until the time has elapsed
+          // or that the player goes in and manually removes it."
+          // Both columns are array/JSONB; pass them straight through.
+          // If combatants.* is null/undefined (legacy row), leave the
+          // existing character.* untouched rather than blanking it.
+          if (Array.isArray(c.active_conditions)) {
+            updates.active_conditions = c.active_conditions;
+          }
+          if (c.active_buffs != null) {
+            updates.active_buffs = c.active_buffs;
+          }
+          // v2.477.0 — Snapshot immunities from the new cross-encounter
+          // table onto characters.active_immunities (denormalized for
+          // sheet rendering). Empty array is a valid value here —
+          // it overwrites stale entries from a previous encounter.
+          updates.active_immunities = charImmsByTarget.get(characterId) ?? [];
           const { error: chErr } = await supabase
             .from('characters')
             .update(updates)
             .eq('id', characterId);
           if (chErr) {
-            console.error('[endEncounter] character HP carry-over failed', { characterId, error: chErr });
+            console.error('[endEncounter] character carry-over failed', { characterId, error: chErr });
           }
         }
         for (const { combatantId, npcId } of npcCombatantIds) {
@@ -970,12 +1053,24 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
           // npcs table uses `hp` (not `current_hp`) per the legacy
           // schema. Death-save tracking isn't on npcs (no PHB death
           // save mechanic for non-PCs), so we only carry HP.
+          //
+          // v2.477.0 — Also carry conditions + immunities. npcs.conditions
+          // is the equivalent column name (legacy schema; `conditions`
+          // rather than `active_conditions`). npcs has no `active_buffs`
+          // column — buffs don't carry to NPCs (out of scope for this
+          // arc; if needed, add `npcs.active_buffs` in a future
+          // migration and extend here).
+          const npcUpdates: Record<string, unknown> = { hp: c.current_hp };
+          if (Array.isArray(c.active_conditions)) {
+            npcUpdates.conditions = c.active_conditions;
+          }
+          npcUpdates.active_immunities = npcImmsByTarget.get(npcId) ?? [];
           const { error: npcErr } = await (supabase as any)
             .from('npcs')
-            .update({ hp: c.current_hp })
+            .update(npcUpdates)
             .eq('id', npcId);
           if (npcErr) {
-            console.error('[endEncounter] npc HP carry-over failed', { npcId, error: npcErr });
+            console.error('[endEncounter] npc carry-over failed', { npcId, error: npcErr });
           }
         }
       }
