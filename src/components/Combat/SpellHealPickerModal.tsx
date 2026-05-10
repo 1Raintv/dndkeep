@@ -29,6 +29,13 @@ import {
 import { logAction } from '../shared/ActionLog';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import type { SpellData, CombatParticipant, Character } from '../../types';
+// v2.480.0 — Distance display sweep.
+import {
+  loadActiveBattleMap,
+  distanceBetweenParticipantsFtUsingMap,
+  type ActiveBattleMap,
+  type ParticipantForTokenLookup,
+} from '../../lib/battleMapGeometry';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
@@ -62,6 +69,12 @@ export default function SpellHealPickerModal({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // v2.480.0 — Battle map for footprint-aware distance display.
+  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
+  // v2.480.0 — Caster's combat_participants.id, needed to compute the
+  // "from" side of distance. Resolved by matching entity_id == character.id
+  // against the participants list once it loads.
+  const [casterParticipantId, setCasterParticipantId] = useState<string | null>(null);
   const { triggerRoll } = useDiceRoll();
 
   useEffect(() => {
@@ -98,6 +111,14 @@ export default function SpellHealPickerModal({
       if (cancelled) return;
       const list = ((all ?? []) as CombatParticipant[]).filter(p => !p.is_dead);
       setParticipants(list);
+      // v2.480.0 — Resolve caster's participant_id by matching entity_id.
+      const caster = list.find(p => p.entity_id === character.id);
+      setCasterParticipantId(caster?.id ?? null);
+      // v2.480.0 — Load battle map for distance display. Fire-and-forget
+      // on failure; rows render without distance.
+      loadActiveBattleMap(campaignId).then(map => {
+        if (!cancelled) setBattleMap(map);
+      });
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -243,6 +264,32 @@ export default function SpellHealPickerModal({
                 const atMax = p.current_hp >= p.max_hp;
                 const isUnconscious = p.current_hp === 0 && !p.is_dead;
                 const disabled = !checked && picked.size >= healDef.maxTargets;
+                // v2.480.0 — Footprint-aware distance from caster to this
+                // target. Self-heal renders 0 ft. null when battleMap or
+                // casterParticipantId hasn't resolved yet (rows render
+                // without distance during the gap, ~50–150ms typical).
+                let distanceFt: number | null = null;
+                if (battleMap && casterParticipantId) {
+                  if (casterParticipantId === p.id) {
+                    distanceFt = 0;
+                  } else {
+                    const fromLookup: ParticipantForTokenLookup = {
+                      id: casterParticipantId,
+                      name: character.name,
+                      participant_type: 'character',
+                      entity_id: character.id,
+                    };
+                    const toLookup: ParticipantForTokenLookup = {
+                      id: p.id,
+                      name: p.name,
+                      participant_type: p.participant_type,
+                      entity_id: p.entity_id,
+                    };
+                    distanceFt = distanceBetweenParticipantsFtUsingMap(
+                      fromLookup, toLookup, battleMap,
+                    );
+                  }
+                }
                 return (
                   <label key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
@@ -268,6 +315,10 @@ export default function SpellHealPickerModal({
                       ) : null}
                       <span style={{ color: 'var(--t-3)', marginLeft: 6, fontSize: 10 }}>
                         · {p.participant_type}
+                        {/* v2.480.0 — Inline distance after participant_type. */}
+                        {distanceFt !== null && (
+                          <> · {distanceFt} ft</>
+                        )}
                       </span>
                     </span>
                     {isUnconscious && (

@@ -8,9 +8,22 @@
 // The picker only shows participants the current user can see — RLS already
 // filters out hidden_from_players rows, so players don't accidentally learn
 // that the stealthy assassin is in the fight.
+//
+// v2.480.0 — Distance display sweep. When `fromParticipant` + `campaignId`
+// are passed, the picker shows the footprint-aware Chebyshev distance
+// from the attacker to each target. Mirrors the v2.458 SpellTargetPickerModal
+// pattern. Both props are optional so existing callers that don't have the
+// data on hand keep working unchanged.
 
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CombatParticipant } from '../../types';
+import {
+  loadActiveBattleMap,
+  distanceBetweenParticipantsFtUsingMap,
+  type ActiveBattleMap,
+  type ParticipantForTokenLookup,
+} from '../../lib/battleMapGeometry';
 
 interface Props {
   participants: CombatParticipant[];
@@ -20,6 +33,13 @@ interface Props {
   subtitle?: string;
   onPick: (participant: CombatParticipant) => void;
   onCancel: () => void;
+  /** v2.480.0 — Source participant for distance display. When omitted,
+   *  rows render without distance (legacy behavior). */
+  fromParticipant?: CombatParticipant | null;
+  /** v2.480.0 — Campaign id for loadActiveBattleMap. Required for
+   *  distance to render even when fromParticipant is set; without a
+   *  battle map we have no positions to measure between. */
+  campaignId?: string | null;
 }
 
 export default function TargetPickerModal({
@@ -30,7 +50,21 @@ export default function TargetPickerModal({
   subtitle,
   onPick,
   onCancel,
+  fromParticipant,
+  campaignId,
 }: Props) {
+  // v2.480.0 — Battle map state. Loaded async on mount; null until the
+  // load resolves (rows just render without distance during the gap).
+  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
+  useEffect(() => {
+    if (!campaignId || !fromParticipant) return;
+    let cancelled = false;
+    loadActiveBattleMap(campaignId).then(map => {
+      if (!cancelled) setBattleMap(map);
+    });
+    return () => { cancelled = true; };
+  }, [campaignId, fromParticipant]);
+
   const selectable = participants.filter(p => {
     if (p.is_dead) return false;
     if (!allowSelfTarget && excludeParticipantId && p.id === excludeParticipantId) return false;
@@ -87,6 +121,33 @@ export default function TargetPickerModal({
               monster: '#f87171',
               npc: '#60a5fa',
             };
+            // v2.480.0 — Compute footprint-aware Chebyshev distance from
+            // attacker to this target. Rendered inline next to AC/HP.
+            // null when the battle map hasn't loaded yet OR either side
+            // has no token on the active map (e.g. a participant who
+            // hasn't been placed). Self-targeting renders 0ft.
+            let distanceFt: number | null = null;
+            if (battleMap && fromParticipant) {
+              if (fromParticipant.id === p.id) {
+                distanceFt = 0;
+              } else {
+                const fromLookup: ParticipantForTokenLookup = {
+                  id: fromParticipant.id,
+                  name: fromParticipant.name,
+                  participant_type: fromParticipant.participant_type,
+                  entity_id: fromParticipant.entity_id,
+                };
+                const toLookup: ParticipantForTokenLookup = {
+                  id: p.id,
+                  name: p.name,
+                  participant_type: p.participant_type,
+                  entity_id: p.entity_id,
+                };
+                distanceFt = distanceBetweenParticipantsFtUsingMap(
+                  fromLookup, toLookup, battleMap,
+                );
+              }
+            }
             return (
               <button
                 key={p.id}
@@ -123,6 +184,13 @@ export default function TargetPickerModal({
                 <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: 1 }}>
                   {p.name}
                 </span>
+                {/* v2.480.0 — Footprint-aware distance chip. Quiet style
+                    (gray) so it sits informationally next to AC/HP. */}
+                {distanceFt !== null && (
+                  <span style={{ fontSize: 11, color: 'var(--t-3)' }}>
+                    {distanceFt} ft
+                  </span>
+                )}
                 {p.ac != null && (
                   <span style={{ fontSize: 11, color: '#60a5fa' }}>
                     AC <strong>{p.ac}</strong>

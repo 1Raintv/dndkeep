@@ -17,6 +17,15 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { BUFF_SPELL_REGISTRY, applyBuffFromSpell } from '../../lib/buffs';
+// v2.480.0 — Distance display sweep. Footprint-aware Chebyshev between
+// caster and each buff target. Mirrors the v2.458 SpellTargetPickerModal
+// pattern.
+import {
+  loadActiveBattleMap,
+  distanceBetweenParticipantsFtUsingMap,
+  type ActiveBattleMap,
+  type ParticipantForTokenLookup,
+} from '../../lib/battleMapGeometry';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
@@ -33,6 +42,8 @@ interface MiniParticipant {
   id: string;
   name: string;
   participant_type: 'character' | 'monster' | 'npc';
+  // v2.480.0 — entity_id needed for footprint-aware distance lookup.
+  entity_id: string | null;
   current_hp: number;
   max_hp: number;
   is_dead: boolean;
@@ -48,6 +59,10 @@ export default function BuffTargetPickerModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // v2.480.0 — Battle map for footprint-aware distance display.
+  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
+  // v2.480.0 — Caster name needed to build a ParticipantForTokenLookup.
+  const [casterName, setCasterName] = useState<string>('');
 
   const registryKey = spellName.trim().toLowerCase();
   const entry = BUFF_SPELL_REGISTRY[registryKey];
@@ -82,7 +97,7 @@ export default function BuffTargetPickerModal({
         // 2. Resolve caster's participant row
         const { data: casterRow } = await supabase
           .from('combat_participants')
-          .select('id')
+          .select('id, name')
           .eq('encounter_id', enc.id)
           .eq('participant_type', 'character')
           .eq('entity_id', casterCharacterId)
@@ -94,6 +109,9 @@ export default function BuffTargetPickerModal({
           return;
         }
         setCasterParticipantId(casterRow.id as string);
+        // v2.480.0 — Stash caster name so the distance lookup has a
+        // ParticipantForTokenLookup with all four fields filled in.
+        setCasterName((casterRow as { name?: string }).name ?? '');
 
         // 3. For caster-only buffs, auto-apply and close
         if (entry?.scope === 'on_caster_only') {
@@ -111,7 +129,7 @@ export default function BuffTargetPickerModal({
         // 4. Load the rest of the participants (targets to pick from)
         const { data: allRaw } = await (supabase as any)
           .from('combat_participants')
-          .select('id, name, participant_type, ' + JOINED_COMBATANT_FIELDS)
+          .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', enc.id)
           .eq('is_dead', false)
           .order('initiative', { ascending: false });
@@ -119,6 +137,16 @@ export default function BuffTargetPickerModal({
         if (cancelled) return;
         const list = ((all ?? []) as MiniParticipant[]);
         setParticipants(list);
+
+        // v2.480.0 — Load the battle map for distance display. Done
+        // after participant load so the modal can render the list as
+        // soon as targets are known; distance fills in when the map
+        // resolves (typically <100ms). Fire-and-forget on failure —
+        // distance just stays null and rows render without it.
+        loadActiveBattleMap(campaignId).then(map => {
+          if (!cancelled) setBattleMap(map);
+        });
+
         setLoading(false);
       } catch (e) {
         if (!cancelled) {
@@ -228,6 +256,31 @@ export default function BuffTargetPickerModal({
               p.participant_type === 'character' ? '#60a5fa'
               : isCreatureParticipantType(p.participant_type) ? '#f87171'
               : '#a78bfa';
+            // v2.480.0 — Footprint-aware distance from caster to target.
+            // null when battleMap hasn't resolved yet OR either side
+            // has no token on the active map.
+            let distanceFt: number | null = null;
+            if (battleMap && casterParticipantId) {
+              if (casterParticipantId === p.id) {
+                distanceFt = 0;
+              } else {
+                const fromLookup: ParticipantForTokenLookup = {
+                  id: casterParticipantId,
+                  name: casterName,
+                  participant_type: 'character',
+                  entity_id: casterCharacterId,
+                };
+                const toLookup: ParticipantForTokenLookup = {
+                  id: p.id,
+                  name: p.name,
+                  participant_type: p.participant_type,
+                  entity_id: p.entity_id,
+                };
+                distanceFt = distanceBetweenParticipantsFtUsingMap(
+                  fromLookup, toLookup, battleMap,
+                );
+              }
+            }
             return (
               <button
                 key={p.id}
@@ -254,6 +307,10 @@ export default function BuffTargetPickerModal({
                 </span>
                 <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 10, color: 'var(--t-3)' }}>
                   {p.current_hp}/{p.max_hp} HP · {p.participant_type}
+                  {/* v2.480.0 — Inline distance after participant_type. */}
+                  {distanceFt !== null && (
+                    <> · {distanceFt} ft</>
+                  )}
                 </span>
               </button>
             );

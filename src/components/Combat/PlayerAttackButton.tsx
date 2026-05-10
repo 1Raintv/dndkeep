@@ -156,6 +156,8 @@ export default function PlayerAttackButton({
           subtitle={`${attackBonus >= 0 ? '+' : ''}${attackBonus} to hit · ${damageDice} ${damageType}`}
           onPick={handlePick}
           onCancel={() => setPicking(false)}
+          fromParticipant={myParticipant}
+          campaignId={encounter.campaign_id}
         />
       )}
     </>
