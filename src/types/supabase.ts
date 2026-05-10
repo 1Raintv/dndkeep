@@ -221,6 +221,49 @@ export type Database = {
         };
         Relationships: [];
       };
+      // v2.474.0 — Cross-encounter condition immunity (Frightful
+      // Presence et al). Source of truth; characters.active_immunities
+      // and npcs.active_immunities are denormalized snapshots populated
+      // at end of encounter (Ship 3).
+      campaign_condition_immunities: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          target_type: string;
+          target_id: string;
+          source_kind: string;
+          source_id: string;
+          granted_at_rounds: number;
+          expires_at_rounds: number | null;
+          encounter_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          target_type: string;
+          target_id: string;
+          source_kind: string;
+          source_id: string;
+          granted_at_rounds?: number;
+          expires_at_rounds?: number | null;
+          encounter_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          target_type?: string;
+          target_id?: string;
+          source_kind?: string;
+          source_id?: string;
+          granted_at_rounds?: number;
+          expires_at_rounds?: number | null;
+          encounter_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       campaigns: {
         Row: {
           id: string;
@@ -240,6 +283,10 @@ export type Database = {
           encumbrance_variant: string;
           default_ruleset_version: string | null;
           award_xp_enabled: boolean;
+          // v2.474.0 — In-game combat clock (rounds). Bumped on round
+          // wrap in advanceTurn. Source for cross-encounter immunity
+          // expiry math (1 round = 6 sec, 14400 rounds = 24 h).
+          combat_rounds_elapsed: number;
         };
         Insert: {
           id?: string;
@@ -259,6 +306,7 @@ export type Database = {
           encumbrance_variant?: string;
           default_ruleset_version?: string | null;
           award_xp_enabled?: boolean;
+          combat_rounds_elapsed?: number;
         };
         Update: {
           id?: string;
@@ -278,6 +326,7 @@ export type Database = {
           encumbrance_variant?: string;
           default_ruleset_version?: string | null;
           award_xp_enabled?: boolean;
+          combat_rounds_elapsed?: number;
         };
         Relationships: [];
       };
@@ -401,6 +450,13 @@ export type Database = {
           nat_1_20_saves: boolean;
           long_rest_clears_combat_conditions: boolean;
           species_choices: Json | null;
+          // v2.474.0 — Cross-encounter immunity snapshot. JSONB array
+          // of { source_kind, source_id, source_name, granted_at_rounds,
+          // expires_at_rounds, encounter_id }. Populated by the
+          // end-of-encounter carry-over (Ship 3); read by the
+          // character sheet UI (Ship 4). Source of truth is
+          // campaign_condition_immunities.
+          active_immunities: Json;
         };
         Insert: {
           id?: string;
@@ -485,6 +541,7 @@ export type Database = {
           nat_1_20_saves?: boolean;
           long_rest_clears_combat_conditions?: boolean;
           species_choices?: Json | null;
+          active_immunities?: Json;
         };
         Update: {
           id?: string;
@@ -569,6 +626,7 @@ export type Database = {
           nat_1_20_saves?: boolean;
           long_rest_clears_combat_conditions?: boolean;
           species_choices?: Json | null;
+          active_immunities?: Json;
         };
         Relationships: [];
       };
@@ -1506,6 +1564,8 @@ export type Database = {
           conditions: string[] | null;
           ability_scores: Json;
           save_proficiencies: Json;
+          // v2.474.0 — see characters.active_immunities note.
+          active_immunities: Json;
         };
         Insert: {
           id?: string;
@@ -1533,6 +1593,7 @@ export type Database = {
           conditions?: string[] | null;
           ability_scores?: Json;
           save_proficiencies?: Json;
+          active_immunities?: Json;
         };
         Update: {
           id?: string;
@@ -1560,6 +1621,7 @@ export type Database = {
           conditions?: string[] | null;
           ability_scores?: Json;
           save_proficiencies?: Json;
+          active_immunities?: Json;
         };
         Relationships: [];
       };

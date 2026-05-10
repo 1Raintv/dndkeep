@@ -189,6 +189,28 @@ export interface ASIRecord {
   source: 'background' | 'feat' | 'level' | string;
 }
 
+/**
+ * v2.474.0 — Cross-encounter condition immunity entry. Mirrors the
+ * shape of campaign_condition_immunities rows, denormalized onto
+ * characters.active_immunities and npcs.active_immunities for fast
+ * sheet rendering. The DB table is the source of truth.
+ *
+ * Expiry: in-game rounds (1 round = 6 sec). Compare against
+ * Campaign.combat_rounds_elapsed. expires_at_rounds=null means no
+ * time-based expiry — only manual revoke or another effect clears it.
+ */
+export interface ActiveImmunity {
+  /** Slug matching ApplyConditionInput.sourceKind, e.g. 'frightful_presence'. */
+  source_kind: string;
+  /** Attacker entity_id. Combined with source_kind to form the immunity key. */
+  source_id: string;
+  /** Human label for the sheet UI, e.g. 'Adult Red Dragon'. */
+  source_name: string;
+  granted_at_rounds: number;
+  expires_at_rounds: number | null;
+  encounter_id: string | null;
+}
+
 export interface Character {
   id: string;
   user_id: string;
@@ -302,6 +324,19 @@ export interface Character {
   // Conditions
   active_conditions: ConditionName[];
   exhaustion_level?: number;  // 0-6 per 2024 rules; 0 = no exhaustion, 6 = death
+
+  // v2.474.0 — Cross-encounter condition immunity snapshot. JSONB
+  // array; populated at end of encounter from
+  // campaign_condition_immunities (Ship 3). Each entry:
+  //   { source_kind: string;   // e.g. 'frightful_presence'
+  //     source_id: string;     // attacker entity_id
+  //     source_name: string;   // human label, e.g. 'Adult Red Dragon'
+  //     granted_at_rounds: number;
+  //     expires_at_rounds: number | null;  // null = no auto-expiry
+  //     encounter_id: string | null; }
+  // Source of truth lives in campaign_condition_immunities table;
+  // this is a denormalized snapshot read by the character sheet.
+  active_immunities?: ActiveImmunity[];
 
   // v2.41.0: Damage modifiers — auto-populated from species, editable when
   // advanced_edits_unlocked. Vocabulary: 13 RAW damage types (lowercase).
@@ -641,6 +676,12 @@ export interface Campaign {
   // legacy path is dropped (v2.317), this field becomes vestigial
   // and can be removed in a cleanup ship.
   use_combatants_for_battlemap?: boolean;
+
+  // v2.474.0 — In-game combat clock (rounds). Bumped on round wrap
+  // in advanceTurn. Source for cross-encounter immunity expiry math
+  // (1 round = 6 sec, 14400 rounds = 24 h). Outside-combat
+  // fast-forward (DM Party tab control) deferred to a future ship.
+  combat_rounds_elapsed?: number;
 }
 
 export interface CombatAutomationSettings {

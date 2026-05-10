@@ -622,6 +622,44 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
     return { ok: false, reason: encUpdErr.message ?? 'Failed to advance turn' };
   }
 
+  // v2.474.0 — Bump the campaign-wide in-game clock on round wrap.
+  // RAW: 1 round = 6 seconds, 10 rounds = 1 minute, 14400 rounds =
+  // 24 hours. Cross-encounter immunity (Frightful Presence et al.)
+  // reads this counter to compute expiry. Done as a separate UPDATE
+  // (not a Postgres trigger on combat_encounters.round_number)
+  // because the canonical write site is here in advanceTurn — a
+  // trigger would also fire on manual round-number edits / migrations
+  // / admin paths where the clock-bump semantics don't apply.
+  //
+  // Concurrency: combat is single-DM by design (only the DM advances
+  // turns), so SELECT-then-UPDATE is collision-free in practice.
+  // If we ever support player-driven turn advance the right fix is a
+  // Postgres function with `combat_rounds_elapsed = combat_rounds_elapsed + 1`
+  // for atomicity; deferred.
+  //
+  // Fire-and-forget: a failure here shouldn't block turn advance.
+  // The worst case is a mistimed immunity expiry, recoverable via DM
+  // override (Ship 4 immunity-management UI).
+  if (roundIncremented) {
+    const { data: campRow, error: selErr } = await supabase
+      .from('campaigns')
+      .select('combat_rounds_elapsed')
+      .eq('id', incomingParticipant.campaign_id as string)
+      .single();
+    if (selErr) {
+      console.error('[advanceTurn] campaign clock read failed', selErr);
+    } else {
+      const current = (campRow as { combat_rounds_elapsed?: number } | null)?.combat_rounds_elapsed ?? 0;
+      const { error: bumpErr } = await (supabase as any)
+        .from('campaigns')
+        .update({ combat_rounds_elapsed: current + 1 })
+        .eq('id', incomingParticipant.campaign_id);
+      if (bumpErr) {
+        console.error('[advanceTurn] campaign clock bump failed', bumpErr);
+      }
+    }
+  }
+
   // v2.127.0 — Phase J: lair action window opens at top of each round (RAW
   // 2024: initiative 20). Only emit when the encounter is flagged in_lair
   // AND has at least one configured action — otherwise the DM has no UI
