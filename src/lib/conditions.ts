@@ -103,7 +103,39 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
   // happened — the failure is just no-op'd here. Caller is expected to
   // surface "but is IMMUNE" in their toast (we don't echo it from
   // applyCondition because the caller has the user-facing context).
+  //
+  // v2.476.0 — Dual-read (Ship 2 of immunity arc). Check the new
+  // cross-encounter table FIRST; if it says immune, short-circuit.
+  // Otherwise fall through to the legacy per-encounter column. Either
+  // source returning "immune" suppresses the apply. False negatives
+  // from the new table (e.g. migration not yet applied → table read
+  // fails → returns false) cleanly degrade to legacy-only behavior.
+  // Once Ship 5 drops the legacy column, this falls through to the
+  // new-table-only path naturally.
   if (input.sourceKind && input.sourceAttackerId) {
+    // New table check: needs entity_id, not participant_id. Resolve
+    // both target + attacker before querying.
+    try {
+      const { resolveParticipantToEntity, isImmune } = await import('./campaignImmunities');
+      const target = await resolveParticipantToEntity(input.participantId);
+      const attacker = await resolveParticipantToEntity(input.sourceAttackerId);
+      if (target && attacker) {
+        const crossEncounterImmune = await isImmune({
+          campaignId: input.campaignId,
+          target,
+          sourceKind: input.sourceKind,
+          sourceId: attacker.id,
+        });
+        if (crossEncounterImmune) return;
+      }
+    } catch (err) {
+      // Cross-encounter check failed (migration not applied, network,
+      // etc.) — fall through to legacy column. Don't let the new path
+      // break apply altogether.
+      console.warn('[applyCondition] cross-encounter immunity check failed; falling through to legacy', err);
+    }
+
+    // Legacy per-encounter column check.
     const immunityKey = `${input.sourceKind}:${input.sourceAttackerId}`;
     const immunities = (part.condition_source_immunities ?? {}) as Record<string, { expires_at_round: number | null }>;
     const entry = immunities[immunityKey];
