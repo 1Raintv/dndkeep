@@ -9,6 +9,9 @@
 import { useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
+// v2.485.0 — In-app confirm for End Combat (matches the swap in
+// StartCombatButton.tsx).
+import { confirmDialog } from '../shared/ConfirmDialog';
 import { takeDash, takeDisengage } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
@@ -113,7 +116,14 @@ export default function InitiativeStrip({ isDM }: Props) {
 
   async function onEndCombat() {
     if (!encounter) return;
-    if (!window.confirm('End combat?')) return;
+    // v2.485.0 — In-app confirm (see ConfirmDialog.tsx).
+    const ok = await confirmDialog({
+      title: 'End combat?',
+      message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
+      confirmLabel: 'End Combat',
+      destructive: true,
+    });
+    if (!ok) return;
     const result = await endEncounter(encounter.id);
     if (!result.ok) {
       showToast(`Couldn't end combat: ${result.reason}`, 'error');

@@ -10,6 +10,11 @@
 
 import { useState, useMemo } from 'react';
 import { useCombat } from '../../context/CombatContext';
+// v2.485.0 — In-app confirm replaces window.confirm() so the End Combat
+// prompt renders inside the app shell rather than as a browser-native
+// dialog (which surfaces as a separate Chrome message in some
+// extension contexts).
+import { confirmDialog } from '../shared/ConfirmDialog';
 import { endEncounter } from '../../lib/combatEncounter';
 import { startCombatFromMapTokens } from '../../lib/startCombatFromMap';
 // v2.391.0 — Subscribe to the store so the button can show what
@@ -91,7 +96,15 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
 
   async function onEnd() {
     if (!encounter) return;
-    if (!window.confirm('End combat?')) return;
+    // v2.485.0 — In-app confirm (see ConfirmDialog.tsx). Identical
+    // ergonomics to the pre-v2.485 window.confirm('End combat?').
+    const ok = await confirmDialog({
+      title: 'End combat?',
+      message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
+      confirmLabel: 'End Combat',
+      destructive: true,
+    });
+    if (!ok) return;
     await endEncounter(encounter.id);
     await refresh();
   }
