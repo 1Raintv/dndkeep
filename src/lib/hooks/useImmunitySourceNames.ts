@@ -1,4 +1,4 @@
-// v2.478.0 — useImmunitySourceNames.
+// v2.482 — Cross-encounter immunity arc.
 //
 // Resolves the human label for each `(target_type, target_id)` pair
 // that appears as a source on a character's active_immunities list.
@@ -7,21 +7,26 @@
 // per-source DB hits at end-of-encounter; cheaper to resolve at
 // display time (sheet open) and cache the result.
 //
-// Sources can live in four tables:
-//   - characters       (PCs)
-//   - npcs             (NPCs the DM tracks)
+// Sources can live in three tables:
+//   - characters        (PCs)
 //   - homebrew_monsters (campaign-scoped monster instances)
-//   - monsters         (bestiary)
+//   - monsters          (bestiary)
+//
+// v2.484.0 — The `npcs` table was dropped in v2.350's
+// unify_creatures_and_folders migration; original v2.478
+// implementation here also queried `from('npcs')` which returned
+// silent 404s for every source. Removed — homebrew_monsters now
+// covers what `npcs` used to.
 //
 // We don't know which table a given source_id lives in without
 // also tracking source_type. The campaign_condition_immunities
 // table doesn't currently store source_type — every grant has the
 // attacker as the source and the saver as the target, but the table
 // only carries target_type explicitly. For now we fan out to all
-// four tables in parallel, take the first hit, and cache.
+// three tables in parallel, take the first hit, and cache.
 //
 // Performance: a typical character will have 0-3 immunities, mostly
-// from the same campaign's bestiary entries. Four parallel SELECTs
+// from the same campaign's bestiary entries. Three parallel SELECTs
 // per source for a few sources is well under 100ms total. Cache
 // dedupes within the session.
 
@@ -39,12 +44,11 @@ async function resolveOneSource(sourceId: string): Promise<string> {
   const cached = sessionCache.get(sourceId);
   if (cached) return cached.name;
 
-  // Fan-out reads across the four candidate tables. .maybeSingle()
+  // Fan-out reads across the three candidate tables. .maybeSingle()
   // returns null if no row matches, so each SELECT either resolves
   // to a name or to null. First non-null wins.
-  const [charRes, npcRes, hmRes, mRes] = await Promise.all([
+  const [charRes, hmRes, mRes] = await Promise.all([
     supabase.from('characters').select('name').eq('id', sourceId).maybeSingle(),
-    supabase.from('npcs').select('name').eq('id', sourceId).maybeSingle(),
     supabase.from('homebrew_monsters').select('name').eq('id', sourceId).maybeSingle(),
     // The bestiary `monsters` table uses string slug IDs (e.g. 'adult-red-dragon'),
     // not UUIDs. .eq() on a UUID column would be a type error in
@@ -54,7 +58,6 @@ async function resolveOneSource(sourceId: string): Promise<string> {
 
   const name =
     (charRes.data as { name?: string } | null)?.name ??
-    (npcRes.data as { name?: string } | null)?.name ??
     (hmRes.data as { name?: string } | null)?.name ??
     (mRes.data as { name?: string } | null)?.name ??
     'Unknown source';

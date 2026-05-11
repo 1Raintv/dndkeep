@@ -546,10 +546,91 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
   if (loading) return <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>Loading party…</div>;
 
+  // v2.484.0 — Bug B fix. Pre-v2.484 this early-return rendered ONLY
+  // the empty-state message and skipped the entire DM tools row,
+  // hiding the v2.483 Advance Time panel for empty campaigns. Most
+  // DM panels (Award XP, Distribute Loot, Party Rest, etc.) genuinely
+  // need character data and would crash without it — so we can't
+  // just hoist the whole DM tools row above this gate. But Advance
+  // Time is uniquely campaign-scoped (reads campaign.combat_rounds_elapsed
+  // and nothing else), so we surface a slim version of just that
+  // panel here. Once characters join, the full DM tools row below
+  // takes over and renders the regular Advance Time button in
+  // context with the other DM tools.
   if (characters.length === 0) return (
-    <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}></div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', gap: 'var(--sp-4)' }}>
+      <div style={{ fontSize: 36, marginBottom: 4 }}></div>
       <div style={{ fontSize: 'var(--fs-sm)' }}>No characters in this campaign yet. Players need to assign their characters to this campaign.</div>
+      {isOwner && (
+        <div style={{ marginTop: 'var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#67e8f9' }}>
+            Advance Time (DM)
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
+            {(() => {
+              const rounds = (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed ?? 0;
+              const days = Math.floor(rounds / 14400);
+              const hours = Math.floor((rounds % 14400) / 600);
+              const mins = Math.floor((rounds % 600) / 10);
+              const parts: string[] = [];
+              if (days) parts.push(`${days}d`);
+              if (hours) parts.push(`${hours}h`);
+              if (mins || (!days && !hours)) parts.push(`${mins}m`);
+              return `Campaign clock: ${rounds} rounds (~${parts.join(' ')})`;
+            })()}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 480 }}>
+            {([
+              { label: '1 hour',    rounds: 600 },
+              { label: '8 hours',   rounds: 4800 },
+              { label: '24 hours',  rounds: 14400 },
+            ]).map(({ label, rounds }) => (
+              <button
+                key={label}
+                onClick={async () => {
+                  const { data: row } = await supabase
+                    .from('campaigns')
+                    .select('combat_rounds_elapsed')
+                    .eq('id', campaignId)
+                    .maybeSingle();
+                  const current = (row as { combat_rounds_elapsed?: number } | null)?.combat_rounds_elapsed ?? 0;
+                  const next = current + rounds;
+                  await (supabase as any)
+                    .from('campaigns')
+                    .update({ combat_rounds_elapsed: next })
+                    .eq('id', campaignId);
+                  try {
+                    const { data: expired } = await (supabase as any)
+                      .from('campaign_condition_immunities')
+                      .select('id')
+                      .eq('campaign_id', campaignId)
+                      .not('expires_at_rounds', 'is', null)
+                      .lte('expires_at_rounds', next);
+                    const ids = (expired ?? []).map((r: { id: string }) => r.id);
+                    if (ids.length) {
+                      await (supabase as any)
+                        .from('campaign_condition_immunities')
+                        .delete()
+                        .in('id', ids);
+                    }
+                  } catch (pruneErr) {
+                    console.warn('[advance-time] immunity prune failed', pruneErr);
+                  }
+                }}
+                style={{
+                  fontSize: 11, fontWeight: 700, padding: '5px 12px',
+                  borderRadius: 7, cursor: 'pointer', minHeight: 0,
+                  border: '1px solid rgba(34,211,238,0.4)',
+                  background: 'rgba(34,211,238,0.08)',
+                  color: '#67e8f9',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 

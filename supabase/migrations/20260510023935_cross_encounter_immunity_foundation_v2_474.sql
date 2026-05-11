@@ -151,8 +151,15 @@ CREATE POLICY "campaign_owner_write_immunities"
 ALTER TABLE public.characters
   ADD COLUMN IF NOT EXISTS active_immunities JSONB NOT NULL DEFAULT '[]'::jsonb;
 
-ALTER TABLE public.npcs
-  ADD COLUMN IF NOT EXISTS active_immunities JSONB NOT NULL DEFAULT '[]'::jsonb;
+-- NOTE (v2.484 retroactive edit): The original v2.474 migration also
+-- ALTERed public.npcs. That table was dropped in v2.350's
+-- unify_creatures_and_folders migration, so applying this file to a
+-- fresh DB failed with "relation public.npcs does not exist". The
+-- production DB was migrated via MCP without the npcs line; this file
+-- now matches what was actually applied. The runtime code still has
+-- vestigial npcs references (useImmunitySourceNames,
+-- endEncounter carry-over, etc.) that silently no-op — those should
+-- be cleaned up in a follow-up ship.
 
 -- ────────────────────────────────────────────────────────────────────
 -- Campaign in-game clock

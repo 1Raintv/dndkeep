@@ -937,6 +937,13 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         if (cp.participant_type === 'character') {
           characterCombatantIds.push({ combatantId: cp.combatant_id, characterId: cp.entity_id });
         } else if (cp.participant_type === 'npc') {
+          // v2.484.0 — Dead branch. The `npcs` table was dropped in
+          // v2.350 (unify_creatures_and_folders), and no participant
+          // is created with participant_type='npc' anymore — the modern
+          // path uses 'creature' against homebrew_monsters. Kept as a
+          // defensive fallthrough so the carry-over doesn't silently
+          // skip a misclassified row; the downstream UPDATE would
+          // 404 if it ever ran but that surfaces clearly.
           npcCombatantIds.push({ combatantId: cp.combatant_id, npcId: cp.entity_id });
         } else if (cp.participant_type === 'creature' || cp.participant_type === 'monster') {
           creatureCombatantIds.push({ combatantId: cp.combatant_id, creatureId: cp.entity_id });
@@ -1131,6 +1138,21 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         // "creature template" is the source identity for the dragon's
         // Frightful Presence) and matches how the source-of-truth
         // table is keyed.
+        //
+        // v2.484.0 — Bug A fix. v2.482's loop logged
+        // "[endEncounter] creature immunity carry-over failed" on
+        // every encounter end even though network traffic showed
+        // 204 No Content and the rows were correctly updated in the
+        // DB. Two-part fix:
+        //   1. Add .select() so PostgREST returns the updated row.
+        //      Without it the response is 204 + empty body, and the
+        //      Supabase JS client's typing path can interpret the
+        //      empty response as a failure mode in some versions.
+        //      With .select() we get 200 + body, no ambiguity.
+        //   2. Verbose error log (JSON.stringify) so any future
+        //      failure surfaces the actual PostgREST error
+        //      payload (.message/.code/.details) instead of an
+        //      opaque "Object" in the console.
         for (const { creatureId } of creatureCombatantIds) {
           const creatureUpdates: Record<string, unknown> = {
             active_immunities: creatureImmsByTarget.get(creatureId) ?? [],
@@ -1138,9 +1160,14 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
           const { error: creatureErr } = await (supabase as any)
             .from('homebrew_monsters')
             .update(creatureUpdates)
-            .eq('id', creatureId);
+            .eq('id', creatureId)
+            .select('id'); // force return body so the client sees an
+                           // unambiguous 200 + payload instead of 204.
           if (creatureErr) {
-            console.error('[endEncounter] creature immunity carry-over failed', { creatureId, error: creatureErr });
+            console.error(
+              '[endEncounter] creature immunity carry-over failed',
+              { creatureId, error: JSON.stringify(creatureErr) },
+            );
           }
         }
       }
