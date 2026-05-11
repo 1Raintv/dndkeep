@@ -107,7 +107,39 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // other in LootItemPicker.
   const [lootSelectedItem, setLootSelectedItem] = useState<MagicItem | null>(null);
   const [lootItem, setLootItem] = useState('');
-  const [dmPanel, setDmPanel] = useState<'xp' | 'loot' | 'aoe' | 'rest' | 'announce' | 'save' | 'time' | null>(null);
+  // v2.488.0 — DM panel selection.
+  //
+  // Pre-v2.488 this was nullable and started at null (no panel visible
+  // until you clicked one). Per playtest feedback that produced two
+  // problems:
+  //   1. Switching panels caused jarring layout shifts because each
+  //      panel renders at its own natural height; we now solve the
+  //      shift separately by giving the panel area a shared
+  //      min-height (see DM_PANEL_MIN_HEIGHT below).
+  //   2. The DM had to re-click into a panel every time they returned
+  //      to the Party tab. The selection is now persisted to
+  //      localStorage keyed per-campaign so the same panel reopens
+  //      next visit.
+  //
+  // null is no longer a valid state — one panel is always open.
+  // Clicking the currently-selected button is a no-op (no toggle-off).
+  // Initial value: last-used from localStorage, falling back to 'rest'
+  // (most common end-of-session action).
+  type DmPanelId = 'xp' | 'loot' | 'aoe' | 'rest' | 'announce' | 'save' | 'time';
+  const dmPanelStorageKey = `dndkeep.partyDmPanel.${campaignId}`;
+  const [dmPanel, setDmPanelState] = useState<DmPanelId>(() => {
+    if (typeof window === 'undefined') return 'rest';
+    const stored = window.localStorage.getItem(dmPanelStorageKey);
+    const valid: DmPanelId[] = ['xp', 'loot', 'aoe', 'rest', 'announce', 'save', 'time'];
+    return (valid as readonly string[]).includes(stored ?? '') ? (stored as DmPanelId) : 'rest';
+  });
+  function setDmPanel(next: DmPanelId) {
+    setDmPanelState(next);
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem(dmPanelStorageKey, next); }
+      catch { /* localStorage quota / private mode — selection still works in-session */ }
+    }
+  }
   // AoE
   const [aoeDamage, setAoeDamage] = useState('');
   const [aoeTargets, setAoeTargets] = useState<Set<string>>(new Set());
@@ -698,7 +730,11 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
             ]) as ReadonlyArray<{ id: 'aoe'|'rest'|'announce'|'save'|'xp'|'loot'|'time'; label: string }>).map(({ id, label }) => (
               <button
                 key={id}
-                onClick={() => { setDmPanel(dmPanel === id ? null : id); setAoeApplied(null); }}
+                // v2.488.0 — Clicking the currently-selected button is
+                // a no-op now (was: toggle off, hiding all panels).
+                // One panel is always open, so re-clicking does
+                // nothing instead of dropping to an invalid state.
+                onClick={() => { if (dmPanel !== id) { setDmPanel(id); setAoeApplied(null); } }}
                 style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                   border: dmPanel === id ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
                   background: dmPanel === id ? 'var(--c-gold-bg)' : 'var(--c-raised)',
@@ -708,6 +744,19 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               </button>
             ))}
           </div>
+
+          {/* v2.488.0 — Stable-height panel wrapper.
+              Pre-v2.488 each panel rendered at its own natural height
+              (Loot tallest at ~360px, Time shortest at ~180px), so
+              clicking between buttons made the rest of the page jump
+              up and down. Wrapping them in a min-height container
+              gives the area a stable footprint: every panel renders
+              with at least 360px of vertical space, with empty space
+              below the panel content if it's a short one. The cost is
+              some whitespace below the shorter panels; the win is no
+              layout shift. Loot stays at its natural ~360px and so
+              looks identical to before. */}
+          <div style={{ minHeight: 360 }}>
 
           {/* ── AoE DAMAGE PANEL ── */}
           {dmPanel === 'aoe' && (
@@ -884,12 +933,19 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                   </div>
                   <button
                     onClick={partyShortRest}
+                    // v2.488.0 — `marginTop: 'auto'` pushes the button
+                    // to the bottom of the flex column so it aligns
+                    // with Long Rest's button regardless of which
+                    // description text wraps to more lines. Button
+                    // text trimmed from "📨 Prompt Short Rest" to
+                    // "Short Rest" per playtest feedback.
                     style={{
                       fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                       border: '1px solid rgba(96,165,250,0.4)', background: 'rgba(96,165,250,0.12)', color: '#60a5fa',
+                      marginTop: 'auto',
                     }}
                   >
-                    📨 Prompt Short Rest
+                    Short Rest
                   </button>
                 </div>
 
@@ -906,9 +962,10 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                     style={{
                       fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                       border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',
+                      marginTop: 'auto',
                     }}
                   >
-                    🌙 Apply Long Rest
+                    Long Rest
                   </button>
                 </div>
               </div>
@@ -1339,6 +1396,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               </div>
             </div>
           )}
+
+          {/* v2.488.0 — close min-height panel wrapper */}
+          </div>
         </div>
       )}
 
@@ -1372,7 +1432,9 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
   campaignId: string;
   onUpdate: (patch: Partial<Character>) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // v2.488.0 — Pre-v2.488 had `const [expanded, setExpanded] = useState(false)`
+  // backing a "DM Controls" toggle. Removed — DM controls render inline
+  // now whenever isDM, no per-card collapse.
   const [hpInput, setHpInput] = useState('');
   // v2.170.0 — currency panel: amount + coin selector + Apply button.
   const [currencyAmount, setCurrencyAmount] = useState('');
@@ -1501,14 +1563,13 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: status.color }}>{status.label}</span>
-            {isDM && (
-              <button
-                onClick={() => setExpanded(v => !v)}
-                style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: `1px solid ${expanded ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`, background: expanded ? 'var(--c-gold-bg)' : 'var(--c-raised)', color: expanded ? 'var(--c-gold-l)' : 'var(--t-2)' }}
-              >
-                {expanded ? 'Close' : 'DM Controls'}
-              </button>
-            )}
+            {/* v2.488.0 — DM Controls toggle removed. Pre-v2.488 the
+                DM had to click "DM Controls" on each card to expand
+                the HP/conditions/checks/inventory panel; per playtest
+                feedback this was an extra click that didn't justify
+                itself. Panel renders inline now (gated only on isDM).
+                The individual sub-panels (hp/conditions/etc.) still
+                have their own select-to-open behavior via activePanel. */}
           </div>
         </div>
 
@@ -1552,8 +1613,10 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
           </div>
         )}
 
-        {/* ── DM CONTROLS PANEL ── */}
-        {isDM && expanded && (
+        {/* ── DM CONTROLS PANEL ──
+            v2.488.0 — Always rendered when isDM (was gated by
+            `expanded` state, now removed). */}
+        {isDM && (
           <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
             {/* Control tabs */}
@@ -1642,7 +1705,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                     }}
                     style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#60a5fa' }}
                   >
-                    Grant THP
+                    Grant
                   </button>
                   {c.temp_hp > 0 && (
                     <button onClick={() => onUpdate({ temp_hp: 0 })} style={{ fontSize: 9, color: 'var(--t-3)', background: 'none', border: '1px solid var(--c-border)', padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}>Clear</button>

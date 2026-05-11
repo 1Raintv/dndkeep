@@ -41,7 +41,14 @@ interface LootItemPickerProps {
   onSubmit?: () => void;
 }
 
-const MAX_SUGGESTIONS = 8;
+// v2.488.0 — Dropdown shortened from 8 → 5 suggestions per playtest
+// feedback ("dropdown is much too long"). The custom-text fallback row
+// is rendered below the suggestion list and counts separately, so the
+// total visible row count when typing is up to 5 catalog hits + the
+// "Use 'X' as custom item" affordance. maxHeight on the popover is
+// trimmed in proportion (lowered from 280 to ~180px) so layout
+// matches.
+const MAX_SUGGESTIONS = 5;
 
 export default function LootItemPicker({
   selected,
@@ -229,7 +236,7 @@ export default function LootItemPicker({
           {open && query.trim() && (
             <div style={{
               position: 'absolute' as const, top: 'calc(100% + 4px)', left: 0, right: 0,
-              maxHeight: 280, overflowY: 'auto' as const,
+              maxHeight: 200, overflowY: 'auto' as const,
               background: 'rgba(15,16,18,0.98)',
               border: '1px solid var(--c-border-m)',
               borderRadius: 7,
