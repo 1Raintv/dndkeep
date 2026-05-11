@@ -10,11 +10,10 @@
 
 import { useState, useMemo } from 'react';
 import { useCombat } from '../../context/CombatContext';
-// v2.485.0 — In-app confirm replaces window.confirm() so the End Combat
-// prompt renders inside the app shell rather than as a browser-native
-// dialog (which surfaces as a separate Chrome message in some
-// extension contexts).
-import { confirmDialog } from '../shared/ConfirmDialog';
+// v2.486.0 — In-app confirm via the existing useModal() system
+// (v2.241). Replaces the short-lived v2.485 ConfirmDialog helper,
+// which duplicated this pre-existing functionality.
+import { useModal } from '../shared/Modal';
 import { endEncounter } from '../../lib/combatEncounter';
 import { startCombatFromMapTokens } from '../../lib/startCombatFromMap';
 // v2.391.0 — Subscribe to the store so the button can show what
@@ -39,6 +38,8 @@ interface Props {
 export default function StartCombatButton({ campaignId, onStarted }: Props) {
   const { encounter, refresh } = useCombat();
   const [starting, setStarting] = useState(false);
+  // v2.486.0 — In-app confirm hook (see useModal docstring in Modal.tsx).
+  const { confirm: confirmModal } = useModal();
   // Inline error/info banner. Auto-clears after a few seconds so it
   // doesn't stick around when the DM moves on.
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
@@ -96,13 +97,14 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
 
   async function onEnd() {
     if (!encounter) return;
-    // v2.485.0 — In-app confirm (see ConfirmDialog.tsx). Identical
-    // ergonomics to the pre-v2.485 window.confirm('End combat?').
-    const ok = await confirmDialog({
+    // v2.486.0 — In-app confirm via useModal. Replaces v2.485's
+    // ConfirmDialog helper (now deleted as duplicate of the
+    // pre-existing v2.241 system).
+    const ok = await confirmModal({
       title: 'End combat?',
       message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
       confirmLabel: 'End Combat',
-      destructive: true,
+      danger: true,
     });
     if (!ok) return;
     await endEncounter(encounter.id);

@@ -8921,9 +8921,14 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       showToast('No drawings to clear on this scene.', 'info');
       return;
     }
-    const ok = window.confirm(
-      `Delete all ${localCount} drawing${localCount === 1 ? '' : 's'} on this scene? Walls, text, and tokens are not affected.`
-    );
+    // v2.486.0 — In-app confirm via existing useModal hook (declared
+    // at top of BattleMapV2). Replaces window.confirm().
+    const ok = await confirmModal({
+      title: `Delete all ${localCount} drawing${localCount === 1 ? '' : 's'} on this scene?`,
+      message: 'Walls, text, and tokens are not affected.',
+      confirmLabel: 'Delete Drawings',
+      danger: true,
+    });
     if (!ok) return;
     // Optimistically remove from store so the canvas clears immediately.
     const store = useBattleMapStore.getState();
@@ -8938,7 +8943,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       return;
     }
     showToast(`Cleared ${deleted} drawing${deleted === 1 ? '' : 's'}.`, 'success');
-  }, [currentScene, showToast]);
+  }, [currentScene, showToast, confirmModal]);
 
   // v2.358.0 — Clear all walls. Companion to clearAllDrawings.
   // User feedback: "The walls that are being drawn and then being
@@ -8956,10 +8961,25 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     // after the fact.
     const localCount = Object.values(useBattleMapStore.getState().walls)
       .filter(w => w.sceneId === currentScene.id).length;
-    const msg = localCount === 0
-      ? 'Local view shows no walls, but the server may have stale ones blocking movement. Clear them anyway?'
-      : `Delete all ${localCount} wall${localCount === 1 ? '' : 's'} on this scene? Drawings, text, and tokens are not affected.`;
-    if (!window.confirm(msg)) return;
+    // v2.486.0 — In-app confirm. The two-mode title/message reflects
+    // the v2.358 fix: when the local count is 0 we suspect server-
+    // side stale rows.
+    const ok = await confirmModal(
+      localCount === 0
+        ? {
+            title: 'Clear walls anyway?',
+            message: 'Local view shows no walls, but the server may have stale ones blocking movement.',
+            confirmLabel: 'Clear Walls',
+            danger: true,
+          }
+        : {
+            title: `Delete all ${localCount} wall${localCount === 1 ? '' : 's'} on this scene?`,
+            message: 'Drawings, text, and tokens are not affected.',
+            confirmLabel: 'Delete Walls',
+            danger: true,
+          }
+    );
+    if (!ok) return;
     // Optimistic local clear so the canvas updates immediately.
     const store = useBattleMapStore.getState();
     const ids = Object.values(store.walls)
@@ -8974,7 +8994,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       return;
     }
     showToast(`Cleared ${deleted} wall${deleted === 1 ? '' : 's'}.`, 'success');
-  }, [currentScene, showToast]);
+  }, [currentScene, showToast, confirmModal]);
 
   // v2.219 — scene settings modal open state.
   const [settingsOpen, setSettingsOpen] = useState(false);

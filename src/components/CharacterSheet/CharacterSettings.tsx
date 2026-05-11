@@ -3,6 +3,9 @@ import type { Character, AbilityKey } from '../../types';
 import { abilityModifier, formatModifier } from '../../lib/gameUtils';
 import LevelUp from './LevelUp';
 import ModalPortal from '../shared/ModalPortal';
+// v2.486.0 — In-app confirm replaces window.confirm() for species,
+// background, and subclass change prompts.
+import { useModal } from '../shared/Modal';
 import { deleteCharacter } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useCampaign } from '../../context/CampaignContext';
@@ -252,6 +255,8 @@ function AbilityRow({
 export default function CharacterSettings({ character, onUpdate, onClose }: CharacterSettingsProps) {
   const navigate = useNavigate();
   const { campaigns } = useCampaign();
+  // v2.486.0 — In-app confirm hook.
+  const { confirm: confirmModal } = useModal();
   const activeCampaign = campaigns.find(c => c.id === character.campaign_id) ?? null;
   const [tab, setTab] = useState<SettingsTab>('stats');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -747,7 +752,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       </label>
                       <select
                         value={character.species}
-                        onChange={e => {
+                        onChange={async e => {
                           const newSpecies = e.target.value;
                           const oldData = SPECIES.find(s => s.name === character.species);
                           const newData = SPECIES.find(s => s.name === newSpecies);
@@ -757,9 +762,14 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                             ? `${oldData.name} (size ${oldData.size}, speed ${oldData.speed}, ${oldData.traits.length} traits, languages: ${oldData.languages.join(', ')})`
                             : character.species;
                           const newSummary = `${newData.name} (size ${newData.size}, speed ${newData.speed}, ${newData.traits.length} traits, languages: ${newData.languages.join(', ')})`;
-                          if (window.confirm(
-                            `Change species?\n\nFrom: ${oldSummary}\nTo:   ${newSummary}\n\nYour displayed traits, languages, and darkvision will update immediately. Base speed on your sheet will not auto-adjust — edit Speed manually if needed.`
-                          )) {
+                          // v2.486.0 — In-app confirm via useModal.
+                          // Was window.confirm() pre-v2.486.
+                          const ok = await confirmModal({
+                            title: 'Change species?',
+                            message: `From: ${oldSummary}\n\nTo: ${newSummary}\n\nYour displayed traits, languages, and darkvision will update immediately. Base speed on your sheet will not auto-adjust — edit Speed manually if needed.`,
+                            confirmLabel: 'Change Species',
+                          });
+                          if (ok) {
                             onUpdate({ species: newSpecies });
                           }
                         }}
@@ -780,7 +790,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                       </label>
                       <select
                         value={character.background}
-                        onChange={e => {
+                        onChange={async e => {
                           const newBg = e.target.value;
                           const oldData = BACKGROUNDS.find((b: any) => b.name === character.background);
                           const newData = BACKGROUNDS.find((b: any) => b.name === newBg);
@@ -789,9 +799,13 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                             ? `${oldData.name} (skills: ${oldData.skill_proficiencies.join(', ')}${oldData.tool_proficiency ? ', tool: ' + oldData.tool_proficiency : ''})`
                             : character.background;
                           const newSummary = `${newData.name} (skills: ${newData.skill_proficiencies.join(', ')}${newData.tool_proficiency ? ', tool: ' + newData.tool_proficiency : ''})`;
-                          if (window.confirm(
-                            `Change background?\n\nFrom: ${oldSummary}\nTo:   ${newSummary}\n\nSkill/tool proficiencies and the background feature description update. Your skill_proficiencies array is NOT auto-rewritten — manually remove old background skills if they shouldn't carry over.`
-                          )) {
+                          // v2.486.0 — In-app confirm via useModal.
+                          const ok = await confirmModal({
+                            title: 'Change background?',
+                            message: `From: ${oldSummary}\n\nTo: ${newSummary}\n\nSkill/tool proficiencies and the background feature description update. Your skill_proficiencies array is NOT auto-rewritten — manually remove old background skills if they shouldn't carry over.`,
+                            confirmLabel: 'Change Background',
+                          });
+                          if (ok) {
                             onUpdate({ background: newBg });
                           }
                         }}
@@ -826,7 +840,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                             <select
                               value={currentSub}
                               disabled={locked || options.length === 0}
-                              onChange={e => {
+                              onChange={async e => {
                                 const newSub = e.target.value;
                                 if (newSub === currentSub) return;
 
@@ -841,23 +855,31 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
                                 const oldSpellNames = oldGranted.map(id => SPELL_MAP[id]?.name).filter(Boolean);
                                 const newSpellNames = newGranted.map(id => SPELL_MAP[id]?.name).filter(Boolean);
 
-                                const msg = [
-                                  `Swap ${className} subclass?`,
-                                  '',
-                                  `From: ${currentSub || '(none)'}`,
-                                  `To:   ${newSub || '(none)'}`,
-                                  '',
-                                  oldSpellNames.length
-                                    ? `Removing auto-granted spells: ${oldSpellNames.join(', ')}`
-                                    : 'No auto-granted spells to remove.',
-                                  newSpellNames.length
-                                    ? `Adding auto-granted spells: ${newSpellNames.join(', ')}`
-                                    : 'No auto-granted spells to add.',
-                                  '',
-                                  'Features/abilities from the old subclass in your Features & Traits notes are NOT auto-removed — edit those manually. Choices tied to the old subclass (manoeuvres, totem spirits, etc.) are not reset either.',
-                                ].join('\n');
+                                // v2.486.0 — In-app confirm via useModal.
+                                // Pre-v2.486 used window.confirm with a
+                                // multi-line newline-delimited string;
+                                // moved the structural content into the
+                                // message field (the modal renders \n
+                                // as line breaks via CSS pre-wrap).
+                                const ok = await confirmModal({
+                                  title: `Swap ${className} subclass?`,
+                                  message: [
+                                    `From: ${currentSub || '(none)'}`,
+                                    `To: ${newSub || '(none)'}`,
+                                    '',
+                                    oldSpellNames.length
+                                      ? `Removing auto-granted spells: ${oldSpellNames.join(', ')}`
+                                      : 'No auto-granted spells to remove.',
+                                    newSpellNames.length
+                                      ? `Adding auto-granted spells: ${newSpellNames.join(', ')}`
+                                      : 'No auto-granted spells to add.',
+                                    '',
+                                    'Features/abilities from the old subclass in your Features & Traits notes are NOT auto-removed — edit those manually. Choices tied to the old subclass (manoeuvres, totem spirits, etc.) are not reset either.',
+                                  ].join('\n'),
+                                  confirmLabel: 'Swap Subclass',
+                                });
 
-                                if (!window.confirm(msg)) return;
+                                if (!ok) return;
 
                                 // Rewrite known_spells: drop old granted, add new granted (dedup with existing)
                                 const withoutOld = character.known_spells.filter(id => !oldGranted.includes(id));

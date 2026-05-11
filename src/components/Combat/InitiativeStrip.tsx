@@ -9,9 +9,8 @@
 import { useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
-// v2.485.0 — In-app confirm for End Combat (matches the swap in
-// StartCombatButton.tsx).
-import { confirmDialog } from '../shared/ConfirmDialog';
+// v2.486.0 — In-app confirm via useModal (replaces v2.485 ConfirmDialog).
+import { useModal } from '../shared/Modal';
 import { takeDash, takeDisengage } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
@@ -69,6 +68,8 @@ export default function InitiativeStrip({ isDM }: Props) {
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
+  // v2.486.0 — In-app confirm hook (replaces v2.485 ConfirmDialog).
+  const { confirm: confirmModal } = useModal();
   // v2.416.0 — Shared preference, also read/written from
   // MonsterActionPanel. Hooked here so the in-strip checkbox can
   // toggle it during PC turns where MonsterActionPanel isn't shown.
@@ -116,12 +117,12 @@ export default function InitiativeStrip({ isDM }: Props) {
 
   async function onEndCombat() {
     if (!encounter) return;
-    // v2.485.0 — In-app confirm (see ConfirmDialog.tsx).
-    const ok = await confirmDialog({
+    // v2.486.0 — In-app confirm via useModal.
+    const ok = await confirmModal({
       title: 'End combat?',
       message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
       confirmLabel: 'End Combat',
-      destructive: true,
+      danger: true,
     });
     if (!ok) return;
     const result = await endEncounter(encounter.id);

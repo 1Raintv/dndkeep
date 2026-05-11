@@ -19,6 +19,8 @@ import {
   listFolders, createFolder, renameFolder, deleteFolder,
   type CreatureFolderRow,
 } from '../../lib/api/creatureFolders';
+// v2.486.0 — In-app confirm for folder delete.
+import { useModal } from '../shared/Modal';
 
 export type FolderSelection = 'all' | 'unfiled' | string;
 
@@ -38,6 +40,8 @@ export default function CreatureFolderBrowser({
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  // v2.486.0 — In-app confirm hook (replaces window.confirm).
+  const { confirm: confirmModal } = useModal();
 
   const reload = useCallback(async () => {
     try {
@@ -78,7 +82,14 @@ export default function CreatureFolderBrowser({
   }
 
   async function handleDelete(f: CreatureFolderRow) {
-    if (!window.confirm(`Delete folder "${f.name}"? Creatures inside become unfiled (not deleted).`)) return;
+    // v2.486.0 — In-app confirm.
+    const ok = await confirmModal({
+      title: `Delete folder "${f.name}"?`,
+      message: 'Creatures inside become unfiled (not deleted).',
+      confirmLabel: 'Delete Folder',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await deleteFolder(f.id);
       if (selectedFolderId === f.id) onSelect('all');

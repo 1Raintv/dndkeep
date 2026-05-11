@@ -49,6 +49,9 @@ import { rollDie } from '../../lib/gameUtils';
 import { getTargetSaveBonus } from '../../lib/pendingAttack';
 import type { Character, Campaign, CombatParticipant } from '../../types';
 import type { ClassAbility, SaveSpec } from '../../data/classAbilities';
+// v2.486.0 — In-app confirm replaces window.confirm() for the
+// "voluntarily fail this save?" prompt.
+import { useModal } from '../shared/Modal';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
@@ -102,6 +105,8 @@ export default function ClassAbilityResolveModal({
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // v2.486.0 — In-app confirm hook for "voluntarily fail" prompt.
+  const { confirm: confirmModal } = useModal();
   const [casterParticipantId, setCasterParticipantId] = useState<string | null>(null);
   const [targets, setTargets] = useState<CombatParticipant[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, TargetOutcome>>({});
@@ -241,12 +246,15 @@ export default function ClassAbilityResolveModal({
     setOutcome(p.id, outcome, d20, total, bonus);
   }
 
-  function autoFail(p: CombatParticipant) {
+  async function autoFail(p: CombatParticipant) {
     if (willingFailMode === 'prompt') {
-      const ok = window.confirm(
-        `Mark ${p.name} as voluntarily failing the ${ability.save?.ability} save? `
-        + `This is RAW PHB 2024 — a creature can choose to fail a save.`
-      );
+      // v2.486.0 — In-app confirm via useModal.
+      const ok = await confirmModal({
+        title: `Voluntarily fail save?`,
+        message: `Mark ${p.name} as voluntarily failing the ${ability.save?.ability} save. RAW PHB 2024 — a creature can choose to fail a save.`,
+        confirmLabel: 'Auto-fail',
+        cancelLabel: 'Cancel',
+      });
       if (!ok) return;
     }
     setOutcome(p.id, 'auto-failed');

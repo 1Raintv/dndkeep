@@ -249,6 +249,11 @@ function ModalOverlay(props: {
               fontSize: 13,
               color: 'var(--t-2)',
               lineHeight: 1.5,
+              // v2.486.0 — Preserve newlines in message strings.
+              // The species/background/subclass swap dialogs in
+              // CharacterSettings pass multi-line summaries; without
+              // pre-wrap those collapse to a single run-on line.
+              whiteSpace: 'pre-wrap' as const,
             }}
           >
             {opts.message}
