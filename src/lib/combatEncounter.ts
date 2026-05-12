@@ -202,6 +202,17 @@ export async function addParticipantToEncounter(
   // push them to the end of the strip regardless of their roll.
   await recomputeTurnOrder(encounterId);
 
+  // v2.491.0 — Re-seed combatants.active_buffs for the new participant
+  // from authoritative tables. Same rationale as startEncounter's call
+  // (see comment there). One participant → at most one UPDATE.
+  await seedBuffsFromAuthoritativeTables([
+    {
+      participant_type: (data as { participant_type?: string }).participant_type ?? '',
+      entity_id: (data as { entity_id?: string | null }).entity_id ?? null,
+      combatant_id: (data as { combatant_id?: string | null }).combatant_id ?? null,
+    },
+  ]);
+
   return data as CombatParticipant;
 }
 
@@ -249,6 +260,120 @@ export function monsterToSeed(m: MonsterData, hiddenFromPlayers = false): SeedSo
 }
 
 // ─── startEncounter ──────────────────────────────────────────────
+
+// v2.491.0 — Re-seed combatants.active_buffs from authoritative tables.
+//
+// The cp_ensure_combatant_link BEFORE INSERT trigger (v2.319) creates
+// a fresh `combatants` row when a combat_participants row is inserted,
+// and hard-codes active_buffs to '[]'::jsonb. That's the right default
+// for monster spawns (each Goblin instance starts unbuffed), but it
+// drops any buffs that the end-of-encounter carry-over wrote back to
+// characters.active_buffs (v2.477) or homebrew_monsters.active_buffs
+// (v2.491). Without this re-seed, a wizard who pre-buffs an ally
+// with Stoneskin between encounters finds the buff disappears the
+// moment combat starts.
+//
+// This helper runs AFTER the participant insert returns. The trigger
+// has already linked combatant_id; we look up authoritative buffs by
+// participant_type and UPDATE combatants.active_buffs in place. Fires
+// one UPDATE per participant that has any buffs; participants with
+// empty buff lists are skipped (no-op write avoidance).
+//
+// Why not extend the trigger: the trigger is shared with monster
+// spawns where the right default is empty, and it would need to
+// conditionally read from two different authoritative tables. The
+// app already runs follow-up UPDATEs after the insert (encumbrance
+// sync since v2.143, immunity reads since v2.477), so this fits the
+// established pattern and is observable in network logs.
+//
+// Failure mode: best-effort. If the SELECT or UPDATE fails for a
+// participant, we log and continue — combat is already initiated and
+// the buff being absent in this encounter is degraded but not broken.
+async function seedBuffsFromAuthoritativeTables(
+  participants: Array<{ participant_type: string; entity_id: string | null; combatant_id: string | null }>,
+): Promise<void> {
+  // Group by table source. Filter out anything without combatant_id —
+  // shouldn't happen post-v2.319 trigger but defensive.
+  const charLinks: Array<{ characterId: string; combatantId: string }> = [];
+  const creatureLinks: Array<{ creatureId: string; combatantId: string }> = [];
+  for (const p of participants) {
+    if (!p.combatant_id || !p.entity_id) continue;
+    if (p.participant_type === 'character') {
+      charLinks.push({ characterId: p.entity_id, combatantId: p.combatant_id });
+    } else if (p.participant_type === 'creature' || p.participant_type === 'monster') {
+      creatureLinks.push({ creatureId: p.entity_id, combatantId: p.combatant_id });
+    }
+    // participant_type === 'monster' here means an SRD-monster spawn
+    // (rare — most go through 'creature'), and SRD monsters don't
+    // have an active_buffs column. The else-if above keeps them out.
+    // 'npc' is dead since v2.350 (see campaignImmunities.ts header).
+  }
+
+  try {
+    // Characters: batched read, then per-row update only for non-empty buffs.
+    if (charLinks.length) {
+      const ids = charLinks.map(l => l.characterId);
+      const { data: rows, error } = await (supabase as any)
+        .from('characters')
+        .select('id, active_buffs')
+        .in('id', ids);
+      if (error) {
+        console.warn('[seedBuffs] character read failed', error);
+      } else if (rows) {
+        const byId = new Map<string, any>(
+          (rows as Array<{ id: string; active_buffs: unknown }>).map(r => [r.id, r.active_buffs]),
+        );
+        for (const link of charLinks) {
+          const buffs = byId.get(link.characterId);
+          if (!Array.isArray(buffs) || buffs.length === 0) continue;
+          const { error: uErr } = await (supabase as any)
+            .from('combatants')
+            .update({ active_buffs: buffs })
+            .eq('id', link.combatantId)
+            .select('id');
+          if (uErr) {
+            console.warn('[seedBuffs] character combatant update failed', { combatantId: link.combatantId, error: uErr });
+          }
+        }
+      }
+    }
+
+    // Creatures: same pattern, against homebrew_monsters.
+    if (creatureLinks.length) {
+      const ids = creatureLinks.map(l => l.creatureId);
+      const { data: rows, error } = await (supabase as any)
+        .from('homebrew_monsters')
+        .select('id, active_buffs')
+        .in('id', ids);
+      if (error) {
+        // Column may not exist yet on a stale schema (migration pending).
+        // Degraded mode is "no buff seed for creatures" which matches
+        // pre-v2.491 behavior. Don't block.
+        console.warn('[seedBuffs] homebrew_monsters read failed (migration may be pending)', error);
+      } else if (rows) {
+        const byId = new Map<string, any>(
+          (rows as Array<{ id: string; active_buffs: unknown }>).map(r => [r.id, r.active_buffs]),
+        );
+        for (const link of creatureLinks) {
+          const buffs = byId.get(link.creatureId);
+          if (!Array.isArray(buffs) || buffs.length === 0) continue;
+          const { error: uErr } = await (supabase as any)
+            .from('combatants')
+            .update({ active_buffs: buffs })
+            .eq('id', link.combatantId)
+            .select('id');
+          if (uErr) {
+            console.warn('[seedBuffs] creature combatant update failed', { combatantId: link.combatantId, error: uErr });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Outer try/catch so a thrown error in either branch never breaks
+    // combat start. The buff seed is a nice-to-have, not a blocker.
+    console.warn('[seedBuffs] threw', err);
+  }
+}
 
 export interface StartEncounterOptions {
   campaignId: string;
@@ -364,6 +489,21 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
 
   // 3. Compute turn_order for any that have initiative set
   await recomputeTurnOrder(encounter.id);
+
+  // v2.491.0 — Re-seed combatants.active_buffs from
+  // characters.active_buffs and homebrew_monsters.active_buffs. The
+  // v2.319 trigger that just ran hard-coded the buffs to [], which
+  // drops any carried-over buffs from v2.477 / v2.491 endEncounter
+  // writes. Awaited so the buffs are present by the time the UI
+  // re-fetches the participant list, but errors don't propagate
+  // (the helper logs and swallows internally).
+  await seedBuffsFromAuthoritativeTables(
+    participants.map(p => ({
+      participant_type: p.participant_type,
+      entity_id: (p as { entity_id?: string | null }).entity_id ?? null,
+      combatant_id: (p as { combatant_id?: string | null }).combatant_id ?? null,
+    })),
+  );
 
   // v2.143.0 — Phase N pt 1: fire encumbrance sync for every character
   // participant. Without this, a character that was over-capacity when
@@ -902,18 +1042,25 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
   // carry over once the combat is complete." During combat, damage
   // is written to `combatants.current_hp` (the per-encounter snapshot,
   // see migration v2.319). The authoritative `characters.current_hp`
-  // and `npcs.hp` rows aren't touched mid-combat so a player can
-  // re-enter the same character into a future encounter without
-  // losing their original HP. But that means combat damage is
-  // ALSO not persisted back to the authoritative row when combat
-  // ends — the character "heals to full" between combats, which
-  // contradicts the long-rest-required RAW.
+  // row isn't touched mid-combat so a player can re-enter the same
+  // character into a future encounter without losing their original
+  // HP. But that means combat damage is ALSO not persisted back to
+  // the authoritative row when combat ends — the character "heals to
+  // full" between combats, which contradicts the long-rest-required
+  // RAW.
   //
   // Fix: walk all combatants for this encounter that link back to
-  // a character or NPC, and copy current_hp/temp_hp/death_save_*
-  // back to the authoritative table. Combatants for monsters and
-  // homebrew_monster instances are encounter-scoped and don't carry
-  // back (each spawn is a separate creature).
+  // a character, and copy current_hp/temp_hp/death_save_* back to
+  // the characters row. Combatants for monsters and homebrew_monster
+  // instances are encounter-scoped and don't carry back (each spawn
+  // is a separate creature); homebrew_monsters templates only carry
+  // immunity (v2.482), never HP/conditions.
+  //
+  // v2.490.0 — Cleanup ship. Stripped the legacy NPC arms of this
+  // carry-over: the `npcs` table was dropped in v2.350 and no
+  // participant has been created with participant_type='npc' since.
+  // The npc grouping branch, immunity prefetch, and `from('npcs')`
+  // UPDATE loop are all gone.
   try {
     const { data: cps } = await supabase
       .from('combat_participants')
@@ -922,7 +1069,6 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
     if (cps && cps.length) {
       // Group combatant ids by destination table.
       const characterCombatantIds: { combatantId: string; characterId: string }[] = [];
-      const npcCombatantIds: { combatantId: string; npcId: string }[] = [];
       // v2.482.0 — Creature group (target_type='creature' →
       // homebrew_monsters). Only immunity is carried over for these
       // because homebrew_monsters is a template, not a per-instance
@@ -936,38 +1082,44 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         if (!cp.combatant_id || !cp.entity_id) continue;
         if (cp.participant_type === 'character') {
           characterCombatantIds.push({ combatantId: cp.combatant_id, characterId: cp.entity_id });
-        } else if (cp.participant_type === 'npc') {
-          // v2.484.0 — Dead branch. The `npcs` table was dropped in
-          // v2.350 (unify_creatures_and_folders), and no participant
-          // is created with participant_type='npc' anymore — the modern
-          // path uses 'creature' against homebrew_monsters. Kept as a
-          // defensive fallthrough so the carry-over doesn't silently
-          // skip a misclassified row; the downstream UPDATE would
-          // 404 if it ever ran but that surfaces clearly.
-          npcCombatantIds.push({ combatantId: cp.combatant_id, npcId: cp.entity_id });
         } else if (cp.participant_type === 'creature' || cp.participant_type === 'monster') {
           creatureCombatantIds.push({ combatantId: cp.combatant_id, creatureId: cp.entity_id });
         }
+        // v2.490.0 — Dropped the 'npc' branch entirely. The `npcs`
+        // table was dropped in v2.350 (unify_creatures_and_folders),
+        // and no participant has been created with participant_type='npc'
+        // since. Any legacy combat_participants row that somehow still
+        // carries that value falls through here and is silently skipped:
+        // there is nowhere to write its HP back, and the legacy npcs
+        // entity no longer exists. Modern flows route through 'creature'
+        // against homebrew_monsters above.
       }
       // Fetch the post-combat HP from combatants for everyone we care
       // about, then write back per-row. Two separate UPDATE loops; the
-      // counts are bounded (party + a few NPCs per encounter, ~10 rows
-      // typical) so the cost is small.
+      // counts are bounded (party + a few creatures per encounter, ~10
+      // rows typical) so the cost is small.
       //
       // v2.482.0 — Creature combatant ids are included in the gate
       // (so creature-only encounters still trigger the carry-over
       // block for immunity prefetch + write), but NOT in the HP-fetch
       // SELECT — homebrew_monsters carry-over only handles immunity,
       // never HP/conditions (would corrupt the template). The
-      // combMap is consulted only by the character + npc loops.
+      // combMap is consulted only by the character loop.
+      //
+      // v2.491.0 — Creature combatant ids ARE now in the HP-fetch
+      // SELECT, because we read `active_buffs` off the combatant row
+      // to carry it back to the homebrew_monsters template. The
+      // active_buffs column is on combatants for every participant
+      // type, so the SELECT is harmless for character rows (already
+      // included). HP/conditions are still NOT written back for
+      // creatures — see the creature loop below.
       const allCombIds = [
         ...characterCombatantIds.map(x => x.combatantId),
-        ...npcCombatantIds.map(x => x.combatantId),
         ...creatureCombatantIds.map(x => x.combatantId),
       ];
       const hpFetchCombIds = [
         ...characterCombatantIds.map(x => x.combatantId),
-        ...npcCombatantIds.map(x => x.combatantId),
+        ...creatureCombatantIds.map(x => x.combatantId),
       ];
       if (allCombIds.length) {
         const { data: combRows } = hpFetchCombIds.length
@@ -983,18 +1135,21 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         // Pre-fetch every immunity row for every entity we're about to
         // write to, batched by target_type. Avoids N+1 reads in the
         // per-row loop below. The new helper queries one type at a
-        // time so we issue two reads max (character / npc); the
+        // time so we issue two reads max (character / creature); the
         // immunity table is small per campaign so we filter client-side
         // by entity_id rather than N separate .in() queries.
         //
         // v2.482.0 — Added creature prefetch for homebrew_monsters
-        // immunities. Three batched reads now (character / npc / creature).
+        // immunities. Two batched reads now (character / creature).
+        // v2.490.0 — Dropped the npc prefetch. The immunity table has
+        // never contained target_type='npc' rows: the table was created
+        // in v2.474, after v2.350 stopped writing participant_type='npc'.
+        // The 'npc' DB CHECK value remains for future-proofing but the
+        // query was a guaranteed zero-row no-op every encounter end.
         let charImmRows: any[] = [];
-        let npcImmRows: any[] = [];
         let creatureImmRows: any[] = [];
         try {
           const characterIds = characterCombatantIds.map(x => x.characterId);
-          const npcIds = npcCombatantIds.map(x => x.npcId);
           const creatureIds = creatureCombatantIds.map(x => x.creatureId);
           if (characterIds.length) {
             const { data: rows } = await (supabase as any)
@@ -1004,15 +1159,6 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
               .eq('target_type', 'character')
               .in('target_id', characterIds);
             charImmRows = rows ?? [];
-          }
-          if (npcIds.length) {
-            const { data: rows } = await (supabase as any)
-              .from('campaign_condition_immunities')
-              .select('target_id, source_kind, source_id, granted_at_rounds, expires_at_rounds, encounter_id')
-              .eq('campaign_id', enc.campaign_id)
-              .eq('target_type', 'npc')
-              .in('target_id', npcIds);
-            npcImmRows = rows ?? [];
           }
           if (creatureIds.length) {
             const { data: rows } = await (supabase as any)
@@ -1054,7 +1200,6 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
           return m;
         }
         const charImmsByTarget = groupImmsByTarget(charImmRows);
-        const npcImmsByTarget = groupImmsByTarget(npcImmRows);
         // v2.482.0 — Creature immunity grouping for homebrew_monsters.
         const creatureImmsByTarget = groupImmsByTarget(creatureImmRows);
 
@@ -1095,49 +1240,34 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
             console.error('[endEncounter] character carry-over failed', { characterId, error: chErr });
           }
         }
-        for (const { combatantId, npcId } of npcCombatantIds) {
-          const c = combMap.get(combatantId);
-          if (!c) continue;
-          // npcs table uses `hp` (not `current_hp`) per the legacy
-          // schema. Death-save tracking isn't on npcs (no PHB death
-          // save mechanic for non-PCs), so we only carry HP.
-          //
-          // v2.477.0 — Also carry conditions + immunities. npcs.conditions
-          // is the equivalent column name (legacy schema; `conditions`
-          // rather than `active_conditions`). npcs has no `active_buffs`
-          // column — buffs don't carry to NPCs (out of scope for this
-          // arc; if needed, add `npcs.active_buffs` in a future
-          // migration and extend here).
-          const npcUpdates: Record<string, unknown> = { hp: c.current_hp };
-          if (Array.isArray(c.active_conditions)) {
-            npcUpdates.conditions = c.active_conditions;
-          }
-          npcUpdates.active_immunities = npcImmsByTarget.get(npcId) ?? [];
-          const { error: npcErr } = await (supabase as any)
-            .from('npcs')
-            .update(npcUpdates)
-            .eq('id', npcId);
-          if (npcErr) {
-            console.error('[endEncounter] npc carry-over failed', { npcId, error: npcErr });
-          }
-        }
+
+        // v2.490.0 — Removed the legacy NPC carry-over loop here. It
+        // updated `public.npcs` (table dropped in v2.350) and was
+        // unreachable in practice: no participant row carries
+        // participant_type='npc' since the unify_creatures_and_folders
+        // ship. The npcImmsByTarget map and `from('npcs').update(...)`
+        // call were deleted together. See campaignImmunities.ts for
+        // the matching note on the union type.
 
         // v2.482.0 — Creature (homebrew_monsters) immunity carry-over.
         //
-        // Unlike characters and npcs (which are one-row-per-instance
-        // tables where HP/conditions naturally outlive an encounter),
-        // homebrew_monsters is a TEMPLATE shared across every spawn
-        // of that creature. Writing HP/conditions back would corrupt
-        // the template — the next encounter that spawns this creature
-        // would start at post-combat HP instead of fresh max HP.
+        // Unlike characters (a one-row-per-instance table where HP/
+        // conditions naturally outlive an encounter), homebrew_monsters
+        // is a TEMPLATE shared across every spawn of that creature.
+        // Writing HP/conditions back would corrupt the template — the
+        // next encounter that spawns this creature would start at
+        // post-combat HP instead of fresh max HP.
         //
-        // So this loop carries ONLY active_immunities. Two ancient
-        // red dragons spawned from the same template share an
-        // entity_id, which means they share immunity rows in
-        // campaign_condition_immunities — RAW-defensible (the
-        // "creature template" is the source identity for the dragon's
-        // Frightful Presence) and matches how the source-of-truth
-        // table is keyed.
+        // So this loop carries active_immunities and (v2.491) active_buffs
+        // — both "persists beyond the encounter" data that's tied to
+        // the creature identity, not the per-instance combat snapshot.
+        // Two ancient red dragons spawned from the same template share
+        // an entity_id, which means they share both immunity rows
+        // (in campaign_condition_immunities) and active_buffs (on
+        // homebrew_monsters). RAW-defensible (the "creature template"
+        // is the source identity) and matches how the source-of-truth
+        // tables are keyed. If a future use case needs per-instance
+        // buff state, this is the seam to refactor.
         //
         // v2.484.0 — Bug A fix. v2.482's loop logged
         // "[endEncounter] creature immunity carry-over failed" on
@@ -1153,10 +1283,22 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         //      failure surfaces the actual PostgREST error
         //      payload (.message/.code/.details) instead of an
         //      opaque "Object" in the console.
-        for (const { creatureId } of creatureCombatantIds) {
+        //
+        // v2.491.0 — Added active_buffs write. The combMap (populated
+        // from the HP-fetch SELECT above) gives us combatants.active_buffs
+        // for every participant; we pull each creature's buffs and
+        // write them onto the homebrew_monsters template. Mirrors the
+        // character loop's `if (c.active_buffs != null)` guard so we
+        // don't blank existing template buffs when the combatant row
+        // is missing the field (legacy data).
+        for (const { combatantId, creatureId } of creatureCombatantIds) {
           const creatureUpdates: Record<string, unknown> = {
             active_immunities: creatureImmsByTarget.get(creatureId) ?? [],
           };
+          const c = combMap.get(combatantId);
+          if (c && c.active_buffs != null) {
+            creatureUpdates.active_buffs = c.active_buffs;
+          }
           const { error: creatureErr } = await (supabase as any)
             .from('homebrew_monsters')
             .update(creatureUpdates)
@@ -1165,7 +1307,7 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
                            // unambiguous 200 + payload instead of 204.
           if (creatureErr) {
             console.error(
-              '[endEncounter] creature immunity carry-over failed',
+              '[endEncounter] creature immunity/buff carry-over failed',
               { creatureId, error: JSON.stringify(creatureErr) },
             );
           }

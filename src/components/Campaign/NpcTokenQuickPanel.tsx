@@ -10,7 +10,7 @@ import { useToast } from '../shared/Toast';
 // the parity panel belongs.
 import { revokeImmunity } from '../../lib/campaignImmunities';
 import { useImmunitySourceNames } from '../../lib/hooks/useImmunitySourceNames';
-import type { ActiveImmunity } from '../../types';
+import type { ActiveImmunity, ActiveBuff } from '../../types';
 // v2.386.0 — Hide-from-players now writes scene_tokens.visible_to_all
 // instead of homebrew_monsters.visible_to_players. The latter was
 // never read by any rendering code; the former has full RLS + DM
@@ -93,6 +93,14 @@ interface NpcRow {
   // v2.482.0 — Cross-encounter immunity snapshot, populated by
   // endEncounter carry-over. JSONB array of ActiveImmunity entries.
   active_immunities?: ActiveImmunity[] | null;
+  // v2.491.0 — Cross-encounter buff snapshot, populated by
+  // endEncounter carry-over. JSONB array of ActiveBuff entries.
+  // Mirrors the active_immunities pattern: the source of truth
+  // during combat is combatants.active_buffs (per-token, encounter-
+  // scoped); the homebrew_monsters column is the persistent snapshot
+  // that survives between encounters, written at endEncounter and
+  // read back by startEncounter to re-seed.
+  active_buffs?: ActiveBuff[] | null;
 }
 
 // Mirror of the character panel's COND_COLOR. Kept inline so the panel
@@ -190,6 +198,12 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   const immunitySourceIds = immunities.map(i => i.source_id).filter(Boolean);
   const immunitySourceNames = useImmunitySourceNames(immunitySourceIds);
 
+  // v2.491.0 — Cross-encounter buff snapshot. Read from the
+  // homebrew_monsters template column (written by endEncounter
+  // carry-over). Displayed only when non-empty. Click chip to
+  // remove — see removeBuff below.
+  const buffs: ActiveBuff[] = (npc?.active_buffs ?? []) as ActiveBuff[];
+
   // Initial fetch.
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +214,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       const [tplRes, combRes] = await Promise.all([
         supabase
           .from('homebrew_monsters')
-          .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat, active_immunities')
+          .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat, active_immunities, active_buffs')
           .eq('id', npcId)
           .single(),
         supabase
@@ -435,6 +449,35 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       return;
     }
     showToast('Immunity removed.', 'success');
+  }, [npc, showToast]);
+
+  // v2.491.0 — Manual buff revoke. Simpler than removeImmunity:
+  // active_buffs lives only on the homebrew_monsters snapshot column
+  // (and on combatants.active_buffs during combat, but this panel is
+  // about between-encounter state). No source-of-truth table to
+  // delete from — just filter and UPDATE.
+  //
+  // If combat is currently active, removing the buff from the template
+  // does NOT remove it from combatants.active_buffs for the in-flight
+  // token; that's by design. During combat, the buff is part of
+  // per-token state managed by the buffs lib (add/removeBuff against
+  // combatants). This panel only manages the persistent template
+  // copy used between encounters. The next startEncounter / re-seed
+  // will reflect the change.
+  const removeBuff = useCallback(async (buff: ActiveBuff) => {
+    if (!npc) return;
+    const current = (npc.active_buffs ?? []) as ActiveBuff[];
+    const next = current.filter(b => b.id !== buff.id);
+    const { error } = await (supabase as any)
+      .from('homebrew_monsters')
+      .update({ active_buffs: next })
+      .eq('id', npc.id);
+    if (error) {
+      console.error('[NpcTokenQuickPanel] active_buffs update failed', error);
+      showToast('Failed to remove buff.', 'error');
+      return;
+    }
+    showToast(`Removed ${buff.name}.`, 'success');
   }, [npc, showToast]);
 
   // v2.386.0 — Visibility toggle. Writes scene_tokens.visible_to_all
@@ -1187,6 +1230,68 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
                     }}
                   >
                     🛡️ {sourceLabel} — {kindLabel}
+                    <span style={{ opacity: 0.6, fontWeight: 500 }}>×</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* v2.491.0 — Active Buffs (cross-encounter snapshot).
+            Mirrors the immunity panel directly above. Self-hides when
+            no buffs. DM-only (panel itself is DM-only by mount).
+            Click chip to remove. Color theme: amber/yellow to
+            distinguish from immunities (cyan) and conditions. */}
+        {isDM && buffs.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              marginBottom: 4,
+            }}>
+              <span style={{
+                fontSize: 9,
+                color: '#fde68a',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}>
+                Active Buffs
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+              {buffs.map(buff => {
+                // Duration label: -1 = indefinite, else "Nr" (rounds).
+                // Matches the ActiveBuff.duration semantics in
+                // src/types/index.ts (rounds remaining, -1 = until
+                // dispelled / long rest).
+                const durLabel = buff.duration < 0
+                  ? '∞'
+                  : `${buff.duration}r`;
+                const tooltip = [
+                  buff.effects?.length ? buff.effects.join(', ') : null,
+                  `Duration: ${buff.duration < 0 ? 'indefinite' : `${buff.duration} rounds`}`,
+                  'Click to remove.',
+                ].filter(Boolean).join(' • ');
+                return (
+                  <button
+                    key={buff.id}
+                    onClick={() => removeBuff(buff)}
+                    title={tooltip}
+                    style={{
+                      padding: '2px 8px',
+                      background: 'rgba(251,191,36,0.12)',
+                      border: '1px solid rgba(251,191,36,0.35)',
+                      borderRadius: 999,
+                      fontSize: 10, fontWeight: 700,
+                      color: '#fde68a',
+                      cursor: 'pointer',
+                      userSelect: 'none' as const,
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      minHeight: 0,
+                    }}
+                  >
+                    {buff.icon ?? '✨'} {buff.name}
+                    <span style={{ opacity: 0.7, fontWeight: 500 }}>· {durLabel}</span>
                     <span style={{ opacity: 0.6, fontWeight: 500 }}>×</span>
                   </button>
                 );

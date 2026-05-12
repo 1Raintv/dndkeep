@@ -3,9 +3,9 @@
 // Wraps reads/writes against the campaign_condition_immunities table
 // (created in v2.474). Source of truth for source-keyed condition
 // immunity (Frightful Presence et al.). characters.active_immunities
-// and npcs.active_immunities are denormalized snapshots populated
-// at end of encounter (Ship 3); this helper writes to the table
-// directly.
+// and homebrew_monsters.active_immunities are denormalized snapshots
+// populated at end of encounter (Ship 3, v2.477; creature snapshot
+// added in v2.482); this helper writes to the source table directly.
 //
 // Ship history:
 //   v2.474 (Ship 1): table + columns created
@@ -32,6 +32,27 @@
 
 import { supabase } from './supabase';
 
+/**
+ * Target types accepted by `campaign_condition_immunities.target_type`.
+ *
+ * The DB CHECK constraint (see v2.474 migration) accepts all four
+ * values, and this union mirrors it 1:1. In practice, only 'character'
+ * and 'creature' rows are ever written:
+ *
+ *   - 'character' — backed by public.characters
+ *   - 'creature'  — backed by public.homebrew_monsters (the modern
+ *                   path for any non-player combatant since v2.350)
+ *   - 'monster'   — historical alias for 'creature'; never written
+ *                   by current code but the CHECK still accepts it
+ *   - 'npc'       — DEAD. The legacy public.npcs table was dropped
+ *                   in v2.350 (unify_creatures_and_folders). The
+ *                   immunity table was created in v2.474, AFTER that,
+ *                   so no row with target_type='npc' has ever existed.
+ *                   Kept in the union (and the DB CHECK) for forward-
+ *                   compat with any future legacy rehydration, not
+ *                   because anything writes it. v2.490.0 stripped the
+ *                   matching prefetch + write paths from endEncounter.
+ */
 export type ImmunityTargetType = 'character' | 'creature' | 'monster' | 'npc';
 
 export interface ImmunityRow {
@@ -72,13 +93,16 @@ export async function resolveParticipantToEntity(
   if (error || !data) return null;
   const row = data as { participant_type: string; entity_id: string | null };
   if (!row.entity_id) return null;
-  // participant_type values currently used: 'character', 'creature',
-  // 'monster', 'npc'. The CHECK constraint on the immunity table
-  // accepts all four.
   return {
     type: row.participant_type as ImmunityTargetType,
     id: row.entity_id,
   };
+  // participant_type values that hit this cast in practice: 'character'
+  // and 'creature'. 'monster' is a historical alias; 'npc' is dead
+  // (see ImmunityTargetType doc above). If a legacy 'npc' row ever
+  // surfaces here, the downstream isImmune query will just return
+  // zero rows — no rows with target_type='npc' have ever been
+  // written to campaign_condition_immunities (table created post-v2.350).
 }
 
 /**
@@ -225,9 +249,10 @@ export async function revokeImmunity(input: {
 
 /**
  * Bulk-fetch every active immunity row for a target. Used by the
- * end-of-encounter carry-over (Ship 3) to populate
- * characters.active_immunities / npcs.active_immunities. Returns
- * empty array on failure or when the target has no immunities.
+ * end-of-encounter carry-over (Ship 3, v2.477) to populate
+ * characters.active_immunities and homebrew_monsters.active_immunities
+ * (creature carry-over added v2.482). Returns empty array on failure
+ * or when the target has no immunities.
  */
 export async function listImmunitiesFor(input: {
   campaignId: string;
