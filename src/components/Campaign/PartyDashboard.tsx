@@ -140,6 +140,31 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       catch { /* localStorage quota / private mode — selection still works in-session */ }
     }
   }
+
+  // v2.489.0 — Local mirror of campaigns.combat_rounds_elapsed.
+  //
+  // Pre-v2.489 both Advance Time panels (the slim empty-state one
+  // and the full DM-tools one) read directly from
+  // `campaign.combat_rounds_elapsed`. That prop is cached at the
+  // parent's mount and never refetches after the clock advances —
+  // so clicking "24 hours" wrote +14400 to the DB correctly but
+  // the displayed value stayed at the pre-click number until a
+  // full page reload. Surface-only bug (write was right; readout
+  // was wrong) but noisy in playtest.
+  //
+  // The fix: keep a local `clockRounds` state seeded from the prop
+  // and bumped explicitly on each successful write. The useEffect
+  // re-seeds from the prop if the parent ever passes a fresh
+  // campaign object (currently never, but defends against future
+  // realtime subscription work landing in CampaignDashboard).
+  const [clockRounds, setClockRounds] = useState<number>(
+    (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed ?? 0,
+  );
+  useEffect(() => {
+    const next = (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed;
+    if (typeof next === 'number') setClockRounds(next);
+  }, [campaign]);
+
   // AoE
   const [aoeDamage, setAoeDamage] = useState('');
   const [aoeTargets, setAoeTargets] = useState<Set<string>>(new Set());
@@ -600,7 +625,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
           </div>
           <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
             {(() => {
-              const rounds = (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed ?? 0;
+              // v2.489.0 — Was reading from prop; now uses local state
+              // that bumps after each successful write.
+              const rounds = clockRounds;
               const days = Math.floor(rounds / 14400);
               const hours = Math.floor((rounds % 14400) / 600);
               const mins = Math.floor((rounds % 600) / 10);
@@ -627,10 +654,15 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                     .maybeSingle();
                   const current = (row as { combat_rounds_elapsed?: number } | null)?.combat_rounds_elapsed ?? 0;
                   const next = current + rounds;
-                  await (supabase as any)
+                  const { error: upErr } = await (supabase as any)
                     .from('campaigns')
                     .update({ combat_rounds_elapsed: next })
                     .eq('id', campaignId);
+                  // v2.489.0 — bump local state ONLY after the write
+                  // confirms (no error). If the UPDATE failed we keep
+                  // the old value so the display stays honest about
+                  // what's actually in the DB.
+                  if (!upErr) setClockRounds(next);
                   try {
                     const { data: expired } = await (supabase as any)
                       .from('campaign_condition_immunities')
@@ -1291,7 +1323,8 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               </div>
               <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
                 {(() => {
-                  const rounds = (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed ?? 0;
+                  // v2.489.0 — Was reading from prop; uses local state now.
+                  const rounds = clockRounds;
                   // Cheap human-readable summary of total elapsed.
                   // 1 round = 6 sec → 10 rounds = 1 minute → 600 = 1h → 14400 = 24h.
                   const days = Math.floor(rounds / 14400);
@@ -1342,6 +1375,11 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                         console.error('[advance-time] write failed', upErr);
                         return;
                       }
+                      // v2.489.0 — Mirror the write into local state
+                      // so the readout above refreshes immediately.
+                      // Mirror of the same setClockRounds(next) used
+                      // in the empty-state panel.
+                      setClockRounds(next);
                       // Best-effort: also prune immunity rows that
                       // have expired so they stop showing up on
                       // sheets. The isImmune check filters them out
