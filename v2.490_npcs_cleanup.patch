@@ -1,0 +1,286 @@
+--- a/src/lib/combatEncounter.ts	2026-05-11 08:03:50.000000000 +0000
++++ b/src/lib/combatEncounter.ts	2026-05-12 15:00:50.335180489 +0000
+@@ -902,18 +902,25 @@
+   // carry over once the combat is complete." During combat, damage
+   // is written to `combatants.current_hp` (the per-encounter snapshot,
+   // see migration v2.319). The authoritative `characters.current_hp`
+-  // and `npcs.hp` rows aren't touched mid-combat so a player can
+-  // re-enter the same character into a future encounter without
+-  // losing their original HP. But that means combat damage is
+-  // ALSO not persisted back to the authoritative row when combat
+-  // ends — the character "heals to full" between combats, which
+-  // contradicts the long-rest-required RAW.
++  // row isn't touched mid-combat so a player can re-enter the same
++  // character into a future encounter without losing their original
++  // HP. But that means combat damage is ALSO not persisted back to
++  // the authoritative row when combat ends — the character "heals to
++  // full" between combats, which contradicts the long-rest-required
++  // RAW.
+   //
+   // Fix: walk all combatants for this encounter that link back to
+-  // a character or NPC, and copy current_hp/temp_hp/death_save_*
+-  // back to the authoritative table. Combatants for monsters and
+-  // homebrew_monster instances are encounter-scoped and don't carry
+-  // back (each spawn is a separate creature).
++  // a character, and copy current_hp/temp_hp/death_save_* back to
++  // the characters row. Combatants for monsters and homebrew_monster
++  // instances are encounter-scoped and don't carry back (each spawn
++  // is a separate creature); homebrew_monsters templates only carry
++  // immunity (v2.482), never HP/conditions.
++  //
++  // v2.490.0 — Cleanup ship. Stripped the legacy NPC arms of this
++  // carry-over: the `npcs` table was dropped in v2.350 and no
++  // participant has been created with participant_type='npc' since.
++  // The npc grouping branch, immunity prefetch, and `from('npcs')`
++  // UPDATE loop are all gone.
+   try {
+     const { data: cps } = await supabase
+       .from('combat_participants')
+@@ -922,7 +929,6 @@
+     if (cps && cps.length) {
+       // Group combatant ids by destination table.
+       const characterCombatantIds: { combatantId: string; characterId: string }[] = [];
+-      const npcCombatantIds: { combatantId: string; npcId: string }[] = [];
+       // v2.482.0 — Creature group (target_type='creature' →
+       // homebrew_monsters). Only immunity is carried over for these
+       // because homebrew_monsters is a template, not a per-instance
+@@ -936,39 +942,34 @@
+         if (!cp.combatant_id || !cp.entity_id) continue;
+         if (cp.participant_type === 'character') {
+           characterCombatantIds.push({ combatantId: cp.combatant_id, characterId: cp.entity_id });
+-        } else if (cp.participant_type === 'npc') {
+-          // v2.484.0 — Dead branch. The `npcs` table was dropped in
+-          // v2.350 (unify_creatures_and_folders), and no participant
+-          // is created with participant_type='npc' anymore — the modern
+-          // path uses 'creature' against homebrew_monsters. Kept as a
+-          // defensive fallthrough so the carry-over doesn't silently
+-          // skip a misclassified row; the downstream UPDATE would
+-          // 404 if it ever ran but that surfaces clearly.
+-          npcCombatantIds.push({ combatantId: cp.combatant_id, npcId: cp.entity_id });
+         } else if (cp.participant_type === 'creature' || cp.participant_type === 'monster') {
+           creatureCombatantIds.push({ combatantId: cp.combatant_id, creatureId: cp.entity_id });
+         }
++        // v2.490.0 — Dropped the 'npc' branch entirely. The `npcs`
++        // table was dropped in v2.350 (unify_creatures_and_folders),
++        // and no participant has been created with participant_type='npc'
++        // since. Any legacy combat_participants row that somehow still
++        // carries that value falls through here and is silently skipped:
++        // there is nowhere to write its HP back, and the legacy npcs
++        // entity no longer exists. Modern flows route through 'creature'
++        // against homebrew_monsters above.
+       }
+       // Fetch the post-combat HP from combatants for everyone we care
+       // about, then write back per-row. Two separate UPDATE loops; the
+-      // counts are bounded (party + a few NPCs per encounter, ~10 rows
+-      // typical) so the cost is small.
++      // counts are bounded (party + a few creatures per encounter, ~10
++      // rows typical) so the cost is small.
+       //
+       // v2.482.0 — Creature combatant ids are included in the gate
+       // (so creature-only encounters still trigger the carry-over
+       // block for immunity prefetch + write), but NOT in the HP-fetch
+       // SELECT — homebrew_monsters carry-over only handles immunity,
+       // never HP/conditions (would corrupt the template). The
+-      // combMap is consulted only by the character + npc loops.
++      // combMap is consulted only by the character loop.
+       const allCombIds = [
+         ...characterCombatantIds.map(x => x.combatantId),
+-        ...npcCombatantIds.map(x => x.combatantId),
+         ...creatureCombatantIds.map(x => x.combatantId),
+       ];
+-      const hpFetchCombIds = [
+-        ...characterCombatantIds.map(x => x.combatantId),
+-        ...npcCombatantIds.map(x => x.combatantId),
+-      ];
++      const hpFetchCombIds = characterCombatantIds.map(x => x.combatantId);
+       if (allCombIds.length) {
+         const { data: combRows } = hpFetchCombIds.length
+           ? await (supabase as any)
+@@ -983,18 +984,21 @@
+         // Pre-fetch every immunity row for every entity we're about to
+         // write to, batched by target_type. Avoids N+1 reads in the
+         // per-row loop below. The new helper queries one type at a
+-        // time so we issue two reads max (character / npc); the
++        // time so we issue two reads max (character / creature); the
+         // immunity table is small per campaign so we filter client-side
+         // by entity_id rather than N separate .in() queries.
+         //
+         // v2.482.0 — Added creature prefetch for homebrew_monsters
+-        // immunities. Three batched reads now (character / npc / creature).
++        // immunities. Two batched reads now (character / creature).
++        // v2.490.0 — Dropped the npc prefetch. The immunity table has
++        // never contained target_type='npc' rows: the table was created
++        // in v2.474, after v2.350 stopped writing participant_type='npc'.
++        // The 'npc' DB CHECK value remains for future-proofing but the
++        // query was a guaranteed zero-row no-op every encounter end.
+         let charImmRows: any[] = [];
+-        let npcImmRows: any[] = [];
+         let creatureImmRows: any[] = [];
+         try {
+           const characterIds = characterCombatantIds.map(x => x.characterId);
+-          const npcIds = npcCombatantIds.map(x => x.npcId);
+           const creatureIds = creatureCombatantIds.map(x => x.creatureId);
+           if (characterIds.length) {
+             const { data: rows } = await (supabase as any)
+@@ -1005,15 +1009,6 @@
+               .in('target_id', characterIds);
+             charImmRows = rows ?? [];
+           }
+-          if (npcIds.length) {
+-            const { data: rows } = await (supabase as any)
+-              .from('campaign_condition_immunities')
+-              .select('target_id, source_kind, source_id, granted_at_rounds, expires_at_rounds, encounter_id')
+-              .eq('campaign_id', enc.campaign_id)
+-              .eq('target_type', 'npc')
+-              .in('target_id', npcIds);
+-            npcImmRows = rows ?? [];
+-          }
+           if (creatureIds.length) {
+             const { data: rows } = await (supabase as any)
+               .from('campaign_condition_immunities')
+@@ -1054,7 +1049,6 @@
+           return m;
+         }
+         const charImmsByTarget = groupImmsByTarget(charImmRows);
+-        const npcImmsByTarget = groupImmsByTarget(npcImmRows);
+         // v2.482.0 — Creature immunity grouping for homebrew_monsters.
+         const creatureImmsByTarget = groupImmsByTarget(creatureImmRows);
+ 
+@@ -1095,41 +1089,23 @@
+             console.error('[endEncounter] character carry-over failed', { characterId, error: chErr });
+           }
+         }
+-        for (const { combatantId, npcId } of npcCombatantIds) {
+-          const c = combMap.get(combatantId);
+-          if (!c) continue;
+-          // npcs table uses `hp` (not `current_hp`) per the legacy
+-          // schema. Death-save tracking isn't on npcs (no PHB death
+-          // save mechanic for non-PCs), so we only carry HP.
+-          //
+-          // v2.477.0 — Also carry conditions + immunities. npcs.conditions
+-          // is the equivalent column name (legacy schema; `conditions`
+-          // rather than `active_conditions`). npcs has no `active_buffs`
+-          // column — buffs don't carry to NPCs (out of scope for this
+-          // arc; if needed, add `npcs.active_buffs` in a future
+-          // migration and extend here).
+-          const npcUpdates: Record<string, unknown> = { hp: c.current_hp };
+-          if (Array.isArray(c.active_conditions)) {
+-            npcUpdates.conditions = c.active_conditions;
+-          }
+-          npcUpdates.active_immunities = npcImmsByTarget.get(npcId) ?? [];
+-          const { error: npcErr } = await (supabase as any)
+-            .from('npcs')
+-            .update(npcUpdates)
+-            .eq('id', npcId);
+-          if (npcErr) {
+-            console.error('[endEncounter] npc carry-over failed', { npcId, error: npcErr });
+-          }
+-        }
++
++        // v2.490.0 — Removed the legacy NPC carry-over loop here. It
++        // updated `public.npcs` (table dropped in v2.350) and was
++        // unreachable in practice: no participant row carries
++        // participant_type='npc' since the unify_creatures_and_folders
++        // ship. The npcImmsByTarget map and `from('npcs').update(...)`
++        // call were deleted together. See campaignImmunities.ts for
++        // the matching note on the union type.
+ 
+         // v2.482.0 — Creature (homebrew_monsters) immunity carry-over.
+         //
+-        // Unlike characters and npcs (which are one-row-per-instance
+-        // tables where HP/conditions naturally outlive an encounter),
+-        // homebrew_monsters is a TEMPLATE shared across every spawn
+-        // of that creature. Writing HP/conditions back would corrupt
+-        // the template — the next encounter that spawns this creature
+-        // would start at post-combat HP instead of fresh max HP.
++        // Unlike characters (a one-row-per-instance table where HP/
++        // conditions naturally outlive an encounter), homebrew_monsters
++        // is a TEMPLATE shared across every spawn of that creature.
++        // Writing HP/conditions back would corrupt the template — the
++        // next encounter that spawns this creature would start at
++        // post-combat HP instead of fresh max HP.
+         //
+         // So this loop carries ONLY active_immunities. Two ancient
+         // red dragons spawned from the same template share an
+--- a/src/lib/campaignImmunities.ts	2026-05-11 00:11:52.000000000 +0000
++++ b/src/lib/campaignImmunities.ts	2026-05-12 14:59:20.681772049 +0000
+@@ -3,9 +3,9 @@
+ // Wraps reads/writes against the campaign_condition_immunities table
+ // (created in v2.474). Source of truth for source-keyed condition
+ // immunity (Frightful Presence et al.). characters.active_immunities
+-// and npcs.active_immunities are denormalized snapshots populated
+-// at end of encounter (Ship 3); this helper writes to the table
+-// directly.
++// and homebrew_monsters.active_immunities are denormalized snapshots
++// populated at end of encounter (Ship 3, v2.477; creature snapshot
++// added in v2.482); this helper writes to the source table directly.
+ //
+ // Ship history:
+ //   v2.474 (Ship 1): table + columns created
+@@ -32,6 +32,27 @@
+ 
+ import { supabase } from './supabase';
+ 
++/**
++ * Target types accepted by `campaign_condition_immunities.target_type`.
++ *
++ * The DB CHECK constraint (see v2.474 migration) accepts all four
++ * values, and this union mirrors it 1:1. In practice, only 'character'
++ * and 'creature' rows are ever written:
++ *
++ *   - 'character' — backed by public.characters
++ *   - 'creature'  — backed by public.homebrew_monsters (the modern
++ *                   path for any non-player combatant since v2.350)
++ *   - 'monster'   — historical alias for 'creature'; never written
++ *                   by current code but the CHECK still accepts it
++ *   - 'npc'       — DEAD. The legacy public.npcs table was dropped
++ *                   in v2.350 (unify_creatures_and_folders). The
++ *                   immunity table was created in v2.474, AFTER that,
++ *                   so no row with target_type='npc' has ever existed.
++ *                   Kept in the union (and the DB CHECK) for forward-
++ *                   compat with any future legacy rehydration, not
++ *                   because anything writes it. v2.490.0 stripped the
++ *                   matching prefetch + write paths from endEncounter.
++ */
+ export type ImmunityTargetType = 'character' | 'creature' | 'monster' | 'npc';
+ 
+ export interface ImmunityRow {
+@@ -72,13 +93,16 @@
+   if (error || !data) return null;
+   const row = data as { participant_type: string; entity_id: string | null };
+   if (!row.entity_id) return null;
+-  // participant_type values currently used: 'character', 'creature',
+-  // 'monster', 'npc'. The CHECK constraint on the immunity table
+-  // accepts all four.
+   return {
+     type: row.participant_type as ImmunityTargetType,
+     id: row.entity_id,
+   };
++  // participant_type values that hit this cast in practice: 'character'
++  // and 'creature'. 'monster' is a historical alias; 'npc' is dead
++  // (see ImmunityTargetType doc above). If a legacy 'npc' row ever
++  // surfaces here, the downstream isImmune query will just return
++  // zero rows — no rows with target_type='npc' have ever been
++  // written to campaign_condition_immunities (table created post-v2.350).
+ }
+ 
+ /**
+@@ -225,9 +249,10 @@
+ 
+ /**
+  * Bulk-fetch every active immunity row for a target. Used by the
+- * end-of-encounter carry-over (Ship 3) to populate
+- * characters.active_immunities / npcs.active_immunities. Returns
+- * empty array on failure or when the target has no immunities.
++ * end-of-encounter carry-over (Ship 3, v2.477) to populate
++ * characters.active_immunities and homebrew_monsters.active_immunities
++ * (creature carry-over added v2.482). Returns empty array on failure
++ * or when the target has no immunities.
+  */
+ export async function listImmunitiesFor(input: {
+   campaignId: string;
+--- a/src/version.ts	2026-05-12 18:58:48.000000000 +0000
++++ b/src/version.ts	2026-05-12 14:59:25.012264664 +0000
+@@ -1 +1 @@
+-export const APP_VERSION = '2.489.0';
++export const APP_VERSION = '2.490.0';
