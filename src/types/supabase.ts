@@ -1,10 +1,18 @@
-// Auto-generated from Supabase schema introspection at v2.253.0.
-// Do NOT hand-edit. Regenerate via the live schema introspection
-// query in `information_schema.columns` for project
-// `ufowdrspkprlpdnjjkaj`, then re-run /home/claude/gen/gen.py.
+// Auto-generated from Supabase schema introspection at v2.493.0.
+// Do NOT hand-edit. Regenerated via a direct SQL query against
+// `information_schema.columns` on project `ufowdrspkprlpdnjjkaj`,
+// formatted in-database, then dropped in here.
 //
 // Shape is compatible with `supabase gen types typescript` so a
 // future CLI-driven regeneration drops in cleanly.
+//
+// Drift cleaned in v2.493: added `combatants` and
+// `scene_token_placements` (introduced in v2.309 Combat Phase 3,
+// types not regenerated for ~10 ships); added
+// `homebrew_monsters.active_immunities` (v2.482) and
+// `homebrew_monsters.active_buffs` (v2.491); removed legacy
+// `npcs` and `dm_npc_roster` table definitions (both dropped
+// by v2.350 unify_creatures_and_folders).
 
 export type Json =
   | string
@@ -197,34 +205,6 @@ export type Database = {
         };
         Relationships: [];
       };
-      campaign_members: {
-        Row: {
-          id: string;
-          campaign_id: string;
-          user_id: string;
-          role: string;
-          joined_at: string;
-        };
-        Insert: {
-          id?: string;
-          campaign_id: string;
-          user_id: string;
-          role?: string;
-          joined_at?: string;
-        };
-        Update: {
-          id?: string;
-          campaign_id?: string;
-          user_id?: string;
-          role?: string;
-          joined_at?: string;
-        };
-        Relationships: [];
-      };
-      // v2.474.0 — Cross-encounter condition immunity (Frightful
-      // Presence et al). Source of truth; characters.active_immunities
-      // and npcs.active_immunities are denormalized snapshots populated
-      // at end of encounter (Ship 3).
       campaign_condition_immunities: {
         Row: {
           id: string;
@@ -264,6 +244,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      campaign_members: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          user_id: string;
+          role: string;
+          joined_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          user_id: string;
+          role?: string;
+          joined_at?: string;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          user_id?: string;
+          role?: string;
+          joined_at?: string;
+        };
+        Relationships: [];
+      };
       campaigns: {
         Row: {
           id: string;
@@ -283,9 +287,7 @@ export type Database = {
           encumbrance_variant: string;
           default_ruleset_version: string | null;
           award_xp_enabled: boolean;
-          // v2.474.0 — In-game combat clock (rounds). Bumped on round
-          // wrap in advanceTurn. Source for cross-encounter immunity
-          // expiry math (1 round = 6 sec, 14400 rounds = 24 h).
+          use_combatants_for_battlemap: boolean;
           combat_rounds_elapsed: number;
         };
         Insert: {
@@ -306,6 +308,7 @@ export type Database = {
           encumbrance_variant?: string;
           default_ruleset_version?: string | null;
           award_xp_enabled?: boolean;
+          use_combatants_for_battlemap?: boolean;
           combat_rounds_elapsed?: number;
         };
         Update: {
@@ -326,6 +329,7 @@ export type Database = {
           encumbrance_variant?: string;
           default_ruleset_version?: string | null;
           award_xp_enabled?: boolean;
+          use_combatants_for_battlemap?: boolean;
           combat_rounds_elapsed?: number;
         };
         Relationships: [];
@@ -399,7 +403,6 @@ export type Database = {
           spell_slots: Json;
           prepared_spells: string[];
           known_spells: string[];
-          pinned_spells: string[];
           inventory: Json;
           currency: Json;
           active_conditions: string[];
@@ -450,12 +453,7 @@ export type Database = {
           nat_1_20_saves: boolean;
           long_rest_clears_combat_conditions: boolean;
           species_choices: Json | null;
-          // v2.474.0 — Cross-encounter immunity snapshot. JSONB array
-          // of { source_kind, source_id, source_name, granted_at_rounds,
-          // expires_at_rounds, encounter_id }. Populated by the
-          // end-of-encounter carry-over (Ship 3); read by the
-          // character sheet UI (Ship 4). Source of truth is
-          // campaign_condition_immunities.
+          pinned_spells: string[];
           active_immunities: Json;
         };
         Insert: {
@@ -490,7 +488,6 @@ export type Database = {
           spell_slots?: Json;
           prepared_spells?: string[];
           known_spells?: string[];
-          pinned_spells?: string[];
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
@@ -541,6 +538,7 @@ export type Database = {
           nat_1_20_saves?: boolean;
           long_rest_clears_combat_conditions?: boolean;
           species_choices?: Json | null;
+          pinned_spells?: string[];
           active_immunities?: Json;
         };
         Update: {
@@ -575,7 +573,6 @@ export type Database = {
           spell_slots?: Json;
           prepared_spells?: string[];
           known_spells?: string[];
-          pinned_spells?: string[];
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
@@ -626,6 +623,7 @@ export type Database = {
           nat_1_20_saves?: boolean;
           long_rest_clears_combat_conditions?: boolean;
           species_choices?: Json | null;
+          pinned_spells?: string[];
           active_immunities?: Json;
         };
         Relationships: [];
@@ -764,29 +762,22 @@ export type Database = {
           movement_used_ft: number;
           leveled_spell_cast: boolean;
           hidden_from_players: boolean;
-          current_hp: number | null;
-          max_hp: number | null;
-          temp_hp: number;
           ac: number | null;
-          death_save_successes: number;
-          death_save_failures: number;
-          is_stable: boolean;
-          is_dead: boolean;
-          active_conditions: string[];
+          concentration_spell_id: string | null;
           created_at: string;
           updated_at: string;
           persistent_cover: Json;
           max_speed_ft: number;
           dash_used_this_turn: boolean;
           disengaged_this_turn: boolean;
-          condition_sources: Json;
-          active_buffs: Json;
-          exhaustion_level: number;
           legendary_actions_total: number;
           legendary_actions_remaining: number;
           legendary_actions_config: Json;
           legendary_resistance: number | null;
           legendary_resistance_used: number | null;
+          combatant_id: string | null;
+          attacks_per_action: number;
+          attacks_remaining: number;
         };
         Insert: {
           id?: string;
@@ -804,29 +795,22 @@ export type Database = {
           movement_used_ft?: number;
           leveled_spell_cast?: boolean;
           hidden_from_players?: boolean;
-          current_hp?: number | null;
-          max_hp?: number | null;
-          temp_hp?: number;
           ac?: number | null;
-          death_save_successes?: number;
-          death_save_failures?: number;
-          is_stable?: boolean;
-          is_dead?: boolean;
-          active_conditions?: string[];
+          concentration_spell_id?: string | null;
           created_at?: string;
           updated_at?: string;
           persistent_cover?: Json;
           max_speed_ft?: number;
           dash_used_this_turn?: boolean;
           disengaged_this_turn?: boolean;
-          condition_sources?: Json;
-          active_buffs?: Json;
-          exhaustion_level?: number;
           legendary_actions_total?: number;
           legendary_actions_remaining?: number;
           legendary_actions_config?: Json;
           legendary_resistance?: number | null;
           legendary_resistance_used?: number | null;
+          combatant_id?: string | null;
+          attacks_per_action?: number;
+          attacks_remaining?: number;
         };
         Update: {
           id?: string;
@@ -844,29 +828,136 @@ export type Database = {
           movement_used_ft?: number;
           leveled_spell_cast?: boolean;
           hidden_from_players?: boolean;
-          current_hp?: number | null;
-          max_hp?: number | null;
-          temp_hp?: number;
           ac?: number | null;
-          death_save_successes?: number;
-          death_save_failures?: number;
-          is_stable?: boolean;
-          is_dead?: boolean;
-          active_conditions?: string[];
+          concentration_spell_id?: string | null;
           created_at?: string;
           updated_at?: string;
           persistent_cover?: Json;
           max_speed_ft?: number;
           dash_used_this_turn?: boolean;
           disengaged_this_turn?: boolean;
-          condition_sources?: Json;
-          active_buffs?: Json;
-          exhaustion_level?: number;
           legendary_actions_total?: number;
           legendary_actions_remaining?: number;
           legendary_actions_config?: Json;
           legendary_resistance?: number | null;
           legendary_resistance_used?: number | null;
+          combatant_id?: string | null;
+          attacks_per_action?: number;
+          attacks_remaining?: number;
+        };
+        Relationships: [];
+      };
+      combatants: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          owner_id: string;
+          name: string;
+          portrait_storage_path: string | null;
+          definition_type: string;
+          definition_id: string | null;
+          stat_block_snapshot: Json;
+          current_hp: number;
+          max_hp: number;
+          temp_hp: number;
+          ac_override: number | null;
+          speed_override: number | null;
+          active_conditions: string[];
+          condition_sources: Json;
+          active_buffs: Json;
+          exhaustion_level: number;
+          death_save_successes: number;
+          death_save_failures: number;
+          is_stable: boolean;
+          is_dead: boolean;
+          created_at: string;
+          updated_at: string;
+          last_used_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          owner_id: string;
+          name: string;
+          portrait_storage_path?: string | null;
+          definition_type: string;
+          definition_id?: string | null;
+          stat_block_snapshot?: Json;
+          current_hp?: number;
+          max_hp?: number;
+          temp_hp?: number;
+          ac_override?: number | null;
+          speed_override?: number | null;
+          active_conditions?: string[];
+          condition_sources?: Json;
+          active_buffs?: Json;
+          exhaustion_level?: number;
+          death_save_successes?: number;
+          death_save_failures?: number;
+          is_stable?: boolean;
+          is_dead?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          last_used_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          owner_id?: string;
+          name?: string;
+          portrait_storage_path?: string | null;
+          definition_type?: string;
+          definition_id?: string | null;
+          stat_block_snapshot?: Json;
+          current_hp?: number;
+          max_hp?: number;
+          temp_hp?: number;
+          ac_override?: number | null;
+          speed_override?: number | null;
+          active_conditions?: string[];
+          condition_sources?: Json;
+          active_buffs?: Json;
+          exhaustion_level?: number;
+          death_save_successes?: number;
+          death_save_failures?: number;
+          is_stable?: boolean;
+          is_dead?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          last_used_at?: string | null;
+        };
+        Relationships: [];
+      };
+      creature_folders: {
+        Row: {
+          id: string;
+          owner_id: string;
+          campaign_id: string | null;
+          parent_folder_id: string | null;
+          name: string;
+          sort_index: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          campaign_id?: string | null;
+          parent_folder_id?: string | null;
+          name: string;
+          sort_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          campaign_id?: string | null;
+          parent_folder_id?: string | null;
+          name?: string;
+          sort_index?: number;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -948,114 +1039,6 @@ export type Database = {
           installed_by?: string | null;
           active?: boolean | null;
           created_at?: string | null;
-        };
-        Relationships: [];
-      };
-      dm_npc_roster: {
-        Row: {
-          id: string;
-          owner_id: string;
-          campaign_id: string | null;
-          name: string;
-          type: string;
-          cr: string;
-          size: string;
-          hp: number;
-          max_hp: number;
-          ac: number;
-          speed: number;
-          str: number;
-          dex: number;
-          con: number;
-          int: number;
-          wis: number;
-          cha: number;
-          attack_name: string;
-          attack_bonus: number;
-          attack_damage: string;
-          xp: number;
-          description: string;
-          traits: string;
-          immunities: string;
-          image_url: string | null;
-          emoji: string;
-          color: string;
-          source_monster_id: string | null;
-          times_used: number;
-          last_used_at: string | null;
-          created_at: string;
-          updated_at: string;
-          save_proficiencies: string[];
-        };
-        Insert: {
-          id?: string;
-          owner_id: string;
-          campaign_id?: string | null;
-          name: string;
-          type?: string;
-          cr?: string;
-          size?: string;
-          hp?: number;
-          max_hp?: number;
-          ac?: number;
-          speed?: number;
-          str?: number;
-          dex?: number;
-          con?: number;
-          int?: number;
-          wis?: number;
-          cha?: number;
-          attack_name?: string;
-          attack_bonus?: number;
-          attack_damage?: string;
-          xp?: number;
-          description?: string;
-          traits?: string;
-          immunities?: string;
-          image_url?: string | null;
-          emoji?: string;
-          color?: string;
-          source_monster_id?: string | null;
-          times_used?: number;
-          last_used_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-          save_proficiencies?: string[];
-        };
-        Update: {
-          id?: string;
-          owner_id?: string;
-          campaign_id?: string | null;
-          name?: string;
-          type?: string;
-          cr?: string;
-          size?: string;
-          hp?: number;
-          max_hp?: number;
-          ac?: number;
-          speed?: number;
-          str?: number;
-          dex?: number;
-          con?: number;
-          int?: number;
-          wis?: number;
-          cha?: number;
-          attack_name?: string;
-          attack_bonus?: number;
-          attack_damage?: string;
-          xp?: number;
-          description?: string;
-          traits?: string;
-          immunities?: string;
-          image_url?: string | null;
-          emoji?: string;
-          color?: string;
-          source_monster_id?: string | null;
-          times_used?: number;
-          last_used_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-          save_proficiencies?: string[];
         };
         Relationships: [];
       };
@@ -1188,7 +1171,6 @@ export type Database = {
           traits: string | null;
           is_public: boolean | null;
           created_at: string | null;
-          // v2.350.0 — unified creature columns
           folder_id: string | null;
           owner_id: string | null;
           campaign_id: string | null;
@@ -1205,13 +1187,15 @@ export type Database = {
           last_seen: string | null;
           max_hp: number | null;
           initiative: number | null;
-          conditions: unknown;
-          save_proficiencies: unknown;
-          ability_scores: unknown;
+          conditions: Json | null;
+          save_proficiencies: Json | null;
+          ability_scores: Json | null;
           visible_to_players: boolean;
           is_alive: boolean;
           in_combat: boolean;
           updated_at: string;
+          active_immunities: Json;
+          active_buffs: Json;
         };
         Insert: {
           id?: string;
@@ -1252,13 +1236,15 @@ export type Database = {
           last_seen?: string | null;
           max_hp?: number | null;
           initiative?: number | null;
-          conditions?: unknown;
-          save_proficiencies?: unknown;
-          ability_scores?: unknown;
+          conditions?: Json | null;
+          save_proficiencies?: Json | null;
+          ability_scores?: Json | null;
           visible_to_players?: boolean;
           is_alive?: boolean;
           in_combat?: boolean;
           updated_at?: string;
+          active_immunities?: Json;
+          active_buffs?: Json;
         };
         Update: {
           id?: string;
@@ -1299,13 +1285,15 @@ export type Database = {
           last_seen?: string | null;
           max_hp?: number | null;
           initiative?: number | null;
-          conditions?: unknown;
-          save_proficiencies?: unknown;
-          ability_scores?: unknown;
+          conditions?: Json | null;
+          save_proficiencies?: Json | null;
+          ability_scores?: Json | null;
           visible_to_players?: boolean;
           is_alive?: boolean;
           in_combat?: boolean;
           updated_at?: string;
+          active_immunities?: Json;
+          active_buffs?: Json;
         };
         Relationships: [];
       };
@@ -1534,94 +1522,6 @@ export type Database = {
           attribution_text?: string | null;
           ruleset_version?: string | null;
           is_editable?: boolean | null;
-        };
-        Relationships: [];
-      };
-      npcs: {
-        Row: {
-          id: string;
-          campaign_id: string | null;
-          name: string;
-          role: string | null;
-          race: string | null;
-          location: string | null;
-          faction: string | null;
-          relationship: string | null;
-          status: string | null;
-          description: string | null;
-          notes: string | null;
-          last_seen: string | null;
-          avatar_url: string | null;
-          is_alive: boolean | null;
-          created_at: string | null;
-          updated_at: string | null;
-          visible_to_players: boolean;
-          in_combat: boolean;
-          hp: number | null;
-          max_hp: number | null;
-          ac: number | null;
-          initiative: number | null;
-          conditions: string[] | null;
-          ability_scores: Json;
-          save_proficiencies: Json;
-          // v2.474.0 — see characters.active_immunities note.
-          active_immunities: Json;
-        };
-        Insert: {
-          id?: string;
-          campaign_id?: string | null;
-          name: string;
-          role?: string | null;
-          race?: string | null;
-          location?: string | null;
-          faction?: string | null;
-          relationship?: string | null;
-          status?: string | null;
-          description?: string | null;
-          notes?: string | null;
-          last_seen?: string | null;
-          avatar_url?: string | null;
-          is_alive?: boolean | null;
-          created_at?: string | null;
-          updated_at?: string | null;
-          visible_to_players?: boolean;
-          in_combat?: boolean;
-          hp?: number | null;
-          max_hp?: number | null;
-          ac?: number | null;
-          initiative?: number | null;
-          conditions?: string[] | null;
-          ability_scores?: Json;
-          save_proficiencies?: Json;
-          active_immunities?: Json;
-        };
-        Update: {
-          id?: string;
-          campaign_id?: string | null;
-          name?: string;
-          role?: string | null;
-          race?: string | null;
-          location?: string | null;
-          faction?: string | null;
-          relationship?: string | null;
-          status?: string | null;
-          description?: string | null;
-          notes?: string | null;
-          last_seen?: string | null;
-          avatar_url?: string | null;
-          is_alive?: boolean | null;
-          created_at?: string | null;
-          updated_at?: string | null;
-          visible_to_players?: boolean;
-          in_combat?: boolean;
-          hp?: number | null;
-          max_hp?: number | null;
-          ac?: number | null;
-          initiative?: number | null;
-          conditions?: string[] | null;
-          ability_scores?: Json;
-          save_proficiencies?: Json;
-          active_immunities?: Json;
         };
         Relationships: [];
       };
@@ -2213,6 +2113,54 @@ export type Database = {
         };
         Relationships: [];
       };
+      scene_token_placements: {
+        Row: {
+          id: string;
+          scene_id: string;
+          combatant_id: string;
+          x: number;
+          y: number;
+          rotation: number;
+          z_index: number;
+          size_override: string | null;
+          color_override: number | null;
+          image_storage_path_override: string | null;
+          visible_to_all: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          scene_id: string;
+          combatant_id: string;
+          x?: number;
+          y?: number;
+          rotation?: number;
+          z_index?: number;
+          size_override?: string | null;
+          color_override?: number | null;
+          image_storage_path_override?: string | null;
+          visible_to_all?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          scene_id?: string;
+          combatant_id?: string;
+          x?: number;
+          y?: number;
+          rotation?: number;
+          z_index?: number;
+          size_override?: string | null;
+          color_override?: number | null;
+          image_storage_path_override?: string | null;
+          visible_to_all?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       scene_tokens: {
         Row: {
           id: string;
@@ -2224,15 +2172,14 @@ export type Database = {
           image_storage_path: string | null;
           name: string;
           character_id: string | null;
-          // v2.354.0: replaced npc_id with creature_id to match the
-          // v2.350 schema (npcs table absorbed into homebrew_monsters).
-          creature_id: string | null;
           player_id: string | null;
           visible_to_all: boolean;
           z_index: number;
           created_at: string;
           updated_at: string;
           color: number;
+          creature_id: string | null;
+          is_locked: boolean;
         };
         Insert: {
           id?: string;
@@ -2244,13 +2191,14 @@ export type Database = {
           image_storage_path?: string | null;
           name?: string;
           character_id?: string | null;
-          creature_id?: string | null;
           player_id?: string | null;
           visible_to_all?: boolean;
           z_index?: number;
           created_at?: string;
           updated_at?: string;
           color?: number;
+          creature_id?: string | null;
+          is_locked?: boolean;
         };
         Update: {
           id?: string;
@@ -2262,47 +2210,14 @@ export type Database = {
           image_storage_path?: string | null;
           name?: string;
           character_id?: string | null;
-          creature_id?: string | null;
           player_id?: string | null;
           visible_to_all?: boolean;
           z_index?: number;
           created_at?: string;
           updated_at?: string;
           color?: number;
-        };
-        Relationships: [];
-      };
-      // v2.351.0 — folder organization for the unified Creatures Manager
-      creature_folders: {
-        Row: {
-          id: string;
-          owner_id: string;
-          campaign_id: string | null;
-          parent_folder_id: string | null;
-          name: string;
-          sort_index: number;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          owner_id: string;
-          campaign_id?: string | null;
-          parent_folder_id?: string | null;
-          name: string;
-          sort_index?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          owner_id?: string;
-          campaign_id?: string | null;
-          parent_folder_id?: string | null;
-          name?: string;
-          sort_index?: number;
-          created_at?: string;
-          updated_at?: string;
+          creature_id?: string | null;
+          is_locked?: boolean;
         };
         Relationships: [];
       };
@@ -2361,9 +2276,9 @@ export type Database = {
           background_storage_path: string | null;
           dm_notes: string | null;
           is_published: boolean;
-          ambient_light: string;
           created_at: string;
           updated_at: string;
+          ambient_light: string;
         };
         Insert: {
           id?: string;
@@ -2377,9 +2292,9 @@ export type Database = {
           background_storage_path?: string | null;
           dm_notes?: string | null;
           is_published?: boolean;
-          ambient_light?: string;
           created_at?: string;
           updated_at?: string;
+          ambient_light?: string;
         };
         Update: {
           id?: string;
@@ -2393,9 +2308,9 @@ export type Database = {
           background_storage_path?: string | null;
           dm_notes?: string | null;
           is_published?: boolean;
-          ambient_light?: string;
           created_at?: string;
           updated_at?: string;
+          ambient_light?: string;
         };
         Relationships: [];
       };
@@ -2480,8 +2395,6 @@ export type Database = {
         };
         Relationships: [];
       };
-      // v2.296.0 — session_states block removed. Table dropped this
-      // ship after the v2.286–v2.295 unification arc retired it.
       session_summaries: {
         Row: {
           id: string;

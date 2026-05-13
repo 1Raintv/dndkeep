@@ -82,11 +82,8 @@ export default function LivingNpcsList({ campaignId, isOwner }: LivingNpcsListPr
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
-    // (supabase as any) — generated types in src/types/supabase.ts are
-    // stale and missing the combatants table definition. Matches the
-    // pattern already used in NpcTokenQuickPanel and combatEncounter.
-    // Future cleanup ship will regenerate types.
-    const { data, error } = await (supabase as any)
+    // v2.493: types regenerated, combatants table now properly typed.
+    const { data, error } = await supabase
       .from('combatants')
       .select('id, name, definition_type, definition_id, current_hp, max_hp, temp_hp, is_dead, is_stable, active_conditions, updated_at')
       .eq('campaign_id', campaignId)
@@ -195,8 +192,8 @@ export default function LivingNpcsList({ campaignId, isOwner }: LivingNpcsListPr
       return s;
     });
     try {
-      // (supabase as any) — see note in reload(). Stale generated types.
-      const { error } = await (supabase as any)
+      // v2.493: types regenerated, combatants table now properly typed.
+      const { error } = await supabase
         .from('combatants')
         .update({
           current_hp: next,

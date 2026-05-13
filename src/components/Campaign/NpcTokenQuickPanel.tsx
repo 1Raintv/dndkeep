@@ -436,6 +436,9 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     const next = current.filter(
       i => !(i.source_kind === entry.source_kind && i.source_id === entry.source_id),
     );
+    // (supabase as any) — DB column is jsonb (Json); the typed
+    // ActiveImmunity[] doesn't auto-narrow to Json without an unsafe
+    // cast. Matches the pattern across the codebase (~60 sites).
     const { error } = await (supabase as any)
       .from('homebrew_monsters')
       .update({ active_immunities: next })
@@ -468,6 +471,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     if (!npc) return;
     const current = (npc.active_buffs ?? []) as ActiveBuff[];
     const next = current.filter(b => b.id !== buff.id);
+    // (supabase as any) — see active_immunities note above.
     const { error } = await (supabase as any)
       .from('homebrew_monsters')
       .update({ active_buffs: next })
