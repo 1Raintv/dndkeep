@@ -26,6 +26,10 @@ import PartyChat from './PartyChat';
 import DMScreen from './DMScreen';
 import SessionScheduler from './SessionScheduler';
 import NPCManager from './NPCManager';
+// v2.492.0 — Living NPCs view (combatants list with inline HP edit).
+// Lives next to NPCManager (bestiary) under a segmented toggle inside
+// the NPC tab.
+import LivingNpcsList from './LivingNpcsList';
 // v2.276.0 — AISummary import removed alongside the Recap tab.
 import DiscordSettings from './DiscordSettings';
 import PartyDashboard from './PartyDashboard';
@@ -192,6 +196,25 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     const tab = params.get('tab');
     if (tab === 'map') setActiveTab('map');
   }, []);
+
+  // v2.492.0 — NPC tab sub-view toggle. Two sibling views inside the
+  // NPCs tab: "Bestiary" (existing NPCManager — templates from
+  // homebrew_monsters) and "Living NPCs" (new LivingNpcsList — runtime
+  // state from combatants). Defaults to Bestiary because it's where
+  // DMs create/edit NPCs; Living is for ongoing campaign management.
+  // localStorage (not sessionStorage) so the choice persists across
+  // browser restarts — combat-flow preference, not session state.
+  const npcSubViewKey = `dndkeep:npcSubView:${campaignProp.id}`;
+  const [npcSubView, setNpcSubView] = useState<'bestiary' | 'living'>(() => {
+    try {
+      const saved = localStorage.getItem(npcSubViewKey);
+      if (saved === 'bestiary' || saved === 'living') return saved;
+    } catch { /* unavailable — ignore */ }
+    return 'bestiary';
+  });
+  useEffect(() => {
+    try { localStorage.setItem(npcSubViewKey, npcSubView); } catch {}
+  }, [npcSubView, npcSubViewKey]);
 
   // v2.385.0 — InitiativeStrip clicks set a pan request in the
   // battle-map store. When that fires from a non-map tab, switch to
@@ -867,10 +890,51 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         {activeTab === 'npcs' && (
           <div>
             <h3 style={{ marginBottom: 'var(--sp-2)' }}>NPCs</h3>
-            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-4)' }}>
+            <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-3)' }}>
               Track allies, enemies, merchants, and notable characters your party encounters.
             </p>
-            <NPCManager campaignId={campaign.id} isOwner={isOwner} />
+            {/* v2.492.0 — Sub-view segmented toggle. Bestiary = template
+                editor (existing). Living NPCs = combatants runtime state
+                (new). Click switches; selection persists per-campaign. */}
+            <div style={{
+              display: 'inline-flex',
+              gap: 0,
+              marginBottom: 'var(--sp-4)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 'var(--r-md, 6px)',
+              overflow: 'hidden',
+            }}>
+              {(['bestiary', 'living'] as const).map(view => {
+                const selected = npcSubView === view;
+                const label = view === 'bestiary' ? 'Bestiary' : 'Living NPCs';
+                return (
+                  <button
+                    key={view}
+                    onClick={() => setNpcSubView(view)}
+                    style={{
+                      padding: '6px 14px',
+                      background: selected ? 'rgba(212,160,23,0.15)' : 'transparent',
+                      border: 'none',
+                      borderRight: view === 'bestiary' ? '1px solid var(--c-border)' : 'none',
+                      color: selected ? 'var(--c-gold-l)' : 'var(--t-2)',
+                      fontFamily: 'var(--ff-body)',
+                      fontSize: 'var(--fs-sm)',
+                      fontWeight: selected ? 700 : 500,
+                      cursor: 'pointer',
+                      minHeight: 0,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {npcSubView === 'bestiary' && (
+              <NPCManager campaignId={campaign.id} isOwner={isOwner} />
+            )}
+            {npcSubView === 'living' && (
+              <LivingNpcsList campaignId={campaign.id} isOwner={isOwner} />
+            )}
           </div>
         )}
 
