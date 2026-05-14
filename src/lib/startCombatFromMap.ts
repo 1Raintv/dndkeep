@@ -25,8 +25,12 @@
 import { supabase } from './supabase';
 import { useBattleMapStore } from './stores/battleMapStore';
 import * as scenesApi from './api/scenes';
-import * as sceneTokensApi from './api/sceneTokens';
-import * as scenePlacementsApi from './api/scenePlacements';
+// v2.495.0 — Pre-v2.495 this file bypassed tokensApiRouter because its
+// singleton cache was only set after BattleMapV2 mounted. The new
+// router resolves the flag per-call (memoized per campaign), so the
+// inline `useNewPath = await getUseCombatantsFlag(...)` branching is
+// dropped in favor of a single `tokensApi.listTokens` call.
+import * as tokensApi from './api/tokensApiRouter';
 import {
   startEncounter, characterToSeed,
   type SeedSource, type StartEncounterResult,
@@ -57,34 +61,19 @@ async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null>
   // started. Aligning heuristics fixes it: scene the DM ends up
   // looking at == scene whose tokens are in the encounter.
   //
-  // v2.390.0 — Honor the use_combatants_for_battlemap flag. The
-  // v2.385 fallback hardcoded scene_tokens, which would silently
-  // miss placements the day the flag is flipped on. We now read
-  // the flag here and route to the right backing store. Note we
-  // can't trust `tokensApiRouter.getUseCombatantsPath()` because
-  // its module cache is only set when BattleMapV2 mounts — and
-  // this fallback fires precisely when the DM hasn't opened the
-  // map tab. So we fetch the flag directly each call.
-  //
-  // The extra DB roundtrip for the flag is fine on the cold path:
-  // this function is invoked only when the store is empty, which
-  // is at most once per browser tab session.
-  //
-  // Future polish: persist `last_scene_id` per-campaign so the
-  // chosen scene tracks DM intent rather than creation order.
-  // Out of scope here — would need a schema migration plus plumbing
-  // through both BattleMapV2's mount and this fallback.
+  // v2.390.0 — Honor the use_combatants_for_battlemap flag.
+  // v2.495.0 — Now flows through the router (whose new per-campaign
+  // memoized flag cache works correctly here even though BattleMapV2
+  // hasn't mounted: the router does its own lookup on the first
+  // listTokens call and caches the result).
   const scenes = await scenesApi.listScenes(campaignId);
   if (scenes.length === 0) return null;
   const sceneId = scenes[0].id;
 
-  // Flag-aware read. Both list functions return the same Token
-  // shape with characterId/creatureId populated — we only need
-  // those two fields here, so the dispatch is transparent.
-  const useNewPath = await scenePlacementsApi.getUseCombatantsFlag(campaignId);
-  const tokens = useNewPath
-    ? await scenePlacementsApi.listPlacements(sceneId)
-    : await sceneTokensApi.listTokens(sceneId);
+  // Both legacy and new path return the same Token shape with
+  // characterId/creatureId populated — those two fields are all
+  // we need here.
+  const tokens = await tokensApi.listTokens(sceneId, { campaignId });
 
   return tokens.map(t => ({
     characterId: t.characterId ?? null,

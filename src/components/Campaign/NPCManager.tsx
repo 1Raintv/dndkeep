@@ -13,14 +13,14 @@ import {
 // v2.354.0 — folder browser sidebar + place-on-map flow.
 import CreatureFolderBrowser from './CreatureFolderBrowser';
 import * as tokensApi from '../../lib/api/tokensApiRouter';
-// v2.390.0 — Direct API access for the cold-fetch path. tokensApiRouter
-// can't be used here because its useNewPath cache is only set after
-// BattleMapV2 mounts, and this cold-fetch fires precisely when the DM
-// has not opened the Battle Map tab yet. We read the flag explicitly
-// via getUseCombatantsFlag and route accordingly.
+// v2.390.0 — Direct API access for the cold-fetch path was a v2.390
+// workaround for the router's stateful singleton cache (only set after
+// BattleMapV2 mounted).
+// v2.495.0 — Resolved: the router now resolves the flag per-call with
+// a per-campaign memoized cache, so this cold-fetch path can just call
+// `tokensApi.listTokens(sceneId, { campaignId })` like any other site.
+// The direct sceneTokensApi / scenePlacementsApi imports were dropped.
 import * as scenesApi from '../../lib/api/scenes';
-import * as sceneTokensApi from '../../lib/api/sceneTokens';
-import * as scenePlacementsApi from '../../lib/api/scenePlacements';
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 import type { Token, TokenSize } from '../../lib/stores/battleMapStore';
 
@@ -148,18 +148,16 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
       //
       // v2.390.0 — Also flag-aware. If `use_combatants_for_battlemap`
       // is on for this campaign, count placements not scene_tokens.
-      // The cold-fetch path can't piggy-back on tokensApiRouter's
-      // cached flag (BattleMapV2 hasn't mounted yet by definition
-      // when the cold-fetch fires), so we read the flag directly.
+      // v2.495.0 — Pre-v2.495 this had to bypass tokensApiRouter (its
+      // singleton cache was only set when BattleMapV2 mounted, and
+      // the cold-fetch fires precisely when that hasn't happened).
+      // The new router resolves the flag per-call, so a single
+      // `tokensApi.listTokens` call covers both paths.
       const scenes = await scenesApi.listScenes(campaignId);
       if (cancelled || scenes.length === 0) return;
       const sceneId = scenes[0].id;
 
-      const useNewPath = await scenePlacementsApi.getUseCombatantsFlag(campaignId);
-      if (cancelled) return;
-      const tokens = useNewPath
-        ? await scenePlacementsApi.listPlacements(sceneId)
-        : await sceneTokensApi.listTokens(sceneId);
+      const tokens = await tokensApi.listTokens(sceneId, { campaignId });
       if (cancelled) return;
 
       const counts: Record<string, number> = {};

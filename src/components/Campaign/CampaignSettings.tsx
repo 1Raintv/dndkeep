@@ -14,6 +14,13 @@ import {
 import type { CampaignMember } from '../../types';
 import { useModal } from '../shared/Modal';
 import { useToast } from '../shared/Toast';
+// v2.495.0 — Combat Phase 3.1: when the DM toggles the BattleMap
+// Engine (use_combatants_for_battlemap), the router's per-campaign
+// flag cache needs to be invalidated so the next router call sees
+// the new value without a full reload. (BattleMapV2's own realtime
+// subscription routing still needs a reload to re-wire; this just
+// keeps the router honest for everything else.)
+import { invalidateFlag } from '../../lib/api/tokensApiRouter';
 
 // v2.165.0 — Phase Q.0 pt 6: Campaign Settings reorg with tabs.
 //
@@ -272,6 +279,10 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
       .eq('id', campaign.id);
     setSavingPhase3(false);
     if (!error) {
+      // v2.495.0 — Clear the router's cached flag for this campaign
+      // so the next router call resolves the new value. Without this,
+      // the router would keep using the old flag until a full reload.
+      invalidateFlag(campaign.id);
       onUpdated({ use_combatants_for_battlemap: next });
       setPhase3Saved(true);
       setTimeout(() => setPhase3Saved(false), 2000);

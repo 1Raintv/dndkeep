@@ -161,7 +161,14 @@ import * as scenesApi from '../../lib/api/scenes';
 // surface as the old sceneTokens import, so existing call sites work
 // unchanged. See docs/COMBAT_PHASE_3_TOKEN_LIBRARY.md.
 import * as tokensApi from '../../lib/api/tokensApiRouter';
-import { setUseCombatantsPath } from '../../lib/api/tokensApiRouter';
+// v2.495.0 — Combat Phase 3.1: the module-level cache was retired in
+// favor of per-call campaignId threading. Router methods now take
+// `{ campaignId }` opts. The router still resolves the flag (and
+// memoizes the result per campaign), but it does so on demand
+// rather than relying on this component to push the value in.
+// (Cache invalidation lives in CampaignSettings.saveUsePhase3 where
+// it's actually needed — when the DM flips the engine setting.)
+
 import { getUseCombatantsFlag } from '../../lib/api/scenePlacements';
 import * as wallsApi from '../../lib/api/sceneWalls';
 import * as textsApi from '../../lib/api/sceneTexts';
@@ -3377,6 +3384,10 @@ function TokenLayer(props: {
   worldWidth: number;
   worldHeight: number;
   gridSizePx: number;
+  // v2.495.0 — Combat Phase 3.1: campaignId is now required on every
+  // tokensApi router call so the flag can be resolved per-call without
+  // a stateful singleton. Threaded through from BattleMapV2's prop.
+  campaignId: string;
   // v2.216 — Realtime drag callbacks + identity.
   currentUserId: string;
   onDragStart?: (tokenId: string) => void;
@@ -5777,7 +5788,7 @@ function TokenLayer(props: {
             // Implemented via the onCommitPos prop the parent wires
             // up; the actual markSelfWrite ref lives in BattleMapV2.
             onCommitPos?.(drag.id, clampedX, clampedY);
-            const result = await tokensApi.updateTokenPos(drag.id, clampedX, clampedY);
+            const result = await tokensApi.updateTokenPos(drag.id, clampedX, clampedY, { campaignId: props.campaignId });
             if (!result.ok) {
               if (result.reason === 'wall_blocked') {
                 useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
@@ -5855,11 +5866,11 @@ function TokenLayer(props: {
                 label: 'move token',
                 forward: async () => {
                   useBattleMapStore.getState().updateTokenPosition(tokenId, toX, toY);
-                  await tokensApi.updateTokenPos(tokenId, toX, toY);
+                  await tokensApi.updateTokenPos(tokenId, toX, toY, { campaignId: props.campaignId });
                 },
                 backward: async () => {
                   useBattleMapStore.getState().updateTokenPosition(tokenId, fromX, fromY);
-                  await tokensApi.updateTokenPos(tokenId, fromX, fromY);
+                  await tokensApi.updateTokenPos(tokenId, fromX, fromY, { campaignId: props.campaignId });
                 },
               });
             }
@@ -5929,6 +5940,11 @@ function TokenContextMenu(props: {
   // writes anyway, so showing them an action that 500s is worse
   // than not showing it.
   isDM: boolean;
+  // v2.495.0 — Combat Phase 3.1: campaignId is required on every
+  // tokensApi router call so the flag can be resolved per-call. The
+  // menu calls updateToken (Hide/Show, rename, color, size) and
+  // deleteToken from its handlers. Threaded through from BattleMapV2.
+  campaignId: string;
   onClose: () => void;
   onRequestUpload: (tokenId: string) => void;
   // v2.222 — when set, the menu shows a "View Character Sheet" item
@@ -5950,7 +5966,7 @@ function TokenContextMenu(props: {
     user_id?: string | null;
   }>;
 }) {
-  const { state, isDM, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel, playerCharacters } = props;
+  const { state, isDM, campaignId, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel, playerCharacters } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
@@ -5981,14 +5997,14 @@ function TokenContextMenu(props: {
   // v2.213: commit discrete edits to DB after optimistic local update.
   function applyPatch(patch: Partial<Token>) {
     updateTokenFields(state.tokenId, patch);
-    tokensApi.updateToken(state.tokenId, patch).catch(err =>
+    tokensApi.updateToken(state.tokenId, patch, { campaignId }).catch(err =>
       console.error('[BattleMapV2] token update commit failed', err)
     );
   }
 
   function applyDelete() {
     removeToken(state.tokenId);
-    tokensApi.deleteToken(state.tokenId).catch(err =>
+    tokensApi.deleteToken(state.tokenId, { campaignId }).catch(err =>
       console.error('[BattleMapV2] token delete commit failed', err)
     );
   }
@@ -7658,7 +7674,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
       // Optimistic local update.
       useBattleMapStore.getState().updateTokenFields(tokenId, { imageStoragePath: path });
       // Commit to DB — Realtime echoes back to all clients.
-      tokensApi.updateToken(tokenId, { imageStoragePath: path }).catch(err =>
+      tokensApi.updateToken(tokenId, { imageStoragePath: path }, { campaignId }).catch(err =>
         console.error('[BattleMapV2] portrait path commit failed', err)
       );
     } finally {
@@ -7734,9 +7750,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         console.error('[BattleMapV2] getUseCombatantsFlag failed', err);
       }
       if (cancelled) return;
-      setUseCombatantsPath(flag);
+      // v2.495.0 — setUseCombatantsPath was retired. The router
+      // resolves the flag per-call (and caches the result), so the
+      // setUseNewPath below is the only state still needed — it
+      // drives this component's own realtime subscription routing
+      // (scene_tokens vs scene_token_placements channel).
       setUseNewPath(flag);
-      const list = await tokensApi.listTokens(currentScene.id);
+      const list = await tokensApi.listTokens(currentScene.id, { campaignId });
       if (cancelled) return;
       useBattleMapStore.getState().setTokensBulk(list);
       useBattleMapStore.getState().setLoading(false);
@@ -7820,7 +7840,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               // combatants JOIN. Re-fetch via the router so the store
               // sees the merged Token shape. v2.314+ may do a
               // single-row JOINed fetch by id for tighter cost.
-              const list = await tokensApi.listTokens(sceneId);
+              const list = await tokensApi.listTokens(sceneId, { campaignId });
               if (cancelled) return;
               useBattleMapStore.getState().setTokensBulk(list);
             } else {
@@ -7894,7 +7914,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
             (t) => t.combatantId === newRow.id
           );
           if (!onScene) return;
-          const list = await tokensApi.listTokens(currentScene.id);
+          const list = await tokensApi.listTokens(currentScene.id, { campaignId });
           if (cancelled) return;
           useBattleMapStore.getState().setTokensBulk(list);
         }
@@ -9505,7 +9525,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
 
         // Fire server commit immediately (peers see the destination).
         // Animation is local-only.
-        const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY);
+        const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY, { campaignId });
 
         // Local rAF animation along the path. Per-frame: compute
         // total elapsed-time-along-path in pixels, then walk the
@@ -10318,6 +10338,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                     worldWidth={WORLD_WIDTH}
                     worldHeight={WORLD_HEIGHT}
                     gridSizePx={gridSizePx}
+                    campaignId={campaignId}
                     currentUserId={userId}
                     onDragStart={handleDragStart}
                     onDragMove={handleDragMove}
@@ -11131,6 +11152,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           <TokenContextMenu
             state={contextMenu}
             isDM={isDM}
+            campaignId={campaignId}
             onClose={() => setContextMenu(null)}
             onRequestUpload={handleRequestUpload}
             onOpenCharacter={handleOpenCharacter}

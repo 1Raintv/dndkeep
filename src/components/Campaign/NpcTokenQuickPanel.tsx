@@ -24,7 +24,13 @@ import { formatDurationLabel } from '../../lib/buffDuration';
 // "Hide from Players" item already does. The toggle finally hides
 // things from players for real.
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
-import * as tokensApi from '../../lib/api/sceneTokens';
+// v2.495.0 — Combat Phase 3.1: switched from the legacy sceneTokens
+// direct import to the router. Pre-v2.495 this file ALWAYS wrote to
+// scene_tokens regardless of the campaign's use_combatants_for_battlemap
+// flag, which silently broke hide-from-players (toggleVisibility) in
+// Phase 3 mode. The router routes correctly now that it takes
+// `{ campaignId }` per call instead of relying on a stale singleton.
+import * as tokensApi from '../../lib/api/tokensApiRouter';
 // v2.293.0 — Combat-system Phase 2c migration. The Initiative
 // section in this panel used to read/write sessionState.initiative_order
 // (the legacy campaign_sessions JSON column). Modern combat lives on
@@ -547,9 +553,21 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
 
   const toggleVisibility = useCallback(async () => {
     const next = !tokenVisible;
+    const campaignId = npc?.campaign_id;
+    if (!campaignId) {
+      // Defensive: the panel won't have rendered the toggle without
+      // an npc loaded, but just in case — bail rather than fire a
+      // router call we can't route.
+      console.warn('[NpcTokenQuickPanel] toggleVisibility: no campaign_id');
+      return;
+    }
     // Optimistic local update.
     useBattleMapStore.getState().updateTokenFields(tokenId, { visibleToAll: next });
-    const ok = await tokensApi.updateToken(tokenId, { visibleToAll: next }).catch(err => {
+    // v2.495.0 — Threaded campaignId so the router can resolve the
+    // Phase 3 flag. Pre-v2.495 this always wrote to scene_tokens
+    // regardless of the campaign's actual engine setting; v2.495
+    // routes correctly to whichever table the campaign is on.
+    const ok = await tokensApi.updateToken(tokenId, { visibleToAll: next }, { campaignId }).catch(err => {
       console.error('[NpcTokenQuickPanel] visibility toggle threw', err);
       return false;
     });
@@ -558,7 +576,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       // Revert.
       useBattleMapStore.getState().updateTokenFields(tokenId, { visibleToAll: tokenVisible });
     }
-  }, [tokenId, tokenVisible, showToast]);
+  }, [tokenId, tokenVisible, showToast, npc?.campaign_id]);
 
   // v2.293.0 — Initiative integration via modern combat schema.
   // Match by entity_id (the foreign key combat_participants writes to
