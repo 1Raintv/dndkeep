@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import type { Campaign, AutomationSettings } from '../../types';
 import { supabase } from '../../lib/supabase';
+import { asJsonb } from '../../lib/jsonbCast';
 import { AUTOMATIONS, labelForValue, type AutomationValue } from '../../lib/automations';
 // v2.335.0 — P4: Members management lives here now (was a top-level
 // dashboard tab pre-v2.335). DMs invite, generate codes, and remove
@@ -393,7 +394,9 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
     setSavingAuto(true);
     const { error } = await supabase
       .from('campaigns')
-      .update({ automation_settings: newSettings })
+      // v2.498.0 — asJsonb() narrows the typed AutomationSettings
+      // shape into the supabase-js Json union. See src/lib/jsonbCast.ts.
+      .update({ automation_settings: asJsonb(newSettings) })
       .eq('id', campaign.id);
     setSavingAuto(false);
     if (!error) {

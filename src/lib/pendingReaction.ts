@@ -20,6 +20,7 @@
 // central engine.
 
 import { supabase } from './supabase';
+import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
 
@@ -1026,7 +1027,10 @@ export async function acceptReaction(
     .update({
       state: 'accepted',
       decided_at: new Date().toISOString(),
-      decision_payload: decisionPayload ?? null,
+      // v2.498.0 — asJsonb() narrows the optional payload into the
+      // Json union. null passes through as-is (null is a valid Json
+      // value). See src/lib/jsonbCast.ts.
+      decision_payload: asJsonb(decisionPayload ?? null),
     })
     .eq('id', offerId);
 }

@@ -7,6 +7,7 @@
 // advanceTurn.
 
 import { supabase } from './supabase';
+import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { LairActionEntry, CombatEncounter } from '../types';
 
@@ -80,7 +81,9 @@ export async function configureLairActions(
     .from('combat_encounters')
     .update({
       in_lair: input.inLair,
-      lair_actions_config: input.actions ?? [],
+      // v2.498.0 — asJsonb() casts the typed LairActionEntry[] into
+      // the supabase-js Json union. See src/lib/jsonbCast.ts.
+      lair_actions_config: asJsonb(input.actions ?? []),
     })
     .eq('id', input.encounterId)
     .select()

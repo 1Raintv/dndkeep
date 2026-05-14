@@ -3,6 +3,7 @@ import type { Character, InventoryItem } from '../../types';
 import MagicItemBrowser from '../shared/MagicItemBrowser';
 import { useAuth } from '../../context/AuthContext';
 import { getCharacters, updateCharacter } from '../../lib/supabase';
+import { asJsonb } from '../../lib/jsonbCast';
 
 // v2.159.0 — Phase P pt 7 (final): standalone magic items browser page.
 //
@@ -52,7 +53,9 @@ export default function MagicItemsPage() {
       return;
     }
     const newInventory = [...(char.inventory ?? []), item];
-    const { error } = await updateCharacter(char.id, { inventory: newInventory });
+    // v2.498.0 — asJsonb() narrows InventoryItem[] to the Json union
+    // for the jsonb column write. See src/lib/jsonbCast.ts.
+    const { error } = await updateCharacter(char.id, { inventory: asJsonb(newInventory) });
     if (!error) {
       setCharacters(prev => prev.map(c =>
         c.id === char.id ? { ...c, inventory: newInventory } : c

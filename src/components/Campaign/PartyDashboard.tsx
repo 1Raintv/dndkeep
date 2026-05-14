@@ -1,5 +1,6 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { supabase } from '../../lib/supabase';
+import { asJsonb } from '../../lib/jsonbCast';
 import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { xpToLevel, xpForNextLevel, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
@@ -457,7 +458,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         concentration_spell: '',
         class_resources: newResources,
         feature_uses: {},
-        inventory: recharge?.rechargedInventory ?? c.inventory,
+        // v2.498.0 — asJsonb() casts the typed InventoryItem[] into the
+        // supabase-js Json union. See src/lib/jsonbCast.ts.
+        inventory: asJsonb(recharge?.rechargedInventory ?? c.inventory),
       }).eq('id', c.id);
     }));
 
