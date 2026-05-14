@@ -11,6 +11,8 @@
 
 import { supabase } from './supabase';
 import { emitCombatEvent, emitCombatEventChain, newChainId } from './combatEvents';
+// v2.494.0 — Per-round buff duration tick. See src/lib/buffDuration.ts.
+import { decrementBuffDurations } from './buffDuration';
 import type {
   CombatEncounter,
   CombatParticipant,
@@ -797,6 +799,52 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       if (bumpErr) {
         console.error('[advanceTurn] campaign clock bump failed', bumpErr);
       }
+    }
+  }
+
+  // v2.494.0 — Per-round buff duration tick.
+  //
+  // When a combat round wraps, every combatant's active_buffs[] gets
+  // a 1-round decrement. Mechanical riders (no `duration` field) and
+  // indefinite buffs (duration < 0) pass through; the rest tick down
+  // and drop at ≤ 0.
+  //
+  // Reads from the already-fetched `rows` (which spread the JOINed
+  // combatants.active_buffs via JOINED_COMBATANT_FIELDS), writes back
+  // only when `changed` is true to avoid a no-op storm on every turn.
+  //
+  // Fire-and-forget: a write failure here shouldn't strand the DM in
+  // an unfinishable advanceTurn call. Out-of-combat catch-up via
+  // Advance Time still works as a fallback. See PartyDashboard.
+  if (roundIncremented) {
+    try {
+      for (const row of rows as Array<{
+        combatant_id?: string;
+        active_buffs?: unknown;
+      }>) {
+        if (!row.combatant_id) continue;
+        const current = (row.active_buffs ?? null) as
+          | Array<{ duration?: number }>
+          | null;
+        const { changed, next } = decrementBuffDurations(
+          current as Parameters<typeof decrementBuffDurations>[0],
+          1,
+        );
+        if (!changed) continue;
+        const { error: buffErr } = await (supabase as any)
+          .from('combatants')
+          .update({ active_buffs: next })
+          .eq('id', row.combatant_id);
+        if (buffErr) {
+          console.error(
+            '[advanceTurn] buff decrement write failed for combatant',
+            row.combatant_id,
+            buffErr,
+          );
+        }
+      }
+    } catch (e) {
+      console.error('[advanceTurn] buff decrement pass crashed', e);
     }
   }
 

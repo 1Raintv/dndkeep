@@ -24,6 +24,8 @@ import ChecksPanel from './ChecksPanel';
 // (RP / one-off) loot. See ./LootItemPicker.tsx.
 import LootItemPicker from './LootItemPicker';
 import type { MagicItem } from '../../data/magicItems';
+// v2.494.0 — Per-campaign buff duration sweep for Advance Time button.
+import { elapseCampaignBuffDurations, hoursToRounds } from '../../lib/buffDuration';
 import { v4 as uuidv4 } from 'uuid';
 
 // v2.334.0 — P3: shared max-width for all DM tool panels (AoE, Party
@@ -640,13 +642,21 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 480 }}>
             {([
-              { label: '1 hour',    rounds: 600 },
-              { label: '8 hours',   rounds: 4800 },
-              { label: '24 hours',  rounds: 14400 },
-            ]).map(({ label, rounds }) => (
+              // v2.494.0 — Was {label, rounds: 600/4800/14400}. Now stores
+              // intent as seconds and converts at click time via the
+              // campaign's seconds_per_round setting. At RAW (6 s/r) the
+              // round counts match the legacy hard-codes; at the default
+              // 10 s/r they scale down (360/2880/8640).
+              { label: '1 hour',    seconds: 3600 },
+              { label: '8 hours',   seconds: 28800 },
+              { label: '24 hours',  seconds: 86400 },
+            ]).map(({ label, seconds }) => (
               <button
                 key={label}
                 onClick={async () => {
+                  const spr =
+                    (campaign as { seconds_per_round?: number } | undefined)?.seconds_per_round ?? 10;
+                  const rounds = hoursToRounds(seconds / 3600, spr);
                   const { data: row } = await supabase
                     .from('campaigns')
                     .select('combat_rounds_elapsed')
@@ -679,6 +689,20 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                     }
                   } catch (pruneErr) {
                     console.warn('[advance-time] immunity prune failed', pruneErr);
+                  }
+                  // v2.494.0 — Sweep all buff-bearing tables and
+                  // decrement durations by the elapsed round count.
+                  // Fire-and-forget; the helper collects errors and
+                  // never throws.
+                  try {
+                    const { errors: buffErrs } = await elapseCampaignBuffDurations(
+                      supabase, campaignId, rounds,
+                    );
+                    if (buffErrs.length) {
+                      console.warn('[advance-time] buff sweep had errors', buffErrs);
+                    }
+                  } catch (sweepErr) {
+                    console.warn('[advance-time] buff sweep crashed', sweepErr);
                   }
                 }}
                 style={{
@@ -1338,18 +1362,31 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 })()}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {([
-                  { label: '10 rounds', rounds: 10, hint: '1 minute' },
-                  { label: '1 minute',  rounds: 10, hint: '10 rounds' },
-                  { label: '10 minutes', rounds: 100, hint: 'short skill challenge' },
-                  { label: '1 hour',    rounds: 600, hint: 'short rest' },
-                  { label: '8 hours',   rounds: 4800, hint: 'long rest' },
-                  { label: '24 hours',  rounds: 14400, hint: 'full day; expires Frightful Presence et al.' },
-                ]).map(({ label, rounds, hint }) => (
+                {(([
+                  // v2.494.0 — Discriminated union: `rounds` entries
+                  // tick a literal number of rounds (no Time Scale
+                  // conversion — "10 rounds" means 10 rounds at any
+                  // s/r setting), `seconds` entries scale via the
+                  // campaign's seconds_per_round. Note "1 minute"
+                  // moved to the seconds path: at 10 s/r it's
+                  // 6 rounds, at 6 s/r (RAW) it's 10 rounds.
+                  { label: '10 rounds',  rounds: 10,    hint: 'literal rounds (Time Scale–independent)' },
+                  { label: '1 minute',   seconds: 60,   hint: 'scales with Time Scale' },
+                  { label: '10 minutes', seconds: 600,  hint: 'short skill challenge' },
+                  { label: '1 hour',     seconds: 3600, hint: 'short rest' },
+                  { label: '8 hours',    seconds: 28800, hint: 'long rest' },
+                  { label: '24 hours',   seconds: 86400, hint: 'full day; expires Frightful Presence et al.' },
+                ]) as Array<{ label: string; rounds?: number; seconds?: number; hint: string }>).map((item) => (
                   <button
-                    key={label}
-                    title={hint}
+                    key={item.label}
+                    title={item.hint}
                     onClick={async () => {
+                      const spr =
+                        (campaign as { seconds_per_round?: number } | undefined)?.seconds_per_round ?? 10;
+                      const rounds =
+                        typeof item.rounds === 'number'
+                          ? item.rounds
+                          : hoursToRounds((item.seconds ?? 0) / 3600, spr);
                       // Read-modify-write. We could use Supabase's
                       // raw_sql/RPC for an atomic increment, but the
                       // DM is the only writer to combat_rounds_elapsed
@@ -1413,6 +1450,21 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                         // the right thing without it. Don't surface.
                         console.warn('[advance-time] immunity prune failed', pruneErr);
                       }
+                      // v2.494.0 — Sweep buff durations across the
+                      // campaign by the elapsed round count. Same
+                      // fire-and-forget pattern as the immunity prune
+                      // above. Out-of-combat catch-up for buffs that
+                      // would have ticked down naturally in combat.
+                      try {
+                        const { errors: buffErrs } = await elapseCampaignBuffDurations(
+                          supabase, campaignId, rounds,
+                        );
+                        if (buffErrs.length) {
+                          console.warn('[advance-time] buff sweep had errors', buffErrs);
+                        }
+                      } catch (sweepErr) {
+                        console.warn('[advance-time] buff sweep crashed', sweepErr);
+                      }
                       setDmPanel(null);
                     }}
                     style={{
@@ -1423,7 +1475,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                       color: '#67e8f9',
                     }}
                   >
-                    {label}
+                    {item.label}
                   </button>
                 ))}
               </div>

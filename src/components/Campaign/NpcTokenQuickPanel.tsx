@@ -11,6 +11,12 @@ import { useToast } from '../shared/Toast';
 import { revokeImmunity } from '../../lib/campaignImmunities';
 import { useImmunitySourceNames } from '../../lib/hooks/useImmunitySourceNames';
 import type { ActiveImmunity, ActiveBuff } from '../../types';
+// v2.494.0 — DM-only buff duration countdown ("Xr / Y sec"). Uses
+// the campaign's seconds_per_round setting (Time Scale) for the
+// seconds-equivalent half of the display. Players (when this panel
+// becomes player-mountable in the DM permission arc) see only the
+// buff icon + name — per Jared's UX call, presence not ticks.
+import { formatDurationLabel } from '../../lib/buffDuration';
 // v2.386.0 — Hide-from-players now writes scene_tokens.visible_to_all
 // instead of homebrew_monsters.visible_to_players. The latter was
 // never read by any rendering code; the former has full RLS + DM
@@ -188,6 +194,11 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   const [applying, setApplying] = useState(false);
   const [condBusy, setCondBusy] = useState(false);
   const [showCondPicker, setShowCondPicker] = useState(false);
+  // v2.494.0 — Campaign Time Scale, fed into the buff duration label.
+  // Defaults to 10 (DND 404 default) until the campaign row resolves;
+  // a brief mismatch on first paint is harmless because the label
+  // recomputes once secondsPerRound updates.
+  const [secondsPerRound, setSecondsPerRound] = useState<number>(10);
 
   // v2.482.0 — Cross-encounter immunity panel data. immunities is the
   // current snapshot from homebrew_monsters.active_immunities;
@@ -229,6 +240,31 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         return;
       }
       setNpc(tplRes.data as NpcRow);
+      // v2.494.0 — Pull the campaign's seconds_per_round so the buff
+      // duration chips render "Xr / Y sec" in the DM's preferred time
+      // scale. Silently falls back to the 10-default on miss/error;
+      // worst case is a slightly mistimed seconds label which is
+      // cosmetic only (mechanical decrement uses rounds, not seconds).
+      const campaignId = (tplRes.data as { campaign_id?: string | null }).campaign_id;
+      if (campaignId) {
+        try {
+          const { data: campRow, error: campErr } = await supabase
+            .from('campaigns')
+            .select('seconds_per_round')
+            .eq('id', campaignId)
+            .maybeSingle();
+          if (cancelled) return;
+          if (!campErr && campRow) {
+            const spr = (campRow as { seconds_per_round?: number | null }).seconds_per_round;
+            if (typeof spr === 'number' && spr > 0) {
+              setSecondsPerRound(spr);
+            }
+          }
+        } catch (e) {
+          // Cosmetic fallback only; keep default 10.
+          console.warn('[NpcTokenQuickPanel] seconds_per_round fetch failed', e);
+        }
+      }
       // combRes can legitimately be null on a brief race after token
       // insert and before the v2.389 trigger fires; the panel still
       // renders the template-only view in that case.
@@ -1264,18 +1300,19 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
               {buffs.map(buff => {
-                // Duration label: -1 = indefinite, else "Nr" (rounds).
-                // Matches the ActiveBuff.duration semantics in
-                // src/types/index.ts (rounds remaining, -1 = until
-                // dispelled / long rest).
-                const durLabel = buff.duration < 0
-                  ? '∞'
-                  : `${buff.duration}r`;
-                const tooltip = [
-                  buff.effects?.length ? buff.effects.join(', ') : null,
-                  `Duration: ${buff.duration < 0 ? 'indefinite' : `${buff.duration} rounds`}`,
-                  'Click to remove.',
-                ].filter(Boolean).join(' • ');
+                // v2.494.0 — DM sees full "Xr / Y sec" countdown; the
+                // ×-removal hint stays in the tooltip only when DM.
+                // Player-visible tooltip (when this panel becomes
+                // player-mountable in the DM permission arc) shows
+                // just the effects list — no ticks, no removal cue.
+                const durLabel = formatDurationLabel(buff.duration, secondsPerRound);
+                const tooltip = isDM
+                  ? [
+                      buff.effects?.length ? buff.effects.join(', ') : null,
+                      `Duration: ${durLabel}`,
+                      'Click to remove.',
+                    ].filter(Boolean).join(' • ')
+                  : (buff.effects?.length ? buff.effects.join(', ') : buff.name);
                 return (
                   <button
                     key={buff.id}
@@ -1295,8 +1332,12 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
                     }}
                   >
                     {buff.icon ?? '✨'} {buff.name}
-                    <span style={{ opacity: 0.7, fontWeight: 500 }}>· {durLabel}</span>
-                    <span style={{ opacity: 0.6, fontWeight: 500 }}>×</span>
+                    {isDM && (
+                      <span style={{ opacity: 0.7, fontWeight: 500 }}>· {durLabel}</span>
+                    )}
+                    {isDM && (
+                      <span style={{ opacity: 0.6, fontWeight: 500 }}>×</span>
+                    )}
                   </button>
                 );
               })}

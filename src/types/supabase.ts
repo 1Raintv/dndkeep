@@ -289,6 +289,7 @@ export type Database = {
           award_xp_enabled: boolean;
           use_combatants_for_battlemap: boolean;
           combat_rounds_elapsed: number;
+          seconds_per_round: number;
         };
         Insert: {
           id?: string;
@@ -310,6 +311,7 @@ export type Database = {
           award_xp_enabled?: boolean;
           use_combatants_for_battlemap?: boolean;
           combat_rounds_elapsed?: number;
+          seconds_per_round?: number;
         };
         Update: {
           id?: string;
@@ -331,6 +333,7 @@ export type Database = {
           award_xp_enabled?: boolean;
           use_combatants_for_battlemap?: boolean;
           combat_rounds_elapsed?: number;
+          seconds_per_round?: number;
         };
         Relationships: [];
       };

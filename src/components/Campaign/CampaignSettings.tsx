@@ -238,6 +238,26 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
   const [savingPhase3, setSavingPhase3] = useState(false);
   const [phase3Saved, setPhase3Saved] = useState(false);
 
+  // v2.494.0 — Time Scale (seconds per combat round).
+  //   secondsPerRound : committed value mirrored from campaigns.
+  //   sprUnlocked     : whether the input is editable. Defaults to
+  //                     false (locked) so an accidental scroll-wheel
+  //                     tick on the number spinner can't silently
+  //                     change the campaign's time math mid-session.
+  //   sprDraft        : draft string while editing. String not number
+  //                     so the input can transiently be empty during
+  //                     keystroke without snapping back to 0.
+  const [secondsPerRound, setSecondsPerRound] = useState<number>(
+    (campaign as { seconds_per_round?: number }).seconds_per_round ?? 10,
+  );
+  const [sprUnlocked, setSprUnlocked] = useState(false);
+  const [sprDraft, setSprDraft] = useState<string>(
+    String((campaign as { seconds_per_round?: number }).seconds_per_round ?? 10),
+  );
+  const [savingSpr, setSavingSpr] = useState(false);
+  const [sprSaved, setSprSaved] = useState(false);
+  const [sprError, setSprError] = useState<string | null>(null);
+
   async function saveUsePhase3(next: boolean) {
     setSavingPhase3(true);
     setUsePhase3(next);
@@ -256,6 +276,54 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
       setPhase3Saved(true);
       setTimeout(() => setPhase3Saved(false), 2000);
     }
+  }
+
+  // v2.494.0 — Save Time Scale (seconds per combat round). Validates
+  // the same 1-600 range the DB CHECK enforces; surfaces the error
+  // inline rather than via toast so the DM sees it next to the input.
+  // No-ops if the value didn't actually change (no need to write or
+  // bump local mirrors). Re-locks the input on success so the next
+  // accidental scroll-wheel tick is a no-op.
+  async function saveSecondsPerRound(rawValue: string) {
+    setSprError(null);
+    const trimmed = rawValue.trim();
+    if (trimmed === '') {
+      setSprError('Enter a number between 1 and 600.');
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+      setSprError('Must be a whole number.');
+      return;
+    }
+    if (parsed < 1 || parsed > 600) {
+      setSprError('Must be between 1 and 600 seconds.');
+      return;
+    }
+    if (parsed === secondsPerRound) {
+      // No-op save: just relock and flash.
+      setSprUnlocked(false);
+      setSprSaved(true);
+      setTimeout(() => setSprSaved(false), 2000);
+      return;
+    }
+    setSavingSpr(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+      .from('campaigns')
+      .update({ seconds_per_round: parsed })
+      .eq('id', campaign.id);
+    setSavingSpr(false);
+    if (error) {
+      setSprError(error.message ?? 'Save failed.');
+      return;
+    }
+    setSecondsPerRound(parsed);
+    setSprDraft(String(parsed));
+    setSprUnlocked(false);
+    onUpdated({ seconds_per_round: parsed });
+    setSprSaved(true);
+    setTimeout(() => setSprSaved(false), 2000);
   }
 
   async function saveAwardXpEnabled(next: boolean) {
@@ -678,6 +746,143 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                         : 'XP panel hidden from DM Controls. Levels advance via milestones set by the DM.'}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* v2.494.0 — Time Scale (seconds per combat round).
+                  Per-campaign setting; default 10 (for round-number
+                  mental math: 1 hour = 360 rounds), RAW is 6
+                  (1 hour = 600 rounds). Drives buff duration display
+                  and Advance Time math. Locked by default so an
+                  accidental scroll-wheel doesn't shift the campaign's
+                  time semantics mid-session — DM must click Unlock
+                  to edit. */}
+              <div style={{ padding: '14px 16px', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', background: 'var(--c-surface-1)' }}>
+                <div style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                  color: 'var(--c-gold-l)', marginBottom: 8,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <span style={{ fontSize: 12 }}>{sprUnlocked ? '🔓' : '🔒'}</span>
+                  Time Scale
+                  {savingSpr && <span style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 400 }}>Saving…</span>}
+                  {sprSaved && <span style={{ fontSize: 9, color: '#34d399', fontWeight: 400 }}>✓ Saved</span>}
+                </div>
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, marginBottom: 12 }}>
+                  Seconds per combat round. 5e RAW is 6 (1 hour = 600 rounds); the default 10 trades RAW fidelity for round-number mental math (1 hour = 360 rounds). Drives buff duration display and Advance Time math.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={600}
+                      step={1}
+                      disabled={!sprUnlocked || savingSpr}
+                      value={sprDraft}
+                      onChange={(e) => setSprDraft(e.target.value)}
+                      style={{
+                        width: 90, padding: '6px 8px', borderRadius: 'var(--r-md)',
+                        border: '1px solid var(--c-border)',
+                        background: sprUnlocked ? 'var(--c-raised)' : 'var(--c-surface-2)',
+                        color: sprUnlocked ? 'var(--t-1)' : 'var(--t-3)',
+                        fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 700,
+                      }}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--t-3)' }}>sec / round</span>
+                    {!sprUnlocked && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSprDraft(String(secondsPerRound));
+                          setSprError(null);
+                          setSprUnlocked(true);
+                        }}
+                        style={{
+                          marginLeft: 'auto', fontSize: 11, fontWeight: 700,
+                          padding: '5px 12px', borderRadius: 7, cursor: 'pointer',
+                          border: '1px solid var(--c-border)',
+                          background: 'var(--c-raised)', color: 'var(--t-2)',
+                        }}
+                      >
+                        Unlock
+                      </button>
+                    )}
+                    {sprUnlocked && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={savingSpr}
+                          onClick={() => saveSecondsPerRound(sprDraft)}
+                          style={{
+                            marginLeft: 'auto', fontSize: 11, fontWeight: 700,
+                            padding: '5px 12px', borderRadius: 7, cursor: 'pointer',
+                            border: '1px solid rgba(52,211,153,0.4)',
+                            background: 'rgba(52,211,153,0.08)', color: '#34d399',
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingSpr}
+                          onClick={() => {
+                            setSprDraft(String(secondsPerRound));
+                            setSprError(null);
+                            setSprUnlocked(false);
+                          }}
+                          style={{
+                            fontSize: 11, fontWeight: 700,
+                            padding: '5px 12px', borderRadius: 7, cursor: 'pointer',
+                            border: '1px solid var(--c-border)',
+                            background: 'var(--c-raised)', color: 'var(--t-3)',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      disabled={!sprUnlocked || savingSpr}
+                      onClick={() => setSprDraft('6')}
+                      title="5e RAW: 1 round = 6 seconds"
+                      style={{
+                        fontSize: 10, fontWeight: 700, padding: '4px 10px',
+                        borderRadius: 999, cursor: sprUnlocked ? 'pointer' : 'not-allowed',
+                        border: '1px solid var(--c-border)',
+                        background: 'var(--c-raised)',
+                        color: sprUnlocked ? 'var(--t-2)' : 'var(--t-3)',
+                        opacity: sprUnlocked ? 1 : 0.6,
+                      }}
+                    >
+                      RAW (6 sec)
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!sprUnlocked || savingSpr}
+                      onClick={() => setSprDraft('10')}
+                      title="DND 404 default: round numbers for time math"
+                      style={{
+                        fontSize: 10, fontWeight: 700, padding: '4px 10px',
+                        borderRadius: 999, cursor: sprUnlocked ? 'pointer' : 'not-allowed',
+                        border: '1px solid var(--c-border)',
+                        background: 'var(--c-raised)',
+                        color: sprUnlocked ? 'var(--t-2)' : 'var(--t-3)',
+                        opacity: sprUnlocked ? 1 : 0.6,
+                      }}
+                    >
+                      Default (10 sec)
+                    </button>
+                  </div>
+                  {sprError && (
+                    <div style={{ fontSize: 11, color: '#f87171', fontWeight: 600 }}>
+                      {sprError}
+                    </div>
+                  )}
                 </div>
               </div>
 

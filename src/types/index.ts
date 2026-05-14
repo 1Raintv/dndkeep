@@ -682,6 +682,16 @@ export interface Campaign {
   // (1 round = 6 sec, 14400 rounds = 24 h). Outside-combat
   // fast-forward (DM Party tab control) deferred to a future ship.
   combat_rounds_elapsed?: number;
+
+  // v2.494.0 — Time Scale: seconds per combat round (DM setting).
+  // 5e RAW is 6 sec/round; default is 10 for round-number mental
+  // math (1 hour = 360 rounds at 10 vs 600 at 6). Drives:
+  //   - DM-facing buff duration display ("Xr / Y sec") via
+  //     formatDurationLabel in src/lib/buffDuration.ts.
+  //   - Advance Time button math in PartyDashboard
+  //     (seconds → rounds at click time, not hard-coded).
+  // Range 1-600 enforced by DB CHECK + client validation.
+  seconds_per_round?: number;
 }
 
 export interface CombatAutomationSettings {
