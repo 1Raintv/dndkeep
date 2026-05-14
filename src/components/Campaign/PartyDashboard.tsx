@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
@@ -41,6 +41,19 @@ const DM_PANEL_STYLE = {
   maxWidth: 760,
   boxSizing: 'border-box' as const,
 };
+
+// v2.496.0 — Stacked panel layout style. Returns the style overrides
+// that put every DM panel (and every PlayerCard sub-panel) into the
+// same CSS Grid cell — active ones visible, inactive ones laid out
+// but hidden. The host container must use `display: grid;
+// gridTemplateRows: 'auto'` for this to stack correctly.
+function panelLayoutStyle(active: boolean): CSSProperties {
+  return {
+    gridArea: '1 / 1',
+    visibility: active ? 'visible' : 'hidden',
+    pointerEvents: active ? 'auto' : 'none',
+  };
+}
 
 interface PartyDashboardProps {
   campaignId: string;
@@ -760,8 +773,15 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       </div>
 
       {/* ── DM action panels ── */}
+      {/* v2.496.0 — `marginBottom: 'calc(var(--sp-4) * -0.5)'` pulls the
+          character grid up by half the outer wrapper's `gap: 'var(--sp-4)'`.
+          Combined with the v2.496 grid-stacking fix above (which removed
+          the empty whitespace below short panels), this closes the big
+          visual gap between the DM panels card and the character cards
+          underneath. Outer wrapper gap is untouched (other sections
+          above the DM panels still benefit from full spacing). */}
       {isOwner && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 'calc(var(--sp-4) * -0.5)' }}>
           {/* Panel toggle buttons */}
           {/* v2.173.0 — Phase Q.0 pt 14: XP tab gated behind
               campaign.award_xp_enabled. Most tables use milestone
@@ -801,22 +821,32 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
             ))}
           </div>
 
-          {/* v2.488.0 — Stable-height panel wrapper.
+          {/* v2.488.0 / v2.496.0 — Stable-height panel wrapper.
               Pre-v2.488 each panel rendered at its own natural height
               (Loot tallest at ~360px, Time shortest at ~180px), so
               clicking between buttons made the rest of the page jump
-              up and down. Wrapping them in a min-height container
-              gives the area a stable footprint: every panel renders
-              with at least 360px of vertical space, with empty space
-              below the panel content if it's a short one. The cost is
-              some whitespace below the shorter panels; the win is no
-              layout shift. Loot stays at its natural ~360px and so
-              looks identical to before. */}
-          <div style={{ minHeight: 360 }}>
-
+              up and down.
+              v2.488 used `minHeight: 360` as a partial fix, but taller
+              panels still grew past it (Party Rest, Loot, Time on a
+              full party), and shorter panels (AoE w/out applied-results)
+              left a visible whitespace gap.
+              v2.496 replaces it with CSS Grid single-cell stacking:
+              every panel is rendered, all in the same grid cell at
+              `gridArea: '1/1'`. Inactive panels get
+              `visibility: hidden; pointer-events: none` so they don't
+              show or steal clicks, but they still contribute to the
+              grid cell's intrinsic height. The grid cell is therefore
+              always exactly as tall as the tallest panel — no jumping,
+              no wasted whitespace, no per-state arithmetic. */}
+          <div style={{ display: 'grid', gridTemplateRows: 'auto' }}>
+          {/* v2.496.0 — Per-panel layout style. All panels share the
+              same grid cell (`gridArea: '1/1'` stacks them); inactive
+              ones lay out invisibly so the cell's intrinsic height
+              equals the tallest panel. `pointer-events: none` on
+              inactive panels prevents stray clicks bleeding through
+              their inputs. */}
           {/* ── AoE DAMAGE PANEL ── */}
-          {dmPanel === 'aoe' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'aoe'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#f87171' }}>
                 AoE / Mass Damage — select targets, enter damage, apply
               </div>
@@ -968,11 +998,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 </div>
               )}
             </div>
-          )}
 
           {/* ── PARTY LONG REST PANEL ── */}
-          {dmPanel === 'rest' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'rest'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
                 Party Rest — {characters.length} character{characters.length !== 1 ? 's' : ''}
               </div>
@@ -1032,11 +1060,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                   (that's what a long rest does) and added noise to a
                   panel that's trying to be a quick two-click action. */}
             </div>
-          )}
 
           {/* ── ANNOUNCEMENT PANEL ── */}
-          {dmPanel === 'announce' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(212,160,23,0.4)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'announce'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(212,160,23,0.4)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-gold-l)' }}>
                 DM Announcement — banner on selected player sheets
               </div>
@@ -1067,11 +1093,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 <span style={{ fontSize: 11, color: 'var(--t-3)', alignSelf: 'center' }}>Dismissible after 30 seconds</span>
               </div>
             </div>
-          )}
 
           {/* ── SAVE PROMPT PANEL ── */}
-          {dmPanel === 'save' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'save'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* v2.192.0 — Phase Q.0 pt 33: dynamic label reflects
                   target count, mirroring the XP/Loot panel pattern. */}
               {(() => {
@@ -1137,11 +1161,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 </div>
               )}
             </div>
-          )}
 
           {/* XP Award panel */}
-          {dmPanel === 'xp' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'xp'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* v2.173.0 — Phase Q.0 pt 14: target-aware. The amount is
                   split evenly among the SELECTED characters, not the
                   whole party, so a DM can reward one player (e.g. a
@@ -1211,11 +1233,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 </div>
               )}
             </div>
-          )}
 
           {/* Loot Distribution panel */}
-          {dmPanel === 'loot' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'loot'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* v2.173.0 — Phase Q.0 pt 14: full rebuild.
                   • All 5 coin types (pp / gp / ep / sp / cp) — previously
                     only GP worked
@@ -1319,7 +1339,6 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 );
               })()}
             </div>
-          )}
 
           {/* v2.483.0 — ADVANCE TIME PANEL.
               Bumps campaigns.combat_rounds_elapsed by N. The campaign
@@ -1334,8 +1353,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               between encounters: short rest (1h), long rest (8h),
               full day (24h). 10 rounds (= 1 minute) covers
               "everyone takes a moment to catch their breath." */}
-          {dmPanel === 'time' && (
-            <div style={{ ...DM_PANEL_STYLE, padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(34,211,238,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'time'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(34,211,238,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#67e8f9' }}>
                 Advance Time
               </div>
@@ -1485,9 +1503,8 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 purely for tracking spell/effect duration math.
               </div>
             </div>
-          )}
 
-          {/* v2.488.0 — close min-height panel wrapper */}
+          {/* v2.496.0 — close stacked-panel grid wrapper */}
           </div>
         </div>
       )}
@@ -1727,9 +1744,26 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
               ))}
             </div>
 
+            {/* v2.496.0 — Stacked sub-panel container.
+                Same pattern as the top-level DM panels above: when any
+                sub-panel is active, render ALL four in a single CSS
+                Grid cell (`gridArea: '1/1'` stacks them). Inactive
+                panels lay out invisibly so the grid cell's intrinsic
+                height matches the tallest of {hp, conditions, checks,
+                inventory}. This eliminates the per-tab height jump
+                that was jarring when switching between (e.g.)
+                Hit Points (short) and Inventory (tall).
+
+                The outer `activePanel !== null` gate preserves the
+                collapsed-by-default behavior: clicking the active
+                tab toggles to null and the whole sub-panel area
+                disappears. Only when a sub-panel is open do we pay
+                the layout cost of rendering all four. */}
+            {activePanel !== null && (
+              <div style={{ display: 'grid', gridTemplateRows: 'auto' }}>
+
             {/* ── HP PANEL ── */}
-            {activePanel === 'hp' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ ...panelLayoutStyle(activePanel === 'hp'), display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Adjust Hit Points</div>
                 {/* Typed input */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1802,7 +1836,6 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                   )}
                 </div>
               </div>
-            )}
 
             {/* ── CONDITIONS PANEL ── */}
             {/* v2.170.0 — Phase Q.0 pt 11: redesigned per playtest. The
@@ -1811,8 +1844,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                 applied. New layout: active conditions listed at top
                 (click × to remove), dropdown + Apply button at the
                 bottom for adding new ones. Cleaner visual hierarchy. */}
-            {activePanel === 'conditions' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...panelLayoutStyle(activePanel === 'conditions'), display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>
                   Conditions
                 </div>
@@ -1907,7 +1939,6 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                   </button>
                 )}
               </div>
-            )}
 
             {/* ── SPELL SLOTS PANEL ── */}
             {/* v2.163.0 — Phase Q.0 pt 4: Checks panel.
@@ -1924,13 +1955,12 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                 Skill picker covers all 18 PHB skills; raw ability
                 buttons (STR/DEX/CON/INT/WIS/CHA) handle the
                 non-skill cases like a raw STR check to break a door. */}
-            {activePanel === 'checks' && (
+            <div style={panelLayoutStyle(activePanel === 'checks')}>
               <ChecksPanel character={c} campaignId={campaignId} />
-            )}
+            </div>
 
             {/* ── INVENTORY PANEL ── */}
-            {activePanel === 'inventory' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ ...panelLayoutStyle(activePanel === 'inventory'), display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)' }}>Inventory & Gold</div>
 
                 {/* v2.170.0 — Phase Q.0 pt 11: currency panel completely
@@ -2030,6 +2060,9 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
                 ) : (
                   <div style={{ fontSize: 12, color: 'var(--t-3)' }}>No items in inventory.</div>
                 )}
+              </div>
+
+              {/* v2.496.0 — close stacked sub-panel grid */}
               </div>
             )}
           </div>
