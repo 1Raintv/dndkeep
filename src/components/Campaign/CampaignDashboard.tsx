@@ -906,7 +906,16 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
             }}>
               {(['bestiary', 'living'] as const).map(view => {
                 const selected = npcSubView === view;
-                const label = view === 'bestiary' ? 'Bestiary' : 'Living NPCs';
+                // v2.499.0 — Renamed user-facing labels per DM feedback:
+                //   "Bestiary"     → "Spawn Pool" (campaign-scoped templates;
+                //                    distinguished from the global /bestiary
+                //                    reference library which keeps its name)
+                //   "Living NPCs"  → "NPCs"       (concise; the outer tab
+                //                    is already called NPCs so "Living NPCs"
+                //                    was redundant)
+                // Internal identifiers ('bestiary', 'living') unchanged to
+                // avoid churn — only the visible label rotates.
+                const label = view === 'bestiary' ? 'Spawn Pool' : 'NPCs';
                 return (
                   <button
                     key={view}
