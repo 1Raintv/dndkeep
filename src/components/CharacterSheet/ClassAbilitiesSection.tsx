@@ -398,7 +398,12 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  name: trait.name,
  actionType: t.actionType,
  description: trait.description,
- minLevel: 1, // species traits available from level 1
+ // v2.510.0 — most species traits are available from level 1, but a
+ // few have RAW level gates. Goliath's Large Form is 5th-level. This
+ // gate previously lived in the now-removed duplicate SPECIES block
+ // in index.tsx; carrying it here preserves correct behavior now that
+ // this is the single species-ability surface.
+ minLevel: trait.name === 'Large Form' ? 5 : 1,
  ...(typeof t.maxUses === 'number' ? { maxUses: t.maxUses } : {}),
  ...(t.rest ? { rest: t.rest } : {}),
  ...(t.recovery ? { recovery: t.recovery } : {}),
@@ -554,7 +559,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  (ability as any).recovery === 'movement' ? 'Use' : 'Cast';
  const isFlashing = justUsed === ability.name;
  const ACTION_BADGE_LABEL: Record<string, string> = {
- action: 'ACTION', bonus: 'BONUS', reaction: 'REACT', special: 'SPCL', free: 'FREE',
+ action: 'ACTION', bonus: 'BONUS', reaction: 'REACT', special: 'SPECIAL', free: 'FREE',
  };
  const actionBadge = ACTION_BADGE_LABEL[ability.actionType] ?? 'ABLY';
  // v2.501.0 — recoveryLabel + rangeStr removed: they fed the NAME-cell

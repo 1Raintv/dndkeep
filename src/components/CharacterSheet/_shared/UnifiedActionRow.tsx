@@ -13,7 +13,7 @@
 // this one primitive going forward.
 //
 // The lead column is polymorphic — a Prepare toggle for spells, an
-// action-type badge for class abilities (ACTION/BONUS/REACT/SPCL),
+// action-type badge for class abilities (ACTION/BONUS/REACT/SPECIAL),
 // or whatever the caller hands us. Everything else is plain props.
 //
 // The button slot is a ReactNode so each surface can wire its own
@@ -228,7 +228,7 @@ export function HitDCChip({ kind, value }: {
 
 const ACTION_BADGE_LABEL: Record<ActionType, string> = {
   action: 'ACTION', bonus: 'BONUS', reaction: 'REACT',
-  special: 'SPCL', free: 'FREE', item: 'ITEM', spell: 'SPELL',
+  special: 'SPECIAL', free: 'FREE', item: 'ITEM', spell: 'SPELL',
 };
 
 const ACTION_BADGE_COLOR: Record<ActionType, string> = {
