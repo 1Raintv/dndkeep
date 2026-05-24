@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
+import { formatRange } from '../../lib/formatRange';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
 import { useSpells } from '../../lib/hooks/useSpells';
@@ -3141,7 +3142,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
                      {/* Col 4: range */}
                      <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
-                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
                      </div>
 
                      {/* Col 5: hit/DC */}
@@ -3390,7 +3391,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                  <div />
                  {/* Col 4: RANGE */}
                  <div style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                   {t.range ?? ''}
+                   {formatRange(t.range)}
                  </div>
                  {/* Col 5: TAGS (empty for species traits) */}
                  <div />
@@ -3886,7 +3887,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  {/* Col 4: RANGE + TARGET (v2.63.0 stacked) */}
  <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
  {(() => {
  // Derive target description: AoE first, else parse description, else "1 target" for ranged spells
  const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;

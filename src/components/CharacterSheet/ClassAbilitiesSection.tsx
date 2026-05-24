@@ -3,6 +3,7 @@ import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 import { SPECIES } from '../../data/species';
+import { formatRange } from '../../lib/formatRange';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
@@ -653,7 +654,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      (e.g. self-targeting Action Surge). Aligns with SpellsTab's
      RANGE column for visual consistency across both tabs. */}
  <div style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
- {(ability as any).range ?? ''}
+ {formatRange((ability as any).range)}
  </div>
 
  {/* Col 5: HIT/DC — or CHARGES when the ability has no save.
