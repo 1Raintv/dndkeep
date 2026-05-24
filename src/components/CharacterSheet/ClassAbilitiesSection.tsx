@@ -439,6 +439,33 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  Psychic Disciplines
  </div>
  )}
+ {/* v2.500.0 — Column-header strip. Matches the SpellsTab header at
+     SpellsTab.tsx:458 exactly: same grid template, same label list,
+     same typography. Pre-v2.500 the abilities rows used the right
+     grid template (since v2.371) but no header strip rendered above
+     them — so even though the columns lined up internally, there was
+     no visible cue telling the DM "this column is TIME, that one is
+     RANGE." Per Psion playtest feedback, the section read as
+     "different layout from spells" because the header was missing.
+     Rendering it here closes the perceptual gap. Only shown when
+     there's at least one ability row to label. */}
+ {filtered.length > 0 && (
+ <div style={{
+ display: 'grid',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
+ gap: '0 8px',
+ padding: '0 10px 4px',
+ marginBottom: 2,
+ }}>
+ {['', '', 'NAME', 'TIME', 'RANGE', 'TAGS', 'HIT / DC', 'EFFECT', '', 'CHARGES', ''].map((h, i) => (
+ <span key={i} style={{
+ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700,
+ letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+ color: 'var(--t-3)',
+ }}>{h}</span>
+ ))}
+ </div>
+ )}
  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
  {filtered.map((ability, idx) => {
  const maxUses = getMaxUses(ability, character);
@@ -598,10 +625,34 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  </div>
 
- {/* Col 3: TIME — for now empty since action type lives in the LEAD
-     badge. Reserved so the column reserves visual width consistent
-     with SpellsTab. */}
- <div />
+ {/* Col 3: TIME — v2.500.0 — Pre-v2.500 this column was empty
+     because the action-type was already shown in Col 0's LEAD
+     badge (ACTION / BONUS / REACT / etc.). But leaving Col 3
+     blank created a visible "missing data" gap when the row was
+     read next to spell rows (which fill it with "1A" / "1BA" /
+     "1R"), and DMs reading both surfaces in sequence felt the
+     layouts diverged.
+     Now both columns render the same info in different forms:
+       Col 0 (LEAD): action category as a colored badge — the
+                    visual identifier you scan to know "this is a
+                    bonus action ability" at a glance.
+       Col 3 (TIME): the same info as the compact "1A" / "1BA" /
+                    "1R" abbreviation spells use — keeps the
+                    column visually populated for grid alignment.
+     The short_abbr map mirrors SpellsTab.tsx:558's casting_time
+     replacement chain so the abbreviations match exactly. */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
+ {(() => {
+ const TIME_ABBR: Record<string, string> = {
+ action:   '1A',
+ bonus:    '1BA',
+ reaction: '1R',
+ free:     'Free',
+ special:  '—',
+ };
+ return TIME_ABBR[ability.actionType] ?? '';
+ })()}
+ </div>
 
  {/* Col 4: RANGE — reads ability.range (e.g. "30 ft", "Self",
      "60 ft"). Empty when the ability has no spatial component
