@@ -74,6 +74,17 @@ export interface Profile {
    *  Default false at the DB level, so existing accounts upgrade
    *  cleanly with UA hidden. */
   show_ua_content?: boolean;
+  // v2.517.0 — entitlement fields (billing arc Build 1).
+  /** One-time purchased character slots on top of the 1 base (max 9 → 10 total). */
+  extra_character_slots?: number;
+  /** Subscriber-only one-time add-on campaign slots; frozen if sub lapses. */
+  extra_campaign_slots?: number;
+  /** Account-wide unlock: campaigns created while true get a 50-scene cap. */
+  ultimate_campaign?: boolean;
+  /** Cosmetic: currently-equipped dice skin id. */
+  active_dice_skin?: string | null;
+  /** For 1-year character retention; subscribers exempt. */
+  last_sign_in_at?: string | null;
 }
 
 // --- Character ---
@@ -669,6 +680,9 @@ export interface Campaign {
   join_code: string;
   created_at: string;
   updated_at: string;
+  /** v2.517.0 — per-campaign scene cap (10 free, 50 Ultimate), stamped
+   *  at creation by a DB trigger from the owner's ultimate_campaign. */
+  scene_limit?: number;
   automation_settings?: AutomationSettings;
 
   // Automation framework — see src/lib/automations.ts

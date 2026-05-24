@@ -107,7 +107,7 @@ export async function getProfile(userId: string): Promise<{ data: Profile | null
     // showUaContent flag was always false (undefined !== true) even
     // when the DB row had the flag set. That hid Psion + UA content
     // for every user with the flag on.
-    .select('id,email,display_name,subscription_tier,stripe_customer_id,subscription_status,show_ua_content,created_at,updated_at')
+    .select('id,email,display_name,subscription_tier,stripe_customer_id,subscription_status,show_ua_content,extra_character_slots,extra_campaign_slots,ultimate_campaign,active_dice_skin,last_sign_in_at,created_at,updated_at')
     .eq('id', userId)
     .single();
   return { data: data as Profile | null, error: error ? new Error(error.message) : null };

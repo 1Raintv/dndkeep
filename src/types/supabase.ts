@@ -279,6 +279,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           join_code: string;
+          scene_limit: number;
           notes: string | null;
           hp_visibility_mode: string;
           automation_settings: Json;
@@ -301,6 +302,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           join_code: string;
+          scene_limit?: number;
           notes?: string | null;
           hp_visibility_mode?: string;
           automation_settings?: Json;
@@ -323,6 +325,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           join_code?: string;
+          scene_limit?: number;
           notes?: string | null;
           hp_visibility_mode?: string;
           automation_settings?: Json;
@@ -1898,6 +1901,9 @@ export type Database = {
           updated_at: string;
           active_dice_skin: string | null;
           extra_character_slots: number;
+          extra_campaign_slots: number;
+          ultimate_campaign: boolean;
+          last_sign_in_at: string | null;
           show_ua_content: boolean;
         };
         Insert: {
@@ -1912,6 +1918,9 @@ export type Database = {
           updated_at?: string;
           active_dice_skin?: string | null;
           extra_character_slots?: number;
+          extra_campaign_slots?: number;
+          ultimate_campaign?: boolean;
+          last_sign_in_at?: string | null;
           show_ua_content?: boolean;
         };
         Update: {
@@ -1926,6 +1935,9 @@ export type Database = {
           updated_at?: string;
           active_dice_skin?: string | null;
           extra_character_slots?: number;
+          extra_campaign_slots?: number;
+          ultimate_campaign?: boolean;
+          last_sign_in_at?: string | null;
           show_ua_content?: boolean;
         };
         Relationships: [];
