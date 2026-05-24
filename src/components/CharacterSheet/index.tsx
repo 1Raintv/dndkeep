@@ -3311,6 +3311,25 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
            SPECIES — {sd.name.toUpperCase()}
          </span>
        </div>
+       {/* v2.507.0 — Column-header strip, matching the Actions-tab spell
+           rows + ClassAbilitiesSection (8-col grid). Finishes the
+           structural unification: this block previously used the legacy
+           11-col grid with empty TAGS/EFFECT/CHARGES columns, so it
+           visually disagreed with the spell + class-ability rows it sits
+           among. Now identical grid + header. */}
+       <div style={{
+         display: 'grid',
+         gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
+         gap: '0 8px', padding: '0 10px 4px', marginBottom: 2,
+       }}>
+         {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', '', ''].map((h, i) => (
+           <span key={i} style={{
+             fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700,
+             letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+             color: 'var(--t-3)',
+           }}>{h}</span>
+         ))}
+       </div>
        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
          {visibleTraits.map(trait => {
            const t = trait as any;
@@ -3357,7 +3376,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
              }}>
                <div style={{
                  display: 'grid',
-                 gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
+                 // v2.507.0 — 8-col Actions grid (was 11-col). Matches
+                 // spell rows + ClassAbilitiesSection:
+                 //   LEAD(70) BAR(3) NAME(1fr) TIME(46) RANGE(70)
+                 //   HIT-DC/CHARGES(74) CHEVRON(16) BUTTONS(170)
+                 gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
                  alignItems: 'center', gap: '0 8px', padding: '7px 10px', minHeight: 44,
                }}>
                  {/* Col 0: action-type badge */}
@@ -3379,27 +3402,36 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                        {trait.name}
                      </span>
                    </div>
-                   {/* v2.504.0 — "{species} species · refreshes on X Rest"
-                       subtitle removed per feedback. The SPECIES — {NAME}
-                       section header already states the species, and the
-                       recovery/charges info shows in the charges column;
-                       the subtitle was redundant noise that made these
-                       rows taller than the spell rows. NAME cell is now
-                       just the trait name, matching the unified row style. */}
                  </div>
-                 {/* Col 3: TIME (empty — action type lives in LEAD) */}
-                 <div />
+                 {/* Col 3: TIME — v2.507.0 — action-type abbreviation,
+                     matching ClassAbilitiesSection. Was an empty cell
+                     (action type only lived in the LEAD badge), which
+                     left a visible gap next to spell rows. */}
+                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
+                   {({ action: '1A', bonus: '1BA', reaction: '1R', free: 'Free', special: '—' } as Record<string, string>)[t.actionType] ?? ''}
+                 </div>
                  {/* Col 4: RANGE */}
                  <div style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                    {formatRange(t.range)}
                  </div>
-                 {/* Col 5: TAGS (empty for species traits) */}
+                 {/* Col 5: HIT/DC slot — v2.507.0 — repurposed to hold the
+                     charges chiclets, matching ClassAbilitiesSection's
+                     "charges in the HIT/DC slot, before the button"
+                     layout. Species traits don't have spell save DCs, so
+                     this slot was otherwise empty; charges fit naturally. */}
+                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' as const }}>
+                   {maxUses !== undefined && Array.from({ length: maxUses }).map((_, i) => (
+                     <span key={i} style={{
+                       display: 'inline-block', width: 10, height: 10,
+                       borderRadius: 2, margin: '0 1px',
+                       border: `1px solid ${acColor}55`,
+                       background: i < (maxUses - used) ? acColor : 'transparent',
+                     }} />
+                   ))}
+                 </div>
+                 {/* Col 6: CHEVRON (empty — no expanded panel for now) */}
                  <div />
-                 {/* Col 6: HIT/DC (empty — species saves don't use spell DC) */}
-                 <div />
-                 {/* Col 7: EFFECT (empty — could surface damage in future) */}
-                 <div />
-                 {/* Col 8: BUTTONS — Use */}
+                 {/* Col 7: BUTTONS — Use */}
                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', width: '100%' }}>
                    <button
                      onClick={useTrait}
@@ -3419,19 +3451,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                      {exhausted ? 'Used' : 'Use'}
                    </button>
                  </div>
-                 {/* Col 9: CHARGES (chiclet tracker for limited-use) */}
-                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-                   {maxUses !== undefined && Array.from({ length: maxUses }).map((_, i) => (
-                     <span key={i} style={{
-                       display: 'inline-block', width: 10, height: 10,
-                       borderRadius: 2, marginRight: 3,
-                       border: `1px solid ${acColor}55`,
-                       background: i < (maxUses - used) ? acColor : 'transparent',
-                     }} />
-                   ))}
-                 </div>
-                 {/* Col 10: CHEVRON (empty — no expanded panel for now) */}
-                 <div />
                </div>
              </div>
            );
