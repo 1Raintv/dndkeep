@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Character } from '../../types';
 import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { FEATS } from '../../data/feats';
+import { SKILLS } from '../../data/skills';
 import { computeFeatRiders } from '../../lib/featRiders';
 import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
 import FeatPicker from '../shared/FeatPicker';
@@ -124,6 +125,10 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  // feat is taken per level-up. Reset whenever the selected feat changes
  // (see the effect below). Null = not yet chosen.
  const [featAsiChoice, setFeatAsiChoice] = useState<AbilityKey | null>(null);
+ // v2.516.0 — Skill choices for feats that grant "choose N skills"
+ // (Skilled: 3 skills). Array of skill names the player selected.
+ // Reset when the selected feat changes (same effect as featAsiChoice).
+ const [featSkillChoices, setFeatSkillChoices] = useState<string[]>([]);
 
  const totalBoosts = (Object.values(abiBoosts) as number[]).reduce((a, b) => a + (b ?? 0), 0);
 
@@ -139,10 +144,16 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  })();
  const needsAsiChoice = anyAsiAmount !== null;
 
+ // v2.516.0 — How many skill proficiencies the selected feat grants by
+ // choice. Only "Skilled" (3 skills/tools) for now; returns 0 otherwise.
+ const featSkillCount: number = selectedFeat === 'Skilled' ? 3 : 0;
+ const needsSkillChoice = featSkillCount > 0;
+
  // Reset the "Any" ability choice whenever the selected feat changes,
  // so a choice made for one feat doesn't carry to another.
  useEffect(() => {
    setFeatAsiChoice(null);
+   setFeatSkillChoices([]);
    // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [selectedFeat]);
 
@@ -271,6 +282,11 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const existingSaves = character.saving_throw_proficiencies ?? [];
  updates.saving_throw_proficiencies = [...new Set([...existingSaves, ...riders.addSaveProficiencies])];
  }
+ // v2.516.0 — Skilled: add the 3 chosen skill proficiencies.
+ if (featSkillChoices.length > 0) {
+ const existingSkills = character.skill_proficiencies ?? [];
+ updates.skill_proficiencies = [...new Set([...existingSkills, ...featSkillChoices])];
+ }
  const currentFeats = character.gained_feats ?? [];
  if (!currentFeats.includes(selectedFeat)) {
  updates.gained_feats = [...currentFeats, selectedFeat];
@@ -312,7 +328,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  step === 'overview' ||
  (step === 'subclass' && selectedSubclass) ||
  (step === 'discipline' && selectedDisciplines.length >= expectedDisciplinesAtLevel) ||
- (step === 'asi' && (asiChoice === 'feat' ? (selectedFeat && (!needsAsiChoice || featAsiChoice)) : totalBoosts === 2)) ||
+ (step === 'asi' && (asiChoice === 'feat' ? (selectedFeat && (!needsAsiChoice || featAsiChoice) && (!needsSkillChoice || featSkillChoices.length === featSkillCount)) : totalBoosts === 2)) ||
  step === 'confirm';
 
  return (
@@ -415,6 +431,9 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  onSetFeat={setSelectedFeat}
  featAsiChoice={featAsiChoice}
  onSetFeatAsiChoice={setFeatAsiChoice}
+ featSkillChoices={featSkillChoices}
+ onSetFeatSkillChoices={setFeatSkillChoices}
+ featSkillCount={featSkillCount}
  />
  )}
 
@@ -737,7 +756,7 @@ function SubclassStep({ classData, selected, onSelect }: any) {
  );
 }
 
-function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat, featAsiChoice, onSetFeatAsiChoice }: any) {
+function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat, featAsiChoice, onSetFeatAsiChoice, featSkillChoices, onSetFeatSkillChoices, featSkillCount }: any) {
  // v2.31.1: match the CharacterCreator StepBuild ASIFeatPicker UI —
  // three option cards (+2 one ability, +1 two abilities, Feat) with radio selection
  // and ability buttons underneath. Keep abiBoosts state shape so buildUpdates() still works.
@@ -749,6 +768,8 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
    return anyEntry ? anyEntry.amount : null;
  })();
  const needsAsiChoice = anyAsiAmount !== null;
+ // v2.516.0 — does this feat need a skill pick (Skilled)?
+ const needsSkillChoice = (featSkillCount ?? 0) > 0;
 
  const ABILITY_LABELS: Record<string, string> = {
  strength: 'STR', dexterity: 'DEX', constitution: 'CON',
@@ -974,6 +995,55 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
  {!featAsiChoice && (
  <div style={{ marginTop: 7, fontSize: 11, color: 'var(--c-amber-l)' }}>
  Pick an ability to continue.
+ </div>
+ )}
+ </div>
+ )}
+
+ {/* v2.516.0 — Skill picker for feats that grant "choose N skills"
+     (Skilled: 3). Skills the character already has are disabled.
+     Must pick exactly N before continuing. */}
+ {currentMode === 'feat' && needsSkillChoice && (
+ <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.25)' }}>
+ <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: '#60a5fa', marginBottom: 8 }}>
+ {selectedFeat}: choose {featSkillCount} skill{featSkillCount !== 1 ? 's' : ''} ({(featSkillChoices ?? []).length}/{featSkillCount})
+ </div>
+ <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+ {SKILLS.map((sk: { name: string; ability: string }) => {
+ const chosen = (featSkillChoices ?? []).includes(sk.name);
+ const alreadyHas = (character.skill_proficiencies ?? []).includes(sk.name);
+ const atLimit = (featSkillChoices ?? []).length >= featSkillCount && !chosen;
+ const disabled = alreadyHas || atLimit;
+ return (
+ <button
+ key={sk.name}
+ type="button"
+ disabled={disabled}
+ onClick={() => {
+ const cur: string[] = featSkillChoices ?? [];
+ if (chosen) onSetFeatSkillChoices(cur.filter(s => s !== sk.name));
+ else if (cur.length < featSkillCount) onSetFeatSkillChoices([...cur, sk.name]);
+ }}
+ title={alreadyHas ? `Already proficient in ${sk.name}` : `${sk.name} (${sk.ability.slice(0, 3).toUpperCase()})`}
+ style={{
+ padding: '7px 10px', borderRadius: 'var(--r-sm)', cursor: disabled ? 'not-allowed' : 'pointer',
+ border: `1px solid ${chosen ? '#60a5fa' : 'var(--c-border-m)'}`,
+ background: chosen ? 'rgba(96,165,250,0.18)' : 'var(--c-raised)',
+ color: alreadyHas ? 'var(--t-3)' : chosen ? '#93c5fd' : 'var(--t-1)',
+ opacity: disabled ? 0.5 : 1,
+ fontFamily: 'var(--ff-body)', fontWeight: chosen ? 800 : 600, fontSize: 11,
+ textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4,
+ }}
+ >
+ <span>{sk.name}</span>
+ <span style={{ fontSize: 8, opacity: 0.7 }}>{alreadyHas ? '✓ have' : sk.ability.slice(0, 3).toUpperCase()}</span>
+ </button>
+ );
+ })}
+ </div>
+ {(featSkillChoices ?? []).length < featSkillCount && (
+ <div style={{ marginTop: 7, fontSize: 11, color: 'var(--c-amber-l)' }}>
+ Choose {featSkillCount - (featSkillChoices ?? []).length} more to continue.
  </div>
  )}
  </div>
