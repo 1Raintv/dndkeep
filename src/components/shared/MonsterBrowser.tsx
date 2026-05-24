@@ -126,7 +126,7 @@ export default function MonsterBrowser({
     });
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
+      user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: payload,
       message_type: 'save_prompt',

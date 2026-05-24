@@ -92,8 +92,9 @@ export async function listCreatures(opts: {
     }
   }
   if (opts.ownerOnly) {
-    const { data: userResp } = await supabase.auth.getUser();
-    if (userResp?.user) q = q.eq('owner_id', userResp.user.id);
+    // v2.503.0 — getSession (local) instead of getUser (network + lock).
+    const { data: { session: s } } = await supabase.auth.getSession();
+    if (s?.user) q = q.eq('owner_id', s.user.id);
   }
   const { data, error } = await q.order('name', { ascending: true });
   if (error) throw error;
@@ -104,9 +105,10 @@ export async function listCreatures(opts: {
  *  the user didn't specify so the row is usable. owner_id is forced
  *  to the calling user (RLS WITH CHECK enforces this too). */
 export async function createCreature(input: Partial<CreatureRow> & { name: string }): Promise<CreatureRow> {
-  const { data: userResp } = await supabase.auth.getUser();
-  if (!userResp?.user) throw new Error('Not authenticated');
-  const userId = userResp.user.id;
+  // v2.503.0 — getSession (local) instead of getUser (network + lock).
+  const { data: { session: s } } = await supabase.auth.getSession();
+  if (!s?.user) throw new Error('Not authenticated');
+  const userId = s.user.id;
   const { data, error } = await supabase
     .from('homebrew_monsters')
     .insert({

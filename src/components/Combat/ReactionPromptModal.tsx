@@ -104,8 +104,9 @@ export default function ReactionPromptModal({ campaignId }: Props) {
       .eq('id', campaignId)
       .single()
       .then(async ({ data }) => {
-        const { data: userData } = await supabase.auth.getUser();
-        if (data && userData?.user?.id === (data as any).owner_id) setIsDM(true);
+        // v2.503.0 — getSession (local) instead of getUser (network + lock).
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (data && s?.user?.id === (data as any).owner_id) setIsDM(true);
         else setIsDM(false);
       });
   }, [campaignId]);

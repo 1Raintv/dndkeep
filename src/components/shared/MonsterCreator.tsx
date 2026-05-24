@@ -75,7 +75,9 @@ export default function MonsterCreator({ initial, onSaved, onCancel }: Props) {
     if (!m.name?.trim()) { setError('Name is required'); return; }
     setSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    // v2.503.0 — getSession (local) instead of getUser (network + lock).
+    const { data: { session: s } } = await supabase.auth.getSession();
+    const user = s?.user;
     if (!user) { setError('Not signed in'); setSaving(false); return; }
 
     const row: Record<string, unknown> = {

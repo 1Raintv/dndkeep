@@ -67,6 +67,34 @@ export async function getSession() {
   return supabase.auth.getSession();
 }
 
+// v2.503.0 — Lightweight current-user-id accessor.
+//
+// Background: supabase.auth.getUser() makes a NETWORK round-trip to
+// the gotrue /user endpoint AND acquires the cross-tab Web Lock on the
+// auth token. When many call sites invoke getUser() concurrently (the
+// campaign-load path alone fires it via getCampaignsByMember plus
+// several PartyDashboard / ChecksPanel interactions), they livelock on
+// that lock — each call "steals" it from the others, aborting in-flight
+// requests with "Lock broken by another request with the 'steal'
+// option." The visible symptom was a permanent "Loading campaign…"
+// because getCampaignsByMember's getUser() never cleanly resolved.
+//
+// getSession() reads the persisted session from local storage with no
+// network round-trip and far lighter lock pressure. For everything we
+// use the user id for (stamping user_id on inserts, scoping queries),
+// the locally-cached session id is exactly as correct as a fresh
+// getUser() — the token is already validated on use by RLS server-side.
+// We only need getUser() when we specifically want to re-validate the
+// token against the server, which none of these call sites do.
+//
+// AuthContext is the canonical session source (getSession +
+// onAuthStateChange); this helper is for non-React modules and helpers
+// that can't read the context.
+export async function getCurrentUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id ?? null;
+}
+
 // =============================================================
 // Profile helpers
 // =============================================================
@@ -168,7 +196,12 @@ export async function deleteCharacter(characterId: string): Promise<{ error: nul
  * (RLS handles filtering to rows the user belongs to).
  */
 export async function getCampaignsByMember(): Promise<{ data: Campaign[]; error: null | Error }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  // v2.503.0 — was supabase.auth.getUser() (network + heavy auth-lock).
+  // Switched to the locally-cached session id to break the lock
+  // livelock that left the app stuck on "Loading campaign…". See
+  // getCurrentUserId() doc comment.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return { data: [], error: null };
   // Fetch campaigns where user is owner OR a member
   const { data, error } = await supabase

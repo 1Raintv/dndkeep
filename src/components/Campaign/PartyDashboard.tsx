@@ -528,7 +528,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     // Notify players so the inbox / toast surfaces what just happened
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
+      user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: 'The party takes a long rest. HP, spell slots, hit dice (half), and class resources restored. Exhaustion cleared.',
       message_type: 'long_rest_completed',
@@ -543,7 +543,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   async function partyShortRest() {
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
+      user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: JSON.stringify({ kind: 'short' }),
       message_type: 'short_rest_prompt',
@@ -565,7 +565,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       : announceText.trim();
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
+      user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: payload,
       message_type: 'announcement',
@@ -589,7 +589,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     if (isPartial) payload.targets = Array.from(saveTargets!);
     await supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
+      user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: JSON.stringify(payload),
       message_type: 'save_prompt',

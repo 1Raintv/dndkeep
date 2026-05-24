@@ -192,8 +192,9 @@ export async function createPlacement(
       );
       return null;
     }
-    const { data: userData } = await supabase.auth.getUser();
-    const ownerId = userData.user?.id;
+    // v2.503.0 — getSession (local) instead of getUser (network + lock).
+    const { data: { session: userSession } } = await supabase.auth.getSession();
+    const ownerId = userSession?.user?.id;
     if (!ownerId) {
       console.error('[scenePlacements] createPlacement: no auth user');
       return null;

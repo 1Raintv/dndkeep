@@ -51,12 +51,13 @@ export async function createFolder(input: {
   campaignId?: string | null;
   parentFolderId?: string | null;
 }): Promise<CreatureFolderRow> {
-  const { data: userResp } = await supabase.auth.getUser();
-  if (!userResp?.user) throw new Error('Not authenticated');
+  // v2.503.0 — getSession (local) instead of getUser (network + lock).
+  const { data: { session: s } } = await supabase.auth.getSession();
+  if (!s?.user) throw new Error('Not authenticated');
   const { data, error } = await supabase
     .from('creature_folders')
     .insert({
-      owner_id: userResp.user.id,
+      owner_id: s.user.id,
       campaign_id: input.campaignId ?? null,
       parent_folder_id: input.parentFolderId ?? null,
       name: input.name.trim(),
