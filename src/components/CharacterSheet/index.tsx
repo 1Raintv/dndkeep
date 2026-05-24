@@ -3836,22 +3836,37 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* Col 1: School color bar */}
  <div style={{ width: 3, height: 30, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.75 }} />
 
- {/* Col 2: Name + school line */}
+ {/* Col 2: Name + concentration line */}
  <div style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
  <span style={{ fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
  </span>
- {/* v2.37.0: Upgraded concentration marker — pillbox, always clearly visible.
- When THIS spell is being concentrated on, pill shows "● ACTIVE" in purple. */}
+ {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>No Slots</span>}
+ </div>
+ {/* v2.501.0 — Subtitle simplified per DM feedback. Pre-v2.501 this
+     line carried the spell school + ritual tag + an effect-type
+     pill (AoE / Save / Attack / Utility). Per feedback those were
+     noise that made each row taller and more congested than needed:
+       - School text ("conjuration", "enchantment", etc.) removed.
+       - Ritual tag removed (rarely actionable in the combat-focused
+         Actions tab; still visible in the expanded panel + Spells tab).
+       - Effect-type TAGS removed (the HIT/DC column already signals
+         attack-vs-save; AoE is visible in the RANGE column's target
+         line).
+     What remains: ONLY a concentration marker, moved here UNDER the
+     name (was previously an inline pill beside the name). When the
+     spell isn't concentration, this line renders nothing — letting
+     the row collapse to a single tight line, which is the whole
+     point of the cleanup. */}
  {spell.concentration && (
- isActivelyConcentrating ? (
+ <div style={{ marginTop: 1, whiteSpace: 'nowrap' as const }}>
+ {isActivelyConcentrating ? (
  <span style={{
  fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
  color: '#c4b5fd', background: 'rgba(167,139,250,0.22)',
  border: '1px solid rgba(167,139,250,0.55)', borderRadius: 999,
- padding: '2px 8px', flexShrink: 0,
- boxShadow: '0 0 0 2px rgba(167,139,250,0.08)',
+ padding: '1px 7px',
  }} title="You are currently concentrating on this spell">
  ● Active
  </span>
@@ -3860,70 +3875,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
  color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
  border: '1px solid rgba(251,191,36,0.35)', borderRadius: 999,
- padding: '1px 7px', flexShrink: 0,
+ padding: '1px 7px',
  }} title="Concentration spell — casting requires maintaining focus">
  Concentration
  </span>
- )
  )}
- {slotsExhausted && <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>No Slots</span>}
  </div>
- <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 5 }}>
- <span>{spell.school}{spell.ritual ? ' · Ritual' : ''}</span>
- {/* v2.172.0 — Phase Q.0 pt 13: effect-type tag. Mirrors the
-     "DAMAGE · GRAPPLE · SHOVE" style tags under Unarmed Strike
-     in the Actions tab so players can see at a glance whether a
-     spell is Utility / Attack / Save / AoE. The mechanics resolver
-     already computes the categories — we just surface them. AoE is
-     called out because strategic value differs. Priority: AoE >
-     Save > Attack > Utility to avoid cluttering with >1 tag. */}
- {(() => {
- const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;
- if (aoe) {
- return (
- <span style={{
- fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
- color: '#fb923c', background: 'rgba(251,146,60,0.12)',
- border: '1px solid rgba(251,146,60,0.4)',
- padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
- }} title={`Area of Effect — ${aoe.size}ft ${aoe.type}`}>AoE</span>
- );
- }
- if (mechanics.isSave) {
- const saveAb = (mechanics.saveType ?? '').toUpperCase();
- const col = saveAb === 'STR' ? '#ef4444' : saveAb === 'DEX' ? '#34d399' : saveAb === 'CON' ? '#f59e0b' : saveAb === 'INT' ? '#60a5fa' : saveAb === 'WIS' ? '#22c55e' : saveAb === 'CHA' ? '#ec4899' : '#60a5fa';
- return (
- <span style={{
- fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
- color: col, background: `${col}20`,
- border: `1px solid ${col}55`,
- padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
- }} title={`${saveAb} saving throw`}>{saveAb} Save</span>
- );
- }
- if (mechanics.isAttack) {
- return (
- <span style={{
- fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
- color: '#fbbf24', background: 'rgba(251,191,36,0.12)',
- border: '1px solid rgba(251,191,36,0.4)',
- padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
- }} title="Spell attack roll">Attack</span>
- );
- }
- if (mechanics.isUtility) {
- return (
- <span style={{
- fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
- color: '#a78bfa', background: 'rgba(167,139,250,0.12)',
- border: '1px solid rgba(167,139,250,0.4)',
- padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, flexShrink: 0,
- }} title="Utility / buff spell">Utility</span>
- );
- }
- return null;
- })()}
- </div>
+ )}
  </div>
 
  {/* Col 3: TIME */}

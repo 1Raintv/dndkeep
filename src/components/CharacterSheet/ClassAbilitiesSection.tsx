@@ -439,25 +439,23 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  Psychic Disciplines
  </div>
  )}
- {/* v2.500.0 — Column-header strip. Matches the SpellsTab header at
-     SpellsTab.tsx:458 exactly: same grid template, same label list,
-     same typography. Pre-v2.500 the abilities rows used the right
-     grid template (since v2.371) but no header strip rendered above
-     them — so even though the columns lined up internally, there was
-     no visible cue telling the DM "this column is TIME, that one is
-     RANGE." Per Psion playtest feedback, the section read as
-     "different layout from spells" because the header was missing.
-     Rendering it here closes the perceptual gap. Only shown when
-     there's at least one ability row to label. */}
+ {/* v2.501.0 — Column-header strip. Switched from the 11-column
+     SpellsTab template to the 8-column Actions-tab spell template
+     (`70px 3px 1fr 46px 70px 74px 16px 170px`) so Psion abilities
+     line up with the spell rows that sit directly above/below them
+     IN THE ACTIONS TAB (where this section renders). Pre-v2.501 this
+     used the wider SpellsTab grid, which visually disagreed with the
+     Actions-tab spell rows. Headers match the Actions-tab spell
+     header at index.tsx:3665 exactly. */}
  {filtered.length > 0 && (
  <div style={{
  display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
  gap: '0 8px',
  padding: '0 10px 4px',
  marginBottom: 2,
  }}>
- {['', '', 'NAME', 'TIME', 'RANGE', 'TAGS', 'HIT / DC', 'EFFECT', '', 'CHARGES', ''].map((h, i) => (
+ {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', '', ''].map((h, i) => (
  <span key={i} style={{
  fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700,
  letterSpacing: '0.12em', textTransform: 'uppercase' as const,
@@ -547,21 +545,15 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  action: 'ACTION', bonus: 'BONUS', reaction: 'REACT', special: 'SPCL', free: 'FREE',
  };
  const actionBadge = ACTION_BADGE_LABEL[ability.actionType] ?? 'ABLY';
- // Recovery label — secondary line that mirrors a spell row's
- // "school" subtitle. Falls back to action label when no rest.
- const recoveryLabel = ability.rest === 'short' ? 'Short Rest'
- : ability.rest === 'long' ? 'Long Rest'
- : (ability as any).isPool ? 'Resource Pool'
- : (ability as any).psionicDie ? 'Psionic Die'
- : 'At Will';
+ // v2.501.0 — recoveryLabel + rangeStr removed: they fed the NAME-cell
+ // subtitle that was deleted in this ship (recovery is conveyed by the
+ // charges tracker, range has its own column). Kept the comments'
+ // history but dropped the dead consts to avoid unused-var warnings.
  // v2.324.0 — T3: PED-pool ability gets a dedicated PsionicDicePool
  // tracker (purple SlotBoxes + N/max readout, sourced from the
  // class_resources['psionic-energy-dice'] number rather than
  // feature_uses, since other abilities deduct from class_resources).
  const isPedPoolRow = ability.isPool === true && (ability as any).psionicDie === true;
- // v2.324.0 — T3: range string (Psi Warper backfill) joined into
- // the subtitle line as "{recovery} · {range}" when present.
- const rangeStr = (ability as any).range as string | undefined;
  // v2.324.0 — T3: psionic disciplines (injected with `psionicDie`)
  // get the purple PSI palette to visually distinguish from regular
  // long-rest features that use TEAL.
@@ -572,11 +564,20 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  onClick={() => { if (canExpand) setExpandedAbility(isExpanded ? null : ability.name); }}
  style={{
  display: 'grid',
- // v2.371.0 — Unified template, matches SpellsTab + WeaponsTracker.
- // Order: LEAD(70) BAR(3) NAME(1fr) TIME(46) RANGE(70) HIT-DC(74)
- // EFFECT(80) BUTTONS(180) CHEVRON(16). Empty cells where the
- // surface doesn't have data so columns line up across tabs.
- gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
+ // v2.501.0 — Switched from the 11-col SpellsTab template to the
+ // 8-col Actions-tab template to match the spell rows this section
+ // sits alongside in the Actions tab:
+ //   LEAD(70) BAR(3) NAME(1fr) TIME(46) RANGE(70) HIT-DC(74)
+ //   CHEVRON(16) BUTTONS(170)
+ // The dropped columns vs the old 11-col layout:
+ //   - TAGS (36px): removed entirely (the AoE/Pool chips were
+ //     noise; pool state is conveyed by the charges tracker).
+ //   - EFFECT (80px): PED-cost / roll chip folded into the button
+ //     label ("Cast (N PED)") and the charges column.
+ //   - dedicated CHARGES (110px): merged into the HIT/DC column
+ //     (col 5) per DM feedback — "charges go before the cast
+ //     button in the space where the hit DC would be."
+ gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
  alignItems: 'center', gap: '0 8px',
  padding: '7px 10px',
  cursor: canExpand ? 'pointer' : 'default',
@@ -601,27 +602,20 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  {/* Col 1: 3px color stripe — same visual function as spell row's school bar */}
  <div style={{ width: 3, height: 30, borderRadius: 2, background: acColor, opacity: 0.75 }} />
 
- {/* Col 2: name + chips + subtitle (recovery + tracker chiclets) */}
+ {/* Col 2: name only — v2.501.0 — Subtitle removed to match the
+     cleaned-up spell rows. Pre-v2.501 this cell carried a second
+     line with the recovery label ("Short Rest" / "At Will" /
+     "Psionic Die") plus an optional range echo. Per DM feedback
+     that subtitle was congesting the row; recovery is conveyed by
+     the charges tracker (col 5) and the range lives in its own
+     column (col 4). Class abilities don't carry spell-style
+     concentration, so unlike spell rows there's no concentration
+     line to keep here — the cell is just the name. */}
  <div style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {ability.name}
  </span>
- {/* v2.373.0 — Resource chip moved to TAGS column (col 5) as a
-     "P" chip. NAME cell stays clean — name only. */}
- </div>
- <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1, whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
- <span style={{ flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-  {recoveryLabel}{rangeStr ? ` · ${rangeStr}` : ''}
- </span>
- {/* v2.373.0 — Chiclets moved out of this subtitle into the
-     dedicated CHARGES column (col 9) at the far right of the
-     row. Per user feedback: "things that have charges...
-     should be off to the right of the cast button so that you
-     can clearly see how many you have left to use." Pre-v2.373
-     the PsionicDicePool / UseTracker rendered inline here in
-     the NAME subtitle, mixing chiclet state with descriptive
-     text. */}
  </div>
  </div>
 
@@ -662,49 +656,23 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  {(ability as any).range ?? ''}
  </div>
 
- {/* Col 5: TAGS — small chips signaling AoE / Pool for class
-     abilities. v2.373.0 — class abilities don't carry spell-level
-     concentration (that's tracked at the spell layer), so the C
-     chip is omitted here. The "P" chip replaces the inline
-     Resource chip that previously sat in the NAME cell — moves
-     visual weight to the consistent column position. */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
- {ability.isPool && (
- <span
- title="Resource pool — see remaining charges to the right"
- style={{
- fontSize: 9, fontWeight: 800,
- color: '#60a5fa',
- background: 'rgba(96,165,250,0.12)',
- border: '1px solid rgba(96,165,250,0.4)',
- borderRadius: 4, padding: '1px 4px',
- lineHeight: 1.2, fontFamily: 'var(--ff-stat)',
- }}
- >P</span>
- )}
- {(ability as any).isAoE && (
- <span
- title="Area-of-effect ability"
- style={{
- fontSize: 8, fontWeight: 800,
- color: '#fb923c',
- background: 'rgba(251,146,60,0.14)',
- border: '1px solid rgba(251,146,60,0.4)',
- borderRadius: 4, padding: '1px 3px',
- lineHeight: 1.2, fontFamily: 'var(--ff-stat)',
- letterSpacing: '0.02em',
- }}
- >AoE</span>
- )}
- </div>
-
- {/* Col 6: HIT/DC — Save chip for save-bearing abilities. Renders
-     "DC X · YYY" matching the spell modal's save-pill format. Tooltip
-     shows the on-fail / on-success consequences when present. Empty
-     when the ability has no `save` field — keeps non-save abilities
-     visually identical to v2.245. */}
- <div style={{ textAlign: 'center' }}>
- {ability.save && (() => {
+ {/* Col 5: HIT/DC — or CHARGES when the ability has no save.
+     v2.501.0 — Per DM feedback the charges tracker moves here, into
+     "the space where the hit DC would be," directly before the cast
+     button. Resolution for the HIT/DC-vs-charges contention:
+       - If the ability forces a SAVE → show the save chip (DC X ·
+         ABILITY), exactly as spell rows show their HIT/DC. Rare for
+         Psion abilities; disciplines never have their own save.
+       - Otherwise → show the charges tracker (PED pool for the PED
+         row, UseTracker chiclets for limited-use features). This is
+         the common case and is what the DM asked to see in this
+         slot.
+     The old separate TAGS (P/AoE chips) and EFFECT (PED-cost / roll
+     chip) columns are gone — TAGS was noise, and the PED cost is now
+     conveyed by the button label ("Cast (N PED)"). The last-rolled
+     PED value is still reachable in the expanded panel. */}
+ <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+ {ability.save ? (() => {
  const dc = resolveSaveDC(ability.save, character);
  if (dc == null) return null;
  const tip = [
@@ -730,47 +698,51 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  <span style={{ fontSize: 9, opacity: 0.85 }}>{ability.save.ability}</span>
  </span>
  );
- })()}
- </div>
-
- {/* Col 6: EFFECT — PED cost chip OR last-rolled PED value badge.
-     Aligns with SpellsTab's EFFECT column (where damage dice render
-     for spells); for class abilities this column shows the resource
-     economics. pedCost and psionicDie are mutually exclusive on a
-     given ability. */}
- <div style={{ textAlign: 'center' }}>
- {(ability as any).psionicDie ? (() => {
- const hasRoll = psionicRollHistory.length > 0;
+ })() : isPedPoolRow && maxUses !== undefined ? (() => {
+ const resources = (character.class_resources as Record<string, number> | null) ?? {};
+ const remaining = (resources['psionic-energy-dice'] as number | undefined) ?? maxUses;
+ const used = Math.max(0, maxUses - remaining);
  return (
- <span
- title={hasRoll ? `Last roll: ${psionicRollHistory[0].value} on 1${psionicRollHistory[0].die}` : 'No rolls yet — click Spend Die to roll'}
- style={{
- display: 'inline-flex', alignItems: 'center', gap: 3,
- fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 12,
- padding: '1px 7px', borderRadius: 999,
- background: hasRoll ? 'rgba(232,121,249,0.18)' : 'transparent',
- border: `1px solid ${hasRoll ? 'rgba(232,121,249,0.5)' : 'rgba(232,121,249,0.2)'}`,
- color: hasRoll ? '#e879f9' : 'rgba(232,121,249,0.4)',
- transition: 'background 0.25s, border-color 0.25s, color 0.25s',
- }}>
- <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.1em', opacity: 0.7 }}>ROLL</span>
- {hasRoll ? psionicRollHistory[0].value : '—'}
- </span>
+ <PsionicDicePool
+ character={character}
+ total={maxUses}
+ used={used}
+ onChange={(newUsed) => {
+ const newRemaining = Math.max(0, maxUses - newUsed);
+ onUpdate({
+ class_resources: { ...resources, 'psionic-energy-dice': newRemaining },
+ });
+ }}
+ />
  );
- })() : typeof ped === 'number' && ped > 0 ? (
- <span style={{
- fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 11,
- color: '#e879f9', background: 'rgba(232,121,249,0.1)',
- border: '1px solid rgba(232,121,249,0.35)',
- borderRadius: 999, padding: '1px 6px',
- }} title={`Costs ${ped} Psionic Energy Die${ped === 1 ? '' : 's'}`}>
- {ped} PED
- </span>
+ })() : maxUses !== undefined && ability.rest ? (
+ <UseTracker
+ abilityName={ability.name}
+ max={maxUses}
+ rest={ability.rest}
+ character={character}
+ onUpdate={onUpdate}
+ palette={trackerPalette}
+ />
  ) : null}
  </div>
 
- {/* Col 7: BUTTONS — Use button + optional Restore button.
-     Aligns with SpellsTab's BUTTONS column (Cast + Damage). Click
+ {/* Col 6: CHEVRON — matches the Actions-tab spell layout where the
+     chevron sits between HIT/DC and the button column. Only renders
+     content when there's an expanded panel; the cell is always
+     present so columns line up regardless. */}
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ {canExpand && (
+ <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
+ )}
+ </div>
+
+ {/* Col 7: BUTTONS — Use/Cast button + optional Restore button.
+     Last column (170px fixed), matching the Actions-tab spell row's
+     button column so Cast buttons align vertically between spells
+     and abilities. v2.501.0 — the dedicated CHARGES column that
+     previously sat here was merged into Col 5 (HIT/DC) per DM
+     feedback; charges now render before the cast button. Click
      handlers stop propagation so they don't trigger the row-level
      expand toggle. */}
  <div onClick={e => {
@@ -848,56 +820,6 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </button>
  );
  })()}
- </div>
-
- {/* Col 9: CHARGES — chiclet tracker for limited-use abilities.
-     v2.373.0: moved here from inside the NAME subtitle so the user
-     can scan all "what's left" indicators in a consistent column
-     position at the far right of the row, after the Cast button.
-     PED pool uses PsionicDicePool (purple, sourced from
-     class_resources['psionic-energy-dice']); other limited-use
-     abilities (Free Misty Step, Action Surge, etc.) use UseTracker
-     (sourced from feature_uses[ability.name]). Empty for at-will
-     abilities (no maxUses). */}
- <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden' }}>
- {isPedPoolRow && maxUses !== undefined ? (
- (() => {
- const resources = (character.class_resources as Record<string, number> | null) ?? {};
- const remaining = (resources['psionic-energy-dice'] as number | undefined) ?? maxUses;
- const used = Math.max(0, maxUses - remaining);
- return (
- <PsionicDicePool
- character={character}
- total={maxUses}
- used={used}
- onChange={(newUsed) => {
- const newRemaining = Math.max(0, maxUses - newUsed);
- onUpdate({
- class_resources: { ...resources, 'psionic-energy-dice': newRemaining },
- });
- }}
- />
- );
- })()
- ) : maxUses !== undefined && ability.rest ? (
- <UseTracker
- abilityName={ability.name}
- max={maxUses}
- rest={ability.rest}
- character={character}
- onUpdate={onUpdate}
- palette={trackerPalette}
- />
- ) : null}
- </div>
-
- {/* Col 10: CHEVRON — last column, matches SpellsTab. Only renders
-     content when there's an expanded panel; the cell is always
-     present so columns line up regardless. */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
- {canExpand && (
- <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
- )}
  </div>
  </div>
  );
