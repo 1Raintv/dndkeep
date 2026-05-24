@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import { asJsonb } from '../../lib/jsonbCast';
 import { useToast } from '../shared/Toast';
 // v2.482.0 — Cross-encounter immunity panel surfaces on this
 // DM-side NPC quick-panel. Same shape as the character sheet's
@@ -481,9 +482,9 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     // (supabase as any) — DB column is jsonb (Json); the typed
     // ActiveImmunity[] doesn't auto-narrow to Json without an unsafe
     // cast. Matches the pattern across the codebase (~60 sites).
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from('homebrew_monsters')
-      .update({ active_immunities: next })
+      .update({ active_immunities: asJsonb(next) })
       .eq('id', npc.id);
     if (error) {
       // Source-of-truth row was deleted but the snapshot didn't update.
@@ -514,9 +515,9 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     const current = (npc.active_buffs ?? []) as ActiveBuff[];
     const next = current.filter(b => b.id !== buff.id);
     // (supabase as any) — see active_immunities note above.
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from('homebrew_monsters')
-      .update({ active_buffs: next })
+      .update({ active_buffs: asJsonb(next) })
       .eq('id', npc.id);
     if (error) {
       console.error('[NpcTokenQuickPanel] active_buffs update failed', error);

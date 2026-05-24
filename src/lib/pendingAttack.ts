@@ -16,6 +16,7 @@
 // the Phase A log renders the full story end-to-end.
 
 import { supabase } from './supabase';
+import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
 import { abilityModifier, proficiencyBonus, crToProficiencyBonus } from './gameUtils';
@@ -1372,9 +1373,9 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
         // already dropped above; the broad cleanup walk below handles
         // every condition/buff this caster placed via concentration.
         if (tgtCombatantId) {
-          await (supabase as any)
+          await supabase
             .from('combatants')
-            .update({ active_buffs: [] })
+            .update({ active_buffs: asJsonb([]) })
             .eq('id', tgtCombatantId);
         }
 

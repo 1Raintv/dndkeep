@@ -20,6 +20,7 @@ import type {
   MonsterData,
 } from '../types';
 import { abilityModifier } from './gameUtils';
+import { asJsonb } from './jsonbCast';
 // v2.315: HP/conditions/death-save reads come from combatants via JOIN.
 // See src/lib/combatParticipantNormalize.ts.
 import {
@@ -328,9 +329,9 @@ async function seedBuffsFromAuthoritativeTables(
         for (const link of charLinks) {
           const buffs = byId.get(link.characterId);
           if (!Array.isArray(buffs) || buffs.length === 0) continue;
-          const { error: uErr } = await (supabase as any)
+          const { error: uErr } = await supabase
             .from('combatants')
-            .update({ active_buffs: buffs })
+            .update({ active_buffs: asJsonb(buffs) })
             .eq('id', link.combatantId)
             .select('id');
           if (uErr) {
@@ -359,9 +360,9 @@ async function seedBuffsFromAuthoritativeTables(
         for (const link of creatureLinks) {
           const buffs = byId.get(link.creatureId);
           if (!Array.isArray(buffs) || buffs.length === 0) continue;
-          const { error: uErr } = await (supabase as any)
+          const { error: uErr } = await supabase
             .from('combatants')
-            .update({ active_buffs: buffs })
+            .update({ active_buffs: asJsonb(buffs) })
             .eq('id', link.combatantId)
             .select('id');
           if (uErr) {
@@ -852,9 +853,9 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
           1,
         );
         if (!changed) continue;
-        const { error: buffErr } = await (supabase as any)
+        const { error: buffErr } = await supabase
           .from('combatants')
-          .update({ active_buffs: next })
+          .update({ active_buffs: asJsonb(next) })
           .eq('id', row.combatant_id);
         if (buffErr) {
           console.error(

@@ -26,6 +26,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/supabase';
+import { asJsonb } from './jsonbCast';
 import type { ActiveBuff } from '../types';
 
 // ----------------------------------------------------------------
@@ -188,9 +189,9 @@ export async function elapseCampaignBuffDurations(
       const { changed, next } = decrementBuffDurations(current, ticks);
       if (changed) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: upErr } = await (supabase as any)
+        const { error: upErr } = await supabase
           .from('characters')
-          .update({ active_buffs: next })
+          .update({ active_buffs: asJsonb(next) })
           .eq('id', row.id);
         if (upErr) errors.push(`characters[${row.id}]: ${upErr.message}`);
       }
@@ -212,9 +213,9 @@ export async function elapseCampaignBuffDurations(
       const { changed, next } = decrementBuffDurations(current, ticks);
       if (changed) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: upErr } = await (supabase as any)
+        const { error: upErr } = await supabase
           .from('combatants')
-          .update({ active_buffs: next })
+          .update({ active_buffs: asJsonb(next) })
           .eq('id', row.id);
         if (upErr) errors.push(`combatants[${row.id}]: ${upErr.message}`);
       }
@@ -236,9 +237,9 @@ export async function elapseCampaignBuffDurations(
       const { changed, next } = decrementBuffDurations(current, ticks);
       if (changed) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: upErr } = await (supabase as any)
+        const { error: upErr } = await supabase
           .from('homebrew_monsters')
-          .update({ active_buffs: next })
+          .update({ active_buffs: asJsonb(next) })
           .eq('id', row.id);
         if (upErr) errors.push(`homebrew_monsters[${row.id}]: ${upErr.message}`);
       }

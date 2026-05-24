@@ -15,6 +15,7 @@
 // pendingAttack.ts calls them at roll time to assemble the final dice.
 
 import { supabase } from './supabase';
+import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDie } from './gameUtils';
 // v2.315: active_buffs reads come from combatants via JOIN.
@@ -73,9 +74,9 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
     console.warn('[applyBuff] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await (supabase as any)
+  await supabase
     .from('combatants')
-    .update({ active_buffs: next })
+    .update({ active_buffs: asJsonb(next) })
     .eq('id', combatantId);
 
   if (input.emitEvent !== false) {
@@ -130,9 +131,9 @@ export async function removeBuff(input: RemoveBuffInput): Promise<void> {
     console.warn('[removeBuff] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await (supabase as any)
+  await supabase
     .from('combatants')
-    .update({ active_buffs: next })
+    .update({ active_buffs: asJsonb(next) })
     .eq('id', combatantId);
 
   if (input.emitEvent !== false) {
