@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Character } from '../../types';
 import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { FEATS } from '../../data/feats';
+import { computeFeatRiders } from '../../lib/featRiders';
 import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
 import FeatPicker from '../shared/FeatPicker';
 import { abilityModifier } from '../../lib/gameUtils';
@@ -116,8 +117,34 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const [asiChoice, setAsiChoice] = useState<'asi' | 'feat'>('asi');
  const [abiBoosts, setAbiBoosts] = useState<Partial<Record<AbilityKey, number>>>({});
  const [selectedFeat, setSelectedFeat] = useState('');
+ // v2.514.0 — For feats whose ASI is "choose any ability" (e.g.
+ // Resilient: "+1 to an ability of your choice"), the player must pick
+ // which ability the bump applies to. We track that choice here, keyed
+ // by nothing more than "the currently selected feat" since only one
+ // feat is taken per level-up. Reset whenever the selected feat changes
+ // (see the effect below). Null = not yet chosen.
+ const [featAsiChoice, setFeatAsiChoice] = useState<AbilityKey | null>(null);
 
  const totalBoosts = (Object.values(abiBoosts) as number[]).reduce((a, b) => a + (b ?? 0), 0);
+
+ // v2.514.0 — Does the selected feat have a "choose any ability" ASI?
+ // feat.asi entries use ability:'Any' for player-choice bumps (e.g.
+ // Resilient). Returns the amount to apply, or null if the feat has no
+ // such entry. Fixed-ability entries (ability:'STR' etc.) are applied
+ // directly in buildUpdates and don't need a picker.
+ const selectedFeatData = selectedFeat ? FEATS.find(f => f.name === selectedFeat) : undefined;
+ const anyAsiAmount: number | null = (() => {
+   const anyEntry = selectedFeatData?.asi?.find(a => a.ability.toLowerCase() === 'any');
+   return anyEntry ? anyEntry.amount : null;
+ })();
+ const needsAsiChoice = anyAsiAmount !== null;
+
+ // Reset the "Any" ability choice whenever the selected feat changes,
+ // so a choice made for one feat doesn't carry to another.
+ useEffect(() => {
+   setFeatAsiChoice(null);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [selectedFeat]);
 
  // v2.32: When the user switches target class mid-flow, reset downstream picks
  // so a subclass chosen for the primary doesn't bleed over into the secondary, etc.
@@ -201,21 +228,56 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  }
  } else if (asiChoice === 'feat' && selectedFeat) {
  const featData = FEATS.find(f => f.name === selectedFeat);
+ // v2.514.0 — Track each ASI bump this feat applies so we can record
+ // provenance in ability_score_improvements (source: 'feat'). This
+ // makes the bump visible/removable and lets the settings stat editor
+ // reconcile it later.
+ const featAsiRecords: { ability: AbilityKey; amount: number; source: string }[] = [];
  if (featData?.asi) {
  for (const asiGrant of featData.asi) {
  const ability = asiGrant.ability.toLowerCase();
+ if (ability === 'any') {
+ // Player-chosen ability (Resilient etc.). Apply to the picked
+ // ability; if somehow unset, skip (the UI gates Next until set).
+ if (featAsiChoice) {
+ updates[featAsiChoice] = Math.min(20, (character[featAsiChoice] as number) + asiGrant.amount);
+ featAsiRecords.push({ ability: featAsiChoice, amount: asiGrant.amount, source: `feat:${selectedFeat}` });
+ }
+ } else {
  const exactMatch = ABILITY_NAMES.find(a => ability === a);
  if (exactMatch) {
  updates[exactMatch] = Math.min(20, (character[exactMatch] as number) + asiGrant.amount);
+ featAsiRecords.push({ ability: exactMatch, amount: asiGrant.amount, source: `feat:${selectedFeat}` });
  }
  }
+ }
+ }
+ // Append provenance records (kept alongside background/level ASIs).
+ if (featAsiRecords.length > 0) {
+ const existingAsi = character.ability_score_improvements ?? [];
+ updates.ability_score_improvements = [...existingAsi, ...featAsiRecords];
+ }
+ // v2.515.0 — Non-ASI mechanical riders (Tough HP, Resilient save
+ // proficiency). Computed in a dedicated helper; merged here.
+ const riders = computeFeatRiders(selectedFeat, {
+ character,
+ newLevel,
+ featAsiChoice: featAsiChoice ?? null,
+ });
+ if (typeof riders.max_hp === 'number') {
+ updates.max_hp = riders.max_hp;
+ }
+ if (riders.addSaveProficiencies && riders.addSaveProficiencies.length > 0) {
+ const existingSaves = character.saving_throw_proficiencies ?? [];
+ updates.saving_throw_proficiencies = [...new Set([...existingSaves, ...riders.addSaveProficiencies])];
  }
  const currentFeats = character.gained_feats ?? [];
  if (!currentFeats.includes(selectedFeat)) {
  updates.gained_feats = [...currentFeats, selectedFeat];
  }
  const existing = character.features_and_traits ?? '';
- const featNote = `\n[Feat — ${effectiveClassName} Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}`;
+ const riderNote = riders.notes.length > 0 ? '\n' + riders.notes.join('\n') : '';
+ const featNote = `\n[Feat — ${effectiveClassName} Level ${newLevel}]\n${selectedFeat}${featData ? ': ' + featData.description : ''}${riderNote}`;
  updates.features_and_traits = existing + featNote;
  }
  }
@@ -250,7 +312,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  step === 'overview' ||
  (step === 'subclass' && selectedSubclass) ||
  (step === 'discipline' && selectedDisciplines.length >= expectedDisciplinesAtLevel) ||
- (step === 'asi' && (asiChoice === 'feat' ? selectedFeat : totalBoosts === 2)) ||
+ (step === 'asi' && (asiChoice === 'feat' ? (selectedFeat && (!needsAsiChoice || featAsiChoice)) : totalBoosts === 2)) ||
  step === 'confirm';
 
  return (
@@ -351,6 +413,8 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  totalBoosts={totalBoosts}
  selectedFeat={selectedFeat}
  onSetFeat={setSelectedFeat}
+ featAsiChoice={featAsiChoice}
+ onSetFeatAsiChoice={setFeatAsiChoice}
  />
  )}
 
@@ -673,10 +737,18 @@ function SubclassStep({ classData, selected, onSelect }: any) {
  );
 }
 
-function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat }: any) {
+function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, totalBoosts, selectedFeat, onSetFeat, featAsiChoice, onSetFeatAsiChoice }: any) {
  // v2.31.1: match the CharacterCreator StepBuild ASIFeatPicker UI —
  // three option cards (+2 one ability, +1 two abilities, Feat) with radio selection
  // and ability buttons underneath. Keep abiBoosts state shape so buildUpdates() still works.
+
+ // v2.514.0 — detect a "choose any ability" ASI on the selected feat.
+ const selectedFeatData = selectedFeat ? FEATS.find(f => f.name === selectedFeat) : undefined;
+ const anyAsiAmount: number | null = (() => {
+   const anyEntry = selectedFeatData?.asi?.find((a: any) => a.ability.toLowerCase() === 'any');
+   return anyEntry ? anyEntry.amount : null;
+ })();
+ const needsAsiChoice = anyAsiAmount !== null;
 
  const ABILITY_LABELS: Record<string, string> = {
  strength: 'STR', dexterity: 'DEX', constitution: 'CON',
@@ -859,6 +931,52 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
  character={character}
  classData={CLASSES.find(c => c.name === character.class_name)}
  />
+ )}
+
+ {/* v2.514.0 — Ability picker for feats whose ASI is "choose any
+     ability" (Resilient, etc.). Appears once such a feat is selected;
+     the player must pick which ability gets the +N before continuing. */}
+ {currentMode === 'feat' && needsAsiChoice && (
+ <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'rgba(5,150,105,0.06)', border: '1px solid rgba(5,150,105,0.25)' }}>
+ <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: 'var(--c-green-l)', marginBottom: 8 }}>
+ {selectedFeat}: choose +{anyAsiAmount} ability
+ </div>
+ <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+ {ABILITY_NAMES.map(ab => {
+ const picked = featAsiChoice === ab;
+ const cur = character[ab] as number;
+ const atCap = cur >= 20;
+ return (
+ <button
+ key={ab}
+ type="button"
+ disabled={atCap}
+ onClick={() => onSetFeatAsiChoice(ab)}
+ title={atCap ? `${ab} is already at the maximum of 20` : `+${anyAsiAmount} ${ab} (${cur} → ${Math.min(20, cur + (anyAsiAmount ?? 0))})`}
+ style={{
+ padding: '7px 4px', borderRadius: 'var(--r-sm)', cursor: atCap ? 'not-allowed' : 'pointer',
+ border: `1px solid ${picked ? 'var(--c-green)' : 'var(--c-border-m)'}`,
+ background: picked ? 'rgba(5,150,105,0.18)' : 'var(--c-raised)',
+ color: atCap ? 'var(--t-3)' : picked ? 'var(--c-green-l)' : 'var(--t-1)',
+ opacity: atCap ? 0.5 : 1,
+ fontFamily: 'var(--ff-body)', fontWeight: picked ? 800 : 600, fontSize: 11,
+ textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+ }}
+ >
+ {ab.slice(0, 3)}
+ <div style={{ fontSize: 9, fontWeight: 600, marginTop: 1, opacity: 0.8 }}>
+ {cur}{atCap ? '' : ` → ${Math.min(20, cur + (anyAsiAmount ?? 0))}`}
+ </div>
+ </button>
+ );
+ })}
+ </div>
+ {!featAsiChoice && (
+ <div style={{ marginTop: 7, fontSize: 11, color: 'var(--c-amber-l)' }}>
+ Pick an ability to continue.
+ </div>
+ )}
+ </div>
  )}
  </div>
  );
