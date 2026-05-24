@@ -35,8 +35,6 @@ export default function CampaignBar({ userId }: CampaignBarProps) {
     }
 
     const ids = memberships.map((m: any) => m.campaign_id);
-    const roleMap: Record<string, string> = {};
-    memberships.forEach((m: any) => { roleMap[m.campaign_id] = m.role; });
 
     const { data: camps } = await supabase
       .from('campaigns')
@@ -60,7 +58,13 @@ export default function CampaignBar({ userId }: CampaignBarProps) {
     setCampaigns(
       (camps as Campaign[]).map(c => ({
         ...c,
-        myRole: roleMap[c.id] as 'dm' | 'player',
+        // v2.511.0 — DM is strictly the campaign owner. Previously
+        // myRole came from the campaign_members.role column, which
+        // could disagree with ownership (a member tagged 'dm' who
+        // isn't the owner). Per product decision there is exactly one
+        // DM = the owner, and co-DM isn't a concept. Derive from
+        // owner_id so this matches every other DM check in the app.
+        myRole: (c.owner_id === userId ? 'dm' : 'player') as 'dm' | 'player',
         memberCount: countMap[c.id] ?? 1,
       }))
     );

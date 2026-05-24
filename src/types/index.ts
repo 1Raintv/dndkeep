@@ -416,6 +416,32 @@ export interface SpeciesTrait {
   range?: string;
   damage?: string;
   damageType?: string;
+  // v2.511.0 — Natural weapon granted by this trait (Tabaxi Cat's
+  // Claws, Lizardfolk Bite, Dragonborn... etc.). When present, the
+  // character can attack with it from the Actions/weapons list — it's
+  // converted to a WeaponItem via naturalWeaponToWeapon() and merged
+  // into allWeapons. The trait ALSO still renders as a passive Features
+  // entry for its non-combat text (e.g. "climb speed equal to walking
+  // speed"), which the player self-manages. Keep this PURELY about the
+  // attack: the dice, the ability score used for attack+damage, the
+  // damage type, and an optional finesse flag.
+  naturalWeapon?: {
+    /** Display name of the attack, e.g. "Claws". Defaults to trait name. */
+    name?: string;
+    /** Damage dice, e.g. "1d6". */
+    dice: string;
+    /** Ability score used for attack + damage mods. */
+    ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA';
+    /** Damage type, e.g. "slashing". */
+    damageType: string;
+    /** If true, use the better of STR/DEX (finesse). Overrides `ability`
+     *  for the modifier calc when it yields a higher value. */
+    finesse?: boolean;
+    /** Optional range string; defaults to "Melee". */
+    range?: string;
+    /** Optional properties string (e.g. "Light"). */
+    properties?: string;
+  };
   save?: { ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'; dc: 'spell' | number; targetMode?: 'any' | 'enemies' };
   // Recovery for limited-use species traits (e.g. Aasimar's Healing
   // Hands — 1/long rest). Pairs with maxUsesFn-style logic when

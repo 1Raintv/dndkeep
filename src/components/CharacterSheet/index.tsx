@@ -37,7 +37,7 @@ import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canU
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { itemRequiresAttunement } from '../../lib/attunement';
-import { isStrikeableInventoryWeapon, inventoryItemToWeapon } from '../../lib/inventoryWeapon';
+import { isStrikeableInventoryWeapon, inventoryItemToWeapon, naturalWeaponToWeapon } from '../../lib/inventoryWeapon';
 import { getMagicItemById } from '../../lib/hooks/useMagicItems';
 
 import CharacterHeader from './CharacterHeader';
@@ -2492,7 +2492,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  unarmedModes: true,
  athleticsBonus,
  };
- const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons];
+ // v2.511.0 — Natural weapons from species traits (Tabaxi Cat's Claws,
+ // etc.). Any trait with a `naturalWeapon` field becomes an attackable
+ // WeaponItem in the same list as equipped weapons + Unarmed Strike.
+ // The trait's non-combat text still shows passively in the Features
+ // tab; this only adds the attack.
+ const speciesNaturalWeapons: any[] = (() => {
+   const sp = SPECIES.find(s => s.name === character.species);
+   if (!sp) return [];
+   return sp.traits
+     .map(t => naturalWeaponToWeapon(t as any, computed))
+     .filter((w): w is NonNullable<typeof w> => w !== null);
+ })();
+ const allWeapons = [unarmedStrike, ...(character.weapons ?? []), ...inventoryAsWeapons, ...speciesNaturalWeapons];
 
  // v2.43.0: Defenses calc moved to top-level vitals row (above HPStatsPanel area).
  // The Combat IIFE no longer needs to compute these.

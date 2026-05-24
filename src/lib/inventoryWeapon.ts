@@ -13,7 +13,7 @@
 // catalogue link, magical bonus fields). This module collapses that
 // into the strict `WeaponItem` shape callers can swing.
 
-import type { ComputedStats, InventoryItem, WeaponItem } from '../types';
+import type { ComputedStats, InventoryItem, WeaponItem, SpeciesTrait } from '../types';
 import { getMagicItemById } from './hooks/useMagicItems';
 import { itemRequiresAttunement } from './attunement';
 
@@ -93,5 +93,48 @@ export function inventoryItemToWeapon(
     range: item.range ?? 'Melee',
     properties: item.properties ?? '',
     notes: '',
+  };
+}
+
+/** v2.511.0 — Convert a species trait's `naturalWeapon` into a
+ *  WeaponItem so it appears in the Actions-tab attack list alongside
+ *  equipped weapons and Unarmed Strike.
+ *
+ *  The ability modifier used for attack + damage follows the trait's
+ *  `ability` (usually STR for claws/bite), or the better of STR/DEX
+ *  when `finesse` is set. Proficiency bonus is always added — natural
+ *  weapons are proficient by their nature (PHB: you're proficient with
+ *  your unarmed strikes and natural weapons).
+ *
+ *  The synthetic id is prefixed `nat_` so it never collides with
+ *  inventory (`inv_`) or catalogue weapon ids. */
+export function naturalWeaponToWeapon(
+  trait: SpeciesTrait,
+  computed: ComputedStats,
+): WeaponItem | null {
+  const nw = trait.naturalWeapon;
+  if (!nw) return null;
+
+  const ABILITY_KEY: Record<string, keyof ComputedStats['modifiers']> = {
+    STR: 'strength', DEX: 'dexterity', CON: 'constitution',
+    INT: 'intelligence', WIS: 'wisdom', CHA: 'charisma',
+  };
+  const baseMod = computed.modifiers[ABILITY_KEY[nw.ability]] ?? 0;
+  const dexMod = computed.modifiers.dexterity ?? 0;
+  const strMod = computed.modifiers.strength ?? 0;
+  // Finesse: better of STR/DEX, otherwise the trait's chosen ability.
+  const atkMod = nw.finesse ? Math.max(strMod, dexMod) : baseMod;
+  const pb = computed.proficiency_bonus ?? 2;
+
+  return {
+    id: `nat_${trait.name.replace(/\s+/g, '_').toLowerCase()}`,
+    name: nw.name ?? trait.name,
+    attackBonus: atkMod + pb,
+    damageDice: nw.dice,
+    damageBonus: atkMod,
+    damageType: nw.damageType.toLowerCase(),
+    range: nw.range ?? 'Melee',
+    properties: nw.properties ?? '',
+    notes: 'Natural weapon',
   };
 }
