@@ -536,7 +536,7 @@ function AppRoutes() {
                   Usually a network blip or a recent update — a fresh load fixes it.
                 </div>
                 <button
-                  onClick={() => { try { sessionStorage.removeItem('dndkeep:lazy-reloaded'); } catch {} window.location.reload(); }}
+                  onClick={() => { try { sessionStorage.removeItem('dndkeep:lazy-reload-ledger'); } catch {} window.location.reload(); }}
                   style={{
                     marginTop: 8, padding: '8px 20px', borderRadius: 8, cursor: 'pointer',
                     fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
