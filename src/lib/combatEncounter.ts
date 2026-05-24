@@ -654,7 +654,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   const { data: rowsRaw, error: rowsErr } = await (supabase as any)
     .from('combat_participants')
     .select(
-      'id, combatant_id, turn_order, name, participant_type, hidden_from_players, campaign_id, entity_id, legendary_actions_total, legendary_actions_remaining, ' +
+      'id, combatant_id, turn_order, name, participant_type, hidden_from_players, campaign_id, entity_id, movement_used_ft, legendary_actions_total, legendary_actions_remaining, ' +
         JOINED_COMBATANT_FIELDS
     )
     .eq('encounter_id', encounterId)
@@ -710,6 +710,27 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       // The condition will simply persist into next turn — DM can
       // remove manually.
       console.error('[advanceTurn] end-of-turn condition processing failed', err);
+    }
+  }
+
+  // v2.506.0 — Movement-gated feature auto-reset for the OUTGOING actor.
+  // Feline Agility (2024 Tabaxi) recharges when the character ends a
+  // turn having moved 0 ft. We read the outgoing participant's
+  // movement_used_ft (still intact — the turn-budget reset below only
+  // zeroes the INCOMING actor) and, if it's a character who moved 0 ft,
+  // clear their movement-gated feature_uses. Defensive: never blocks
+  // turn advance. See src/lib/movementGatedFeatures.ts.
+  if (outgoingForConditions) {
+    try {
+      const { resetMovementGatedFeatures } = await import('./movementGatedFeatures');
+      await resetMovementGatedFeatures({
+        participantId: outgoingForConditions.id,
+        participantType: outgoingForConditions.participant_type as 'character' | 'creature' | 'monster' | 'npc',
+        entityId: (outgoingForConditions as { entity_id?: string | null }).entity_id ?? null,
+        movementUsedFt: (outgoingForConditions as { movement_used_ft?: number | null }).movement_used_ft ?? 0,
+      });
+    } catch (err) {
+      console.error('[advanceTurn] movement-gated feature reset failed', err);
     }
   }
 

@@ -141,7 +141,7 @@ export const SPECIES: SpeciesData[] = [
       { name: 'Darkvision', description: 'You can see in dim light within 60 feet as if it were bright light, and in darkness as if it were dim light.' },
       { name: 'Cat\'s Claws', description: 'You have retractable claws. Climb speed equal to your walking speed. Claws are natural weapons dealing 1d6 + Strength modifier Slashing damage.' },
       { name: 'Cat\'s Talent', description: 'You have proficiency in Perception and Stealth.' },
-      { name: 'Feline Agility', description: 'Your reflexes let you move with a burst of speed. When you move on your turn, you can double your speed until the end of your turn. Once you do this, you can\'t do it again until you move 0 feet on one of your turns.', actionType: 'special' as const },
+      { name: 'Feline Agility', description: 'Your reflexes let you move with a burst of speed. When you move on your turn, you can double your speed until the end of your turn. Once you do this, you can\'t do it again until you move 0 feet on one of your turns.', actionType: 'special' as const, maxUses: 1, recovery: 'movement' as const },
     ],
   },
   {

@@ -46,6 +46,15 @@ export interface ClassAbility {
   maxUses?: number;
   maxUsesFn?: (c: Character) => number;
   rest?: 'short' | 'long';
+  /** v2.506.0 — Recovery trigger for limited-use features whose
+   *  refresh isn't a rest. Today only 'movement' (Tabaxi Feline
+   *  Agility: usable again after you move 0 ft on one of your turns).
+   *  When set, the use-tracker box still renders (manual click to
+   *  exhaust/restore), AND combat auto-resets the use at the end of
+   *  any turn the character moved 0 ft — see resetMovementGatedFeatures
+   *  in combatEncounter.ts. Mutually exclusive with `rest` in practice;
+   *  if both are set, `rest` wins for the tracker label. */
+  recovery?: 'movement';
   /** If true, it's a resource pool (uses cost, not limited total uses) */
   isPool?: boolean;
   psionicDie?: boolean;  // rolls correct die size on spend

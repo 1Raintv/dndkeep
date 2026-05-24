@@ -67,8 +67,9 @@ function resolveSaveDC(save: SaveSpec | undefined, character: Character): number
 // uses, the user clicks individual boxes. SlotBoxes handles size scaling
 // (sm 12×12 when max > 8 to keep the row narrow; md 16×16 otherwise for
 // thumb-tap comfort).
-function UseTracker({ abilityName, max, rest, character, onUpdate, palette }: {
- abilityName: string; max: number; rest: 'short' | 'long';
+function UseTracker({ abilityName, max, rest, recovery, character, onUpdate, palette }: {
+ abilityName: string; max: number; rest?: 'short' | 'long';
+ recovery?: 'movement';
  character: Character; onUpdate: (u: Partial<Character>) => void;
  palette?: SlotBoxesPalette;
 }) {
@@ -86,7 +87,13 @@ function UseTracker({ abilityName, max, rest, character, onUpdate, palette }: {
  // (e.g. psionic disciplines pass PALETTE_PSI).
  const pal = palette ?? PALETTE_TEAL;
  const size = max > 8 ? 'sm' : 'md';
- const restWord = rest === 'short' ? 'Short' : 'Long';
+ // v2.506.0 — recovery label generalized. 'movement'-recovery features
+ // (Feline Agility) describe the auto-reset condition; rest features
+ // keep their Short/Long Rest wording.
+ const recoverWord = recovery === 'movement'
+  ? 'moving 0 ft on a turn'
+  : rest === 'short' ? 'Short Rest'
+  : 'Long Rest';
 
  return (
   <SlotBoxes
@@ -99,8 +106,8 @@ function UseTracker({ abilityName, max, rest, character, onUpdate, palette }: {
    ariaLabelPrefix={`${abilityName} use`}
    title={(_, available) =>
     available
-     ? `Use ${abilityName} (${restWord} Rest recovers)`
-     : `Restore use (${restWord} Rest recovers)`
+     ? `Use ${abilityName} (recovers on ${recoverWord})`
+     : `Restore use (recovers on ${recoverWord})`
    }
   />
  );
@@ -394,6 +401,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  minLevel: 1, // species traits available from level 1
  ...(typeof t.maxUses === 'number' ? { maxUses: t.maxUses } : {}),
  ...(t.rest ? { rest: t.rest } : {}),
+ ...(t.recovery ? { recovery: t.recovery } : {}),
  ...(t.range ? { range: t.range } : {}),
  } as any);
  }
@@ -540,7 +548,10 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  typeof ped === 'number' && ped > 0 ? `Cast (${ped} PED)` :
  ability.actionType === 'reaction' ? 'Trigger' :
  (ability as any).psionicDie ? `Spend Die (1${getPsionicDieSize(character.level)})` :
- (ability as any).isPool ? 'Spend Die' : 'Cast';
+ (ability as any).isPool ? 'Spend Die' :
+ // v2.506.0 — movement-gated features (Feline Agility) read "Use":
+ // you're activating a speed burst, not casting a spell.
+ (ability as any).recovery === 'movement' ? 'Use' : 'Cast';
  const isFlashing = justUsed === ability.name;
  const ACTION_BADGE_LABEL: Record<string, string> = {
  action: 'ACTION', bonus: 'BONUS', reaction: 'REACT', special: 'SPCL', free: 'FREE',
@@ -720,11 +731,12 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }}
  />
  );
- })() : maxUses !== undefined && ability.rest ? (
+ })() : maxUses !== undefined && (ability.rest || (ability as any).recovery) ? (
  <UseTracker
  abilityName={ability.name}
  max={maxUses}
  rest={ability.rest}
+ recovery={(ability as any).recovery}
  character={character}
  onUpdate={onUpdate}
  palette={trackerPalette}

@@ -421,6 +421,11 @@ export interface SpeciesTrait {
   // Hands — 1/long rest). Pairs with maxUsesFn-style logic when
   // surfaced; passive traits leave this undefined.
   rest?: 'short' | 'long';
+  // v2.506.0 — Non-rest recovery trigger. 'movement' = recharges when
+  // the character ends a turn having moved 0 ft (Tabaxi Feline
+  // Agility). Pairs with maxUses to render an exhaustion box and
+  // enrolls the trait in the combat turn-end auto-reset.
+  recovery?: 'movement';
   maxUses?: number;
 }
 
