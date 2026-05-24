@@ -689,13 +689,13 @@ export default function SpellCastButton({
  };
 
  return (
- <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'nowrap', justifyContent: 'flex-start', width: '100%' }}>
- {/* v2.367.0 — Lock to no-wrap so the Cast and Hit/Damage buttons
-     stay side-by-side on a single row. Parent grid (SpellsTab,
-     WeaponsTracker) reserves a fixed-width column for this so
-     row alignment stays consistent across the whole table —
-     spells with one button and spells with two now visually
-     align their columns identically. */}
+ <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'nowrap', justifyContent: 'flex-end', width: '100%' }}>
+ {/* v2.504.0 — justifyContent flipped flex-start → flex-end so spell
+     Cast buttons sit at the far right of their column, matching the
+     class-ability Cast buttons (ClassAbilitiesSection right-justifies
+     its button column). Pre-v2.504 spells were left-aligned within
+     the 170px column while abilities were right-aligned, so the two
+     surfaces' buttons didn't line up. */}
 
  {/* ── CATEGORY 1: UTILITY — cast button only ── */}
  {mechanics.isUtility && (
@@ -741,7 +741,11 @@ export default function SpellCastButton({
  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
  }}
  >
- {mechanics.damageDice}{mechanics.damageType ? ` ${mechanics.damageType.toLowerCase().slice(0, 4)}.` : ''}
+ {/* v2.504.0 — damage type stripped from the compact button label
+     (was "{dice} thun."); the full typed damage stays in the
+     expanded detail panel and the actual roll still applies the
+     correct type. Compact row shows dice only for a cleaner scan. */}
+ {mechanics.damageDice}
  </button>
  )}
 
@@ -763,7 +767,8 @@ export default function SpellCastButton({
  border: `1px solid ${dmgColor}50`, color: dmgColor }}
  title="Roll damage (independent of attack roll)"
  >
- {mechanics.damageDice} {mechanics.damageType}
+ {/* v2.504.0 — dice only; type lives in expanded details + the roll. */}
+ {mechanics.damageDice}
  </button>
  )}
  {/* v2.101.0 — Phase F: in-combat single-target spell attack.
@@ -857,7 +862,10 @@ export default function SpellCastButton({
  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
  }}
  >
- {recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ {/* v2.504.0 — button label is just "Cast"; the save DC already
+     shows in the row's HIT/DC column, so repeating it on the
+     button was redundant. Full save info stays in the tooltip. */}
+ {recentlyCast ?? 'Cast'}
  </button>
  );
  }
@@ -878,7 +886,7 @@ export default function SpellCastButton({
  attackName={spell.name}
  source="spell"
  compact
- label={recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ label={recentlyCast ?? 'Cast'}
  onDeclared={() => {
  if (!isCantrip) spendSlot(effSlot);
  flashCast(effSlot);
@@ -911,7 +919,7 @@ export default function SpellCastButton({
  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
  }}
  >
- {recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ {recentlyCast ?? 'Cast'}
  </button>
  );
  })()}
@@ -925,7 +933,8 @@ export default function SpellCastButton({
  border: `1px solid ${dmgColor}50`, color: dmgColor }}
  title={`Roll ${mechanics.damageDice} ${mechanics.damageType} damage independently (manual resolution).`}
  >
- {mechanics.damageDice} {mechanics.damageType}
+ {/* v2.504.0 — dice only; type in tooltip + expanded details. */}
+ {mechanics.damageDice}
  </button>
  </>
  )}
@@ -957,7 +966,7 @@ export default function SpellCastButton({
  }}
  title={`Targets make ${mechanics.saveType} DC ${saveDC} save. Click to cast.`}
  >
- {recentlyCast ?? `Cast (${mechanics.saveType} DC ${saveDC})`}
+ {recentlyCast ?? 'Cast'}
  </button>
  )}
 

@@ -3378,9 +3378,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                        {trait.name}
                      </span>
                    </div>
-                   <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 1 }}>
-                     {sd.name} species{t.rest ? ` · refreshes on ${t.rest === 'long' ? 'Long' : 'Short'} Rest` : ''}
-                   </div>
+                   {/* v2.504.0 — "{species} species · refreshes on X Rest"
+                       subtitle removed per feedback. The SPECIES — {NAME}
+                       section header already states the species, and the
+                       recovery/charges info shows in the charges column;
+                       the subtitle was redundant noise that made these
+                       rows taller than the spell rows. NAME cell is now
+                       just the trait name, matching the unified row style. */}
                  </div>
                  {/* Col 3: TIME (empty — action type lives in LEAD) */}
                  <div />
@@ -3854,38 +3858,31 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
        - Effect-type TAGS removed (the HIT/DC column already signals
          attack-vs-save; AoE is visible in the RANGE column's target
          line).
-     What remains: ONLY a concentration marker, moved here UNDER the
-     name (was previously an inline pill beside the name). When the
-     spell isn't concentration, this line renders nothing — letting
-     the row collapse to a single tight line, which is the whole
-     point of the cleanup. */}
- {spell.concentration && (
- <div style={{ marginTop: 1, whiteSpace: 'nowrap' as const }}>
- {isActivelyConcentrating ? (
- <span style={{
- fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
- color: '#c4b5fd', background: 'rgba(167,139,250,0.22)',
- border: '1px solid rgba(167,139,250,0.55)', borderRadius: 999,
- padding: '1px 7px',
- }} title="You are currently concentrating on this spell">
- ● Active
- </span>
- ) : (
- <span style={{
- fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
- color: '#fbbf24', background: 'rgba(251,191,36,0.1)',
- border: '1px solid rgba(251,191,36,0.35)', borderRadius: 999,
- padding: '1px 7px',
- }} title="Concentration spell — casting requires maintaining focus">
- Concentration
- </span>
- )}
- </div>
- )}
+     v2.504.0 — The under-name concentration line added in v2.501 is
+     removed; concentration now shows as a yellow "C" chip in the TIME
+     column (Col 3) instead, so the NAME cell is just the name. This
+     keeps the row to a single tight line for every spell. */}
  </div>
 
- {/* Col 3: TIME */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
+ {/* Col 3: TIME — abbreviated casting time + a yellow "C" concentration
+     chip when applicable. v2.504.0 — replaces the under-name
+     concentration marker. The chip turns solid purple "● C" when this
+     is the spell currently being concentrated on, matching the prior
+     active-concentration styling but compressed into the column. */}
+ <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, whiteSpace: 'nowrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)' }}>{timeAbbr}</span>
+ {spell.concentration && (
+ <span style={{
+ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 9, lineHeight: 1,
+ borderRadius: 4, padding: '1px 5px',
+ color: isActivelyConcentrating ? '#c4b5fd' : '#fbbf24',
+ background: isActivelyConcentrating ? 'rgba(167,139,250,0.22)' : 'rgba(251,191,36,0.12)',
+ border: `1px solid ${isActivelyConcentrating ? 'rgba(167,139,250,0.55)' : 'rgba(251,191,36,0.4)'}`,
+ }} title={isActivelyConcentrating ? 'You are concentrating on this spell' : 'Concentration spell — requires maintaining focus'}>
+ {isActivelyConcentrating ? '● C' : 'C'}
+ </span>
+ )}
+ </div>
 
  {/* Col 4: RANGE + TARGET (v2.63.0 stacked) */}
  <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>

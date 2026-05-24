@@ -685,7 +685,11 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  title={tip}
  style={{
  display: 'inline-flex', alignItems: 'center', gap: 4,
- fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 11,
+ // v2.504.0 — font unified with the spell HIT/DC chip
+ // (index.tsx Col 5: ff-stat, weight 900, size 12). Was
+ // weight 800 / size 11, which read as a visibly different
+ // typeface/size next to the spell rows. Now identical.
+ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
  padding: '2px 7px', borderRadius: 999,
  background: 'rgba(167,139,250,0.12)',
  border: '1px solid rgba(167,139,250,0.4)',
