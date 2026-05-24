@@ -1,14 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FEATS } from '../../data/feats';
+import { checkFeatPrerequisite } from '../../lib/featPrerequisites';
+import type { Character, ClassData } from '../../types';
 
 interface FeatPickerProps {
   selected: string | null;
   onSelect: (featName: string | null) => void;
   generalOnly?: boolean;
+  // v2.513.0 — Optional character context for prerequisite gating.
+  // When provided, feats whose prerequisites the character doesn't meet
+  // are shown LOCKED (visible, readable, with a red reason) and cannot
+  // be selected. When omitted, all feats are selectable (back-compat
+  // for any caller that hasn't wired context yet).
+  character?: Pick<Character, 'level' | 'class_name'>;
+  classData?: ClassData;
 }
 
-export default function FeatPicker({ selected, onSelect, generalOnly = true }: FeatPickerProps) {
+export default function FeatPicker({ selected, onSelect, generalOnly = true, character, classData }: FeatPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -122,27 +131,41 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
         {feats.map(feat => {
           const isSel = selected === feat.name;
           const isExp = expanded === feat.name;
+          // v2.513.0 — prerequisite gating. If character context is
+          // provided, evaluate eligibility; locked feats stay visible
+          // and readable but can't be selected.
+          const elig = character
+            ? checkFeatPrerequisite(feat.prerequisite, character, classData)
+            : { met: true, reason: null as string | null };
+          const locked = !elig.met;
           return (
-            <div key={feat.name} style={{ borderBottom: '1px solid var(--c-border)', background: isSel ? 'rgba(212,160,23,0.06)' : 'transparent' }}>
-              {/* Row — click to BOTH expand AND select */}
+            <div key={feat.name} style={{ borderBottom: '1px solid var(--c-border)', background: isSel ? 'rgba(212,160,23,0.06)' : 'transparent', opacity: locked ? 0.72 : 1 }}>
+              {/* Row — click to expand; select only if not locked */}
               <div
                 onClick={() => {
                   setExpanded(isExp ? null : feat.name);
-                  if (!isSel) onSelect(feat.name);
+                  // Locked feats can be read (expand) but not selected.
+                  if (!isSel && !locked) onSelect(feat.name);
                 }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', minHeight: 44 }}
                 onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
               >
-                {/* Selection indicator (visual only — click anywhere on row to select) */}
-                <div
-                  style={{
-                    width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
-                    border: `2px solid ${isSel ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
-                    background: isSel ? 'var(--c-gold)' : 'transparent',
-                    transition: 'all 0.15s',
-                  }}
-                />
+                {/* Selection indicator, or a lock when ineligible */}
+                {locked ? (
+                  <div style={{ width: 14, height: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-red-l, #f87171)', fontSize: 12 }} title={elig.reason ?? 'Locked'}>
+                    🔒
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                      border: `2px solid ${isSel ? 'var(--c-gold)' : 'var(--c-border-m)'}`,
+                      background: isSel ? 'var(--c-gold)' : 'transparent',
+                      transition: 'all 0.15s',
+                    }}
+                  />
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: isSel ? 700 : 500, fontSize: 13, color: isSel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>
@@ -160,9 +183,16 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true }: F
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {feat.description}
-                  </div>
+                  {/* v2.513.0 — red lock reason when ineligible; else description */}
+                  {locked ? (
+                    <div style={{ fontSize: 11, color: 'var(--c-red-l, #f87171)', marginTop: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {elig.reason}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {feat.description}
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0, transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
               </div>

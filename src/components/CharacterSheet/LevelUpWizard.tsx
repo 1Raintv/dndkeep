@@ -856,6 +856,8 @@ function ASIStep({ character, asiChoice, onSetChoice, abiBoosts, onSetBoosts, to
  <FeatPicker
  selected={selectedFeat ?? null}
  onSelect={name => onSetFeat(name ?? '')}
+ character={character}
+ classData={CLASSES.find(c => c.name === character.class_name)}
  />
  )}
  </div>
