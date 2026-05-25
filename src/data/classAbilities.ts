@@ -197,15 +197,62 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Bardic Inspiration',
       actionType: 'bonus',
-      description: 'Give a creature you can see within 60 ft a Bardic Inspiration die to add to one ability check, attack roll, or saving throw within 10 minutes.',
+      // v2.526.0 — Full richness pass. Die scales d6/d8/d10/d12 at levels
+      // 1/5/10/15. Uses = CHA modifier (min 1). From level 5 (Font of
+      // Inspiration) it recharges on a Short OR Long Rest.
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const die = lvl >= 15 ? 'd12' : lvl >= 10 ? 'd10' : lvl >= 5 ? 'd8' : 'd6';
+        return `Bonus Action: give a creature within 60 ft a Bardic Inspiration ${die}. Within 10 minutes they can add it to one d20 Test (ability check, attack roll, or saving throw), even after seeing the roll, before knowing the outcome.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const die = lvl >= 15 ? 'd12' : lvl >= 10 ? 'd10' : lvl >= 5 ? 'd8' : 'd6';
+        const uses = Math.max(1, Math.floor(((c?.charisma ?? 10) - 10) / 2));
+        const recharge = lvl >= 5 ? 'Short or Long Rest (Font of Inspiration)' : 'Long Rest';
+        return `As a Bonus Action, you give one creature other than yourself within 60 ft a Bardic Inspiration die: a ${die} at your level (d6 at 1\u20134, d8 at 5\u20139, d10 at 10\u201314, d12 at 15+).\n\nOnce within 10 minutes, the creature can roll the die and add it to one d20 Test it makes (ability check, attack roll, or saving throw). It can do so after seeing the d20 roll but before the outcome is announced.\n\nUses: equal to your Charisma modifier (currently ${uses}, minimum 1), regained on a ${recharge}.${lvl >= 20 ? '\n\nSuperior Inspiration (level 20): when you roll Initiative, you regain expended uses until you have at least two.' : ''}`;
+      },
       minLevel: 1,
       rest: 'short',
-      maxUsesFn: c => Math.max(1, cha(c)),
+      maxUsesFn: (c: any) => Math.max(1, cha(c)),
+    },
+    {
+      name: 'Jack of All Trades',
+      actionType: 'free',
+      // v2.526.0 — Half proficiency (round down) to any ability check that
+      // doesn't already include proficiency.
+      description: (c: any) => {
+        const half = Math.floor(proficiencyBonus(c?.level ?? 2) / 2);
+        return `Add half your proficiency bonus (+${half}) to any ability check you make that doesn\u2019t already include your proficiency bonus.`;
+      },
+      descriptionLong: (c: any) => {
+        const half = Math.floor(proficiencyBonus(c?.level ?? 2) / 2);
+        return `You can add half your proficiency bonus, rounded down (currently +${half}), to any ability check you make that doesn\u2019t already include your proficiency bonus. This also improves your Initiative rolls. It makes you competent at virtually everything, even skills you aren\u2019t trained in.`;
+      },
+      minLevel: 2,
+    },
+    {
+      name: 'Song of Rest',
+      actionType: 'free',
+      // v2.526.0 — Extra healing during a Short Rest; die scales
+      // d6/d8/d10/d12 at 2/9/13/17.
+      description: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const die = lvl >= 17 ? 'd12' : lvl >= 13 ? 'd10' : lvl >= 9 ? 'd8' : 'd6';
+        return `During a Short Rest, allies who spend Hit Dice to heal regain an extra ${die} Hit Points (once each).`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const die = lvl >= 17 ? 'd12' : lvl >= 13 ? 'd10' : lvl >= 9 ? 'd8' : 'd6';
+        return `If you or any friendly creatures who can hear your performance regain Hit Points at the end of a Short Rest by spending one or more Hit Dice, each of those creatures regains an extra ${die} Hit Points (d6 at levels 2\u20138, d8 at 9\u201312, d10 at 13\u201316, d12 at 17+).`;
+      },
+      minLevel: 2,
     },
     {
       name: 'Countercharm',
       actionType: 'action',
-      description: 'Start a performance lasting until the end of your next turn. Each friendly creature within 30 ft has Advantage on saving throws against Frightened and Charmed.',
+      description: 'Start a performance until the end of your next turn. You and friendly creatures within 30 ft have Advantage on saving throws to avoid or end the Frightened and Charmed conditions.',
+      descriptionLong: 'As a Magic action, you can start a performance that lasts until the end of your next turn. During that time, you and any friendly creatures within 30 ft of you have Advantage on saving throws to avoid or end the Frightened and Charmed conditions. A creature must be able to hear you to gain this benefit.',
       minLevel: 6,
     },
   ],
