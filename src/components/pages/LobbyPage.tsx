@@ -4,6 +4,7 @@ import type { Character, Campaign } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useCampaign } from '../../context/CampaignContext';
 import { getCharacters, createCharacter, joinCampaignByCode, addCampaignMember } from '../../lib/supabase';
+import { canCreateCharacter, canCreateCampaign, totalCharacterSlots } from '../../lib/entitlements';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ function hpColor(current: number, max: number) {
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function LobbyPage() {
-  const { user, isPro } = useAuth();
+  const { user, profile, isSubscribed } = useAuth();
   const { campaigns, loadingCampaigns, refreshCampaigns } = useCampaign();
   const navigate = useNavigate();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -37,7 +38,13 @@ export default function LobbyPage() {
     });
   }, [user]);
 
-  const canCreate = isPro || characters.length === 0;
+  // v2.518.0 — entitlement gates from the central engine.
+  const charGate = canCreateCharacter(profile, characters.length);
+  const canCreate = charGate.allowed;
+  const charSlotTotal = totalCharacterSlots(profile);
+  // Campaigns the user OWNS (is DM of) — for the campaign-slot gate.
+  const ownedCampaignCount = (campaigns ?? []).filter(c => c.owner_id === user?.id).length;
+  const campaignGate = canCreateCampaign(profile, ownedCampaignCount);
 
   async function handleDuplicate(char: Character, e: React.MouseEvent) {
     e.stopPropagation();
@@ -105,17 +112,22 @@ export default function LobbyPage() {
             <div style={{ fontWeight: 700, fontSize: '1.25rem', color: 'var(--t-1)' }}>Characters</div>
             <div style={{ fontSize: 12, color: 'var(--t-3)', marginTop: 2 }}>
               {characters.length > 0
-                ? `${characters.length} character${characters.length !== 1 ? 's' : ''}${!isPro ? ' · Free (1 max)' : ''}`
+                ? `${characters.length} of ${charSlotTotal} character slot${charSlotTotal !== 1 ? 's' : ''} used`
                 : 'Create your first character to get started'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {!isPro && characters.length > 0 && (
-              <button className="btn-ghost btn-sm" onClick={() => navigate('/settings')} style={{ color: 'var(--c-gold-l)' }}>
-                Upgrade to Pro
+            {!canCreate && (
+              <button className="btn-ghost btn-sm" onClick={() => navigate('/store')} style={{ color: 'var(--c-gold-l)' }}>
+                Get more slots
               </button>
             )}
-            <button className="btn-gold btn-sm" onClick={() => navigate('/creator')} disabled={!canCreate}>
+            <button
+              className="btn-gold btn-sm"
+              onClick={() => navigate('/creator')}
+              disabled={!canCreate}
+              title={canCreate ? '' : (charGate.reason ?? '')}
+            >
               + New Character
             </button>
           </div>
@@ -151,9 +163,18 @@ export default function LobbyPage() {
               {loadingCampaigns ? 'Loading...' : `${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''}`}
             </div>
           </div>
-          {isPro && (
+          {campaignGate.allowed ? (
             <button className="btn-gold btn-sm" onClick={() => setShowCreate(v => !v)}>
               + New Campaign
+            </button>
+          ) : (
+            <button
+              className="btn-ghost btn-sm"
+              onClick={() => navigate('/store')}
+              style={{ color: 'var(--c-gold-l)' }}
+              title={campaignGate.reason ?? ''}
+            >
+              🔒 {isSubscribed ? 'Add a campaign slot' : 'Subscribe to create campaigns'}
             </button>
           )}
         </div>
@@ -208,7 +229,7 @@ export default function LobbyPage() {
           </div>
         ) : campaigns.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--t-3)', fontSize: 13, border: '1px dashed var(--c-border)', borderRadius: 'var(--r-xl)' }}>
-            {isPro ? 'No campaigns yet. Create one or join with a code.' : 'Join a campaign with a code above, or upgrade to Pro to create your own.'}
+            {campaignGate.allowed ? 'No campaigns yet. Create one or join with a code.' : 'Join a campaign with a code above, or subscribe to create your own.'}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 'var(--sp-3)' }}>

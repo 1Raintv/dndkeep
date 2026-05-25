@@ -4,6 +4,7 @@ import { CLASSES, getSubclassSpellIds } from '../../data/classes';
 import { FEATS } from '../../data/feats';
 import { SKILLS } from '../../data/skills';
 import { computeFeatRiders } from '../../lib/featRiders';
+import { FREE_LEVEL_CAP } from '../../lib/entitlements';
 import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
 import FeatPicker from '../shared/FeatPicker';
 import { abilityModifier } from '../../lib/gameUtils';
@@ -62,6 +63,10 @@ function meetsPrereq(character: Character, className: string): { met: boolean; r
 }
 
 export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUpWizardProps) {
+ // v2.518.0 — subscription gate: leveling a character past the free cap
+ // (to level 10+) requires an active subscription. We read it here so
+ // the wizard can block the confirm and show an upsell instead.
+ const { isSubscribed } = useAuth();
  // ── v2.32: Target-class state ──────────────────────────────────────
  // targetKind determines which class gets the new level:
  //   'primary'   = character.class_name (advance character.level)
@@ -91,6 +96,11 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  // Existing refs (now computed against effective class)
  const newLevel = effectiveNewLevel;
  const classData = effectiveClassData;
+ // v2.518.0 — Block leveling past the free cap without an active sub.
+ // The cap is on the character's TOTAL level (multiclass-aware), so a
+ // character reaching total level 10 is the wall. Free users see an
+ // upsell instead of the confirm button.
+ const blockedByLevelCap = totalNewLevel > FREE_LEVEL_CAP && !isSubscribed;
  const subclassUnlockLevel = classData?.subclasses?.[0]?.unlock_level ?? 3;
  // Subclass choice is needed if target class doesn't yet have one assigned and we're hitting unlock level
  const existingSubclassForTarget =
@@ -301,6 +311,9 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  }
 
  function handleConfirm() {
+ // v2.518.0 — safety net: never commit a level-up past the free cap
+ // without an active subscription, even if the UI is bypassed.
+ if (blockedByLevelCap) return;
  onLevelUp(buildUpdates());
  onClose();
  }
@@ -465,9 +478,20 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  </button>
 
  {step === 'confirm' ? (
+ blockedByLevelCap ? (
+ <button
+ className="btn-gold"
+ onClick={() => { onClose(); window.location.hash = '#/store'; }}
+ style={{ fontWeight: 700 }}
+ title={`Leveling past ${FREE_LEVEL_CAP} requires an active subscription`}
+ >
+ 🔒 Subscribe to reach level {totalNewLevel}
+ </button>
+ ) : (
  <button className="btn-gold" onClick={handleConfirm} style={{ fontWeight: 700 }}>
  Confirm Level Up
  </button>
+ )
  ) : (
  <button
  className="btn-primary btn-sm"

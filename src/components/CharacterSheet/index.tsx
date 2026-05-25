@@ -38,6 +38,8 @@ import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { itemRequiresAttunement } from '../../lib/attunement';
 import { isStrikeableInventoryWeapon, inventoryItemToWeapon, naturalWeaponToWeapon } from '../../lib/inventoryWeapon';
+import { useAuth } from '../../context/AuthContext';
+import { isCharacterFrozen } from '../../lib/entitlements';
 import { getMagicItemById } from '../../lib/hooks/useMagicItems';
 
 import CharacterHeader from './CharacterHeader';
@@ -135,6 +137,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const toast = useToast();
  const [character, setCharacter] = useState<Character>(initialCharacter);
  const [activeTab, setActiveTab] = useState<Tab>('actions');
+
+ // v2.518.0 — Frozen state: a character at level 10+ belonging to a
+ // non-subscriber is view-only. We block the persistence path
+ // (applyUpdate) so no edits/rolls/state changes are saved, and show a
+ // banner with Subscribe + Delete actions. The character is never
+ // deleted automatically — the owner can still delete it to free a slot.
+ const { profile } = useAuth();
+ const frozen = isCharacterFrozen(profile, character);
 
  // Listen for tab-switch events from banners/alerts
  useEffect(() => {
@@ -567,6 +577,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  useEffect(() => () => { flushToSupabase(); }, [flushToSupabase]);
 
  function applyUpdate(partial: Partial<Character>, immediate = false) {
+  // v2.518.0 — Frozen characters are view-only: drop all persisted
+  // mutations. Deletion uses a different path (settings → delete), not
+  // applyUpdate, so the owner can still free the slot. This makes rolls,
+  // edits, HP changes, spell prep, etc. no-ops on a frozen sheet.
+  if (frozen) {
+    toast?.showToast?.('This character is frozen. Subscribe to unlock leveling and play past level 9.', 'warn');
+    return;
+  }
   // v2.75.0: Append events to character_history for each meaningful change.
   // Fire-and-forget — the helper swallows all errors, so logging can never
   // break the UI or a mutation. Realtime-echoed remote changes bypass
@@ -1832,8 +1850,37 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    showToast={toast.showToast}
  />
 
+ {/* v2.518.0 — Frozen-character banner. A character at level 10+ owned
+     by a non-subscriber is view-only: all edits/rolls are no-ops (see
+     the applyUpdate guard). This banner explains why and offers the two
+     allowed actions — subscribe (unfreeze) or delete (free the slot). */}
+ {frozen && (
+ <div style={{
+   display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' as const,
+   padding: '12px 16px', marginBottom: 'var(--sp-3)',
+   background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.35)',
+   borderRadius: 'var(--r-lg)',
+ }}>
+ <span style={{ fontSize: 20 }}>🔒</span>
+ <div style={{ flex: 1, minWidth: 200 }}>
+ <div style={{ fontWeight: 800, fontSize: 13, color: '#fca5a5' }}>This character is frozen</div>
+ <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.4 }}>
+ Level&nbsp;{character.level}+ characters require an active subscription. The sheet is view-only —
+ rolls and edits are disabled. Subscribe to unlock, or delete this character to free its slot.
+ </div>
+ </div>
+ <button
+ className="btn-gold btn-sm"
+ onClick={() => { window.location.hash = '#/store'; }}
+ style={{ flexShrink: 0 }}
+ >
+ Subscribe to unlock
+ </button>
+ </div>
+ )}
+
  {/* ── HUD TWO-COLUMN LAYOUT ── */}
- <div className="cs-hud-layout">
+ <div className="cs-hud-layout" style={frozen ? { opacity: 0.55, pointerEvents: 'none' as const } : undefined}>
  {/* ── LEFT VITALS COLUMN — sticky on desktop ── */}
  <aside className="cs-vitals-col">
  {/* v2.77.0: Turn Economy relocated here, ABOVE Saving Throws per user

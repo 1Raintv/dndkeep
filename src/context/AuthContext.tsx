@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
 import { supabase, getProfile } from '../lib/supabase';
+import { isSubscriptionActive } from '../lib/entitlements';
 
 interface AuthContextValue {
   session: Session | null;
@@ -9,6 +10,14 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   isPro: boolean;
+  /** v2.518.0 — Authoritative "is the subscription active right now?"
+   *  flag, derived from subscription_status ('active'/'trialing') via
+   *  the entitlements engine. This is the signal gates should use for
+   *  subscriber-only features (level 10+, campaign creation), because
+   *  it reflects Stripe's actual billing state rather than a static
+   *  tier label. `isPro` is retained for back-compat with older call
+   *  sites that key off subscription_tier. */
+  isSubscribed: boolean;
   /** v2.329.0 — T7: derived flag mirroring profile.show_ua_content
    *  with a safe `false` default. Consumers in the character creator
    *  / subclass pickers / class compendium use this to filter out
@@ -23,6 +32,7 @@ const AuthContext = createContext<AuthContextValue>({
   profile: null,
   loading: true,
   isPro: false,
+  isSubscribed: false,
   showUaContent: false,
   refreshProfile: async () => {},
 });
@@ -64,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       loading,
       isPro: profile?.subscription_tier === 'pro',
+      isSubscribed: isSubscriptionActive(profile),
       showUaContent: profile?.show_ua_content === true,
       refreshProfile,
     }}>

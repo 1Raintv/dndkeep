@@ -32,12 +32,14 @@
 
 import type { Character } from '../types';
 
-/** Minimal shape of the profile fields entitlements care about. */
+/** Minimal shape of the profile fields entitlements care about.
+ *  All optional so the app's Profile type (which has these as optional)
+ *  satisfies it directly; defaults are applied in each function. */
 export interface EntitlementProfile {
-  subscription_status: string;      // 'active' | 'inactive' | 'past_due' | 'canceled' | ...
+  subscription_status?: string;      // 'active' | 'inactive' | 'past_due' | 'canceled' | ...
   subscription_tier?: string | null;
-  extra_character_slots: number;    // one-time purchased, on top of the 1 base
-  extra_campaign_slots: number;     // subscriber-only add-ons
+  extra_character_slots?: number;    // one-time purchased, on top of the 1 base
+  extra_campaign_slots?: number;     // subscriber-only add-ons
   ultimate_campaign?: boolean;
 }
 

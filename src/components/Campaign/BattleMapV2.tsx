@@ -8805,6 +8805,28 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // auto-selects it. DM-only via RLS + UI gating.
   // v2.241 — uses inline modal prompt (replaced window.prompt).
   const createNewScene = useCallback(async () => {
+    // v2.518.0 — client-side scene cap check for a friendly message.
+    // The DB trigger enforce_scene_limit is the authoritative backstop;
+    // this just avoids a raw error and explains the Ultimate upgrade.
+    try {
+      const { data: campRow } = await supabase
+        .from('campaigns')
+        .select('scene_limit')
+        .eq('id', campaignId)
+        .maybeSingle();
+      const cap = (campRow?.scene_limit as number | null) ?? 10;
+      if (scenes.length >= cap) {
+        showToast(
+          cap >= 50
+            ? `This campaign has reached its ${cap}-scene limit.`
+            : `This campaign has reached its ${cap}-scene limit. The Ultimate Campaign upgrade raises new campaigns to 50 scenes.`,
+          'error',
+        );
+        return;
+      }
+    } catch {
+      // If the check fails, fall through — the DB trigger still guards.
+    }
     const name = await promptModal({
       title: 'New scene',
       placeholder: 'Scene name',
