@@ -582,14 +582,82 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: "Hunter's Mark",
       actionType: 'bonus',
-      description: 'Always prepared. Bonus Action: curse one target. Deal +1d6 damage to it on each hit. Concentration, 1 hour.',
+      // v2.524.0 — Full richness pass. Always-prepared; Favored Enemy
+      // grants free casts that scale 2/3/4/5/6 at levels 1/5/9/13/17.
+      // Extra damage die is 1d6 (rises to 1d10 at level 11 with no
+      // dedicated feature, but RAW the die stays 1d6 — extra damage is
+      // applied on each hit; Foe Slayer adds WIS at 18).
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const free = lvl >= 17 ? 6 : lvl >= 13 ? 5 : lvl >= 9 ? 4 : lvl >= 5 ? 3 : 2;
+        return `Bonus Action: mark a creature you can see. Deal +1d6 damage to it on each weapon hit; Advantage to find it. Always prepared, and you can cast it ${free}× per Long Rest without a spell slot.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const free = lvl >= 17 ? 6 : lvl >= 13 ? 5 : lvl >= 9 ? 4 : lvl >= 5 ? 3 : 2;
+        const precise = lvl >= 17 ? '\n• Precise Hunter (level 17): you have Advantage on attack rolls against the marked creature.' : '';
+        const foeSlayer = lvl >= 18 ? '\n• Foe Slayer (level 18): the extra damage die becomes 1d10 instead of 1d6.' : '';
+        const die = lvl >= 18 ? '1d10' : '1d6';
+        return `Hunter's Mark is always prepared and doesn't count against your prepared spells. Via Favored Enemy you can cast it ${free} times per Long Rest without expending a spell slot (free casts: 2 at levels 1-4, 3 at 5-8, 4 at 9-12, 5 at 13-16, 6 at 17+).\n\nWhile concentrating (up to 1 hour):\n• Deal an extra ${die} damage to the marked target on each hit with a weapon attack.\n• You have Advantage on Wisdom (Perception) and Wisdom (Survival) checks to find it.\n• Move the mark to a new creature as a Bonus Action if the target drops.${precise}${foeSlayer}`;
+      },
       minLevel: 1,
+      rest: 'long',
+      maxUsesFn: (c: any) => c?.level >= 17 ? 6 : c?.level >= 13 ? 5 : c?.level >= 9 ? 4 : c?.level >= 5 ? 3 : 2,
+    },
+    {
+      name: 'Deft Explorer',
+      actionType: 'free',
+      description: 'You gain Expertise in one skill, know an extra language, and are a master of wilderness travel.',
+      descriptionLong: 'You have Expertise in one of your skill proficiencies (double proficiency bonus), and you learn two additional languages. Combined with Tireless and Roving, you become exceptional at exploration — fast, hard to exhaust, and skilled at navigating the wild.',
+      minLevel: 2,
     },
     {
       name: 'Roving',
       actionType: 'free',
-      description: 'Your Speed increases by 10 ft. You gain Climb Speed and Swim Speed equal to your Speed.',
+      description: 'Your Speed increases by 10 ft, and you gain a Climb Speed and a Swim Speed equal to your Speed.',
+      descriptionLong: 'Your Speed increases by 10 feet while you aren\u2019t wearing Heavy armor, and you gain a Climb Speed and a Swim Speed equal to your Speed. You can traverse vertical and aquatic terrain as easily as open ground.',
+      minLevel: 3,
+    },
+    {
+      name: 'Extra Attack',
+      actionType: 'free',
+      description: 'When you take the Attack action, you can attack twice instead of once.',
+      descriptionLong: 'When you take the Attack action on your turn, you can make two attacks instead of one. Pairs with Hunter\u2019s Mark to apply the bonus damage die on each hit.',
+      minLevel: 5,
+    },
+    {
+      name: 'Tireless',
+      actionType: 'action',
+      // v2.524.0 — Magic action to grant self temp HP = 1d8 + WIS mod,
+      // WIS-mod times per Long Rest; also reduces Exhaustion on a Short Rest.
+      description: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `Magic Action: give yourself 1d8 + ${wis} Temporary Hit Points (${wis}× per Long Rest). Your Exhaustion also drops by 1 whenever you finish a Short Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `As a Magic Action, you can give yourself Temporary Hit Points equal to 1d8 + your Wisdom modifier (currently 1d8 + ${wis}). You can use this ${wis} time(s) (equal to your Wisdom modifier, minimum once) per Long Rest.\n\nIn addition, whenever you finish a Short Rest, your Exhaustion level decreases by 1.`;
+      },
       minLevel: 6,
+      rest: 'long',
+      maxUsesFn: (c: any) => Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2)),
+    },
+    {
+      name: "Nature's Veil",
+      actionType: 'bonus',
+      // v2.524.0 — Bonus Action invisibility until end of next turn,
+      // WIS-mod times per Long Rest.
+      description: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `Bonus Action: become Invisible until the end of your next turn. ${wis}× per Long Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `As a Bonus Action, you draw on the spirits of nature to become Invisible, along with any equipment you are wearing or carrying, until the end of your next turn.\n\nYou can use this ${wis} time(s) (equal to your Wisdom modifier, minimum once) per Long Rest. Excellent for repositioning, escaping, or setting up an Advantage attack.`;
+      },
+      minLevel: 7,
+      rest: 'long',
+      maxUsesFn: (c: any) => Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2)),
     },
   ],
 
