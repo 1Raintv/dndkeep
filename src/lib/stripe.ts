@@ -8,8 +8,30 @@ export const stripePromise = publishableKey
   : null;
 
 export const STRIPE_PRICES = {
+  // Recurring subscription ($5/mo): unlocks level 10+ and 1 campaign slot.
   PRO_MONTHLY: import.meta.env.VITE_STRIPE_PRO_MONTHLY_PRICE_ID as string,
+  // One-time purchases (mode: 'payment'). Each maps to a Stripe Price.
+  // Left blank until products are created in Stripe (Build 3); the Store
+  // shows them as "coming soon" while unset.
+  CHARACTER_SLOT: import.meta.env.VITE_STRIPE_CHARACTER_SLOT_PRICE_ID as string,
+  CAMPAIGN_SLOT: import.meta.env.VITE_STRIPE_CAMPAIGN_SLOT_PRICE_ID as string,
+  ULTIMATE_CAMPAIGN: import.meta.env.VITE_STRIPE_ULTIMATE_CAMPAIGN_PRICE_ID as string,
+  DICE_DYE_RED: import.meta.env.VITE_STRIPE_DICE_DYE_RED_PRICE_ID as string,
+  DICE_DYE_GREEN: import.meta.env.VITE_STRIPE_DICE_DYE_GREEN_PRICE_ID as string,
+  DICE_DYE_BLUE: import.meta.env.VITE_STRIPE_DICE_DYE_BLUE_PRICE_ID as string,
 } as const;
+
+/** Is Stripe wired up at all? (publishable key present.) When false the
+ *  Store renders in catalog/preview mode — products visible, buy buttons
+ *  disabled with a "coming soon" note — so it's reviewable before the
+ *  Stripe account exists. */
+export const STRIPE_CONFIGURED = !!publishableKey;
+
+/** Is a specific product's price ID configured? Buy buttons stay
+ *  disabled until both Stripe is configured AND the price ID is set. */
+export function isPriceConfigured(priceId: string | undefined): boolean {
+  return STRIPE_CONFIGURED && !!priceId && priceId.length > 0;
+}
 
 // =============================================================
 // Checkout redirect
@@ -42,8 +64,37 @@ export async function redirectToCheckout(priceId: string, userId: string): Promi
 }
 
 // =============================================================
-// Customer portal redirect (manage billing / cancel)
+// One-time purchase checkout (mode: 'payment')
+// For character slots, campaign slots, Ultimate Campaign, dice dyes.
+// Passes `mode: 'payment'` and the product key so the edge function
+// (and webhook) can credit the right entitlement on completion.
 // =============================================================
+export async function redirectToOneTimeCheckout(
+  priceId: string,
+  userId: string,
+  productKey: string,
+): Promise<void> {
+  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      price_id: priceId,
+      user_id: userId,
+      mode: 'payment',
+      product_key: productKey,
+      success_url: `${window.location.origin}/store?purchased=${encodeURIComponent(productKey)}`,
+      cancel_url: `${window.location.origin}/store`,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Failed to create checkout session');
+  }
+
+  const { url } = await response.json() as { url: string };
+  window.location.href = url;
+}
 export async function redirectToCustomerPortal(userId: string): Promise<void> {
   const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-portal-session`, {
     method: 'POST',

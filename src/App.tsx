@@ -30,6 +30,7 @@ const BestiaryPage   = lazy(() => import('./components/pages/BestiaryPage'));
 const ClassCompendiumPage = lazy(() => import('./components/pages/ClassCompendiumPage'));
 const DicePage       = lazy(() => import('./components/pages/DicePage'));
 const SettingsPage   = lazy(() => import('./components/pages/SettingsPage'));
+const StorePage      = lazy(() => import('./components/pages/StorePage'));
 const AuthPage       = lazy(() => import('./components/pages/AuthPage'));
 const CreatorPage    = lazy(() => import('./components/CharacterCreator'));
 const CampaignsPage  = lazy(() => import('./components/pages/CampaignsPage'));
@@ -59,7 +60,7 @@ const APP_VERSION_KEY = 'dndkeep:app-version';
 //   - "/" itself (would create a fixed-point loop)
 //   - "/auth", "/share/:token", "/" (transient / share-public flows)
 //   - "/creator" (mid-flow; better to dump back to lobby)
-const PERSISTABLE_ROUTE_RE = /^\/(lobby|campaigns(\/[\w-]+)?|character\/[\w-]+|homebrew|bestiary|compendium(\/[\w-]+)?|spells|magic-items|combat|dice|settings|srd)\/?$/;
+const PERSISTABLE_ROUTE_RE = /^\/(lobby|campaigns(\/[\w-]+)?|character\/[\w-]+|homebrew|bestiary|compendium(\/[\w-]+)?|spells|magic-items|combat|dice|settings|store|srd)\/?$/;
 
 function loadLastRoute(): string | null {
   try {
@@ -343,8 +344,16 @@ function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom: settings + version */}
+      {/* Bottom: store + settings + version */}
       <div className="sidebar-footer">
+        <NavLink
+          to="/store"
+          className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+          title={collapsed ? 'Store' : undefined}
+        >
+          <span className="sidebar-link-icon">✦</span>
+          {!collapsed && <span className="sidebar-link-label">Store</span>}
+        </NavLink>
         <NavLink
           to="/settings"
           className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
@@ -567,6 +576,7 @@ function AppRoutes() {
             <Route path="/combat"         element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
             <Route path="/dice"           element={<ProtectedRoute><DicePage /></ProtectedRoute>} />
             <Route path="/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/store"          element={<ProtectedRoute><StorePage /></ProtectedRoute>} />
             <Route path="*"              element={<NotFound />} />
           </Routes>
           </ErrorBoundary>
