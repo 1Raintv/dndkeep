@@ -104,28 +104,92 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Rage',
       actionType: 'bonus',
-      description: 'Enter a rage for 1 minute. Gain bonus damage on STR attacks, advantage on STR checks and saves, and resistance to Bludgeoning, Piercing, and Slashing damage.',
+      // v2.520.0 — Full dynamic richness pass. Rage damage bonus scales
+      // by level (2024 PHB: +2 at 1, +3 at 9, +4 at 16). Uses scale and
+      // become unlimited at 20 (Primal Champion makes rage effectively
+      // free to maintain, but RAW uses still cap until 20 grants
+      // unlimited). Recovery on a Long Rest (one use returns on a Short
+      // Rest from level 1 per 2024 rules).
+      description: (c: any) => {
+        const bonus = c?.level >= 16 ? 4 : c?.level >= 9 ? 3 : 2;
+        return `Bonus Action: enter Rage for 10 minutes. +${bonus} damage on Strength-based attacks, Advantage on Strength checks and saves, and Resistance to Bludgeoning, Piercing, and Slashing damage.`;
+      },
+      descriptionLong: (c: any) => {
+        const bonus = c?.level >= 16 ? 4 : c?.level >= 9 ? 3 : 2;
+        const uses = c?.level >= 20 ? 999 : c?.level >= 17 ? 6 : c?.level >= 12 ? 5 : c?.level >= 6 ? 4 : c?.level >= 3 ? 3 : 2;
+        return `Enter Rage as a Bonus Action (no heavy armor). While raging:\n\n• +${bonus} bonus to damage on Strength-based weapon attacks (scales: +2 at levels 1–8, +3 at 9–15, +4 at 16+).\n• Advantage on Strength checks and Strength saving throws.\n• Resistance to Bludgeoning, Piercing, and Slashing damage.\n\nRage lasts 10 minutes. It ends early if you don Heavy armor or are Incapacitated. You can extend it by taking damage or making an attack roll against an enemy each turn (until Persistent Rage at 15).\n\nUses at your level: ${uses === 999 ? 'unlimited' : uses}. You regain one expended use on a Short Rest and all on a Long Rest.`;
+      },
       minLevel: 1,
       rest: 'long',
-      maxUsesFn: c => c.level >= 20 ? 999 : c.level >= 17 ? 6 : c.level >= 12 ? 5 : c.level >= 6 ? 4 : c.level >= 3 ? 3 : 2,
+      maxUsesFn: (c: any) => c?.level >= 20 ? 999 : c?.level >= 17 ? 6 : c?.level >= 12 ? 5 : c?.level >= 6 ? 4 : c?.level >= 3 ? 3 : 2,
     },
     {
       name: 'Reckless Attack',
       actionType: 'free',
-      description: 'Before attacking, gain Advantage on all melee attack rolls this turn. Attacks against you also have Advantage until your next turn.',
+      description: 'When you make your first attack on your turn, you can attack recklessly: gain Advantage on melee Strength attacks this turn, but attacks against you have Advantage until your next turn.',
+      descriptionLong: 'At the start of your turn, before your first attack, you can decide to attack recklessly. Doing so gives you Advantage on melee weapon attack rolls using Strength during this turn, but attack rolls against you have Advantage until your next turn. This is the primary enabler for Brutal Strike at level 9+.',
       minLevel: 2,
     },
     {
-      name: 'Instinctive Pounce',
-      actionType: 'free',
-      description: 'As part of entering Rage, move up to half your Speed.',
-      minLevel: 7,
+      name: 'Danger Sense',
+      actionType: 'reaction',
+      description: 'Advantage on Dexterity saving throws against effects you can see (e.g. traps, spells), unless Incapacitated.',
+      descriptionLong: 'You have an uncanny sense for danger. You have Advantage on Dexterity saving throws against effects you can see, such as a Fireball or a swinging trap. You don\'t benefit while Incapacitated.',
+      minLevel: 2,
     },
     {
       name: 'Brutal Strike',
       actionType: 'free',
-      description: 'When you use Reckless Attack and hit, you can forgo Advantage on one attack to deal +1d10 damage and apply a brutal effect (trip, stagger, etc.).',
+      // v2.520.0 — Extra damage die scales at 17 (Improved Brutal Strike:
+      // 1d10 → 2d10) and lets you apply two effects.
+      description: (c: any) => {
+        const dice = c?.level >= 17 ? '2d10' : '1d10';
+        const effects = c?.level >= 17 ? 'two Brutal Strike effects' : 'one Brutal Strike effect';
+        return `When you use Reckless Attack, you can forgo Advantage on one attack. If it hits, deal +${dice} damage and apply ${effects} (Forceful Blow: push 15 ft + move; Hamstring Blow: reduce Speed by 15 ft).`;
+      },
+      descriptionLong: (c: any) => {
+        const dice = c?.level >= 17 ? '2d10' : '1d10';
+        const improved = c?.level >= 17;
+        return `When you Reckless Attack, you can choose to forgo Advantage on one of your attack rolls. If that attack hits, it deals an extra ${dice} damage and you apply ${improved ? 'two' : 'one'} of these effects:\n\n• Forceful Blow — the target is pushed 15 ft straight away; you can then move up to half your Speed toward it.\n• Hamstring Blow — the target\'s Speed is reduced by 15 ft until the start of your next turn.\n\n${improved ? 'Improved Brutal Strike (level 17): the bonus damage is 2d10 and you may apply both effects on the same strike. The effects must be different.' : 'At level 17 (Improved Brutal Strike), the damage increases to 2d10 and you can apply two different effects.'}`;
+      },
       minLevel: 9,
+    },
+    {
+      name: 'Relentless Rage',
+      actionType: 'special',
+      // v2.520.0 — DC scaling: starts at 10, +5 each subsequent use in
+      // the same rage (RAW). Surface the rule clearly.
+      description: 'When you drop to 0 HP while Raging and don\'t die outright, you can make a DC 10 Constitution save to drop to 1 HP instead. The DC increases by 5 each time you use it (resets on a rest).',
+      descriptionLong: 'If you drop to 0 Hit Points while Raging and don\'t die outright, you can make a Constitution saving throw (DC 10). On a success, you drop to 1 Hit Point instead. Each time you use this feature after the first, the DC increases by 5. The DC resets to 10 when you finish a Short or Long Rest. This is what keeps a raging Barbarian on their feet long past where others would fall.',
+      minLevel: 11,
+      save: { ability: 'CON', dc: 10, targetMode: 'any' },
+    },
+    {
+      name: 'Persistent Rage',
+      actionType: 'free',
+      description: 'Your Rage is so fierce it ends early only if you choose to end it, fall Unconscious, or don Heavy armor — never from inaction.',
+      descriptionLong: 'When you Rage, it lasts until you choose to end it, you fall Unconscious, or you don Heavy armor. You no longer need to attack or take damage each turn to maintain it. Additionally, when you roll Initiative and have no uses of Rage left, you regain one use.',
+      minLevel: 15,
+    },
+    {
+      name: 'Indomitable Might',
+      actionType: 'free',
+      description: (c: any) => {
+        const str = c?.strength ?? 10;
+        return `If your total for a Strength check is less than your Strength score (${str}), you can use that score (${str}) in place of the total.`;
+      },
+      descriptionLong: (c: any) => {
+        const str = c?.strength ?? 10;
+        return `If your total for a Strength check is less than your Strength score, you can use that score in place of the total. At your current Strength of ${str}, any Strength check resolves as at least ${str} before situational modifiers. This makes you reliably able to break, lift, and shove.`;
+      },
+      minLevel: 18,
+    },
+    {
+      name: 'Primal Champion',
+      actionType: 'free',
+      description: 'Your Strength and Constitution scores increase by 4, to a maximum of 25.',
+      descriptionLong: 'You embody primal power. Your Strength and Constitution scores increase by 4, and your maximum for those scores becomes 25. (Apply this via the settings stat editor if not already reflected.) Combined with unlimited Rage at level 20, you are a force of nature.',
+      minLevel: 20,
     },
   ],
 
