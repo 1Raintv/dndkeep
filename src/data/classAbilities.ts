@@ -268,26 +268,93 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Second Wind',
       actionType: 'bonus',
-      description: 'Regain HP equal to 1d10 + your Fighter level.',
+      // v2.521.0 — Full richness pass. 2024 Second Wind heals 1d10 +
+      // Fighter level and has multiple uses that scale (2 at 1, 3 at 4,
+      // 4 at 10). Recovers all on a Long Rest, one on a Short Rest.
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        return `Bonus Action: regain 1d10 + ${lvl} Hit Points. Also fuels Tactical Mind.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const uses = lvl >= 10 ? 4 : lvl >= 4 ? 3 : 2;
+        return `Bonus Action: regain 1d10 + your Fighter level (currently 1d10 + ${lvl}) Hit Points.\n\nUses at your level: ${uses}. You regain one expended use on a Short Rest and all of them on a Long Rest (2 uses at levels 1–3, 3 at 4–9, 4 at 10+).\n\nFrom level 2, you can also spend a use of Second Wind on Tactical Mind to add 1d10 to a failed ability check without expending the healing.`;
+      },
       minLevel: 1,
       rest: 'short',
-      maxUsesFn: () => 1,
+      maxUsesFn: (c: any) => c?.level >= 10 ? 4 : c?.level >= 4 ? 3 : 2,
+    },
+    {
+      name: 'Tactical Mind',
+      actionType: 'free',
+      // v2.521.0 — New 2024 feature. On a failed ability check, spend a
+      // Second Wind use to add 1d10; if it still fails, the use isn't
+      // expended.
+      description: 'When you fail an ability check, you can expend a use of Second Wind to add 1d10 to the check. If it still fails, the use isn\'t spent.',
+      descriptionLong: 'When you fail an ability check, you can expend one use of Second Wind to roll 1d10 and add it to the check, potentially turning the failure into a success. You don\'t regain the Hit Points — this trades the use for the bonus. If the check still fails even with the +1d10, the use of Second Wind isn\'t expended. Shares the Second Wind use pool.',
+      minLevel: 2,
     },
     {
       name: 'Action Surge',
       actionType: 'special',
-      description: 'Take one additional action on your turn. Does not trigger additional Bonus Action.',
+      description: (c: any) => {
+        const uses = c?.level >= 17 ? 2 : 1;
+        return `Take one additional action on your turn. ${uses === 2 ? 'Usable twice per rest (but only once per turn).' : 'Once per Short or Long Rest.'}`;
+      },
+      descriptionLong: (c: any) => {
+        const uses = c?.level >= 17 ? 2 : 1;
+        return `On your turn, take one additional action. This does not grant an extra Bonus Action.\n\nUses at your level: ${uses} (1 use at levels 2–16, 2 uses at 17+). You can use it only once on a given turn even with two uses available. Recovers on a Short or Long Rest.\n\nCombined with Extra Attack, Action Surge is the Fighter's signature burst — at level 11 (Two Extra Attacks) an Action Surge turn delivers up to six weapon attacks.`;
+      },
       minLevel: 2,
       rest: 'short',
-      maxUsesFn: c => c.level >= 17 ? 2 : 1,
+      maxUsesFn: (c: any) => c?.level >= 17 ? 2 : 1,
+    },
+    {
+      name: 'Extra Attack',
+      actionType: 'free',
+      // v2.521.0 — Surfaced as an at-a-glance reminder of how many
+      // attacks the Attack action grants at this level (2 at 5, 3 at 11,
+      // 4 at 20).
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const attacks = lvl >= 20 ? 4 : lvl >= 11 ? 3 : 2;
+        return `When you take the Attack action, you can attack ${attacks} times instead of once.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const attacks = lvl >= 20 ? 4 : lvl >= 11 ? 3 : 2;
+        return `When you take the Attack action on your turn, you can make ${attacks} attacks instead of one (2 attacks at levels 5–10, 3 at 11–19, 4 at 20). Action Surge can double this for one turn.`;
+      },
+      minLevel: 5,
     },
     {
       name: 'Indomitable',
       actionType: 'free',
-      description: 'Reroll a failed saving throw (must use new result). Uses scale with level.',
+      // v2.521.0 — Dynamic uses; on reroll you add your Fighter level to
+      // the new roll (2024 change).
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const uses = lvl >= 17 ? 3 : lvl >= 13 ? 2 : 1;
+        return `Reroll a failed saving throw, adding your Fighter level (+${lvl}) to the new roll. ${uses} use${uses === 1 ? '' : 's'} per Long Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const uses = lvl >= 17 ? 3 : lvl >= 13 ? 2 : 1;
+        return `When you fail a saving throw, you can reroll it. You must use the new roll, and you add your Fighter level (+${lvl}) to it.\n\nUses at your level: ${uses} (1 at levels 9–12, 2 at 13–16, 3 at 17+). All uses recover on a Long Rest.`;
+      },
       minLevel: 9,
       rest: 'long',
-      maxUsesFn: c => c.level >= 17 ? 3 : c.level >= 13 ? 2 : 1,
+      maxUsesFn: (c: any) => c?.level >= 17 ? 3 : c?.level >= 13 ? 2 : 1,
+    },
+    {
+      name: 'Studied Attacks',
+      actionType: 'free',
+      // v2.521.0 — New 2024 level-13 feature: after you miss a creature
+      // with an attack, you have Advantage on your next attack against
+      // it before the end of your next turn.
+      description: 'When you miss a creature with an attack roll, you have Advantage on your next attack roll against that creature before the end of your next turn.',
+      descriptionLong: 'You learn from each miss. When you make an attack roll against a creature and miss, you have Advantage on your next attack roll against that same creature before the end of your next turn. This makes your offense self-correcting — a whiff sets up a near-guaranteed follow-up.',
+      minLevel: 13,
     },
   ],
 
