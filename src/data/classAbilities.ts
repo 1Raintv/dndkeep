@@ -360,66 +360,221 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
 
   Monk: [
     {
+      name: 'Martial Arts',
+      actionType: 'free',
+      // v2.522.0 — Full richness pass. Martial Arts die scales d6→d12
+      // (d6 1-4, d8 5-10, d10 11-16, d12 17+). Unarmed strikes use DEX,
+      // and you get a Bonus Action unarmed strike when you Attack.
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const die = lvl >= 17 ? 'd12' : lvl >= 11 ? 'd10' : lvl >= 5 ? 'd8' : 'd6';
+        return `Your Unarmed Strikes and Monk weapons deal ${die} damage and can use Dexterity. When you Attack, you can make one Unarmed Strike as a Bonus Action.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const die = lvl >= 17 ? 'd12' : lvl >= 11 ? 'd10' : lvl >= 5 ? 'd8' : 'd6';
+        return `While unarmored and not wielding a Shield:\n\n• Your Unarmed Strikes and Monk weapons deal ${die} damage (the Martial Arts die — d6 at levels 1–4, d8 at 5–10, d10 at 11–16, d12 at 17+).\n• You can use Dexterity instead of Strength for the attack and damage rolls of Unarmed Strikes and Monk weapons.\n• When you take the Attack action, you can make one Unarmed Strike as a Bonus Action.`;
+      },
+      minLevel: 1,
+    },
+    {
+      name: "Monk's Focus (Focus Points)",
+      actionType: 'special',
+      // v2.522.0 — Focus pool = Monk level (from level 2). Recovers on a
+      // Short or Long Rest; Uncanny Metabolism (L2) lets you regain all
+      // once per Long Rest on initiative.
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const pts = lvl >= 2 ? lvl : 0;
+        return pts > 0
+          ? `You have ${pts} Focus Points. Spend them on Flurry of Blows, Patient Defense, Step of the Wind, and other Monk features. Regain all on a Short or Long Rest.`
+          : `Focus Points unlock at level 2.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const pts = lvl >= 2 ? lvl : 0;
+        return `Your Focus Points equal your Monk level (currently ${pts}). You spend them to fuel Flurry of Blows, Patient Defense, Step of the Wind, Stunning Strike (which refunds on a save), and subclass features.\n\nRecovery: regain all expended Focus Points on a Short or Long Rest. At level 2, Uncanny Metabolism lets you regain all Focus Points once per Long Rest when you roll Initiative (and roll your Martial Arts die to regain HP).`;
+      },
+      minLevel: 2,
+      rest: 'short',
+      isPool: true,
+      maxUsesFn: (c: any) => c?.level ?? 1,
+    },
+    {
       name: 'Flurry of Blows',
       actionType: 'bonus',
-      description: 'Spend 1 Discipline Point after the Attack action. Make two Unarmed Strikes as a Bonus Action.',
+      // v2.522.0 — Two strikes (three at level 10 via Heightened Focus).
+      description: (c: any) => {
+        const strikes = c?.level >= 10 ? 3 : 2;
+        return `Spend 1 Focus Point after taking the Attack action to make ${strikes} Unarmed Strikes as a Bonus Action.`;
+      },
+      descriptionLong: (c: any) => {
+        const strikes = c?.level >= 10 ? 3 : 2;
+        return `Immediately after you take the Attack action, you can spend 1 Focus Point to make ${strikes} Unarmed Strikes as a Bonus Action (two strikes at levels 1–9, three at 10+ via Heightened Focus). Each uses your Martial Arts die and Dexterity.`;
+      },
       minLevel: 1,
       isPool: true,
     },
     {
       name: 'Patient Defense',
       actionType: 'bonus',
-      description: 'Spend 1 Discipline Point to take the Dodge action as a Bonus Action.',
+      description: 'Take the Disengage action as a Bonus Action for free, or spend 1 Focus Point to take both Disengage and Dodge as a Bonus Action.',
+      descriptionLong: 'As a Bonus Action you can take the Disengage action for free. Alternatively, spend 1 Focus Point to take both the Disengage and the Dodge actions as a single Bonus Action — attackers have Disadvantage against you and you make Dexterity saves with Advantage until your next turn.',
       minLevel: 1,
       isPool: true,
     },
     {
       name: 'Step of the Wind',
       actionType: 'bonus',
-      description: 'Spend 1 Discipline Point to take the Dash or Disengage action as a Bonus Action. Your jump distance doubles.',
+      description: 'Take the Dash action as a Bonus Action for free, or spend 1 Focus Point to take both Dash and Disengage, and double your jump distance.',
+      descriptionLong: 'As a Bonus Action you can take the Dash action for free. Alternatively, spend 1 Focus Point to take both the Dash and Disengage actions as a Bonus Action, and your jump distance is doubled for the turn. You can also bring along a willing creature your size or smaller at later subclass tiers.',
       minLevel: 1,
+      isPool: true,
+    },
+    {
+      name: 'Deflect Attacks',
+      actionType: 'reaction',
+      // v2.522.0 — Reduction = 1d10 + DEX + Monk level. At 13 (Deflect
+      // Energy) it also works on any damage type.
+      description: (c: any) => {
+        const lvl = c?.level ?? 3;
+        const energy = lvl >= 13 ? ' Works against any damage type.' : '';
+        return `Reaction when hit by an attack that deals Bludgeoning, Piercing, or Slashing damage: reduce the damage by 1d10 + your Dexterity modifier + your Monk level.${energy}`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 3;
+        const energy = lvl >= 13;
+        return `Reaction, when you're hit by an attack roll that deals Bludgeoning, Piercing, or Slashing damage${energy ? ' (or any damage type, via Deflect Energy at level 13)' : ''}: reduce the damage by 1d10 + your Dexterity modifier + your Monk level.\n\nIf you reduce the damage to 0, you can spend 1 Focus Point to redirect it — make a ranged Unarmed Strike (or throw the deflected projectile) at a creature within 5 ft (melee) or 60 ft, dealing two rolls of your Martial Arts die${energy ? ' of the same damage type you deflected' : ''} on a hit.`;
+      },
+      minLevel: 3,
       isPool: true,
     },
     {
       name: 'Stunning Strike',
       actionType: 'free',
-      description: 'Spend 1 Discipline Point when you hit a creature. They make a CON save or are Stunned until start of your next turn.',
+      // v2.522.0 — CON save spec wired through the v2.247 save resolver.
+      description: 'Once per turn when you hit with a Monk weapon or Unarmed Strike, spend 1 Focus Point to force a Constitution save. On a failure the target is Stunned until the start of your next turn; on a success it has Speed halved and grants Advantage until then.',
+      descriptionLong: 'Once per turn, when you hit a creature with a Monk weapon or an Unarmed Strike, you can spend 1 Focus Point to attempt a stun. The target makes a Constitution saving throw against your Ki save DC (8 + proficiency + Dexterity).\n\n• Failure: Stunned until the start of your next turn.\n• Success: its Speed is halved until the start of your next turn, and the next attack against it before then has Advantage.\n\n(2024 change: a save no longer fully wastes the point — you still get the speed/advantage effect.)',
       minLevel: 5,
       isPool: true,
+      save: { ability: 'CON', dc: 'spell', targetMode: 'enemies' },
     },
     {
-      name: "Monk's Focus (Ki Points)",
+      name: 'Slow Fall',
+      actionType: 'reaction',
+      description: (c: any) => {
+        const lvl = c?.level ?? 4;
+        return `Reaction when you fall: reduce falling damage by ${lvl * 5}.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 4;
+        return `As a Reaction when you fall, you can reduce the falling damage you take by an amount equal to five times your Monk level (currently ${lvl * 5}). Often enough to negate a fall entirely.`;
+      },
+      minLevel: 4,
+    },
+    {
+      name: 'Superior Defense',
       actionType: 'special',
-      description: 'Pool of discipline points. Spend to fuel monk features. Regain all on Short or Long Rest.',
-      minLevel: 1,
-      rest: 'short',
-      maxUsesFn: c => c.level,
+      description: 'Spend 3 Focus Points at the start of your turn to gain Resistance to all damage except Force for 1 minute.',
+      descriptionLong: 'At the start of your turn, you can spend 3 Focus Points to give yourself Resistance to all damage except Force damage for 1 minute (or until you\'re Incapacitated). The ultimate Monk survival tool for a tough fight.',
+      minLevel: 18,
+      isPool: true,
     },
   ],
 
   Paladin: [
     {
       name: 'Lay on Hands',
-      actionType: 'action',
-      description: 'Restore HP from your healing pool. Pool = Paladin level × 5 HP. Can also cure 1 disease or poison (5 HP cost).',
+      actionType: 'bonus',
+      // v2.523.0 — Full richness pass. Healing pool = 5 x Paladin level,
+      // refreshed on a Long Rest. 5 HP from the pool also ends one
+      // disease or neutralizes one poison.
+      description: (c: any) => {
+        const pool = (c?.level ?? 1) * 5;
+        return `Bonus Action: draw from a healing pool of ${pool} HP to restore Hit Points by touch. You can also spend 5 HP from the pool to end one Disease or neutralize one Poison.`;
+      },
+      descriptionLong: (c: any) => {
+        const pool = (c?.level ?? 1) * 5;
+        return `You have a pool of healing power equal to five times your Paladin level (currently ${pool} HP), refreshed on a Long Rest.\n\n• Bonus Action, touch: restore any number of Hit Points from the pool to a creature (not your own Undead/Construct).\n• Spend 5 HP from the pool instead to end one Disease or neutralize one Poison affecting the creature.\n\nThe pool replenishes fully on a Long Rest.`;
+      },
       minLevel: 1,
       rest: 'long',
-      maxUsesFn: c => c.level * 5,
+      maxUsesFn: (c: any) => (c?.level ?? 1) * 5,
       isPool: true,
     },
     {
       name: 'Divine Smite',
-      actionType: 'free',
-      description: 'When you hit with a melee weapon attack, expend a spell slot to deal extra Radiant damage: 2d8 per slot level (3d8 vs undead/fiends). Max 5d8.',
+      actionType: 'bonus',
+      // v2.523.0 — 2024: Divine Smite is a level-1 Paladin spell, cast as
+      // a Bonus Action after a hit, scaling with slot level. We surface
+      // it here as the always-available signature strike and show the
+      // current min/max radiant dice.
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        // Max slot level available scales the cap; base is 2d8, +1d8 per
+        // slot level above 1st, capped at 5d8 (slot 4) +1d8 vs fiend/undead.
+        const maxSlot = lvl >= 17 ? 5 : lvl >= 13 ? 4 : lvl >= 9 ? 3 : lvl >= 3 ? 2 : 1;
+        const maxDice = Math.min(5, 1 + maxSlot); // 2d8 at slot1 ... 5d8 at slot4+
+        return `Bonus Action after hitting with a melee weapon or Unarmed Strike: expend a spell slot to deal +2d8 Radiant damage (+1d8 per slot level above 1st, up to ${maxDice}d8; +1d8 extra vs Fiends and Undead).`;
+      },
+      descriptionLong: `Once per turn, immediately after you hit a target with a melee weapon or an Unarmed Strike, you can expend a spell slot to deal extra Radiant damage (this is the Divine Smite spell, cast as a Bonus Action).\n\n• Damage: 2d8 for a 1st-level slot, +1d8 for each slot level above 1st, to a maximum of 5d8.\n• +1d8 additional if the target is a Fiend or an Undead.\n\nBecause it's a spell in the 2024 rules, you can use it once per turn and it counts against the one-leveled-spell-per-turn rule.`,
       minLevel: 1,
     },
     {
       name: 'Channel Divinity',
-      actionType: 'action',
-      description: 'Use divine energy to fuel a subclass effect or Sacred Weapon.',
+      actionType: 'special',
+      // v2.523.0 — Uses scale 1/2/3 at levels 3/7/11. 2024 base options:
+      // Divine Sense and Abjure Foes (level 9), plus subclass options.
+      description: (c: any) => {
+        const uses = c?.level >= 11 ? 3 : c?.level >= 7 ? 2 : 1;
+        return `Channel divine energy (${uses} use${uses === 1 ? '' : 's'} per Short/Long Rest) to fuel Divine Sense, Abjure Foes (level 9+), or your subclass options.`;
+      },
+      descriptionLong: (c: any) => {
+        const uses = c?.level >= 11 ? 3 : c?.level >= 7 ? 2 : 1;
+        const abjure = c?.level >= 9;
+        return `You can channel divine energy ${uses} time(s) per Short or Long Rest (1 use at levels 3–6, 2 at 7–10, 3 at 11+).\n\nBase options:\n• Divine Sense — as a Bonus Action, know the location of Celestials, Fiends, and Undead within 60 ft, and learn their creature type, until the end of your next turn.${abjure ? '\n• Abjure Foes (level 9) — Magic action: up to your Charisma modifier of creatures within 60 ft must succeed on a Wisdom save or be Frightened (and unable to take Reactions) for 1 minute.' : ''}\n• Plus any options granted by your subclass (e.g. Sacred Weapon, Nature\'s Wrath).`;
+      },
       minLevel: 3,
       rest: 'short',
-      maxUsesFn: c => c.level >= 11 ? 3 : c.level >= 7 ? 2 : 1,
+      maxUsesFn: (c: any) => c?.level >= 11 ? 3 : c?.level >= 7 ? 2 : 1,
+      save: { ability: 'WIS', dc: 'spell', targetMode: 'enemies' },
+    },
+    {
+      name: 'Aura of Protection',
+      actionType: 'free',
+      // v2.523.0 — Aura grants a bonus to saves equal to CHA mod (min +1)
+      // to you and allies within range. Range expands 10ft -> 30ft at 18.
+      description: (c: any) => {
+        const cha = Math.max(1, Math.floor(((c?.charisma ?? 10) - 10) / 2));
+        const range = c?.level >= 18 ? 30 : 10;
+        return `You and allies within ${range} ft gain a +${cha} bonus to all saving throws (equal to your Charisma modifier, minimum +1).`;
+      },
+      descriptionLong: (c: any) => {
+        const cha = Math.max(1, Math.floor(((c?.charisma ?? 10) - 10) / 2));
+        const range = c?.level >= 18 ? 30 : 10;
+        return `While you\'re conscious, you and friendly creatures within ${range} ft of you gain a bonus to saving throws equal to your Charisma modifier (currently +${cha}, minimum +1).\n\nThe aura\'s radius is 10 ft (expanding to 30 ft at level 18 via Aura Expansion). This is the Paladin\'s defining party-buff — stacking with Aura of Courage (immunity to Frightened) at level 10.`;
+      },
+      minLevel: 6,
+    },
+    {
+      name: 'Aura of Courage',
+      actionType: 'free',
+      description: (c: any) => {
+        const range = c?.level >= 18 ? 30 : 10;
+        return `You and allies within ${range} ft can\'t be Frightened while you\'re conscious.`;
+      },
+      descriptionLong: (c: any) => {
+        const range = c?.level >= 18 ? 30 : 10;
+        return `While you\'re conscious, you and friendly creatures within ${range} ft of you are immune to the Frightened condition. If an ally is already Frightened, they aren\'t affected by it while in the aura. Radius expands to 30 ft at level 18.`;
+      },
+      minLevel: 10,
+    },
+    {
+      name: 'Radiant Strikes',
+      actionType: 'free',
+      description: 'Your melee weapon and Unarmed Strikes deal an extra 1d8 Radiant damage on a hit.',
+      descriptionLong: 'Your strikes carry divine power. When you hit a target with a melee weapon or an Unarmed Strike, the target takes an extra 1d8 Radiant damage. This applies on every qualifying hit — no resource required — significantly raising your sustained damage.',
+      minLevel: 11,
     },
   ],
 
