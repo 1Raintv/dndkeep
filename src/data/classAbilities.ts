@@ -665,56 +665,91 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Sneak Attack',
       actionType: 'free',
-      description: 'Once per turn, deal extra damage when you have Advantage on the attack roll OR an ally is adjacent to your target. Current: ' +
-        '{{sneak_dice}}d6.',
+      // v2.525.0 — Full richness pass. Keep the {{sneak_dice}} placeholder
+      // in the short description (ClassAbilitiesSection substitutes it with
+      // Math.ceil(level/2)); add a dynamic descriptionLong that shows the
+      // actual dice + the trigger conditions in full.
+      description: 'Once per turn, deal extra damage when you have Advantage on the attack roll OR an ally is adjacent to your target (and you don\u2019t have Disadvantage). Current: {{sneak_dice}}d6.',
+      descriptionLong: (c: any) => {
+        const dice = Math.ceil((c?.level ?? 1) / 2);
+        return `Once per turn, you can deal an extra ${dice}d6 damage to one creature you hit with an attack if you have Advantage on the attack roll, using a Finesse or Ranged weapon. You don\u2019t need Advantage if another enemy of the target is within 5 ft of it, that enemy isn\u2019t Incapacitated, and you don\u2019t have Disadvantage on the roll.\n\nSneak Attack damage scales to ${dice}d6 at your level (1d6 at levels 1\u20132, rising by 1d6 every two levels to 10d6 at level 19\u201320). From level 5, you can trade Sneak Attack dice for Cunning Strike effects.`;
+      },
       minLevel: 1,
     },
     {
       name: 'Cunning Action',
       actionType: 'bonus',
       description: 'Take the Dash, Disengage, or Hide action as a Bonus Action.',
+      descriptionLong: 'On each of your turns, you can use a Bonus Action to take the Dash, Disengage, or Hide action. This is what makes the Rogue so mobile and slippery \u2014 dart in, strike, and vanish in a single turn.',
       minLevel: 2,
+    },
+    {
+      name: 'Steady Aim',
+      actionType: 'bonus',
+      // v2.525.0 — New 2024 level-3 feature. Bonus Action: gain Advantage
+      // on your next attack this turn, but your Speed becomes 0 until the
+      // end of the turn. Reliable Sneak Attack enabler.
+      description: 'Bonus Action: gain Advantage on your next attack roll this turn. Your Speed becomes 0 until the end of the turn.',
+      descriptionLong: 'As a Bonus Action, you give yourself Advantage on your next attack roll on the current turn. You can use this only if you haven\u2019t moved during this turn, and after you use it, your Speed is 0 until the end of the turn. A dependable way to guarantee Sneak Attack when no ally is in position.',
+      minLevel: 3,
+    },
+    {
+      name: 'Cunning Strike',
+      actionType: 'free',
+      // v2.525.0 — New 2024 level-5 feature. Spend Sneak Attack dice to add
+      // effects. Improved at 11 (two effects) and Devious Strikes at 14.
+      description: (c: any) => {
+        const improved = c?.level >= 11;
+        return `When you deal Sneak Attack damage, you can forgo some of the dice to add an effect: Poison (1d6, CON save or Poisoned), Trip (1d6, DEX save or Prone), or Withdraw (1d6, move without provoking).${improved ? ' You can apply two different effects (Improved Cunning Strike).' : ''}`;
+      },
+      descriptionLong: (c: any) => {
+        const improved = c?.level >= 11;
+        const devious = c?.level >= 14;
+        return `When you deal Sneak Attack damage, you can forgo some of the dice to add a Cunning Strike effect (each costs 1d6 of Sneak Attack):\n\n• Poison \u2014 the target makes a Constitution save or is Poisoned for 1 minute.\n• Trip \u2014 the target makes a Dexterity save or is knocked Prone (target must be Large or smaller).\n• Withdraw \u2014 you move up to half your Speed without provoking Opportunity Attacks.${devious ? '\n\nDevious Strikes (level 14): you also unlock Daze, Knock Out, and Obscure \u2014 stronger effects costing more dice.' : ''}\n\n${improved ? 'Improved Cunning Strike (level 11): you can apply two different effects with one Sneak Attack (paying the dice cost of each).' : 'At level 11 (Improved Cunning Strike) you can apply two effects at once.'} The save DC equals 8 + your proficiency bonus + your Dexterity modifier.`;
+      },
+      minLevel: 5,
+      save: { ability: 'CON', dc: 'spell', targetMode: 'enemies' },
     },
     {
       name: 'Uncanny Dodge',
       actionType: 'reaction',
-      description: 'When an attacker you can see hits you with an attack, halve the damage.',
+      description: 'Reaction when an attacker you can see hits you: halve the attack\u2019s damage against you.',
+      descriptionLong: 'When an attacker you can see hits you with an attack roll, you can use your Reaction to halve the attack\u2019s damage against you (rounded down). A reliable way to survive a big hit \u2014 especially against a critical.',
       minLevel: 5,
     },
     {
       name: 'Evasion',
       actionType: 'free',
-      description: 'When you succeed on a DEX save that deals half damage, you take no damage instead. On failure, take half.',
+      description: 'When you make a Dexterity save to take half damage, you instead take no damage on a success and only half on a failure.',
+      descriptionLong: 'When you\u2019re subjected to an effect that allows a Dexterity saving throw to take only half damage (such as Fireball), you take no damage on a success and only half damage on a failure. You can\u2019t use this while Incapacitated.',
       minLevel: 7,
     },
     {
       name: 'Reliable Talent',
       actionType: 'free',
-      description: 'When making an ability check with proficiency, treat any d20 roll of 9 or lower as a 10.',
-      minLevel: 11,
-    },
-    {
-      name: 'Blindsense',
-      actionType: 'free',
-      description: 'If you are able to hear, you are aware of the location of any hidden or invisible creature within 10 ft.',
-      minLevel: 14,
+      description: 'When you make an ability check using a skill or tool you have proficiency in, treat any d20 roll of 9 or lower as a 10.',
+      descriptionLong: 'Whenever you make an ability check that uses a skill or tool proficiency, you can treat a d20 roll of 9 or lower as a 10. Your floor on a proficient check becomes 10 + your bonuses \u2014 you essentially can\u2019t fumble what you\u2019re trained in.',
+      minLevel: 7,
     },
     {
       name: 'Slippery Mind',
       actionType: 'free',
-      description: 'You have proficiency in WIS saves. If already proficient, gain proficiency in INT or CHA saves.',
+      description: 'You gain proficiency in Wisdom and Charisma saving throws.',
+      descriptionLong: 'You gain proficiency in Wisdom and Charisma saving throws, shoring up two of the most commonly targeted mental saves. Combined with Evasion and your Dexterity-save proficiency, you become resilient against most save-or-suffer effects.',
       minLevel: 15,
     },
     {
       name: 'Elusive',
       actionType: 'free',
-      description: 'No attack roll has Advantage against you while you aren\'t incapacitated.',
+      description: 'No attack roll has Advantage against you while you aren\u2019t Incapacitated.',
+      descriptionLong: 'No attack roll has Advantage against you while you aren\u2019t Incapacitated. Flanking, hidden attackers, and most Advantage tricks simply don\u2019t work on you \u2014 a major defensive boost at high levels.',
       minLevel: 18,
     },
     {
       name: 'Stroke of Luck',
       actionType: 'free',
-      description: 'Turn a missed attack into a hit, or a failed ability check into a success. Once per Short/Long Rest.',
+      description: 'Turn a missed attack into a hit, or a failed ability check into a success (treat the d20 as a 20). Once per Short or Long Rest.',
+      descriptionLong: 'If your attack roll misses a target within range, you can turn the miss into a hit. Alternatively, if you fail an ability check, you can treat the d20 roll as a 20. Once you use this feature, you can\u2019t use it again until you finish a Short or Long Rest. The ultimate clutch button.',
       minLevel: 20,
       rest: 'short',
       maxUsesFn: () => 1,
