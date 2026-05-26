@@ -1169,36 +1169,110 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Magical Tinkering',
       actionType: 'action',
-      description: 'Use your Tinker\'s Tools to imbue a tiny nonmagical object with a magical effect (light, recorded message, odor, visual effect, etc.).',
+      description: 'Use Tinker\u2019s Tools to imbue a tiny nonmagical object with a minor magical property: light, a recorded message, an odor, a sound, or a static visual effect.',
+      descriptionLong: 'Using your Tinker\u2019s Tools, you can magically imbue a Tiny nonmagical object with one of these effects: it sheds Bright Light in a 5-ft radius; it records a spoken message (up to 6 seconds) replayed on command; it emits a chosen odor or a nonverbal sound; or a static visual effect appears on one of its surfaces. You can have a number of these objects active equal to your Intelligence modifier, and the effect lasts indefinitely until you end it or exceed the limit.',
       minLevel: 1,
+    },
+    {
+      name: 'Infuse Item',
+      actionType: 'special',
+      // v2.532.0 — Central Artificer feature. Infusions KNOWN and items
+      // INFUSED scale by level (TCE): known 4/6/8/10/12 at 2/6/10/14/18;
+      // infused 2/3/4/5/6 at 2/6/10/14/18.
+      description: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const known = lvl >= 18 ? 12 : lvl >= 14 ? 10 : lvl >= 10 ? 8 : lvl >= 6 ? 6 : 4;
+        const active = lvl >= 18 ? 6 : lvl >= 14 ? 5 : lvl >= 10 ? 4 : lvl >= 6 ? 3 : 2;
+        return `You know ${known} infusions and can have ${active} infused items at once. Infusions are applied to nonmagical items during a Long Rest, turning them into magic items (e.g. Enhanced Weapon, Repeating Shot, Replicate Magic Item).`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const known = lvl >= 18 ? 12 : lvl >= 14 ? 10 : lvl >= 10 ? 8 : lvl >= 6 ? 6 : 4;
+        const active = lvl >= 18 ? 6 : lvl >= 14 ? 5 : lvl >= 10 ? 4 : lvl >= 6 ? 3 : 2;
+        return `You know ${known} artificer infusions (4 at levels 2\u20135, 6 at 6\u20139, 8 at 10\u201313, 10 at 14\u201317, 12 at 18+), and you can replace one whenever you gain an Artificer level.\n\nWhenever you finish a Long Rest, you can touch up to ${active} nonmagical objects (2 at levels 2\u20135, 3 at 6\u20139, 4 at 10\u201313, 5 at 14\u201317, 6 at 18+) and imbue each with one of your known infusions, turning it into a magic item until you replace that infusion or it leaves your influence. Common infusions include Enhanced Weapon/Defense, Repeating Shot, Replicate Magic Item, Bag of Holding, and Boots of the Winding Path.`;
+      },
+      minLevel: 2,
+      isPool: true,
+      maxUsesFn: (c: any) => c?.level >= 18 ? 6 : c?.level >= 14 ? 5 : c?.level >= 10 ? 4 : c?.level >= 6 ? 3 : 2,
     },
     {
       name: 'The Right Tool for the Job',
       actionType: 'action',
-      description: 'Spend 1 hour with Thieves\' Tools to create a set of Artisan\'s Tools in an empty space.',
+      description: 'With Tinker\u2019s Tools, spend 1 hour to magically create one set of Artisan\u2019s Tools of your choice in an unoccupied space within 5 ft (lasts until you use this again or finish a Long Rest).',
+      descriptionLong: 'During a Short or Long Rest, you can use your Tinker\u2019s Tools to magically create one set of Artisan\u2019s Tools of your choice in an unoccupied space within 5 ft. Creating them takes 1 hour and they last until you use this feature again or finish a Long Rest. It means you\u2019re never without the right tools for a craft or check.',
       minLevel: 3,
+    },
+    {
+      name: 'Tool Expertise',
+      actionType: 'free',
+      description: (c: any) => {
+        const pb = proficiencyBonus(c?.level ?? 6);
+        return `You have Expertise (double proficiency, +${pb * 2}) with any Artisan\u2019s Tools you\u2019re proficient in.`;
+      },
+      descriptionLong: (c: any) => {
+        const pb = proficiencyBonus(c?.level ?? 6);
+        return `You now add double your proficiency bonus (currently +${pb * 2}) to any ability check you make that uses Artisan\u2019s Tools with which you have proficiency. As the consummate craftsperson, your tool checks are reliably exceptional.`;
+      },
+      minLevel: 6,
     },
     {
       name: 'Flash of Genius',
       actionType: 'reaction',
-      description: 'When you or a creature you can see makes an ability check or saving throw, add your INT modifier to the roll. Uses = INT modifier per Long Rest.',
+      // v2.532.0 — Uses = INT modifier per Long Rest; add INT mod to a
+      // check or save you or a nearby creature makes.
+      description: (c: any) => {
+        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        return `Reaction when you or a creature within 30 ft makes an ability check or saving throw: add your Intelligence modifier (+${int}) to the roll. ${int} use(s) per Long Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        return `When you or another creature within 30 ft of you makes an ability check or a saving throw, you can use your Reaction to add your Intelligence modifier (currently +${int}) to the roll.\n\nUses: equal to your Intelligence modifier (${int}, minimum 1), regained on a Long Rest. A clutch way to turn a party member\u2019s near-miss save into a success.`;
+      },
       minLevel: 7,
       rest: 'long',
-      maxUsesFn: c => Math.max(1, Math.floor((c.intelligence - 10) / 2)),
+      maxUsesFn: (c: any) => Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2)),
+    },
+    {
+      name: 'Magic Item Adept',
+      actionType: 'free',
+      // v2.532.0 — Attunement slots scale: 4 (level 10), 5 (Savant 14),
+      // 6 (Master 18). Surface the current cap.
+      description: (c: any) => {
+        const lvl = c?.level ?? 10;
+        const slots = lvl >= 18 ? 6 : lvl >= 14 ? 5 : 4;
+        return `You can attune to up to ${slots} magic items at once (Adept 4, Savant 5, Master 6), and you craft common/uncommon magic items faster and cheaper.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 10;
+        const slots = lvl >= 18 ? 6 : lvl >= 14 ? 5 : 4;
+        const master = lvl >= 18;
+        return `Your attunement limit rises above the normal 3: you can attune to ${slots} magic items at once (4 at level 10 via Magic Item Adept, 5 at 14 via Magic Item Savant, 6 at 18 via Magic Item Master). You also ignore all class, race, spell, and level requirements on attuning to or using a magic item.\n\nMagic Item Adept also lets you craft common and uncommon magic items in a quarter of the normal time and for half the cost.${master ? ' Magic Item Master (level 18) grants the full 6 attunement slots.' : ''}`;
+      },
+      minLevel: 10,
     },
     {
       name: 'Spell-Storing Item',
       actionType: 'action',
-      description: 'Touch a simple or martial weapon or Spellcasting Focus. Store a 1st or 2nd-level spell in it. Wielder can use your spellcasting ability to cast it, 2 × INT mod times per Long Rest.',
+      // v2.532.0 — Store a 1st/2nd-level spell; wielder casts it using your
+      // spell attack/DC, usable 2 x INT mod times before it must be redone.
+      description: (c: any) => {
+        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        return `After a Long Rest, store a 1st- or 2nd-level Artificer spell in a weapon or spellcasting focus. The holder can cast it (your spell attack bonus / save DC) up to ${int * 2} times before it must be re-stored.`;
+      },
+      descriptionLong: (c: any) => {
+        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        return `When you finish a Long Rest, you can touch one simple/martial weapon or an item that can serve as a Spellcasting Focus, and store one Artificer spell of level 1 or 2 in it (the spell must have a casting time of an action).\n\nWhile holding the item, a creature can take a Magic action to cast the stored spell using your spellcasting ability modifier (spell attack bonus and save DC). The spell can be cast a total of ${int * 2} times (twice your Intelligence modifier) before the energy is depleted; you can store a new spell on a later Long Rest.`;
+      },
       minLevel: 11,
     },
     {
       name: 'Soul of Artifice',
-      actionType: 'reaction',
-      description: 'When you are reduced to 0 HP but not killed, you can use your Reaction to end one of your infusions and drop to 1 HP instead.',
+      actionType: 'free',
+      // v2.532.0 — +1 to all saves per active infusion; and a Reaction to
+      // drop to 1 HP by ending one infusion when reduced to 0.
+      description: 'You gain a +1 bonus to all saving throws for each magic item infusion you currently have active. Also, when reduced to 0 HP but not killed, you can use your Reaction to end one infusion and drop to 1 HP instead.',
+      descriptionLong: 'Your mastery of artifice protects you:\n\u2022 You gain a +1 bonus to all saving throws for each artificer infusion you currently have active (up to +6 at this level).\n\u2022 When you are reduced to 0 Hit Points but not killed outright, you can use your Reaction to end one of your active infusions and instead drop to 1 Hit Point. A reliable last-ditch survival button.',
       minLevel: 20,
-      rest: 'long',
-      maxUsesFn: () => 1,
     },
   ],
 
