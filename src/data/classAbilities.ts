@@ -926,28 +926,82 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
 
   Sorcerer: [
     {
-      name: 'Sorcery Points',
-      actionType: 'special',
-      description: 'Resource pool. Spend to fuel Metamagic and subclass features. Regain all on Long Rest.',
-      minLevel: 2,
-      rest: 'long',
-      maxUsesFn: c => c.level,
-      isPool: true,
-    },
-    {
       name: 'Innate Sorcery',
       actionType: 'bonus',
-      description: 'Activate for 1 minute: your spell save DC increases by 1, and you have Advantage on attack rolls for your Sorcerer spells.',
+      // v2.529.0 — Full richness pass. 1 minute; +1 to Sorcerer spell save
+      // DC and Advantage on Sorcerer spell attack rolls. 2 uses per Long
+      // Rest. From level 5, Sorcerous Restoration also recharges it.
+      description: 'Bonus Action: for 1 minute, your Sorcerer spell save DC increases by 1 and you have Advantage on the attack rolls of your Sorcerer spells.',
+      descriptionLong: 'As a Bonus Action, you unleash your innate magic for 1 minute. For the duration:\n\u2022 Your spell save DC for Sorcerer spells increases by 1.\n\u2022 You have Advantage on the attack rolls of Sorcerer spells you cast.\n\nUses: twice per Long Rest. This also switches on Sorcery Incarnate (level 7) and Arcane Apotheosis (level 20), so it\u2019s the engine behind the Sorcerer\u2019s biggest turns.',
       minLevel: 1,
       rest: 'long',
       maxUsesFn: () => 2,
     },
     {
+      name: 'Font of Magic (Sorcery Points)',
+      actionType: 'special',
+      // v2.529.0 — Sorcery Points = Sorcerer level (from level 2).
+      // Convert SP <-> spell slots, and fuel Metamagic. Long Rest refresh
+      // (partial Short Rest refresh from level 5 via Sorcerous Restoration).
+      description: (c: any) => {
+        const sp = c?.level >= 2 ? c.level : 0;
+        return sp > 0
+          ? `You have ${sp} Sorcery Points. Spend them on Metamagic, or convert them to and from spell slots as a Bonus Action. Regain all on a Long Rest.`
+          : `Sorcery Points unlock at level 2.`;
+      },
+      descriptionLong: (c: any) => {
+        const sp = c?.level >= 2 ? c.level : 0;
+        return `Your Sorcery Point pool equals your Sorcerer level (currently ${sp}).\n\n\u2022 Create Spell Slot (Bonus Action): spend Sorcery Points to create a spell slot \u2014 2 SP for a 1st-level slot, 3 for 2nd, 5 for 3rd, 6 for 4th, 7 for 5th.\n\u2022 Convert a Slot to Sorcery Points (Bonus Action): expend a spell slot to gain Sorcery Points equal to its level.\n\u2022 Fuel Metamagic options.\n\nRegain all Sorcery Points on a Long Rest (and some on a Short Rest from level 5 via Sorcerous Restoration).`;
+      },
+      minLevel: 2,
+      rest: 'long',
+      maxUsesFn: (c: any) => c?.level ?? 1,
+      isPool: true,
+    },
+    {
       name: 'Metamagic',
       actionType: 'free',
-      description: 'Apply Metamagic options (chosen at level 2) to spells you cast by spending Sorcery Points.',
+      // v2.529.0 — Options known scale 2/3/4 at levels 2/10/17. Surface
+      // the count and the SP-cost reminders.
+      description: (c: any) => {
+        const known = c?.level >= 17 ? 4 : c?.level >= 10 ? 3 : 2;
+        return `You know ${known} Metamagic options. Spend Sorcery Points when you cast a spell to bend it \u2014 e.g. Twinned, Quickened, Subtle, Heightened, Distant, Careful, Empowered, Extended.`;
+      },
+      descriptionLong: (c: any) => {
+        const known = c?.level >= 17 ? 4 : c?.level >= 10 ? 3 : 2;
+        return `You know ${known} Metamagic options (2 at levels 2\u20139, 3 at 10\u201316, 4 at 17+), and you can replace one when you gain a Sorcerer level.\n\nYou can use only one Metamagic option on a given spell unless noted. Common options and costs:\n\u2022 Quickened Spell (2 SP) \u2014 cast a 1-action spell as a Bonus Action.\n\u2022 Subtle Spell (1 SP) \u2014 cast without Verbal or Somatic components.\n\u2022 Twinned Spell (SP = slot level) \u2014 target a second creature with a single-target spell.\n\u2022 Heightened Spell (2 SP) \u2014 one target has Disadvantage on its first save.\n\u2022 Empowered, Distant, Extended, Careful, Seeking, Transmuted \u2014 each bends the spell in its own way.`;
+      },
       minLevel: 2,
       isPool: true,
+    },
+    {
+      name: 'Sorcerous Restoration',
+      actionType: 'free',
+      // v2.529.0 — Once per Short Rest, regain SP = half Sorcerer level
+      // (round down), once per day.
+      description: (c: any) => {
+        const regain = Math.floor((c?.level ?? 5) / 2);
+        return `Once per day, when you finish a Short Rest, regain ${regain} expended Sorcery Points (half your Sorcerer level).`;
+      },
+      descriptionLong: (c: any) => {
+        const regain = Math.floor((c?.level ?? 5) / 2);
+        return `When you finish a Short Rest, you can regain expended Sorcery Points equal to half your Sorcerer level, rounded down (currently ${regain}). Once you use this, you can\u2019t do so again until you finish a Long Rest. It roughly doubles your Sorcery Point budget across an adventuring day.`;
+      },
+      minLevel: 5,
+    },
+    {
+      name: 'Sorcery Incarnate',
+      actionType: 'free',
+      description: 'While Innate Sorcery is active, you can use up to two Metamagic options on a single spell. If you have no Sorcery Points, you can activate Innate Sorcery even without spending an action when you roll Initiative.',
+      descriptionLong: 'When you activate Innate Sorcery (or while it\u2019s active), you can apply up to two Metamagic options to a single spell instead of one. Additionally, if you have no uses of Innate Sorcery left, you can spend 2 Sorcery Points to activate it. This lets you stack effects like Quickened + Twinned on your signature turns.',
+      minLevel: 7,
+    },
+    {
+      name: 'Arcane Apotheosis',
+      actionType: 'free',
+      description: 'While Innate Sorcery is active, you can use one Metamagic option on each of your turns without spending Sorcery Points.',
+      descriptionLong: 'While your Innate Sorcery feature is active, you can use one of your Metamagic options on each of your turns without spending Sorcery Points on it. Effectively a free Quickened, Twinned, or Heightened every round during your burst window \u2014 the Sorcerer\u2019s capstone payoff.',
+      minLevel: 20,
     },
   ],
 
