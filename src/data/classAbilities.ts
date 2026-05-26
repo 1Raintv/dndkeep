@@ -348,24 +348,87 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
 
   Druid: [
     {
+      name: 'Primal Order',
+      actionType: 'free',
+      // v2.528.0 — Level-1 choice: Magician (extra cantrip + WIS-mod to
+      // Arcana/Nature checks) or Warden (martial weapon + Medium armor).
+      description: 'Your level-1 path: Magician (an extra Druid cantrip and bonus nature/arcana knowledge) or Warden (martial weapon training and Medium armor).',
+      descriptionLong: 'At level 1 you chose one of two primal callings:\n\u2022 Magician \u2014 you know one extra Druid cantrip, and you add your Wisdom modifier (min +1) to any Intelligence (Arcana or Nature) check you make.\n\u2022 Warden \u2014 you gained training with Martial weapons and Medium armor.',
+      minLevel: 1,
+    },
+    {
       name: 'Wild Shape',
       actionType: 'bonus',
-      description: 'Transform into a beast you have seen. CR limit scales with level. Revert as a Bonus Action or when reduced to 0 HP.',
+      // v2.528.0 — Uses scale 2/3/4 at levels 2/6/17 (effectively
+      // unlimited at 20 via Archdruid). Max CR and form limits improve at
+      // 4 (CR 1/2, no fly) and 8 (CR 1, fly). Lasts hours = half level.
+      description: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const cr = lvl >= 8 ? '1' : lvl >= 4 ? '1/2' : '1/4';
+        const fly = lvl >= 8 ? ', including flyers' : lvl >= 4 ? ', no flying' : ', no flying or swimming';
+        return `Bonus Action: transform into a Beast you\u2019ve seen, up to CR ${cr}${fly}. Lasts ${Math.floor(lvl/2)} hours; revert as a Bonus Action or when you drop to 0 HP.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const uses = lvl >= 17 ? 4 : lvl >= 6 ? 3 : 2;
+        const cr = lvl >= 8 ? '1' : lvl >= 4 ? '1/2' : '1/4';
+        const move = lvl >= 8 ? 'any movement, including a Fly Speed' : lvl >= 4 ? 'a Swim Speed but not a Fly Speed' : 'no Fly or Swim Speed';
+        return `As a Bonus Action, you transform into a Beast you have seen before, with a maximum Challenge Rating of ${cr} (CR 1/4 at levels 2\u20133, 1/2 at 4\u20137, 1 at 8+) and ${move}.\n\nYou keep your mental ability scores, personality, and Wisdom-based features; you use the Beast\u2019s physical stats and gain its traits. The form lasts a number of hours equal to half your Druid level (${Math.floor(lvl/2)}), and you can revert as a Bonus Action or automatically at 0 Hit Points.\n\nUses: ${lvl >= 20 ? 'unlimited (Archdruid)' : uses} per Short or Long Rest (2 at levels 2\u20135, 3 at 6\u201316, 4 at 17+, unlimited at 20).`;
+      },
       minLevel: 2,
       rest: 'short',
-      maxUsesFn: () => 2,
+      maxUsesFn: (c: any) => c?.level >= 20 ? 999 : c?.level >= 17 ? 4 : c?.level >= 6 ? 3 : 2,
+    },
+    {
+      name: 'Wild Companion',
+      actionType: 'action',
+      description: 'Expend a Wild Shape use (or a spell slot) to cast Find Familiar without material components. The familiar is a Fey and lasts a number of hours equal to half your Druid level.',
+      descriptionLong: 'As a Magic action, you can expend a use of Wild Shape (or a spell slot) to cast the Find Familiar spell without material components. The familiar is a Fey instead of its normal type, and it vanishes after a number of hours equal to half your Druid level. A flexible scout, helper, and Help-action bot that doesn\u2019t cost you a known spell.',
+      minLevel: 2,
+      isPool: true,
     },
     {
       name: 'Wild Resurgence',
       actionType: 'special',
-      description: 'If you have no Wild Shape uses, spend a spell slot to regain one use. Also, expend a Wild Shape use to regain a level 1 spell slot.',
+      // v2.528.0 — Once per turn, convert a spell slot -> a Wild Shape use
+      // (if you have none); and once per Long Rest, expend a Wild Shape
+      // use to regain a level-1 spell slot.
+      description: 'If you have no Wild Shape uses, you can spend a spell slot (Bonus Action) to regain one. Once per Long Rest, you can instead expend a Wild Shape use to regain a 1st-level spell slot.',
+      descriptionLong: 'You can channel magic between your two resource pools:\n\u2022 If you have no uses of Wild Shape, you can use a Bonus Action to expend one spell slot and regain one use (once per turn).\n\u2022 Once per Long Rest, you can expend one use of Wild Shape to regain one 1st-level spell slot.\n\nThis keeps a heavily-shifting Druid from running dry mid-adventuring-day.',
       minLevel: 5,
     },
     {
-      name: 'Elemental Form',
-      actionType: 'bonus',
-      description: 'Expend two Wild Shape uses to transform into an Air, Earth, Fire, or Water Elemental.',
-      minLevel: 10,
+      name: 'Elemental Fury',
+      actionType: 'free',
+      // v2.528.0 — Level 7: choose Potent Spellcasting (add WIS to Druid
+      // cantrip damage) or Primal Strike (add 1d8 elemental to one attack
+      // per turn while in Wild Shape).
+      description: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `Your level-7 fury: Potent Spellcasting (add +${wis} WIS to your Druid cantrip damage) or Primal Strike (once per turn, add 1d8 elemental damage to an attack, including in Wild Shape).`;
+      },
+      descriptionLong: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `At level 7 you chose one expression of elemental power:\n\u2022 Potent Spellcasting \u2014 you add your Wisdom modifier (currently +${wis}) to the damage you deal with any Druid cantrip.\n\u2022 Primal Strike \u2014 once per turn when you hit with an attack roll (including attacks in Wild Shape), you can deal an extra 1d8 Acid, Cold, Fire, Lightning, or Thunder damage.`;
+      },
+      minLevel: 7,
+    },
+    {
+      name: 'Beast Spells',
+      actionType: 'free',
+      description: 'While in Wild Shape, you can cast spells with verbal and somatic components (but not material) and maintain Concentration.',
+      descriptionLong: 'While using Wild Shape, you can cast your prepared spells, but you can\u2019t provide material components (unless they have a cost) and the spell must use only Verbal and/or Somatic components your Beast form can produce. You can also maintain Concentration on spells while transformed. This removes the biggest drawback of shapeshifting for a caster.',
+      minLevel: 18,
+    },
+    {
+      name: 'Archdruid',
+      actionType: 'free',
+      // v2.528.0 — Level 20: effectively unlimited Wild Shape, and you can
+      // convert Wild Shape uses into spell slots more freely; also ignore
+      // V/S/M for Druid spells.
+      description: 'You can use Wild Shape an unlimited number of times. You can also ignore the Verbal, Somatic, and Material components of your Druid spells, and you regain spell slots by expending Wild Shape uses.',
+      descriptionLong: 'You embody nature itself:\n\u2022 You can use Wild Shape any number of times (your use count is no longer limited).\n\u2022 You can ignore the Verbal, Somatic, and Material components of your Druid spells (no material cost over 0 needed).\n\u2022 Whenever you roll Initiative and have no Wild Shape uses, you regain one. And you can convert Wild Shape uses into spell slots more freely via Wild Resurgence.\n\u2022 Your body also ages more slowly.',
+      minLevel: 20,
     },
   ],
 
