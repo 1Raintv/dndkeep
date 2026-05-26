@@ -259,29 +259,87 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
 
   Cleric: [
     {
+      name: 'Divine Order',
+      actionType: 'free',
+      // v2.526.0/2.527.0 — Level-1 choice: Protector (martial/Heavy armor)
+      // or Thaumaturge (extra cantrip + WIS-mod bonus to Religion/Arcana
+      // checks about supernatural matters).
+      description: 'Your level-1 calling: Protector (martial weapon + Heavy armor training) or Thaumaturge (an extra Cleric cantrip and bonus arcana/religion knowledge).',
+      descriptionLong: 'At level 1 you chose one of two sacred callings:\n\u2022 Protector \u2014 you gained training with Martial weapons and Heavy armor.\n\u2022 Thaumaturge \u2014 you know one extra Cleric cantrip, and you add your Wisdom modifier (min +1) to Intelligence (Arcana or Religion) checks about gods, the planes, and the divine.',
+      minLevel: 1,
+    },
+    {
       name: 'Channel Divinity',
-      actionType: 'action',
-      description: 'Use divine energy to fuel a subclass-specific effect (Turn Undead, Radiance of the Dawn, etc.).',
+      actionType: 'special',
+      // v2.527.0 — Uses scale 2/3/4 at levels 2/6/11 (corrected from the
+      // prior data which used 18). Recharges on a Short OR Long Rest.
+      description: (c: any) => {
+        const uses = c?.level >= 11 ? 4 : c?.level >= 6 ? 3 : 2;
+        return `Channel divine energy (${uses} uses per Short/Long Rest) to fuel Divine Spark, Turn Undead, or your subclass option.`;
+      },
+      descriptionLong: (c: any) => {
+        const uses = c?.level >= 11 ? 4 : c?.level >= 6 ? 3 : 2;
+        return `You can channel divine energy ${uses} times per Short or Long Rest (2 uses at levels 2\u20135, 3 at 6\u201310, 4 at 11+).\n\nBase options:\n\u2022 Divine Spark \u2014 a Magic action to heal or harm (see its entry).\n\u2022 Turn Undead \u2014 brandish your holy symbol to drive off Undead.\n\u2022 Plus any option granted by your subclass.`;
+      },
       minLevel: 2,
       rest: 'short',
-      maxUsesFn: c => c.level >= 18 ? 3 : c.level >= 6 ? 2 : 1,
+      maxUsesFn: (c: any) => c?.level >= 11 ? 4 : c?.level >= 6 ? 3 : 2,
+    },
+    {
+      name: 'Divine Spark',
+      actionType: 'action',
+      // v2.527.0 — New 2024 Channel Divinity option. Magic action: point
+      // and roll dice = 1d8, scaling +1d8 at 7/13/18. Heal a creature, or
+      // force a CON save for radiant/necrotic damage (half on success).
+      description: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const dice = lvl >= 18 ? 4 : lvl >= 13 ? 3 : lvl >= 7 ? 2 : 1;
+        return `Magic Action (spend 1 Channel Divinity): roll ${dice}d8. Restore that many Hit Points to a creature within 30 ft, OR force a Constitution save for ${dice}d8 Radiant or Necrotic damage (half on a success).`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 2;
+        const dice = lvl >= 18 ? 4 : lvl >= 13 ? 3 : lvl >= 7 ? 2 : 1;
+        return `As a Magic action, you point at a creature within 60 ft and channel energy by spending one use of Channel Divinity. Roll ${dice}d8 (1d8 at levels 2\u20136, 2d8 at 7\u201312, 3d8 at 13\u201317, 4d8 at 18+) and choose:\n\u2022 Heal \u2014 restore Hit Points equal to the roll.\n\u2022 Harm \u2014 the target makes a Constitution saving throw, taking Radiant or Necrotic damage (your choice) equal to the roll on a failure, or half as much on a success.`;
+      },
+      minLevel: 2,
+      isPool: true,
+      save: { ability: 'CON', dc: 'spell', targetMode: 'enemies' },
     },
     {
       name: 'Turn Undead',
       actionType: 'action',
-      description: 'Present your holy symbol. Each undead within 30 ft must make a WIS save. On failure: Frightened and must move away. Duration 1 minute or until it takes damage.',
+      // v2.527.0 — WIS save chip; Sear Undead (level 5) adds radiant
+      // damage even on a successful save.
+      description: 'Magic Action (spend 1 Channel Divinity): each Undead within 30 ft must make a Wisdom save or be Frightened and Incapacitated, moving away from you, for 1 minute or until it takes damage.',
+      descriptionLong: 'As a Magic action, you spend one use of Channel Divinity and present your holy symbol. Each Undead within 30 ft that can see or hear you must make a Wisdom saving throw. On a failure, the creature is Frightened and Incapacitated, and must spend its turns trying to move as far from you as it can, for 1 minute or until it takes any damage or you\u2019re Incapacitated.\n\nFrom level 5 (Sear Undead), when an Undead fails this save it also takes Radiant damage equal to your Wisdom modifier (and even creatures that succeed are seared \u2014 see Sear Undead).',
       minLevel: 2,
+      isPool: true,
+      save: { ability: 'WIS', dc: 'spell', targetMode: 'enemies' },
     },
     {
       name: 'Sear Undead',
       actionType: 'free',
-      description: 'When you use Turn Undead, deal Radiant damage equal to your Wisdom modifier (min 1) to undead that succeed their save.',
+      description: (c: any) => {
+        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        return `When you Turn Undead, you can also deal ${wis}d8 Radiant damage, divided among the Undead you affect.`;
+      },
+      descriptionLong: 'Whenever you use Turn Undead, you can roll a number of d8s equal to your Wisdom modifier (minimum 1) and deal that much Radiant damage to one Undead you would affect, or divide the dice among several. This lets your Turn double as a damage tool, not just crowd control.',
       minLevel: 5,
     },
     {
       name: 'Divine Intervention',
       actionType: 'action',
-      description: 'Implore your deity to intervene. The DM chooses the form of intervention. Once per Long Rest.',
+      // v2.527.0 — 2024: you cast any Cleric spell of level 5 or lower for
+      // free as part of the action (no components). 1 use per Long Rest;
+      // Greater Divine Intervention (level 20) once per week casts Wish.
+      description: (c: any) => {
+        const cap = c?.level >= 20 ? 'any Cleric spell (and Wish once per 2d4 days at level 20)' : 'any Cleric spell of level 5 or lower';
+        return `Magic Action: cast ${cap} without expending a spell slot or components. Once per Long Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const greater = c?.level >= 20;
+        return `As a Magic action, you call on your deity to intervene: you cast any Cleric spell of level 5 or lower as part of this action, without expending a spell slot or providing material components.\n\nOnce you use this feature, you can\u2019t use it again until you finish a Long Rest.${greater ? '\n\nGreater Divine Intervention (level 20): you can instead cast Wish this way. If you do, you can\u2019t use Divine Intervention again for 2d4 Long Rests.' : ''}`;
+      },
       minLevel: 10,
       rest: 'long',
       maxUsesFn: () => 1,
