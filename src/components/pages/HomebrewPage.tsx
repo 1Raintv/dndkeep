@@ -206,7 +206,7 @@ function UACard({ className, sub }: { className: string; sub: SubclassData }) {
               {sub.features.map(f => (
                 <div key={f.name} style={{ padding: '6px 8px', background: 'var(--c-raised)', borderRadius: 6, borderLeft: '2px solid rgba(167,139,250,0.4)' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>Lv {f.level} — {f.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.5 }}>{f.description}</div>
+                  <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.5 }}>{typeof f.description === 'function' ? f.description({ level: 20 } as any) : f.description}</div>
                   {f.mechanics?.map((m, i) => (
                     <div key={i} style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 3 }}>
                       [{m.type}] {m.details}{m.dice ? ` · ${m.dice}` : ''}{m.ability ? ` · ${m.ability}` : ''}
@@ -489,7 +489,7 @@ function FeatureEditor({ feature, onChange, onDelete }: {
             </Field>
           </div>
           <Field label="Description (rules text)">
-            <textarea value={feature.description} onChange={e => set({ description: e.target.value })} rows={3} placeholder="You can teleport up to 60 feet to an unoccupied space you can see that is in dim light or darkness..." />
+            <textarea value={typeof feature.description === 'string' ? feature.description : ''} onChange={e => set({ description: e.target.value })} rows={3} placeholder="You can teleport up to 60 feet to an unoccupied space you can see that is in dim light or darkness..." />
           </Field>
           {/* Mechanics (optional) */}
           <div style={{ padding: '8px 10px', background: 'var(--c-raised)', borderRadius: 6, borderLeft: '2px solid rgba(96,165,250,0.4)' }}>

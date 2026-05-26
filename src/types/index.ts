@@ -492,7 +492,20 @@ export interface BackgroundData {
 export interface SubclassFeature {
   level: number;
   name: string;
-  description: string;
+  // v2.533.0 — `description` may now be a dynamic function of the
+  // character (like base-class ClassAbility descriptions), so subclass
+  // features can scale their text by level / ability scores. Plain
+  // strings remain fully supported.
+  description: string | ((c: Character) => string);
+  // v2.533.0 — optional expanded mechanics shown in the feature's
+  // detail view, matching the base-class `descriptionLong` pattern.
+  // May also be dynamic.
+  descriptionLong?: string | ((c: Character) => string);
+  // v2.533.0 — optional save spec for features that force a save, so
+  // the UI can render the same "DC · ABILITY Save" chip used for
+  // base-class abilities. `dc: 'spell'` uses the character's spell save
+  // DC; a number is a literal DC.
+  save?: { ability: string; dc: number | 'spell'; targetMode?: 'any' | 'enemies' | 'allies' };
   /** v2.259.0 — surfaced previously-untyped field. When true, this
    *  feature represents a player choice (e.g. pick a fighting style,
    *  pick a maneuver). The UI renders these with gold ⬡ accents to

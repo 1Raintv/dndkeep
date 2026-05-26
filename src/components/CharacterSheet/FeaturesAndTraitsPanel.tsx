@@ -142,6 +142,17 @@ function getChoiceDisplay(featureName: string, character: Character, choices: Re
  return '';
 }
 
+// v2.533.0 — resolve a subclass feature description that may be a plain
+// string or a dynamic (c) => string function, mirroring the base-class
+// resolveDesc in ClassAbilitiesSection.
+function resolveSubclassDesc(
+  desc: string | ((c: Character) => string) | undefined,
+  character: Character,
+): string {
+  if (desc == null) return '';
+  return typeof desc === 'function' ? desc(character) : desc;
+}
+
 // Subclass features from classes.ts
 function getSubclassFeatures(character: Character, featureLevel: number) {
  const classData = CLASS_MAP[character.class_name];
@@ -573,8 +584,20 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: sf.isChoice ? 'var(--c-gold-l)' : '#c084fc', marginBottom: 3 }}>
  {sf.isChoice && '⬡ '}{sf.name}
  {sf.isChoice && <span style={{ fontSize: 9, marginLeft: 6, fontWeight: 700, background: 'rgba(212,160,23,0.12)', border: '1px solid rgba(212,160,23,0.3)', borderRadius: 999, padding: '1px 5px' }}>CHOICE</span>}
+ {/* v2.533.0 — save chip for subclass features that force a save */}
+ {(sf as any).save && (
+ <span style={{ fontSize: 9, marginLeft: 6, fontWeight: 900, color: 'var(--c-red-l, #f87171)', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 999, padding: '1px 6px' }}>
+ {typeof (sf as any).save.dc === 'number' ? `DC ${(sf as any).save.dc} · ` : ''}{String((sf as any).save.ability).toUpperCase()} Save
+ </span>
+ )}
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{sf.description}</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{resolveSubclassDesc(sf.description, character)}</div>
+ {/* v2.533.0 — expanded mechanics, when provided */}
+ {(sf as any).descriptionLong && (
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.6, marginTop: 6, whiteSpace: 'pre-line' }}>
+ {resolveSubclassDesc((sf as any).descriptionLong, character)}
+ </div>
+ )}
  </div>
  ))}
  </div>

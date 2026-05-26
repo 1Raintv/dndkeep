@@ -7,6 +7,18 @@ import { ARTIFICER_INFUSIONS, getActiveInfusionCount } from '../../data/artifice
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
 import { useAuth } from '../../context/AuthContext';
 
+// v2.533.0 — subclass feature descriptions may be dynamic (c) => string.
+// The compendium is a static reference with no specific character, so we
+// resolve a function description against a representative level-20
+// character to show the fully-online text. Plain strings pass through.
+function compendiumDesc(desc: unknown): string {
+  if (typeof desc === 'function') {
+    try { return (desc as (c: any) => string)({ level: 20 } as any); }
+    catch { return ''; }
+  }
+  return typeof desc === 'string' ? desc : '';
+}
+
 // Class color accents
 const CLASS_COLORS: Record<string, string> = {
   Barbarian:  '#ef4444',
@@ -445,7 +457,7 @@ export default function ClassCompendiumPage() {
                               {sf.isChoice && <span style={{ fontSize: 9, marginLeft: 6, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '1px 5px' }}>CHOICE</span>}
                             </div>
                             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65 }}>
-                              {sf.description}
+                              {compendiumDesc(sf.description)}
                             </div>
                           </div>
                         ))}
@@ -478,7 +490,7 @@ export default function ClassCompendiumPage() {
                           )}
                         </div>
                         <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65 }}>
-                          {sf.description}
+                          {compendiumDesc(sf.description)}
                         </div>
                       </div>
                     ))}
