@@ -1107,21 +1107,58 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Arcane Recovery',
       actionType: 'special',
-      description: 'Once per Long Rest, during a Short Rest, recover expended spell slots with combined level ≤ half your Wizard level (round up, max 5th level).',
+      // v2.531.0 — Full richness pass. Recover slots with combined level
+      // <= ceil(Wizard level / 2), no single slot above 5th. Once per day,
+      // on a Short Rest.
+      description: (c: any) => {
+        const total = Math.ceil((c?.level ?? 1) / 2);
+        return `Once per day, during a Short Rest, recover expended spell slots with a combined level up to ${total} (half your Wizard level, rounded up; no slot above 5th level).`;
+      },
+      descriptionLong: (c: any) => {
+        const total = Math.ceil((c?.level ?? 1) / 2);
+        return `Once per day when you finish a Short Rest, you can recover expended spell slots with a combined level equal to or less than half your Wizard level, rounded up (currently ${total}), with no individual slot being higher than 5th level.\n\nExample: at this level you could recover a single level-${Math.min(5, total)} slot, or several lower-level slots totaling ${total}. You regain the ability to use this on a Long Rest.`;
+      },
       minLevel: 1,
       rest: 'long',
       maxUsesFn: () => 1,
     },
     {
+      name: 'Scholar',
+      actionType: 'free',
+      // v2.531.0 — New 2024 level-2 feature: Expertise in one Int-based
+      // skill you're proficient in (Arcana, History, Investigation,
+      // Medicine, Nature, or Religion).
+      description: (c: any) => {
+        const pb = proficiencyBonus(c?.level ?? 2);
+        return `You have Expertise (double proficiency, +${pb * 2}) in one Intelligence skill you\u2019re proficient in \u2014 Arcana, History, Investigation, Medicine, Nature, or Religion.`;
+      },
+      descriptionLong: (c: any) => {
+        const pb = proficiencyBonus(c?.level ?? 2);
+        return `When you reached level 2 you chose one of the following skills you have proficiency in and gained Expertise (your proficiency bonus is doubled, currently +${pb * 2}) for checks with it: Arcana, History, Investigation, Medicine, Nature, or Religion. The mark of a true scholar of the arcane.`;
+      },
+      minLevel: 2,
+    },
+    {
+      name: 'Memorize Spell',
+      actionType: 'special',
+      // v2.531.0 — New 2024 level-5 feature: swap one prepared Wizard spell
+      // for another from your spellbook whenever you finish a Short Rest.
+      description: 'Whenever you finish a Short Rest, you can study your spellbook to replace one of your prepared Wizard spells with a different spell from the book.',
+      descriptionLong: 'When you finish a Short Rest, you can study your spellbook and replace one of the Wizard spells you have prepared with another spell from your spellbook. This gives the Wizard unmatched mid-day adaptability \u2014 retune your loadout between fights to fit what\u2019s coming next.',
+      minLevel: 5,
+    },
+    {
       name: 'Spell Mastery',
       actionType: 'free',
-      description: 'Choose a 1st-level and a 2nd-level spell. Cast them at their lowest level without expending a spell slot.',
+      description: 'Choose one 1st-level and one 2nd-level spell in your spellbook. You can cast them at their lowest level without expending a spell slot (and can swap the choices over a long rest).',
+      descriptionLong: 'Pick one 1st-level and one 2nd-level spell from your spellbook that have a casting time of an action. You can cast those spells at their lowest level without expending a spell slot, as often as you like. After a Long Rest and an hour of study, you can change the chosen spells. At-will utility like Shield or Misty Step changes how you play.',
       minLevel: 18,
     },
     {
       name: 'Signature Spells',
       actionType: 'free',
-      description: 'Choose two 3rd-level spells as signature spells. They are always prepared, and you can cast each once per Short Rest without a slot.',
+      description: 'Choose two 3rd-level spells as Signature Spells. They are always prepared, and you can cast each once at 3rd level without a spell slot, regaining both on a Short or Long Rest.',
+      descriptionLong: 'You gain two 3rd-level Wizard spells of your choice as Signature Spells. They\u2019re always prepared and don\u2019t count against your prepared total, and you can cast each of them once at 3rd level without expending a spell slot. You regain the ability to do so when you finish a Short or Long Rest (casting them at higher levels still requires a slot).',
       minLevel: 20,
       rest: 'short',
       maxUsesFn: () => 2,
