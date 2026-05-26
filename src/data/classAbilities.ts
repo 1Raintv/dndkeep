@@ -1007,15 +1007,59 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
 
   Warlock: [
     {
+      name: 'Pact Magic',
+      actionType: 'special',
+      // v2.530.0 — Full richness pass. Pact slots scale 1/2/3/4 at levels
+      // 1/2/11/17; all slots are the same level, scaling 1st->5th at
+      // 1/3/5/7/9. ALL recover on a Short OR Long Rest (the defining
+      // Warlock economy).
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const slots = lvl >= 17 ? 4 : lvl >= 11 ? 3 : lvl >= 2 ? 2 : 1;
+        const sl = lvl >= 9 ? 5 : lvl >= 7 ? 4 : lvl >= 5 ? 3 : lvl >= 3 ? 2 : 1;
+        return `You have ${slots} Pact Magic spell slot${slots === 1 ? '' : 's'}, each cast at level ${sl}. All slots recover on a Short or Long Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const slots = lvl >= 17 ? 4 : lvl >= 11 ? 3 : lvl >= 2 ? 2 : 1;
+        const sl = lvl >= 9 ? 5 : lvl >= 7 ? 4 : lvl >= 5 ? 3 : lvl >= 3 ? 2 : 1;
+        return `Your Pact Magic slots are separate from other spellcasting. At your level you have ${slots} slot(s), all cast at spell level ${sl}.\n\n\u2022 Slot count: 1 at level 1, 2 at 2\u201310, 3 at 11\u201316, 4 at 17+.\n\u2022 Slot level: 1st at levels 1\u20132, 2nd at 3\u20134, 3rd at 5\u20136, 4th at 7\u20138, 5th at 9+.\n\nCrucially, you regain ALL expended Pact Magic slots on a Short Rest as well as a Long Rest \u2014 so you can cast your highest-level spells several times per day across rests. You always cast a leveled Warlock spell at your current slot level (you can\u2019t downcast).`;
+      },
+      minLevel: 1,
+      rest: 'short',
+      maxUsesFn: (c: any) => c?.level >= 17 ? 4 : c?.level >= 11 ? 3 : c?.level >= 2 ? 2 : 1,
+      isPool: true,
+    },
+    {
       name: 'Eldritch Invocations',
       actionType: 'special',
-      description: 'Passive and active benefits granted by your chosen invocations.',
+      // v2.530.0 — Known count scales per the 2024 table: 1/3/5/6/7/8/9 at
+      // levels 1/2/5/7/9/12/15 (and you can swap one on each level-up).
+      description: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const known = lvl >= 15 ? 9 : lvl >= 12 ? 8 : lvl >= 9 ? 7 : lvl >= 7 ? 6 : lvl >= 5 ? 5 : lvl >= 2 ? 3 : 1;
+        return `You know ${known} Eldritch Invocations \u2014 passive and active magical benefits (e.g. Agonizing Blast, Devil\u2019s Sight, Pact of the Blade options). You can swap one when you gain a level.`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 1;
+        const known = lvl >= 15 ? 9 : lvl >= 12 ? 8 : lvl >= 9 ? 7 : lvl >= 7 ? 6 : lvl >= 5 ? 5 : lvl >= 2 ? 3 : 1;
+        return `You know ${known} Eldritch Invocations (1 at level 1, 3 at 2\u20134, 5 at 5\u20136, 6 at 7\u20138, 7 at 9\u201311, 8 at 12\u201314, 9 at 15+). Whenever you gain a Warlock level you can replace one with another you qualify for.\n\nPopular options:\n\u2022 Agonizing Blast \u2014 add your Charisma modifier to Eldritch Blast damage.\n\u2022 Devil\u2019s Sight \u2014 see normally in magical and nonmagical Darkness out to 120 ft.\n\u2022 Mask of Many Faces \u2014 cast Disguise Self at will.\n\u2022 Pact of the Blade / Tome / Chain options expand with your Pact Boon.`;
+      },
       minLevel: 1,
     },
     {
       name: 'Magical Cunning',
       actionType: 'action',
-      description: 'Spend 1 minute in meditation to regain half your expended Pact Magic slots (rounded up). Once per Long Rest.',
+      description: (c: any) => {
+        const slots = c?.level >= 17 ? 4 : c?.level >= 11 ? 3 : 2;
+        const regain = Math.ceil(slots / 2);
+        return `Magic Action (1 minute of meditation): regain ${regain} expended Pact Magic slots (half your total, rounded up). Once per Long Rest.`;
+      },
+      descriptionLong: (c: any) => {
+        const slots = c?.level >= 17 ? 4 : c?.level >= 11 ? 3 : 2;
+        const regain = Math.ceil(slots / 2);
+        return `By taking a Magic action and spending 1 minute in occult meditation, you regain a number of expended Pact Magic spell slots equal to half your maximum (rounded up) \u2014 currently ${regain} of your ${slots}.\n\nOnce you use this, you can\u2019t again until you finish a Long Rest. Combined with Short-Rest slot recovery, it gives the Warlock a strong third wind in a long fight.`;
+      },
       minLevel: 2,
       rest: 'long',
       maxUsesFn: () => 1,
@@ -1023,7 +1067,8 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Contact Patron',
       actionType: 'action',
-      description: 'Cast Commune without a spell slot. Your patron answers. Once per Long Rest.',
+      description: 'Cast Contact Other Plane to speak with your patron directly (automatic success), without a spell slot. Once per Long Rest.',
+      descriptionLong: 'You can always cast the Contact Other Plane spell to contact your otherworldly patron, without expending a spell slot, and you automatically succeed on the spell\u2019s saving throw. You can do this once per Long Rest. A reliable line to your patron for guidance (and roleplay).',
       minLevel: 9,
       rest: 'long',
       maxUsesFn: () => 1,
@@ -1031,15 +1076,27 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Mystic Arcanum',
       actionType: 'action',
-      description: 'Cast your chosen arcanum spell once per Long Rest without expending a spell slot.',
+      // v2.530.0 — Gain a 6th/7th/8th/9th-level spell at 11/13/15/17, each
+      // castable once per Long Rest without a slot. Use count = number of
+      // arcana unlocked so far.
+      description: (c: any) => {
+        const count = c?.level >= 17 ? 4 : c?.level >= 15 ? 3 : c?.level >= 13 ? 2 : 1;
+        const highest = c?.level >= 17 ? '9th' : c?.level >= 15 ? '8th' : c?.level >= 13 ? '7th' : '6th';
+        return `You know ${count} Mystic Arcanum spell(s) (up to ${highest} level). Cast each once per Long Rest without a spell slot.`;
+      },
+      descriptionLong: (c: any) => {
+        const count = c?.level >= 17 ? 4 : c?.level >= 15 ? 3 : c?.level >= 13 ? 2 : 1;
+        return `You gain a Mystic Arcanum at levels 11 (6th-level spell), 13 (7th), 15 (8th), and 17 (9th) \u2014 currently ${count} arcanum spell(s). You choose one Warlock spell of each unlocked level as your Arcanum, and you can cast each once without expending a spell slot. You regain all uses on a Long Rest. This is how a Warlock accesses the very highest-level spells despite having few slots.`;
+      },
       minLevel: 11,
       rest: 'long',
-      maxUsesFn: c => c.level >= 17 ? 4 : c.level >= 15 ? 3 : c.level >= 13 ? 2 : 1,
+      maxUsesFn: (c: any) => c?.level >= 17 ? 4 : c?.level >= 15 ? 3 : c?.level >= 13 ? 2 : 1,
     },
     {
       name: 'Eldritch Master',
       actionType: 'action',
-      description: 'Spend 1 minute entreating your patron to regain all expended Pact Magic spell slots. Once per Long Rest.',
+      description: 'Take a Magic action to entreat your patron and regain ALL expended Pact Magic spell slots. Once per Long Rest (in addition to Short-Rest recovery and Magical Cunning).',
+      descriptionLong: 'By taking a Magic action to entreat your patron for aid, you regain all expended Pact Magic spell slots. Once you use this feature, you can\u2019t do so again until you finish a Long Rest. Stacked with Short-Rest recovery and Magical Cunning, a level-18 Warlock can refill their slots three+ times per day.',
       minLevel: 18,
       rest: 'long',
       maxUsesFn: () => 1,
