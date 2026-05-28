@@ -304,7 +304,8 @@ export default function WeaponsTracker({
      empty here. */}
  {weapons.length > 0 && (
  <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
- {['', '', 'ATTACK', '', 'RANGE', '', 'HIT', 'DAMAGE', '', '', ''].map((h, i) => (
+ {/* v2.546.0: Headers mirror SpellsTab so weapons + spells line up visually across both tabs. */}
+ {['', '', 'NAME', 'TIME', 'RANGE', '', 'HIT', 'DAMAGE', '', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
  </div>
@@ -405,8 +406,9 @@ export default function WeaponsTracker({
  </div>
  </div>
 
- {/* Col 3: TIME — empty for weapons (action econ implicit). */}
- <div />
+ {/* Col 3: TIME — v2.546.0: was empty; weapons are always 1 Action,
+     so render "1A" matching spell row's casting-time abbreviation. */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>1A</div>
 
  {/* Col 4: RANGE */}
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -419,70 +421,66 @@ export default function WeaponsTracker({
 
  {/* v2.87.0: Unarmed Strike — single STRIKE button that opens the mode
      picker (Damage / Grapple / Shove). v2.371.0: spans HIT-DC + EFFECT
-     cols (74 + 80 + gap = 162px). */}
+     cols (74 + 80 + gap = 162px). v2.546.0: collapsed to a single-word
+     "STRIKE" label per user request; mode options live in the picker
+     modal that opens on click, not crammed into the button label. */}
  {w.unarmedModes ? (
  <button
  onClick={() => setUnarmedModal(w)}
- title="Unarmed Strike: pick Damage, Grapple, or Shove"
+ title="Unarmed Strike — pick Damage, Grapple, or Shove"
  style={{
- textAlign: 'center', padding: '5px 10px',
- borderRadius: 'var(--r-md)',
+ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13,
+ color: 'var(--c-gold-l)', letterSpacing: '0.04em',
+ padding: '4px 10px',
+ borderRadius: 999,
  border: '1px solid rgba(200,146,42,0.4)',
- background: 'linear-gradient(180deg, rgba(200,146,42,0.2), rgba(200,146,42,0.08))',
+ background: 'rgba(200,146,42,0.12)',
  cursor: 'pointer', transition: 'all var(--tr-fast)',
- minHeight: 0, alignSelf: 'center',
- gridColumn: 'span 2', // spans cols 5 (HIT-DC) + 6 (EFFECT)
+ minHeight: 0, alignSelf: 'center', justifySelf: 'center',
+ gridColumn: 'span 2', // spans cols 6 (HIT) + 7 (DAMAGE)
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13, color: 'var(--c-gold-l)', lineHeight: 1 }}>
  STRIKE
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(200,146,42,0.7)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginTop: 2 }}>
- Damage · Grapple · Shove
- </div>
  </button>
  ) : (
  <>
- {/* Col 5: HIT-DC — to-hit modifier */}
+ {/* Col 6: HIT — to-hit modifier. v2.546.0: stripped "TO HIT"
+     subtitle so the chip shows just "+5" matching SpellsTab's
+     HIT / DC pill. Stays a button so a tap rolls the attack;
+     the column header above labels it. */}
  <button
  onClick={() => handleHit(w)}
- title={`Roll to hit: d20${w.attackBonus >= 0 ? '+' : ''}${w.attackBonus}`}
+ title={`Roll to hit (d20${w.attackBonus >= 0 ? '+' : ''}${w.attackBonus})`}
  style={{
- textAlign: 'center', padding: '5px 4px',
- borderRadius: 'var(--r-md)',
- border: '1px solid rgba(200,146,42,0.3)',
- background: 'rgba(200,146,42,0.08)',
+ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
+ color: '#fbbf24',
+ background: 'rgba(251,191,36,0.1)',
+ border: '1px solid rgba(251,191,36,0.3)',
+ borderRadius: 999, padding: '2px 8px',
  cursor: 'pointer', transition: 'all var(--tr-fast)',
- minHeight: 0, alignSelf: 'center',
+ minHeight: 0, alignSelf: 'center', justifySelf: 'center',
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 16, color: 'var(--c-gold-l)', lineHeight: 1 }}>
  {modStr(w.attackBonus)}
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(200,146,42,0.5)', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
- TO HIT
- </div>
  </button>
 
- {/* Col 6: EFFECT — damage dice */}
+ {/* Col 7: DAMAGE — damage dice. v2.546.0: stripped "DAMAGE"
+     subtitle so the chip shows just "1d6+1" matching SpellsTab's
+     EFFECT chip. Column header above labels it. */}
  <button
  onClick={() => handleDamage(w)}
- title={`Roll damage: ${w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}${w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
+ title={`Roll damage (${w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}${w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''})`}
  style={{
- textAlign: 'center', padding: '5px 4px',
- borderRadius: 'var(--r-md)',
+ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
+ color: 'var(--c-red-l)',
+ background: 'rgba(248,113,113,0.1)',
  border: '1px solid rgba(248,113,113,0.3)',
- background: 'rgba(248,113,113,0.08)',
+ borderRadius: 999, padding: '2px 8px',
  cursor: 'pointer', transition: 'all var(--tr-fast)',
- minHeight: 0, alignSelf: 'center',
+ minHeight: 0, alignSelf: 'center', justifySelf: 'center',
  }}
  >
- <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 14, color: 'var(--c-red-l)', lineHeight: 1 }}>
  {w.damageDice === 'flat' ? modStr(w.damageBonus) : `${w.damageDice}${w.damageBonus !== 0 ? modStr(w.damageBonus) : ''}`}
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 7, color: 'rgba(248,113,113,0.5)', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
- DAMAGE
- </div>
  </button>
  </>
  )}
