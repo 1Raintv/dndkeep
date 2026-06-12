@@ -132,7 +132,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     },
     {
       name: 'Danger Sense',
-      actionType: 'reaction',
+      actionType: 'free',
       description: 'Advantage on Dexterity saving throws against effects you can see (e.g. traps, spells), unless Incapacitated.',
       descriptionLong: 'You have an uncanny sense for danger. You have Advantage on Dexterity saving throws against effects you can see, such as a Fireball or a swinging trap. You don\'t benefit while Incapacitated.',
       minLevel: 2,
@@ -213,7 +213,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
         return `As a Bonus Action, you give one creature other than yourself within 60 ft a Bardic Inspiration die: a ${die} at your level (d6 at 1\u20134, d8 at 5\u20139, d10 at 10\u201314, d12 at 15+).\n\nOnce within 10 minutes, the creature can roll the die and add it to one d20 Test it makes (ability check, attack roll, or saving throw). It can do so after seeing the d20 roll but before the outcome is announced.\n\nUses: equal to your Charisma modifier (currently ${uses}, minimum 1), regained on a ${recharge}.${lvl >= 20 ? '\n\nSuperior Inspiration (level 20): when you roll Initiative, you regain expended uses until you have at least two.' : ''}`;
       },
       minLevel: 1,
-      rest: 'short',
+      rest: 'long',
       maxUsesFn: (c: any) => Math.max(1, cha(c)),
     },
     {
@@ -992,7 +992,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Sorcery Incarnate',
       actionType: 'free',
-      description: 'While Innate Sorcery is active, you can use up to two Metamagic options on a single spell. If you have no Sorcery Points, you can activate Innate Sorcery even without spending an action when you roll Initiative.',
+      description: 'While Innate Sorcery is active, you can use up to two Metamagic options on a single spell. If you have no uses of Innate Sorcery left, you can spend 2 Sorcery Points to activate it.',
       descriptionLong: 'When you activate Innate Sorcery (or while it\u2019s active), you can apply up to two Metamagic options to a single spell instead of one. Additionally, if you have no uses of Innate Sorcery left, you can spend 2 Sorcery Points to activate it. This lets you stack effects like Quickened + Twinned on your signature turns.',
       minLevel: 7,
     },
