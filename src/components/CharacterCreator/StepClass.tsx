@@ -19,11 +19,7 @@ const CLASS_COMPLEXITY: Record<string, number> = {
 const COMPLEXITY_LABEL: Record<number, string> = {
   1: 'Beginner', 2: 'Easy', 3: 'Moderate', 4: 'Complex', 5: 'Advanced',
 };
-const CLASS_ICONS: Record<string, string> = {
-  Barbarian:'⚔️', Bard:'🎵', Cleric:'✝️', Druid:'🌿', Fighter:'🛡️',
-  Monk:'👊', Paladin:'⚡', Ranger:'🏹', Rogue:'🗡️', Sorcerer:'🔥',
-  Warlock:'👁️', Wizard:'📖', Artificer:'⚙️', Psion:'🔮',
-};
+// v2.574.0 — emoji class icons removed (visual cleanup).
 
 function ComplexityPips({ rating }: { rating: number }) {
   return (
@@ -53,7 +49,6 @@ export default function StepClass({ selected, level, selectedSkills, onSelect, o
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--sp-2)' }}>
         {visibleClasses.map(cls => {
           const complexity = CLASS_COMPLEXITY[cls.name] ?? 3;
-          const icon = CLASS_ICONS[cls.name] ?? '🧙';
           const sel = selected === cls.name;
           return (
             <button key={cls.name} onClick={() => onSelect(cls.name)} style={{
@@ -63,7 +58,6 @@ export default function StepClass({ selected, level, selectedSkills, onSelect, o
               background: sel ? 'var(--c-gold-bg)' : 'var(--c-raised)',
               cursor: 'pointer', transition: 'all var(--tr-fast)',
             }}>
-              <span style={{ fontSize: 18, flexShrink: 0 }}>{icon}</span>
               <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600,
                 color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{cls.name}</span>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>

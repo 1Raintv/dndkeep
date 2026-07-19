@@ -6,13 +6,7 @@ interface StepBackgroundProps {
   onSelect: (name: string) => void;
 }
 
-const BG_ICONS: Record<string, string> = {
-  Acolyte:'✝️', Artisan:'🔨', Charlatan:'🎭', Criminal:'🗡️',
-  Entertainer:'🎵', Farmer:'🌾', Guard:'🛡️', Guide:'🗺️',
-  Hermit:'🏔️', Merchant:'💰', Noble:'👑', Sailor:'⚓',
-  Scholar:'📖', Scribe:'✍️', Soldier:'⚔️', Wayfarer:'🧳',
-  'Folk Hero':'🌟', Sage:'🔮',
-};
+// v2.574.0 — emoji background icons removed (visual cleanup).
 
 export default function StepBackground({ selected, onSelect }: StepBackgroundProps) {
   const preview = BACKGROUNDS.find(b => b.name === selected);
@@ -27,7 +21,6 @@ export default function StepBackground({ selected, onSelect }: StepBackgroundPro
       {/* Background grid — 2 columns */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--sp-2)' }}>
         {BACKGROUNDS.map(bg => {
-          const icon = BG_ICONS[bg.name] ?? '⭐';
           const sel = selected === bg.name;
           return (
             <button key={bg.name} onClick={() => onSelect(bg.name)} style={{
@@ -37,7 +30,6 @@ export default function StepBackground({ selected, onSelect }: StepBackgroundPro
               background: sel ? 'var(--c-gold-bg)' : 'var(--c-raised)',
               cursor: 'pointer', transition: 'all var(--tr-fast)',
             }}>
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
               <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600,
                 color: sel ? 'var(--c-gold-l)' : 'var(--t-1)' }}>{bg.name}</span>
               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
