@@ -278,19 +278,21 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Channel Divinity',
       actionType: 'special',
-      // v2.527.0 — Uses scale 2/3/4 at levels 2/6/11 (corrected from the
-      // prior data which used 18). Recharges on a Short OR Long Rest.
+      // v2.551.0 — RAW fix (audit #1): uses scale 2/3/4 at levels 2/6/18.
+      // (v2.527 "corrected" 18 → 11, but 18 was right — 2024 PHB Cleric
+      // Features table. Verified: Wikidot 2024, EN World PHB quote, WWG.)
+      // RAW recharge: regain ONE use on a Short Rest, all on a Long Rest.
       description: (c: any) => {
-        const uses = c?.level >= 11 ? 4 : c?.level >= 6 ? 3 : 2;
-        return `Channel divine energy (${uses} uses per Short/Long Rest) to fuel Divine Spark, Turn Undead, or your subclass option.`;
+        const uses = c?.level >= 18 ? 4 : c?.level >= 6 ? 3 : 2;
+        return `Channel divine energy (${uses} uses; regain 1 on a Short Rest, all on a Long Rest) to fuel Divine Spark, Turn Undead, or your subclass option.`;
       },
       descriptionLong: (c: any) => {
-        const uses = c?.level >= 11 ? 4 : c?.level >= 6 ? 3 : 2;
-        return `You can channel divine energy ${uses} times per Short or Long Rest (2 uses at levels 2\u20135, 3 at 6\u201310, 4 at 11+).\n\nBase options:\n\u2022 Divine Spark \u2014 a Magic action to heal or harm (see its entry).\n\u2022 Turn Undead \u2014 brandish your holy symbol to drive off Undead.\n\u2022 Plus any option granted by your subclass.`;
+        const uses = c?.level >= 18 ? 4 : c?.level >= 6 ? 3 : 2;
+        return `You can channel divine energy ${uses} times (2 uses at levels 2\u20135, 3 at 6\u201317, 4 at 18+). You regain one expended use when you finish a Short Rest, and all expended uses on a Long Rest.\n\nBase options:\n\u2022 Divine Spark \u2014 a Magic action to heal or harm (see its entry).\n\u2022 Turn Undead \u2014 brandish your holy symbol to drive off Undead.\n\u2022 Plus any option granted by your subclass.`;
       },
       minLevel: 2,
       rest: 'short',
-      maxUsesFn: (c: any) => c?.level >= 11 ? 4 : c?.level >= 6 ? 3 : 2,
+      maxUsesFn: (c: any) => c?.level >= 18 ? 4 : c?.level >= 6 ? 3 : 2,
     },
     {
       name: 'Divine Spark',
@@ -706,20 +708,21 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Channel Divinity',
       actionType: 'special',
-      // v2.523.0 — Uses scale 1/2/3 at levels 3/7/11. 2024 base options:
-      // Divine Sense and Abjure Foes (level 9), plus subclass options.
+      // v2.551.0 — RAW fix (audit #5): 2 uses at level 3, 3 at level 11.
+      // No L7 step (prior data had 1/2/3 at 3/7/11). Verified: Wikidot
+      // 2024 Paladin, Arcane Eye. Regain 1 use on Short Rest, all on Long.
       description: (c: any) => {
-        const uses = c?.level >= 11 ? 3 : c?.level >= 7 ? 2 : 1;
-        return `Channel divine energy (${uses} use${uses === 1 ? '' : 's'} per Short/Long Rest) to fuel Divine Sense, Abjure Foes (level 9+), or your subclass options.`;
+        const uses = c?.level >= 11 ? 3 : 2;
+        return `Channel divine energy (${uses} uses; regain 1 on a Short Rest, all on a Long Rest) to fuel Divine Sense, Abjure Foes (level 9+), or your subclass options.`;
       },
       descriptionLong: (c: any) => {
-        const uses = c?.level >= 11 ? 3 : c?.level >= 7 ? 2 : 1;
+        const uses = c?.level >= 11 ? 3 : 2;
         const abjure = c?.level >= 9;
-        return `You can channel divine energy ${uses} time(s) per Short or Long Rest (1 use at levels 3–6, 2 at 7–10, 3 at 11+).\n\nBase options:\n• Divine Sense — as a Bonus Action, know the location of Celestials, Fiends, and Undead within 60 ft, and learn their creature type, until the end of your next turn.${abjure ? '\n• Abjure Foes (level 9) — Magic action: up to your Charisma modifier of creatures within 60 ft must succeed on a Wisdom save or be Frightened (and unable to take Reactions) for 1 minute.' : ''}\n• Plus any options granted by your subclass (e.g. Sacred Weapon, Nature\'s Wrath).`;
+        return `You can channel divine energy ${uses} times (2 uses at levels 3–10, 3 at 11+). You regain one expended use when you finish a Short Rest, and all expended uses on a Long Rest.\n\nBase options:\n• Divine Sense — as a Bonus Action, know the location of Celestials, Fiends, and Undead within 60 ft, and learn their creature type, until the end of your next turn.${abjure ? '\n• Abjure Foes (level 9) — Magic action: up to your Charisma modifier of creatures within 60 ft must succeed on a Wisdom save or be Frightened (and unable to take Reactions) for 1 minute.' : ''}\n• Plus any options granted by your subclass (e.g. Sacred Weapon, Nature\'s Wrath).`;
       },
       minLevel: 3,
       rest: 'short',
-      maxUsesFn: (c: any) => c?.level >= 11 ? 3 : c?.level >= 7 ? 2 : 1,
+      maxUsesFn: (c: any) => c?.level >= 11 ? 3 : 2,
       save: { ability: 'WIS', dc: 'spell', targetMode: 'enemies' },
     },
     {
