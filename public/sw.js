@@ -1,9 +1,9 @@
 // DNDKeep Service Worker
 // IMPORTANT: CACHE_NAME is auto-rewritten by deploy.bat on every deploy
-// to match the app version (e.g. 'dndkeep-v2.569.0'). Any byte change to
+// to match the app version (e.g. 'dndkeep-v2.570.0'). Any byte change to
 // this file forces browsers to install the new SW, which (with skipWaiting +
 // clients.claim below) immediately replaces the old one and clears its cache.
-const CACHE_NAME = 'dndkeep-v2.569.0';
+const CACHE_NAME = 'dndkeep-v2.570.0';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -38,6 +38,9 @@ self.addEventListener('activate', (event) => {
 // Fetch — network first, fall back to cache
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // v2.570.0 — only handle http(s). Requests from browser extensions
+  // (chrome-extension://) can't be cache.put and threw noisy errors.
+  if (!event.request.url.startsWith('http')) return;
   if (event.request.url.includes('supabase.co')) return;
   if (event.request.url.includes('stripe.com')) return;
 
