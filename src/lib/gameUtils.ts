@@ -151,8 +151,23 @@ export function computeStats(character: Character): ComputedStats {
   };
 }
 
-/** Abbreviated ability name for display (e.g. "strength" → "STR") */
-export function abilityAbbrev(ability: AbilityKey): string {
+// v2.554.0 — Class-feature save DC (8 + Proficiency Bonus + ability
+// modifier) for features whose DC isn't a spell save DC — e.g. the
+// Berserker's Intimidating Presence (8 + PB + STR). Consumed by the
+// save-chip resolvers when a SaveSpec sets `dc: { classAbility: X }`.
+export function classSaveDC(
+  character: Character,
+  ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA',
+): number {
+  const KEY: Record<string, AbilityKey> = {
+    STR: 'strength', DEX: 'dexterity', CON: 'constitution',
+    INT: 'intelligence', WIS: 'wisdom', CHA: 'charisma',
+  };
+  const stats = computeStats(character);
+  return 8 + stats.proficiency_bonus + stats.modifiers[KEY[ability]];
+}
+
+/** Abbreviated ability name for display (e.g. "strength" → "STR") */export function abilityAbbrev(ability: AbilityKey): string {
   const MAP: Record<AbilityKey, string> = {
     strength: 'STR', dexterity: 'DEX', constitution: 'CON',
     intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA',

@@ -17,8 +17,12 @@ export type SaveTargetMode = 'enemies' | 'allies' | 'any';
 export interface SaveSpec {
   /** Ability the target rolls. Stored uppercase to match how the chip renders. */
   ability: SaveAbility;
-  /** Numeric DC, or `'spell'` to resolve from the caster's spell save DC. */
-  dc: number | 'spell';
+  /** Numeric DC, `'spell'` to resolve from the caster's spell save DC, or
+   *  `{ classAbility }` for class-feature DCs computed as
+   *  8 + Proficiency Bonus + that ability's modifier (v2.554.0 — e.g.
+   *  Berserker Intimidating Presence = 8 + PB + STR; Barbarians have no
+   *  spell save DC, so `'spell'` was wrong for them). */
+  dc: number | 'spell' | { classAbility: SaveAbility };
   /** Default target gating for the v2.247 picker. Optional — defaults to 'any'
    *  if absent. Read by the picker UX, not by the chip itself. */
   targetMode?: SaveTargetMode;
@@ -642,7 +646,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       descriptionLong: 'Once per turn, when you hit a creature with a Monk weapon or an Unarmed Strike, you can spend 1 Focus Point to attempt a stun. The target makes a Constitution saving throw against your Ki save DC (8 + proficiency + Dexterity).\n\n• Failure: Stunned until the start of your next turn.\n• Success: its Speed is halved until the start of your next turn, and the next attack against it before then has Advantage.\n\n(2024 change: a save no longer fully wastes the point — you still get the speed/advantage effect.)',
       minLevel: 5,
       isPool: true,
-      save: { ability: 'CON', dc: 'spell', targetMode: 'enemies' },
+      save: { ability: 'CON', dc: { classAbility: 'WIS' }, targetMode: 'enemies' },
     },
     {
       name: 'Slow Fall',
@@ -894,7 +898,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
         return `When you deal Sneak Attack damage, you can forgo some of the dice to add a Cunning Strike effect (each costs 1d6 of Sneak Attack):\n\n• Poison \u2014 the target makes a Constitution save or is Poisoned for 1 minute.\n• Trip \u2014 the target makes a Dexterity save or is knocked Prone (target must be Large or smaller).\n• Withdraw \u2014 you move up to half your Speed without provoking Opportunity Attacks.${devious ? '\n\nDevious Strikes (level 14): you also unlock Daze, Knock Out, and Obscure \u2014 stronger effects costing more dice.' : ''}\n\n${improved ? 'Improved Cunning Strike (level 11): you can apply two different effects with one Sneak Attack (paying the dice cost of each).' : 'At level 11 (Improved Cunning Strike) you can apply two effects at once.'} The save DC equals 8 + your proficiency bonus + your Dexterity modifier.`;
       },
       minLevel: 5,
-      save: { ability: 'CON', dc: 'spell', targetMode: 'enemies' },
+      save: { ability: 'CON', dc: { classAbility: 'DEX' }, targetMode: 'enemies' },
     },
     {
       name: 'Uncanny Dodge',

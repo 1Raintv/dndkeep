@@ -505,7 +505,7 @@ export interface SubclassFeature {
   // the UI can render the same "DC · ABILITY Save" chip used for
   // base-class abilities. `dc: 'spell'` uses the character's spell save
   // DC; a number is a literal DC.
-  save?: { ability: string; dc: number | 'spell'; targetMode?: 'any' | 'enemies' | 'allies' };
+  save?: { ability: string; dc: number | 'spell' | { classAbility: string }; targetMode?: 'any' | 'enemies' | 'allies' };
   /** v2.259.0 — surfaced previously-untyped field. When true, this
    *  feature represents a player choice (e.g. pick a fighting style,
    *  pick a maneuver). The UI renders these with gold ⬡ accents to

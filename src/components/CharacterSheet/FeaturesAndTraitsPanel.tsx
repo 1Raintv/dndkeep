@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
-import { proficiencyBonus } from '../../lib/gameUtils';
+import { proficiencyBonus, classSaveDC } from '../../lib/gameUtils';
 import { CLASS_FEATURES } from '../../data/classFeatures';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_COMBAT_ABILITIES, PASSIVE_FEATURE_NAMES } from '../../data/classAbilities';
@@ -587,7 +587,9 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  {/* v2.533.0 — save chip for subclass features that force a save */}
  {(sf as any).save && (
  <span style={{ fontSize: 9, marginLeft: 6, fontWeight: 900, color: 'var(--c-red-l, #f87171)', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 999, padding: '1px 6px' }}>
- {typeof (sf as any).save.dc === 'number' ? `DC ${(sf as any).save.dc} · ` : ''}{String((sf as any).save.ability).toUpperCase()} Save
+ {typeof (sf as any).save.dc === 'number' ? `DC ${(sf as any).save.dc} · `
+  : (typeof (sf as any).save.dc === 'object' && (sf as any).save.dc?.classAbility) ? `DC ${classSaveDC(character, (sf as any).save.dc.classAbility)} · `
+  : ''}{String((sf as any).save.ability).toUpperCase()} Save
  </span>
  )}
  </div>

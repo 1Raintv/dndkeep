@@ -7,7 +7,7 @@ import { formatRange } from '../../lib/formatRange';
 import { logAction } from '../shared/ActionLog';
 import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
-import { computeStats } from '../../lib/gameUtils';
+import { computeStats, classSaveDC } from '../../lib/gameUtils';
 // v2.443.0 — Lazy-load the resolve modal. The helper (formatOutcomesLog)
 // and types come from src/lib/classAbilityOutcomes so the parent
 // can call them without dragging the modal into first paint.
@@ -55,6 +55,10 @@ const ACTION_COLORS: Record<string, string> = {
 function resolveSaveDC(save: SaveSpec | undefined, character: Character): number | null {
  if (!save) return null;
  if (typeof save.dc === 'number') return save.dc;
+ // v2.554.0 — class-feature DC: 8 + PB + ability mod (no spellcasting needed).
+ if (typeof save.dc === 'object' && 'classAbility' in save.dc) {
+  return classSaveDC(character, save.dc.classAbility);
+ }
  // 'spell' — derive from the character's spellcasting class.
  const computed = computeStats(character);
  return computed.spell_save_dc ?? null;
