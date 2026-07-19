@@ -95,9 +95,28 @@ export default function CharacterPage() {
         </button>
         <span>/</span>
         <span style={{ color: 'var(--t-2)' }}>{character.name}</span>
+        <span style={{
+          marginLeft: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--sp-2)',
+        }}>
+          {/* v2.580.0 — quick jump to the campaign's battle map from the
+              breadcrumb line. Same destination as the sheet header's map
+              button. Renders for any character in a campaign. */}
+          {character.campaign_id && (
+            <button
+              className="btn-ghost btn-sm"
+              onClick={() => navigate(`/campaigns/${character.campaign_id}?tab=map`)}
+              title="Open the current battle map"
+              style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <span aria-hidden style={{ fontSize: 12 }}>⚔</span>
+              Battle Map
+            </button>
+          )}
         {isPro && (
           <span style={{
-            marginLeft: 'auto',
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--sp-2)',
@@ -117,6 +136,7 @@ export default function CharacterPage() {
             />
           </span>
         )}
+        </span>
       </div>
 
       {/* v2.161.0 — Phase Q.0 pt 2: transient toast for new

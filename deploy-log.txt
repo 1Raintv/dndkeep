@@ -1,4 +1,4 @@
-DNDKeep deploy log - Sun 07/19/2026 18:48:13.30 
+DNDKeep deploy log - Sun 07/19/2026 18:58:46.99 
 Working dir: C:\dev\DNDKeep 
  
- Detected version: 2.579.0 
+ Detected version: 2.580.0 
