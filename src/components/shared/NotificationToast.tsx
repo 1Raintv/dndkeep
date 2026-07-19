@@ -58,7 +58,9 @@ export default function NotificationToast({ latest }: Props) {
       top: 16,
       left: '50%',
       transform: 'translateX(-50%)',
-      zIndex: 300,
+      // v2.573.0 — was 300; raised so player-screen notifications sit
+      // above modals/panels, matching the global toast layer (40000).
+      zIndex: 40000,
       display: 'flex',
       flexDirection: 'column',
       gap: 8,
