@@ -413,6 +413,48 @@ export const SPELLS: SpellData[] = [
   damage_dice: "1d8",
   },
   {
+  id: "thunderclap",
+  name: "Thunderclap",
+  level: 0,
+  school: "Evocation",
+  casting_time: "1 action",
+  range: "Self (5-foot Emanation)",
+  components: "S",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Artificer", "Bard", "Druid", "Sorcerer", "Warlock", "Wizard"],
+  // v2.561.0 — missing common spell found during Artificer backfill.
+  // 2024 text (verbatim per Wikidot 2024 / 5etools / kassoon).
+  description: "You create a burst of thunderous sound. Each creature in a 5-foot Emanation originating from you must succeed on a Constitution saving throw or take 1d6 Thunder damage. The spell's thunderous sound can be heard up to 100 feet away.\n\nCantrip Upgrade. The damage increases by 1d6 when you reach levels 5 (2d6), 11 (3d6), and 17 (4d6).",
+  save_type: "CON",
+  damage_type: "Thunder",
+  damage_at_char_level: { "1": "1d6", "5": "2d6", "11": "3d6", "17": "4d6" },
+  damage_dice: "1d6",
+  area_of_effect: { type: "sphere", size: 5 },
+  },
+  {
+  id: "thorn-whip",
+  name: "Thorn Whip",
+  level: 0,
+  school: "Transmutation",
+  casting_time: "1 action",
+  range: "30 feet",
+  components: "V, S, M (the stem of a plant with thorns)",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Artificer", "Druid"],
+  // v2.561.0 — missing common spell found during Artificer backfill.
+  // Paraphrased (not SRD); mechanics exact per 2024: melee spell attack,
+  // 1d6 Piercing, pull Large-or-smaller up to 10 ft closer.
+  description: "You lash out with a thorned, vine-like whip toward a creature within range. Make a melee spell attack against the target. On a hit, it takes 1d6 Piercing damage, and if it is Large or smaller, you can pull it up to 10 feet closer to you.\n\nCantrip Upgrade. The damage increases by 1d6 when you reach levels 5 (2d6), 11 (3d6), and 17 (4d6).",
+  attack_type: "melee",
+  damage_type: "Piercing",
+  damage_at_char_level: { "1": "1d6", "5": "2d6", "11": "3d6", "17": "4d6" },
+  damage_dice: "1d6",
+  },
+  {
   id: "shocking-grasp",
   name: "Shocking Grasp",
   level: 0,
@@ -2747,7 +2789,7 @@ export const SPELLS: SpellData[] = [
   },
   {
   id: "protection-from-energy",
-  name: "Protection From Energy",
+  name: "Protection from Energy",
   level: 3,
   school: "Abjuration",
   casting_time: "1 action",
@@ -2756,7 +2798,7 @@ export const SPELLS: SpellData[] = [
   duration: "Up to 1 hour",
   concentration: true,
   ritual: false,
-  classes: ["Cleric", "Druid", "Ranger", "Sorcerer", "Wizard"],
+  classes: ["Artificer", "Cleric", "Druid", "Ranger", "Sorcerer", "Wizard"],
   description: "For the duration, the willing creature you touch has resistance to one damage type of your choice: acid, cold, fire, lightning, or thunder.",
   },
   {
@@ -6025,6 +6067,63 @@ export const SPELLS: SpellData[] = [
   // description is an original paraphrase; mechanics exact. Verified:
   // aidedd, Wikidot 2024, Roll20, worldanvil.
   description: "Channeling magic through your own vitality, you knit your wounds closed. Expend and roll one or two of your unspent Hit Point Dice; you regain Hit Points equal to the total rolled plus your spellcasting ability modifier.\n\nUsing a Higher-Level Spell Slot. You can roll one additional unspent Hit Point Die for each spell slot level above 2.",
+  },
+  {
+  id: "dragons-breath",
+  name: "Dragon's Breath",
+  level: 2,
+  school: "Transmutation",
+  casting_time: "1 bonus action",
+  range: "Touch",
+  components: "V, S, M (a hot pepper)",
+  duration: "Concentration, up to 1 minute",
+  concentration: true,
+  ritual: false,
+  classes: ["Artificer", "Sorcerer", "Wizard"],
+  // v2.561.0 — missing spell found during Artificer backfill. Verbatim
+  // SRD 5.2 text (p.126, CC-BY-4.0). Verified: Wikidot 2024, Roll20,
+  // dnd-wiki, aidedd, DDB.
+  description: "You touch one willing creature, and choose Acid, Cold, Fire, Lightning, or Poison. Until the spell ends, the target can take a Magic action to exhale a 15-foot Cone. Each creature in that area makes a Dexterity saving throw, taking 3d6 damage of the chosen type on a failed save or half as much damage on a successful one.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 2.",
+  save_type: "DEX",
+  damage_at_slot_level: { "2": "3d6", "3": "4d6", "4": "5d6", "5": "6d6", "6": "7d6", "7": "8d6", "8": "9d6", "9": "10d6" },
+  damage_dice: "3d6",
+  area_of_effect: { type: "cone", size: 15 },
+  },
+  {
+  id: "elemental-weapon",
+  name: "Elemental Weapon",
+  level: 3,
+  school: "Transmutation",
+  casting_time: "1 action",
+  range: "Touch",
+  components: "V, S",
+  duration: "Concentration, up to 1 hour",
+  concentration: true,
+  ritual: false,
+  classes: ["Artificer", "Druid", "Paladin", "Ranger"],
+  // v2.562.0 — missing spell found during Artificer backfill. Mechanics
+  // per 2024 PHB (unchanged from 2014); verified: kassoon 2024 list
+  // (level/school/classes), FotA spell-list table.
+  description: "A nonmagical weapon you touch becomes a magic weapon. Choose one of the following damage types: Acid, Cold, Fire, Lightning, or Thunder. For the duration, the weapon has a +1 bonus to attack rolls and deals an extra 1d4 damage of the chosen type when it hits.\n\nUsing a Higher-Level Spell Slot. If you use a spell slot of level 5 or 6, the bonus to attack rolls increases to +2 and the extra damage increases to 2d4. If you use a spell slot of level 7 or higher, the bonus increases to +3 and the extra damage increases to 3d4.",
+  damage_at_slot_level: { "3": "1d4", "5": "2d4", "7": "3d4" },
+  damage_dice: "1d4",
+  },
+  {
+  id: "circle-of-power",
+  name: "Circle of Power",
+  level: 5,
+  school: "Abjuration",
+  casting_time: "1 action",
+  range: "Self (30-foot Emanation)",
+  components: "V",
+  duration: "Concentration, up to 10 minutes",
+  concentration: true,
+  ritual: false,
+  classes: ["Artificer", "Cleric", "Paladin", "Wizard"],
+  // v2.562.0 — missing spell found during Artificer backfill. 2024 text
+  // verified verbatim across Wikidot 2024, Roll20, aidedd, worldanvil.
+  description: "An aura radiates from you in a 30-foot Emanation for the duration. While in the aura, you and your allies have Advantage on saving throws against spells and other magical effects. When an affected creature makes a saving throw against a spell or magical effect that allows a save to take only half damage, it takes no damage if it succeeds on the save.",
+  area_of_effect: { type: "sphere", size: 30 },
   },
   {
   id: "shining-smite",
