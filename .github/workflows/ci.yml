@@ -14,6 +14,8 @@ on:
     branches: ["**"]
   pull_request: {}
   workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * *"  # daily RAW regression sweep
 
 env:
   TS_BASELINE: 271
@@ -65,6 +67,9 @@ jobs:
             grep -B2 "rules-of-hooks" eslint-output.txt | head -30
             exit 1
           fi
+
+      - name: RAW regression suite (detection only, never edits)
+        run: npm run raw-check
 
       - name: Build
         run: node node_modules/vite/bin/vite.js build

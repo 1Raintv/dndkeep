@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "raw-check": "node scripts/raw-regression.mjs"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",
