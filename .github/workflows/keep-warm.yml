@@ -1,0 +1,30 @@
+name: Keep Supabase Warm
+
+# Supabase free tier auto-pauses inactive projects, which has taken the live
+# site down mid-session twice. This pings a trivial RPC daily to register
+# activity. Runs twice daily for margin against skipped/delayed cron slots
+# (GitHub schedules are best-effort).
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC daily
+    - cron: "0 18 * * *"  # 18:00 UTC daily (redundancy)
+  workflow_dispatch: {}    # manual trigger for testing
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping keep_warm RPC
+        run: |
+          status=$(curl -s -o /tmp/body -w "%{http_code}" \
+            -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/keep_warm" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status — body: $(cat /tmp/body)"
+          if [ "$status" != "200" ]; then
+            echo "::error::keep_warm ping failed (HTTP $status) — project may be paused or migration missing"
+            exit 1
+          fi

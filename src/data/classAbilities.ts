@@ -157,10 +157,17 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Relentless Rage',
       actionType: 'special',
-      // v2.520.0 — DC scaling: starts at 10, +5 each subsequent use in
-      // the same rage (RAW). Surface the rule clearly.
-      description: 'When you drop to 0 HP while Raging and don\'t die outright, you can make a DC 10 Constitution save to drop to 1 HP instead. The DC increases by 5 each time you use it (resets on a rest).',
-      descriptionLong: 'If you drop to 0 Hit Points while Raging and don\'t die outright, you can make a Constitution saving throw (DC 10). On a success, you drop to 1 Hit Point instead. Each time you use this feature after the first, the DC increases by 5. The DC resets to 10 when you finish a Short or Long Rest. This is what keeps a raging Barbarian on their feet long past where others would fall.',
+      // v2.550.0 — RAW fix (audit #3): 2024 rules — on a successful save
+      // your HP changes to 2× your Barbarian level (2014 was "1 HP").
+      // DC starts at 10, +5 each subsequent use, resets on a rest.
+      description: (c: any) => {
+        const lvl = c?.level ?? 11;
+        return `When you drop to 0 HP while Raging and don't die outright, you can make a DC 10 Constitution save. On a success, your HP instead changes to ${2 * lvl} (2\u00d7 your Barbarian level). The DC increases by 5 each time you use it (resets on a rest).`;
+      },
+      descriptionLong: (c: any) => {
+        const lvl = c?.level ?? 11;
+        return `If you drop to 0 Hit Points while your Rage is active and don't die outright, you can make a Constitution saving throw (DC 10). On a success, your Hit Points instead change to a number equal to twice your Barbarian level (${2 * lvl} at your level). Each time you use this feature after the first, the DC increases by 5. When you finish a Short or Long Rest, the DC resets to 10. This is what keeps a raging Barbarian on their feet long past where others would fall.`;
+      },
       minLevel: 11,
       save: { ability: 'CON', dc: 10, targetMode: 'any' },
     },
@@ -288,18 +295,20 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Divine Spark',
       actionType: 'action',
-      // v2.527.0 — New 2024 Channel Divinity option. Magic action: point
-      // and roll dice = 1d8, scaling +1d8 at 7/13/18. Heal a creature, or
-      // force a CON save for radiant/necrotic damage (half on success).
+      // v2.550.0 — RAW fix (audit #2): total is dice + WIS modifier, and
+      // range is 30 ft everywhere (long description previously said 60 ft).
+      // Dice = 1d8, scaling +1d8 at 7/13/18.
       description: (c: any) => {
         const lvl = c?.level ?? 2;
         const dice = lvl >= 18 ? 4 : lvl >= 13 ? 3 : lvl >= 7 ? 2 : 1;
-        return `Magic Action (spend 1 Channel Divinity): roll ${dice}d8. Restore that many Hit Points to a creature within 30 ft, OR force a Constitution save for ${dice}d8 Radiant or Necrotic damage (half on a success).`;
+        const wis = Math.floor(((c?.wisdom ?? 10) - 10) / 2);
+        return `Magic Action (spend 1 Channel Divinity): roll ${dice}d8 + ${wis} (WIS mod). Restore that many Hit Points to a creature within 30 ft, OR force a Constitution save for that much Radiant or Necrotic damage (half on a success).`;
       },
       descriptionLong: (c: any) => {
         const lvl = c?.level ?? 2;
         const dice = lvl >= 18 ? 4 : lvl >= 13 ? 3 : lvl >= 7 ? 2 : 1;
-        return `As a Magic action, you point at a creature within 60 ft and channel energy by spending one use of Channel Divinity. Roll ${dice}d8 (1d8 at levels 2\u20136, 2d8 at 7\u201312, 3d8 at 13\u201317, 4d8 at 18+) and choose:\n\u2022 Heal \u2014 restore Hit Points equal to the roll.\n\u2022 Harm \u2014 the target makes a Constitution saving throw, taking Radiant or Necrotic damage (your choice) equal to the roll on a failure, or half as much on a success.`;
+        const wis = Math.floor(((c?.wisdom ?? 10) - 10) / 2);
+        return `As a Magic action, you point your Holy Symbol at another creature you can see within 30 ft and spend one use of Channel Divinity. Roll ${dice}d8 (1d8 at levels 2\u20136, 2d8 at 7\u201312, 3d8 at 13\u201317, 4d8 at 18+) and add your Wisdom modifier (+${wis}), then choose:\n\u2022 Heal \u2014 restore Hit Points equal to that total.\n\u2022 Harm \u2014 the target makes a Constitution saving throw, taking Radiant or Necrotic damage (your choice) equal to that total on a failure, or half as much (round down) on a success.`;
       },
       minLevel: 2,
       isPool: true,
@@ -311,7 +320,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.527.0 — WIS save chip; Sear Undead (level 5) adds radiant
       // damage even on a successful save.
       description: 'Magic Action (spend 1 Channel Divinity): each Undead within 30 ft must make a Wisdom save or be Frightened and Incapacitated, moving away from you, for 1 minute or until it takes damage.',
-      descriptionLong: 'As a Magic action, you spend one use of Channel Divinity and present your holy symbol. Each Undead within 30 ft that can see or hear you must make a Wisdom saving throw. On a failure, the creature is Frightened and Incapacitated, and must spend its turns trying to move as far from you as it can, for 1 minute or until it takes any damage or you\u2019re Incapacitated.\n\nFrom level 5 (Sear Undead), when an Undead fails this save it also takes Radiant damage equal to your Wisdom modifier (and even creatures that succeed are seared \u2014 see Sear Undead).',
+      descriptionLong: 'As a Magic action, you spend one use of Channel Divinity and present your holy symbol. Each Undead within 30 ft that can see or hear you must make a Wisdom saving throw. On a failure, the creature is Frightened and Incapacitated, and must spend its turns trying to move as far from you as it can, for 1 minute or until it takes any damage or you\u2019re Incapacitated.\n\nFrom level 5 (Sear Undead), you can roll a number of d8s equal to your Wisdom modifier when you use Turn Undead; each Undead that fails its save also takes Radiant damage equal to the total (see Sear Undead).',
       minLevel: 2,
       isPool: true,
       save: { ability: 'WIS', dc: 'spell', targetMode: 'enemies' },
@@ -319,11 +328,14 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Sear Undead',
       actionType: 'free',
+      // v2.550.0 — RAW fix: each Undead that FAILS its save takes Radiant
+      // damage equal to the full d8-roll total (not divided; successes take
+      // nothing), and the damage doesn't end the turn effect.
       description: (c: any) => {
         const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
-        return `When you Turn Undead, you can also deal ${wis}d8 Radiant damage, divided among the Undead you affect.`;
+        return `When you use Turn Undead, roll ${wis}d8: each Undead that fails its save also takes Radiant damage equal to the total. This damage doesn\u2019t end the turn effect.`;
       },
-      descriptionLong: 'Whenever you use Turn Undead, you can roll a number of d8s equal to your Wisdom modifier (minimum 1) and deal that much Radiant damage to one Undead you would affect, or divide the dice among several. This lets your Turn double as a damage tool, not just crowd control.',
+      descriptionLong: 'Whenever you use Turn Undead, you can roll a number of d8s equal to your Wisdom modifier (minimum 1d8) and add the rolls together. Each Undead that fails its saving throw against that use of Turn Undead takes Radiant damage equal to the roll\u2019s total. This damage doesn\u2019t end the turn effect \u2014 they take the hit and still flee.',
       minLevel: 5,
     },
     {
@@ -359,21 +371,24 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Wild Shape',
       actionType: 'bonus',
-      // v2.528.0 — Uses scale 2/3/4 at levels 2/6/17 (effectively
-      // unlimited at 20 via Archdruid). Max CR and form limits improve at
-      // 4 (CR 1/2, no fly) and 8 (CR 1, fly). Lasts hours = half level.
+      // v2.550.0 — RAW fix (audit #9): 2024 rules — you keep your OWN Hit
+      // Points and gain Temp HP = Druid level on transform. Forms are
+      // learned Known Forms (4 at L2, 6 at L4, 8 at L8), not "Beasts
+      // you've seen." Only Fly Speed is restricted (until L8; 2014's swim
+      // restriction is gone). Form ends early on Incapacitated or death.
       description: (c: any) => {
         const lvl = c?.level ?? 2;
         const cr = lvl >= 8 ? '1' : lvl >= 4 ? '1/2' : '1/4';
-        const fly = lvl >= 8 ? ', including flyers' : lvl >= 4 ? ', no flying' : ', no flying or swimming';
-        return `Bonus Action: transform into a Beast you\u2019ve seen, up to CR ${cr}${fly}. Lasts ${Math.floor(lvl/2)} hours; revert as a Bonus Action or when you drop to 0 HP.`;
+        const fly = lvl >= 8 ? '' : ', no Fly Speed';
+        return `Bonus Action: shape-shift into one of your known Beast forms, up to CR ${cr}${fly}. You keep your own HP and gain ${lvl} Temp HP. Lasts ${Math.floor(lvl/2)} hours; ends early if you\u2019re Incapacitated.`;
       },
       descriptionLong: (c: any) => {
         const lvl = c?.level ?? 2;
         const uses = lvl >= 17 ? 4 : lvl >= 6 ? 3 : 2;
         const cr = lvl >= 8 ? '1' : lvl >= 4 ? '1/2' : '1/4';
-        const move = lvl >= 8 ? 'any movement, including a Fly Speed' : lvl >= 4 ? 'a Swim Speed but not a Fly Speed' : 'no Fly or Swim Speed';
-        return `As a Bonus Action, you transform into a Beast you have seen before, with a maximum Challenge Rating of ${cr} (CR 1/4 at levels 2\u20133, 1/2 at 4\u20137, 1 at 8+) and ${move}.\n\nYou keep your mental ability scores, personality, and Wisdom-based features; you use the Beast\u2019s physical stats and gain its traits. The form lasts a number of hours equal to half your Druid level (${Math.floor(lvl/2)}), and you can revert as a Bonus Action or automatically at 0 Hit Points.\n\nUses: ${lvl >= 20 ? 'unlimited (Archdruid)' : uses} per Short or Long Rest (2 at levels 2\u20135, 3 at 6\u201316, 4 at 17+, unlimited at 20).`;
+        const forms = lvl >= 8 ? 8 : lvl >= 4 ? 6 : 4;
+        const move = lvl >= 8 ? 'no movement restrictions' : 'no Fly Speed';
+        return `As a Bonus Action, you shape-shift into a Beast form you have learned (${forms} known forms at your level: 4 at levels 2\u20133, 6 at 4\u20137, 8 at 8+), with a maximum Challenge Rating of ${cr} (CR 1/4 at levels 2\u20133, 1/2 at 4\u20137, 1 at 8+) and ${move}.\n\nWhen you transform, you gain Temporary Hit Points equal to your Druid level (${lvl}). You retain your own Hit Points and Hit Dice, personality, memories, ability to speak, and your Intelligence, Wisdom, and Charisma scores; the Beast\u2019s stat block replaces your other game statistics.\n\nThe form lasts a number of hours equal to half your Druid level (${Math.floor(lvl/2)}), or until you use Wild Shape again, have the Incapacitated condition, or die. You can also revert early as a Bonus Action.\n\nUses: ${lvl >= 20 ? 'unlimited (Archdruid)' : uses} per Long Rest, regaining one use on a Short Rest (2 at levels 2\u20135, 3 at 6\u201316, 4 at 17+, unlimited at 20).`;
       },
       minLevel: 2,
       rest: 'short',
