@@ -105,6 +105,22 @@ export const SPELLS: SpellData[] = [
   damage_dice: "1d10",
   },
   {
+  id: "elementalism",
+  name: "Elementalism",
+  level: 0,
+  school: "Transmutation",
+  casting_time: "1 action",
+  range: "30 feet",
+  components: "V, S",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Druid", "Sorcerer", "Wizard"],
+  // v2.556.0 — RAW audit S2: new 2024 spell. Verbatim SRD 5.2.1 text
+  // (CC-BY-4.0). Verified: Roll20, Wikidot 2024, aidedd, DDB.
+  description: "You exert control over the elements, creating one of the following effects within range.\n\nBeckon Air. You create a breeze strong enough to ripple cloth, stir dust, rustle leaves, and close open doors and shutters, all in a 5-foot Cube. Doors and shutters being held open by someone or something aren't affected.\n\nBeckon Earth. You create a thin shroud of dust or sand that covers surfaces in a 5-foot-square area, or you cause a single word to appear in your handwriting in a patch of dirt or sand.\n\nBeckon Fire. You create a thin cloud of harmless embers and colored, scented smoke in a 5-foot Cube. You choose the color and scent, and the embers can light candles, torches, or lamps in that area. The smoke's scent lingers for 1 minute.\n\nBeckon Water. You create a spray of cool mist that lightly dampens creatures and objects in a 5-foot Cube. Alternatively, you create 1 cup of clean water either in an open container or on a surface, and the water evaporates in 1 minute.\n\nSculpt Element. You cause dirt, sand, fire, smoke, mist, or water that can fit in a 1-foot Cube to assume a crude shape (such as that of a creature) for 1 hour.",
+  },
+  {
   id: "fire-bolt",
   name: "Fire Bolt",
   level: 0,
@@ -355,6 +371,46 @@ export const SPELLS: SpellData[] = [
   //  - Usability: the scaling + Force option makes this competitive with
   //    Fire Bolt or True Strike at every tier
   description: "A Club or Quarterstaff you are holding is imbued with nature's power. For the duration, you can use your spellcasting ability instead of Strength for the attack and damage rolls of melee attacks using that weapon, and the weapon's damage die becomes a d8. If the attack deals damage, it can be Force damage or the weapon's normal damage type (your choice). The spell ends early if you cast it again or if you let go of the weapon.\n\nCantrip Upgrade. The damage die changes when you reach levels 5 (d10), 11 (d12), and 17 (2d6).",
+  },
+  {
+  id: "sorcerous-burst",
+  name: "Sorcerous Burst",
+  level: 0,
+  school: "Evocation",
+  casting_time: "1 action",
+  range: "120 feet",
+  components: "V, S",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Sorcerer"],
+  // v2.556.0 — RAW audit S2: new 2024 spell. Verbatim SRD 5.2.1 text
+  // (CC-BY-4.0). Exploding d8s capped at spellcasting ability modifier.
+  // Verified: Wargamer, EN World, dicewilldecide, SRD spell list.
+  description: "You cast sorcerous energy at one creature or object within range. Make a ranged attack roll against the target. On a hit, the target takes 1d8 damage of a type you choose: Acid, Cold, Fire, Lightning, Poison, Psychic, or Thunder.\n\nIf you roll an 8 on a d8 for this spell, you can roll another d8, and add it to the damage. When you cast this spell, the maximum number of these d8s you can add to the spell's damage equals your spellcasting ability modifier.\n\nCantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8).",
+  attack_type: "ranged",
+  damage_at_char_level: { "1": "1d8", "5": "2d8", "11": "3d8", "17": "4d8" },
+  damage_dice: "1d8",
+  },
+  {
+  id: "starry-wisp",
+  name: "Starry Wisp",
+  level: 0,
+  school: "Evocation",
+  casting_time: "1 action",
+  range: "60 feet",
+  components: "V, S",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Bard", "Druid"],
+  // v2.556.0 — RAW audit S2: new 2024 spell. Verbatim SRD 5.2.1 text
+  // (CC-BY-4.0). Verified: EN World, dungeonsanddragonsfan, Wargamer.
+  description: "You launch a mote of light at one creature or object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d8 Radiant damage, and until the end of your next turn, it emits Dim Light in a 10-foot radius and can't benefit from the Invisible condition.\n\nCantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8).",
+  attack_type: "ranged",
+  damage_type: "Radiant",
+  damage_at_char_level: { "1": "1d8", "5": "2d8", "11": "3d8", "17": "4d8" },
+  damage_dice: "1d8",
   },
   {
   id: "shocking-grasp",
