@@ -1516,7 +1516,7 @@ function InventoryRow({ item, onToggle, onRemove, onUpdate, onRoll, isPotion, on
  borderRadius: 99, padding: '2px 9px', cursor: 'pointer', flexShrink: 0,
  display: 'flex', alignItems: 'center', gap: 3,
  }}>
- 🧪 Drink
+ Drink
  </span>
  )}
 

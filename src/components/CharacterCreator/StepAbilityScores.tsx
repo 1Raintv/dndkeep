@@ -221,7 +221,7 @@ export default function StepAbilityScores({ scores, method, backgroundName, clas
           {method === 'dice_roll' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 4 }}>Roll 4d6, drop lowest. Click a result to reroll.</p>
-              <button className="btn-gold" onClick={rollAllScores}>🎲 Roll All Six Scores</button>
+              <button className="btn-gold" onClick={rollAllScores}>Roll All Six Scores</button>
               {rolledScores.length > 0 && ABILITIES.map((ab, i) => (
                 <div key={ab} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
                   <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--t-2)', width: 36 }}>{ABBREV[ab]}</span>

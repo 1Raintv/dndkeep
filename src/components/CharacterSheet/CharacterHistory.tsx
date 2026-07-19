@@ -33,8 +33,8 @@ const ICONS: Record<string, string> = {
   rest:                '☾',
   level_up:            '★',
   inspiration_change:  '✧',
-  spell_cast:          '✨',
-  roll:                '🎲',
+  spell_cast:          '✦',
+  roll:                '◆',
   other:               '•',
 };
 

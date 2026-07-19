@@ -100,7 +100,7 @@ export default function StepSpecies({ selected, originFeat, name, level, onNameC
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', background: 'var(--c-raised)', padding: '2px 8px', borderRadius: 999, border: '1px solid var(--c-border-m)' }}>{preview.size}</span>
             {preview.darkvision > 0 && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', padding: '2px 8px', borderRadius: 999, border: '1px solid var(--c-gold-bdr)' }}>Darkvision {preview.darkvision}ft</span>}
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-blue-l)', background: 'var(--c-blue-bg)', padding: '2px 8px', borderRadius: 999, border: '1px solid rgba(59,130,246,0.3)' }}>
-              🗣 {preview.languages.join(', ')}
+              {preview.languages.join(', ')}
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>

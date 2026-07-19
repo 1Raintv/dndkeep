@@ -1861,7 +1861,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.35)',
    borderRadius: 'var(--r-lg)',
  }}>
- <span style={{ fontSize: 20 }}>🔒</span>
+ <span style={{ fontSize: 20 }}>⚠</span>
  <div style={{ flex: 1, minWidth: 200 }}>
  <div style={{ fontWeight: 800, fontSize: 13, color: '#fca5a5' }}>This character is frozen</div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.4 }}>
@@ -2035,7 +2035,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setSavePrompt(null);
  }}
  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid #60a5fa', background: '#60a5fa', color: '#fff' }}>
- 🎲 Roll Save
+ Roll Save
  </button>
  </div>
  </div>
@@ -2161,7 +2161,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setCheckPrompt(null);
  }}
  style={{ fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: `1px solid ${accent}`, background: accent, color: '#fff' }}>
- 🎲 Roll
+ Roll
  </button>
  <button
  onClick={() => setCheckPrompt(null)}
@@ -2181,7 +2181,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  background: 'rgba(212,160,23,0.1)', border: '1px solid var(--c-gold-bdr)',
  display: 'flex', alignItems: 'center', gap: 10,
  }}>
- <span style={{ fontSize: 18, flexShrink: 0 }}>🌙</span>
+ <span style={{ fontSize: 18, flexShrink: 0 }}>✦</span>
  <div style={{ flex: 1 }}>
  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-gold-l)', marginBottom: 2 }}>
  Long Rest Completed

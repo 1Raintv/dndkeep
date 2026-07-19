@@ -172,7 +172,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
               }}
               title="Roll 1d20 — 10+ success, nat 20 wakes with 1 HP, nat 1 = 2 failures"
             >
-              🎲 Roll d20
+              Roll d20
             </button>
             <button
               className="btn-ghost btn-sm"

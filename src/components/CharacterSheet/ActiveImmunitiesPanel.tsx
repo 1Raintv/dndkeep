@@ -136,7 +136,7 @@ export default function ActiveImmunitiesPanel({ character, applyUpdate, showToas
             onMouseDown={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.97)'; }}
             onMouseUp={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
           >
-            <span>🛡️ {sourceLabel} — {kindLabel}</span>
+            <span>{sourceLabel} — {kindLabel}</span>
             <span style={{ opacity: 0.6, fontSize: 'var(--fs-xs)', fontWeight: 500 }}>×</span>
           </button>
         );

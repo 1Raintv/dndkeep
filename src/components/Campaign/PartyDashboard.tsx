@@ -1024,7 +1024,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                     // to the bottom of the flex column so it aligns
                     // with Long Rest's button regardless of which
                     // description text wraps to more lines. Button
-                    // text trimmed from "📨 Prompt Short Rest" to
+                    // text trimmed from "Prompt Short Rest" to
                     // "Short Rest" per playtest feedback.
                     style={{
                       fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,

@@ -665,7 +665,7 @@ export default function SpellCastButton({
  style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', opacity: 0.5,
  border: '1px solid var(--c-border)', borderRadius: 4, padding: '2px 7px',
  cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
- 🔒 1 spell/turn
+ 1 spell/turn
  </span>
  );
  }
@@ -1298,7 +1298,7 @@ export default function SpellCastButton({
  borderRadius: 'var(--r-md)', cursor: 'pointer',
  border: '1px solid #60a5fa60', background: 'rgba(96,165,250,0.15)',
  color: '#60a5fa', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
- 🛡 Declare
+ Declare
  </button>
  )}
  </div>

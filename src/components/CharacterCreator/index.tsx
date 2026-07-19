@@ -325,7 +325,7 @@ export default function CharacterCreator() {
             disabled={!canAdvance() || saving}
           >
             {saving ? 'Creating...' : (
-              step === STEPS.length - 1 ? '✨ Create Character' :
+              step === STEPS.length - 1 ? 'Create Character' :
               step === 4 && currentBuildLevel < level ? `Level ${currentBuildLevel + 1} →` :
               step === 4 ? 'Review →' :
               step === STEPS.length - 2 ? 'Review →' :
@@ -394,14 +394,14 @@ export default function CharacterCreator() {
           Character Summary
         </div>
         {/* Name */}
-        <SummaryRow icon="✍️" label="Name" value={name || '—'} empty={!name} />
-        <SummaryRow icon="⚡" label="Level" value={String(level)} />
+        <SummaryRow icon="✎" label="Name" value={name || '—'} empty={!name} />
+        <SummaryRow icon="⬆" label="Level" value={String(level)} />
         {/* Species */}
-        <SummaryRow icon="🧬" label="Species" value={species || '—'} empty={!species} done={!!species} />
+        <SummaryRow icon="❖" label="Species" value={species || '—'} empty={!species} done={!!species} />
         {/* Class */}
-        <SummaryRow icon="⚔️" label="Class" value={className || '—'} empty={!className} done={!!className} />
+        <SummaryRow icon="⚔" label="Class" value={className || '—'} empty={!className} done={!!className} />
         {/* Background */}
-        <SummaryRow icon="🎒" label="Background" value={background || '—'} empty={!background} done={!!background} />
+        <SummaryRow icon="✧" label="Background" value={background || '—'} empty={!background} done={!!background} />
         {/* Subclass */}
         {level >= 3 && (
           <SummaryRow icon="✦" label="Subclass" value={buildChoices.subclass || subclass || '—'} empty={!buildChoices.subclass && !subclass} done={!!(buildChoices.subclass || subclass)} />

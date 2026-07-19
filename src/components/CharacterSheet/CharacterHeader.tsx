@@ -127,7 +127,7 @@ export default function CharacterHeader({
  {onOpenMap && (
  <button className="btn-ghost btn-sm" onClick={onOpenMap} title="Open Battle Map"
  style={{ fontSize: 12, color: 'var(--t-2)', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
- <span aria-hidden style={{ fontSize: 13 }}>⚔️</span>
+ <span aria-hidden style={{ fontSize: 13 }}>⚔</span>
  Battle Map
  </button>
  )}

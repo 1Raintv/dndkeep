@@ -199,14 +199,14 @@ function LevelRow({ level, features, choices, newSpellLevel, subclassFeature, is
         {/* ASI / Feat choice */}
         {isASI && (
           <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '2px 8px', width: 'fit-content' }}>
-            📈 Ability Score Improvement or Feat
+            ⬆ Ability Score Improvement or Feat
           </span>
         )}
 
         {/* Epic Boon */}
         {isEpic && (
           <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-amber-l)', background: 'var(--c-amber-bg)', border: '1px solid rgba(217,119,6,0.3)', borderRadius: 999, padding: '2px 8px', width: 'fit-content' }}>
-            ⭐ Epic Boon (Feat)
+            ★ Epic Boon (Feat)
           </span>
         )}
 

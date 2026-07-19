@@ -485,7 +485,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  style={{ fontWeight: 700 }}
  title={`Leveling past ${FREE_LEVEL_CAP} requires an active subscription`}
  >
- 🔒 Subscribe to reach level {totalNewLevel}
+ Subscribe to reach level {totalNewLevel}
  </button>
  ) : (
  <button className="btn-gold" onClick={handleConfirm} style={{ fontWeight: 700 }}>
@@ -540,7 +540,7 @@ function OverviewStep({ newLevel, character, effectiveClassName, classData, avgH
  <Feature text={`+${avgHPGain} HP (d${classData?.hit_die ?? 8} average + Con mod)`} icon="" />
 
  {/* Subclass choice prompt */}
- {needsSubclass && <Feature text="Choose your subclass — see next step" icon="⭐" highlight />}
+ {needsSubclass && <Feature text="Choose your subclass — see next step" icon="★" highlight />}
 
  {/* ASI prompt */}
  {needsASI && <Feature text="Ability Score Improvement or Feat — see next step" icon="" highlight />}
@@ -1085,11 +1085,11 @@ function ConfirmStep({ character, newLevel, effectiveClassName, avgHPGain, newMa
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
  <ConfirmLine icon="" label="New Level" value={`${effectiveClassName ?? character.class_name} ${newLevel}`} />
  <ConfirmLine icon="" label="Max HP" value={`${character.max_hp} → ${newMaxHP} (+${avgHPGain})`} />
- {selectedSubclass && <ConfirmLine icon="⭐" label="Subclass" value={selectedSubclass} highlight />}
+ {selectedSubclass && <ConfirmLine icon="★" label="Subclass" value={selectedSubclass} highlight />}
  {abiBoosts && Object.entries(abiBoosts).filter(([,v]) => v).map(([k, v]) => (
  <ConfirmLine key={k} icon="" label={k.slice(0,3).toUpperCase()} value={`${character[k]} → ${(character[k] as number) + (v as number)} (+${v})`} highlight />
  ))}
- {selectedFeat && <ConfirmLine icon="⭐" label="Feat Gained" value={selectedFeat} highlight />}
+ {selectedFeat && <ConfirmLine icon="★" label="Feat Gained" value={selectedFeat} highlight />}
  </div>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontStyle: 'italic', textAlign: 'center' }}>
  This will update your character immediately. You can always adjust stats in Character Settings.
