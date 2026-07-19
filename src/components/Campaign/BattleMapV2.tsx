@@ -439,63 +439,12 @@ function tokenInitials(name: string): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
-export function snapToCellCenter(worldX: number, worldY: number, cellSize = DEFAULT_GRID_SIZE_PX) {
-  // v2.400.0 — Round-to-nearest cell. Default snap target is the
-  // nearest cell center (works correctly for 1×1 / 3×3 tokens
-  // whose anchor is at a cell center). For 2×2 / 4×4 tokens the
-  // caller should use snapTokenAnchor(x, y, size, cellSize) which
-  // dispatches to grid-intersection snap.
-  const col = Math.round((worldX - cellSize / 2) / cellSize);
-  const row = Math.round((worldY - cellSize / 2) / cellSize);
-  return {
-    x: col * cellSize + cellSize / 2,
-    y: row * cellSize + cellSize / 2,
-  };
-}
-
-/**
- * v2.401.0 — Size-aware snap. The token's anchor coordinate is the
- * geometric center of its footprint:
- *   1×1 / 3×3 (odd sizes) → footprint center is a CELL CENTER
- *                            (e.g., for 1×1, the cell itself; for
- *                             3×3, the center cell of the 3×3)
- *   2×2 / 4×4 (even sizes) → footprint center is a GRID INTERSECTION
- *                            (no single cell sits at the center)
- *
- * Pre-v2.401 we always snapped to cell-center, which forced even-
- * size tokens to anchor on a cell-center — but then their visual
- * (centered on the anchor) bulged asymmetrically (covering 1
- * up-left + 1 down-right cell instead of being symmetric about
- * the geometric center). Dropping a Large dragon "shifted away"
- * because the snap target didn't match the visual's natural
- * center. This helper picks the right snap target per size.
- */
-export function snapTokenAnchor(
-  worldX: number,
-  worldY: number,
-  size: TokenSize,
-  cellSize = DEFAULT_GRID_SIZE_PX,
-): { x: number; y: number } {
-  const cells = (() => {
-    switch (size) {
-      case 'tiny': case 'small': case 'medium': return 1;
-      case 'large': return 2;
-      case 'huge': return 3;
-      case 'gargantuan': return 4;
-      default: return 1;
-    }
-  })();
-  if (cells % 2 === 1) {
-    // Odd sizes: snap to cell centers. (Cell N center at (N+0.5)*cellSize.)
-    const col = Math.round((worldX - cellSize / 2) / cellSize);
-    const row = Math.round((worldY - cellSize / 2) / cellSize);
-    return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
-  }
-  // Even sizes: snap to grid intersections. (Intersection N at N*cellSize.)
-  const col = Math.round(worldX / cellSize);
-  const row = Math.round(worldY / cellSize);
-  return { x: col * cellSize, y: row * cellSize };
-}
+// v2.566.0 — Track 0 step 3: snapToCellCenter / snapTokenAnchor moved
+// verbatim to src/lib/map/coords.ts (pure, renderer-agnostic, unit-
+// testable). Imported for the call sites below and re-exported so any
+// existing import path keeps working.
+import { snapToCellCenter, snapTokenAnchor } from '../../lib/map/coords';
+export { snapToCellCenter, snapTokenAnchor };
 
 function ViewportHost(props: {
   screenWidth: number;

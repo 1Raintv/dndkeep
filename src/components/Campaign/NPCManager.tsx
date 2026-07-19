@@ -13,6 +13,7 @@ import {
 // v2.354.0 — folder browser sidebar + place-on-map flow.
 import CreatureFolderBrowser from './CreatureFolderBrowser';
 import * as tokensApi from '../../lib/api/tokensApiRouter';
+import { snapTokenAnchor } from '../../lib/map/coords';
 // v2.390.0 — Direct API access for the cold-fetch path was a v2.390
 // workaround for the router's stateful singleton cache (only set after
 // BattleMapV2 mounted).
@@ -337,15 +338,15 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
       const hCells = (scene?.height_cells ?? 20) as number;
       const cx = (wCells * gridPx) / 2;
       const cy = (hCells * gridPx) / 2;
-      // Snap to cell center.
-      const x = Math.floor(cx / gridPx) * gridPx + gridPx / 2;
-      const y = Math.floor(cy / gridPx) * gridPx + gridPx / 2;
       // Map size string → TokenSize. Defaults to medium.
       const sizeRaw = ((npc.size ?? 'medium') as string).toLowerCase();
       const validSizes: TokenSize[] = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
       const tokenSize: TokenSize = (validSizes as string[]).includes(sizeRaw)
         ? (sizeRaw as TokenSize)
         : 'medium';
+      // v2.569.0 — Size-aware anchor snap (see CreaturePickerModal note:
+      // even-footprint tokens anchor at intersections, not cell centers).
+      const { x, y } = snapTokenAnchor(cx, cy, tokenSize, gridPx);
       const newToken: Token = {
         id: (typeof crypto !== 'undefined' && crypto.randomUUID)
           ? crypto.randomUUID()

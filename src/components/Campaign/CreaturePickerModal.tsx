@@ -28,6 +28,7 @@ import {
 } from '../../lib/combatEncounter';
 import * as tokensApi from '../../lib/api/tokensApiRouter';
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
+import { snapTokenAnchor } from '../../lib/map/coords';
 import { abilityModifier } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
 
@@ -144,14 +145,23 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
       const offsetIndex = placedIds.size;
       const dx = (offsetIndex % 8) * gridPx;
       const dy = Math.floor(offsetIndex / 8) * gridPx;
-      const x = Math.floor((cx + dx) / gridPx) * gridPx + gridPx / 2;
-      const y = Math.floor((cy + dy) / gridPx) * gridPx + gridPx / 2;
 
       const sizeRaw = (c.size ?? 'medium').toLowerCase();
       const validSizes: TokenSize[] = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
       const tokenSize: TokenSize = (validSizes as string[]).includes(sizeRaw)
         ? (sizeRaw as TokenSize)
         : 'medium';
+
+      // v2.569.0 — Size-aware anchor snap. Pre-v2.569 this always
+      // snapped to a CELL CENTER (floor·gridPx + gridPx/2), which is
+      // only legal for odd-footprint tokens (1×1/3×3). Even-footprint
+      // tokens (Large 2×2, Gargantuan 4×4) must anchor at grid
+      // INTERSECTIONS — a center-anchored Gargantuan renders shifted
+      // off-grid AND the geometry layer's footprint disagrees with the
+      // visual, so reach/range overlays and distance math land off the
+      // token. Because picker-placed tokens default to locked, the bad
+      // anchor never self-healed via the (size-aware) drag commit.
+      const { x, y } = snapTokenAnchor(cx + dx, cy + dy, tokenSize, gridPx);
 
       const token: Token = {
         id: typeof crypto !== 'undefined' && crypto.randomUUID
