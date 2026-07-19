@@ -31,9 +31,14 @@ interface StepReviewProps {
   originFeat: string;
   alignment: Alignment;
   onAlignmentChange: (a: Alignment) => void;
+  /** v2.575.0 — one-time setup choice. 'recommended' auto-prepares
+   *  known spells (+ a starter set if none were chosen); 'blank'
+   *  creates exactly what was picked. */
+  setupMode: 'recommended' | 'blank';
+  onSetupModeChange: (m: 'recommended' | 'blank') => void;
 }
 
-export default function StepReview({ name, species, className, subclass, background, level, scores, selectedSkills, buildChoices, originFeat, alignment, onAlignmentChange }: StepReviewProps) {
+export default function StepReview({ name, species, className, subclass, background, level, scores, selectedSkills, buildChoices, originFeat, alignment, onAlignmentChange, setupMode, onSetupModeChange }: StepReviewProps) {
   const cls = CLASS_MAP[className];
   const bg = BACKGROUND_MAP[background];
   const sp = SPECIES_MAP[species];
@@ -194,6 +199,34 @@ export default function StepReview({ name, species, className, subclass, backgro
             <option key={a} value={a}>{a}</option>
           ))}
         </select>
+      </div>
+
+      {/* v2.575.0 — One-time setup mode. Default: ready to play. */}
+      <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)' }}>
+        <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--t-3)', marginBottom: 6 }}>
+          Setup
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)' }}>
+          {([
+            { id: 'recommended' as const, title: 'Ready to play', desc: 'Your spells come prepared and pinned to the quick-cast bar. If you skipped spell picks, a solid starter set is added. Change anything later on the sheet.' },
+            { id: 'blank' as const, title: 'Blank slate', desc: 'Only what you chose — nothing prepared, nothing pinned. Set everything up yourself on the character sheet.' },
+          ]).map(opt => {
+            const sel = setupMode === opt.id;
+            return (
+              <button key={opt.id} onClick={() => onSetupModeChange(opt.id)} style={{
+                textAlign: 'left', padding: '10px 12px', borderRadius: 'var(--r-md)',
+                border: sel ? '2px solid var(--c-gold)' : '1px solid var(--c-border-m)',
+                background: sel ? 'var(--c-gold-bg)' : 'var(--c-raised)',
+                cursor: 'pointer', transition: 'all var(--tr-fast)',
+              }}>
+                <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 4 }}>
+                  {opt.title}{opt.id === 'recommended' ? ' · recommended' : ''}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>{opt.desc}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div style={{ padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-green-bg)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 'var(--r-lg)', fontSize: 'var(--fs-sm)', color: 'var(--c-green-l)', fontWeight: 600 }}>

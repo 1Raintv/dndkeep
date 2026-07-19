@@ -16,6 +16,7 @@ import StepBackground from './StepBackground';
 import StepAbilityScores from './StepAbilityScores';
 import StepBuild, { emptyBuildChoices, type BuildChoices } from './StepBuild';
 import StepReview from './StepReview';
+import { buildRecommendedSetup } from '../../data/recommendedLoadouts';
 
 const ORIGIN_FEAT_SPECIES = ['Human'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
@@ -70,6 +71,9 @@ export default function CharacterCreator() {
   const [subclass, setSubclass] = useState('');
   const [name, setName] = useState('');
   const [alignment, setAlignment] = useState<Alignment>('True Neutral');
+  // v2.575.0 — one-time setup mode; 'recommended' is the default so
+  // new players land on a sheet that's ready to play.
+  const [setupMode, setSetupMode] = useState<'recommended' | 'blank'>('recommended');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [buildChoices, setBuildChoices] = useState<BuildChoices>(emptyBuildChoices());
   const [level, setLevel] = useState(1);
@@ -182,22 +186,30 @@ export default function CharacterCreator() {
       skill_proficiencies: allSkills,
       skill_expertises: [],
       spell_slots: spellSlots,
-      prepared_spells: [],
-      // v2.380.0 — quick-cast favorites bar (max 6, see CharacterSheet).
-      // New characters start with no pins.
-      pinned_spells: [],
-      known_spells: (() => {
+      // v2.575.0 — one-time setup ("Ready to play" vs "Blank slate").
+      // Recommended mode auto-prepares every known leveled spell, pins
+      // up to 4 to the quick-cast bar, and — only when NO spells were
+      // chosen — grants a curated class starter set (generalizing the
+      // Psion starter precedent). Fully editable on the sheet after.
+      ...(() => {
         const base = [...buildChoices.spells, ...buildChoices.cantrips];
         // Psion gets Mage Hand automatically (invisible, no components)
         if (className === 'Psion' && !base.includes('mage-hand')) base.push('mage-hand');
         // Psion starter spells — Psi Warper recommended set per UA 2025.
-        // Players can remove these from the Spell Book if they prefer different choices.
         if (className === 'Psion') {
           for (const sid of ['charm-person', 'command', 'dissonant-whispers', 'mage-armor']) {
             if (!base.includes(sid)) base.push(sid);
           }
         }
-        return base;
+        if (setupMode !== 'recommended') {
+          return { known_spells: base, prepared_spells: [], pinned_spells: [] };
+        }
+        const rec = buildRecommendedSetup(className, base);
+        return {
+          known_spells: [...base, ...rec.addKnown],
+          prepared_spells: rec.prepared,
+          pinned_spells: rec.pinned,
+        };
       })(),
       inventory: [],
       currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
@@ -369,6 +381,8 @@ export default function CharacterCreator() {
             originFeat={originFeat}
             alignment={alignment}
             onAlignmentChange={setAlignment}
+            setupMode={setupMode}
+            onSetupModeChange={setSetupMode}
           />
         )}
 
