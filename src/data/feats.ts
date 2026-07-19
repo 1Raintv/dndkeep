@@ -14,11 +14,12 @@ export const FEATS: FeatData[] = [
   {
     name: 'Alert',
     category: 'origin',
-    description: 'Always on the lookout for danger, you gain the following benefits.',
+    // v2.553.0 — RAW fix (audit #7): full 2024 rewrite. Text is verbatim
+    // SRD 5.2.1 (CC-BY-4.0). No +5, no surprise immunity in 2024.
+    description: 'You gain the following benefits.',
     benefits: [
-      '+5 bonus to Initiative rolls.',
-      'You cannot be Surprised while conscious.',
-      'Creatures that are hidden from you don\'t gain Advantage on attack rolls against you.',
+      'Initiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll.',
+      'Initiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can\'t make this swap if you or the ally has the Incapacitated condition.',
     ],
   },
   {
@@ -43,10 +44,16 @@ export const FEATS: FeatData[] = [
   {
     name: 'Lucky',
     category: 'origin',
+    // v2.553.0 — RAW fix (audit #6): full 2024 rewrite (paraphrased —
+    // Lucky is not in SRD 5.2.1). Luck Points = Proficiency Bonus; spend
+    // for Advantage on your own D20 Test (declared when you roll, not
+    // after seeing the result) or to impose Disadvantage on an attack
+    // roll against you. The 2014 extra-d20 reroll is gone.
     description: 'You have inexplicable luck that can kick in at just the right moment.',
     benefits: [
-      '3 Luck Points per Long Rest. Spend 1 to roll an extra d20 on any D20 Test and choose which die to use.',
-      'You can also spend 1 Luck Point when an attack roll is made against you — roll a d20 and choose which die the attacker uses.',
+      'Luck Points. You have Luck Points equal to your Proficiency Bonus, and regain all of them when you finish a Long Rest.',
+      'Advantage. When you roll a d20 for a D20 Test, you can spend 1 Luck Point to give yourself Advantage on that roll.',
+      'Disadvantage. When a creature makes an attack roll against you, you can spend 1 Luck Point to impose Disadvantage on that roll.',
     ],
   },
   {
@@ -70,20 +77,28 @@ export const FEATS: FeatData[] = [
   {
     name: 'Skilled',
     category: 'origin',
+    // v2.553.0 — RAW fix (audit #8): 2024 wording — any tools, not just
+    // Artisan's Tools, and the feat is Repeatable. (Paraphrased; Skilled
+    // is not in SRD 5.2.1.)
     description: 'You have exceptional training across a range of disciplines.',
     benefits: [
-      'Gain proficiency in any combination of three Skills or Artisan\'s Tools of your choice.',
+      'Gain proficiency in any combination of three skills or tools of your choice.',
+      'Repeatable. You can take this feat more than once.',
     ],
   },
   {
     name: 'Tavern Brawler',
     category: 'origin',
+    // v2.553.0 — RAW fix (audit #17): full 2024 rewrite (paraphrased —
+    // not in SRD 5.2.1). Stripped the fabricated Reaction-unarmed-strike
+    // benefit (verified: no such benefit in 2024 or 2014). 2024 kit is
+    // Enhanced Unarmed Strike, Damage Rerolls, Improvised Weaponry, Push.
     description: 'You\'ve spent time brawling in rough places.',
     benefits: [
-      'Enhanced Unarmed Strike: Your Unarmed Strike deals 1d4 + STR Bludgeoning damage.',
-      'You can replace one of your attacks with a shove (push 5 ft or knock Prone).',
-      'Proficiency with Improvised Weapons.',
-      'Once per round when hit by an attack, you can spend a Reaction to make an Unarmed Strike.',
+      'Enhanced Unarmed Strike. When you hit with your Unarmed Strike and deal damage, you can deal Bludgeoning damage equal to 1d4 + your Strength modifier instead of the normal damage.',
+      'Damage Rerolls. Whenever you roll a damage die for your Unarmed Strike, you can reroll the die if it rolls a 1, and you must use the new roll.',
+      'Improvised Weaponry. You have proficiency with improvised weapons.',
+      'Push. When you hit a creature with an Unarmed Strike as part of the Attack action on your turn, you can deal damage to the target and also push it 5 feet away from you. You can use this benefit only once per turn.',
     ],
   },
   {
