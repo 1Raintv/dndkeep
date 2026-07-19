@@ -6010,6 +6010,67 @@ export const SPELLS: SpellData[] = [
   damage_dice: "1d6",
   },
   {
+  id: "arcane-vigor",
+  name: "Arcane Vigor",
+  level: 2,
+  school: "Abjuration",
+  casting_time: "1 bonus action",
+  range: "Self",
+  components: "V, S",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Sorcerer", "Wizard"],
+  // v2.557.0 — RAW audit S2: new 2024 spell. NOT in SRD 5.2.1 —
+  // description is an original paraphrase; mechanics exact. Verified:
+  // aidedd, Wikidot 2024, Roll20, worldanvil.
+  description: "Channeling magic through your own vitality, you knit your wounds closed. Expend and roll one or two of your unspent Hit Point Dice; you regain Hit Points equal to the total rolled plus your spellcasting ability modifier.\n\nUsing a Higher-Level Spell Slot. You can roll one additional unspent Hit Point Die for each spell slot level above 2.",
+  },
+  {
+  id: "shining-smite",
+  name: "Shining Smite",
+  level: 2,
+  school: "Transmutation",
+  casting_time: "1 bonus action, which you take immediately after hitting a target with a Melee weapon or an Unarmed Strike",
+  range: "Self",
+  components: "V",
+  duration: "Concentration, up to 1 minute",
+  concentration: true,
+  ritual: false,
+  classes: ["Paladin"],
+  // v2.557.0 — RAW audit S2: new 2024 spell. NOT in SRD 5.2.1 —
+  // description is an original paraphrase; mechanics exact. Verified:
+  // dungeonsanddragonsfan (full stat line), Wargamer.
+  description: "The triggering hit flares with searing light, dealing an extra 2d6 Radiant damage to the target. Until the spell ends, the target sheds Bright Light in a 5-foot radius, attack rolls made against it have Advantage, and it can't benefit from the Invisible condition.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 2.",
+  damage_type: "Radiant",
+  damage_at_slot_level: { "2": "2d6", "3": "3d6", "4": "4d6", "5": "5d6", "6": "6d6", "7": "7d6", "8": "8d6", "9": "9d6" },
+  damage_dice: "2d6",
+  },
+  {
+  id: "fount-of-moonlight",
+  name: "Fount of Moonlight",
+  level: 4,
+  school: "Evocation",
+  casting_time: "1 action",
+  range: "Self",
+  components: "V, S",
+  duration: "Concentration, up to 10 minutes",
+  concentration: true,
+  ritual: false,
+  classes: ["Bard", "Druid"],
+  // v2.557.0 — RAW audit S2: new 2024 spell. NOT in SRD 5.2.1 —
+  // description is an original paraphrase; mechanics exact. Verified:
+  // Roll20, Wikidot 2024, aidedd, thievesguild (PHB 2024 p.277).
+  // Reaction range is 60 ft (two secondary articles claiming 50 ft are
+  // wrong). Upcast (+1d6 per 2 slot levels above 4) per worldanvil/DDB
+  // quote — single explicit source, recheck when SRD-adjacent text lands.
+  description: "Silvery moonlight wraps your body for the duration, shedding Bright Light in a 20-foot radius and Dim Light for an additional 20 feet. While the spell lasts, you have Resistance to Radiant damage, and your melee attacks deal an extra 2d6 Radiant damage on a hit.\n\nIn addition, immediately after a creature you can see within 60 feet of yourself deals damage to you, you can take a Reaction to force it to make a Constitution saving throw; on a failure, it has the Blinded condition until the end of your next turn.\n\nUsing a Higher-Level Spell Slot. The extra damage increases by 1d6 for every 2 spell slot levels above 4.",
+  save_type: "CON",
+  damage_type: "Radiant",
+  damage_at_slot_level: { "4": "2d6", "6": "3d6", "8": "4d6" },
+  damage_dice: "2d6",
+  },
+  {
   id: "thunderous-smite",
   name: "Thunderous Smite",
   level: 1,
