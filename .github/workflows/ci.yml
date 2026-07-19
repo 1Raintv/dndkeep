@@ -1,0 +1,70 @@
+name: CI Gate
+
+# Encodes THE GATE from docs/ROADMAP.md on every push:
+#   1. TypeScript error count must not RISE above the carried baseline (271).
+#      This is a threshold check, not fail-on-any-error — the 271 is known
+#      debt. TS2304 (cannot find name) must be exactly 0.
+#   2. eslint rules-of-hooks must be clean (React error #310 class).
+#   3. Production build must succeed.
+# Uses the project-pinned TypeScript (NOT npx tsc — a global TS 6.x errors
+# on the deprecated baseUrl option and halts before type-checking).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request: {}
+  workflow_dispatch: {}
+
+env:
+  TS_BASELINE: 271
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install (fresh — gets correct linux natives)
+        run: npm ci
+
+      - name: TypeScript baseline (<= 271 errors, TS2304 = 0)
+        run: |
+          set +e
+          node node_modules/typescript/bin/tsc --noEmit > ts-output.txt 2>&1
+          set -e
+          TOTAL=$(grep -c "error TS" ts-output.txt || true)
+          TS2304=$(grep -c "TS2304" ts-output.txt || true)
+          echo "TypeScript errors: $TOTAL (baseline $TS_BASELINE), TS2304: $TS2304"
+          if [ "$TS2304" -ne 0 ]; then
+            echo "::error::TS2304 (cannot find name) errors present — these are crash-class"
+            grep "TS2304" ts-output.txt | head -20
+            exit 1
+          fi
+          if [ "$TOTAL" -gt "$TS_BASELINE" ]; then
+            echo "::error::TypeScript error count rose above baseline ($TOTAL > $TS_BASELINE)"
+            exit 1
+          fi
+          if [ "$TOTAL" -lt "$TS_BASELINE" ]; then
+            echo "::notice::Error count dropped to $TOTAL — consider lowering TS_BASELINE to ratchet the debt down"
+          fi
+
+      - name: rules-of-hooks clean
+        run: |
+          set +e
+          node node_modules/eslint/bin/eslint.js . > eslint-output.txt 2>&1
+          set -e
+          HOOKS=$(grep -c "rules-of-hooks" eslint-output.txt || true)
+          echo "rules-of-hooks violations: $HOOKS"
+          if [ "$HOOKS" -ne 0 ]; then
+            echo "::error::rules-of-hooks violations present (React error #310 class)"
+            grep -B2 "rules-of-hooks" eslint-output.txt | head -30
+            exit 1
+          fi
+
+      - name: Build
+        run: node node_modules/vite/bin/vite.js build
