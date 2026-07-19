@@ -180,7 +180,11 @@ export default function InitiativeStrip({ isDM }: Props) {
         // Dice fab cluster: ~80px wide on the right edge.
         bottom: 0,
         left: 'var(--sidebar-w, 220px)',
-        right: 80,
+        // v2.572.0 — was right: 80. The MonsterActionPanel side rail is
+        // 280px wide anchored at right:12, so the strip ran ~212px
+        // underneath it and its right-side buttons (END TURN / END
+        // COMBAT) collided with the rail. 304 = 280 + 12 + 12 gap.
+        right: 304,
         padding: '8px 14px',
         background: 'rgba(19, 19, 29, 0.96)',
         backdropFilter: 'blur(10px)',

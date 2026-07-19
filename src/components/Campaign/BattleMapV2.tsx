@@ -3412,7 +3412,9 @@ function TokenLayer(props: {
   // a movement-blocking wall. The parent shows a toast; TokenLayer
   // doesn't import the toast hook directly so it stays test-friendly
   // (rendering this layer in isolation doesn't need a ToastProvider).
-  onMovementBlocked?: () => void;
+  // v2.572.0 — reason distinguishes wall rejections from movement-
+  // budget rejections so the toast can say the right thing.
+  onMovementBlocked?: (reason?: 'wall' | 'budget') => void;
   // v2.282 — when true, hidden tokens (visibleToAll=false) render at
   // reduced alpha so the DM can see at a glance which tokens haven't
   // been revealed to players yet. Players never get hidden tokens
@@ -5540,7 +5542,7 @@ function TokenLayer(props: {
           // for this drop, since updatePos calls below this branch).
           updatePos(drag.id, drag.originX, drag.originY);
           onDragMove?.(drag.id, drag.originX, drag.originY);
-          onMovementBlocked?.();
+          onMovementBlocked?.('wall');
         } else {
           // v2.340.0 — movement-budget enforcement (BG3-style hard
           // block). When combat is active AND the dragged token is
@@ -5652,7 +5654,7 @@ function TokenLayer(props: {
               // origin position is still canonical in scene_tokens.
               useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
               onDragMove?.(drag.id, drag.originX, drag.originY);
-              onMovementBlocked?.();
+              onMovementBlocked?.('budget');
               // v2.438.0 — Full pointerup cleanup BEFORE returning.
               // Pre-v2.438 the rejection branch did `return;` early,
               // which skipped the cleanup at the bottom of the
@@ -5723,7 +5725,7 @@ function TokenLayer(props: {
                 // path as the local short-circuit.
                 useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
                 onDragMove?.(drag.id, drag.originX, drag.originY);
-                onMovementBlocked?.();
+                onMovementBlocked?.('budget');
                 return;
               }
             }
@@ -5742,7 +5744,7 @@ function TokenLayer(props: {
               if (result.reason === 'wall_blocked') {
                 useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
                 onDragMove?.(drag.id, drag.originX, drag.originY);
-                onMovementBlocked?.();
+                onMovementBlocked?.('wall');
               } else {
                 console.error('[BattleMapV2] pos commit failed', result);
               }
@@ -8340,8 +8342,12 @@ export default function BattleMapV2(props: BattleMapV2Props) {
   // snap-back wasn't a UI glitch. Cooldown via the toast system's own
   // dedup if it has one; otherwise rapid-fire reject attempts will
   // stack toasts (acceptable: rare, and self-explanatory).
-  const handleMovementBlocked = useCallback(() => {
-    showToast('A wall blocks that path.', 'warn');
+  const handleMovementBlocked = useCallback((reason?: 'wall' | 'budget') => {
+    // v2.572.0 — over-budget rejections previously reused the wall
+    // message ("A wall blocks that path") because both paths shared
+    // this callback with no reason. Now says what actually happened.
+    if (reason === 'budget') showToast('Not enough movement left.', 'warn');
+    else showToast('A wall blocks that path.', 'warn');
   }, [showToast]);
 
   useEffect(() => {

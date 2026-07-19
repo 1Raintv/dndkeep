@@ -1902,12 +1902,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
       <div
         style={{
           position: 'fixed',
-          // v2.411.0 — was top: 12. Lowered to 80 so toasts (which
-          // anchor at top: var(--sp-4) ≈ 16px, top-right) render above
-          // the panel header rather than being occluded by it. The
-          // panel still has plenty of vertical room (bottom: 88 for
-          // the InitiativeStrip clearance).
-          top: 80,
+          // v2.411.0 — was top: 12. Lowered to 80 so toasts render
+          // above the panel header rather than being occluded by it.
+          // v2.572.0 — 80 wasn't enough: two stacked toasts extend past
+          // 80px and disappear behind the panel. Lowered to 148 so a
+          // 2-3 toast stack stays fully visible above the rail.
+          top: 148,
           right: 12,
           // 88px = InitiativeStrip height + bottom margin. Strip has
           // right:80 inset already (v2.360); this rail's 12px right
