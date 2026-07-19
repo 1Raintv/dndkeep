@@ -6071,6 +6071,69 @@ export const SPELLS: SpellData[] = [
   damage_dice: "2d6",
   },
   {
+  id: "jallarzis-storm-of-radiance",
+  name: "Jallarzi's Storm of Radiance",
+  level: 5,
+  school: "Evocation",
+  casting_time: "1 action",
+  range: "120 feet",
+  components: "V, S, M (a pinch of phosphorus)",
+  duration: "Concentration, up to 1 minute",
+  concentration: true,
+  ritual: false,
+  classes: ["Warlock", "Wizard"],
+  // v2.558.0 — RAW audit S2: new 2024 spell. NOT in SRD 5.2.1 —
+  // original paraphrase; mechanics exact. Verified: EN World (full stat
+  // line), screenrant, 2024 spell-card scan. Named-spell naming is an
+  // attorney-review item (SRD strips wizard names; PHB keeps them).
+  description: "A whirling storm of light and thunder fills a 10-foot-radius, 40-foot-high Cylinder centered on a point within range. Any creature inside the Cylinder has the Blinded and Deafened conditions and can't cast spells that have a Verbal component.\n\nWhenever a creature enters the Cylinder for the first time on a turn or ends its turn there, it must make a Constitution saving throw, taking 2d10 Radiant damage and 2d10 Thunder damage on a failure, or half as much on a success. A creature makes this save only once per turn.\n\nUsing a Higher-Level Spell Slot. The Radiant and Thunder damage each increase by 1d10 for each spell slot level above 5.",
+  save_type: "CON",
+  damage_type: "Radiant",
+  damage_at_slot_level: { "5": "4d10", "6": "6d10", "7": "8d10", "8": "10d10", "9": "12d10" },
+  damage_dice: "4d10",
+  area_of_effect: { type: "cylinder", size: 10 },
+  },
+  {
+  id: "tashas-bubbling-cauldron",
+  name: "Tasha's Bubbling Cauldron",
+  level: 6,
+  school: "Conjuration",
+  casting_time: "1 action",
+  range: "5 feet",
+  components: "V, S, M (a gilded ladle worth 500+ GP)",
+  duration: "10 minutes",
+  concentration: false,
+  ritual: false,
+  classes: ["Warlock", "Wizard"],
+  // v2.558.0 — RAW audit S2: new 2024 spell. NOT in SRD 5.2.1 —
+  // original paraphrase; mechanics exact. Verified: EN World (full stat
+  // line), screenrant, spell-card scan. School recalled as Conjuration —
+  // flag for recheck in the RAW regression pass.
+  description: "A cauldron of simmering magical brew appears in an unoccupied space on the ground within range. It can't be moved and vanishes when the spell ends, along with any of its unclaimed contents.\n\nWhen the cauldron appears, choose one common or uncommon potion. The cauldron holds a number of vials of that potion equal to your spellcasting ability modifier (minimum 1). As a Bonus Action, you or an ally within 5 feet of the cauldron can withdraw one vial. When the last vial is withdrawn, the cauldron disappears and the spell ends.\n\nPotions obtained from the cauldron that haven't been consumed disappear when you cast this spell again.",
+  },
+  {
+  id: "yolandes-regal-presence",
+  name: "Yolande's Regal Presence",
+  level: 5,
+  school: "Enchantment",
+  casting_time: "1 action",
+  range: "Self",
+  components: "V, S, M (a miniature tiara)",
+  duration: "Concentration, up to 1 minute",
+  concentration: true,
+  ritual: false,
+  classes: ["Bard", "Wizard"],
+  // v2.558.0 — RAW audit S2: new 2024 spell. NOT in SRD 5.2.1 —
+  // original paraphrase; mechanics exact. Verified: EN World (full stat
+  // line), dungeonsanddragonsfan (full stat line), spell-card scan.
+  description: "You radiate unearthly majesty in a 10-foot Emanation. Whenever the Emanation enters the space of a creature you can see and whenever a creature you can see enters the Emanation or ends its turn there, you can force that creature to make a Wisdom saving throw. On a failed save, the target takes 4d6 Psychic damage, has the Prone condition, and is pushed up to 10 feet away from you. On a successful save, it takes half as much damage only. A creature makes this save only once per turn.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 5.",
+  save_type: "WIS",
+  damage_type: "Psychic",
+  damage_at_slot_level: { "5": "4d6", "6": "5d6", "7": "6d6", "8": "7d6", "9": "8d6" },
+  damage_dice: "4d6",
+  area_of_effect: { type: "sphere", size: 10 },
+  },
+  {
   id: "thunderous-smite",
   name: "Thunderous Smite",
   level: 1,
