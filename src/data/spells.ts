@@ -858,6 +858,64 @@ export const SPELLS: SpellData[] = [
   higher_levels: "The damage increases by 1d8 for each spell slot level above 1.",
   },
   {
+  id: "hex",
+  name: "Hex",
+  level: 1,
+  school: "Enchantment",
+  casting_time: "1 bonus action",
+  range: "90 feet",
+  components: "V, S, M (a petrified eye of a newt)",
+  duration: "Concentration, up to 1 hour",
+  concentration: true,
+  ritual: false,
+  classes: ["Warlock"],
+  // v2.576.0 — gap found during loadout work; Hex is on the SRD 5.2
+  // added-spell list. Paraphrased; mechanics exact per 2024. TODO:
+  // swap description to verbatim SRD 5.2.1 text on the next SRD pass.
+  description: "You lay a curse on a creature you can see within range. Until the spell ends, you deal an extra 1d6 Necrotic damage to the target whenever you hit it with an attack roll. When you cast the spell, choose one ability; the target has Disadvantage on ability checks made with that ability.\n\nIf the target drops to 0 Hit Points before the spell ends, you can take a Bonus Action on a later turn to move the curse to a new creature.\n\nUsing a Higher-Level Spell Slot. A level 3-4 slot lets your Concentration last up to 8 hours; a level 5+ slot, up to 24 hours.",
+  damage_type: "Necrotic",
+  damage_dice: "1d6",
+  },
+  {
+  id: "armor-of-agathys",
+  name: "Armor of Agathys",
+  level: 1,
+  school: "Abjuration",
+  casting_time: "1 bonus action",
+  range: "Self",
+  components: "V, S, M (a shard of blue glass)",
+  duration: "1 hour",
+  concentration: false,
+  ritual: false,
+  classes: ["Warlock"],
+  // v2.576.0 — gap found during loadout work. Paraphrased; mechanics
+  // exact per 2024 (now a Bonus Action; ends early only when you have
+  // no Temporary Hit Points — from any source).
+  description: "Protective frost coats you. You gain 5 Temporary Hit Points, and whenever a creature hits you with a melee attack roll while you have Temporary Hit Points, it takes 5 Cold damage. The spell ends early if you have no Temporary Hit Points.\n\nUsing a Higher-Level Spell Slot. The Temporary Hit Points and the Cold damage each increase by 5 for each spell slot level above 1.",
+  damage_type: "Cold",
+  },
+  {
+  id: "ensnaring-strike",
+  name: "Ensnaring Strike",
+  level: 1,
+  school: "Conjuration",
+  casting_time: "1 bonus action, which you take immediately after hitting a creature with a weapon",
+  range: "Self",
+  components: "V",
+  duration: "Concentration, up to 1 minute",
+  concentration: true,
+  ritual: false,
+  classes: ["Ranger"],
+  // v2.576.0 — gap found during loadout work; Ensnaring Strike is on
+  // the SRD 5.2 added-spell list. Paraphrased; mechanics exact per
+  // 2024. TODO: verbatim SRD 5.2.1 text on the next SRD pass.
+  description: "Grasping vines erupt around the creature you just hit. It must succeed on a Strength saving throw or have the Restrained condition until the spell ends; a Large or larger creature has Advantage on the save. While Restrained this way, the target takes 1d6 Piercing damage at the start of each of its turns.\n\nThe Restrained creature, or another creature that can touch it, can take an action to make a Strength (Athletics) check against your spell save DC, ending the effect on a success.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1.",
+  save_type: "STR",
+  damage_type: "Piercing",
+  damage_at_slot_level: { "1": "1d6", "2": "2d6", "3": "3d6", "4": "4d6", "5": "5d6", "6": "6d6", "7": "7d6", "8": "8d6", "9": "9d6" },
+  damage_dice: "1d6",
+  },
+  {
   id: "entangle",
   name: "Entangle",
   level: 1,

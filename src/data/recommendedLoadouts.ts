@@ -42,7 +42,7 @@ const STARTER_SETS: Record<string, StarterSet> = {
   },
   Warlock: {
     cantrips: ['eldritch-blast', 'minor-illusion'],
-    level1: ['hellish-rebuke', 'charm-person', 'witch-bolt'],  // hex + armor-of-agathys not yet in spells.ts (SRD 5.2 gap, tracked)
+    level1: ['hex', 'armor-of-agathys', 'charm-person'],
   },
   Wizard: {
     cantrips: ['fire-bolt', 'mage-hand', 'prestidigitation'],
@@ -54,7 +54,7 @@ const STARTER_SETS: Record<string, StarterSet> = {
   },
   Ranger: {
     cantrips: [],
-    level1: ['hunters-mark', 'cure-wounds', 'fog-cloud', 'goodberry'],  // ensnaring-strike not yet in spells.ts (SRD 5.2 gap, tracked)
+    level1: ['hunters-mark', 'cure-wounds', 'ensnaring-strike', 'goodberry'],
   },
   Artificer: {
     cantrips: ['fire-bolt', 'guidance', 'mending'],
