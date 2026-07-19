@@ -864,15 +864,15 @@ export const SPELLS: SpellData[] = [
   school: "Enchantment",
   casting_time: "1 bonus action",
   range: "90 feet",
-  components: "V, S, M (a petrified eye of a newt)",
+  components: "V, S, M (the petrified eye of a newt)",
   duration: "Concentration, up to 1 hour",
   concentration: true,
   ritual: false,
   classes: ["Warlock"],
-  // v2.576.0 — gap found during loadout work; Hex is on the SRD 5.2
-  // added-spell list. Paraphrased; mechanics exact per 2024. TODO:
-  // swap description to verbatim SRD 5.2.1 text on the next SRD pass.
-  description: "You lay a curse on a creature you can see within range. Until the spell ends, you deal an extra 1d6 Necrotic damage to the target whenever you hit it with an attack roll. When you cast the spell, choose one ability; the target has Disadvantage on ability checks made with that ability.\n\nIf the target drops to 0 Hit Points before the spell ends, you can take a Bonus Action on a later turn to move the curse to a new creature.\n\nUsing a Higher-Level Spell Slot. A level 3-4 slot lets your Concentration last up to 8 hours; a level 5+ slot, up to 24 hours.",
+  // v2.579.0 — verbatim SRD 5.2.1 text (CC-BY-4.0; source: srd-5.2).
+  // Prior paraphrase (v2.576) was missing the level-2 slot tier
+  // (Concentration up to 4 hours).
+  description: "You place a curse on a creature that you can see within range. Until the spell ends, you deal an extra 1d6 Necrotic damage to the target whenever you hit it with an attack roll. Also, choose one ability when you cast the spell. The target has Disadvantage on ability checks made with the chosen ability.\n\nIf the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action on a later turn to curse a new creature.\n\nUsing a Higher-Level Spell Slot. Your Concentration can last longer with a spell slot of level 2 (up to 4 hours), 3\u20134 (up to 8 hours), or 5+ (24 hours).",
   damage_type: "Necrotic",
   damage_dice: "1d6",
   },
@@ -906,10 +906,10 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Ranger"],
-  // v2.576.0 — gap found during loadout work; Ensnaring Strike is on
-  // the SRD 5.2 added-spell list. Paraphrased; mechanics exact per
-  // 2024. TODO: verbatim SRD 5.2.1 text on the next SRD pass.
-  description: "Grasping vines erupt around the creature you just hit. It must succeed on a Strength saving throw or have the Restrained condition until the spell ends; a Large or larger creature has Advantage on the save. While Restrained this way, the target takes 1d6 Piercing damage at the start of each of its turns.\n\nThe Restrained creature, or another creature that can touch it, can take an action to make a Strength (Athletics) check against your spell save DC, ending the effect on a success.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1.",
+  // v2.579.0 — verbatim SRD 5.2.1 text (CC-BY-4.0; source: srd-5.2).
+  // Prior paraphrase (v2.576) omitted that the spell fully ENDS on a
+  // successful save (no lingering effect / no re-application).
+  description: "As you hit the target, grasping vines appear on it, and it makes a Strength saving throw. A Large or larger creature has Advantage on this save. On a failed save, the target has the Restrained condition until the spell ends. On a successful save, the vines shrivel away, and the spell ends.\n\nWhile Restrained, the target takes 1d6 Piercing damage at the start of each of its turns. The target or a creature within reach of it can take an action to make a Strength (Athletics) check against your spell save DC. On a success, the spell ends.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1.",
   save_type: "STR",
   damage_type: "Piercing",
   damage_at_slot_level: { "1": "1d6", "2": "2d6", "3": "3d6", "4": "4d6", "5": "5d6", "6": "6d6", "7": "7d6", "8": "8d6", "9": "9d6" },
