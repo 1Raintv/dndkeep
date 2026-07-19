@@ -123,6 +123,10 @@ echo        (Hook + extended TS checks live in lint.bat - run separately.)
 
 REM ---- Step 4 ----
 
+REM Clean dist/ first - a failed build once left a partial dist that got
+REM committed + deployed and served 404 chunks. Fresh dist every build.
+if exist dist rmdir /s /q dist >>deploy-log.txt 2>&1
+
 echo  [4/7] Running production build...
 call npx vite build >build-output.tmp 2>&1
 set BUILD_EXIT=!errorlevel!
