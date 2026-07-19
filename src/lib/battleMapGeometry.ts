@@ -150,30 +150,60 @@ export async function loadActiveBattleMap(
   const gridCols = (scene.width_cells as number) ?? 0;
   const gridRows = (scene.height_cells as number) ?? 0;
 
-  // 2. Tokens for this scene. Convert (x, y) world pixels → (row, col)
-  //    cell indices using gridSizePx. Tokens are stored at cell-center
-  //    positions (snapped on placement + drag-end), so the row/col
-  //    derived here accurately reflects the visual cell.
-  const { data: tokenRows } = await supabase
-    .from('scene_tokens')
-    .select('id, x, y, name, character_id, creature_id, size')
-    .eq('scene_id', sceneId);
-  // v2.396.0 — Translate the scene_tokens.size text label into an
-  // integer cell count for distance/reach math. Pre-v2.396 this was
-  // hardcoded to 1, which made every token look 1×1 to the geometry
-  // layer — large dragons couldn't reach 5ft adjacent targets because
-  // the math was anchor-to-anchor and the dragon's anchor sits in the
-  // middle of its 3×3 footprint, putting "adjacent" cells 2 anchors
-  // away. RAW 5e: distance is measured from any square the creature
-  // occupies, so a Large+ creature reaches 5ft outward from its
-  // entire footprint. The fixed mapping below mirrors the rendering
-  // layer's cellSpan values (BattleMapV2.tokenRadiusForSize) rounded
-  // to RAW: tiny/small/medium = 1, large = 2, huge = 3, gargantuan = 4.
+  // v2.568.0 — LIVE-PATH ROUTING. Since Combat Phase 3 (+ the v2.497
+  // default flip), campaigns with use_combatants_for_battlemap=true
+  // write token positions to scene_token_placements; the sync trigger
+  // only flows scene_tokens → placements (one-way), so scene_tokens is
+  // permanently stale on the new path. Every attack/reaction distance
+  // computation funnels through this loader — reading the wrong table
+  // made attacks resolve "from where the token was." Route by flag.
+  const { getUseCombatantsFlag } = await import('./api/scenePlacements');
+  const useNewPath = await getUseCombatantsFlag(campaignId);
+
+  // v2.396.0 — Translate the size text label into an integer cell count
+  // for distance/reach math (RAW: distance measured from any square the
+  // creature occupies). tiny/small/medium = 1, large = 2, huge = 3,
+  // gargantuan = 4 — mirrors the renderer's cellSpan values.
   const SIZE_TO_CELLS: Record<string, number> = {
     tiny: 1, small: 1, medium: 1,
     large: 2, huge: 3, gargantuan: 4,
   };
-  const tokens: BattleMapToken[] = (tokenRows ?? []).map(t => {
+
+  let tokens: BattleMapToken[];
+  if (useNewPath) {
+    // New path: placements JOIN combatants for identity. RLS applies
+    // (players only receive placements they could SELECT).
+    const { data: placementRows } = await (supabase as any)
+      .from('scene_token_placements')
+      .select('id, x, y, size_override, combatants:combatant_id ( id, name, definition_type, definition_id )')
+      .eq('scene_id', sceneId);
+    tokens = ((placementRows ?? []) as any[]).map(r => {
+      const c = (r.combatants ?? {}) as { name?: string; definition_type?: string; definition_id?: string };
+      const sizeLabel = ((r.size_override as string) ?? 'medium').toLowerCase();
+      return {
+        row: Math.floor(((r.y as number) ?? 0) / gridSizePx),
+        col: Math.floor(((r.x as number) ?? 0) / gridSizePx),
+        name: c.name ?? undefined,
+        // Identity mapping mirrors findTokenForParticipant:
+        // characters match by character_id, creatures by creature_id
+        // (combatants.definition_type for monsters is
+        // 'homebrew_monster' — verified against prod information
+        // schema), everything else falls back to name matching.
+        character_id: c.definition_type === 'character' ? (c.definition_id ?? undefined) : undefined,
+        creature_id: c.definition_type === 'homebrew_monster' ? (c.definition_id ?? undefined) : undefined,
+        size: SIZE_TO_CELLS[sizeLabel] ?? 1,
+      };
+    });
+  } else {
+  // Legacy path: scene_tokens (still the live write target when the
+  // flag is off). Tokens are stored at anchor positions (snapped on
+  // placement + drag-end), so the row/col derived here accurately
+  // reflects the visual cell.
+  const { data: tokenRows } = await supabase
+    .from('scene_tokens')
+    .select('id, x, y, name, character_id, creature_id, size')
+    .eq('scene_id', sceneId);
+  tokens = (tokenRows ?? []).map(t => {
     const sizeLabel = ((t.size as string) ?? 'medium').toLowerCase();
     return {
       row: Math.floor(((t.y as number) ?? 0) / gridSizePx),
@@ -184,6 +214,7 @@ export async function loadActiveBattleMap(
       size: SIZE_TO_CELLS[sizeLabel] ?? 1,
     };
   });
+  }
 
   // 3. Walls for this scene (v2 system).
   const { data: wallRows } = await supabase

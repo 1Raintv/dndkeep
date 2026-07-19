@@ -406,28 +406,25 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     targetBuffs = ((tData?.active_buffs as ActiveBuff[] | null) ?? []);
     attackerExhaustion = ((aData?.exhaustion_level as number | null) ?? 0);
 
-    // Attempt distance lookup via the campaign's active battle map tokens.
-    // If either token is missing we fall back to the default "far" distance,
-    // which means no Prone-within-5ft advantage and no auto-crit.
+    // v2.568.0 — LIVE positions. Pre-v2.568 this read the legacy
+    // `battle_maps` jsonb table, which BattleMapV2 stopped writing at
+    // v2.267 — so distance was computed from wherever tokens sat the
+    // last time the v1 map wrote (i.e., frozen/stale). Attacks resolved
+    // "from where the token was." Now delegates to
+    // distanceBetweenParticipantsFt, which reads the active scene's
+    // scene_tokens (the live source BattleMapV2 writes on every
+    // drag-end) and is footprint-aware (Large+ creatures measure from
+    // their whole space per RAW, not their anchor cell).
+    // Fail-open: if either token is missing, keep the default "far"
+    // distance (no auto-crit, no Prone-adjacent advantage).
     if (aData && tData) {
-      const { data: bm } = await supabase
-        .from('battle_maps')
-        .select('tokens')
-        .eq('campaign_id', atk.campaign_id)
-        .eq('active', true)
-        .maybeSingle();
-      const tokens = (bm?.tokens as any[]) ?? [];
-      const matchToken = (p: { entity_id: string; participant_type: string; name: string }) =>
-        tokens.find((t: any) => {
-          if (!t || typeof t.row !== 'number' || typeof t.col !== 'number') return false;
-          if (p.participant_type === 'character') return t.character_id === p.entity_id;
-          return (t.name ?? '').toLowerCase() === p.name.toLowerCase();
-        });
-      const at = matchToken(aData as any);
-      const tt = matchToken(tData as any);
-      if (at && tt) {
-        distanceCells = Math.max(Math.abs(at.row - tt.row), Math.abs(at.col - tt.col));
-      }
+      const { distanceBetweenParticipantsFt } = await import('./battleMapGeometry');
+      const ft = await distanceBetweenParticipantsFt(
+        atk.campaign_id,
+        { id: atk.attacker_participant_id, entity_id: (aData as any).entity_id, participant_type: (aData as any).participant_type, name: (aData as any).name },
+        { id: atk.target_participant_id, entity_id: (tData as any).entity_id, participant_type: (tData as any).participant_type, name: (tData as any).name },
+      );
+      if (ft !== null) distanceCells = Math.round(ft / 5);
     }
   }
 

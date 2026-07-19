@@ -574,6 +574,38 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // that just moved gets the new position.
   const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
 
+  // v2.568.0 — LIVE position overlay. The fetched battleMap above is a
+  // snapshot (refreshed per turn / per open) — if a token moves AFTER
+  // the snapshot (the normal move-then-attack sequence), distance math
+  // ran from the OLD position. The Zustand battle-map store is kept
+  // live by BattleMapV2's realtime subscription + optimistic drag
+  // updates, so when the store is tracking the same scene we rebuild
+  // the geometry-layer token list from it on every store change. Falls
+  // back to the fetched snapshot when the DM has the map closed (store
+  // empty) or a different scene loaded.
+  const storeTokens = useBattleMapStore(s => s.tokens);
+  const storeSceneId = useBattleMapStore(s => s.currentSceneId);
+  const liveBattleMap = useMemo<ActiveBattleMap | null>(() => {
+    if (!battleMap) return null;
+    if (!storeSceneId || storeSceneId !== battleMap.id) return battleMap;
+    const list = Object.values(storeTokens);
+    if (list.length === 0) return battleMap;
+    const SIZE_TO_CELLS: Record<string, number> = {
+      tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4,
+    };
+    return {
+      ...battleMap,
+      tokens: list.map(t => ({
+        row: Math.floor((t.y ?? 0) / battleMap.grid_size),
+        col: Math.floor((t.x ?? 0) / battleMap.grid_size),
+        name: t.name ?? undefined,
+        character_id: t.characterId ?? undefined,
+        creature_id: t.creatureId ?? undefined,
+        size: SIZE_TO_CELLS[(t.size ?? 'medium').toLowerCase()] ?? 1,
+      })),
+    };
+  }, [battleMap, storeTokens, storeSceneId]);
+
   useEffect(() => {
     // v2.416.0 — Reset multiattack guided-mode state whenever the
     // active actor changes. Without this, a half-completed sequence
@@ -717,7 +749,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
   }, [encounter, currentActor]);
 
   // v2.444.0 — Cone-pick lifecycle. Three phases:
-  //   1. Setup (conePickingFor + battleMap both present, directionPick
+  //   1. Setup (conePickingFor + liveBattleMap both present, directionPick
   //      not yet active): write aoePreview with shape='cone', activate
   //      directionPick, push initial direction one cell east of apex
   //      so the cone has SOMETHING visible before the first mousemove.
@@ -737,7 +769,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
   const setAoePreviewTargetTokenIds = useBattleMapStore(s => s.setAoePreviewTargetTokenIds);
   // v2.459.0 — Reach preview setter for melee attack hover. Called
   // from onMouseEnter/onMouseLeave on attack buttons (see below).
-  // Pulls the token's footprint center out of battleMap on demand.
+  // Pulls the token's footprint center out of liveBattleMap on demand.
   const setReachPreview = useBattleMapStore(s => s.setReachPreview);
   // v2.461.0 fix — Cleanup on unmount: clear any lingering reach
   // preview if the panel disappears mid-hover (turn advance, encounter
@@ -758,24 +790,24 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // shot from the top-left cell, visibly offset from the rendered
   // token circle.
   const coneApex = useMemo(() => {
-    if (!conePickingFor || !battleMap || !currentActor) return null;
+    if (!conePickingFor || !liveBattleMap || !currentActor) return null;
     const lookup: ParticipantForTokenLookup = {
       id: currentActor.id,
       name: currentActor.name,
       participant_type: currentActor.participant_type,
       entity_id: currentActor.entity_id,
     };
-    const token = findTokenForParticipant(lookup, battleMap.tokens);
+    const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
     if (!token) return null;
-    const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+    const aabb = tokenFootprintAABBPx(token, liveBattleMap.grid_size);
     if (!aabb) return null;
     return {
       worldX: (aabb.minX + aabb.maxX) / 2,
       worldY: (aabb.minY + aabb.maxY) / 2,
     };
-  }, [conePickingFor, battleMap, currentActor]);
+  }, [conePickingFor, liveBattleMap, currentActor]);
 
-  // Phase 1: setup. Fires once per cone-pick session (or when battleMap
+  // Phase 1: setup. Fires once per cone-pick session (or when liveBattleMap
   // arrives late). Cleanup on unmount or cancel clears the overlay.
   useEffect(() => {
     if (!conePickingFor || !coneApex) return;
@@ -787,7 +819,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       // Seed direction one cell east of apex so the cone is visible
       // before the first mousemove. Will be replaced as soon as the
       // user moves the cursor over the canvas.
-      directionWorldX: coneApex.worldX + (battleMap?.grid_size ?? 70),
+      directionWorldX: coneApex.worldX + (liveBattleMap?.grid_size ?? 70),
       directionWorldY: coneApex.worldY,
     });
     setDirectionPickActive(true);
@@ -796,12 +828,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
       setDirectionPickActive(false);
       setDirectionPickResult(null);
     };
-  }, [conePickingFor, coneApex, battleMap, setAoePreview, setDirectionPickActive, setDirectionPickResult]);
+  }, [conePickingFor, coneApex, liveBattleMap, setAoePreview, setDirectionPickActive, setDirectionPickResult]);
 
   // Phase 3: consume the click result. Compute targets in cone and
   // hand off to handleMultiSavePick.
   useEffect(() => {
-    if (!conePickingFor || !coneApex || !battleMap || !directionPickResult || !currentActor) return;
+    if (!conePickingFor || !coneApex || !liveBattleMap || !directionPickResult || !currentActor) return;
     const { action, lengthFt } = conePickingFor;
     const dirX = directionPickResult.worldX;
     const dirY = directionPickResult.worldY;
@@ -822,9 +854,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
         participant_type: p.participant_type,
         entity_id: p.entity_id,
       };
-      const token = findTokenForParticipant(lookup, battleMap.tokens);
+      const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
       if (!token) continue;
-      const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+      const aabb = tokenFootprintAABBPx(token, liveBattleMap.grid_size);
       if (!aabb) continue;
       candidates.push({ participant: p, ...aabb });
     }
@@ -833,7 +865,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       coneApex.worldX, coneApex.worldY,
       dirX, dirY,
       lengthFt,
-      battleMap.grid_size,
+      liveBattleMap.grid_size,
       candidates,
     );
     const targets = hits.map(h => h.participant);
@@ -865,7 +897,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       handleMultiSavePick(targets);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMultiSavePick is stable in usage; including it would loop
-  }, [directionPickResult, conePickingFor, coneApex, battleMap, currentActor, participants]);
+  }, [directionPickResult, conePickingFor, coneApex, liveBattleMap, currentActor, participants]);
 
   // v2.450.0 — Line-pick lifecycle. Mirrors the cone three-phase flow
   // (apex memo → setup effect → resolve effect) but with two
@@ -876,22 +908,22 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // for large/gargantuan), so a Large dragon's 60ft line correctly
   // enumerates the 4 cells it occupies, not just the head cell.
   const lineApex = useMemo(() => {
-    if (!linePickingFor || !battleMap || !currentActor) return null;
+    if (!linePickingFor || !liveBattleMap || !currentActor) return null;
     const lookup: ParticipantForTokenLookup = {
       id: currentActor.id,
       name: currentActor.name,
       participant_type: currentActor.participant_type,
       entity_id: currentActor.entity_id,
     };
-    const token = findTokenForParticipant(lookup, battleMap.tokens);
+    const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
     if (!token) return null;
-    const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+    const aabb = tokenFootprintAABBPx(token, liveBattleMap.grid_size);
     if (!aabb) return null;
     return {
       worldX: (aabb.minX + aabb.maxX) / 2,
       worldY: (aabb.minY + aabb.maxY) / 2,
     };
-  }, [linePickingFor, battleMap, currentActor]);
+  }, [linePickingFor, liveBattleMap, currentActor]);
 
   // Phase 1: setup. Fires once per line-pick session. Cleanup on
   // unmount/cancel clears the overlay and direction-pick state.
@@ -906,7 +938,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       // Seed direction one cell east of apex so the rectangle is
       // visible before the first mousemove. Replaced as soon as the
       // user moves the cursor over the canvas.
-      directionWorldX: lineApex.worldX + (battleMap?.grid_size ?? 70),
+      directionWorldX: lineApex.worldX + (liveBattleMap?.grid_size ?? 70),
       directionWorldY: lineApex.worldY,
     });
     setDirectionPickActive(true);
@@ -915,17 +947,17 @@ export default function MonsterActionPanel({ isDM }: Props) {
       setDirectionPickActive(false);
       setDirectionPickResult(null);
     };
-  }, [linePickingFor, lineApex, battleMap, setAoePreview, setDirectionPickActive, setDirectionPickResult]);
+  }, [linePickingFor, lineApex, liveBattleMap, setAoePreview, setDirectionPickActive, setDirectionPickResult]);
 
   // Phase 3: consume the click result. Build LineTarget candidates
   // (with footprint AABBs) and call findParticipantsInLine, then
   // hand off to handleMultiSavePick the same way cone does.
   useEffect(() => {
-    if (!linePickingFor || !lineApex || !battleMap || !directionPickResult || !currentActor) return;
+    if (!linePickingFor || !lineApex || !liveBattleMap || !directionPickResult || !currentActor) return;
     const { action, lengthFt, widthFt } = linePickingFor;
     const dirX = directionPickResult.worldX;
     const dirY = directionPickResult.worldY;
-    const grid = battleMap.grid_size;
+    const grid = liveBattleMap.grid_size;
 
     const candidates: LineTarget<CombatParticipant>[] = [];
     for (const p of participants) {
@@ -937,7 +969,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
         participant_type: p.participant_type,
         entity_id: p.entity_id,
       };
-      const token = findTokenForParticipant(lookup, battleMap.tokens);
+      const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
       if (!token) continue;
       const aabb = tokenFootprintAABBPx(token, grid);
       if (!aabb) continue;
@@ -967,7 +999,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       handleMultiSavePick(targets);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMultiSavePick stable; mirrors cone effect
-  }, [directionPickResult, linePickingFor, lineApex, battleMap, currentActor, participants]);
+  }, [directionPickResult, linePickingFor, lineApex, liveBattleMap, currentActor, participants]);
 
   // v2.456.0 — Live hover-targeting preview for cone + line pickers.
   // Subscribes once per picker activation; on every aoePreview direction
@@ -988,7 +1020,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       conePickingFor ? { kind: 'cone', lengthFt: conePickingFor.lengthFt } :
       linePickingFor ? { kind: 'line', lengthFt: linePickingFor.lengthFt, widthFt: linePickingFor.widthFt } :
       null;
-    if (!picker || !apex || !battleMap || !currentActor) return;
+    if (!picker || !apex || !liveBattleMap || !currentActor) return;
 
     // Build candidates ONCE per picker session. Same pattern as the
     // resolve effects (which still build their own at click time —
@@ -1007,9 +1039,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
           id: p.id, name: p.name,
           participant_type: p.participant_type, entity_id: p.entity_id,
         };
-        const token = findTokenForParticipant(lookup, battleMap.tokens);
+        const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
         if (!token) return null;
-        const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+        const aabb = tokenFootprintAABBPx(token, liveBattleMap.grid_size);
         if (!aabb) return null;
         return { participant: p, tokenId: token.id, ...aabb } as Candidate;
       })
@@ -1030,11 +1062,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
       const hits = picker!.kind === 'cone'
         ? findParticipantsInCone(
             apex!.worldX, apex!.worldY, dirX, dirY,
-            picker!.lengthFt, battleMap!.grid_size, candidates,
+            picker!.lengthFt, liveBattleMap!.grid_size, candidates,
           )
         : findParticipantsInLine(
             apex!.worldX, apex!.worldY, dirX, dirY,
-            picker!.lengthFt, picker!.widthFt ?? 5, battleMap!.grid_size, candidates,
+            picker!.lengthFt, picker!.widthFt ?? 5, liveBattleMap!.grid_size, candidates,
           );
       // hits is ConeHit/LineHit<Candidate>; .participant is our Candidate
       // (the generic param shadows the field name "participant" — it's
@@ -1060,7 +1092,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     };
   }, [
     conePickingFor, linePickingFor, coneApex, lineApex,
-    battleMap, currentActor, participants, setAoePreviewTargetTokenIds,
+    liveBattleMap, currentActor, participants, setAoePreviewTargetTokenIds,
   ]);
 
   const visible = useMemo(() => {
@@ -1512,20 +1544,20 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // v2.459.0 — Reach preview hover handlers. onEnter parses the
   // action's reach and writes the active token's footprint center +
   // reach to the store. onLeave clears. Called from attack buttons
-  // below; safe to call when battleMap or token is missing (we just
+  // below; safe to call when liveBattleMap or token is missing (we just
   // skip writing in those cases — the overlay stays cleared).
   function handleAttackHoverEnter(action: MonsterAction) {
     const reachFt = parseMeleeReachFt(action.desc);
     if (reachFt == null) return; // not a melee attack — no overlay
-    if (!battleMap || !currentActor) return;
+    if (!liveBattleMap || !currentActor) return;
     const lookup: ParticipantForTokenLookup = {
       id: currentActor.id, name: currentActor.name,
       participant_type: currentActor.participant_type,
       entity_id: currentActor.entity_id,
     };
-    const token = findTokenForParticipant(lookup, battleMap.tokens);
+    const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
     if (!token) return;
-    const aabb = tokenFootprintAABBPx(token, battleMap.grid_size);
+    const aabb = tokenFootprintAABBPx(token, liveBattleMap.grid_size);
     if (!aabb) return;
     setReachPreview({
       centerWorldX: (aabb.minX + aabb.maxX) / 2,
@@ -2736,7 +2768,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           participants={participants}
           action={pickingFor}
           attackRangeFt={parseAttackRangeFt(pickingFor.desc)}
-          battleMap={battleMap}
+          liveBattleMap={liveBattleMap}
           onPick={handlePick}
           onCancel={() => setPickingFor(null)}
         />
@@ -2750,7 +2782,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           participants={participants}
           action={multiSavePickingFor}
           rangeFt={parseSaveRangeFt(multiSavePickingFor.desc)}
-          battleMap={battleMap}
+          liveBattleMap={liveBattleMap}
           onConfirm={handleMultiSavePick}
           onCancel={() => setMultiSavePickingFor(null)}
         />
@@ -3037,13 +3069,13 @@ interface PickerProps {
   participants: CombatParticipant[];
   action: MonsterAction;
   attackRangeFt: number;
-  battleMap: ActiveBattleMap | null;
+  liveBattleMap: ActiveBattleMap | null;
   onPick: (target: CombatParticipant) => void;
   onCancel: () => void;
 }
 
 function RangeAwareTargetPicker(props: PickerProps) {
-  const { attackerParticipant, participants, action, attackRangeFt, battleMap, onPick, onCancel } = props;
+  const { attackerParticipant, participants, action, attackRangeFt, liveBattleMap, onPick, onCancel } = props;
 
   // v2.385.0 — Lock state for excluded (self / dead) targets.
   // Default: locked → excluded entries are dimmed and unclickable.
@@ -3084,8 +3116,8 @@ function RangeAwareTargetPicker(props: PickerProps) {
         participant_type: p.participant_type,
         entity_id: p.entity_id,
       };
-      const dist = battleMap
-        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, battleMap)
+      const dist = liveBattleMap
+        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, liveBattleMap)
         : null;
       // Fail open when distance unknown.
       const inRange = dist === null ? true : dist <= attackRangeFt;
@@ -3107,7 +3139,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
     });
 
     return { targets: valid, excluded: excl };
-  }, [attackerParticipant, participants, battleMap, attackRangeFt]);
+  }, [attackerParticipant, participants, liveBattleMap, attackRangeFt]);
 
   return (
     <div
@@ -3361,13 +3393,13 @@ interface MultiPickerProps {
   participants: CombatParticipant[];
   action: MonsterAction;
   rangeFt: number;
-  battleMap: ActiveBattleMap | null;
+  liveBattleMap: ActiveBattleMap | null;
   onConfirm: (targets: CombatParticipant[]) => void;
   onCancel: () => void;
 }
 
 function MultiTargetSavePicker(props: MultiPickerProps) {
-  const { attackerParticipant, participants, action, rangeFt, battleMap, onConfirm, onCancel } = props;
+  const { attackerParticipant, participants, action, rangeFt, liveBattleMap, onConfirm, onCancel } = props;
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { targets, excluded } = useMemo(() => {
@@ -3395,8 +3427,8 @@ function MultiTargetSavePicker(props: MultiPickerProps) {
         participant_type: p.participant_type,
         entity_id: p.entity_id,
       };
-      const dist = battleMap
-        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, battleMap)
+      const dist = liveBattleMap
+        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, liveBattleMap)
         : null;
       const inRange = dist === null ? true : dist <= rangeFt;
       valid.push({ participant: p, distFt: dist, inRange });
@@ -3410,7 +3442,7 @@ function MultiTargetSavePicker(props: MultiPickerProps) {
     });
 
     return { targets: valid, excluded: excl };
-  }, [attackerParticipant, participants, battleMap, rangeFt]);
+  }, [attackerParticipant, participants, liveBattleMap, rangeFt]);
 
   const inRangeIds = useMemo(
     () => new Set(targets.filter(t => t.inRange).map(t => t.participant.id)),
