@@ -135,14 +135,47 @@ export function wallCoverPoints(w: WallSegment): number {
 export async function loadActiveBattleMap(
   campaignId: string,
 ): Promise<ActiveBattleMap | null> {
-  // 1. Pick the active scene (most recently updated).
-  const { data: scene } = await supabase
-    .from('scenes')
-    .select('id, grid_size_px, width_cells, height_cells')
-    .eq('campaign_id', campaignId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // 1. Pick the active scene.
+  //
+  // v2.571.0 — THE VIEWED SCENE WINS. The old heuristic ("most
+  // recently updated scene") silently diverged from what the DM was
+  // actually looking at: any campaign with 2+ scenes could have a
+  // background scene with a newer updated_at, and then EVERY distance
+  // computation (attack advantage/auto-crit, reach hover, reactions,
+  // AoE pickers) ran against that other scene's token positions while
+  // the DM played on a different map — "attacks are off the tokens."
+  // All consumers of this loader are client-side, so the battle-map
+  // store's currentSceneId (set when BattleMapV2 mounts a scene) is
+  // the authoritative signal for which scene is on screen. Lazy import
+  // avoids a static cycle. Falls back to most-recently-updated only
+  // when no map is mounted (store empty).
+  let viewedSceneId: string | null = null;
+  try {
+    const { useBattleMapStore } = await import('./stores/battleMapStore');
+    viewedSceneId = useBattleMapStore.getState().currentSceneId;
+  } catch { /* store unavailable (non-UI context) — use fallback */ }
+
+  interface SceneRow { id: string; grid_size_px: number | null; width_cells: number | null; height_cells: number | null }
+  let scene: SceneRow | null = null;
+  if (viewedSceneId) {
+    const { data } = await supabase
+      .from('scenes')
+      .select('id, grid_size_px, width_cells, height_cells')
+      .eq('id', viewedSceneId)
+      .eq('campaign_id', campaignId)  // guard: store could hold another campaign's scene
+      .maybeSingle();
+    scene = (data as SceneRow | null) ?? null;
+  }
+  if (!scene) {
+    const { data } = await supabase
+      .from('scenes')
+      .select('id, grid_size_px, width_cells, height_cells')
+      .eq('campaign_id', campaignId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    scene = (data as SceneRow | null) ?? null;
+  }
   if (!scene) return null;
 
   const sceneId = scene.id as string;
