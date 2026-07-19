@@ -737,6 +737,29 @@ export const SPELLS: SpellData[] = [
   higher_levels: "No effect — Divine Favor does not benefit from a higher-level spell slot.",
   },
   {
+  id: "divine-smite",
+  name: "Divine Smite",
+  level: 1,
+  school: "Evocation",
+  casting_time: "1 bonus action, which you take immediately after hitting a target with a Melee weapon or an Unarmed Strike",
+  range: "Self",
+  components: "V",
+  duration: "Instantaneous",
+  concentration: false,
+  ritual: false,
+  classes: ["Paladin"],
+  // v2.555.0 — RAW audit S1: new 2024 spell (was a class feature in 2014).
+  // Description is verbatim SRD 5.2.1 (CC-BY-4.0). Paladins always have it
+  // prepared (level 2 feature) and can cast it once per Long Rest without
+  // a slot. Note: SRD/PHB print duration is Instantaneous (D&D Beyond's
+  // digital entry showing "1 minute" is a known discrepancy).
+  description: "The target takes an extra 2d8 Radiant damage from the attack. The damage increases by 1d8 if the target is a Fiend or an Undead.\n\nUsing a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 1.",
+  damage_type: "Radiant",
+  damage_at_slot_level: { "1": "2d8", "2": "3d8", "3": "4d8", "4": "5d8", "5": "6d8", "6": "7d8", "7": "8d8", "8": "9d8", "9": "10d8" },
+  damage_dice: "2d8",
+  higher_levels: "The damage increases by 1d8 for each spell slot level above 1.",
+  },
+  {
   id: "entangle",
   name: "Entangle",
   level: 1,
