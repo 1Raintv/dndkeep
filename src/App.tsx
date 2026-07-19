@@ -99,7 +99,16 @@ function useCrossTabVersionDetection(): { staleVersion: string | null } {
   return { staleVersion };
 }
 
-function PageLoader() {
+function PageLoader({ unreachable, onRetry }: { unreachable?: boolean; onRetry?: () => void } = {}) {
+  if (unreachable) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 'var(--space-3)' }}>
+        <span style={{ fontSize: 15, color: 'var(--t-2)' }}>Can't reach the server right now.</span>
+        <span style={{ fontSize: 13, color: 'var(--t-3)' }}>Check your connection, then try again.</span>
+        <button className="btn-ghost" onClick={onRetry} style={{ marginTop: 8 }}>Retry</button>
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 'var(--space-3)' }}>
       <div className="spinner" /><span className="loading-text">Loading…</span>
@@ -375,20 +384,24 @@ function Sidebar() {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, initError, retryInit } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth', { replace: true });
   }, [user, loading, navigate]);
 
+  // v2.563.0 — auth init failed (server unreachable): show Retry instead
+  // of an infinite spinner.
+  if (initError) return <PageLoader unreachable onRetry={retryInit} />;
   if (loading) return <PageLoader />;
   if (!user) return null;
   return <>{children}</>;
 }
 
 function HomeRedirect() {
-  const { user, loading } = useAuth();
+  const { user, loading, initError, retryInit } = useAuth();
+  if (initError) return <PageLoader unreachable onRetry={retryInit} />;
   if (loading) return <PageLoader />;
   if (user) {
     // v2.284.0 — opening DNDKeep in a new tab (or refreshing "/")
