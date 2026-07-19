@@ -34,13 +34,24 @@ long-term goal; Track 1 keeps the core trustworthy.
 **Goal:** Get the site as automated and as close to 2024 D&D rules as possible,
 using only official content. No invented spells, monsters, or mechanics.
 
-### Content scope rule (LOCKED — Interpretation B)
+### Content scope rule (LOCKED — Interpretation B, hardened v2.552)
 
+- **Canonical source:** SRD 5.2.1 (CC-BY-4.0) is the canonical verbatim source.
+  Where an entry exists in SRD 5.2.1, its rules text should match the SRD
+  **exactly** — audits verify against the SRD PDF, not third-party wikis
+  (wikis are used only for cross-checking non-SRD mechanics).
 - **Mechanics:** Full 2024 rules implemented. Numbers, scaling, and rules behavior
   are not copyrightable and may be implemented in full (2024 PHB / MM / DMG).
 - **Verbatim text:** Descriptive/flavor text may be reproduced verbatim **only**
-  for SRD 5.2 content (licensed CC-BY-4.0). Non-SRD content gets full mechanical
-  support with **paraphrased or original** descriptions — never copied PHB prose.
+  for SRD 5.2.1 / 5.1 content (licensed CC-BY-4.0). Non-SRD content gets full
+  mechanical support with **paraphrased or original** descriptions — never
+  copied PHB prose.
+- **Attribution:** The `/srd` page carries the exact SRD 5.2.1 and SRD 5.1
+  attribution statements required by CC-BY-4.0. This must remain reachable
+  from the app at all times.
+- **Source tagging (rolling):** As entries are audited, tag them
+  `srd-5.2` / `srd-5.1` / `paraphrase` / `legacy` / `homebrew` so compliance
+  is machine-checkable. New content added going forward must be tagged.
 - **Official only:** No invented spells, monsters, subclasses, feats, or mechanics.
   Every entry traces to an official WotC source.
 - **Legacy sources:** Where no 2024 version exists (e.g. Artificer = TCE), the
