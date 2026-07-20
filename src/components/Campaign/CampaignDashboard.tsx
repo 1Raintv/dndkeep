@@ -176,7 +176,12 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       // Whitelist guards against (a) stale tab values from removed
       // tabs and (b) garbage in storage. 'session' / 'dm' are
       // removed in v2.416 so we filter them out even if persisted.
-      const valid = ['members', 'party', 'log', 'chat', 'schedule', 'npcs', 'discord', 'map'];
+      // v2.588.0 — role-aware whitelist: players can no longer restore
+      // into the DM-only Party / NPCs / Discord tabs (inline owner
+      // check — `isOwner` is declared later, TDZ).
+      const valid = campaignProp.owner_id === user?.id
+        ? ['members', 'party', 'log', 'chat', 'schedule', 'npcs', 'discord', 'map']
+        : ['members', 'log', 'chat', 'schedule', 'map'];
       if (saved && valid.includes(saved)) return saved as any;
     } catch {
       // sessionStorage unavailable (private mode quota etc) — ignore.
@@ -642,7 +647,12 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
               • DM Screen tab: covered by the dedicated DM Screen
                 page route (no longer needs to live as a campaign
                 tab too). */}
-        {([...(isOwner ? [] : ['members'] as const), 'map', 'party', 'npcs', 'log', 'chat', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
+        {/* v2.588.0 — Party + NPCs tabs are DM-only. Players see just
+            Members / Battle Map / Log / Chat / Schedule; all DM
+            surfaces (party roster management, NPC library) are
+            hidden. In-map DM controls were already gated by
+            isDM={isOwner} on BattleMapV2. */}
+        {([...(isOwner ? [] : ['members'] as const), 'map', ...(isOwner ? (['party', 'npcs'] as const) : []), 'log', 'chat', 'schedule', ...(isOwner ? ['discord'] : [])] as const).map(tab => {
           const labels: Record<string, string> = {
             members: 'Members',
             party: 'Party', log: 'Log', chat: 'Chat',
@@ -839,7 +849,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         {/* v2.276.0 — Notes tab content block removed. */}
 
         {/* Party tab — real-time HP/conditions for all members */}
-        {activeTab === 'party' && (
+        {activeTab === 'party' && isOwner && (
           <PartyDashboard campaignId={campaign.id} isOwner={isOwner} campaign={campaign} />
         )}
 
@@ -887,7 +897,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
         )}
 
         {/* NPC Manager */}
-        {activeTab === 'npcs' && (
+        {activeTab === 'npcs' && isOwner && (
           <div>
             <h3 style={{ marginBottom: 'var(--sp-2)' }}>NPCs</h3>
             <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp-3)' }}>
