@@ -1447,10 +1447,23 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const prompt = ACTIVE_EFFECT_PROMPTS[character.concentration_spell];
  const sp = spellMap[character.concentration_spell];
  if (!sp) return null;
- const dice: string | null = prompt.rollKind === 'heal'
+ const rawDice: string | null = prompt.rollKind === 'heal'
  ? (((sp as any).heal_dice as string | undefined) ?? null)
  : prompt.rollKind === 'damage'
  ? (((sp as any).damage_dice as string | undefined) ?? null)
+ : null;
+ // v2.601.0 — resolve catalogue dice strings of the form "XdY" or
+ // "XdY + MOD" (Spiritual Weapon: "1d8 + MOD"). rollDiceExpr only
+ // accepts bare XdY, so "+ MOD" strings previously offered a Roll
+ // button that produced total 0. MOD resolves to the spellcasting
+ // ability modifier (spell_attack_bonus − PB). Any other shape falls
+ // back to a plain Use button rather than a broken roll.
+ const diceParse = rawDice?.match(/^\s*(\d+d\d+)(\s*\+\s*MOD)?\s*$/i) ?? null;
+ const baseDice: string | null = diceParse ? diceParse[1] : null;
+ const spellMod = (computed.spell_attack_bonus ?? 0) - computed.proficiency_bonus;
+ const flatMod: number = diceParse && diceParse[2] ? spellMod : 0;
+ const diceLabel: string | null = baseDice
+ ? `${baseDice}${flatMod > 0 ? ` + ${flatMod}` : flatMod < 0 ? ` − ${Math.abs(flatMod)}` : ''}`
  : null;
  const dmgType = (sp as any).damage_type as string | undefined;
  const saveType = (sp as any).save_type as string | undefined;
@@ -1460,16 +1473,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const econLabel = isBonus ? '1BA' : '1A';
  const econColor = isBonus ? '#8b5cf6' : '#f59e0b';
  const handleUse = () => {
- if (dice) {
- const m = dice.match(/(\d+)d(\d+)/i);
+ if (baseDice) {
+ const m = baseDice.match(/(\d+)d(\d+)/i);
  const dieSize = m ? parseInt(m[2], 10) : 6;
- const { rolls, total } = rollDiceExpr(dice);
+ const { rolls, total } = rollDiceExpr(baseDice);
  triggerRoll({
  result: rolls[0] ?? total,
  dieType: dieSize,
- total,
+ total: total + flatMod,
  allDice: rolls.map(v => ({ die: dieSize, value: v })),
- expression: dice,
+ expression: diceLabel ?? baseDice,
  label: `${sp.name} — ${prompt.label}${prompt.rollKind === 'heal' ? ' (healing)' : dmgType ? ` (${dmgType})` : ''}`,
  });
  }
@@ -1489,7 +1502,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{prompt.label}</span>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
  {prompt.detail}
- {dice ? ` · ${dice}${prompt.rollKind === 'damage' && dmgType ? ` ${dmgType}` : ''}` : ''}
+ {diceLabel ? ` · ${diceLabel}${prompt.rollKind === 'damage' && dmgType ? ` ${dmgType}` : ''}` : ''}
  {prompt.showSave && saveType && dc !== undefined ? ` · ${saveType.slice(0, 3).toUpperCase()} DC ${dc}` : ''}
  </span>
  </div>
@@ -1506,7 +1519,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  minHeight: 0, flexShrink: 0,
  }}
  >
- {econSpent ? 'Used' : dice ? `Roll ${dice}` : 'Use'}
+ {econSpent ? 'Used' : diceLabel ? `Roll ${diceLabel}` : 'Use'}
  </button>
  </div>
  );
