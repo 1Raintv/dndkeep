@@ -162,47 +162,51 @@ export default function CharacterPage() {
   return (
     <div>
       {/* Breadcrumb */}
+      {/* v2.587.0 — top bar evenly distributed: breadcrumb, campaign
+          chip, battle map chip, and live-sync each sit as their own
+          flex child under justify-content: space-between, so they
+          spread across the full width with even empty space between.
+          "Campaign:" now lives INSIDE the chip as part of the button. */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--sp-2)',
+        justifyContent: 'space-between',
+        gap: 'var(--sp-3)',
         marginBottom: 'var(--sp-4)',
         fontFamily: 'var(--ff-body)',
         fontSize: 'var(--fs-xs)',
         color: 'var(--t-2)',
       }}>
-        <button
-          className="btn-ghost btn-sm"
-          onClick={() => navigate('/lobby')}
-          style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)' }}
-        >
-          Characters
-        </button>
-        <span>/</span>
-        <span style={{ color: 'var(--t-2)' }}>{character.name}</span>
-        {/* v2.586.0 — campaign + battle map moved from the right edge
-            to the middle cluster next to the breadcrumb, with an
-            explicit "Campaign:" label. Only Live sync + notifications
-            remain right-aligned. */}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 0 }}>
+          <button
+            className="btn-ghost btn-sm"
+            onClick={() => navigate('/lobby')}
+            style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)' }}
+          >
+            Characters
+          </button>
+          <span>/</span>
+          <span style={{ color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{character.name}</span>
+        </span>
         <span style={{
-          marginLeft: 'var(--sp-3)',
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--sp-2)',
         }}>
-          <span style={{ color: 'var(--t-3)', fontWeight: 700 }}>Campaign:</span>
           {/* v2.581.0 — campaign context on the breadcrumb. In a
-              campaign: the campaign's name, click -> campaign page.
-              Not in one: "Join Campaign" expands an inline code input. */}
+              campaign: "Campaign: {name}" as one chip, click ->
+              campaign page. Not in one: "Join Campaign" expands an
+              inline code input. */}
           {character.campaign_id ? (
             campaignName && (
               <button
                 className="crumb-btn crumb-btn-gold"
                 onClick={() => navigate(`/campaigns/${character.campaign_id}`)}
                 title="Open this campaign"
-                style={{ maxWidth: 220 }}
+                style={{ maxWidth: 300 }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ color: 'var(--t-3)', fontWeight: 700, flexShrink: 0 }}>Campaign:</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaignName}</span>
               </button>
             )
@@ -243,10 +247,12 @@ export default function CharacterPage() {
               Join Campaign
             </button>
           )}
-          {/* v2.580.0 — quick jump to the campaign's battle map from the
-              breadcrumb line. Same destination as the sheet header's map
-              button. Renders for any character in a campaign. */}
-          {character.campaign_id && (
+        </span>
+        {/* v2.580.0 — quick jump to the campaign's battle map from the
+            breadcrumb line. Same destination as the sheet header's map
+            button. Renders for any character in a campaign. Own flex
+            child (v2.587.0) so the bar distributes evenly. */}
+        {character.campaign_id && (
             <button
               className={combatActive ? 'crumb-btn crumb-btn-combat' : 'crumb-btn'}
               onClick={() => navigate(`/campaigns/${character.campaign_id}?tab=map`)}
@@ -256,10 +262,8 @@ export default function CharacterPage() {
               Battle Map
             </button>
           )}
-        </span>
         {isPro && (
           <span style={{
-            marginLeft: 'auto',
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--sp-2)',
