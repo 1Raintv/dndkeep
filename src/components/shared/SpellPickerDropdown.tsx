@@ -123,21 +123,24 @@ export default function SpellPickerDropdown({
  return (selectedByLevel[0] ?? 0) >= cantripMax;
  }
  if (level > 0) {
- // Per-level slot cap — KNOWN CASTERS ONLY.
- if (isKnownCaster && slotsPerLevel && slotsPerLevel[level] !== undefined) {
- return (selectedByLevel[level] ?? 0) >= slotsPerLevel[level];
+ const enforceCaps = isKnownCaster || (className !== 'Wizard');
+ // v2.584.0 — per-level slot cap for ALL non-Wizard casters (house
+ // rule: max chosen spells per spell level = slot count at that
+ // level; a full level greys out until one is unlearned). v2.322
+ // scoped this to known casters only; extended to preparers
+ // (Cleric/Druid/Paladin/Ranger/Artificer/Psion) per product
+ // direction. RAW note: 2024 rules cap only the TOTAL prepared
+ // count — the per-level cap is this app's house rule. Wizard
+ // still bypasses both (its known_spells is a true spellbook).
+ if (enforceCaps && slotsPerLevel && slotsPerLevel[level] !== undefined
+ && (selectedByLevel[level] ?? 0) >= slotsPerLevel[level]) {
+ return true;
  }
- // Global "spells known" cap — known casters AND non-Wizard
- // preparer classes. v2.366.0: pre-v2.366 the prepareMax cap
- // here only applied to known casters because preparers were
- // assumed to have a Wizard-style unbounded spellbook. Only
- // Wizard actually works that way RAW; every other preparer
- // (Cleric, Druid, Paladin, Ranger, Artificer, Psion) writes
- // prepared list entries via this picker, so the cap should
- // apply. Wizard still bypasses (its known_spells is a true
- // spellbook).
- const enforcePrepareMax = isKnownCaster || (className !== 'Wizard');
- if (enforcePrepareMax && prepareMax !== undefined && prepareCount !== undefined) {
+ // Global cap — spells-known table (known casters) or prepared
+ // table (preparers). v2.584.0: now checked IN ADDITION to the
+ // per-level cap (previously an early return meant an under-cap
+ // level could bypass a full global cap).
+ if (enforceCaps && prepareMax !== undefined && prepareCount !== undefined) {
  return prepareCount >= prepareMax;
  }
  }

@@ -7,6 +7,7 @@ import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { useAuth } from '../../context/AuthContext';
 import { getMaxCantrips, getMaxKnown, isKnownCaster } from '../../lib/spellLimits';
 import { getPreparedTable } from '../../data/spellPreparedTables';
+import { getSpellSlotRow } from '../../data/spellSlots';
 import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
@@ -347,6 +348,13 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
     //     known_spells as a true spellbook (see SpellPickerDropdown
     //     v2.322/v2.366 notes) and bypasses prepareMax by design.
     const knownCls = isKnownCaster(className);
+    // v2.584.0 — per-slot-level caps in the creator too: max picks at
+    // each spell level = slot count at that level for this build level
+    // (0-slot levels omitted -> no per-level cap there, e.g. Warlock's
+    // non-pact levels).
+    const slotRow = getSpellSlotRow(className, level);
+    const slotsPerLevel: Record<number, number> = {};
+    slotRow.forEach((n, i) => { if (n > 0) slotsPerLevel[i + 1] = n; });
     let spellCap: number | undefined;
     if (!isCantrip) {
       if (knownCls) {
@@ -366,6 +374,7 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
         cantripMax={isCantrip ? getMaxCantrips(className, level) : undefined}
         prepareMax={spellCap}
         prepareCount={isCantrip ? undefined : choices.spells.length}
+        slotsPerLevel={isCantrip ? undefined : slotsPerLevel}
         isKnownCaster={knownCls}
         onToggle={id => {
           const next = selected.includes(id) ? selected.filter((x: string) => x !== id) : [...selected, id];
