@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { createCharacter } from '../../lib/supabase';
 import { CLASS_MAP } from '../../data/classes';
 import { BACKGROUND_MAP } from '../../data/backgrounds';
+import { getSpellAbility } from '../../lib/spellLimits';
 import { SPECIES_MAP } from '../../data/species';
 import { SPECIES_AUTO_SKILLS } from '../../data/classAbilities';
 import { slotRowToSpellSlots, getSpellSlotRow } from '../../data/spellSlots';
@@ -364,6 +365,20 @@ export default function CharacterCreator() {
             }}
             currentLevel={currentBuildLevel}
             onCurrentLevelChange={setCurrentBuildLevel}
+            spellAbilityMod={(() => {
+              // v2.583.0 — mirror handleCreate's finalScores math
+              // (base scores + background ASI) for the spellcasting
+              // ability, so the Artificer prepared-cap fallback in
+              // StepBuild uses the real modifier.
+              const key = getSpellAbility(className);
+              const bg = BACKGROUND_MAP[background];
+              let v = scores[key];
+              if (bg) {
+                if (bg.asi_primary === key) v += 2;
+                else if (bg.asi_secondary === key) v += 1;
+              }
+              return Math.floor((v - 10) / 2);
+            })()}
           />
         )}
         {step === 5 && (

@@ -5,6 +5,8 @@ import { SPELLS } from '../../data/spells';
 import FeatPicker from '../shared/FeatPicker';
 import SpellPickerDropdown from '../shared/SpellPickerDropdown';
 import { useAuth } from '../../context/AuthContext';
+import { getMaxCantrips, getMaxKnown, isKnownCaster } from '../../lib/spellLimits';
+import { getPreparedTable } from '../../data/spellPreparedTables';
 import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
@@ -42,11 +44,14 @@ interface StepBuildProps {
   onNext?: () => void;
   currentLevel?: number;
   onCurrentLevelChange?: (l: number) => void;
+  /** Spellcasting-ability modifier (scores + background ASI). Only used
+      for the Artificer prepared-cap fallback; defaults to 0. */
+  spellAbilityMod?: number;
 }
 
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 
-export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange }: StepBuildProps) {
+export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange, spellAbilityMod = 0 }: StepBuildProps) {
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
   // Level is fully controlled by parent via currentLevel prop.
@@ -244,6 +249,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
                 choices={choices}
                 onUpdate={update}
                 maxSpellLevel={prog.newSpellLevel ?? getMaxSpellLevel(currentLevel, cls.spellcaster_type ?? 'full')}
+                spellAbilityMod={spellAbilityMod}
               />
             ))}
           </div>
@@ -312,10 +318,10 @@ function getMaxSpellLevel(level: number, casterType: string): number {
 
 // ── Choice panel renders ────────────────────────────────────────────
 
-function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpellLevel }: {
+function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpellLevel, spellAbilityMod = 0 }: {
   type: string; label: string; level: number; className: string;
   choices: BuildChoices; onUpdate: (patch: Partial<BuildChoices>) => void;
-  maxSpellLevel: number;
+  maxSpellLevel: number; spellAbilityMod?: number;
 }) {
   const cls = CLASS_MAP[className];
 
@@ -326,6 +332,30 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
   if (type === 'cantrips' || type === 'spells') {
     const isCantrip = type === 'cantrips';
     const selected = isCantrip ? choices.cantrips : choices.spells;
+    // v2.583.0 — creator-side spell caps (user-reported: a Psion could
+    // add more spells than allowed at each build level, e.g. 4/3; the
+    // sheet path was gated via spellLimits but this picker passed no
+    // caps at all). choices.cantrips / choices.spells accumulate
+    // ACROSS build levels, so the correct cap at build level N is the
+    // class's CUMULATIVE allowance at level N:
+    //   - cantrips: getMaxCantrips table
+    //   - known casters (Bard/Sorcerer/Warlock): getMaxKnown table
+    //   - non-Wizard preparers (Cleric/Druid/Paladin/Ranger/Psion):
+    //     spellPreparedTables (same tables the sheet enforces)
+    //   - Artificer (no table): ceil(level/2) + spell mod, min 1
+    //   - Wizard: intentionally uncapped here — the picker treats its
+    //     known_spells as a true spellbook (see SpellPickerDropdown
+    //     v2.322/v2.366 notes) and bypasses prepareMax by design.
+    const knownCls = isKnownCaster(className);
+    let spellCap: number | undefined;
+    if (!isCantrip) {
+      if (knownCls) {
+        spellCap = getMaxKnown(className, level) ?? undefined;
+      } else if (className !== 'Wizard') {
+        const tbl = getPreparedTable(className);
+        spellCap = tbl ? tbl[level - 1] : Math.max(1, Math.ceil(level / 2) + spellAbilityMod);
+      }
+    }
     return (
       <SpellPickerDropdown
         label={label}
@@ -333,6 +363,10 @@ function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpel
         className={className}
         maxLevel={maxSpellLevel}
         selected={selected}
+        cantripMax={isCantrip ? getMaxCantrips(className, level) : undefined}
+        prepareMax={spellCap}
+        prepareCount={isCantrip ? undefined : choices.spells.length}
+        isKnownCaster={knownCls}
         onToggle={id => {
           const next = selected.includes(id) ? selected.filter((x: string) => x !== id) : [...selected, id];
           onUpdate(isCantrip ? { cantrips: next } : { spells: next });
