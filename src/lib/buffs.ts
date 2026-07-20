@@ -38,6 +38,34 @@ export interface ActiveBuff {
   /** v2.114.0 — Phase H pt 5: consumed after the first qualifying use
    *  (Absorb Elements rider — one melee attack only). */
   singleUse?: boolean;
+  /** v2.602.0 — automation arc ship 4b: recurring per-turn tick
+   *  (Acid Arrow, Heroism, Regenerate, Searing Smite). Processed by
+   *  processTurnTicks from advanceTurn. */
+  turnTick?: TurnTick;
+}
+
+/** v2.602.0 — Per-turn tick spec carried on a buff. Amount per tick is
+ *  roll(dice) + flat; either part may be absent.
+ *  - 'damage' subtracts through temp HP first (RAW order); a character
+ *    ticked while at 0 HP takes a death-save failure instead
+ *    (damage-at-0 rule), with the massive-damage instant-death check.
+ *  - 'heal' caps at max HP; healing a character up from 0 resets both
+ *    death-save counters (RAW: any HP regained resets them).
+ *  - 'temp_hp' keeps the HIGHER of current vs granted (temp HP never
+ *    stack, PHB 2024).
+ *  saveEnds does NOT auto-roll — participants don't carry save
+ *  bonuses, so a fabricated roll would be wrong. It emits a
+ *  save_requested event (RAW order: damage first, then the save) and
+ *  the DM removes the buff on a success via the existing buff UI. */
+export interface TurnTick {
+  kind: 'damage' | 'heal' | 'temp_hp';
+  timing: 'turn_start' | 'turn_end';
+  dice?: string;                 // XdY rolled fresh each tick
+  flat?: number;                 // added to the dice total
+  damageType?: string;
+  saveEnds?: { ability: string; dc: number };
+  /** Remove the buff after it fires once (Acid Arrow's delayed 2d4). */
+  oneShot?: boolean;
 }
 
 // ─── Apply / remove ──────────────────────────────────────────────
@@ -285,10 +313,17 @@ export async function clearBuffsFromConcentration(
 //
 // Spell names are looked up case-insensitively.
 
+/** v2.602.0 — caster-derived numbers some templates need (Heroism's
+ *  temp HP = spellcasting mod; Searing Smite's save DC). Resolved by
+ *  applyBuffFromSpell from the caster's character row when the entry
+ *  sets needsCasterStats; undefined when unresolvable (NPC caster,
+ *  fetch failure) — templates must default sanely. */
+export interface CasterStats { spellMod: number; saveDC: number }
+
 type BuffSpellEntry =
-  | { scope: 'per_target'; template: (casterId: string) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
-  | { scope: 'on_caster_per_target'; template: (casterId: string, targetId: string) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
-  | { scope: 'on_caster_only'; template: (casterId: string) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> };
+  | { scope: 'per_target'; needsCasterStats?: boolean; template: (casterId: string, stats?: CasterStats) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
+  | { scope: 'on_caster_per_target'; needsCasterStats?: boolean; template: (casterId: string, targetId: string, stats?: CasterStats) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
+  | { scope: 'on_caster_only'; needsCasterStats?: boolean; template: (casterId: string, stats?: CasterStats) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> };
 
 export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
   bless: {
@@ -327,6 +362,51 @@ export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
       onlyMelee: true,
     }),
   },
+  // v2.602.0 — automation arc ship 4b: start/end-of-turn ticks.
+  'acid arrow': {
+    scope: 'per_target',
+    template: () => ({
+      key: 'acid_arrow',
+      name: 'Acid Arrow',
+      // SRD 5.2.1: "2d4 Acid damage at the end of its next turn."
+      // One-shot: the buff removes itself after the tick fires.
+      turnTick: { kind: 'damage', timing: 'turn_end', dice: '2d4', damageType: 'acid', oneShot: true },
+    }),
+  },
+  heroism: {
+    scope: 'per_target',
+    needsCasterStats: true,
+    template: (_casterId, stats) => ({
+      key: 'heroism',
+      name: 'Heroism',
+      // SRD 5.2.1: temp HP equal to the caster's spellcasting ability
+      // modifier at the start of each of the target's turns (also
+      // Immune to Frightened — tracked via the condition system).
+      turnTick: { kind: 'temp_hp', timing: 'turn_start', flat: Math.max(0, stats?.spellMod ?? 0) },
+    }),
+  },
+  regenerate: {
+    scope: 'per_target',
+    template: () => ({
+      key: 'regenerate',
+      name: 'Regenerate',
+      // SRD 5.2.1: the target regains 1 HP at the start of each of
+      // its turns (the upfront 4d8+15 is applied at cast, not here).
+      turnTick: { kind: 'heal', timing: 'turn_start', flat: 1 },
+    }),
+  },
+  'searing smite': {
+    scope: 'per_target',
+    needsCasterStats: true,
+    template: (_casterId, stats) => ({
+      key: 'searing_smite',
+      name: 'Searing Smite',
+      // SRD 5.2.1: at the start of each of its turns the target takes
+      // 1d6 Fire damage and THEN makes a CON save; success ends the
+      // spell. Damage-then-save order is preserved by processTurnTicks.
+      turnTick: { kind: 'damage', timing: 'turn_start', dice: '1d6', damageType: 'fire', saveEnds: { ability: 'CON', dc: stats?.saveDC ?? 13 } },
+    }),
+  },
 };
 
 /**
@@ -340,17 +420,43 @@ export async function applyBuffFromSpell(input: {
   spellName: string;
   casterParticipantId: string;
   targetParticipantIds: string[];   // may be empty for caster-only spells
+  /** v2.602.0 — lets needsCasterStats entries resolve the caster's
+   *  spellcasting mod / save DC from their character row. */
+  casterCharacterId?: string;
 }): Promise<number> {
   const key = input.spellName.trim().toLowerCase();
   const entry = BUFF_SPELL_REGISTRY[key];
   if (!entry) return 0;
+
+  // v2.602.0 — resolve caster stats when the entry needs them.
+  let stats: CasterStats | undefined;
+  if (entry.needsCasterStats && input.casterCharacterId) {
+    try {
+      const { data: ch } = await supabase
+        .from('characters')
+        .select('*')
+        .eq('id', input.casterCharacterId)
+        .maybeSingle();
+      if (ch) {
+        const { computeStats } = await import('./gameUtils');
+        const cs = computeStats(ch as any);
+        const pb = cs.proficiency_bonus;
+        stats = {
+          spellMod: (cs.spell_attack_bonus ?? 0) - pb,
+          saveDC: cs.spell_save_dc ?? 13,
+        };
+      }
+    } catch (e) {
+      console.warn('[applyBuffFromSpell] caster stats resolution failed; templates use defaults', e);
+    }
+  }
 
   const source = `spell:${key}`;
   let applied = 0;
 
   if (entry.scope === 'per_target') {
     for (const tid of input.targetParticipantIds) {
-      const tpl = entry.template(input.casterParticipantId);
+      const tpl = entry.template(input.casterParticipantId, stats);
       await applyBuff({
         participantId: tid,
         buff: { ...tpl, source, casterParticipantId: input.casterParticipantId },
@@ -363,7 +469,7 @@ export async function applyBuffFromSpell(input: {
     // Bind the rider to the first target (HM/Hex RAW is single-target).
     const tid = input.targetParticipantIds[0];
     if (!tid) return 0;
-    const tpl = entry.template(input.casterParticipantId, tid);
+    const tpl = entry.template(input.casterParticipantId, tid, stats);
     await applyBuff({
       participantId: input.casterParticipantId,
       buff: { ...tpl, source, casterParticipantId: input.casterParticipantId },
@@ -372,7 +478,7 @@ export async function applyBuffFromSpell(input: {
     });
     applied = 1;
   } else {
-    const tpl = entry.template(input.casterParticipantId);
+    const tpl = entry.template(input.casterParticipantId, stats);
     await applyBuff({
       participantId: input.casterParticipantId,
       buff: { ...tpl, source, casterParticipantId: input.casterParticipantId },
@@ -384,3 +490,170 @@ export async function applyBuffFromSpell(input: {
 
   return applied;
 }
+
+// ─── Per-turn tick engine ────────────────────────────────────────
+// v2.602.0 — automation arc ship 4b. Called from advanceTurn for the
+// OUTGOING participant with timing 'turn_end' and the INCOMING one
+// with 'turn_start'. Reads active_buffs, fires every matching
+// turnTick, writes HP/temp-HP/death-save deltas to combatants in one
+// update, removes oneShot buffs, and emits log events using existing
+// event types so the combat log renders them with no new UI. Never
+// throws — a tick failure must not block turn advance.
+export async function processTurnTicks(opts: {
+  participantId: string;
+  encounterId: string;
+  timing: 'turn_start' | 'turn_end';
+}): Promise<void> {
+  try {
+    const { data: raw } = await (supabase as any)
+      .from('combat_participants')
+      .select(
+        'id, combatant_id, name, participant_type, campaign_id, hidden_from_players, ' +
+          JOINED_COMBATANT_FIELDS
+      )
+      .eq('id', opts.participantId)
+      .maybeSingle();
+    if (!raw) return;
+    const part = normalizeParticipantRow(raw);
+    if (part.is_dead) return;
+
+    const buffs = ((part.active_buffs ?? []) as ActiveBuff[]);
+    const ticking = buffs.filter(b => b.turnTick?.timing === opts.timing);
+    if (!ticking.length) return;
+
+    const combatantId = part.combatant_id as string | null;
+    if (!combatantId) {
+      console.warn('[processTurnTicks] participant missing combatant_id; skipping', opts.participantId);
+      return;
+    }
+
+    const isCharacter = part.participant_type === 'character';
+    const targetType = isCharacter ? 'player' : 'monster';
+    const visibility = part.hidden_from_players ? 'hidden_from_players' : 'public';
+    const maxHp = (part.max_hp as number | null) ?? 0;
+    let hp = (part.current_hp as number | null) ?? 0;
+    let tempHp = (part.temp_hp as number | null) ?? 0;
+    let failures = (part.death_save_failures as number | null) ?? 0;
+    let successes = (part.death_save_successes as number | null) ?? 0;
+    let isStable = !!part.is_stable;
+    let isDead = false;
+    const removedKeys: string[] = [];
+    const events: Array<Parameters<typeof emitCombatEvent>[0]> = [];
+    const base = {
+      campaignId: part.campaign_id as string,
+      encounterId: opts.encounterId,
+      actorType: 'system' as const,
+      actorName: 'System',
+      targetType: targetType as any,
+      targetName: part.name as string,
+      visibility: visibility as any,
+    };
+
+    for (const buff of ticking) {
+      if (isDead) break;
+      const tick = buff.turnTick!;
+      const { total: diceTotal } = tick.dice ? rollDiceExpr(tick.dice) : { total: 0 };
+      const amount = diceTotal + (tick.flat ?? 0);
+
+      if (tick.kind === 'damage' && amount > 0) {
+        if (hp === 0 && isCharacter && !isDead) {
+          // RAW: damage while at 0 HP = one death-save failure (ticks
+          // aren't attacks, so no crit doubling); it also breaks
+          // stability.
+          failures = Math.min(3, failures + 1);
+          isStable = false;
+          if (failures >= 3) isDead = true;
+          events.push({
+            ...base, chainId: newChainId(), sequence: 0,
+            eventType: 'damage_at_0_hp_failure_added',
+            payload: { source_buff: buff.name, tick: true, failures, became_dead: isDead },
+          });
+        } else if (hp > 0 || !isCharacter) {
+          const tempBefore = tempHp;
+          tempHp = Math.max(0, tempHp - amount);
+          const toHp = amount - (tempBefore - tempHp);
+          const hpBefore = hp;
+          hp = Math.max(0, hp - toHp);
+          const overflow = hpBefore > 0 && hp === 0 ? Math.max(0, toHp - hpBefore) : 0;
+          if (isCharacter && hpBefore > 0 && hp === 0 && overflow >= maxHp && maxHp > 0) {
+            isDead = true;
+            failures = 3;
+          }
+          events.push({
+            ...base, chainId: newChainId(), sequence: 0,
+            eventType: 'damage_applied',
+            payload: {
+              amount, damage_type: tick.damageType ?? 'untyped',
+              source_buff: buff.name, tick: true, timing: opts.timing,
+              hp_after: hp, temp_hp_after: tempHp,
+              dropped_to_0: hpBefore > 0 && hp === 0,
+              massive_damage_death: isDead && failures === 3 && overflow >= maxHp && maxHp > 0,
+            },
+          });
+        }
+        // RAW order for Searing Smite: damage first, THEN the save.
+        if (tick.saveEnds && !isDead) {
+          events.push({
+            ...base, chainId: newChainId(), sequence: 0,
+            eventType: 'save_requested',
+            payload: {
+              ability: tick.saveEnds.ability, dc: tick.saveEnds.dc,
+              source_buff: buff.name, tick: true,
+              on_success: `${buff.name} ends — remove the buff`,
+            },
+          });
+        }
+      } else if (tick.kind === 'heal' && amount > 0 && hp < maxHp) {
+        const hpBefore = hp;
+        hp = Math.min(maxHp, hp + amount);
+        if (hpBefore === 0 && hp > 0) {
+          // RAW: regaining any HP resets both death-save counters.
+          failures = 0; successes = 0; isStable = false;
+        }
+        events.push({
+          ...base, chainId: newChainId(), sequence: 0,
+          eventType: 'healing_applied',
+          payload: { amount: hp - hpBefore, source_buff: buff.name, tick: true, hp_after: hp, woke_up: hpBefore === 0 },
+        });
+      } else if (tick.kind === 'temp_hp' && amount > 0) {
+        // RAW: temp HP never stack — keep the higher pool.
+        const next = Math.max(tempHp, amount);
+        if (next !== tempHp) {
+          tempHp = next;
+          events.push({
+            ...base, chainId: newChainId(), sequence: 0,
+            eventType: 'temp_hp_gained',
+            payload: { amount: next, source_buff: buff.name, tick: true },
+          });
+        }
+      }
+
+      if (tick.oneShot) {
+        removedKeys.push(buff.key);
+        events.push({
+          ...base, chainId: newChainId(), sequence: 0,
+          eventType: 'spell_effect_removed',
+          payload: { source_buff: buff.name, reason: 'one_shot_tick_fired' },
+        });
+      }
+    }
+
+    const updates: Record<string, any> = {
+      current_hp: hp,
+      temp_hp: tempHp,
+      death_save_failures: failures,
+      death_save_successes: successes,
+      is_stable: isStable,
+    };
+    if (isDead) updates.is_dead = true;
+    if (removedKeys.length) {
+      updates.active_buffs = asJsonb(buffs.filter(b => !removedKeys.includes(b.key)));
+    }
+    await (supabase as any).from('combatants').update(updates).eq('id', combatantId);
+
+    for (const evt of events) await emitCombatEvent(evt);
+  } catch (e) {
+    console.error('[processTurnTicks] failed (turn advance unaffected):', e);
+  }
+}
+

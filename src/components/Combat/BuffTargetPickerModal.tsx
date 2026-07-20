@@ -121,6 +121,7 @@ export default function BuffTargetPickerModal({
             spellName,
             casterParticipantId: casterRow.id as string,
             targetParticipantIds: [],
+            casterCharacterId,
           });
           onClose();
           return;
@@ -183,6 +184,7 @@ export default function BuffTargetPickerModal({
         spellName,
         casterParticipantId,
         targetParticipantIds: Array.from(selected),
+        casterCharacterId,
       });
       onClose();
     } catch (e) {

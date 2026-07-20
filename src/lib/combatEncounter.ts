@@ -712,6 +712,21 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       // remove manually.
       console.error('[advanceTurn] end-of-turn condition processing failed', err);
     }
+
+    // v2.602.0 — automation arc ship 4b: END-OF-TURN buff ticks for
+    // the outgoing participant (Acid Arrow's delayed 2d4 lands at the
+    // end of the target's next turn, per SRD 5.2.1). Runs in the same
+    // slot as the condition re-saves; never blocks turn advance.
+    try {
+      const { processTurnTicks } = await import('./buffs');
+      await processTurnTicks({
+        participantId: outgoingForConditions.id,
+        encounterId,
+        timing: 'turn_end',
+      });
+    } catch (err) {
+      console.error('[advanceTurn] end-of-turn buff ticks failed', err);
+    }
   }
 
   // v2.506.0 — Movement-gated feature auto-reset for the OUTGOING actor.
@@ -1053,6 +1068,23 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
         visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
       });
     }
+  }
+
+  // v2.602.0 — automation arc ship 4b: START-OF-TURN buff ticks for
+  // the incoming participant (Heroism temp HP, Regenerate 1 HP,
+  // Searing Smite 1d6 + save-ends notice). Runs after the death-save
+  // automation (which reads pre-tick HP) and before the turn events
+  // so tick log entries sit under turn_started's predecessor. Never
+  // blocks turn advance.
+  try {
+    const { processTurnTicks } = await import('./buffs');
+    await processTurnTicks({
+      participantId: incomingParticipant.id,
+      encounterId,
+      timing: 'turn_start',
+    });
+  } catch (err) {
+    console.error('[advanceTurn] start-of-turn buff ticks failed', err);
   }
 
   // Emit turn_ended (for outgoing) + turn_started (for incoming)
