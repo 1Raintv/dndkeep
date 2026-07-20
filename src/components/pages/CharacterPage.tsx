@@ -19,6 +19,61 @@ export default function CharacterPage() {
   // notification lands.
   const [toastItem, setToastItem] = useState<ToastItem | null>(null);
 
+  // v2.581.0 — breadcrumb campaign context. Shows which campaign the
+  // character belongs to (click -> campaign page); if unassigned, an
+  // inline join-code flow reusing the same RPC + assignment path as
+  // the settings Campaign tab (join_campaign_by_code, then write
+  // characters.campaign_id and update local state).
+  const [campaignName, setCampaignName] = useState<string | null>(null);
+  const [showJoin, setShowJoin] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const cid = character?.campaign_id;
+    if (!cid) { setCampaignName(null); return; }
+    let cancelled = false;
+    supabase.from('campaigns').select('name').eq('id', cid).single()
+      .then(({ data }) => { if (!cancelled) setCampaignName((data as { name: string } | null)?.name ?? null); });
+    return () => { cancelled = true; };
+  }, [character?.campaign_id]);
+
+  async function handleBreadcrumbJoin() {
+    const code = joinCode.trim().toUpperCase();
+    if (!code || !character) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      // (supabase as any) — accepted codebase pattern; the generated
+      // types don't cover this RPC.
+      const { data, error: rpcErr } = await (supabase as any).rpc('join_campaign_by_code', { p_code: code });
+      if (rpcErr) {
+        if (rpcErr.code === 'P0002') setJoinError('No campaign matches that code.');
+        else if (rpcErr.code === '22023') setJoinError('Enter a code first.');
+        else setJoinError(rpcErr.message ?? 'Failed to join campaign.');
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.campaign_id) { setJoinError('Unexpected response from the server.'); return; }
+      const { error: charErr } = await supabase
+        .from('characters')
+        .update({ campaign_id: row.campaign_id })
+        .eq('id', character.id);
+      if (charErr) {
+        setJoinError(`Joined, but couldn't assign your character: ${charErr.message}`);
+        return;
+      }
+      setCharacter(c => (c ? { ...c, campaign_id: row.campaign_id } : c));
+      setShowJoin(false);
+      setJoinCode('');
+    } catch (e: any) {
+      setJoinError(e?.message ?? 'Failed to join campaign.');
+    } finally {
+      setJoining(false);
+    }
+  }
+
   const handleRealtimeUpdate = useCallback((updated: Character) => {
     // Only accept updates for the right character
     if (updated.id === id) setCharacter(updated);
@@ -101,6 +156,59 @@ export default function CharacterPage() {
           alignItems: 'center',
           gap: 'var(--sp-2)',
         }}>
+          {/* v2.581.0 — campaign context on the breadcrumb. In a
+              campaign: the campaign's name, click -> campaign page.
+              Not in one: "Join Campaign" expands an inline code input. */}
+          {character.campaign_id ? (
+            campaignName && (
+              <button
+                className="btn-ghost btn-sm"
+                onClick={() => navigate(`/campaigns/${character.campaign_id}`)}
+                title="Open this campaign"
+                style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)', display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 200 }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaignName}</span>
+              </button>
+            )
+          ) : showJoin ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <input
+                value={joinCode}
+                onChange={e => { setJoinCode(e.target.value); if (joinError) setJoinError(null); }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !joining) handleBreadcrumbJoin();
+                  if (e.key === 'Escape') { setShowJoin(false); setJoinError(null); }
+                }}
+                placeholder="ABC123"
+                autoFocus
+                autoCapitalize="characters"
+                spellCheck={false}
+                maxLength={32}
+                style={{ width: 90, fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '2px 6px' }}
+              />
+              <button
+                className="btn-gold btn-sm"
+                onClick={handleBreadcrumbJoin}
+                disabled={joining || !joinCode.trim()}
+                style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)' }}
+              >
+                {joining ? 'Joining…' : 'Join'}
+              </button>
+              {joinError && (
+                <span style={{ color: 'var(--c-red-l)', fontSize: 'var(--fs-xs)' }}>{joinError}</span>
+              )}
+            </span>
+          ) : (
+            <button
+              className="btn-ghost btn-sm"
+              onClick={() => setShowJoin(true)}
+              title="Join a campaign with your DM's code"
+              style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)' }}
+            >
+              Join Campaign
+            </button>
+          )}
           {/* v2.580.0 — quick jump to the campaign's battle map from the
               breadcrumb line. Same destination as the sheet header's map
               button. Renders for any character in a campaign. */}
