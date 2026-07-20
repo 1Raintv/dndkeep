@@ -180,12 +180,17 @@ export default function CharacterPage() {
         </button>
         <span>/</span>
         <span style={{ color: 'var(--t-2)' }}>{character.name}</span>
+        {/* v2.586.0 — campaign + battle map moved from the right edge
+            to the middle cluster next to the breadcrumb, with an
+            explicit "Campaign:" label. Only Live sync + notifications
+            remain right-aligned. */}
         <span style={{
-          marginLeft: 'auto',
+          marginLeft: 'var(--sp-3)',
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--sp-2)',
         }}>
+          <span style={{ color: 'var(--t-3)', fontWeight: 700 }}>Campaign:</span>
           {/* v2.581.0 — campaign context on the breadcrumb. In a
               campaign: the campaign's name, click -> campaign page.
               Not in one: "Join Campaign" expands an inline code input. */}
@@ -251,8 +256,10 @@ export default function CharacterPage() {
               Battle Map
             </button>
           )}
+        </span>
         {isPro && (
           <span style={{
+            marginLeft: 'auto',
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--sp-2)',
@@ -272,7 +279,6 @@ export default function CharacterPage() {
             />
           </span>
         )}
-        </span>
       </div>
 
       {/* v2.161.0 — Phase Q.0 pt 2: transient toast for new
