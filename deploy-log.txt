@@ -1,4 +1,32 @@
-DNDKeep deploy log - Mon 07/20/2026  9:30:15.79 
+DNDKeep deploy log - Mon 07/20/2026  9:36:42.31 
 Working dir: C:\dev\DNDKeep 
  
- Detected version: 2.592.0 
+ Detected version: 2.593.0 
+At line:1 char:131
++ ... s|css)') | ForEach-Object { $_.Value } | Sort-Object -Unique; foreach ...
++                                                                 ~
+Missing closing ')' after expression in 'if' statement.
+At line:1 char:164
++ ... s) { if ( $r"; exit 1 } }; $count=(Get-ChildItem 'dist/assets' -Filte ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Unexpected token '"; exit 1 } }; $count=(Get-ChildItem 'dist/assets' -Filter *.js -ErrorAction 
+SilentlyContinue).Count; if ($count -lt 30) { Write-Host "' in expression or statement.
+At line:1 char:164
++ ... s) { if ( $r"; exit 1 } }; $count=(Get-ChildItem 'dist/assets' -Filte ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Missing closing ')' after expression in 'if' statement.
+At line:1 char:299
++ ... ilentlyContinue).Count; if ($count -lt 30) { Write-Host "only $count  ...
++                                                              ~~~~
+Unexpected token 'only' in expression or statement.
+At line:1 char:320
++ ... $count -lt 30) { Write-Host "only $count js chunks"; exit 1 }; exit 0
++                                                       ~~~~~~~~~~~~~~~~~~~
+The string is missing the terminator: ".
+At line:1 char:155
++ ... t { $_.Value } | Sort-Object -Unique; foreach ($r in $refs) { if ( $r ...
++                                                                 ~
+Missing closing '}' in statement block or type definition.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingEndParenthesisAfterStatement
+ 

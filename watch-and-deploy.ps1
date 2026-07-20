@@ -21,6 +21,15 @@ function Write-Log($msg) {
 function Deploy($zipPath) {
     Write-Log "New zip detected: $zipPath"
     try {
+        # v2.593.0 - never push while deploy.bat is mid-run (partial-dist
+        # outage guard). Wait up to 10 min for the lock to clear.
+        $lock = Join-Path $ProjectDir 'deploy.lock'
+        $waited = 0
+        while ((Test-Path $lock) -and ($waited -lt 600)) {
+            if ($waited -eq 0) { Write-Log "deploy.lock present - waiting for deploy.bat to finish..." }
+            Start-Sleep -Seconds 10; $waited += 10
+        }
+        if (Test-Path $lock) { Write-Log "deploy.lock still present after 10 min - skipping this deploy."; return }
         Write-Log "Extracting..."
         Expand-Archive -Path $zipPath -DestinationPath $ProjectDir -Force
         Write-Log "Extraction complete."

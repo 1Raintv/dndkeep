@@ -24,6 +24,23 @@ echo DNDKeep deploy log - %DATE% %TIME% > deploy-log.txt
 echo Working dir: %CD% >> deploy-log.txt
 echo. >> deploy-log.txt
 
+REM ---- v2.593.0: concurrency lock ----------------------------------
+REM A second deploy (or the background watcher) pushing while vite is
+REM writing dist/ is how a partial dist reached production (v2.592
+REM outage: shell booted but sibling chunks 404'd). deploy.lock makes
+REM runs mutually exclusive; watch-and-deploy.ps1 honors it too.
+REM Stale locks (>30 min, crashed run) are ignored.
+if exist deploy.lock (
+    powershell -NoProfile -Command "if ((Get-Date) - (Get-Item 'deploy.lock').LastWriteTime -lt [TimeSpan]::FromMinutes(30)) { exit 1 } else { exit 0 }" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo  [FATAL] Another deploy appears to be running ^(deploy.lock exists^).
+        echo          If you're sure it isn't, delete deploy.lock and retry.
+        echo. ^& pause ^& exit /b 1
+    )
+    echo  [WARN] Stale deploy.lock found ^(older than 30 min^) - taking over.
+)
+echo locked at %DATE% %TIME% > deploy.lock
+
 echo.
 echo  ============================================
 echo   DNDKeep Auto Deploy
@@ -171,10 +188,35 @@ if not "!BUILD_EXIT!"=="0" (
 )
 del build-output.tmp >nul 2>&1
 
+REM ---- v2.593.0: dist integrity gate -------------------------------
+REM Refuse to stage unless dist/ is provably complete: index.html
+REM exists, every asset it references is on disk, and the assets dir
+REM has a sane chunk count. Catches interrupted/locked writes before
+REM they can reach production.
+powershell -NoProfile -Command "$idx='dist/index.html'; if (!(Test-Path $idx)) { exit 1 }; $html=Get-Content -Raw $idx; $refs=[regex]::Matches($html,'assets/[A-Za-z0-9_.-]+\.(js|css)') | ForEach-Object { $_.Value } | Sort-Object -Unique; foreach ($r in $refs) { if (!(Test-Path (Join-Path 'dist' $r))) { Write-Host \"missing: $r\"; exit 1 } }; $count=(Get-ChildItem 'dist/assets' -Filter *.js -ErrorAction SilentlyContinue).Count; if ($count -lt 30) { Write-Host \"only $count js chunks\"; exit 1 }; exit 0" >>deploy-log.txt 2>&1
+if %errorlevel% neq 0 (
+    echo  [ERROR] dist/ failed the integrity check - refusing to deploy
+    echo          a partial build. See deploy-log.txt. Re-run deploy.bat.
+    del deploy.lock >nul 2>&1
+    echo. ^& pause ^& exit /b 1
+)
+echo        dist integrity OK.
+
 REM ---- Step 5 ----
 
 echo  [5/7] Staging all changes...
 git add . >>deploy-log.txt 2>&1
+if %errorlevel% neq 0 (
+    echo  [WARN] git add reported errors ^(files locked?^). Retrying in 5s...
+    timeout /t 5 /nobreak >nul
+    git add . >>deploy-log.txt 2>&1
+    if !errorlevel! neq 0 (
+        echo  [ERROR] git add failed twice - a file is locked ^(AV / OneDrive / editor^).
+        echo          Staging a partial tree is how broken deploys happen. Aborting.
+        del deploy.lock >nul 2>&1
+        echo. ^& pause ^& exit /b 1
+    )
+)
 
 git diff --cached --quiet
 if %errorlevel% == 0 (
@@ -194,6 +236,7 @@ if %errorlevel% == 0 (
     echo.
     echo   Folder: %CD%
     echo  ============================================
+    del deploy.lock >nul 2>&1
     echo. & pause & exit /b 1
 )
 
@@ -202,6 +245,7 @@ for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format 'yyy
 git commit -m "deploy: v%VER% built %TIMESTAMP%" >>deploy-log.txt 2>&1
 if %errorlevel% neq 0 (
     echo  [ERROR] git commit failed. See deploy-log.txt
+    del deploy.lock >nul 2>&1
     echo. & pause & exit /b 1
 )
 
@@ -219,9 +263,12 @@ if %errorlevel% neq 0 (
         echo   - GitHub credentials expired
         echo   - Remote branch protection rules
         echo  ============================================
+        del deploy.lock >nul 2>&1
         echo. & pause & exit /b 1
     )
 )
+
+del deploy.lock >nul 2>&1
 
 echo.
 echo  ============================================
