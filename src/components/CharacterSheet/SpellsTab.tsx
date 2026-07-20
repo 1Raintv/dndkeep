@@ -7,6 +7,7 @@ import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics, canUpcastSpell } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
 import { getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
+import { shortCastingTime } from '../../lib/spellDisplay';
 import LevelTab from './_shared/LevelTab';
 
 interface SpellsTabProps {
@@ -554,8 +555,13 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  damage_type: (spell as any).damage_type,
  heal_dice: (spell as any).heal_dice,
  });
- // Abbreviate casting time for table display
- const timeAbbr = spell.casting_time
+ // Abbreviate casting time for table display.
+ // v2.591.0 — shortCastingTime first: reaction spells carry their
+ // full trigger in casting_time ("1 reaction, which you take
+ // when..." — e.g. Ego Whip), and the bare .replace kept the tail,
+ // overflowing the TIME column across the row. The full trigger
+ // still shows in the expanded view / cast modal.
+ const timeAbbr = shortCastingTime(spell.casting_time)
  .replace('1 action', '1A').replace('1 Action', '1A')
  .replace('1 bonus action', '1BA').replace('Bonus Action', '1BA').replace('bonus action', '1BA')
  .replace('1 reaction', '1R').replace('Reaction', '1R')
