@@ -623,6 +623,25 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  /** Persist concentration spell ID immediately to DB so it survives refresh.
  * v2.38.0: Also parses the spell's duration and starts a round countdown. */
  function setConcentration(spellId: string | null) {
+ // v2.600.0 — automation arc ship 4a: when concentration on a summon
+ // spell ends (Drop button, failed CON save, timer expiry, or a new
+ // concentration cast replacing it), auto-despawn its battle-map
+ // token. Every clear path funnels through this function, so this is
+ // the single hook. Fire-and-forget — token cleanup never blocks the
+ // concentration state write.
+ const prevSpellId = character.concentration_spell || null;
+ if (prevSpellId && prevSpellId !== spellId && character.campaign_id) {
+ import('../../lib/summonTokens').then(({ SUMMON_TOKEN_SPELLS, removeSummonTokens }) => {
+ if (!SUMMON_TOKEN_SPELLS[prevSpellId]) return;
+ removeSummonTokens({
+ campaignId: character.campaign_id!,
+ casterName: character.name,
+ spellId: prevSpellId,
+ }).then(n => {
+ if (n > 0) console.info(`[CharacterSheet] despawned ${n} summon token(s) for ${prevSpellId}`);
+ });
+ }).catch(() => { /* despawn is best-effort */ });
+ }
  if (!spellId) {
  applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null }, true);
  return;
