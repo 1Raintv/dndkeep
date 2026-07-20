@@ -3,7 +3,11 @@
  * Each resource knows its max uses per level, when it recovers, and how to display.
  */
 
-export type RecoveryType = 'short' | 'long' | 'day';
+// v2.606.0 — 'short-partial': regain ONE expended use on a Short Rest,
+// all on a Long Rest (2024 wording on Channel Divinity, Wild Shape,
+// Second Wind). 'short' remains full recovery on Short Rest (Action
+// Surge, Focus Points, ...).
+export type RecoveryType = 'short' | 'short-partial' | 'long' | 'day';
 
 export interface ClassResourceDef {
   id: string;
@@ -90,8 +94,8 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       id: 'channel-divinity',
       name: 'Channel Divinity',
       emoji: '✝️',
-      description: 'Channel divine energy for Turn Undead and domain-specific effects.',
-      recovery: 'short',
+      description: 'Channel divine energy for Turn Undead and domain-specific effects. Regain 1 use on a Short Rest, all on a Long Rest.',
+      recovery: 'short-partial',
       minLevel: 2,
       getMax: (level) => {
         if (level >= 18) return 3;
@@ -117,10 +121,10 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       emoji: '🐾',
       // v2.598.0 — 2024 text: you no longer need to have seen the
       // beast (known forms are prepared); uses scale 2/3/4 at
-      // L2/L6/L17. (Short rest RAW regains ONE use — partial
-      // recharge is a separate roadmap item.)
-      description: 'Magically transform into a beast form you know. Max CR scales with level.',
-      recovery: 'short',
+      // L2/L6/L17. v2.606.0 — short-partial: regain ONE use on a
+      // Short Rest (2024 RAW), all on a Long Rest.
+      description: 'Magically transform into a beast form you know. Max CR scales with level. Regain 1 use on a Short Rest, all on a Long Rest.',
+      recovery: 'short-partial',
       minLevel: 2,
       getMax: (level) => (level >= 17 ? 4 : level >= 6 ? 3 : 2),
     },
@@ -144,10 +148,13 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       id: 'second-wind',
       name: 'Second Wind',
       emoji: '💨',
-      description: 'Bonus action: regain 1d10 + fighter level HP.',
-      recovery: 'short',
+      // v2.606.0 — 2024 RAW: 2 uses at L1, 3 at L4, 4 at L10;
+      // regain 1 use on a Short Rest, all on a Long Rest (was the
+      // 2014 single-use full-SR model).
+      description: 'Bonus action: regain 1d10 + fighter level HP. Regain 1 use on a Short Rest, all on a Long Rest.',
+      recovery: 'short-partial',
       minLevel: 1,
-      getMax: () => 1,
+      getMax: (level) => (level >= 10 ? 4 : level >= 4 ? 3 : 2),
     },
     {
       id: 'action-surge',
@@ -221,8 +228,8 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       id: 'channel-divinity',
       name: 'Channel Divinity',
       emoji: '✝️',
-      description: 'Sacred Weapon or Turn the Unholy, plus oath-specific effects.',
-      recovery: 'short',
+      description: 'Sacred Weapon or Turn the Unholy, plus oath-specific effects. Regain 1 use on a Short Rest, all on a Long Rest.',
+      recovery: 'short-partial',
       minLevel: 3,
       getMax: (level) => {
         if (level >= 11) return 3;
@@ -481,6 +488,7 @@ export function buildDefaultResources(
 
 export const RECOVERY_LABELS: Record<RecoveryType, string> = {
   short: 'Short Rest',
+  'short-partial': 'Short Rest (1 use)',
   long: 'Long Rest',
   day: 'Daily',
 };

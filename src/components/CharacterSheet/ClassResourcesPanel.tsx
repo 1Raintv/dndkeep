@@ -8,6 +8,7 @@ interface ClassResourcesPanelProps {
 
 const RECOVERY_COLORS = {
   short: 'var(--c-amber-l)',
+  'short-partial': 'var(--c-amber-l)',
   long: '#60a5fa',
   day: '#a78bfa',
 };
@@ -58,7 +59,7 @@ export default function ClassResourcesPanel({ character, onUpdate }: ClassResour
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-      {(['short', 'long', 'day'] as const).map(recoveryType => {
+      {(['short', 'short-partial', 'long', 'day'] as const).map(recoveryType => {
         const group = grouped[recoveryType];
         if (!group?.length) return null;
         return (
@@ -189,7 +190,7 @@ export default function ClassResourcesPanel({ character, onUpdate }: ClassResour
 export function getShortRestResources(className: string, level: number): string[] {
   const abilityScores = { strength: 10, dexterity: 10, constitution: 10, intelligence: 10, wisdom: 10, charisma: 10 };
   return getCharacterResources(className, level, abilityScores)
-    .filter(r => r.recovery === 'short')
+    .filter(r => r.recovery === 'short' || r.recovery === 'short-partial')
     .map(r => r.id);
 }
 

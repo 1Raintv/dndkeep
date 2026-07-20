@@ -951,6 +951,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (def) newResources[id] = def.getMax(character.level, abilityScores);
  }
 
+ // v2.606.0 — 'short-partial' resources (Channel Divinity, Wild
+ // Shape, Second Wind) regain exactly ONE expended use on a Short
+ // Rest per 2024 RAW; full refresh stays Long Rest only. A missing
+ // entry means never spent (already at max) — the +1 caps harmlessly.
+ for (const def of allResources.filter(r => r.recovery === 'short-partial')) {
+ const max = def.getMax(character.level, abilityScores);
+ const current = (newResources[def.id] as number | undefined) ?? max;
+ newResources[def.id] = Math.min(max, current + 1);
+ }
+
  // Psion: regain 1 Psionic Energy Die on Short Rest
  if (character.class_name === 'Psion') {
  const maxDice = allResources.find(r => r.id === 'psionic-energy-dice')?.getMax(character.level, abilityScores) ?? 4;
@@ -958,11 +968,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  newResources['psionic-energy-dice'] = Math.min(maxDice, current + 1);
  }
 
- // Reset short-rest feature_uses
- const shortRestFeatures = ['Second Wind', 'Action Surge', 'Wild Shape', 'Channel Divinity', 'Bardic Inspiration'];
+ // Reset short-rest feature_uses.
+ // v2.606.0 — split into full-reset vs partial (2024 RAW): Second
+ // Wind / Wild Shape / Channel Divinity regain ONE use (spent count
+ // decrements by 1), Action Surge / Bardic Inspiration fully reset.
+ const shortRestFeatures = ['Action Surge', 'Bardic Inspiration'];
+ const partialRestFeatures = ['Second Wind', 'Wild Shape', 'Channel Divinity'];
  const newFeatureUses = { ...(character.feature_uses as Record<string, number> ?? {}) };
  for (const name of shortRestFeatures) {
  if (newFeatureUses[name] !== undefined) delete newFeatureUses[name];
+ }
+ for (const name of partialRestFeatures) {
+ const spent = newFeatureUses[name];
+ if (spent !== undefined) {
+ const next = Math.max(0, spent - 1);
+ if (next === 0) delete newFeatureUses[name]; else newFeatureUses[name] = next;
+ }
  }
 
  applyUpdate({ spell_slots: newSlots, class_resources: newResources, feature_uses: newFeatureUses }, true);
