@@ -1,3 +1,4 @@
+import { shortCastingTime } from '../../lib/spellDisplay';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useSpells } from '../../lib/hooks/useSpells';
@@ -339,7 +340,7 @@ export default function SpellPickerDropdown({
  )}
  </div>
  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 3 }}>
- {spell.casting_time} · {spell.range} · {spell.duration}
+ {shortCastingTime(spell.casting_time)} · {spell.range} · {spell.duration}
  </div>
  </div>
 
@@ -396,6 +397,7 @@ export default function SpellPickerDropdown({
  </p>
  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
  <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--t-3)', flexWrap: 'wrap', flex: 1 }}>
+ <span><strong style={{ color: 'var(--t-2)' }}>Casting Time:</strong> {spell.casting_time}</span>
  {spell.components && <span><strong style={{ color: 'var(--t-2)' }}>Components:</strong> {spell.components}</span>}
  <span><strong style={{ color: 'var(--t-2)' }}>Duration:</strong> {spell.duration}</span>
  <span><strong style={{ color: 'var(--t-2)' }}>Range:</strong> {spell.range}</span>

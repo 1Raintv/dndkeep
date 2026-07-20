@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { shortCastingTime } from '../lib/spellDisplay';
 import { SPELLS } from '../data/spells';
 import { SpellData, SpellLevel, SpellSchool } from '../types';
 import AoEBadge from './AoEBadge';
@@ -150,7 +151,7 @@ const SpellsTab: React.FC<SpellsTabProps> = ({ character, onCastSpell }) => {
                   <span className="font-medium">
                     {spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`}
                   </span>
-                  <span>{spell.casting_time}</span>
+                  <span>{shortCastingTime(spell.casting_time)}</span>
                   <span>{spell.range}</span>
                   <span>{formatComponents(spell.components)}</span>
                   {spell.concentration && <span className="text-yellow-600">Concentration</span>}

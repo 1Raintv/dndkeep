@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getMaxCantrips, getMaxKnown, isKnownCaster } from '../../lib/spellLimits';
 import { getPreparedTable } from '../../data/spellPreparedTables';
 import { getSpellSlotRow } from '../../data/spellSlots';
+import { shortCastingTime } from '../../lib/spellDisplay';
 import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
@@ -620,7 +621,7 @@ function SpellPicker({ label, type, className, choices, onUpdate, maxLevel }: {
                     )}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 1 }}>
-                    {spell.casting_time} · {spell.range} · {spell.duration}
+                    {shortCastingTime(spell.casting_time)} · {spell.range} · {spell.duration}
                   </div>
                 </div>
 

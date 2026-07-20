@@ -28,8 +28,6 @@ import LegendaryActionPopover from './LegendaryActionPopover';
 // v2.140.0 — Phase M pt 3: DM popover for Legendary Resistance
 import LegendaryResistancePopover from './LegendaryResistancePopover';
 import LegendaryActionConfigModal from './LegendaryActionConfigModal';
-import LairActionPickerPopover from './LairActionPickerPopover';
-import LairActionsConfigModal from './LairActionsConfigModal';
 // v2.278.0 — toast for action-button failures (RLS, network, stale state).
 // Without this, a click that hit an error was indistinguishable from a click
 // that worked-but-rendered-late, since the realtime echo also drives the UI.
@@ -90,9 +88,6 @@ export default function InitiativeStrip({ isDM }: Props) {
     participant: CombatParticipant;
     anchor: { x: number; y: number };
   } | null>(null);
-  // v2.127.0 — Phase J pt 5: lair action popover + config modal (encounter-scoped)
-  const [lairPopoverAnchor, setLairPopoverAnchor] = useState<{ x: number; y: number } | null>(null);
-  const [lairConfigOpen, setLairConfigOpen] = useState(false);
   // v2.285.0 — Round summary popover. Click the "Round N" badge to
   // open; shows one row per participant with chips for action /
   // bonus / reaction / movement / conditions, derived from the
@@ -728,55 +723,12 @@ export default function InitiativeStrip({ isDM }: Props) {
 
       {isDM && (
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          {/* v2.127.0 — Phase J pt 5: Lair action button. Shown when the
-              encounter is flagged in_lair AND at least one action is
-              configured. When already used this round, button is dimmed and
-              its label switches to "Lair ✓". A dashed "🏛+" placeholder is
-              shown instead when NOT in_lair so the DM can discover the
-              feature + configure it. */}
-          {(encounter.in_lair && (encounter.lair_actions_config ?? []).length > 0) ? (
-            <button
-              onClick={(e) => {
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                setLairPopoverAnchor({ x: rect.left, y: rect.top });
-              }}
-              title={encounter.lair_action_used_this_round
-                ? 'Lair action already used this round (resets next round)'
-                : 'Pick a lair action (1 per round, initiative 20 RAW)'}
-              style={{
-                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                padding: '6px 10px', borderRadius: 6,
-                border: '1px solid rgba(167,139,250,0.6)',
-                background: encounter.lair_action_used_this_round
-                  ? 'rgba(167,139,250,0.08)'
-                  : 'rgba(167,139,250,0.2)',
-                color: encounter.lair_action_used_this_round
-                  ? 'rgba(167,139,250,0.55)'
-                  : '#a78bfa',
-                cursor: 'pointer',
-                minHeight: 0,
-                letterSpacing: '0.06em', textTransform: 'uppercase',
-              }}
-            >
-              {encounter.lair_action_used_this_round ? '🏛 Used' : '🏛 Lair'}
-            </button>
-          ) : (
-            <button
-              onClick={() => setLairConfigOpen(true)}
-              title="Configure lair actions for this encounter"
-              style={{
-                fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                padding: '6px 10px', borderRadius: 6,
-                border: '1px dashed rgba(167,139,250,0.35)',
-                background: 'transparent',
-                color: 'rgba(167,139,250,0.55)',
-                cursor: 'pointer', minHeight: 0,
-                letterSpacing: '0.06em', textTransform: 'uppercase',
-              }}
-            >
-              🏛+ Lair
-            </button>
-          )}
+          {/* v2.590.0 — Lair button removed. The 2025 MM dropped lair
+              actions as a mechanic (lairs now grant extra Legendary
+              Resistance/Action uses instead), and the manual trigger
+              button was unused surface area. Backend fields
+              (in_lair, lair_actions_config, lair_action_used_this_round)
+              are untouched. */}
           {/* v2.108.0 — Phase G: Dash + Disengage action buttons. Show "ON"
               state when already used this turn; click does nothing in that
               state. Dash doubles remaining movement; Disengage suppresses
@@ -902,24 +854,6 @@ export default function InitiativeStrip({ isDM }: Props) {
         />
       )}
       {/* v2.127.0 — Phase J pt 5: lair action picker popover */}
-      {lairPopoverAnchor && encounter && (
-        <LairActionPickerPopover
-          encounter={encounter}
-          anchor={lairPopoverAnchor}
-          onClose={() => setLairPopoverAnchor(null)}
-          onConfigure={() => {
-            setLairPopoverAnchor(null);
-            setLairConfigOpen(true);
-          }}
-        />
-      )}
-      {/* v2.127.0 — Phase J pt 5: lair actions config modal */}
-      {lairConfigOpen && encounter && (
-        <LairActionsConfigModal
-          encounter={encounter}
-          onClose={() => setLairConfigOpen(false)}
-        />
-      )}
       {/* v2.285.0 — Round summary popover. Renders above the strip
           when the DM clicks the Round badge. Pure derivation from
           the loaded participants array; no fetch. Closes on outside
