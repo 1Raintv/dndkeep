@@ -1614,6 +1614,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       let passedCount = 0;
       let failedCount = 0;
       let conditionAppliedCount = 0;
+      let immuneCount = 0;
       let lrPendingCount = 0;
 
       // v2.443.0 — Batch declare. One round-trip to:
@@ -1689,6 +1690,13 @@ export default function MonsterActionPanel({ isDM }: Props) {
             if (passed) {
               passedCount++;
             } else if (immuneToCondition && conditionName) {
+              // v2.604.0 — RAW: immunity suppresses the CONDITION, not
+              // the targeting. The save still rolled and failed; the
+              // creature just isn't affected. Count it so the DM toast
+              // explains why nothing stuck. Players see nothing —
+              // this toast renders only in the DM's action panel, and
+              // no condition_applied event hits the shared log.
+              immuneCount++;
               failedCount++;
             } else if (conditionName) {
               try {
@@ -1731,6 +1739,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
       const parts = [`${a.name}: ${passedCount} saved · ${failedCount} failed`];
       if (conditionAppliedCount > 0 && conditionName) {
         parts.push(`${conditionName} ×${conditionAppliedCount}`);
+      }
+      if (immuneCount > 0 && conditionName) {
+        parts.push(`immune to ${conditionName} ×${immuneCount}`);
       }
       showToast(parts.join(' · '), failedCount > 0 ? 'info' : 'success');
 
