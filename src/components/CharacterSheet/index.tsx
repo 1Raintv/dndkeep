@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { shortCastingTime } from '../../lib/spellDisplay';
+import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
+import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
@@ -1408,6 +1410,83 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}
  >
  Drop
+ </button>
+ </div>
+ );
+ })()}
+
+ {/* v2.597.0 — Active-effect turn prompt (SPELL_AUTOMATION_AUDIT
+     Tier 1, ship 1). While concentrating on a registered spell
+     (Heat Metal, Spiritual Weapon, Flaming Sphere, ...), surface
+     the recurring bonus-action / action right under the banner:
+     economy chip + RAW summary + one-click Use that spends the
+     matching economy token and rolls the spell's own catalogue
+     dice. Numbers come from the spell entry at runtime — the
+     registry carries none of its own. */}
+ {character.concentration_spell && ACTIVE_EFFECT_PROMPTS[character.concentration_spell] && (() => {
+ const prompt = ACTIVE_EFFECT_PROMPTS[character.concentration_spell];
+ const sp = spellMap[character.concentration_spell];
+ if (!sp) return null;
+ const dice: string | null = prompt.rollKind === 'heal'
+ ? (((sp as any).heal_dice as string | undefined) ?? null)
+ : prompt.rollKind === 'damage'
+ ? (((sp as any).damage_dice as string | undefined) ?? null)
+ : null;
+ const dmgType = (sp as any).damage_type as string | undefined;
+ const saveType = (sp as any).save_type as string | undefined;
+ const dc = computed.spell_save_dc ?? undefined;
+ const isBonus = prompt.economy === 'bonus';
+ const econSpent = isBonus ? bonusActionSpellCast : spellCastThisTurn;
+ const econLabel = isBonus ? '1BA' : '1A';
+ const econColor = isBonus ? '#8b5cf6' : '#f59e0b';
+ const handleUse = () => {
+ if (dice) {
+ const m = dice.match(/(\d+)d(\d+)/i);
+ const dieSize = m ? parseInt(m[2], 10) : 6;
+ const { rolls, total } = rollDiceExpr(dice);
+ triggerRoll({
+ result: rolls[0] ?? total,
+ dieType: dieSize,
+ total,
+ allDice: rolls.map(v => ({ die: dieSize, value: v })),
+ expression: dice,
+ label: `${sp.name} — ${prompt.label}${prompt.rollKind === 'heal' ? ' (healing)' : dmgType ? ` (${dmgType})` : ''}`,
+ });
+ }
+ if (isBonus) setBonusActionSpellCast(true); else setSpellCastThisTurn(true);
+ };
+ return (
+ <div style={{
+ padding: '8px 14px', borderRadius: 10,
+ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const,
+ background: 'rgba(245,158,11,0.05)',
+ border: '1px solid rgba(245,158,11,0.35)',
+ }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, color: econColor, border: `1px solid ${econColor}66`, borderRadius: 4, padding: '2px 6px', letterSpacing: '0.08em', flexShrink: 0 }}>
+ {econLabel}
+ </span>
+ <div style={{ flex: 1, minWidth: 160 }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{prompt.label}</span>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
+ {prompt.detail}
+ {dice ? ` · ${dice}${prompt.rollKind === 'damage' && dmgType ? ` ${dmgType}` : ''}` : ''}
+ {prompt.showSave && saveType && dc !== undefined ? ` · ${saveType.slice(0, 3).toUpperCase()} DC ${dc}` : ''}
+ </span>
+ </div>
+ <button
+ onClick={handleUse}
+ disabled={econSpent}
+ title={econSpent ? `${isBonus ? 'Bonus action' : 'Action'} already used this turn` : `Use ${sp.name}'s recurring effect`}
+ style={{
+ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+ padding: '4px 12px', borderRadius: 'var(--r-md)', cursor: econSpent ? 'default' : 'pointer',
+ background: econSpent ? 'rgba(148,163,184,0.08)' : 'rgba(245,158,11,0.12)',
+ border: `1px solid ${econSpent ? 'rgba(148,163,184,0.3)' : 'rgba(245,158,11,0.5)'}`,
+ color: econSpent ? 'var(--t-3)' : '#fbbf24',
+ minHeight: 0, flexShrink: 0,
+ }}
+ >
+ {econSpent ? 'Used' : dice ? `Roll ${dice}` : 'Use'}
  </button>
  </div>
  );
