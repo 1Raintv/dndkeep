@@ -1207,6 +1207,86 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       const hpBefore = tgt.current_hp ?? 0;
       let hpAfter = Math.max(0, hpBefore - dmgToHP);
 
+      // v2.607.0 — ship 4c: melee-retaliation buffs (Armor of Agathys).
+      // RAW: a creature that HITS the buff holder with a melee attack
+      // roll while the holder has the temp HP takes the retaliation
+      // damage — gated on tempBefore (the pool existed when the hit
+      // landed, even if this damage empties it). Melee inferred from
+      // attack_source, matching the Bless/rider heuristic at roll
+      // time. When the pool empties, the buff is removed (its
+      // condition can no longer be met). Self-contained + defensive:
+      // a failure here never blocks the main damage apply.
+      try {
+        const isMeleeHit =
+          atk.attack_kind === 'attack_roll'
+          && (atk.attack_source ?? '').toLowerCase() !== 'ranged'
+          && atk.attacker_participant_id
+          && atk.attacker_participant_id !== atk.target_participant_id;
+        const retalBuffs = ((tgt.active_buffs ?? []) as ActiveBuff[])
+          .filter(b => b.meleeRetaliation
+            && (!b.meleeRetaliation.requiresTempHp || tempBefore > 0));
+        if (isMeleeHit && retalBuffs.length > 0) {
+          const { data: atkRaw } = await (supabase as any)
+            .from('combat_participants')
+            .select('id, combatant_id, name, campaign_id, participant_type, hidden_from_players, ' + JOINED_COMBATANT_FIELDS)
+            .eq('id', atk.attacker_participant_id)
+            .single();
+          const attacker = atkRaw ? normalizeParticipantRow(atkRaw) : null;
+          if (attacker && !attacker.is_dead && attacker.combatant_id) {
+            let aTemp = (attacker.temp_hp as number | null) ?? 0;
+            let aHp = (attacker.current_hp as number | null) ?? 0;
+            for (const rb of retalBuffs) {
+              const rDmg = rb.meleeRetaliation!.damage;
+              const rTempAfter = Math.max(0, aTemp - rDmg);
+              const toHp = rDmg - (aTemp - rTempAfter);
+              aTemp = rTempAfter;
+              aHp = Math.max(0, aHp - toHp);
+              await emitCombatEvent({
+                campaignId: atk.campaign_id,
+                encounterId: atk.encounter_id,
+                chainId: atk.chain_id,
+                sequence: 6,
+                actorType: 'system',
+                actorName: 'System',
+                targetType: attacker.participant_type === 'character' ? 'character' : 'monster',
+                targetName: attacker.name as string,
+                eventType: 'damage_applied',
+                payload: {
+                  amount: rDmg,
+                  damage_type: rb.meleeRetaliation!.damageType,
+                  source_buff: rb.name,
+                  retaliation: true,
+                  defender: tgt.name,
+                  hp_after: aHp,
+                  temp_hp_after: aTemp,
+                  dropped_to_0: aHp === 0 && ((attacker.current_hp as number | null) ?? 0) > 0,
+                },
+              });
+            }
+            await (supabase as any)
+              .from('combatants')
+              .update({ current_hp: aHp, temp_hp: aTemp })
+              .eq('id', attacker.combatant_id);
+          }
+          // Pool emptied by this hit → the retaliation condition can
+          // never be met again; drop the buff(s) that required it.
+          if (tempAfter === 0 && tempBefore > 0) {
+            const { removeBuff } = await import('./buffs');
+            for (const rb of retalBuffs.filter(b => b.meleeRetaliation?.requiresTempHp)) {
+              await removeBuff({
+                participantId: atk.target_participant_id!,
+                key: rb.key,
+                reason: 'consumed',
+                campaignId: atk.campaign_id,
+                encounterId: atk.encounter_id,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[applyDamage] melee retaliation failed (main apply unaffected):', err);
+      }
+
       // v2.162.0 — Phase Q.0 pt 3: massive damage instant death (PHB
       // 2014 + 2024 RAW). When damage reduces a character to 0 HP AND
       // the remaining damage equals or exceeds their HP maximum, they

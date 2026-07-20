@@ -42,6 +42,17 @@ export interface ActiveBuff {
    *  (Acid Arrow, Heroism, Regenerate, Searing Smite). Processed by
    *  processTurnTicks from advanceTurn. */
   turnTick?: TurnTick;
+  /** v2.607.0 — ship 4c: temp HP granted when the buff is applied
+   *  (Armor of Agathys 5×slot). RAW: temp HP never stack — applyBuff
+   *  keeps the higher of current vs grant. */
+  grantTempHp?: number;
+  /** v2.607.0 — ship 4c: flat damage dealt to a creature that hits
+   *  the buff holder with a melee attack (Armor of Agathys 5×slot
+   *  cold). requiresTempHp gates on the holder still having temp HP
+   *  when the hit lands (RAW "while you have these Hit Points");
+   *  pendingAttack.applyDamage fires it and removes the buff when
+   *  the pool empties. */
+  meleeRetaliation?: { damage: number; damageType: string; requiresTempHp?: boolean };
 }
 
 /** v2.602.0 — Per-turn tick spec carried on a buff. Amount per tick is
@@ -102,10 +113,37 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
     console.warn('[applyBuff] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await supabase
+  // v2.607.0 — grantTempHp buffs (Armor of Agathys) apply their pool
+  // in the same write. RAW: temp HP never stack — keep the higher.
+  const buffUpdates: Record<string, any> = { active_buffs: asJsonb(next) };
+  let tempGranted = 0;
+  if ((input.buff.grantTempHp ?? 0) > 0) {
+    const currentTemp = (part.temp_hp as number | null) ?? 0;
+    const granted = input.buff.grantTempHp as number;
+    if (granted > currentTemp) {
+      buffUpdates.temp_hp = granted;
+      tempGranted = granted;
+    }
+  }
+  await (supabase as any)
     .from('combatants')
-    .update({ active_buffs: asJsonb(next) })
+    .update(buffUpdates)
     .eq('id', combatantId);
+
+  if (tempGranted > 0 && input.campaignId) {
+    await emitCombatEvent({
+      campaignId: input.campaignId,
+      encounterId: input.encounterId ?? null,
+      chainId: newChainId(),
+      sequence: 0,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: part.participant_type === 'character' ? 'player' : 'monster',
+      targetName: part.name as string,
+      eventType: 'temp_hp_gained',
+      payload: { amount: tempGranted, source_buff: input.buff.name },
+    });
+  }
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({
@@ -318,7 +356,14 @@ export async function clearBuffsFromConcentration(
  *  applyBuffFromSpell from the caster's character row when the entry
  *  sets needsCasterStats; undefined when unresolvable (NPC caster,
  *  fetch failure) — templates must default sanely. */
-export interface CasterStats { spellMod: number; saveDC: number }
+export interface CasterStats {
+  spellMod: number;
+  saveDC: number;
+  /** v2.607.0 — slot level the spell was cast at (threaded from
+   *  SpellCastButton for scaling templates like Armor of Agathys).
+   *  Undefined for cantrips / unknown callers. */
+  slotLevel?: number;
+}
 
 type BuffSpellEntry =
   | { scope: 'per_target'; needsCasterStats?: boolean; template: (casterId: string, stats?: CasterStats) => Omit<ActiveBuff, 'source' | 'casterParticipantId'> }
@@ -361,6 +406,24 @@ export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
       damageRider: { dice: '1d4', damageType: 'radiant' },
       onlyMelee: true,
     }),
+  },
+  // v2.607.0 — ship 4c. SRD 5.2.1: 5 Temp HP; a creature that hits
+  // you with a melee attack roll while you have these HP takes 5
+  // Cold damage. +5 to both per slot level above 1. Not
+  // concentration (1 hour) — the buff ends when the pool empties
+  // (handled in pendingAttack) or manually.
+  'armor of agathys': {
+    scope: 'on_caster_only',
+    template: (_casterId, stats) => {
+      const slot = Math.max(1, stats?.slotLevel ?? 1);
+      const n = 5 * slot;
+      return {
+        key: 'armor_of_agathys',
+        name: 'Armor of Agathys',
+        grantTempHp: n,
+        meleeRetaliation: { damage: n, damageType: 'cold', requiresTempHp: true },
+      };
+    },
   },
   // v2.602.0 — automation arc ship 4b: start/end-of-turn ticks.
   'acid arrow': {
@@ -423,13 +486,18 @@ export async function applyBuffFromSpell(input: {
   /** v2.602.0 — lets needsCasterStats entries resolve the caster's
    *  spellcasting mod / save DC from their character row. */
   casterCharacterId?: string;
+  /** v2.607.0 — slot level the spell was cast at, for scaling
+   *  templates (Armor of Agathys). */
+  castSlotLevel?: number;
 }): Promise<number> {
   const key = input.spellName.trim().toLowerCase();
   const entry = BUFF_SPELL_REGISTRY[key];
   if (!entry) return 0;
 
   // v2.602.0 — resolve caster stats when the entry needs them.
-  let stats: CasterStats | undefined;
+  // v2.607.0 — slot level rides along whenever the caller provides it.
+  let stats: CasterStats | undefined =
+    input.castSlotLevel != null ? { spellMod: 0, saveDC: 13, slotLevel: input.castSlotLevel } : undefined;
   if (entry.needsCasterStats && input.casterCharacterId) {
     try {
       const { data: ch } = await supabase
@@ -444,6 +512,7 @@ export async function applyBuffFromSpell(input: {
         stats = {
           spellMod: (cs.spell_attack_bonus ?? 0) - pb,
           saveDC: cs.spell_save_dc ?? 13,
+          slotLevel: input.castSlotLevel,
         };
       }
     } catch (e) {

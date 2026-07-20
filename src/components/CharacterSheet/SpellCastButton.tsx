@@ -94,6 +94,9 @@ export default function SpellCastButton({
  // v2.115.0 — Phase H pt 6: open target picker after casting a registry
  // buff spell (Bless, Hunter's Mark, Hex, Divine Favor) while in combat.
  const [buffPickerOpen, setBuffPickerOpen] = useState(false);
+ // v2.607.0 — slot level captured at cast time so the buff picker can
+ // scale slot-dependent buffs (Armor of Agathys 5×slot).
+ const [buffPickerSlot, setBuffPickerSlot] = useState<number | undefined>(undefined);
  // v2.124.0 — Phase J: when set, opens the Counterspell pre-cast window.
  // Payload carries the slot level the player wanted to cast at so we can
  // resume after the window resolves. encounterId + casterParticipantId are
@@ -154,6 +157,7 @@ export default function SpellCastButton({
  // silently no-ops if no encounter is active.
  const registryEntry = BUFF_SPELL_REGISTRY[spell.name.trim().toLowerCase()];
  if (registryEntry && campaignId) {
+ setBuffPickerSlot(isCantrip ? undefined : slotLevel);
  setBuffPickerOpen(true);
  }
  // v2.599.0 — summon token on cast (automation arc ship 3). For
@@ -1336,6 +1340,7 @@ export default function SpellCastButton({
  campaignId={campaignId}
  casterCharacterId={character.id}
  spellName={spell.name}
+ castSlotLevel={buffPickerSlot}
  onClose={() => setBuffPickerOpen(false)}
  />
  )}

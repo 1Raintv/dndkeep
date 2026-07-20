@@ -35,6 +35,8 @@ interface Props {
   campaignId: string;
   casterCharacterId: string;
   spellName: string;
+  /** v2.607.0 — slot level the spell was cast at (for scaling buffs). */
+  castSlotLevel?: number;
   onClose: () => void;
 }
 
@@ -50,7 +52,7 @@ interface MiniParticipant {
 }
 
 export default function BuffTargetPickerModal({
-  campaignId, casterCharacterId, spellName, onClose,
+  campaignId, casterCharacterId, spellName, castSlotLevel, onClose,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [encounterId, setEncounterId] = useState<string | null>(null);
@@ -122,6 +124,7 @@ export default function BuffTargetPickerModal({
             casterParticipantId: casterRow.id as string,
             targetParticipantIds: [],
             casterCharacterId,
+            castSlotLevel,
           });
           onClose();
           return;
@@ -185,6 +188,7 @@ export default function BuffTargetPickerModal({
         casterParticipantId,
         targetParticipantIds: Array.from(selected),
         casterCharacterId,
+        castSlotLevel,
       });
       onClose();
     } catch (e) {
