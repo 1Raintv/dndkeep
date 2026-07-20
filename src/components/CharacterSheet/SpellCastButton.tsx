@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
+import { SUMMON_TOKEN_SPELLS, placeSummonToken } from '../../lib/summonTokens';
 import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
@@ -152,6 +153,22 @@ export default function SpellCastButton({
  const registryEntry = BUFF_SPELL_REGISTRY[spell.name.trim().toLowerCase()];
  if (registryEntry && campaignId) {
  setBuffPickerOpen(true);
+ }
+ // v2.599.0 — summon token on cast (automation arc ship 3). For
+ // registered summon spells (Flaming Sphere, Spiritual Weapon, ...)
+ // with a campaign context, drop a labeled effect token next to the
+ // caster on the live battle map. Fire-and-forget: a missing scene
+ // or RLS denial degrades silently (result logged), never blocking
+ // the cast itself.
+ if (campaignId && SUMMON_TOKEN_SPELLS[spell.id]) {
+ placeSummonToken({
+ campaignId,
+ casterCharacterId: character.id,
+ casterName: character.name,
+ spellId: spell.id,
+ }).then(res => {
+ if (res !== 'placed') console.info('[SpellCastButton] summon token not placed:', res);
+ });
  }
  }
 
