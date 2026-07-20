@@ -486,6 +486,14 @@ export default function MonsterActionPanel({ isDM }: Props) {
   }
   const [multiattack, setMultiattack] = useState<MultiattackProgress | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  // v2.589.0 — downed gate. When the active creature is at 0 HP (or
+  // flagged dead), every offensive control in this panel is replaced
+  // by a "Downed" banner — the only thing the DM can do for it is
+  // pass the turn (End Turn lives in InitiativeStrip and stays
+  // active). Reads combatants-backed fields off currentActor.
+  const actorDowned = !!currentActor
+    && currentActor.participant_type === 'creature'
+    && (((currentActor as any).is_dead ?? false) || (((currentActor as any).current_hp ?? 0) <= 0));
   // v2.411.0 — toast for Dash/Disengage failure messages, mirroring
   // InitiativeStrip's pattern.
   const { showToast } = useToast();
@@ -2269,7 +2277,25 @@ export default function MonsterActionPanel({ isDM }: Props) {
             currentActor.dash_used_this_turn / disengaged_this_turn —
             same flags that gate the strip buttons + that takeDash/
             takeDisengage check server-side. */}
-        {!collapsed && currentActor && (() => {
+        {/* v2.589.0 — Downed banner: shown in place of the movement
+            row + action list when the creature is at 0 HP. */}
+        {!collapsed && actorDowned && (
+          <div style={{
+            margin: 10, padding: '10px 12px',
+            border: '1px solid rgba(107,114,128,0.5)',
+            borderRadius: 6,
+            background: 'rgba(107,114,128,0.12)',
+            color: 'var(--t-3)',
+            fontSize: 11, lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+              Downed — 0 HP
+            </div>
+            This creature can't take actions. Pass its turn with End Turn
+            on the initiative strip.
+          </div>
+        )}
+        {!collapsed && !actorDowned && currentActor && (() => {
           const dashUsed = !!(currentActor as any).dash_used_this_turn;
           const disengaged = !!(currentActor as any).disengaged_this_turn;
           // v2.414.0 — Reset Movement back here per user request.
@@ -2347,7 +2373,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           );
         })()}
 
-        {!collapsed && (
+        {!collapsed && !actorDowned && (
           <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
             {loadingActions && (
               <div style={{ fontSize: 11, color: 'var(--t-3)', padding: 8 }}>
