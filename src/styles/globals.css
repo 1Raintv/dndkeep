@@ -1291,3 +1291,31 @@ button:not(:disabled):active {
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; }
+
+/* v2.582.0 — breadcrumb chip buttons (CharacterPage top bar) and the
+   battle pulse. .crumb-btn is a proper bordered chip (more prominent
+   than a ghost link). .crumb-btn-combat flashes the chip to red and
+   back on repeat while a combat encounter is active. */
+.crumb-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px;
+  font-family: var(--ff-body); font-size: var(--fs-xs); font-weight: 700;
+  color: var(--t-1);
+  background: var(--c-raised);
+  border: 1px solid var(--c-border-m, rgba(255,255,255,0.14));
+  border-radius: var(--r-sm, 6px);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.crumb-btn:hover { background: var(--c-surface); border-color: var(--c-gold-bdr); }
+.crumb-btn-gold {
+  color: var(--c-gold-l);
+  border-color: var(--c-gold-bdr);
+  background: rgba(201,146,42,0.10);
+}
+.crumb-btn-gold:hover { background: rgba(201,146,42,0.18); }
+@keyframes battlePulse {
+  0%, 100% { background: var(--c-raised); border-color: var(--c-border-m, rgba(255,255,255,0.14)); color: var(--t-1); }
+  50%      { background: rgba(220,38,38,0.30); border-color: #dc2626; color: #fca5a5; }
+}
+.crumb-btn-combat { animation: battlePulse 1.4s ease-in-out infinite; }

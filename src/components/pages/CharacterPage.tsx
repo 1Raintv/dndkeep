@@ -39,6 +39,36 @@ export default function CharacterPage() {
     return () => { cancelled = true; };
   }, [character?.campaign_id]);
 
+  // v2.582.0 — live combat indicator. Tracks whether the campaign has
+  // an ACTIVE combat encounter; the Battle Map chip pulses red while
+  // one is running. Initial fetch + realtime re-check on any
+  // combat_encounters change for this campaign (insert/status flip/
+  // delete all re-evaluate, so the pulse starts and stops live).
+  const [combatActive, setCombatActive] = useState(false);
+  useEffect(() => {
+    const cid = character?.campaign_id;
+    if (!cid) { setCombatActive(false); return; }
+    let cancelled = false;
+    const check = () => {
+      supabase
+        .from('combat_encounters')
+        .select('id')
+        .eq('campaign_id', cid)
+        .eq('status', 'active')
+        .limit(1)
+        .then(({ data }) => { if (!cancelled) setCombatActive((data ?? []).length > 0); });
+    };
+    check();
+    const ch = supabase
+      .channel(`combat-status-${cid}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'combat_encounters',
+        filter: `campaign_id=eq.${cid}`,
+      }, check)
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [character?.campaign_id]);
+
   async function handleBreadcrumbJoin() {
     const code = joinCode.trim().toUpperCase();
     if (!code || !character) return;
@@ -162,10 +192,10 @@ export default function CharacterPage() {
           {character.campaign_id ? (
             campaignName && (
               <button
-                className="btn-ghost btn-sm"
+                className="crumb-btn crumb-btn-gold"
                 onClick={() => navigate(`/campaigns/${character.campaign_id}`)}
                 title="Open this campaign"
-                style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)', display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 200 }}
+                style={{ maxWidth: 220 }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', display: 'inline-block', flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaignName}</span>
@@ -201,10 +231,9 @@ export default function CharacterPage() {
             </span>
           ) : (
             <button
-              className="btn-ghost btn-sm"
+              className="crumb-btn crumb-btn-gold"
               onClick={() => setShowJoin(true)}
               title="Join a campaign with your DM's code"
-              style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)' }}
             >
               Join Campaign
             </button>
@@ -214,10 +243,9 @@ export default function CharacterPage() {
               button. Renders for any character in a campaign. */}
           {character.campaign_id && (
             <button
-              className="btn-ghost btn-sm"
+              className={combatActive ? 'crumb-btn crumb-btn-combat' : 'crumb-btn'}
               onClick={() => navigate(`/campaigns/${character.campaign_id}?tab=map`)}
-              title="Open the current battle map"
-              style={{ padding: '2px var(--sp-2)', fontSize: 'var(--fs-xs)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              title={combatActive ? 'Combat in progress — open the battle map' : 'Open the current battle map'}
             >
               <span aria-hidden style={{ fontSize: 12 }}>⚔</span>
               Battle Map
