@@ -1914,6 +1914,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
  speedFeet={effectiveSpeed}
+ characterId={character.id}
  actionUsedExternal={spellCastThisTurn}
  bonusActionUsedExternal={bonusActionSpellCast}
  reactionUsedExternal={reactionUsedThisTurn}

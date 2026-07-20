@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useCombat } from '../../context/CombatContext';
+import { advanceTurn } from '../../lib/combatEncounter';
 
 // Per 2024 rules: Action, Bonus Action, Reaction reset each round; Movement tracked separately
 interface ActionState {
@@ -20,6 +22,11 @@ interface ActionEconomyProps {
  actionUsedExternal?: boolean;
  bonusActionUsedExternal?: boolean;
  reactionUsedExternal?: boolean;
+ /** v2.594.0 — when set and this character is the CURRENT ACTOR in an
+  * active encounter, End Turn also advances the combat turn (the
+  * user-reported bug: the sheet's End Turn only reset the local
+  * action trackers and never moved combat to the next combatant). */
+ characterId?: string;
 }
 
 const TOKEN = {
@@ -28,10 +35,31 @@ const TOKEN = {
  reaction: { label: 'Reaction', key: 'reaction', icon: '', color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal }: ActionEconomyProps) {
+export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal, characterId }: ActionEconomyProps) {
  const [state, setState] = useState<ActionState>({
  action: false, bonusAction: false, reaction: false, movedFeet: 0,
  });
+ // v2.594.0 — combat awareness. Safe outside a CombatProvider: the
+ // context default has encounter=null, so this is a no-op there.
+ const { encounter, currentActor } = useCombat();
+ const [endingTurn, setEndingTurn] = useState(false);
+ const isMyCombatTurn = !!characterId && !!encounter && encounter.status === 'active'
+ && !!currentActor
+ && currentActor.participant_type === 'character'
+ && currentActor.entity_id === characterId;
+ async function handleEndTurn() {
+ reset();
+ if (isMyCombatTurn && encounter && !endingTurn) {
+ setEndingTurn(true);
+ try {
+ await advanceTurn(encounter.id);
+ } catch (e) {
+ console.error('[ActionEconomy] advanceTurn failed:', e);
+ } finally {
+ setEndingTurn(false);
+ }
+ }
+ }
 
  // v2.46.0: Sync external action/BA flags into local state so spell casts
  // visually mark the correct action token as consumed.
@@ -154,9 +182,11 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
 
  {/* End Turn button at the bottom — full width, prominent */}
  <button
- onClick={reset}
+ onClick={handleEndTurn}
+ disabled={endingTurn}
  style={{
  width: '100%',
+ opacity: endingTurn ? 0.6 : 1,
  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
  padding: '8px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
  border: '1px solid var(--c-gold-bdr)',
@@ -166,7 +196,7 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  transition: 'all .15s',
  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
  }}
- title="Reset Action / Bonus / Reaction / Movement for a new turn"
+ title={isMyCombatTurn ? "End your combat turn — advances to the next combatant" : "Reset Action / Bonus / Reaction / Movement for a new turn"}
  onMouseEnter={e => {
  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,160,23,0.22)';
  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold)';
@@ -176,7 +206,7 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold-bdr)';
  }}
  >
- ↺ End Turn
+ ↺ {endingTurn ? 'Ending…' : isMyCombatTurn ? 'End Turn →' : 'End Turn'}
  </button>
  </div>
  );
