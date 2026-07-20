@@ -396,11 +396,14 @@ export default function WeaponsTracker({
 
  {/* Col 2: NAME — weapon name + source/properties subline. */}
  <div style={{ minWidth: 0 }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>{w.name}</span>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{w.name}</span>
  {isInv && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>Inventory</span>}
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', marginTop: 1 }}>
+ {/* v2.592.0 — clamp subline: on narrow widths the name/type text
+     spilled out of the 1fr NAME track into the TIME column
+     ("Unarmed Strike / Bludgeoning" overlapping "1A"). */}
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
  {w.damageType ? w.damageType.charAt(0).toUpperCase() + w.damageType.slice(1) : ''}
  {w.properties ? ` · ${w.properties}` : ''}
  </div>

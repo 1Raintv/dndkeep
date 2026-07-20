@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { shortCastingTime } from '../../lib/spellDisplay';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
@@ -3108,7 +3109,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                  : mech.saveType && spellSaveDC !== undefined
                  ? `${mech.saveType} ${spellSaveDC}`
                  : '—';
-               const timeAbbr = (spell.casting_time ?? '')
+               // v2.592.0 — shortCastingTime first (reaction triggers
+               // otherwise overflow the 46px TIME track; see v2.591).
+               const timeAbbr = shortCastingTime(spell.casting_time ?? '')
                  .replace('1 action', '1A').replace('1 Action', '1A')
                  .replace('1 bonus action', '1BA').replace('Bonus Action', '1BA').replace('bonus action', '1BA')
                  .replace('1 reaction', '1R').replace('Reaction', '1R')
@@ -3669,8 +3672,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  : '—';
  const effectColor = mechanics.damageDice ? '#f87171' : mechanics.healDice ? '#4ade80' : mechanics.isBuff ? '#60a5fa' : mechanics.isUtility ? '#a78bfa' : 'var(--t-3)';
 
- // Abbreviate casting time to match Spells-tab TIME column width
- const timeAbbr = spell.casting_time
+ // Abbreviate casting time to match Spells-tab TIME column width.
+ // v2.592.0 — shortCastingTime first: reaction spells (Ego Whip,
+ // Shield, Absorb Elements) carry the full trigger in casting_time
+ // and the tail overflowed across the row's columns.
+ const timeAbbr = shortCastingTime(spell.casting_time)
  .replace('1 action', '1A').replace('1 Action', '1A')
  .replace('1 bonus action', '1BA').replace('Bonus Action', '1BA').replace('bonus action', '1BA')
  .replace('1 reaction', '1R').replace('Reaction', '1R')
