@@ -115,10 +115,14 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       id: 'wild-shape',
       name: 'Wild Shape',
       emoji: '🐾',
-      description: 'Magically transform into a beast you have seen. Max CR scales with level.',
+      // v2.598.0 — 2024 text: you no longer need to have seen the
+      // beast (known forms are prepared); uses scale 2/3/4 at
+      // L2/L6/L17. (Short rest RAW regains ONE use — partial
+      // recharge is a separate roadmap item.)
+      description: 'Magically transform into a beast form you know. Max CR scales with level.',
       recovery: 'short',
       minLevel: 2,
-      getMax: () => 2,
+      getMax: (level) => (level >= 17 ? 4 : level >= 6 ? 3 : 2),
     },
     {
       id: 'wild-shape-cr',

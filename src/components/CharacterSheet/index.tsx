@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
+import WildShapePanel from './WildShapePanel';
 import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
@@ -1491,6 +1492,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  );
  })()}
+
+ {/* v2.598.0 — Wild Shape tracker (Druid L2+). 2024 rules: BA to
+     assume, temp HP = level (Moon L3+: x3), revert as BA. Uses live
+     in class_resources['wild-shape']; the active form is an
+     ActiveBuff so existing buff chips render it too. */}
+ <WildShapePanel
+ character={character}
+ onUpdate={applyUpdate}
+ onBonusUsed={() => setBonusActionSpellCast(true)}
+ />
 
  {/* Concentration Save Prompt — shown when taking damage while concentrating
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
