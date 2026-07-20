@@ -35,7 +35,9 @@ if exist deploy.lock (
     if !errorlevel! neq 0 (
         echo  [FATAL] Another deploy appears to be running ^(deploy.lock exists^).
         echo          If you're sure it isn't, delete deploy.lock and retry.
-        echo. ^& pause ^& exit /b 1
+        echo.
+        pause
+        exit /b 1
     )
     echo  [WARN] Stale deploy.lock found ^(older than 30 min^) - taking over.
 )
@@ -193,12 +195,14 @@ REM Refuse to stage unless dist/ is provably complete: index.html
 REM exists, every asset it references is on disk, and the assets dir
 REM has a sane chunk count. Catches interrupted/locked writes before
 REM they can reach production.
-powershell -NoProfile -Command "$idx='dist/index.html'; if (!(Test-Path $idx)) { exit 1 }; $html=Get-Content -Raw $idx; $refs=[regex]::Matches($html,'assets/[A-Za-z0-9_.-]+\.(js|css)') | ForEach-Object { $_.Value } | Sort-Object -Unique; foreach ($r in $refs) { if (!(Test-Path (Join-Path 'dist' $r))) { Write-Host \"missing: $r\"; exit 1 } }; $count=(Get-ChildItem 'dist/assets' -Filter *.js -ErrorAction SilentlyContinue).Count; if ($count -lt 30) { Write-Host \"only $count js chunks\"; exit 1 }; exit 0" >>deploy-log.txt 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-dist.ps1 >>deploy-log.txt 2>&1
 if %errorlevel% neq 0 (
     echo  [ERROR] dist/ failed the integrity check - refusing to deploy
     echo          a partial build. See deploy-log.txt. Re-run deploy.bat.
     del deploy.lock >nul 2>&1
-    echo. ^& pause ^& exit /b 1
+    echo.
+        pause
+        exit /b 1
 )
 echo        dist integrity OK.
 
@@ -214,7 +218,9 @@ if %errorlevel% neq 0 (
         echo  [ERROR] git add failed twice - a file is locked ^(AV / OneDrive / editor^).
         echo          Staging a partial tree is how broken deploys happen. Aborting.
         del deploy.lock >nul 2>&1
-        echo. ^& pause ^& exit /b 1
+        echo.
+        pause
+        exit /b 1
     )
 )
 
