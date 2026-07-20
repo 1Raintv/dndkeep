@@ -40,7 +40,9 @@ interface SpellCastButtonProps {
  forceSlotLevel?: number;
  // v2.37.0: called when ANY cast (cantrip or leveled) happens for a concentration spell.
  // The parent should set character.concentration_spell = spell.id.
- onConcentrationCast?: () => void;
+ // v2.605.0 — receives the slot level the spell was cast at (undefined
+ // for cantrips) so the parent can persist it for upcast dice scaling.
+ onConcentrationCast?: (slotLevel?: number) => void;
  // v2.49.0: Renders a single "↑ Upcast" button that opens the slot picker modal directly.
  // Used in spell description panels so the user can deliberately choose a higher slot
  // instead of just casting at base level.
@@ -144,7 +146,7 @@ export default function SpellCastButton({
  // v2.37.0: if this spell requires concentration, notify the parent so it can
  // set character.concentration_spell. Fires for cantrips + leveled alike.
  if (spell.concentration) {
- onConcentrationCast?.();
+ onConcentrationCast?.(isCantrip ? undefined : slotLevel);
  }
  // v2.115.0 — Phase H pt 6: auto-open the buff target picker if this spell
  // is in the registry AND we have a campaign context. The modal itself

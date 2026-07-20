@@ -263,6 +263,10 @@ export interface Character {
  // v2.38.0: Rounds remaining on current concentration. NULL = no timer (instantaneous
  // / until dispelled / missing duration info). 0 = expired. One combat round = 6 seconds.
  concentration_rounds_remaining: number | null;
+ // v2.605.0 — slot level the current concentration spell was cast at.
+ // NULL = not concentrating / unknown (pre-v2.605). Readers fall back
+ // to the spell's base level. Cleared alongside concentration_spell.
+ concentration_slot_level: number | null;
   // v2.260.0 — surfaced previously-missing fields. active_buffs is the
   // jsonb array consumed by the Active Buffs panel; push_subscription
   // is the WebPush subscription blob the notifications system stores

@@ -622,7 +622,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  /** Persist concentration spell ID immediately to DB so it survives refresh.
  * v2.38.0: Also parses the spell's duration and starts a round countdown. */
- function setConcentration(spellId: string | null) {
+ function setConcentration(spellId: string | null, slotLevel?: number) {
  // v2.600.0 — automation arc ship 4a: when concentration on a summon
  // spell ends (Drop button, failed CON save, timer expiry, or a new
  // concentration cast replacing it), auto-despawn its battle-map
@@ -643,12 +643,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }).catch(() => { /* despawn is best-effort */ });
  }
  if (!spellId) {
- applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null }, true);
+ applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null }, true);
  return;
  }
  const spell = spellMap[spellId];
  const rounds = spell ? parseDurationToRounds(spell.duration) : null;
- applyUpdate({ concentration_spell: spellId, concentration_rounds_remaining: rounds }, true);
+ // v2.605.0 — persist the cast slot (explicit upcast level from
+ // SpellCastButton, else the spell's base level) so the active-effect
+ // prompt can scale its dice. Cantrips store their base level 0.
+ const slot = slotLevel ?? spell?.level ?? null;
+ applyUpdate({ concentration_spell: spellId, concentration_rounds_remaining: rounds, concentration_slot_level: slot }, true);
  }
 
  // v2.47.0: Fire a toast notifying the player they lost concentration.
@@ -1447,10 +1451,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const prompt = ACTIVE_EFFECT_PROMPTS[character.concentration_spell];
  const sp = spellMap[character.concentration_spell];
  if (!sp) return null;
+ // v2.605.0 — upcast-aware dice: prefer the spell's
+ // damage_at_slot_level entry for the persisted cast slot
+ // (Spiritual Weapon @4 → "2d8 + MOD"), falling back to base
+ // damage_dice. concentration_slot_level is NULL for pre-v2.605
+ // casts — fall back to the spell's own level.
+ const concSlot: number = character.concentration_slot_level ?? sp.level ?? 0;
+ const slotTable = (sp as any).damage_at_slot_level as Record<string, string> | undefined;
  const rawDice: string | null = prompt.rollKind === 'heal'
  ? (((sp as any).heal_dice as string | undefined) ?? null)
  : prompt.rollKind === 'damage'
- ? (((sp as any).damage_dice as string | undefined) ?? null)
+ ? ((slotTable?.[String(concSlot)] as string | undefined)
+ ?? ((sp as any).damage_dice as string | undefined)
+ ?? null)
  : null;
  // v2.601.0 — resolve catalogue dice strings of the form "XdY" or
  // "XdY + MOD" (Spiritual Weapon: "1d8 + MOD"). rollDiceExpr only
@@ -2375,7 +2388,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  character={character}
  spell={spell}
  onUpdateSlots={handleUpdateSlots}
- onConcentrationCast={() => setConcentration(spell.id)}
+ onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
  userId={userId}
  campaignId={character.campaign_id}
  compact
@@ -3390,7 +3403,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                          campaignId={character.campaign_id}
                          onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
                          compact={true}
-                         onConcentrationCast={() => setConcentration(spell.id)}
+                         onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
                        />
                      </div>
                    </div>
@@ -4007,7 +4020,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setSpellCastThisTurn(true);
  }
  }}
- onConcentrationCast={() => setConcentration(spell.id)}
+ onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
  />
  </div>
  </div>
@@ -4050,7 +4063,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onLeveledSpellCast={(isBonusAction?: boolean) => {
  if (isBonusAction) setBonusActionSpellCast(true); else setSpellCastThisTurn(true);
  }}
- onConcentrationCast={() => setConcentration(spell.id)}
+ onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
  />
  </div>
  </div>
