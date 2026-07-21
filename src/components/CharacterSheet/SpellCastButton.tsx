@@ -9,6 +9,7 @@ import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSp
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie } from '../../lib/gameUtils';
+import { parseRangeToFt } from '../../lib/rangeParse';
 import { supabase } from '../../lib/supabase';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
 // v2.443.0 — Lazy-load all five spell-cast modals. They open
@@ -845,6 +846,7 @@ export default function SpellCastButton({
    <PlayerAttackButton
      characterId={character.id}
      attackKind="attack_roll"
+     maxRangeFt={parseRangeToFt(spell.range)}
      attackBonus={spellAttack}
      damageDice={dice}
      damageType={mechanics.damageType ?? ''}
@@ -913,6 +915,7 @@ export default function SpellCastButton({
  <PlayerAttackButton
  characterId={character.id}
  attackKind="save"
+ maxRangeFt={parseRangeToFt(spell.range)}
  saveDC={saveDC}
  saveAbility={mechanics.saveType as any}
  saveSuccessEffect="half"

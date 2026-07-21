@@ -40,6 +40,12 @@ interface Props {
    *  distance to render even when fromParticipant is set; without a
    *  battle map we have no positions to measure between. */
   campaignId?: string | null;
+  /** v2.618.0 — max attack/spell range in feet. Targets whose
+   *  measured distance exceeds this render dimmed + unclickable
+   *  ("out of range"). FAIL OPEN: when null, or when distance can't
+   *  be measured (no map / unplaced token), no gating happens —
+   *  theater-of-the-mind play must keep working. */
+  maxRangeFt?: number | null;
 }
 
 export default function TargetPickerModal({
@@ -52,6 +58,7 @@ export default function TargetPickerModal({
   onCancel,
   fromParticipant,
   campaignId,
+  maxRangeFt,
 }: Props) {
   // v2.480.0 — Battle map state. Loaded async on mount; null until the
   // load resolves (rows just render without distance during the gap).
@@ -148,24 +155,33 @@ export default function TargetPickerModal({
                 );
               }
             }
+            // v2.618.0 — range gate (queued item): distance measured,
+            // range provided, and target beyond it → unclickable.
+            const outOfRange = distanceFt !== null
+              && maxRangeFt != null
+              && distanceFt > maxRangeFt;
             return (
               <button
                 key={p.id}
-                onClick={() => onPick(p)}
+                onClick={outOfRange ? undefined : () => onPick(p)}
+                disabled={outOfRange}
+                title={outOfRange ? `Out of range — ${distanceFt} ft (max ${maxRangeFt} ft)` : undefined}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '10px 12px', borderRadius: 8,
                   border: '1px solid var(--c-border)',
                   background: '#080d14',
-                  cursor: 'pointer', textAlign: 'left', minHeight: 0,
+                  cursor: outOfRange ? 'default' : 'pointer',
+                  textAlign: 'left', minHeight: 0,
                   fontFamily: 'var(--ff-body)',
                   transition: 'all 0.12s',
+                  opacity: outOfRange ? 0.45 : 1,
                 }}
-                onMouseEnter={e => {
+                onMouseEnter={outOfRange ? undefined : e => {
                   e.currentTarget.style.background = 'rgba(201,146,42,0.08)';
                   e.currentTarget.style.borderColor = 'var(--c-gold-bdr)';
                 }}
-                onMouseLeave={e => {
+                onMouseLeave={outOfRange ? undefined : e => {
                   e.currentTarget.style.background = '#080d14';
                   e.currentTarget.style.borderColor = 'var(--c-border)';
                 }}
@@ -187,8 +203,8 @@ export default function TargetPickerModal({
                 {/* v2.480.0 — Footprint-aware distance chip. Quiet style
                     (gray) so it sits informationally next to AC/HP. */}
                 {distanceFt !== null && (
-                  <span style={{ fontSize: 11, color: 'var(--t-3)' }}>
-                    {distanceFt} ft
+                  <span style={{ fontSize: 11, color: outOfRange ? '#fca5a5' : 'var(--t-3)', fontWeight: outOfRange ? 700 : 400 }}>
+                    {distanceFt} ft{outOfRange ? ' — out of range' : ''}
                   </span>
                 )}
                 {p.ac != null && (

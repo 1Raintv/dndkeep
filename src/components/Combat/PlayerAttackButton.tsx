@@ -31,6 +31,9 @@ interface Props {
   attackName: string;
   /** 'weapon' | 'spell' | 'ability' — used for attack_source classification. */
   source?: 'weapon' | 'spell' | 'ability';
+  /** v2.618.0 — max range in feet for target gating (null = no gate,
+   *  fail open). Weapons: weaponMaxRangeFt; spells: parseRangeToFt. */
+  maxRangeFt?: number | null;
   /** v2.101.0 — single-target spell variant. Defaults to 'attack_roll'. */
   attackKind?: 'attack_roll' | 'save' | 'auto_hit';
   /** Required when attackKind='save'. */
@@ -52,6 +55,7 @@ export default function PlayerAttackButton({
   damageType,
   attackName,
   source = 'weapon',
+  maxRangeFt = null,
   attackKind = 'attack_roll',
   saveDC,
   saveAbility,
@@ -158,6 +162,7 @@ export default function PlayerAttackButton({
           onCancel={() => setPicking(false)}
           fromParticipant={myParticipant}
           campaignId={encounter.campaign_id}
+          maxRangeFt={maxRangeFt}
         />
       )}
     </>

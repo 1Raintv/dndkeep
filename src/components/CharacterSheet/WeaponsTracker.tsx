@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { WeaponItem } from '../../types';
 import { rollDie, computeActiveBonuses } from '../../lib/gameUtils';
+import { weaponMaxRangeFt } from '../../lib/rangeParse';
 import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logAction } from '../shared/ActionLog';
@@ -495,6 +496,7 @@ export default function WeaponsTracker({
  {historyCharacterId && (
  <PlayerAttackButton
  characterId={historyCharacterId}
+ maxRangeFt={weaponMaxRangeFt(w.range, w.properties)}
  attackBonus={w.attackBonus ?? 0}
  damageDice={w.damageDice === 'flat' ? `1d0+${w.damageBonus ?? 0}` : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
  damageType={w.damageType || 'slashing'}
