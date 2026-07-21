@@ -139,6 +139,23 @@ export default function WildShapePanel({ character, onUpdate, onBonusUsed }: Wil
     onUpdate({ wildshape_known_forms: next } as Partial<Character>, true);
   }
 
+  // v2.624.0 — swap cadence (SRD 5.2.1 Wild Shape, Known Forms):
+  // "Whenever you finish a Long Rest, you can replace one of your
+  // known forms with another eligible form." Learning into an OPEN
+  // slot (initial picks, level-up growth) is free; forgetting a form
+  // starts the one replacement and locks further Forgets until a
+  // Long Rest (both long-rest paths wipe feature_uses).
+  const featureUses = (character.feature_uses as Record<string, number> | null) ?? {};
+  const swapUsed = (featureUses['Wild Shape Swap'] ?? 0) >= 1;
+
+  function forgetForm(id: string) {
+    if (swapUsed) return;
+    onUpdate({
+      wildshape_known_forms: knownIds.filter(k => k !== id),
+      feature_uses: { ...featureUses, 'Wild Shape Swap': 1 },
+    } as Partial<Character>, true);
+  }
+
   function assumeForm(form: BeastRow) {
     if (remaining <= 0) return;
     const buff: ActiveBuff = {
@@ -274,6 +291,13 @@ export default function WildShapePanel({ character, onUpdate, onBonusUsed }: Wil
           {beasts === null && (
             <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>Loading forms…</span>
           )}
+          {beasts !== null && (
+            <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: swapUsed ? '#fbbf24' : 'var(--t-3)' }}>
+              {swapUsed
+                ? 'Form swap used — next replacement after a Long Rest. Open slots can still be filled.'
+                : 'RAW: replace one known form per Long Rest. Learning into open slots is free.'}
+            </span>
+          )}
           {beasts !== null && eligible.length === 0 && (
             <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>No eligible forms found.</span>
           )}
@@ -289,16 +313,18 @@ export default function WildShapePanel({ character, onUpdate, onBonusUsed }: Wil
                   CR {b.cr} · {b.size}{(b.fly_speed ?? 0) > 0 ? ' · Fly' : ''}
                 </span>
                 <button
-                  onClick={() => setKnown(known ? knownIds.filter(id => id !== b.id) : [...knownIds, b.id])}
-                  disabled={!known && !canLearn}
-                  title={known ? 'Forget this form' : canLearn ? 'Learn this form' : `Known forms full (${knownMax})`}
+                  onClick={() => known ? forgetForm(b.id) : setKnown([...knownIds, b.id])}
+                  disabled={known ? swapUsed : !canLearn}
+                  title={known
+                    ? (swapUsed ? 'Form swap already used — resets on Long Rest' : 'Forget this form (starts your one swap per Long Rest)')
+                    : canLearn ? 'Learn this form' : `Known forms full (${knownMax})`}
                   style={{
                     fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
                     padding: '2px 8px', borderRadius: 6, minHeight: 0,
-                    cursor: known || canLearn ? 'pointer' : 'default',
+                    cursor: (known ? !swapUsed : canLearn) ? 'pointer' : 'default',
                     background: known ? 'rgba(239,68,68,0.08)' : 'rgba(74,222,128,0.08)',
                     border: `1px solid ${known ? 'rgba(239,68,68,0.35)' : 'rgba(74,222,128,0.35)'}`,
-                    color: known ? '#fca5a5' : canLearn ? '#4ade80' : 'var(--t-3)',
+                    color: known ? (swapUsed ? 'var(--t-3)' : '#fca5a5') : canLearn ? '#4ade80' : 'var(--t-3)',
                   }}
                 >
                   {known ? 'Forget' : 'Learn'}
