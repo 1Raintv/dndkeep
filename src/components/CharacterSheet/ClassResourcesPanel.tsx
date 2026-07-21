@@ -96,7 +96,6 @@ export default function ClassResourcesPanel({ character, onUpdate }: ClassResour
                       {/* Icon + name */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: 2 }}>
-                          <span style={{ fontSize: 16, lineHeight: 1 }}>{r.emoji}</span>
                           <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: depleted ? 'var(--t-2)' : 'var(--t-1)' }}>
                             {r.name}
                           </span>

@@ -16,7 +16,8 @@ export interface ClassResourceDef {
   recovery: RecoveryType;
   getMax: (level: number, abilityScores: Record<string, number>) => number;
   minLevel: number;
-  emoji: string;
+  // v2.609.0 — emoji field removed (bucket-b sweep): resources render
+  // name-only, no icon replacement per Jared's call.
 }
 
 const abilityMod = (score: number) => Math.floor((score - 10) / 2);
@@ -26,7 +27,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'rage',
       name: 'Rage',
-      emoji: '🔥',
       description: 'Enter a rage as a bonus action. Lasts 1 minute. +Str to melee attack/damage, resistance to B/P/S damage.',
       recovery: 'long',
       minLevel: 1,
@@ -42,7 +42,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'relentless-rage',
       name: 'Relentless Rage',
-      emoji: '💢',
       description: 'When dropped to 0 HP while raging, make DC 10 CON save (increases by 5 each use). On success, drop to 1 HP instead.',
       recovery: 'short',
       minLevel: 11,
@@ -51,7 +50,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'brutal-strike',
       name: 'Brutal Strike',
-      emoji: '⚔️',
       description: 'Forgo advantage to deal an extra 1d10 damage and apply a brutal effect.',
       recovery: 'short',
       minLevel: 9,
@@ -63,7 +61,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'bardic-inspiration',
       name: 'Bardic Inspiration',
-      emoji: '🎵',
       description: 'Give a creature a Bardic Inspiration die (1d6–1d12) to add to an ability check, attack, or save.',
       recovery: 'long', // short rest at level 5+
       minLevel: 1,
@@ -72,7 +69,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'song-of-rest',
       name: 'Song of Rest',
-      emoji: '🎶',
       description: 'During a short rest, you can play music to help allies recover an extra 1d6 HP (scales with level).',
       recovery: 'short',
       minLevel: 2,
@@ -81,7 +77,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'countercharm',
       name: 'Countercharm',
-      emoji: '🛡️',
       description: 'Use action to perform music granting advantage on saves vs being frightened or charmed.',
       recovery: 'short',
       minLevel: 6,
@@ -93,7 +88,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'channel-divinity',
       name: 'Channel Divinity',
-      emoji: '✝️',
       description: 'Channel divine energy for Turn Undead and domain-specific effects. Regain 1 use on a Short Rest, all on a Long Rest.',
       recovery: 'short-partial',
       minLevel: 2,
@@ -106,7 +100,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'divine-intervention',
       name: 'Divine Intervention',
-      emoji: '🌟',
       description: 'Implore your deity to intervene. At level 20, succeeds automatically.',
       recovery: 'long',
       minLevel: 10,
@@ -118,7 +111,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'wild-shape',
       name: 'Wild Shape',
-      emoji: '🐾',
       // v2.598.0 — 2024 text: you no longer need to have seen the
       // beast (known forms are prepared); uses scale 2/3/4 at
       // L2/L6/L17. v2.606.0 — short-partial: regain ONE use on a
@@ -131,7 +123,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'wild-shape-cr',
       name: 'Max Wild Shape CR',
-      emoji: '📊',
       description: 'Maximum CR for Wild Shape beasts.',
       recovery: 'long',
       minLevel: 2,
@@ -147,7 +138,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'second-wind',
       name: 'Second Wind',
-      emoji: '💨',
       // v2.606.0 — 2024 RAW: 2 uses at L1, 3 at L4, 4 at L10;
       // regain 1 use on a Short Rest, all on a Long Rest (was the
       // 2014 single-use full-SR model).
@@ -159,7 +149,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'action-surge',
       name: 'Action Surge',
-      emoji: '⚡',
       description: 'Take one additional action on your turn.',
       recovery: 'short',
       minLevel: 2,
@@ -168,7 +157,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'indomitable',
       name: 'Indomitable',
-      emoji: '🛡️',
       description: 'Reroll a saving throw (must use new result).',
       recovery: 'long',
       minLevel: 9,
@@ -181,7 +169,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'superiority-dice',
       name: 'Superiority Dice',
-      emoji: '🎲',
       description: 'Battle Master maneuver dice (d8, scaling to d12). Used for combat maneuvers.',
       recovery: 'short',
       minLevel: 3,
@@ -197,7 +184,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'ki-points',
       name: 'Ki Points',
-      emoji: '☯️',
       description: 'Fuel monk abilities: Flurry of Blows, Patient Defense, Step of the Wind, Stunning Strike.',
       recovery: 'short',
       minLevel: 2,
@@ -206,7 +192,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'stunning-strike',
       name: 'Stunning Strike',
-      emoji: '💫',
       description: 'Spend 1 ki after hitting to force CON save or target is stunned until end of your next turn.',
       recovery: 'short',
       minLevel: 5,
@@ -218,7 +203,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'lay-on-hands',
       name: 'Lay on Hands',
-      emoji: '🤲',
       description: 'Restore HP equal to your pool, or spend 5 HP to cure a disease/poison.',
       recovery: 'long',
       minLevel: 1,
@@ -227,7 +211,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'channel-divinity',
       name: 'Channel Divinity',
-      emoji: '✝️',
       description: 'Sacred Weapon or Turn the Unholy, plus oath-specific effects. Regain 1 use on a Short Rest, all on a Long Rest.',
       recovery: 'short-partial',
       minLevel: 3,
@@ -240,7 +223,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'divine-sense',
       name: 'Divine Sense',
-      emoji: '👁️',
       description: 'Know the location of celestials, fiends, and undead within 60 ft.',
       recovery: 'long',
       minLevel: 1,
@@ -252,7 +234,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'hunters-mark',
       name: "Hunter's Mark",
-      emoji: '🎯',
       description: 'Free Hunter\'s Mark uses that don\'t require spell slots (no concentration at higher levels).',
       recovery: 'long',
       minLevel: 1,
@@ -266,7 +247,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'natural-explorer',
       name: 'Favored Terrain',
-      emoji: '🌲',
       description: 'Chose a favored terrain type — reminder for double proficiency on related checks.',
       recovery: 'day',
       minLevel: 1,
@@ -278,7 +258,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'sneak-attack',
       name: 'Sneak Attack',
-      emoji: '🗡️',
       description: 'Deal extra damage once per turn when you have advantage or an ally adjacent to the target.',
       recovery: 'short',
       minLevel: 1,
@@ -287,7 +266,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'uncanny-dodge',
       name: 'Uncanny Dodge',
-      emoji: '🌀',
       description: 'Reaction: halve the damage from one attack you can see.',
       recovery: 'short',
       minLevel: 5,
@@ -296,7 +274,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'stroke-of-luck',
       name: 'Stroke of Luck',
-      emoji: '🍀',
       description: 'Turn a failed attack or ability check into a success.',
       recovery: 'short',
       minLevel: 20,
@@ -308,7 +285,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'sorcery-points',
       name: 'Sorcery Points',
-      emoji: '✨',
       description: 'Fuel metamagic and Font of Magic: convert to/from spell slots.',
       recovery: 'long',
       minLevel: 2,
@@ -317,7 +293,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'wild-magic-surge',
       name: 'Tides of Chaos',
-      emoji: '🌀',
       description: 'Wild Magic: Gain advantage on one attack, check, or save (then DM may trigger surge).',
       recovery: 'long',
       minLevel: 1,
@@ -329,7 +304,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'mystic-arcanum-6',
       name: 'Mystic Arcanum (6th)',
-      emoji: '📜',
       description: 'Cast a 6th-level spell once per long rest without using a spell slot.',
       recovery: 'long',
       minLevel: 11,
@@ -338,7 +312,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'mystic-arcanum-7',
       name: 'Mystic Arcanum (7th)',
-      emoji: '📜',
       description: 'Cast a 7th-level spell once per long rest without using a spell slot.',
       recovery: 'long',
       minLevel: 13,
@@ -347,7 +320,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'mystic-arcanum-8',
       name: 'Mystic Arcanum (8th)',
-      emoji: '📜',
       description: 'Cast an 8th-level spell once per long rest without using a spell slot.',
       recovery: 'long',
       minLevel: 15,
@@ -356,7 +328,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'mystic-arcanum-9',
       name: 'Mystic Arcanum (9th)',
-      emoji: '📜',
       description: 'Cast a 9th-level spell once per long rest without using a spell slot.',
       recovery: 'long',
       minLevel: 17,
@@ -365,7 +336,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'eldritch-master',
       name: 'Eldritch Master',
-      emoji: '👿',
       description: 'Spend 1 minute entreating your patron to regain all Pact Magic spell slots.',
       recovery: 'long',
       minLevel: 20,
@@ -377,7 +347,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'arcane-recovery',
       name: 'Arcane Recovery',
-      emoji: '📚',
       description: 'Short rest: recover spell slots with combined level ≤ half your wizard level (rounded up). Not 6th+ level slots.',
       recovery: 'day',
       minLevel: 1,
@@ -386,7 +355,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'spell-mastery',
       name: 'Spell Mastery',
-      emoji: '⚗️',
       description: 'Cast chosen 1st and 2nd level spells at their lowest level without expending a slot.',
       recovery: 'day',
       minLevel: 18,
@@ -395,7 +363,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'signature-spells',
       name: 'Signature Spells',
-      emoji: '✍️',
       description: 'Two 3rd-level spells always prepared, cast each once per short rest without a slot.',
       recovery: 'short',
       minLevel: 20,
@@ -407,7 +374,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'infuse-item',
       name: 'Infuse Item',
-      emoji: '⚙️',
       description: 'Infuse mundane items with temporary magical properties.',
       recovery: 'long',
       minLevel: 2,
@@ -423,7 +389,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'flash-of-genius',
       name: 'Flash of Genius',
-      emoji: '💡',
       description: 'Reaction: add INT modifier to an ability check or save made by you or a creature within 30 ft.',
       recovery: 'long',
       minLevel: 7,
@@ -435,7 +400,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'psionic-energy-dice',
       name: 'Psionic Energy Dice',
-      emoji: '🧠',
       description: (level: number) => {
         const die = level >= 17 ? 'd12' : level >= 11 ? 'd10' : level >= 5 ? 'd8' : 'd6';
         const count = level >= 17 ? 12 : level >= 13 ? 10 : level >= 9 ? 8 : level >= 5 ? 6 : 4;
@@ -454,7 +418,6 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'psionic-restoration',
       name: 'Psionic Restoration',
-      emoji: '🔄',
       description: 'Once per Long Rest: 1-minute meditation to regain Psionic Energy Dice equal to half your Psion level (rounded up).',
       recovery: 'long',
       minLevel: 5,

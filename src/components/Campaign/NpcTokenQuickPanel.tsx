@@ -1350,7 +1350,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
                       minHeight: 0,
                     }}
                   >
-                    {buff.icon ?? '✨'} {buff.name}
+                    {buff.name}
                     {isDM && (
                       <span style={{ opacity: 0.7, fontWeight: 500 }}>· {durLabel}</span>
                     )}
