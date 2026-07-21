@@ -19,7 +19,10 @@
 //
 // On revert we clear temp_hp (the temp HP rule in Wild Shape sits
 // under "While in a form ... the following rules apply", so the
-// form's temp HP end with the form). Flagged for Jared verification.
+// form's temp HP end with the form). v2.610.0 — verified with Jared
+// after research: RAW is arguable both ways, but the intent reading
+// (community consensus incl. RPGBOT) is that the THP end when Wild
+// Shape ends. Deliberate ruling, surfaced in the UI below.
 
 import { useState } from 'react';
 import type { Character, ActiveBuff } from '../../types';
@@ -106,7 +109,7 @@ export default function WildShapePanel({ character, onUpdate, onBonusUsed }: Wil
               {activeForm.name}
             </span>
             <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
-              up to {hours} h · Temp HP {tempGrant} on assuming · uses {remaining}/{maxUses}
+              up to {hours} h · Temp HP {tempGrant} on assuming (end on revert — 2024 intent; RAW ambiguous) · uses {remaining}/{maxUses}
             </span>
           </div>
           {remaining > 0 && (
