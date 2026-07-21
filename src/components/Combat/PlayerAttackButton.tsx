@@ -34,6 +34,9 @@ interface Props {
   /** v2.618.0 — max range in feet for target gating (null = no gate,
    *  fail open). Weapons: weaponMaxRangeFt; spells: parseRangeToFt. */
   maxRangeFt?: number | null;
+  /** v2.621.0 — normal range (weapons with an X/Y band). Passed to the
+   *  picker for the long-range Disadvantage reminder (SRD 5.2.1). */
+  normalRangeFt?: number | null;
   /** v2.101.0 — single-target spell variant. Defaults to 'attack_roll'. */
   attackKind?: 'attack_roll' | 'save' | 'auto_hit';
   /** Required when attackKind='save'. */
@@ -56,6 +59,7 @@ export default function PlayerAttackButton({
   attackName,
   source = 'weapon',
   maxRangeFt = null,
+  normalRangeFt = null,
   attackKind = 'attack_roll',
   saveDC,
   saveAbility,
@@ -163,6 +167,7 @@ export default function PlayerAttackButton({
           fromParticipant={myParticipant}
           campaignId={encounter.campaign_id}
           maxRangeFt={maxRangeFt}
+          normalRangeFt={normalRangeFt}
         />
       )}
     </>

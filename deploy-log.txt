@@ -1,5 +1,5 @@
-DNDKeep deploy log - Tue 07/21/2026 11:37:37.97 
+DNDKeep deploy log - Tue 07/21/2026 11:50:26.60 
 Working dir: C:\dev\DNDKeep 
  
- Detected version: 2.620.0 
+ Detected version: 2.621.0 
 OK: index.html + 4 referenced assets + 64 chunks

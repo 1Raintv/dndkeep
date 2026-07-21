@@ -46,6 +46,11 @@ interface Props {
    *  be measured (no map / unplaced token), no gating happens —
    *  theater-of-the-mind play must keep working. */
   maxRangeFt?: number | null;
+  /** v2.621.0 — normal range in feet (weapons with an "X/Y" range).
+   *  Targets between normal and long range stay clickable but show a
+   *  DISADV reminder — SRD 5.2.1 "Range": attacks beyond normal range
+   *  have Disadvantage. Null = no band (melee, single-range spells). */
+  normalRangeFt?: number | null;
 }
 
 export default function TargetPickerModal({
@@ -59,6 +64,7 @@ export default function TargetPickerModal({
   fromParticipant,
   campaignId,
   maxRangeFt,
+  normalRangeFt,
 }: Props) {
   // v2.480.0 — Battle map state. Loaded async on mount; null until the
   // load resolves (rows just render without distance during the gap).
@@ -160,6 +166,12 @@ export default function TargetPickerModal({
             const outOfRange = distanceFt !== null
               && maxRangeFt != null
               && distanceFt > maxRangeFt;
+            // v2.621.0 — long-range band: legal but Disadvantage
+            // (SRD 5.2.1 "Range"). Reminder only — no roll automation.
+            const inLongBand = !outOfRange
+              && distanceFt !== null
+              && normalRangeFt != null
+              && distanceFt > normalRangeFt;
             return (
               <button
                 key={p.id}
@@ -205,6 +217,22 @@ export default function TargetPickerModal({
                 {distanceFt !== null && (
                   <span style={{ fontSize: 11, color: outOfRange ? '#fca5a5' : 'var(--t-3)', fontWeight: outOfRange ? 700 : 400 }}>
                     {distanceFt} ft{outOfRange ? ' — out of range' : ''}
+                  </span>
+                )}
+                {inLongBand && (
+                  <span
+                    title={`Beyond normal range (${normalRangeFt} ft) — attack has Disadvantage (long range)`}
+                    style={{
+                      fontSize: 9, fontWeight: 800,
+                      padding: '1px 5px', borderRadius: 3,
+                      background: 'rgba(251,191,36,0.16)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(251,191,36,0.45)',
+                      letterSpacing: '0.05em', textTransform: 'uppercase',
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                    }}
+                  >
+                    disadv
                   </span>
                 )}
                 {p.ac != null && (

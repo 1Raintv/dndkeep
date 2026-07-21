@@ -30,6 +30,25 @@ export function parseRangeToFt(text: string | null | undefined): number | null {
   return null;
 }
 
+/** Normal range for a weapon row (SRD 5.2.1 "Range": attacks past
+ *  normal range, up to long range, have Disadvantage). Only two-number
+ *  ranges ("80/320") have a normal/long band — melee, single-number,
+ *  and unparseable ranges return null (no band, no reminder). */
+export function weaponNormalRangeFt(
+  range: string | null | undefined,
+  properties: string | null | undefined,
+): number | null {
+  if (!range) return null;
+  // Thrown melee weapons gate as melee in weaponMaxRangeFt (v2.618) —
+  // their band lives in `properties`, which neither function parses.
+  // Kept consistent: no band reminder for them either.
+  void properties;
+  if (/melee/i.test(range)) return null;
+  const band = range.match(/(\d+)\s*\/\s*(\d+)/);
+  if (band) return parseInt(band[1], 10);
+  return null;
+}
+
 /** Max range for a weapon row: melee = 5 ft (10 with the Reach
  *  property); ranged parses the range string (long range governs). */
 export function weaponMaxRangeFt(
