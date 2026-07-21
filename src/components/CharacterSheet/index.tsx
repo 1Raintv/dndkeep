@@ -3,6 +3,7 @@ import { shortCastingTime } from '../../lib/spellDisplay';
 import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
 import WildShapePanel from './WildShapePanel';
 import BeastFormActions from './BeastFormActions';
+import MinionPanel from './MinionPanel';
 import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
@@ -1569,6 +1570,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onUpdate={applyUpdate}
  onBonusUsed={() => setBonusActionSpellCast(true)}
  />
+
+ {/* v2.616.0 — Phase B2 (playable-forms arc): minions the player
+     owns in this campaign (familiars + future creature summons).
+     Self-gating: renders nothing when the user owns no minions. */}
+ <MinionPanel character={character} />
 
  {/* v2.613.0 — Phase A2 (playable-forms arc): rollable Beast Form
      actions while shaped. Gated on BOTH the active wild-shape buff
