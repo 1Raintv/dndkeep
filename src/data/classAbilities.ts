@@ -424,13 +424,19 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.528.0 — Level 7: choose Potent Spellcasting (add WIS to Druid
       // cantrip damage) or Primal Strike (add 1d8 elemental to one attack
       // per turn while in Wild Shape).
+      // v2.614.0 — RAW fixes: 2024 Primal Strike types are Cold, Fire,
+      // Lightning, or Thunder (Acid was wrongly listed); Improved
+      // Elemental Fury at L15 scales Primal Strike to 2d8 (and gives
+      // Potent Spellcasting +300 ft cantrip range).
       description: (c: any) => {
         const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
-        return `Your level-7 fury: Potent Spellcasting (add +${wis} WIS to your Druid cantrip damage) or Primal Strike (once per turn, add 1d8 elemental damage to an attack, including in Wild Shape).`;
+        const dice = (c?.level ?? 7) >= 15 ? '2d8' : '1d8';
+        return `Your level-7 fury: Potent Spellcasting (add +${wis} WIS to your Druid cantrip damage) or Primal Strike (once per turn, add ${dice} Cold/Fire/Lightning/Thunder damage to an attack, including in Wild Shape).`;
       },
       descriptionLong: (c: any) => {
         const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
-        return `At level 7 you chose one expression of elemental power:\n\u2022 Potent Spellcasting \u2014 you add your Wisdom modifier (currently +${wis}) to the damage you deal with any Druid cantrip.\n\u2022 Primal Strike \u2014 once per turn when you hit with an attack roll (including attacks in Wild Shape), you can deal an extra 1d8 Acid, Cold, Fire, Lightning, or Thunder damage.`;
+        const dice = (c?.level ?? 7) >= 15 ? '2d8' : '1d8';
+        return `At level 7 you chose one expression of elemental power:\n\u2022 Potent Spellcasting \u2014 you add your Wisdom modifier (currently +${wis}) to the damage you deal with any Druid cantrip${(c?.level ?? 7) >= 15 ? ', and your Druid cantrips gain +300 ft range (Improved Elemental Fury)' : ''}.\n\u2022 Primal Strike \u2014 once per turn when you hit with an attack roll (including attacks in Wild Shape), you can deal an extra ${dice} Cold, Fire, Lightning, or Thunder damage (choose the type each time).`;
       },
       minLevel: 7,
     },

@@ -97,7 +97,7 @@ export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
     { level: 4, name: 'Wild Shape Improvement', description: 'Wild Shape: CR 1/2. Can now transform into beasts with swim speed.' },
     { level: 5, name: 'Wild Resurgence', description: 'Once per long rest: if you have no Wild Shape uses, spend a spell slot (any level) to regain one use.' },
     { level: 6, name: 'Subclass Feature', description: 'Druid Circle feature.', isSubclassFeature: true },
-    { level: 7, name: 'Elemental Fury', description: 'Choose Potent Spellcasting (+Wis to cantrip damage) or Primal Strike (weapon/Wild Shape attacks count as magical).' },
+    { level: 7, name: 'Elemental Fury', description: 'Choose Potent Spellcasting (+Wis to cantrip damage) or Primal Strike (once per turn, +1d8 Cold/Fire/Lightning/Thunder on a hit; 2d8 at level 15).' },
     { level: 8, name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
     { level: 8, name: 'Wild Shape Improvement', description: 'Wild Shape: CR 1. Can now transform into beasts with fly speed.' },
     { level: 10, name: 'Subclass Feature', description: 'Druid Circle feature.', isSubclassFeature: true },

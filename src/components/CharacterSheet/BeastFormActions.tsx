@@ -101,6 +101,30 @@ export default function BeastFormActions({ character, isMoon }: BeastFormActions
     });
   }
 
+  // v2.614.0 — Phase A3: level-gated damage riders. Per Jared's
+  // visibility rule, chips render ONLY when the level/subclass gate is
+  // met. Elemental Fury's Primal-vs-Potent choice isn't tracked yet
+  // (follow-up), so the Primal Strike chip carries an explicit
+  // "only if you chose it" label.
+  const primalDice = character.level >= 15 ? '2d8' : '1d8';
+  const showPrimal = character.level >= 7;
+  const showLunar = isMoon && character.level >= 14;
+  const moonRadiantOption = isMoon && character.level >= 6;
+
+  function rollRider(dice: string, label: string) {
+    const m = dice.match(/^(\d+)d(\d+)$/);
+    if (!m) return;
+    const dieSize = parseInt(m[2], 10);
+    const { rolls, total } = rollDiceExpr(dice);
+    triggerRoll({
+      result: rolls[0] ?? total, dieType: dieSize, total,
+      allDice: rolls.map(v => ({ die: dieSize, value: v })),
+      expression: dice,
+      label,
+      logHistory,
+    });
+  }
+
   function rollDamage(a: BeastAction) {
     if (!a.damage_dice) return;
     // damage_dice like "1d8+4" — split flat bonus for rollDiceExpr.
@@ -157,7 +181,7 @@ export default function BeastFormActions({ character, isMoon }: BeastFormActions
               {a.damage_dice && (
                 <button
                   onClick={() => rollDamage(a)}
-                  title={`Roll damage: ${a.damage_dice} ${a.damage_type ?? ''}`}
+                  title={`Roll damage: ${a.damage_dice} ${a.damage_type ?? ''}${moonRadiantOption ? ' · Moon L6+: you may deal Radiant instead (Improved Circle Forms)' : ''}`}
                   style={{
                     fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
                     padding: '2px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
@@ -175,6 +199,39 @@ export default function BeastFormActions({ character, isMoon }: BeastFormActions
           )}
         </div>
       ))}
+      {(showPrimal || showLunar) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 2, borderTop: '1px solid rgba(74,222,128,0.15)' }}>
+          <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em' }}>
+            ON-HIT RIDERS
+          </span>
+          {showPrimal && (
+            <button
+              onClick={() => rollRider(primalDice, `Primal Strike (${primalDice} — choose Cold/Fire/Lightning/Thunder)`)}
+              title={`Elemental Fury (L7) — only if you chose the Primal Strike option. Once per turn when you hit: +${primalDice} Cold, Fire, Lightning, or Thunder (choose each time).`}
+              style={{
+                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+                padding: '2px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+                background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.35)', color: '#fdba74',
+              }}
+            >
+              Primal Strike {primalDice}
+            </button>
+          )}
+          {showLunar && (
+            <button
+              onClick={() => rollRider('2d10', 'Lunar Form (2d10 radiant)')}
+              title="Lunar Form (Moon L14) — once per turn, +2d10 Radiant to a target you hit with a Wild Shape form's attack."
+              style={{
+                fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
+                padding: '2px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+                background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd',
+              }}
+            >
+              Lunar Form 2d10
+            </button>
+          )}
+        </div>
+      )}
       {(beast.actions ?? []).length === 0 && (
         <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
           This form has no listed actions.
