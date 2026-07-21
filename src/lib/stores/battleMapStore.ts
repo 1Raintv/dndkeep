@@ -134,6 +134,9 @@ export interface Token {
   // new path is on, since the combatant's definition_id mirrors
   // characterId in that case.
   combatantId?: string | null;
+  // v2.617.0 — B3a: owning auth user of the backing combatant (new
+  // path only). Null on the legacy scene_tokens path.
+  combatantOwnerId?: string | null;
   // v2.282: hide-from-players flag. When false, RLS strips the row
   // from the players' SELECT result (and from realtime broadcasts),
   // so the token is invisible to non-DM users. The DM sees every

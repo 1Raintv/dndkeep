@@ -63,6 +63,8 @@ interface PlacementJoinRow {
     portrait_storage_path: string | null;
     definition_type: string;
     definition_id: string | null;
+    // v2.617.0 — B3a: owner threading for player minion control.
+    owner_id: string | null;
   } | null;
 }
 
@@ -128,6 +130,11 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     playerId: null,
     // v2.312: new field. Always populated when this path is used.
     combatantId: row.combatant_id,
+    // v2.617.0 — B3a: the combatant's owner (auth user id). Drives
+    // the player minion drag gate in BattleMapV2; DM tokens have the
+    // DM's id here and are still blocked for players by the
+    // characterId/minion checks.
+    combatantOwnerId: row.combatants?.owner_id ?? null,
   };
 }
 
@@ -141,7 +148,7 @@ export async function listPlacements(sceneId: string): Promise<Token[]> {
       'id, scene_id, combatant_id, x, y, rotation, z_index, ' +
         'size_override, color_override, image_storage_path_override, ' +
         'visible_to_all, ' +
-        'combatants:combatant_id ( id, name, portrait_storage_path, ' +
+        'combatants:combatant_id ( id, name, portrait_storage_path, owner_id, ' +
         'definition_type, definition_id )'
     )
     .eq('scene_id', sceneId)

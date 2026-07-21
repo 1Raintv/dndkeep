@@ -3917,19 +3917,47 @@ function TokenLayer(props: {
 
           if (!isDMRef.current) {
             // ── PLAYER PATH ───────────────────────────────────────
-            // Outside combat: refuse silently.
-            if (!inCombat) return;
-
-            // Must own this token (PC characterId match OR DM grant).
             const myCid = myCharacterIdRef.current;
-            const ownsByCharacter = !!t.characterId && t.characterId === myCid;
-            const grantedByDM = !!(t as any).playerId && (t as any).playerId === currentUserId;
-            if (!ownsByCharacter && !grantedByDM) return;
 
-            // Must be this token's active turn with movement left.
-            const isThisTokenActive = ati!.tokenId === tid;
-            const movementRemaining = Math.max(0, ati!.max - ati!.used);
-            if (!isThisTokenActive || movementRemaining <= 0) return;
+            // v2.617.0 — B3a (playable-forms arc): MINION path first.
+            // A token whose backing combatant the current user OWNS
+            // (familiar / creature summon, v2.615–616) but which
+            // isn't a PC token. RLS (v2.616) already authorizes the
+            // position write server-side; this is the matching client
+            // affordance. Rules:
+            //   - Out of combat: free movement (walk your familiar).
+            //   - In combat: movable while YOUR character's token is
+            //     the active one — 2024 RAW: the creature takes its
+            //     turn immediately after yours. Minions aren't combat
+            //     participants, so no movement budget is tracked
+            //     (matches how the DM moves unlocked tokens).
+            const ownsMinion = !t.characterId
+              && !!(t as any).combatantOwnerId
+              && (t as any).combatantOwnerId === currentUserId;
+            if (ownsMinion) {
+              if (!inCombat) {
+                // fall through to drag start below
+              } else {
+                const activeTok = ati!.tokenId != null ? tokens[ati!.tokenId] : undefined;
+                const ownerTokenActive = !!activeTok
+                  && !!activeTok.characterId && activeTok.characterId === myCid;
+                if (!ownerTokenActive) return;
+              }
+            } else {
+              // ── PC / DM-granted path (pre-v2.617 behavior) ──────
+              // Outside combat: refuse silently.
+              if (!inCombat) return;
+
+              // Must own this token (PC characterId match OR DM grant).
+              const ownsByCharacter = !!t.characterId && t.characterId === myCid;
+              const grantedByDM = !!(t as any).playerId && (t as any).playerId === currentUserId;
+              if (!ownsByCharacter && !grantedByDM) return;
+
+              // Must be this token's active turn with movement left.
+              const isThisTokenActive = ati!.tokenId === tid;
+              const movementRemaining = Math.max(0, ati!.max - ati!.used);
+              if (!isThisTokenActive || movementRemaining <= 0) return;
+            }
           } else {
             // ── DM PATH ───────────────────────────────────────────
             // Outside combat: free reign.
