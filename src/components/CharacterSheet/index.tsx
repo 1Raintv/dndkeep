@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
 import WildShapePanel from './WildShapePanel';
+import BeastFormActions from './BeastFormActions';
 import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
@@ -1568,6 +1569,18 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onUpdate={applyUpdate}
  onBonusUsed={() => setBonusActionSpellCast(true)}
  />
+
+ {/* v2.613.0 — Phase A2 (playable-forms arc): rollable Beast Form
+     actions while shaped. Gated on BOTH the active wild-shape buff
+     and a stored form id, so it never renders for unshaped
+     characters (Jared's only-show-what-you-can-use rule). */}
+ {((character as any).active_buffs as any[] | null ?? []).some(b => b?.id?.startsWith('wild-shape'))
+ && character.wildshape_beast_name && (
+ <BeastFormActions
+ character={character}
+ isMoon={(character.subclass ?? '').toLowerCase().includes('moon') && character.level >= 3}
+ />
+ )}
 
  {/* Concentration Save Prompt — shown when taking damage while concentrating
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
