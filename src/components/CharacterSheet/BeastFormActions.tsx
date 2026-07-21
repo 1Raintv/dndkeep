@@ -26,6 +26,8 @@ import { rollDie, abilityModifier } from '../../lib/gameUtils';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDiceExpr } from '../../lib/buffs';
 import type { Character } from '../../types';
+// v2.622.0 — Elemental Fury choice lookup.
+import { getClassChoice } from '../../lib/classChoices';
 
 interface BeastFormActionsProps {
   character: Character;
@@ -107,7 +109,14 @@ export default function BeastFormActions({ character, isMoon }: BeastFormActions
   // (follow-up), so the Primal Strike chip carries an explicit
   // "only if you chose it" label.
   const primalDice = character.level >= 15 ? '2d8' : '1d8';
-  const showPrimal = character.level >= 7;
+  // v2.622.0 — Elemental Fury choice is now tracked
+  // (characters.class_choices via lib/classChoices). Visibility rule:
+  //   chose Primal Strike  → clean chip (no hedge).
+  //   chose Potent Spellcasting → chip hidden (can't use Primal).
+  //   unchosen (legacy characters) → hedged chip, as v2.614 shipped.
+  const furyChoice = getClassChoice(character, 'druid_elemental_fury');
+  const showPrimal = character.level >= 7 && furyChoice !== 'potent_spellcasting';
+  const primalHedge = furyChoice !== 'primal_strike';
   const showLunar = isMoon && character.level >= 14;
   const moonRadiantOption = isMoon && character.level >= 6;
 
@@ -207,7 +216,9 @@ export default function BeastFormActions({ character, isMoon }: BeastFormActions
           {showPrimal && (
             <button
               onClick={() => rollRider(primalDice, `Primal Strike (${primalDice} — choose Cold/Fire/Lightning/Thunder)`)}
-              title={`Elemental Fury (L7) — only if you chose the Primal Strike option. Once per turn when you hit: +${primalDice} Cold, Fire, Lightning, or Thunder (choose each time).`}
+              title={primalHedge
+                ? `Elemental Fury (L7) — only if you chose the Primal Strike option (pick it on the Features tab). Once per turn when you hit: +${primalDice} Cold, Fire, Lightning, or Thunder (choose each time).`
+                : `Primal Strike (Elemental Fury, L7) — once per turn when you hit with a weapon or Beast form attack: +${primalDice} Cold, Fire, Lightning, or Thunder (choose each time).`}
               style={{
                 fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10,
                 padding: '2px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,

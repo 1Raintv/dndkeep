@@ -329,6 +329,10 @@ export interface Character {
   // of the character sheet for one-click cast access. Max 6 enforced
   // client-side. Pre-v2.380 characters default to [] via DB column.
   pinned_spells: string[];
+  /** v2.622.0 — Pick-one class-feature selections keyed by choice id
+   *  (see lib/classChoices.ts). e.g. {"druid_elemental_fury":
+   *  "primal_strike"}. DB default '{}'. */
+  class_choices?: Record<string, string> | null;
 
   // Inventory
   inventory: InventoryItem[];

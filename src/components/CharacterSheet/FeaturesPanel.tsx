@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { getFeaturesForLevel, getSneakAttackDice, getMartialArtsDie, getBardicInspirationDie, type ClassFeature } from '../../data/classFeatures';
+// v2.622.0 — pick-one class-choice registry + persistence.
+import { choiceDefForFeature, setClassChoice } from '../../lib/classChoices';
 
 interface FeaturesPanelProps {
  character: Character;
@@ -17,6 +19,11 @@ function getIcon(name: string): string {
 }
 
 export default function FeaturesPanel({ character, onUpdateNotes }: FeaturesPanelProps) {
+ // v2.622.0 — pick-one class choices (Elemental Fury etc.). Local
+ // optimistic copy of the jsonb map; setClassChoice persists + confirms.
+ const [choiceMap, setChoiceMap] = useState<Record<string, string>>(
+  (character.class_choices ?? {}) as Record<string, string>,
+ );
  const [expandedFeature, setExpandedFeature] = useState<string | null>(null);
  const [showAll, setShowAll] = useState(false);
  const [tab, setTab] = useState<'class' | 'notes'>('class');
@@ -143,6 +150,52 @@ export default function FeaturesPanel({ character, onUpdateNotes }: FeaturesPane
  <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>
  {getDescription(feature)}
  </p>
+ {/* v2.622.0 — pick-one choice buttons (registry-driven). Only
+     renders on feature cards that have a registered choice for
+     this class+level (currently: Druid L7 Elemental Fury). */}
+ {(() => {
+  const def = choiceDefForFeature(character, feature.name);
+  if (!def) return null;
+  const current = choiceMap[def.key] ?? '';
+  return (
+   <div style={{ marginTop: 'var(--sp-3)' }}>
+   <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 4 }}>
+   Your choice
+   </div>
+   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+   {def.options.map(opt => {
+    const selected = current === opt.value;
+    return (
+     <button
+      key={opt.value}
+      title={opt.rulesText}
+      onClick={async e => {
+       e.stopPropagation();
+       setChoiceMap(m => ({ ...m, [def.key]: opt.value }));
+       const confirmed = await setClassChoice(character.id, def.key, opt.value);
+       if (confirmed) setChoiceMap(confirmed);
+      }}
+      style={{
+       fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11,
+       padding: '4px 10px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
+       background: selected ? 'rgba(201,146,42,0.18)' : '#0d1117',
+       border: selected ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border)',
+       color: selected ? 'var(--c-gold-l)' : 'var(--t-2)',
+      }}
+     >
+      {selected ? '◉ ' : ''}{opt.label}
+     </button>
+    );
+   })}
+   </div>
+   {!current && (
+   <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 4, fontFamily: 'var(--ff-body)' }}>
+   Not chosen yet — pick one to unlock the matching combat chip.
+   </div>
+   )}
+   </div>
+  );
+ })()}
  </div>
  )}
  </div>
