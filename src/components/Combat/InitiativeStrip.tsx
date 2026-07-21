@@ -6,8 +6,12 @@
 // for the DM (invisible to players — RLS-filtered out of the participants
 // array for non-DMs).
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCombat } from '../../context/CombatContext';
+// v2.620.0 — B3b: owned-minion sub-entries. Direct combatants fetch
+// (minions are NOT combat_participants — v2.617 design) grouped under
+// their caster's tile via characters.user_id → combatants.owner_id.
+import { supabase } from '../../lib/supabase';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
 // v2.486.0 — In-app confirm via useModal (replaces v2.485 ConfirmDialog).
 import { useModal } from '../shared/Modal';
@@ -95,6 +99,71 @@ export default function InitiativeStrip({ isDM }: Props) {
   // players don't have the same coordination need (they only see
   // their own turn).
   const [roundSummaryAnchor, setRoundSummaryAnchor] = useState<{ x: number; y: number } | null>(null);
+
+  // v2.620.0 — B3b (playable-forms arc): owned minions as cosmetic
+  // sub-entries under their caster's initiative tile. Minions act on
+  // the caster's turn (2024 RAW, enforced by the v2.617 drag gate),
+  // so they carry no turn_order of their own — this is purely a
+  // visibility aid. Keyed by caster CHARACTER id (participant
+  // entity_id). Refetches whenever CombatContext reloads participants,
+  // which already fires on every combatants INSERT/UPDATE/DELETE
+  // (v2.410 subscription) — summon/dismiss/HP changes stay fresh with
+  // no extra channel.
+  const [minionsByCharacter, setMinionsByCharacter] = useState<Record<string, {
+    id: string; name: string; current_hp: number | null; max_hp: number | null;
+  }[]>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!encounter || encounter.status !== 'active') {
+        setMinionsByCharacter({});
+        return;
+      }
+      const charIds = participants
+        .filter(p => p.participant_type === 'character' && p.entity_id)
+        .map(p => p.entity_id);
+      if (charIds.length === 0) { setMinionsByCharacter({}); return; }
+
+      // Minion combatants: owner-scoped srd_monster rows (the v2.615
+      // creature-summon shape). definition_type 'custom' summons
+      // (Spiritual Weapon et al.) are spell effects, not creatures —
+      // excluded, matching MinionPanel's filter.
+      const [{ data: minions }, { data: chars }] = await Promise.all([
+        (supabase as any)
+          .from('combatants')
+          .select('id, name, owner_id, current_hp, max_hp, is_dead')
+          .eq('campaign_id', encounter.campaign_id)
+          .eq('definition_type', 'srd_monster')
+          .eq('is_dead', false)
+          .not('owner_id', 'is', null),
+        (supabase as any)
+          .from('characters')
+          .select('id, user_id')
+          .in('id', charIds),
+      ]);
+      if (cancelled) return;
+      const userToChar: Record<string, string> = {};
+      for (const c of (chars ?? []) as { id: string; user_id: string }[]) {
+        userToChar[c.user_id] = c.id;
+      }
+      const grouped: Record<string, { id: string; name: string; current_hp: number | null; max_hp: number | null }[]> = {};
+      for (const m of (minions ?? []) as { id: string; name: string; owner_id: string; current_hp: number | null; max_hp: number | null }[]) {
+        const charId = userToChar[m.owner_id];
+        if (!charId) continue;
+        // Names are minted as "Label (CasterName)" (summonTokens);
+        // drop the suffix — the nesting already says whose it is.
+        const shortName = m.name.replace(/\s*\([^)]*\)\s*$/, '');
+        (grouped[charId] ??= []).push({
+          id: m.id, name: shortName || m.name,
+          current_hp: m.current_hp, max_hp: m.max_hp,
+        });
+      }
+      setMinionsByCharacter(grouped);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounter?.id, encounter?.status, participants]);
 
   if (!encounter || encounter.status !== 'active') return null;
 
@@ -337,6 +406,13 @@ export default function InitiativeStrip({ isDM }: Props) {
           const concentrationName = concentration
             ? (spellMap[concentration.spellId]?.name ?? null)
             : null;
+
+          // v2.620.0 — B3b: this character's owned minions (empty for
+          // creatures/npcs — the map is keyed by character id only).
+          const minionSubs =
+            p.participant_type === 'character' && p.entity_id
+              ? (minionsByCharacter[p.entity_id] ?? [])
+              : [];
 
           // v2.114.0 — Phase H pt 5: active buffs chip row (Bless, Hunter's
           // Mark, Hex, Divine Favor, Absorb Elements rider).
@@ -620,6 +696,40 @@ export default function InitiativeStrip({ isDM }: Props) {
                       +{buffOverflow}
                     </span>
                   )}
+                </div>
+              )}
+              {/* v2.620.0 — B3b: owned-minion sub-entries. Cosmetic
+                  nesting only — minions act on the caster's turn (no
+                  turn_order of their own). Teal to distinguish from
+                  buffs (yellow) / conditions (varied). HP shown so the
+                  caster can scan familiar health from the strip. */}
+              {minionSubs.length > 0 && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 2,
+                  marginTop: 3, width: '100%', maxWidth: 100,
+                }}>
+                  {minionSubs.map(m => (
+                    <span
+                      key={m.id}
+                      title={`${m.name} — acts on ${p.name}'s turn${m.current_hp != null && m.max_hp != null ? ` · ${m.current_hp}/${m.max_hp} HP` : ''}`}
+                      style={{
+                        fontSize: 8, fontWeight: 800,
+                        padding: '1px 4px', borderRadius: 2,
+                        background: 'rgba(45,212,191,0.14)',
+                        color: '#2dd4bf',
+                        border: '1px solid rgba(45,212,191,0.45)',
+                        letterSpacing: '0.03em', textTransform: 'uppercase',
+                        lineHeight: 1.2, whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        textAlign: 'left' as const,
+                      }}
+                    >
+                      ↳ {m.name}
+                      {m.current_hp != null && m.max_hp != null && (
+                        <span style={{ opacity: 0.75 }}> {m.current_hp}/{m.max_hp}</span>
+                      )}
+                    </span>
+                  ))}
                 </div>
               )}
               {/* v2.126.0 — Phase J pt 4: legendary actions chip. DM-only.
