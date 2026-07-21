@@ -62,7 +62,7 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
       id: 'bardic-inspiration',
       name: 'Bardic Inspiration',
       description: 'Give a creature a Bardic Inspiration die (1d6–1d12) to add to an ability check, attack, or save.',
-      recovery: 'long', // short rest at level 5+
+      recovery: 'long', // upgraded to 'short' at L5+ (Font of Inspiration) in getCharacterResources
       minLevel: 1,
       getMax: (level, scores) => Math.max(1, abilityMod(scores.charisma ?? 10)),
     },
@@ -431,7 +431,15 @@ export function getCharacterResources(
   abilityScores: Record<string, number>
 ): ClassResourceDef[] {
   const resources = CLASS_RESOURCES[className] ?? [];
-  return resources.filter(r => level >= r.minLevel);
+  return resources.filter(r => level >= r.minLevel).map(r => {
+    // v2.623.0 — Font of Inspiration (SRD 5.2.1, Bard level 5):
+    // expended Bardic Inspiration uses also return on a Short Rest
+    // from level 5. Below 5 it stays Long Rest only.
+    if (r.id === 'bardic-inspiration' && level >= 5) {
+      return { ...r, recovery: 'short' as RecoveryType };
+    }
+    return r;
+  });
 }
 
 /** Build the default class_resources object for a new character */

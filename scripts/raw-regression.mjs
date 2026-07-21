@@ -21,6 +21,7 @@ export { SPELLS } from '${process.cwd().replace(/\\/g, '/')}/src/data/spells';
 export { CLASS_COMBAT_ABILITIES } from '${process.cwd().replace(/\\/g, '/')}/src/data/classAbilities';
 export { CLASS_MAP } from '${process.cwd().replace(/\\/g, '/')}/src/data/classes';
 export { FEATS } from '${process.cwd().replace(/\\/g, '/')}/src/data/feats';
+export { getCharacterResources } from '${process.cwd().replace(/\\/g, '/')}/src/data/classResources';
 `);
 
 buildSync({
@@ -39,7 +40,7 @@ buildSync({
   },
 });
 
-const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS } = await import(pathToFileURL(out).href);
+const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources } = await import(pathToFileURL(out).href);
 
 let failures = 0;
 function check(name, cond, detail = '') {
@@ -139,6 +140,14 @@ console.log('— Feats (v2.553) —');
 }
 
 rmSync(tmp, { recursive: true, force: true });
+
+console.log('— Class resources: v2.623 Font of Inspiration gate —');
+{
+  const scores = { charisma: 16 };
+  const bardic = (lvl) => getCharacterResources('Bard', lvl, scores).find((r) => r.id === 'bardic-inspiration');
+  check('Bardic Inspiration L4 recovers on Long Rest', bardic(4)?.recovery === 'long');
+  check('Bardic Inspiration L5+ recovers on Short Rest (Font of Inspiration)', bardic(5)?.recovery === 'short');
+}
 
 console.log(failures === 0 ? `\nRAW regression: ALL CHECKS PASSED` : `\nRAW regression: ${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

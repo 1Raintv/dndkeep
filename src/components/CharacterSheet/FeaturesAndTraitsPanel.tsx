@@ -37,7 +37,10 @@ const TRACKER_CONFIG: Record<string, { rest: 'short' | 'long'; maxFn: (c: Charac
 function getTrackerConfig(featureName: string, c: Character) {
  for (const [key, cfg] of Object.entries(TRACKER_CONFIG)) {
  if (featureName.includes(key)) {
- return { max: cfg.maxFn(c), rest: cfg.rest };
+ // v2.623.0 — Font of Inspiration (Bard 5): Bardic Inspiration
+ // recovers on a Short Rest only from level 5; Long Rest before.
+ const rest = key === 'Bardic Inspiration' && c.level < 5 ? ('long' as const) : cfg.rest;
+ return { max: cfg.maxFn(c), rest };
  }
  }
  return null;

@@ -974,7 +974,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // v2.606.0 — split into full-reset vs partial (2024 RAW): Second
  // Wind / Wild Shape / Channel Divinity regain ONE use (spent count
  // decrements by 1), Action Surge / Bardic Inspiration fully reset.
- const shortRestFeatures = ['Action Surge', 'Bardic Inspiration'];
+ // v2.623.0 — Font of Inspiration gate (SRD 5.2.1, Bard 5): Bardic
+ // Inspiration fully resets on a Short Rest only from Bard level 5;
+ // before that it is Long Rest only (v2.606 left this as a known gap).
+ const shortRestFeatures = ['Action Surge'];
+ if (character.class_name === 'Bard' && character.level >= 5) shortRestFeatures.push('Bardic Inspiration');
  const partialRestFeatures = ['Second Wind', 'Wild Shape', 'Channel Divinity'];
  const newFeatureUses = { ...(character.feature_uses as Record<string, number> ?? {}) };
  for (const name of shortRestFeatures) {
