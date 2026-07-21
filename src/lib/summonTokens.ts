@@ -84,6 +84,18 @@ const SIZE_TO_CELLS: Record<string, number> = {
 
 export type PlaceSummonResult = 'placed' | 'no-scene' | 'not-registered' | 'error';
 
+/** v2.619.0 — Pure anchor math for summon placement (odd cell-count:
+ *  cell center; even: top-left grid intersection). Exported for the
+ *  anchor-check regression gate (scripts/anchor-check.mjs), which
+ *  asserts every write path honors the v2.455 size-parity convention. */
+export function summonAnchorPx(row: number, col: number, cells: number, gridSize: number): { x: number; y: number } {
+  const odd = cells % 2 === 1;
+  return {
+    x: odd ? (col + 0.5) * gridSize : col * gridSize,
+    y: odd ? (row + 0.5) * gridSize : row * gridSize,
+  };
+}
+
 /** Delete a caster's summon tokens for a spell, campaign-wide (any
  *  scene — the active scene may have changed since cast). Exact-name
  *  match on "{label} ({casterName})", scoped to summon-shaped rows only
@@ -225,10 +237,10 @@ export async function placeSummonToken(opts: {
     }
 
     // Anchor px per size-parity semantics (odd: cell center;
-    // even: top-left grid intersection).
-    const odd = cells % 2 === 1;
-    const x = odd ? (col + 0.5) * gs : col * gs;
-    const y = odd ? (row + 0.5) * gs : row * gs;
+    // even: top-left grid intersection). v2.619.0 — extracted to the
+    // pure summonAnchorPx so the anchor-check CI gate can assert this
+    // write path's legality without a DB.
+    const { x, y } = summonAnchorPx(row, col, cells, gs);
 
     const token: Token = {
       id: (globalThis.crypto?.randomUUID?.() ?? `summon-${Date.now()}`),

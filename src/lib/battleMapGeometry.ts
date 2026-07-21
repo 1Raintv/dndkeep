@@ -1044,3 +1044,22 @@ export function findParticipantsInAreaFootprint<P extends ParticipantForTokenLoo
 
   return results;
 }
+
+// ── Anchor legality (v2.619.0) ──────────────────────────────────────
+// The single source of truth for "is this a legal token anchor":
+//   odd cell-count (1×1, 3×3):  anchor sits at a CELL CENTER
+//   even cell-count (2×2, 4×4): anchor sits at a GRID INTERSECTION
+// Established v2.455 after the wrong-attack-position debugging arc;
+// asserted across write paths by scripts/anchor-check.mjs (CI gate).
+export function isLegalAnchorPx(x: number, y: number, cells: number, gridSize: number): boolean {
+  if (gridSize <= 0 || cells <= 0) return false;
+  const eps = 1e-6;
+  const mod = (v: number) => {
+    const r = v % gridSize;
+    return r < 0 ? r + gridSize : r;
+  };
+  const target = cells % 2 === 1 ? gridSize / 2 : 0;
+  const near = (v: number) => Math.abs(mod(v) - target) < eps || Math.abs(mod(v) - target - gridSize) < eps;
+  return near(x) && near(y);
+}
+

@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "raw-check": "node scripts/raw-regression.mjs",
-    "coords-check": "node scripts/coords-tests.mjs"
+    "coords-check": "node scripts/coords-tests.mjs",
+    "anchor-check": "node scripts/anchor-check.mjs"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",

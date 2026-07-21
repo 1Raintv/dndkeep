@@ -74,5 +74,8 @@ jobs:
       - name: Coordinate-system unit tests (Track 0)
         run: npm run coords-check
 
+      - name: Anchor-legality regression (size-parity write paths)
+        run: npm run anchor-check
+
       - name: Build
         run: node node_modules/vite/bin/vite.js build
