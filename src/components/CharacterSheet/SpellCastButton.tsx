@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense } from 'react';
 import { SUMMON_TOKEN_SPELLS, placeSummonToken } from '../../lib/summonTokens';
+import SummonFormPickerModal from './SummonFormPickerModal';
 import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
@@ -94,6 +95,9 @@ export default function SpellCastButton({
  // v2.115.0 — Phase H pt 6: open target picker after casting a registry
  // buff spell (Bless, Hunter's Mark, Hex, Divine Favor) while in combat.
  const [buffPickerOpen, setBuffPickerOpen] = useState(false);
+ // v2.615.0 — creature-summon form picker (Find Familiar): holds the
+ // spell id whose spec.creature.forms the modal should list.
+ const [summonFormPickerFor, setSummonFormPickerFor] = useState<string | null>(null);
  // v2.607.0 — slot level captured at cast time so the buff picker can
  // scale slot-dependent buffs (Armor of Agathys 5×slot).
  const [buffPickerSlot, setBuffPickerSlot] = useState<number | undefined>(undefined);
@@ -167,6 +171,13 @@ export default function SpellCastButton({
  // or RLS denial degrades silently (result logged), never blocking
  // the cast itself.
  if (campaignId && SUMMON_TOKEN_SPELLS[spell.id]) {
+ const summonSpec = SUMMON_TOKEN_SPELLS[spell.id];
+ if (summonSpec.creature) {
+ // v2.615.0 — Phase B1: creature-backed summons (Find Familiar)
+ // need a form choice first. The modal lists ONLY the spell's
+ // RAW-allowed forms; placement happens on pick.
+ setSummonFormPickerFor(spell.id);
+ } else {
  placeSummonToken({
  campaignId,
  casterCharacterId: character.id,
@@ -175,6 +186,7 @@ export default function SpellCastButton({
  }).then(res => {
  if (res !== 'placed') console.info('[SpellCastButton] summon token not placed:', res);
  });
+ }
  }
  }
 
@@ -1335,6 +1347,24 @@ export default function SpellCastButton({
      fallback simple and centralizes the loading fade. */}
  <Suspense fallback={null}>
  {/* v2.115.0 — Phase H pt 6: buff target picker for registry spells */}
+ {summonFormPickerFor && campaignId && SUMMON_TOKEN_SPELLS[summonFormPickerFor]?.creature && (
+ <SummonFormPickerModal
+ title={`${SUMMON_TOKEN_SPELLS[summonFormPickerFor].label} — choose a form`}
+ formIds={SUMMON_TOKEN_SPELLS[summonFormPickerFor]!.creature!.forms}
+ onPick={(monsterId) => {
+ placeSummonToken({
+ campaignId,
+ casterCharacterId: character.id,
+ casterName: character.name,
+ spellId: summonFormPickerFor,
+ monsterId,
+ }).then(res => {
+ if (res !== 'placed') console.info('[SpellCastButton] creature summon not placed:', res);
+ });
+ }}
+ onClose={() => setSummonFormPickerFor(null)}
+ />
+ )}
  {buffPickerOpen && campaignId && (
  <BuffTargetPickerModal
  campaignId={campaignId}

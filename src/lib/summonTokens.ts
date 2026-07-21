@@ -45,6 +45,13 @@ export interface SummonTokenSpec {
    *  plus RAW self-replacing effects like Mage Hand / Find Steed).
    *  placeSummonToken removes the previous token before placing. */
   singleton: boolean;
+  /** v2.615.0 — Phase B1: this summon is a REAL creature. `forms`
+   *  lists the monster ids the caster may choose from (Find Familiar's
+   *  RAW 2024 list). When a monsterId is passed to placeSummonToken,
+   *  the combatant is created with definition_type 'srd_monster' and
+   *  real HP from the catalogue, owned by the casting player — the
+   *  foundation for the B2 player minion panel. */
+  creature?: { forms: string[] };
 }
 
 export const SUMMON_TOKEN_SPELLS: Record<string, SummonTokenSpec> = {
@@ -59,6 +66,15 @@ export const SUMMON_TOKEN_SPELLS: Record<string, SummonTokenSpec> = {
   'mage-hand':        { label: 'Mage Hand',        color: 0x93c5fd, size: 'medium', singleton: true },
   'arcane-eye':       { label: 'Arcane Eye',       color: 0x818cf8, size: 'medium', singleton: true },
   'find-steed':       { label: 'Steed',            color: 0xa16207, size: 'large',  singleton: true },
+  // v2.615.0 — Phase B1. SRD 5.2.1 Find Familiar: choose a Beast form
+  // (Bat, Cat, Frog, Hawk, Lizard, Octopus, Owl, Rat, Raven, Spider,
+  // or Weasel). The familiar is a Celestial/Fey/Fiend (player's
+  // choice) using the Beast's stat block — creature type is cosmetic
+  // here. RAW: you can't have more than one familiar → singleton
+  // (recasting replaces / changes form). Lasts until dismissed or the
+  // caster's next Long Rest (2024 Wild Companion duration note).
+  'find-familiar':    { label: 'Familiar',         color: 0x67e8f9, size: 'tiny',   singleton: true,
+    creature: { forms: ['bat','cat','frog','hawk','lizard','octopus','owl','rat','raven','spider','weasel'] } },
   'flame-blade':      { label: 'Flame Blade',      color: 0xf97316, size: 'medium', singleton: true },
 };
 
@@ -98,7 +114,10 @@ export async function removeSummonTokens(opts: {
         .select('id')
         .eq('campaign_id', opts.campaignId)
         .eq('name', targetName)
-        .eq('definition_type', 'custom');
+        // v2.615.0 — creature summons (familiars) are 'srd_monster';
+        // effect tokens remain 'custom'. Both are summon-shaped and
+        // name+campaign scoped, so the delete stays safe.
+        .in('definition_type', ['custom', 'srd_monster']);
       if (error || !rows?.length) return 0;
       const ids = (rows as Array<{ id: string }>).map(r => r.id);
       await db.from('scene_token_placements').delete().in('combatant_id', ids);
@@ -142,9 +161,16 @@ export async function placeSummonToken(opts: {
   casterCharacterId: string;
   casterName: string;
   spellId: string;
+  /** v2.615.0 — chosen creature form for spec.creature summons
+   *  (must be one of spec.creature.forms). */
+  monsterId?: string;
 }): Promise<PlaceSummonResult> {
   const spec = SUMMON_TOKEN_SPELLS[opts.spellId];
   if (!spec) return 'not-registered';
+  // Only forms the spell actually allows — anything else is ignored.
+  const monsterId = spec.creature && opts.monsterId && spec.creature.forms.includes(opts.monsterId)
+    ? opts.monsterId
+    : null;
 
   try {
     // Singleton effects (concentration + RAW self-replacing): recast
@@ -160,8 +186,21 @@ export async function placeSummonToken(opts: {
     const map = await loadActiveBattleMap(opts.campaignId);
     if (!map) return 'no-scene';
 
+    // v2.615.0 — creature summons pull real size/HP from the catalogue.
+    let creatureRow: { id: string; hp: number | null; size: string | null } | null = null;
+    if (monsterId) {
+      const { supabase } = await import('./supabase');
+      const { data: m } = await supabase
+        .from('monsters')
+        .select('id, hp, size')
+        .eq('id', monsterId)
+        .maybeSingle();
+      creatureRow = (m as any) ?? null;
+    }
+    const tokenSize = ((creatureRow?.size ?? '') .toLowerCase() || spec.size) as typeof spec.size;
+
     const gs = map.grid_size || 50;
-    const cells = SIZE_TO_CELLS[spec.size] ?? 1;
+    const cells = SIZE_TO_CELLS[tokenSize] ?? SIZE_TO_CELLS[spec.size] ?? 1;
 
     // Anchor cell: first free 8-neighbor of the caster's token,
     // falling back to the caster's own cell, then map center.
@@ -195,7 +234,7 @@ export async function placeSummonToken(opts: {
       id: (globalThis.crypto?.randomUUID?.() ?? `summon-${Date.now()}`),
       sceneId: map.id,
       x, y,
-      size: spec.size,
+      size: tokenSize,
       rotation: 0,
       name: `${spec.label} (${opts.casterName})`,
       color: spec.color,
@@ -211,9 +250,41 @@ export async function placeSummonToken(opts: {
     const { getUseCombatantsFlag, createPlacement } = await import('./api/scenePlacements');
     const useNewPath = await getUseCombatantsFlag(opts.campaignId);
     if (useNewPath) {
+      // v2.615.0 — creature summons: create the combatant ourselves so
+      // it carries the real statblock reference + HP, then hand the id
+      // to createPlacement. owner_id = the casting player's session
+      // (same convention createPlacement uses), which is what the B2
+      // minion panel will key player control on.
+      if (creatureRow) {
+        const { supabase } = await import('./supabase');
+        const { data: { session } } = await supabase.auth.getSession();
+        const ownerId = session?.user?.id ?? null;
+        const { data: cb, error: cbErr } = await (supabase as any)
+          .from('combatants')
+          .insert({
+            campaign_id: opts.campaignId,
+            owner_id: ownerId,
+            name: token.name,
+            definition_type: 'srd_monster',
+            definition_id: creatureRow.id,
+            current_hp: creatureRow.hp ?? 1,
+            max_hp: creatureRow.hp ?? 1,
+          })
+          .select('id')
+          .single();
+        if (cbErr || !cb) {
+          console.error('[summonTokens] creature combatant insert failed:', cbErr);
+          return 'error';
+        }
+        const placed = await createPlacement(token, { combatantId: cb.id as string, campaignId: opts.campaignId });
+        return placed ? 'placed' : 'error';
+      }
       const placed = await createPlacement(token, { campaignId: opts.campaignId });
       return placed ? 'placed' : 'error';
     }
+    // Legacy path: creature summons place as plain tokens (no
+    // combatant layer exists there); statblock-backed control is a
+    // new-path feature.
     const { createToken } = await import('./api/sceneTokens');
     const ok = await createToken(token);
     return ok ? 'placed' : 'error';
