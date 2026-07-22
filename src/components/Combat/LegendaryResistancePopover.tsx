@@ -25,17 +25,20 @@ interface Props {
   encounterId: string;
   anchor: { x: number; y: number };
   dmUserName?: string;
+  inLair?: boolean;   // v2.625.0 — 2024 in-lair benefit (+1 LR/Day)
   onClose: () => void;
 }
 
 export default function LegendaryResistancePopover({
-  participant, campaignId, encounterId, anchor, dmUserName, onClose,
+  participant, campaignId, encounterId, anchor, dmUserName, inLair, onClose,
 }: Props) {
   const [busy, setBusy] = useState<'spend' | 'reset' | null>(null);
 
   const total = participant.legendary_resistance ?? 0;
   const used = participant.legendary_resistance_used ?? 0;
-  const remaining = Math.max(0, total - used);
+  // v2.625.0 — in-lair +1 LR/Day ("3/Day, or 4/Day in Lair")
+  const lrCap = total + (inLair && total > 0 ? 1 : 0);
+  const remaining = Math.max(0, lrCap - used);
 
   async function handleSpend() {
     if (busy) return;
@@ -143,7 +146,7 @@ export default function LegendaryResistancePopover({
             marginLeft: 6, fontFamily: 'var(--ff-stat)', fontSize: 12,
             fontWeight: 800, color: 'var(--t-2)',
           }}>
-            {remaining}/{total}
+            {remaining}/{lrCap}{inLair && total > 0 ? ' (in Lair)' : ''}
           </span>
         </div>
 

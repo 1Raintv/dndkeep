@@ -16,6 +16,7 @@
 // the Phase A log renders the full story end-to-end.
 
 import { supabase } from './supabase';
+import { encounterLairBonus } from './legendaryResistance';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
@@ -723,7 +724,9 @@ export async function rollSave(
       .maybeSingle();
     const lrTotal = (lrRow?.legendary_resistance as number | null) ?? 0;
     const lrUsed = (lrRow?.legendary_resistance_used as number | null) ?? 0;
-    if (lrTotal > 0 && lrUsed < lrTotal) {
+    // v2.625.0 — 2024 in-lair benefit: +1 LR/Day while in_lair.
+    const lrCap = lrTotal > 0 ? lrTotal + await encounterLairBonus(atk.encounter_id ?? null) : 0;
+    if (lrTotal > 0 && lrUsed < lrCap) {
       triggerLrPrompt = true;
     }
   }

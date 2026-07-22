@@ -33,6 +33,8 @@ export default function LegendaryResistancePromptModal({
 }: Props) {
   const [prompts, setPrompts] = useState<PendingAttack[]>([]);
   const [lrStateById, setLrStateById] = useState<Record<string, { total: number; used: number }>>({});
+  // v2.625.0 — 2024 in-lair benefit: encounter_id -> in_lair flag
+  const [lairByEnc, setLairByEnc] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
 
   async function load() {
@@ -69,6 +71,22 @@ export default function LegendaryResistancePromptModal({
     } else {
       setLrStateById({});
     }
+
+    // v2.625.0 — in-lair flags for the encounters behind these prompts
+    const encIds = Array.from(
+      new Set(rows.map(r => r.encounter_id).filter((x): x is string => !!x)),
+    );
+    if (encIds.length > 0) {
+      const { data: encData } = await supabase
+        .from('combat_encounters')
+        .select('id, in_lair')
+        .in('id', encIds);
+      const emap: Record<string, boolean> = {};
+      for (const e of (encData ?? []) as { id: string; in_lair?: boolean }[]) {
+        emap[e.id] = e.in_lair === true;
+      }
+      setLairByEnc(emap);
+    }
   }
 
   useEffect(() => {
@@ -93,7 +111,10 @@ export default function LegendaryResistancePromptModal({
   // Handle one prompt at a time — queue the rest. FIFO (oldest first).
   const atk = prompts[0];
   const lrState = atk.target_participant_id ? lrStateById[atk.target_participant_id] : undefined;
-  const chargesLeft = lrState ? lrState.total - lrState.used : 0;
+  // v2.625.0 — in-lair +1 LR/Day ("3/Day, or 4/Day in Lair")
+  const promptInLair = !!(atk.encounter_id && lairByEnc[atk.encounter_id]);
+  const lrCap = lrState ? lrState.total + (promptInLair && lrState.total > 0 ? 1 : 0) : 0;
+  const chargesLeft = lrState ? lrCap - lrState.used : 0;
 
   async function onAccept() {
     if (busy) return;
@@ -153,7 +174,7 @@ export default function LegendaryResistancePromptModal({
           }}>
             <span>Charges remaining</span>
             <span style={{ fontFamily: 'var(--ff-stat)', fontWeight: 800, fontSize: 15, color: chargesLeft > 0 ? gold : 'var(--t-3)' }}>
-              {chargesLeft}/{lrState?.total ?? 0}
+              {chargesLeft}/{lrCap}{promptInLair ? ' (in Lair)' : ''}
             </span>
           </div>
           <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5, fontStyle: 'italic' }}>

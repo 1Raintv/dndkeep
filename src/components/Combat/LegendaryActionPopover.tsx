@@ -21,10 +21,11 @@ interface Props {
   campaignId: string;
   encounterId: string;
   anchor: { x: number; y: number };
+  inLair?: boolean;   // v2.625.0 — 2024 in-lair benefit (+1 LA use)
   onClose: () => void;
 }
 
-export default function LegendaryActionPopover({ participant, campaignId, encounterId, anchor, onClose }: Props) {
+export default function LegendaryActionPopover({ participant, campaignId, encounterId, anchor, inLair, onClose }: Props) {
   const [showConfig, setShowConfig] = useState(false);
   // v2.446.0 — When non-null, the resolver modal is open with this LA
   // option queued. Closing the resolver returns control to the popover
@@ -34,6 +35,8 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
   const actions = participant.legendary_actions_config ?? [];
   const remaining = participant.legendary_actions_remaining ?? 0;
   const total = participant.legendary_actions_total ?? 0;
+  // v2.625.0 — in-lair +1 LA use ("Legendary Action Uses: 3 (4 in Lair)")
+  const laCap = total + (inLair && total > 0 ? 1 : 0);
 
   // v2.446.0 — Open the resolver modal. The actual LA-point spend
   // happens inside the resolver on Confirm (so cancelled / aborted
@@ -112,7 +115,7 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
             fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
             letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f59e0b',
           }}>
-            🐉 Legendary · {remaining}/{total}
+            🐉 Legendary · {remaining}/{laCap}{inLair && total > 0 ? ' (in Lair)' : ''}
           </div>
           <button
             onClick={() => setShowConfig(true)}

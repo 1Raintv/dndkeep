@@ -170,6 +170,9 @@ export default function InitiativeStrip({ isDM }: Props) {
   // Order by turn_order, drop dead+stable
   const ordered = [...participants].sort((a, b) => a.turn_order - b.turn_order);
   const currentIdx = encounter.current_turn_index ?? 0;
+  // v2.625.0 — 2024 in-lair benefit: +1 LR/Day and +1 LA use for
+  // legendary creatures while the encounter is flagged in_lair.
+  const inLair = (encounter as { in_lair?: boolean }).in_lair === true;
 
   async function onEndTurn() {
     if (!encounter) return;
@@ -739,6 +742,7 @@ export default function InitiativeStrip({ isDM }: Props) {
               {isDM && (p.legendary_actions_total ?? 0) > 0 && (() => {
                 const laRem = p.legendary_actions_remaining ?? 0;
                 const laTot = p.legendary_actions_total ?? 0;
+                const laCap = laTot + (inLair ? 1 : 0);   // v2.625.0 in-lair +1
                 const hasPoints = laRem > 0;
                 return (
                   <span
@@ -747,7 +751,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                       setLaPopover({ participant: p, anchor: { x: rect.left, y: rect.bottom } });
                     }}
-                    title={`Legendary Actions: ${laRem}/${laTot} remaining (click to spend)`}
+                    title={`Legendary Actions: ${laRem}/${laCap} remaining${inLair ? ' (+1 in Lair)' : ''} (click to spend)`}
                     style={{
                       marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 2,
                       fontSize: 9, fontWeight: 800,
@@ -760,7 +764,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                       alignSelf: 'center',
                     }}
                   >
-                    🐉 LA {laRem}/{laTot}
+                    🐉 LA {laRem}/{laCap}
                   </span>
                 );
               })()}
@@ -773,7 +777,8 @@ export default function InitiativeStrip({ isDM }: Props) {
               {isDM && (p.legendary_resistance ?? 0) > 0 && (() => {
                 const lrTot = p.legendary_resistance ?? 0;
                 const lrUsed = p.legendary_resistance_used ?? 0;
-                const lrRem = Math.max(0, lrTot - lrUsed);
+                const lrCap = lrTot + (inLair ? 1 : 0);   // v2.625.0 in-lair +1
+                const lrRem = Math.max(0, lrCap - lrUsed);
                 const hasCharges = lrRem > 0;
                 // Use a distinct gold tone from the amber LA chip so the two
                 // chips are visually independent at a glance.
@@ -784,7 +789,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                       setLrPopover({ participant: p, anchor: { x: rect.left, y: rect.bottom } });
                     }}
-                    title={`Legendary Resistance: ${lrRem}/${lrTot} remaining (click for options)`}
+                    title={`Legendary Resistance: ${lrRem}/${lrCap} remaining${inLair ? ' (+1 in Lair)' : ''} (click for options)`}
                     style={{
                       marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 2,
                       fontSize: 9, fontWeight: 800,
@@ -797,7 +802,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                       alignSelf: 'center',
                     }}
                   >
-                    🛡 LR {lrRem}/{lrTot}
+                    🛡 LR {lrRem}/{lrCap}
                   </span>
                 );
               })()}
@@ -940,6 +945,7 @@ export default function InitiativeStrip({ isDM }: Props) {
           campaignId={encounter.campaign_id}
           encounterId={encounter.id}
           anchor={laPopover.anchor}
+          inLair={inLair}
           onClose={() => setLaPopover(null)}
         />
       )}
@@ -950,6 +956,7 @@ export default function InitiativeStrip({ isDM }: Props) {
           campaignId={encounter.campaign_id}
           encounterId={encounter.id}
           anchor={lrPopover.anchor}
+          inLair={inLair}
           onClose={() => setLrPopover(null)}
         />
       )}

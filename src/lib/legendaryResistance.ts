@@ -19,6 +19,22 @@ import { emitCombatEvent, newChainId } from './combatEvents';
 import { isCreatureParticipantType } from './participantType';
 import type { PendingAttack } from '../types';
 
+/** v2.625.0 — 2024 MM in-lair benefit. Legendary creatures fighting in
+ *  their own lair get +1 Legendary Resistance/Day and +1 Legendary Action
+ *  use ("Legendary Resistance (3/Day, or 4/Day in Lair)"; "Legendary
+ *  Action Uses: 3 (4 in Lair)"). Gate: the DM-set encounter-level
+ *  in_lair flag; applies to every legendary participant in the
+ *  encounter. Read-time only — stored totals are never mutated. */
+export async function encounterLairBonus(encounterId: string | null | undefined): Promise<number> {
+  if (!encounterId) return 0;
+  const { data } = await supabase
+    .from('combat_encounters')
+    .select('in_lair')
+    .eq('id', encounterId)
+    .maybeSingle();
+  return (data as { in_lair?: boolean } | null)?.in_lair === true ? 1 : 0;
+}
+
 export interface LrDecisionInput {
   attackId: string;
   dmUserName?: string;   // for the event actor_name; defaults to 'DM'
@@ -49,7 +65,9 @@ export async function acceptLegendaryResistance(
       .maybeSingle();
     const total = (partRow?.legendary_resistance as number | null) ?? 0;
     const used = (partRow?.legendary_resistance_used as number | null) ?? 0;
-    newUsed = Math.min(total, used + 1);
+    // v2.625.0 — in-lair +1 LR/Day cap
+    const lrCap = total + (total > 0 ? await encounterLairBonus(atk.encounter_id ?? null) : 0);
+    newUsed = Math.min(lrCap, used + 1);
     await supabase
       .from('combat_participants')
       .update({ legendary_resistance_used: newUsed })
@@ -140,7 +158,9 @@ export async function spendLegendaryResistanceManually(
   const total = (partRow.legendary_resistance as number | null) ?? 0;
   const used = (partRow.legendary_resistance_used as number | null) ?? 0;
   if (total <= 0) return;              // no LR to spend
-  if (used >= total) return;           // already expended
+  // v2.625.0 — in-lair +1 LR/Day cap
+  const lrCap = total + await encounterLairBonus((partRow as { encounter_id?: string | null }).encounter_id ?? null);
+  if (used >= lrCap) return;           // already expended
   const newUsed = used + 1;
   await supabase
     .from('combat_participants')

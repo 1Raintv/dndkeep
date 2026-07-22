@@ -759,7 +759,11 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   // has LAs configured.
   const laTotal = (incomingParticipant.legendary_actions_total as number | null) ?? 0;
   const laRemaining = (incomingParticipant.legendary_actions_remaining as number | null) ?? 0;
-  const needsLaRefill = laTotal > 0 && laRemaining < laTotal;
+  // v2.625.0 — 2024 in-lair benefit ("Legendary Action Uses: 3 (4 in
+  // Lair)"): while the encounter is flagged in_lair, the pool refills
+  // to total+1. Read-time only; stored total never changes.
+  const laCap = laTotal > 0 && (encounter as { in_lair?: boolean }).in_lair === true ? laTotal + 1 : laTotal;
+  const needsLaRefill = laTotal > 0 && laRemaining < laCap;
 
   const { error: partUpdErr } = await supabase
     .from('combat_participants')
@@ -775,7 +779,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       // multiattack count. Reads back attacks_per_action because
       // that's the source of truth (set at insert + DM-editable later).
       attacks_remaining: (incomingParticipant as any).attacks_per_action ?? 1,
-      ...(needsLaRefill ? { legendary_actions_remaining: laTotal } : {}),
+      ...(needsLaRefill ? { legendary_actions_remaining: laCap } : {}),
     })
     .eq('id', incomingParticipant.id);
   if (partUpdErr) {
