@@ -1427,7 +1427,13 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       //   2. Their own active_buffs clear (they don't benefit while dead)
       //   3. active_conditions stays — a dead body can still be Prone/etc.
       //      for description purposes, though it's moot mechanically
-      if (isDead && !tgt.is_dead) {
+      // v2.627.0 — RAW: dropping to 0 HP makes a creature Unconscious
+      // (Incapacitated), which ends concentration immediately — no save.
+      // Death cleanup and downed cleanup share this block; own-buff
+      // clearing stays death-only (Unconscious doesn't strip a
+      // creature's own non-concentration buffs, e.g. Aid persists).
+      const droppedTo0 = hpAfter === 0 && hpBefore > 0 && !isDead;
+      if ((isDead && !tgt.is_dead) || droppedTo0) {
         const { data: deadRow } = await supabase
           .from('combat_participants')
           .select('entity_id, participant_type')
@@ -1452,7 +1458,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
         // removed alongside the column. Character-side concentration is
         // already dropped above; the broad cleanup walk below handles
         // every condition/buff this caster placed via concentration.
-        if (tgtCombatantId) {
+        if (tgtCombatantId && isDead) {
           await supabase
             .from('combatants')
             .update({ active_buffs: asJsonb([]) })
@@ -1508,17 +1514,19 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
           actorName: 'System',
           targetType: (deadRow?.participant_type ?? 'character') as any,
           targetName: tgt.name,
-          eventType: 'participant_died',
-          payload: {
-            cleanup: 'buffs_and_concentration_dropped',
-          },
+          eventType: isDead ? 'participant_died' : 'concentration_broken',
+          payload: isDead
+            ? { cleanup: 'buffs_and_concentration_dropped' }
+            : { cleanup: 'concentration_dropped_at_0_hp', reason: 'unconscious' },
         });
       }
 
       // v2.99.0 — Phase E: concentration save on damage.
       // Only characters maintain concentration. Target must be a character
       // who's currently concentrating, and damage must exceed 0. DC per RAW.
-      if (dmg > 0 && tgt.participant_type === 'character' && !isDead) {
+      // v2.627.0 — no concentration save when the hit downed them:
+      // concentration already ended via the Unconscious cleanup above.
+      if (dmg > 0 && tgt.participant_type === 'character' && !isDead && !droppedTo0) {
         await runConcentrationSave({
           campaignId: atk.campaign_id,
           encounterId: atk.encounter_id,
