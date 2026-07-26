@@ -13,12 +13,12 @@ const AoEBadge: React.FC<AoEBadgeProps> = ({ spell }) => {
   // Color-coded icons for different AoE types (D&D 5e standard shapes)
   const getTypeIcon = (aoeType: string) => {
     switch (aoeType.toLowerCase()) {
-      case 'sphere': return '🔴';      // Fireball, etc.
-      case 'cone': return '🟡';        // Burning Hands, etc.
-      case 'cube': return '🟢';        // Web, etc. 
-      case 'cylinder': return '🔵';    // Flame Strike, etc.
-      case 'line': return '🟠';        // Lightning Bolt, etc.
-      default: return '⚫';
+      case 'sphere': return '●';      // Fireball, etc.
+      case 'cone': return '▲';        // Burning Hands, etc.
+      case 'cube': return '■';        // Web, etc. 
+      case 'cylinder': return '◎';    // Flame Strike, etc.
+      case 'line': return '―';        // Lightning Bolt, etc.
+      default: return '◆';
     }
   };
 

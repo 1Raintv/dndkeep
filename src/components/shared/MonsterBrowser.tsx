@@ -580,7 +580,7 @@ function StatBlock({
                       letterSpacing: '0.05em', textTransform: 'uppercase' as const,
                       verticalAlign: 'middle',
                     }}>
-                      🛡 {m.legendary_resistance_count}/Day
+                      ◈ {m.legendary_resistance_count}/Day
                     </span>
                   )}
                   <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>. </span>
@@ -641,7 +641,7 @@ function StatBlock({
                         title={`Prompt party for DC ${a.dc_value} ${a.dc_type} save`}
                         style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.5)', borderRadius: 999, padding: '2px 8px', cursor: 'pointer', minHeight: 0 }}
                       >
-                        🎲 DC {a.dc_value} {a.dc_type}
+                        ⚄ DC {a.dc_value} {a.dc_type}
                       </button>
                     ) : (
                       <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 999, padding: '1px 6px' }}>

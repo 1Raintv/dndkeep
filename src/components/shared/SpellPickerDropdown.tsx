@@ -382,7 +382,7 @@ export default function SpellPickerDropdown({
  transition: 'all 0.15s',
  }}
  >
- {sel ? '− Remove' : blocked ? '🔒 Full' : '+ Add'}
+ {sel ? '− Remove' : blocked ? '⊘ Full' : '+ Add'}
  </button>
  )}
 

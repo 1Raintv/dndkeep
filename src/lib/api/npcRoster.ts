@@ -37,7 +37,7 @@ export interface RosterEntry {
   traits: string;
   immunities: string;
   image_url: string | null;
-  emoji: string;         // '👹' default
+  emoji: string;         // '⚔' default
   color: string;         // '#ef4444' hex string
   source_monster_id: string | null;
   // v2.253.0 — lowercase ability keys the NPC has save proficiency in.

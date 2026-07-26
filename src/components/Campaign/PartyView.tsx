@@ -117,7 +117,7 @@ export default function PartyView({ campaignId }: PartyViewProps) {
                       {m.name}
                     </span>
                     {m.inspiration && (
-                      <span title="Has Inspiration" style={{ color: 'var(--c-amber-l)', fontSize: 12 }}>⭐</span>
+                      <span title="Has Inspiration" style={{ color: 'var(--c-amber-l)', fontSize: 12 }}>★</span>
                     )}
                     {isDowned && (
                       <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-red-l)', background: 'rgba(155,28,28,0.2)', padding: '1px 5px', borderRadius: 3, letterSpacing: '0.06em', textTransform: 'uppercase' }}>

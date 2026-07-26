@@ -369,7 +369,7 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  boxShadow:active?'0 0 8px rgba(245,158,11,0.4)':'none',
  transition:'all .15s',
  }}>
- {locked&&<span style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'rgba(0,0,0,0.55)',borderRadius:3}}>🔒</span>}
+ {locked&&<span style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'rgba(0,0,0,0.55)',borderRadius:3}}>⊘</span>}
  </button>
  );
  })}

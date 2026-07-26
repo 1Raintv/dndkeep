@@ -37,7 +37,7 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
   const [addInit, setAddInit] = useState('');
   const [addHp, setAddHp] = useState('');
   const [addAc, setAddAc] = useState('');
-  const [addEmoji, setAddEmoji] = useState('👹');
+  const [addEmoji, setAddEmoji] = useState('⚔');
   const [showAdd, setShowAdd] = useState(false);
   const [loading, setLoading] = useState(true);
   // v2.383.0 — Drag-to-reorder state ported from the (now deleted) Campaign
@@ -79,7 +79,7 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
           // Show local notification
           if ('Notification' in window && Notification.permission === 'granted') {
             navigator.serviceWorker?.ready.then(reg => {
-              reg.showNotification("⚔️ Your Turn!", {
+              reg.showNotification("⚔ Your Turn!", {
                 body: `Round ${payload.round} — it's your move, ${payload.name}!`,
                 icon: '/icon-192.png',
                 tag: 'dndkeep-initiative',
@@ -209,7 +209,7 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontWeight: 700, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: state.combat_active ? '#f87171' : 'var(--t-3)' }}>
-            {state.combat_active ? `⚔️ Round ${state.round}` : '⚔️ Initiative'}
+            {state.combat_active ? `⚔ Round ${state.round}` : '⚔ Initiative'}
           </span>
           {state.combat_active && (
             <span style={{ fontSize: 10, color: 'var(--t-3)' }}>
@@ -243,7 +243,7 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
       {isDM && showAdd && (
         <div style={{ background: '#0d1117', border: '1px solid var(--c-border)', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input value={addEmoji} onChange={e => setAddEmoji(e.target.value)} placeholder="👹" style={{ width: 36, textAlign: 'center', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 4, color: 'var(--t-1)', fontSize: 16, padding: '4px 0' }} />
+            <input value={addEmoji} onChange={e => setAddEmoji(e.target.value)} placeholder="⚔" style={{ width: 36, textAlign: 'center', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 4, color: 'var(--t-1)', fontSize: 16, padding: '4px 0' }} />
             <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="Name" style={{ flex: 1, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 4, color: 'var(--t-1)', fontSize: 12, padding: '4px 8px', fontFamily: 'var(--ff-body)' }} />
             <input value={addInit} onChange={e => setAddInit(e.target.value)} placeholder="Init" type="number" style={{ width: 48, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 4, color: 'var(--t-1)', fontSize: 12, padding: '4px 6px', fontFamily: 'var(--ff-body)' }} />
             <input value={addHp} onChange={e => setAddHp(e.target.value)} placeholder="HP" type="number" style={{ width: 48, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 4, color: 'var(--t-1)', fontSize: 12, padding: '4px 6px', fontFamily: 'var(--ff-body)' }} />
@@ -337,7 +337,7 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
                 </div>
 
                 {/* Emoji + name */}
-                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{c.emoji ?? (c.isPlayer ? '🧙' : '👹')}</span>
+                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{c.emoji ?? (c.isPlayer ? '✧' : '⚔')}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
                     fontWeight: 700, fontSize: 12,
@@ -407,7 +407,7 @@ export default function InitiativeTracker({ campaignId, isDM, characterName, cha
 
                 {/* AC */}
                 {c.ac !== undefined && (
-                  <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>🛡{c.ac}</span>
+                  <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>◈{c.ac}</span>
                 )}
 
                 {/* DM HP controls */}

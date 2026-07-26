@@ -129,7 +129,7 @@ export default function ConcentrationSavePromptModal({ characterId }: Props) {
         }}>
           <div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: timerColor }}>
-              🌀 Concentration Save
+              ↺ Concentration Save
             </div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 16, fontWeight: 800, color: 'var(--t-1)', marginTop: 2 }}>
               Hold focus on {urgent.spell_name}?
@@ -181,7 +181,7 @@ export default function ConcentrationSavePromptModal({ characterId }: Props) {
               minHeight: 0,
             }}
           >
-            🎲 Roll Save
+            ⚄ Roll Save
           </button>
         </div>
       </div>

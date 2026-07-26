@@ -646,7 +646,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                               : status === 'no-scene' ? 'Open Map First'
                               : status === 'error' ? '✕ Failed'
                               : n > 0 ? `✓ ${n} on map · +Place`
-                              : '🗺 Place on Map';
+                              : '❖ Place on Map';
                             const tooltip =
                               n > 0
                                 ? `${n} token${n === 1 ? '' : 's'} of this creature already on the active scene. Click to place another.`

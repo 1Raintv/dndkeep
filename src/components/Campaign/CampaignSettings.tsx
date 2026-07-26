@@ -778,7 +778,7 @@ export default function CampaignSettings({ campaign, onClose, onDeleted, onUpdat
                   color: 'var(--c-gold-l)', marginBottom: 8,
                   display: 'flex', alignItems: 'center', gap: 8,
                 }}>
-                  <span style={{ fontSize: 12 }}>{sprUnlocked ? '🔓' : '🔒'}</span>
+                  <span style={{ fontSize: 12 }}>{sprUnlocked ? '✓' : '⊘'}</span>
                   Time Scale
                   {savingSpr && <span style={{ fontSize: 9, color: 'var(--t-3)', fontWeight: 400 }}>Saving…</span>}
                   {sprSaved && <span style={{ fontSize: 9, color: '#34d399', fontWeight: 400 }}>✓ Saved</span>}

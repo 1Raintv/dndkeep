@@ -57,7 +57,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   const [coverLevel, setCoverLevel] = useState<'none' | 'half' | 'three_quarters' | 'total'>('none');
   const [persistCover, setPersistCover] = useState(false);
   // v2.132.0 — Phase K pt 5: track where the current coverLevel value came
-  // from so we can show a 🧱 badge when it was derived from walls. 'manual'
+  // from so we can show a ▦ badge when it was derived from walls. 'manual'
   // means the DM changed the dropdown themselves (or the default 'none').
   // The auto-fill useEffect sets this to 'walls' or 'persistent' when it
   // updates cover; the dropdown onChange resets it to 'manual'.
@@ -543,7 +543,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                               border: `1px solid ${color}55`,
                               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
                             }}>
-                              🧱 {label}
+                              ▦ {label}
                             </span>
                           );
                         })()}
@@ -744,7 +744,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                   override via the buttons below — which resets the badge. */}
               {coverSource === 'walls' && coverLevel !== 'none' && (
                 <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 700 }}>
-                  · 🧱 from walls
+                  · ▦ from walls
                 </span>
               )}
               {coverSource === 'persistent' && target && attacker && target.persistent_cover?.[attacker.id] && (
@@ -810,7 +810,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>⚠</span>
                 <div style={{ flex: 1, fontSize: 12, color: '#fbbf24', lineHeight: 1.4 }}>
                   <strong>Friendly fire:</strong> This AoE will hit {friendlyFireTargets.length} {friendlyFireTargets.length === 1 ? 'ally' : 'allies'} — <span style={{ color: 'var(--t-2)' }}>{friendlyFireTargets.map(t => t.name).join(', ')}</span>.
                 </div>

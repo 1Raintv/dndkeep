@@ -5017,11 +5017,11 @@ function TokenLayer(props: {
       //
       // v2.414.0 — Only render during combat. Outside combat locks
       // are inert (DM moves anything, players move nothing), so the
-      // 🔓 indicator outside combat communicated nothing useful and
+      // ✓ indicator outside combat communicated nothing useful and
       // confused the visual. Combat-only display matches the
       // "tokens unlocked before combat, locked when combat starts"
       // mental model: outside combat → no indicators (everything
-      // moves freely for the DM); inside combat → 🔓 marks tokens
+      // moves freely for the DM); inside combat → ✓ marks tokens
       // the DM has explicitly exempted from the active-turn gate.
       //
       // Lazy-create on first need, toggle .visible thereafter.
@@ -5030,7 +5030,7 @@ function TokenLayer(props: {
       if (showUnlockedGlyph) {
         if (!currentEntry.lockGlyph) {
           const glyph = new Text({
-            text: '🔓',
+            text: '✓',
             style: new TextStyle({
               fontFamily: 'sans-serif',
               fontSize: 16,
@@ -6183,7 +6183,7 @@ function TokenContextMenu(props: {
         // map markers) once at scene setup, and want it on the top of
         // the menu rather than buried below resize/recolor.
         ...(isDM ? [{
-          label: (token as any).isLocked ? '🔓 Unlock Token' : '🔒 Lock Token',
+          label: (token as any).isLocked ? '✓ Unlock Token' : '⊘ Lock Token',
           onClick: () => {
             applyPatch({ isLocked: !(token as any).isLocked } as any);
             onClose();
@@ -6199,8 +6199,8 @@ function TokenContextMenu(props: {
         // player to maneuver during combat.
         ...(isDM && !token.characterId && playerCharacters && playerCharacters.length > 0 ? [{
           label: ((token as any).playerId
-            ? '🎮 Player Control ▸'
-            : '🎮 Grant Player Control ▸'),
+            ? '⚙ Player Control ▸'
+            : '⚙ Grant Player Control ▸'),
           onClick: () => setSubmenu('grant'),
         }] : []),
         // v2.282: Hide/Show toggle. DM-only — RLS already gates the
@@ -6213,7 +6213,7 @@ function TokenContextMenu(props: {
         // because it'd never appear in the player's RLS-filtered
         // SELECT anyway. Hide is meaningful for monsters/NPCs/marks.
         ...(isDM && !token.characterId ? [{
-          label: token.visibleToAll ? '👁 Hide from Players' : '👁 Reveal to Players',
+          label: token.visibleToAll ? '◉ Hide from Players' : '◉ Reveal to Players',
           onClick: () => {
             applyPatch({ visibleToAll: !token.visibleToAll });
             onClose();
@@ -7300,7 +7300,7 @@ function PartyVitalsBar(props: {
           (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-border)';
         }}
       >
-        <span>👥</span>
+        <span>⬡</span>
         <span>Party · {characters.length}</span>
         <span style={{ opacity: 0.6, fontSize: 9 }}>▴</span>
       </button>
@@ -9892,7 +9892,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         borderRadius: 'var(--r-lg, 12px)',
         textAlign: 'center' as const,
       }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🗺️</div>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>❖</div>
         <div style={{
           fontFamily: 'var(--ff-body)', fontSize: 16, fontWeight: 700,
           color: 'var(--t-1)', marginBottom: 8, letterSpacing: '0.02em',
@@ -10126,8 +10126,8 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           </span>
           {([
             { mode: 'bright' as const, icon: '☀', label: 'Bright', tip: 'Daylight / outdoor — players see the entire map (no fog).' },
-            { mode: 'dim'    as const, icon: '🌆', label: 'Dim',    tip: 'Dusk / mood — players see a translucent fog over the map; their vision cones cut clear holes.' },
-            { mode: 'dark'   as const, icon: '🌑', label: 'Dark',   tip: 'Night / dungeon — players only see inside their vision cones; the rest is opaque black.' },
+            { mode: 'dim'    as const, icon: '◐', label: 'Dim',    tip: 'Dusk / mood — players see a translucent fog over the map; their vision cones cut clear holes.' },
+            { mode: 'dark'   as const, icon: '☾', label: 'Dark',   tip: 'Night / dungeon — players only see inside their vision cones; the rest is opaque black.' },
           ]).map(({ mode, icon, label, tip }) => {
             const active = currentScene.ambientLight === mode;
             return (
@@ -10428,7 +10428,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                       Sits above tokens so it can hide them, below the
                       ruler so the ruler is always visible to its user.
                       v2.267.0 — DM can also see fog when dmPreviewFog
-                      is on, via the toolbar 👁 Player View toggle. */}
+                      is on, via the toolbar ◉ Player View toggle. */}
                   <VisionLayer
                     viewport={vp}
                     worldWidth={WORLD_WIDTH}
@@ -10593,7 +10593,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               }
             }}
           >
-            📏
+            ↔
           </button>
 
           {/* Walls — DM only. */}
@@ -10602,7 +10602,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               onClick={toggleWallMode}
               title={wallActive
                 ? 'Walls active — click to place vertices, shift+click on a wall cycles solid → closed door → open door, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls/closed doors block sight + movement; open doors block neither.'
-                : 'Walls — block line-of-sight + token movement on the map. Shift+click a wall to make it a door (cycles closed/open). Players can\'t see or move past solid walls or closed doors. Toggle 👁 to preview the player\'s view. DM only.'}
+                : 'Walls — block line-of-sight + token movement on the map. Shift+click a wall to make it a door (cycles closed/open). Players can\'t see or move past solid walls or closed doors. Toggle ◉ to preview the player\'s view. DM only.'}
               style={{
                 width: 36, height: 36,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -10627,7 +10627,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 }
               }}
             >
-              🧱
+              ▦
             </button>
           )}
 
@@ -10661,7 +10661,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.25)';
               }}
             >
-              🧱✕
+              ▦✕
             </button>
           )}
 
@@ -10703,7 +10703,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 }
               }}
             >
-              👁
+              ◉
             </button>
           )}
 
@@ -10750,7 +10750,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               its kind; clicking the active kind exits drawing mode. */}
           {isDM && (() => {
             const drawKinds: Array<{ kind: DrawingKind; icon: string; label: string }> = [
-              { kind: 'pencil', icon: '✏️', label: 'Pencil — freehand drawing' },
+              { kind: 'pencil', icon: '✎', label: 'Pencil — freehand drawing' },
               { kind: 'line',   icon: '╱',  label: 'Line — straight line segment' },
               { kind: 'rect',   icon: '▭',  label: 'Rectangle' },
               { kind: 'circle', icon: '○',  label: 'Circle' },
@@ -10834,7 +10834,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 }
               }}
             >
-              🧹
+              ✕
             </button>
           )}
           {/* v2.356.0 — Clear All Drawings button. Bulk wipe of every
@@ -10866,7 +10866,7 @@ export default function BattleMapV2(props: BattleMapV2Props) {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
               }}
             >
-              🗑
+              ✕
             </button>
           )}
           {/* v2.236 — FX particle effects. DM only. Four kinds:
@@ -10875,10 +10875,10 @@ export default function BattleMapV2(props: BattleMapV2Props) {
               via the scene's FX channel. Effects don't persist. */}
           {isDM && (() => {
             const fxKinds: Array<{ kind: FxKind; icon: string; label: string }> = [
-              { kind: 'fire',      icon: '🔥', label: 'Fire — orange embers rising' },
-              { kind: 'lightning', icon: '⚡', label: 'Lightning — bolt strike with flash' },
-              { kind: 'sparkles',  icon: '✨', label: 'Sparkles — gold twinkles fanning out' },
-              { kind: 'smoke',     icon: '💨', label: 'Smoke — gray puffs rising' },
+              { kind: 'fire',      icon: '✶', label: 'Fire — orange embers rising' },
+              { kind: 'lightning', icon: '↯', label: 'Lightning — bolt strike with flash' },
+              { kind: 'sparkles',  icon: '✧', label: 'Sparkles — gold twinkles fanning out' },
+              { kind: 'smoke',     icon: '≈', label: 'Smoke — gray puffs rising' },
             ];
             return (
               <>
@@ -11143,9 +11143,9 @@ export default function BattleMapV2(props: BattleMapV2Props) {
           }}
         >
           {dmPreviewFog
-            ? 'Player View ON — fog shows what players see. Click 👁 again to return to full DM view.'
+            ? 'Player View ON — fog shows what players see. Click ◉ again to return to full DM view.'
             : eraserActive
-            ? 'Eraser ON — click any drawing to delete it. Click 🧹 again to exit.'
+            ? 'Eraser ON — click any drawing to delete it. Click ✕ again to exit.'
             : wallActive
             ? 'Click to place wall vertices · shift+click a wall = cycle door state · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
             : rulerActive

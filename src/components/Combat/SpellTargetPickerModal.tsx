@@ -889,7 +889,7 @@ export default function SpellTargetPickerModal({
                         border: `1px solid ${coverColor}55`,
                         textTransform: 'uppercase' as const, letterSpacing: '0.04em',
                       }}>
-                        🧱 {coverLabel}
+                        ▦ {coverLabel}
                       </span>
                     )}
                     <span style={{ color: 'var(--t-3)', fontSize: 10 }}>

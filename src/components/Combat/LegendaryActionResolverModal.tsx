@@ -591,7 +591,7 @@ export default function LegendaryActionResolverModal({
         {/* Header */}
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--c-border)', background: 'rgba(245,158,11,0.10)' }}>
           <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            🐉 Legendary Action · {cost} {cost === 1 ? 'point' : 'points'}
+            ✦ Legendary Action · {cost} {cost === 1 ? 'point' : 'points'}
           </div>
           <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>
             {laOption.name}

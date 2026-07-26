@@ -174,7 +174,7 @@ export default function LobbyPage() {
               style={{ color: 'var(--c-gold-l)' }}
               title={campaignGate.reason ?? ''}
             >
-              🔒 {isSubscribed ? 'Add a campaign slot' : 'Subscribe to create campaigns'}
+              ⊘ {isSubscribed ? 'Add a campaign slot' : 'Subscribe to create campaigns'}
             </button>
           )}
         </div>

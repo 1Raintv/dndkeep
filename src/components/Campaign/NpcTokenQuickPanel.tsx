@@ -1288,7 +1288,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
                       minHeight: 0,
                     }}
                   >
-                    🛡️ {sourceLabel} — {kindLabel}
+                    ◈ {sourceLabel} — {kindLabel}
                     <span style={{ opacity: 0.6, fontWeight: 500 }}>×</span>
                   </button>
                 );

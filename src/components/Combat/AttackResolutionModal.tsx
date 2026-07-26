@@ -271,7 +271,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={{ color: 'var(--t-2)', fontSize: 13 }}>Ready to roll the attack.</span>
                   <button className="btn-gold" onClick={onRollAttack} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
-                    🎲 Roll Attack
+                    ⚄ Roll Attack
                   </button>
                 </div>
               )}
@@ -279,7 +279,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={{ color: 'var(--t-2)', fontSize: 13 }}>Auto-hit — roll damage.</span>
                   <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
-                    🎲 Roll Damage
+                    ⚄ Roll Damage
                   </button>
                 </div>
               )}
@@ -325,7 +325,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                         disabled={loading}
                         style={{ fontSize: 12, fontWeight: 800, padding: '6px 14px' }}
                       >
-                        🎲 Roll Save
+                        ⚄ Roll Save
                       </button>
                     </div>
                   </div>
@@ -337,7 +337,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                   <SaveBanner atk={atk} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
-                      🎲 Roll Damage
+                      ⚄ Roll Damage
                     </button>
                   </div>
                 </>
@@ -357,7 +357,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                   border: '1px solid rgba(96,165,250,0.4)',
                   fontFamily: 'var(--ff-body)', fontSize: 12, color: '#60a5fa',
                 }}>
-                  ⚡ Reactions used: {acceptedReactions.map(r => `${r.reactor_name} cast ${r.reaction_name}`).join(', ')}
+                  ↯ Reactions used: {acceptedReactions.map(r => `${r.reactor_name} cast ${r.reaction_name}`).join(', ')}
                 </div>
               )}
 
@@ -376,7 +376,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
               ) : (atk.hit_result === 'hit' || atk.hit_result === 'crit') && atk.damage_dice ? (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
-                    🎲 Roll Damage
+                    ⚄ Roll Damage
                   </button>
                 </div>
               ) : (
@@ -436,7 +436,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button onClick={onCancel} style={{ fontSize: 12, padding: '6px 14px' }}>Cancel</button>
                 <button className="btn-gold" onClick={onApply} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
-                  💥 Apply Damage
+                  ✶ Apply Damage
                 </button>
               </div>
             </>

@@ -91,7 +91,7 @@ export default function SharePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 'var(--sp-4)', flexShrink: 0, flexWrap: 'wrap' }}>
-            {character.inspiration && <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>⭐</div><div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-amber-l)' }}>INSPIRED</div></div>}
+            {character.inspiration && <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>★</div><div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--c-amber-l)' }}>INSPIRED</div></div>}
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-2xl)', color: 'var(--c-gold-l)', lineHeight: 1 }}>+{computed.proficiency_bonus}</div>
               <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-2)' }}>PROF</div>

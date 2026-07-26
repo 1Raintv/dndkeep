@@ -76,7 +76,7 @@ export default function LegendaryActionConfigModal({ participant, onClose }: Pro
               fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
               letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f59e0b',
             }}>
-              🐉 Legendary Actions
+              ✦ Legendary Actions
             </div>
             <div style={{
               fontFamily: 'var(--ff-body)', fontSize: 15, fontWeight: 800,

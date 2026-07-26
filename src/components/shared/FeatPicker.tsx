@@ -154,7 +154,7 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
                 {/* Selection indicator, or a lock when ineligible */}
                 {locked ? (
                   <div style={{ width: 14, height: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-red-l, #f87171)', fontSize: 12 }} title={elig.reason ?? 'Locked'}>
-                    🔒
+                    ⊘
                   </div>
                 ) : (
                   <div

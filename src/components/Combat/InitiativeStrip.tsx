@@ -509,7 +509,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                 // v2.391.0 — Strikethrough on dead participants. The
                 // map already gets a red X + strikethrough; mirror in
                 // the initiative tile so the cue is consistent
-                // wherever the DM looks. Kept in addition to the 💀
+                // wherever the DM looks. Kept in addition to the ☠
                 // glyph at top-right so death reads at a glance.
                 textDecoration: p.is_dead ? 'line-through' : 'none',
                 textDecorationColor: p.is_dead ? '#f87171' : undefined,
@@ -764,7 +764,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                       alignSelf: 'center',
                     }}
                   >
-                    🐉 LA {laRem}/{laCap}
+                    LA {laRem}/{laCap}
                   </span>
                 );
               })()}
@@ -802,17 +802,17 @@ export default function InitiativeStrip({ isDM }: Props) {
                       alignSelf: 'center',
                     }}
                   >
-                    🛡 LR {lrRem}/{lrCap}
+                    LR {lrRem}/{lrCap}
                   </span>
                 );
               })()}
               {p.is_dead && (
-                <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: '#f87171' }}>💀</span>
+                <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: '#f87171' }}>☠</span>
               )}
               {p.hidden_from_players && isDM && (
-                <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9 }} title="Hidden from players">👁️</span>
+                <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9 }} title="Hidden from players">◉</span>
               )}
-              {/* v2.126.0 — Phase J pt 4: DM-only "🐉+" affordance to
+              {/* v2.126.0 — Phase J pt 4: DM-only "✦+" affordance to
                   bootstrap LA config on creatures that don't have any yet.
                   Only shown for non-character tiles without configured LAs. */}
               {isDM && p.participant_type !== 'character' && (p.legendary_actions_total ?? 0) === 0 && (
@@ -828,7 +828,7 @@ export default function InitiativeStrip({ isDM }: Props) {
                     cursor: 'pointer', lineHeight: 1.2, opacity: 0.7,
                   }}
                 >
-                  🐉+
+                  ✦+
                 </span>
               )}
             </div>
@@ -961,7 +961,7 @@ export default function InitiativeStrip({ isDM }: Props) {
         />
       )}
       {/* v2.126.0 — Phase J pt 4: legendary action config modal. Opened
-          directly from the 🐉+ affordance on un-configured tiles, or
+          directly from the ✦+ affordance on un-configured tiles, or
           indirectly from the ⚙ Configure button inside LegendaryActionPopover
           (which manages its own state and doesn't need to be rendered here). */}
       {laConfigFor && (

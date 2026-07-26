@@ -211,7 +211,7 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
             {/* Best date banner */}
             {best.length > 0 && totalRespondents > 1 && (
               <div style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'rgba(212,160,23,0.08)', border: '1px solid rgba(212,160,23,0.25)', borderRadius: 'var(--r-md)', marginBottom: 'var(--sp-3)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)' }}>
-                ⭐ Best option{best.length > 1 ? 's' : ''}: {best.map(d => formatDate(d)).join(', ')} — {getDateScore(schedule.id, best[0]).count}/{totalRespondents} available
+                ★ Best option{best.length > 1 ? 's' : ''}: {best.map(d => formatDate(d)).join(', ')} — {getDateScore(schedule.id, best[0]).count}/{totalRespondents} available
               </div>
             )}
 
@@ -294,7 +294,7 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--hp-full)', marginBottom: 2 }}>
-                ✅ {schedule.title} — Confirmed
+                ✓ {schedule.title} — Confirmed
               </div>
               {schedule.confirmed_date && (
                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>

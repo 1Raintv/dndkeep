@@ -326,7 +326,7 @@ export default function NpcRosterPickerModal({ ownerId, onClose, onConfirm }: Pr
                       transition: 'background 0.12s',
                     }}
                   >
-                    {savingHomebrew[entry.id] ? '⏳' : '📚 Homebrew'}
+                    {savingHomebrew[entry.id] ? '⏳' : '❖ Homebrew'}
                   </button>
                   {/* Count stepper */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>

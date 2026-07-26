@@ -21,7 +21,7 @@ interface HistoryRow {
 
 const ICONS: Record<string, string> = {
   field_change:        '✎',
-  hp_change:           '❤',
+  hp_change:           '♥',
   temp_hp_change:      '✦',
   spell_slot_used:     '◇',
   spell_slot_restored: '◆',

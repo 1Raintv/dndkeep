@@ -2583,7 +2583,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                     }}
                   >
                     <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>💫 {action.name}</span>
+                      <span>✧ {action.name}</span>
                       {isMultiCurrent && (
                         <span style={{
                           fontSize: 9, fontWeight: 800, color: '#fbbf24',
@@ -2850,7 +2850,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
             pointerEvents: 'auto',
           }}
         >
-          <span style={{ fontSize: 18 }}>🎯</span>
+          <span style={{ fontSize: 18 }}>◎</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
               {conePickingFor.action.name} — {conePickingFor.lengthFt}-ft cone
@@ -3237,7 +3237,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {excludedUnlocked ? '🔓 Unlocked' : '🔒 Lock'}
+                {excludedUnlocked ? '✓ Unlocked' : '⊘ Lock'}
               </button>
             )}
           </div>
@@ -3254,7 +3254,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
               No valid targets in this encounter.
               {!excludedUnlocked && (
                 <div style={{ marginTop: 4, fontSize: 11, opacity: 0.8 }}>
-                  Tap 🔒 above to allow excluded participants.
+                  Tap ⊘ above to allow excluded participants.
                 </div>
               )}
             </div>
@@ -3550,7 +3550,7 @@ function MultiTargetSavePicker(props: MultiPickerProps) {
             Pick targets — within {rangeFt} ft
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2, color: '#c4b5fd' }}>
-            💫 {action.name}
+            ✧ {action.name}
           </div>
           <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2 }}>
             DC {dc} {ability} save{damageHint}

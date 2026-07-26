@@ -1003,7 +1003,7 @@ function HomebrewResults({ monsters, search, onPick, accent }: {
         fontSize: 12,
         lineHeight: 1.5,
       }}>
-        <div style={{ fontSize: 20, marginBottom: 8, opacity: 0.6 }}>📚</div>
+        <div style={{ fontSize: 20, marginBottom: 8, opacity: 0.6 }}>❖</div>
         <div style={{ fontWeight: 700, color: 'var(--t-2)', marginBottom: 6 }}>
           No homebrew templates yet
         </div>

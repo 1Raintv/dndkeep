@@ -58,16 +58,16 @@ const EVENT_GROUPS: Record<EventFilter, Set<CombatEventType>> = {
 
 // Color + icon per event type bucket
 function visualForEvent(evtType: CombatEventType): { color: string; icon: string } {
-  if (EVENT_GROUPS.damage.has(evtType)) return { color: '#fb923c', icon: '💥' };
-  if (EVENT_GROUPS.heal.has(evtType))   return { color: 'var(--hp-full)', icon: '💚' };
-  if (EVENT_GROUPS.spell.has(evtType))  return { color: '#a78bfa', icon: '✨' };
-  if (evtType === 'attack_roll' || evtType === 'attack_declared') return { color: 'var(--c-red-l)', icon: '⚔️' };
-  if (evtType === 'save_rolled' || evtType === 'save_requested')  return { color: '#60a5fa', icon: '🛡️' };
-  if (evtType === 'ability_check_rolled') return { color: 'var(--t-2)', icon: '🎯' };
-  if (EVENT_GROUPS.condition.has(evtType)) return { color: '#f472b6', icon: '⚠️' };
-  if (EVENT_GROUPS.resource.has(evtType))  return { color: 'var(--c-gold-l)', icon: '⚡' };
+  if (EVENT_GROUPS.damage.has(evtType)) return { color: '#fb923c', icon: '✶' };
+  if (EVENT_GROUPS.heal.has(evtType))   return { color: 'var(--hp-full)', icon: '♥' };
+  if (EVENT_GROUPS.spell.has(evtType))  return { color: '#a78bfa', icon: '✧' };
+  if (evtType === 'attack_roll' || evtType === 'attack_declared') return { color: 'var(--c-red-l)', icon: '⚔' };
+  if (evtType === 'save_rolled' || evtType === 'save_requested')  return { color: '#60a5fa', icon: '◈' };
+  if (evtType === 'ability_check_rolled') return { color: 'var(--t-2)', icon: '◎' };
+  if (EVENT_GROUPS.condition.has(evtType)) return { color: '#f472b6', icon: '⚠' };
+  if (EVENT_GROUPS.resource.has(evtType))  return { color: 'var(--c-gold-l)', icon: '↯' };
   if (evtType === 'initiative_rolled' || evtType === 'turn_started' || evtType === 'turn_ended' || evtType === 'combat_started' || evtType === 'combat_ended') {
-    return { color: 'var(--c-gold-l)', icon: '⏱️' };
+    return { color: 'var(--c-gold-l)', icon: '⏱' };
   }
   return { color: 'var(--t-2)', icon: '•' };
 }
@@ -279,7 +279,7 @@ export default function CombatEventLog({ campaignId, characterId, mode = 'campai
             color: visualForEvent(flash.event_type).color,
           }}
         >
-          🔔 {flash.actor_name}: {summarizeEvent(flash)}
+          ◆ {flash.actor_name}: {summarizeEvent(flash)}
           {flash.target_name ? ` → ${flash.target_name}` : ''}
         </div>
       )}
@@ -394,7 +394,7 @@ function EventRow({ evt, showActor }: { evt: CombatEventRow; showActor: boolean 
             marginTop: 3, marginLeft: 56,
             color: '#f87171',
           }}>
-            🔒 DM-only
+            ⊘ DM-only
           </div>
         )}
       </div>

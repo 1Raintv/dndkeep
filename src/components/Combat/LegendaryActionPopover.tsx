@@ -115,7 +115,7 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
             fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
             letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f59e0b',
           }}>
-            🐉 Legendary · {remaining}/{laCap}{inLair && total > 0 ? ' (in Lair)' : ''}
+            Legendary · {remaining}/{laCap}{inLair && total > 0 ? ' (in Lair)' : ''}
           </div>
           <button
             onClick={() => setShowConfig(true)}

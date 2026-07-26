@@ -68,7 +68,7 @@ export default function NotificationsButton({ campaignId, characterId = null, on
           gap: 4,
         }}
       >
-        <span aria-hidden>🔔</span>
+        <span aria-hidden>◆</span>
         {unreadCount > 0 && (
           <span style={{
             position: 'absolute',

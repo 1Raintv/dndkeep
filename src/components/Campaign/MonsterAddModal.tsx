@@ -122,7 +122,7 @@ export default function MonsterAddModal({ campaignId, onAdd, onClose }: Props) {
         maxHp: hp,
         ac,
         isPlayer: false,
-        emoji: '👹',
+        emoji: '⚔',
         color: '#ef4444',
         conditions: [],
       });

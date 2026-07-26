@@ -18,10 +18,10 @@
 //      doesn't have to flip to a sheet to see that this rogue has
 //      Stealth +11.
 //   2. Optionally toggle Advantage / Disadvantage / DC.
-//   3. Click "🎲 Roll Secret" to roll on the player's behalf and see
+//   3. Click "⚄ Roll Secret" to roll on the player's behalf and see
 //      the result inline. No broadcast — the player has no idea the
 //      DM rolled. Useful for hidden Perception, secret Insight, etc.
-//   4. Click "📨 Prompt Player" to send a notification that surfaces
+//   4. Click "→ Prompt Player" to send a notification that surfaces
 //      the roll in the player's dice tray. Check/raw-check targets
 //      send check_prompt; save targets send save_prompt so the
 //      player sees the proper save banner.
@@ -278,7 +278,7 @@ export default function ChecksPanel({ character: c, campaignId }: {
           }}
           title="DM rolls on the player's behalf. Result is private — the player isn't notified."
         >
-          🎲 Roll Secret
+          ⚄ Roll Secret
         </button>
         <button
           onClick={promptPlayer}
@@ -291,7 +291,7 @@ export default function ChecksPanel({ character: c, campaignId }: {
             ? "Sends a save_prompt so the player sees the save banner on their sheet."
             : "Sends a check_prompt so the player sees the check banner on their sheet."}
         >
-          📨 Prompt Player
+          → Prompt Player
         </button>
       </div>
 

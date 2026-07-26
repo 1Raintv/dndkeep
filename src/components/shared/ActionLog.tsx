@@ -33,9 +33,9 @@ const TYPE_COLORS: Record<string, string> = {
   roll: 'var(--c-gold-l)', save: '#60a5fa', check: 'var(--t-2)',
 };
 const TYPE_ICONS: Record<string, string> = {
-  attack: '⚔️', spell: '✨', heal: '💚', damage: '💥', roll: '🎲', save: '🛡️', check: '🎯',
+  attack: '⚔', spell: '✧', heal: '♥', damage: '✶', roll: '⚄', save: '◈', check: '◎',
 };
-const QUICK_EMOJIS = ['🎉', '🔥', '💀', '😬', '⭐', '💔', '🐉', '👀'];
+const QUICK_EMOJIS = ['★', '✶', '☠', '⚠', '✦', '♥', '⚔', '◉'];
 
 function entryColor(e: ActionLogEntry) { return TYPE_COLORS[e.action_type] ?? 'var(--t-2)'; }
 function formatTime(iso: string) {
@@ -232,7 +232,7 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
           borderRadius: 'var(--r-md)',
           fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: entryColor(newEntry),
         }}>
-          🔔 {newEntry.character_name}: {newEntry.action_name}
+          ◆ {newEntry.character_name}: {newEntry.action_name}
           {newEntry.target_name && ` → ${newEntry.target_name}`}
           {newEntry.total > 0 && ` [${newEntry.total}]`}
         </div>
@@ -368,7 +368,7 @@ function LogEntry({ entry, entryReactions, onReact }: LogEntryProps) {
             onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'}
             onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'}
           >
-            +😀
+            +✦
           </button>
           {showEmojiPicker && (
             <div

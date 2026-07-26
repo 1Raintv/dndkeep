@@ -528,7 +528,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
               {/* ── MASTER UNLOCK — gates everything in this tab ── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)' }}>
-                <span style={{ fontSize: 18 }}>{character.advanced_edits_unlocked ? '🔓' : '🔒'}</span>
+                <span style={{ fontSize: 18 }}>{character.advanced_edits_unlocked ? '✓' : '⊘'}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
                     Edit Stats {character.advanced_edits_unlocked ? 'unlocked' : 'locked'}
@@ -723,7 +723,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
               {/* ── v2.33 Deep Edits: Species / Background / Subclass swap ── */}
               <div style={{ marginTop: 'var(--sp-4)', padding: 'var(--sp-4)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', background: 'var(--c-raised)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
-                  <span style={{ fontSize: 18 }}>{character.advanced_deep_edits_unlocked ? '🔓' : '🔒'}</span>
+                  <span style={{ fontSize: 18 }}>{character.advanced_deep_edits_unlocked ? '✓' : '⊘'}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--t-1)' }}>
                       Deep Edits {character.advanced_deep_edits_unlocked ? 'unlocked' : 'locked'}
@@ -1317,7 +1317,7 @@ export default function CharacterSettings({ character, onUpdate, onClose }: Char
 
               {/* Unlock toggle */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', border: '1px solid var(--c-gold-bdr)', borderRadius: 'var(--r-md)', background: 'rgba(201,146,42,0.06)' }}>
-                <span style={{ fontSize: 18 }}>{character.advanced_automations_unlocked ? '🔓' : '🔒'}</span>
+                <span style={{ fontSize: 18 }}>{character.advanced_automations_unlocked ? '✓' : '⊘'}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-gold-l)' }}>
                     Custom automations {character.advanced_automations_unlocked ? 'unlocked' : 'locked'}

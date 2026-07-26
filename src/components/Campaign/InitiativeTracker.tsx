@@ -474,7 +474,7 @@ export default function InitiativeTracker({ sessionState, isOwner, playerCharact
                         </div>
                         {attackResult && (
                           <div style={{ fontSize: 'var(--fs-xs)', color: attackResult.crit ? 'var(--c-gold-l)' : 'var(--t-2)', padding: '4px 8px', background: 'var(--c-raised)', borderRadius: 'var(--r-sm)' }}>
-                            {attackResult.crit ? '⭐ CRIT! ' : ''}d20={attackResult.nat} → To hit: {attackResult.hit} · Damage: {attackResult.damage}
+                            {attackResult.crit ? '★ CRIT! ' : ''}d20={attackResult.nat} → To hit: {attackResult.hit} · Damage: {attackResult.damage}
                           </div>
                         )}
                       </div>

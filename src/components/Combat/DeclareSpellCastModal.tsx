@@ -7,8 +7,8 @@
 //
 //   declared             → "Waiting for counterspell offers… {N}s"
 //   counterspell_offered → "{name} is casting Counterspell! Waiting for save…"
-//   countered            → "🛡 Countered by {reactor} — spell fails"
-//   resolved             → "✨ Spell goes off"
+//   countered            → "◈ Countered by {reactor} — spell fails"
+//   resolved             → "✧ Spell goes off"
 //
 // On timer expiry (state still 'declared'), flips row to resolved+went_off
 // client-side (race-safe — resolver rechecks state).
@@ -208,7 +208,7 @@ export default function DeclareSpellCastModal({
         }}>
           <div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color }}>
-              🪄 Pre-Cast Window
+              ✦ Pre-Cast Window
             </div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 16, fontWeight: 800, color: 'var(--t-1)', marginTop: 2 }}>
               {title}

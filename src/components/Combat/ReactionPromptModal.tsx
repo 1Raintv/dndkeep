@@ -294,7 +294,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
         }}>
           <div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: timerColor }}>
-              ⚡ Reaction Available
+              ↯ Reaction Available
             </div>
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 16, fontWeight: 800, color: 'var(--t-1)', marginTop: 2 }}>
               {urgent.reactor_name} — {urgent.reaction_name}?
@@ -473,7 +473,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
             >
               {urgent.reaction_key === 'opportunity_attack'
                 ? '⚔ Make Attack'
-                : `⚡ Cast ${urgent.reaction_name}`}
+                : `↯ Cast ${urgent.reaction_name}`}
             </button>
           </div>
         </div>

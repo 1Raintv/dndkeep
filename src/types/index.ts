@@ -793,7 +793,7 @@ export interface CombatEncounter {
   started_at: string | null;
   ended_at: string | null;
   /** v2.127.0 — Phase J: encounter takes place in a legendary creature's
-   *  lair. When true + config non-empty, the DM gets a "🏛 Lair" button on
+   *  lair. When true + config non-empty, the DM gets a "❖ Lair" button on
    *  the InitiativeStrip and a round-start event is emitted. */
   in_lair?: boolean;
   lair_actions_config?: LairActionEntry[];
