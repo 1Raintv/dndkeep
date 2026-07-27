@@ -617,6 +617,16 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     });
   }
 
+  // v2.631.0 — Weapon Mastery Graze: on a miss with a mastered Graze
+  // weapon, the target still takes ability-modifier damage (SRD
+  // 5.2.1). Fires on the initial miss only — a hit later turned into
+  // a miss by a Shield-style reaction skips this (reactions can't
+  // turn a miss into a hit, so true misses are always covered).
+  if (hitResult === 'miss' || hitResult === 'fumble') {
+    const { grazeOnMiss } = await import('./masteryRiders');
+    await grazeOnMiss(atk);
+  }
+
   // v2.98.0 — Phase E: offer reactions (Shield, etc.) to the target now that
   // we have a hit/miss. If any offers are created, the resolution pauses on
   // the DM side until all offers terminate. Fire-and-forget from here.

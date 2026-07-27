@@ -9209,7 +9209,13 @@ export default function BattleMapV2(props: BattleMapV2Props) {
         tokenId = t.id; break;
       }
     }
-    const baseMax = currentActor.max_speed_ft ?? 30;
+    let baseMax = currentActor.max_speed_ft ?? 30;
+    // v2.631.0 — Weapon Mastery Slow preview: −10 ft while the
+    // mastery_slowed buff rides on this actor (canMove enforces
+    // server-side; this keeps the range ring honest).
+    if (((currentActor.active_buffs ?? []) as { key?: string }[]).some(b => b?.key === 'mastery_slowed')) {
+      baseMax = Math.max(0, baseMax - 10);
+    }
     const dashed = currentActor.dash_used_this_turn === true;
     const conds = currentActor.active_conditions ?? [];
     const speedZeroed =

@@ -263,6 +263,83 @@ export async function applyOnHitMasteryRiders(input: {
   }
 }
 
+/** v2.631.0 — Graze: on a miss with a mastered Graze weapon, the
+ *  target takes damage equal to the ability modifier used for the
+ *  attack roll (same damage type as the weapon; unmodifiable except
+ *  by the modifier itself, so resistances still apply — kept simple:
+ *  flat application through temp HP first). Characters dropped to 0
+ *  by Graze enter the normal death-save flow at their turn start;
+ *  monsters at 0 die. Known gap: concentration-at-0 auto-drop lives
+ *  in applyDamage and is not duplicated here (DM handles the rare
+ *  mod-damage finishing blow on a concentrating PC). */
+export async function grazeOnMiss(atk: PendingAttack): Promise<void> {
+  if (!atk.target_participant_id) return;
+  const ctx = await getMasteryContext(atk);
+  if (!ctx || ctx.mastery !== 'Graze') return;
+  const dmg = ctx.abilityMod;
+  if (dmg <= 0) return;   // negative/zero modifier deals nothing
+
+  const { normalizeParticipantRow, JOINED_COMBATANT_FIELDS } = await import('./combatParticipantNormalize');
+  const { data: tgtRaw } = await (supabase as any)
+    .from('combat_participants')
+    .select('id, combatant_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
+    .eq('id', atk.target_participant_id)
+    .maybeSingle();
+  if (!tgtRaw) return;
+  const tgt = normalizeParticipantRow(tgtRaw);
+  if (tgt.is_dead) return;
+
+  const tempBefore = (tgt.temp_hp as number | null) ?? 0;
+  const hpBefore = (tgt.current_hp as number | null) ?? 0;
+  const tempAfter = Math.max(0, tempBefore - dmg);
+  const toHp = Math.max(0, dmg - tempBefore);
+  const hpAfter = Math.max(0, hpBefore - toHp);
+  const droppedTo0 = hpAfter === 0 && hpBefore > 0;
+  const monsterDied = droppedTo0 && tgt.participant_type !== 'character';
+
+  const combatantId = (tgt as any).combatant_id as string | null;
+  if (!combatantId) return;
+  await (supabase as any)
+    .from('combatants')
+    .update({
+      current_hp: hpAfter,
+      temp_hp: tempAfter,
+      ...(monsterDied ? { is_dead: true } : {}),
+    })
+    .eq('id', combatantId);
+
+  await emitCombatEvent({
+    campaignId: atk.campaign_id,
+    encounterId: atk.encounter_id,
+    chainId: atk.chain_id ?? newChainId(),
+    sequence: 7,
+    actorType: 'system',
+    actorName: 'System',
+    targetType: atk.target_type,
+    targetName: atk.target_name,
+    eventType: 'damage_applied',
+    payload: {
+      kind: 'mastery_graze',
+      damage: dmg,
+      label: `Graze (${atk.attack_name}): the miss still deals ${dmg} damage`,
+    },
+  });
+  if (droppedTo0) {
+    await emitCombatEvent({
+      campaignId: atk.campaign_id,
+      encounterId: atk.encounter_id,
+      chainId: atk.chain_id ?? newChainId(),
+      sequence: 8,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: atk.target_type,
+      targetName: atk.target_name,
+      eventType: monsterDied ? 'died' : 'dropped_to_0_hp',
+      payload: { via: 'mastery_graze', damage: dmg },
+    });
+  }
+}
+
 /** Start-of-turn expiry sweep. Call from advanceTurn with the full
  *  participant list: removes mastery marker buffs whose
  *  expiresAtStartOfTurnOf matches the participant whose turn is

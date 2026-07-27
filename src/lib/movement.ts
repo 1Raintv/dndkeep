@@ -71,6 +71,13 @@ export async function canMove(
   // which is already reduced by exhaustion). Clamped at 0.
   const exhaustionLvl = (data?.exhaustion_level as number | null) ?? 0;
   const speedAfterExhaustion = Math.max(0, baseSpeed - 5 * exhaustionLvl);
+  // v2.631.0 — Weapon Mastery Slow: flat −10 ft while the
+  // mastery_slowed buff is present (non-stacking — applyBuff de-dupes
+  // by key). Applied with the flat reductions, before halving and
+  // Dash, per RAW ("reduce its Speed by 10 feet").
+  const speedBuffs = ((data?.active_buffs as { key?: string }[] | null) ?? []);
+  const masterySlowed = speedBuffs.some(b => b?.key === 'mastery_slowed');
+  const speedAfterSlow = Math.max(0, speedAfterExhaustion - (masterySlowed ? 10 : 0));
   // v2.136.0 — Phase L pt 4: Encumbered halves speed (RAW 2024 p.29). Applied
   // AFTER exhaustion's flat reduction but BEFORE Dash, so a Dashing
   // Encumbered character moves 2× their halved Speed for the turn — which is
@@ -80,8 +87,8 @@ export async function canMove(
   // the speedHalved flag.
   const halved = conditionsSpeedHalved(conditions);
   const speedAfterHalving = halved
-    ? Math.floor(speedAfterExhaustion / 2)
-    : speedAfterExhaustion;
+    ? Math.floor(speedAfterSlow / 2)
+    : speedAfterSlow;
   const effectiveBase = dashed ? speedAfterHalving * 2 : speedAfterHalving;
   const maxSpeed = zeroed ? 0 : effectiveBase;
   const wouldBe = currentUsed + distanceFt;
