@@ -53,6 +53,12 @@ export interface ActiveBuff {
    *  pendingAttack.applyDamage fires it and removes the buff when
    *  the pool empties. */
   meleeRetaliation?: { damage: number; damageType: string; requiresTempHp?: boolean };
+  /** v2.630.0 — Weapon Mastery markers: swept at the start of this
+   *  participant's turn by sweepExpiredMasteryMarkers (advanceTurn).
+   *  expiresSkipFirst survives one sweep (Vex: "end of your next
+   *  turn" — cleared on the first sweep, removed on the second). */
+  expiresAtStartOfTurnOf?: string;
+  expiresSkipFirst?: boolean;
 }
 
 /** v2.602.0 — Per-turn tick spec carried on a buff. Amount per tick is

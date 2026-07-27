@@ -779,6 +779,14 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
     rechargeRolls.push({ name, roll, recharged });
   }
 
+  // v2.630.0 — sweep Weapon Mastery marker buffs that expire at the
+  // start of this participant's turn (Sap/Slow immediately; Vex on
+  // its second sweep via expiresSkipFirst).
+  {
+    const { sweepExpiredMasteryMarkers } = await import('./masteryRiders');
+    await sweepExpiredMasteryMarkers(incomingParticipant.id as string, rows as any[]);
+  }
+
   // v2.628.0 — (supabase as any): generated types predate the
   // expended_recharge column (accepted cast pattern, ~70 sites).
   const { error: partUpdErr } = await (supabase as any)

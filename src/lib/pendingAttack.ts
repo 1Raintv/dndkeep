@@ -28,6 +28,7 @@ import {
   clearBuffsFromConcentration, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
+import { surveyMasteryMarkers, consumeMasteryMarkers } from './masteryRiders';
 import { resolveAutomation } from './automations';
 import { CONDITION_MAP } from '../data/conditions';
 import { effectiveCombatAC } from './armorClass';
@@ -429,7 +430,17 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     }
   }
 
-  const advantageState = getAdvantageState(attackerConditions, targetConditions, distanceCells);
+  const baseAdvantageState = getAdvantageState(attackerConditions, targetConditions, distanceCells);
+  // v2.630.0 — Weapon Mastery markers: Sap on the attacker forces
+  // disadvantage on this roll; a Vex marker scoped to this target
+  // grants advantage. RAW stacking: any advantage + any disadvantage
+  // = normal roll. (Known approximation: the collapsed AdvantageState
+  // doesn't expose underlying flags, so condition adv+dis that already
+  // cancelled to 'normal' can be tipped by a marker.)
+  const masteryMarkers = surveyMasteryMarkers(attackerBuffs, atk.target_participant_id ?? null);
+  const mHadAdv = baseAdvantageState === 'advantage' || masteryMarkers.adv;
+  const mHadDis = baseAdvantageState === 'disadvantage' || masteryMarkers.dis;
+  const advantageState = (mHadAdv && mHadDis ? 'normal' : mHadAdv ? 'advantage' : mHadDis ? 'disadvantage' : 'normal') as ReturnType<typeof getAdvantageState>;
   const bonus = atk.attack_bonus ?? 0;
 
   // Advantage/disadvantage: roll 2d20 and take higher / lower. Normal: 1d20.
@@ -461,6 +472,12 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   const exhaustionPenalty = -2 * attackerExhaustion;
 
   const total = d20 + bonus + buffAttackTotal + exhaustionPenalty;
+
+  // v2.630.0 — consume spent mastery markers (Sap always; Vex only
+  // when this roll targeted the vexed creature).
+  if (masteryMarkers.consumeKeys.length > 0) {
+    await consumeMasteryMarkers(atk, masteryMarkers.consumeKeys);
+  }
 
   // v2.103.0 — Phase F: cover mechanics per 2024 PHB.
   //   half cover:           +2 AC (still targetable)
@@ -1519,6 +1536,15 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
             ? { cleanup: 'buffs_and_concentration_dropped' }
             : { cleanup: 'concentration_dropped_at_0_hp', reason: 'unconscious' },
         });
+      }
+
+      // v2.630.0 — Weapon Mastery on-hit riders (Sap/Slow/Vex/Topple/
+      // Push). Fires only for character attackers with mastery in the
+      // attacking weapon; damage-gated riders (Slow/Vex) receive the
+      // HP damage actually dealt by this hit.
+      {
+        const { applyOnHitMasteryRiders } = await import('./masteryRiders');
+        await applyOnHitMasteryRiders({ atk, damageDealt: dmg, targetIsDead: isDead });
       }
 
       // v2.99.0 — Phase E: concentration save on damage.
