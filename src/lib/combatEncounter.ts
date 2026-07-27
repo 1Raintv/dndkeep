@@ -765,7 +765,23 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   const laCap = laTotal > 0 && (encounter as { in_lair?: boolean }).in_lair === true ? laTotal + 1 : laTotal;
   const needsLaRefill = laTotal > 0 && laRemaining < laCap;
 
-  const { error: partUpdErr } = await supabase
+  // v2.628.0 — Recharge auto-roll (RAW "Recharge 5–6"): at the start
+  // of the creature's turn, roll a d6 for each expended recharge
+  // action; on a 5–6 it comes back. Rolls surface to the DM via
+  // generic_roll events below.
+  const expendedRecharge = ((incomingParticipant as any).expended_recharge as string[] | null) ?? [];
+  const stillExpended: string[] = [];
+  const rechargeRolls: { name: string; roll: number; recharged: boolean }[] = [];
+  for (const name of expendedRecharge) {
+    const roll = Math.floor(Math.random() * 6) + 1;
+    const recharged = roll >= 5;
+    if (!recharged) stillExpended.push(name);
+    rechargeRolls.push({ name, roll, recharged });
+  }
+
+  // v2.628.0 — (supabase as any): generated types predate the
+  // expended_recharge column (accepted cast pattern, ~70 sites).
+  const { error: partUpdErr } = await (supabase as any)
     .from('combat_participants')
     .update({
       action_used: false,
@@ -780,6 +796,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       // that's the source of truth (set at insert + DM-editable later).
       attacks_remaining: (incomingParticipant as any).attacks_per_action ?? 1,
       ...(needsLaRefill ? { legendary_actions_remaining: laCap } : {}),
+      ...(expendedRecharge.length > 0 ? { expended_recharge: stillExpended } : {}),
     })
     .eq('id', incomingParticipant.id);
   if (partUpdErr) {
@@ -913,6 +930,29 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
         },
       });
     }
+  }
+
+  // v2.628.0 — Recharge roll results for the DM's event log.
+  for (const r of rechargeRolls) {
+    await emitCombatEvent({
+      campaignId: incomingParticipant.campaign_id,
+      encounterId,
+      chainId: newChainId(),
+      sequence: 0,
+      actorType: 'system',
+      actorName: 'System',
+      targetType: incomingParticipant.participant_type === 'character' ? 'character' : 'monster',
+      targetName: incomingParticipant.name,
+      eventType: 'generic_roll',
+      payload: {
+        kind: 'recharge',
+        action: r.name,
+        roll: r.roll,
+        recharged: r.recharged,
+        label: `Recharge (${r.name}): rolled ${r.roll} — ${r.recharged ? 'recharged!' : 'still expended'}`,
+      },
+      visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
+    });
   }
 
   // v2.126.0 — Phase J: log refill for the DM

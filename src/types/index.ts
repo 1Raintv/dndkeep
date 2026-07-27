@@ -899,6 +899,9 @@ export interface CombatParticipant {
    *  MonsterLegendaryAction). Refilled at start of this creature's own turn. */
   legendary_actions_total?: number;
   legendary_actions_remaining?: number;
+  // v2.628.0 — recharge-on-roll actions currently expended (auto-rolled
+  // d6 at the start of this creature's turn; 5–6 clears the entry)
+  expended_recharge?: string[] | null;
   legendary_actions_config?: MonsterLegendaryAction[];
   created_at: string;
   updated_at: string;

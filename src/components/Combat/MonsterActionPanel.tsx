@@ -1113,6 +1113,20 @@ export default function MonsterActionPanel({ isDM }: Props) {
 
   if (!visible) return null;
 
+  // v2.628.0 — Recharge tracking (RAW "Recharge 5–6"). Names of
+  // recharge-on-roll actions already fired live on the participant
+  // row; advanceTurn auto-rolls a d6 per name at the start of this
+  // creature's turn and clears it on a 5–6.
+  const expendedRecharge: string[] = ((currentActor as any)?.expended_recharge as string[] | null) ?? [];
+  async function spendRecharge(a: MonsterAction) {
+    if (a.usage !== 'recharge on roll' || !currentActor) return;
+    if (expendedRecharge.includes(a.name)) return;
+    await (supabase as any)
+      .from('combat_participants')
+      .update({ expended_recharge: [...expendedRecharge, a.name] })
+      .eq('id', currentActor.id);
+  }
+
   async function handlePick(target: CombatParticipant) {
     if (!encounter || !currentActor || !pickingFor) return;
     if (busy) return;
@@ -1134,6 +1148,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     }
     setPickingFor(null);
     setBusy(true);
+    await spendRecharge(a);   // v2.628.0
     // v2.420.0 — Diagnostic. Tells us exactly which action+target pair
     // is being resolved AND what the multiattack state looks like at
     // entry. Pairs with the advanceMultiattack logs to trace
@@ -1588,6 +1603,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     if (targets.length === 0) return; // DM cancelled / no picks
     setBusy(true);
     try {
+      await spendRecharge(a);   // v2.628.0
       const ability = normalizeSaveAbility(a.dc_type);
       if (!ability) {
         showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
@@ -2400,7 +2416,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
               if (flavor === 'attack') {
                 const hasBonusRider = !!(action.bonus_damage_dice && action.bonus_damage_type);
                 const ab = action.attack_bonus ?? 0;
-                const sub = `${ab >= 0 ? '+' : ''}${ab} to hit · ${action.damage_dice} ${action.damage_type}${hasBonusRider ? ` + ${action.bonus_damage_dice} ${action.bonus_damage_type}` : ''}`;
+                let sub = `${ab >= 0 ? '+' : ''}${ab} to hit · ${action.damage_dice} ${action.damage_type}${hasBonusRider ? ` + ${action.bonus_damage_dice} ${action.bonus_damage_type}` : ''}`;
                 // v2.399.0 — Disable when no attacks remain. Reads
                 // currentActor.attacks_remaining live; the picker
                 // gate also enforces this server-side as a backstop.
@@ -2421,7 +2437,11 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // attack remain in the sequence.
                 const isMultiCurrent = multiattack ? isCurrentMultiattackStep(action.name) : false;
                 const lockedByMulti = !!multiattack && !isMultiCurrent;
-                const disabled = busy || noAttacksLeft || lockedByMulti;
+                // v2.628.0 — Recharge gate: expended until the auto
+                // d6 at the start of this creature's turn rolls 5–6.
+                const rechargeSpent = action.usage === 'recharge on roll' && expendedRecharge.includes(action.name);
+                if (rechargeSpent) sub = 'Expended — auto-recharges on a 5–6 at the start of its turn';
+                const disabled = busy || noAttacksLeft || lockedByMulti || rechargeSpent;
                 return (
                   <button
                     key={key}
@@ -2485,7 +2505,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // / damage_dice — those are per-option and surfaced in
                 // the BreathOptionPicker that opens on click.
                 const isMultiOptionBreathSub = (action.breath_options?.length ?? 0) >= 2;
-                const sub = isMultiOptionBreathSub
+                let sub = isMultiOptionBreathSub
                   ? `Choose 1 of ${action.breath_options!.length}${action.usage === 'recharge on roll' ? ' · Recharge 5–6' : ''}`
                   : `DC ${action.dc_value} ${action.dc_type}${action.damage_dice ? ` · ${action.damage_dice} ${action.damage_type ?? ''}` : ''}${action.usage === 'recharge on roll' ? ' · Recharge 5–6' : ''}`;
                 // v2.415.0 — Save-vs-DC actions are now clickable and
@@ -2506,7 +2526,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
                 // which made FP unreachable inside the dragon's combo.
                 const isMultiCurrent = multiattack ? isCurrentMultiattackStep(action.name) : false;
                 const lockedByMulti = !!multiattack && !isMultiCurrent;
-                const disabled = busy || noAttacksLeft || lockedByMulti;
+                // v2.628.0 — Recharge gate (see attack flavor above).
+                const rechargeSpent = action.usage === 'recharge on roll' && expendedRecharge.includes(action.name);
+                if (rechargeSpent) sub = 'Expended — auto-recharges on a 5–6 at the start of its turn';
+                const disabled = busy || noAttacksLeft || lockedByMulti || rechargeSpent;
                 // v2.442.0 — Route to the multi-target picker for
                 // AOE/aura saves ("Each creature within X feet",
                 // "Each creature in that area", "of the dragon's
