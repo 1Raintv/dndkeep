@@ -1416,6 +1416,58 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  )}
 
+ {/* v2.632.0 — Heroic Inspiration (2024). Boolean per RAW (never
+     stacks). Gold chip while held: spend to reroll any d20 test, new
+     roll stands. Grant is a small affordance for table flow — the DM
+     awards it verbally and either party clicks Grant. */}
+ {(character as any).heroic_inspiration === true ? (
+ <div style={{
+ padding: '8px 14px', borderRadius: 10,
+ display: 'flex', alignItems: 'center', gap: 10,
+ background: 'rgba(251,191,36,0.07)',
+ border: '1px solid rgba(251,191,36,0.4)',
+ }}>
+ <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, color: '#fbbf24' }}>★</span>
+ <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' as const }}>
+ <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 10, color: '#fbbf24', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>
+ Heroic Inspiration
+ </span>
+ <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>
+ Spend to reroll any d20 test — you must use the new roll
+ </span>
+ </div>
+ <button
+ onClick={() => applyUpdate({ heroic_inspiration: false } as any, true)}
+ style={{
+ padding: '4px 10px', borderRadius: 6, flexShrink: 0,
+ border: '1px solid rgba(251,191,36,0.5)', background: 'rgba(251,191,36,0.12)',
+ color: '#fcd34d', fontFamily: 'var(--ff-body)', fontSize: 10,
+ fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+ cursor: 'pointer',
+ }}
+ title="Spend Heroic Inspiration (reroll one d20 test; the new roll must be used)"
+ >
+ Spend
+ </button>
+ </div>
+ ) : (
+ <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+ <button
+ onClick={() => applyUpdate({ heroic_inspiration: true } as any, true)}
+ style={{
+ padding: '2px 8px', borderRadius: 4,
+ border: '1px solid var(--c-border)', background: 'transparent',
+ color: 'var(--t-3)', fontFamily: 'var(--ff-body)', fontSize: 9,
+ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+ cursor: 'pointer',
+ }}
+ title="Grant Heroic Inspiration (2024: never stacks — you have it or you don't)"
+ >
+ ★ Grant Heroic Inspiration
+ </button>
+ </div>
+ )}
+
  {/* v2.377.0 — Persistent concentration banner. Renders whenever
      concentration is active (character.concentration_spell set);
      gives the player a constant visual anchor for "I'm concentrating

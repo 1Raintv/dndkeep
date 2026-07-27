@@ -261,6 +261,8 @@ export interface Character {
   wildshape_known_forms: string[] | null;
   // v2.629.0 — Weapon Mastery choices (canonical weapon names)
   weapon_masteries?: string[] | null;
+  // v2.632.0 — Heroic Inspiration (2024; boolean — never stacks)
+  heroic_inspiration?: boolean | null;
   wildshape_current_hp: number | null;
   wildshape_max_hp: number | null;
   concentration_spell: string | null;

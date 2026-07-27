@@ -560,6 +560,20 @@ export default function InitiativeStrip({ isDM }: Props) {
                     }}>
                       {cur}/{max}
                     </div>
+                    {/* v2.632.0 — Bloodied (2024 named condition): at or
+                        below half HP and not down. Display-only. */}
+                    {cur > 0 && cur <= Math.floor(max / 2) && (
+                      <div
+                        title="Bloodied (2024): at or below half its Hit Points"
+                        style={{
+                          fontSize: 7, color: '#f87171', textAlign: 'center' as const,
+                          fontFamily: 'var(--ff-body)', fontWeight: 800, marginTop: 1,
+                          letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+                        }}
+                      >
+                        Bloodied
+                      </div>
+                    )}
                   </div>
                 );
               })()}
