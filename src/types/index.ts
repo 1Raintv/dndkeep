@@ -259,6 +259,8 @@ export interface Character {
   wildshape_beast_name: string | null;
   // v2.612.0 — Wild Shape known-form monster ids (Phase A1).
   wildshape_known_forms: string[] | null;
+  // v2.629.0 — Weapon Mastery choices (canonical weapon names)
+  weapon_masteries?: string[] | null;
   wildshape_current_hp: number | null;
   wildshape_max_hp: number | null;
   concentration_spell: string | null;

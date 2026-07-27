@@ -22,6 +22,7 @@ export { CLASS_COMBAT_ABILITIES } from '${process.cwd().replace(/\\/g, '/')}/src
 export { CLASS_MAP } from '${process.cwd().replace(/\\/g, '/')}/src/data/classes';
 export { FEATS } from '${process.cwd().replace(/\\/g, '/')}/src/data/feats';
 export { getCharacterResources } from '${process.cwd().replace(/\\/g, '/')}/src/data/classResources';
+export { MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons } from '${process.cwd().replace(/\\/g, '/')}/src/data/weaponMastery';
 `);
 
 buildSync({
@@ -40,7 +41,7 @@ buildSync({
   },
 });
 
-const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources } = await import(pathToFileURL(out).href);
+const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources, MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons } = await import(pathToFileURL(out).href);
 
 let failures = 0;
 function check(name, cond, detail = '') {
@@ -140,6 +141,30 @@ console.log('— Feats (v2.553) —');
 }
 
 rmSync(tmp, { recursive: true, force: true });
+
+console.log('— Weapon Mastery: v2.629 data layer (SRD 5.2.1) —');
+{
+  check('38 mastery weapons in SRD table', MASTERY_WEAPONS.length === 38);
+  check('Greataxe = Cleave', masteryForWeapon('Greataxe') === 'Cleave');
+  check('Longbow = Slow', masteryForWeapon('Longbow') === 'Slow');
+  check('Rapier = Vex', masteryForWeapon('Rapier') === 'Vex');
+  check('Maul = Topple', masteryForWeapon('Maul') === 'Topple');
+  check('inventory-style name resolves (Longsword +1 = Sap)', masteryForWeapon('Longsword +1') === 'Sap');
+  check('Fighter slots 3/4/5/6 at 1/4/10/16',
+    masterySlots('Fighter', 1) === 3 && masterySlots('Fighter', 4) === 4 &&
+    masterySlots('Fighter', 10) === 5 && masterySlots('Fighter', 16) === 6);
+  check('Barbarian slots 2/3/4 at 1/4/10',
+    masterySlots('Barbarian', 1) === 2 && masterySlots('Barbarian', 4) === 3 &&
+    masterySlots('Barbarian', 10) === 4);
+  check('Paladin/Ranger/Rogue fixed at 2; Wizard 0',
+    masterySlots('Paladin', 20) === 2 && masterySlots('Ranger', 20) === 2 &&
+    masterySlots('Rogue', 20) === 2 && masterySlots('Wizard', 20) === 0);
+  check('Barbarian eligibility is melee-only',
+    eligibleMasteryWeapons('Barbarian').every((w) => w.group === 'simple_melee' || w.group === 'martial_melee'));
+  check('Rogue eligibility excludes Longbow, includes Rapier',
+    !eligibleMasteryWeapons('Rogue').some((w) => w.name === 'Longbow') &&
+    eligibleMasteryWeapons('Rogue').some((w) => w.name === 'Rapier'));
+}
 
 console.log('— Class resources: v2.623 Font of Inspiration gate —');
 {

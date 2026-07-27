@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
 import WildShapePanel from './WildShapePanel';
+import WeaponMasteryPanel from './WeaponMasteryPanel';
 import BeastFormActions from './BeastFormActions';
 import MinionPanel from './MinionPanel';
 import { rollDiceExpr } from '../../lib/buffs';
@@ -1573,6 +1574,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  character={character}
  onUpdate={applyUpdate}
  onBonusUsed={() => setBonusActionSpellCast(true)}
+ />
+
+ {/* v2.629.0 — Weapon Mastery picker (Barbarian/Fighter/Paladin/
+     Ranger/Rogue). Self-gates on masterySlots > 0. Riders in the
+     attack pipeline land in Ship B. */}
+ <WeaponMasteryPanel
+ character={character}
+ onUpdate={applyUpdate}
  />
 
  {/* v2.616.0 — Phase B2 (playable-forms arc): minions the player
