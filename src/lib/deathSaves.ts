@@ -19,6 +19,7 @@
 // via a future UI, or a round-advance could auto-expire old rows). The
 // state column + expired status are there for future use.
 
+import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
@@ -124,7 +125,7 @@ export async function resolvePendingDeathSave(
   //   d20 < 10   → failure
   //   nat 1      → 2 failures
   //   nat 20     → regain 1 HP + conscious (clears both counters)
-  const d20 = Math.floor(Math.random() * 20) + 1;
+  const d20 = rollDie(20);
   let successes = (partRow.death_save_successes as number | null) ?? 0;
   let failures = (partRow.death_save_failures as number | null) ?? 0;
   let isStable = false;

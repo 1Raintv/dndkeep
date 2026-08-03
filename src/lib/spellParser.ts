@@ -3,6 +3,8 @@
  * Used to build smart spell buttons with actual mechanical info.
  */
 
+import { rollDie } from '../rules/dice';
+
 export interface SpellMechanics {
   damageDice: string | null;       // e.g. "2d6", "1d8"
   damageType: string | null;       // e.g. "thunder", "fire"
@@ -193,7 +195,7 @@ export function rollDice(expression: string): { total: number; rolls: number[]; 
   const rolls: number[] = [];
   let total = bonus;
   for (let i = 0; i < count; i++) {
-    const roll = Math.floor(Math.random() * sides) + 1;
+    const roll = rollDie(sides);
     rolls.push(roll);
     total += roll;
   }

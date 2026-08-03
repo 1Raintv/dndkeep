@@ -42,6 +42,7 @@
 // payload, so it inherits buff removal, the caster-died sweep, and
 // concentration cleanup for free rather than needing its own table.
 
+import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
@@ -267,7 +268,7 @@ export async function resolveAuraSave(input: {
     input.targetParticipantId,
     aura.spec.saveAbility,
   );
-  const d20 = Math.floor(Math.random() * 20) + 1;
+  const d20 = rollDie(20);
   const total = d20 + bonus;
   const passed = total >= aura.spec.saveDC;
 

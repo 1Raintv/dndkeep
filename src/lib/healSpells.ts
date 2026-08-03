@@ -22,6 +22,7 @@
 // of combat 10 min cast), Mass Heal (700 HP distributive pool).
 
 import { supabase } from './supabase';
+import { rollDie } from '../rules/dice';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
@@ -122,7 +123,7 @@ export function rollResolvedHeal(
 ): { total: number; rolls: number[] } {
   const rolls: number[] = [];
   for (let i = 0; i < resolved.diceCount; i++) {
-    rolls.push(Math.floor(Math.random() * resolved.diceSides) + 1);
+    rolls.push(rollDie(resolved.diceSides));
   }
   const total = rolls.reduce((a, b) => a + b, 0) + resolved.flatBonus;
   return { total, rolls };

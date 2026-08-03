@@ -24,7 +24,6 @@ import { abilityModifier, proficiencyBonus, crToProficiencyBonus } from './gameU
 import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll, clearConditionsFromConcentration } from './conditions';
 import {
   getAttackRollBonuses, getSaveBonuses, getDamageRiders,
-  rollDiceExpr as rollBuffDice,
   clearBuffsFromConcentration, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
@@ -40,44 +39,18 @@ import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatPartic
 import { isCreatureParticipantType } from './participantType';
 
 // ─── Dice helpers ────────────────────────────────────────────────
+// v2.636 dice consolidation: rollDiceExpr and doubleDice moved verbatim to
+// src/rules/dice.ts (the canonical dice module). rollDiceExpr is re-exported
+// because auras.ts and others import it from here. rollBuffDice was
+// previously buffs.ts's weaker parser (no ±modifier support) — it now
+// aliases the canonical one, which fixes riders/ticks with dice like
+// "2d4+2" silently contributing 0.
+import { rollDie, rollDiceExpr, doubleDice } from '../rules/dice';
+export { rollDiceExpr };
+const rollBuffDice = rollDiceExpr;
+
 export function rollD20(): number {
-  return Math.floor(Math.random() * 20) + 1;
-}
-
-// Parses dice expressions like "2d8+3" or "1d6" and returns the individual
-// rolls + modifier. Falls back to [0, 0] on parse failure.
-export function rollDiceExpr(expr: string): { rolls: number[]; modifier: number; total: number } {
-  // v2.448.0 — Bare-integer support. Some bestiary entries (Crab,
-  // Weasel, etc. — 19 tiny creatures total) record damage as a
-  // literal "1" because the SRD says "Hit: 1 piercing damage" with
-  // no dice expression. Treat a bare positive integer as a constant
-  // total: zero rolls, modifier=N, total=N. Rolls go in the modifier
-  // (not the rolls array) because there's no random component to
-  // animate. Pre-v2.448 these returned total=0 — the attack would
-  // hit and deal nothing.
-  const bareInt = /^\s*(\d+)\s*$/.exec(expr);
-  if (bareInt) {
-    const n = parseInt(bareInt[1], 10);
-    return { rolls: [], modifier: n, total: n };
-  }
-  const m = /^\s*(\d+)d(\d+)\s*([+-]\s*\d+)?\s*$/i.exec(expr);
-  if (!m) return { rolls: [], modifier: 0, total: 0 };
-  const count = parseInt(m[1], 10);
-  const sides = parseInt(m[2], 10);
-  const mod = m[3] ? parseInt(m[3].replace(/\s+/g, ''), 10) : 0;
-  const rolls: number[] = [];
-  for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
-  return { rolls, modifier: mod, total: rolls.reduce((a, b) => a + b, 0) + mod };
-}
-
-// On a crit, double the dice (not modifier) per 2024 PHB.
-function doubleDice(expr: string): string {
-  const m = /^\s*(\d+)d(\d+)\s*([+-]\s*\d+)?\s*$/i.exec(expr);
-  if (!m) return expr;
-  const count = parseInt(m[1], 10) * 2;
-  const sides = m[2];
-  const mod = m[3] ? m[3].replace(/\s+/g, '') : '';
-  return `${count}d${sides}${mod}`;
+  return rollDie(20);
 }
 
 // v2.419.0 — DM-side house rule readers. The rule engine runs in
@@ -1941,7 +1914,7 @@ export async function performConcentrationSave(
 ): Promise<{ saved: boolean; d20: number; total: number }> {
   const { ctx, charId, concentrationSpell, dc, bonus } = input;
 
-  const d20 = Math.floor(Math.random() * 20) + 1;
+  const d20 = rollDie(20);
   const total = d20 + bonus;
   const passed = total >= dc || d20 === 20;   // nat 20 always succeeds (RAW)
   const autoFail = d20 === 1;                 // nat 1 always fails (RAW)

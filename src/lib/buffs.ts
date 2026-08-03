@@ -17,7 +17,7 @@
 import { supabase } from './supabase';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
-import { rollDie } from './gameUtils';
+import { rollDiceExpr } from '../rules/dice';
 // v2.315: active_buffs reads come from combatants via JOIN.
 import {
   JOINED_COMBATANT_FIELDS,
@@ -280,16 +280,16 @@ export function getDamageRiders(
   return out;
 }
 
-/** Roll a simple NdM expression. Returns individual die results + total. */
-export function rollDiceExpr(expr: string): { rolls: number[]; total: number } {
-  const m = expr.trim().match(/^(\d+)d(\d+)$/i);
-  if (!m) return { rolls: [], total: 0 };
-  const count = parseInt(m[1], 10);
-  const size = parseInt(m[2], 10);
-  const rolls: number[] = [];
-  for (let i = 0; i < count; i++) rolls.push(rollDie(size));
-  return { rolls, total: rolls.reduce((s, r) => s + r, 0) };
-}
+/**
+ * Roll an NdM(±K) expression. Returns individual die results + total.
+ *
+ * v2.636 dice consolidation: delegates to the canonical parser in
+ * src/rules/dice.ts. The old local implementation only matched bare "NdM"
+ * and silently returned total 0 for anything with a modifier — a buff tick
+ * or damage rider defined as "2d4+2" contributed nothing. The canonical
+ * parser handles "NdM", "NdM±K", and bare integers.
+ */
+export { rollDiceExpr };
 
 // ─── Concentration cleanup ───────────────────────────────────────
 // v2.113.0 — Phase H pt 4: parallel to clearConditionsFromConcentration.

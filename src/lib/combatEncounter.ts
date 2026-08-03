@@ -9,6 +9,7 @@
 //
 // All helpers emit structured combat_events via emitCombatEvent for the log.
 
+import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
 import { emitCombatEvent, emitCombatEventChain, newChainId } from './combatEvents';
 // v2.494.0 — Per-round buff duration tick. See src/lib/buffDuration.ts.
@@ -30,7 +31,7 @@ import {
 
 // ─── d20 ─────────────────────────────────────────────────────────
 export function rollD20(): number {
-  return Math.floor(Math.random() * 20) + 1;
+  return rollDie(20);
 }
 
 // ─── Initiative computation ──────────────────────────────────────
@@ -788,7 +789,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   const stillExpended: string[] = [];
   const rechargeRolls: { name: string; roll: number; recharged: boolean }[] = [];
   for (const name of expendedRecharge) {
-    const roll = Math.floor(Math.random() * 6) + 1;
+    const roll = rollDie(6);
     const recharged = roll >= 5;
     if (!recharged) stillExpended.push(name);
     rechargeRolls.push({ name, roll, recharged });
@@ -1069,7 +1070,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       //   d20 ≥ 10 → success, < 10 → failure
       //   nat 1    → 2 failures (cumulative)
       //   nat 20   → regain 1 HP + conscious (clears both counters)
-      const d20 = Math.floor(Math.random() * 20) + 1;
+      const d20 = rollDie(20);
       let successes = incomingParticipant.death_save_successes ?? 0;
       let failures = incomingParticipant.death_save_failures ?? 0;
       let isStable = false;

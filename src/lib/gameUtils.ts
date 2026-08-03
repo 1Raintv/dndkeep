@@ -2,7 +2,7 @@ import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
 import { CLASS_MAP } from '../data/classes';
 import { itemBonusesActive, getEffectiveAbilityScores } from './attunement';
-import { rollDie } from '../rules/dice';
+import { rollDie, rollDiceExpr } from '../rules/dice';
 
 /** PHB formula: floor((score - 10) / 2) */
 export function abilityModifier(score: number): number {
@@ -288,15 +288,11 @@ export function concentrationDC(damageTaken: number): number {
 }
 
 // ── Roll a set of dice e.g. "2d6+3" ────────────────────────────────────────────
+// v2.636 dice consolidation: delegates to the canonical parser in
+// src/rules/dice.ts (which also accepts bare integers like "1" — see the
+// v2.448 bestiary note there). Keeps this function's return shape.
 export function rollDiceExpression(expr: string): { rolls: number[]; total: number; expression: string } {
-  const match = expr.trim().match(/^(\d+)d(\d+)([+-]\d+)?$/i);
-  if (!match) return { rolls: [], total: 0, expression: expr };
-  const count = parseInt(match[1]);
-  const sides = parseInt(match[2]);
-  const bonus = match[3] ? parseInt(match[3]) : 0;
-  const rolls: number[] = [];
-  for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
-  const total = rolls.reduce((a, b) => a + b, 0) + bonus;
+  const { rolls, total } = rollDiceExpr(expr);
   return { rolls, total, expression: expr };
 }
 
