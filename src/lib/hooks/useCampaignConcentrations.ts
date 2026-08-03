@@ -30,6 +30,57 @@ export interface ConcentrationEntry {
 
 type ConcentrationMap = Record<string, ConcentrationEntry>;
 
+// ----------------------------------------------------------------
+// v2.637 perf (audit 6.6) — ONE realtime channel per campaign, shared
+// across hook instances via refcount.
+//
+// History: v2.472 tried to share by channel NAME and crashed — Supabase's
+// .channel(name) returns the already-subscribed channel, and calling
+// .on() after .subscribe() throws. v2.475 fixed the crash by giving each
+// hook instance a random-suffixed channel, at the cost of duplicate
+// subscriptions carrying identical traffic (this hook mounts in both
+// CampaignDashboard and InitiativeStrip, so every session paid 2x).
+//
+// This version shares correctly: the channel is created and .subscribe()d
+// exactly once per campaignId, with a SINGLE .on() handler that fans out
+// to a listener set in JS. Later consumers only add a listener — no
+// post-subscribe .on() call, so the v2.472 crash cannot recur. The last
+// consumer to unmount tears the channel down, which frees the name for
+// a fresh .channel() on any later remount.
+type SharedConcEntry = {
+  channel: ReturnType<typeof supabase.channel>;
+  refs: number;
+  listeners: Set<() => void>;
+};
+const sharedConcChannels = new Map<string, SharedConcEntry>();
+
+function acquireConcChannel(campaignId: string, onEvent: () => void): () => void {
+  let entry = sharedConcChannels.get(campaignId);
+  if (!entry) {
+    const listeners = new Set<() => void>();
+    const channel = supabase
+      .channel(`conc-${campaignId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'characters',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, () => { for (const l of listeners) l(); })
+      .subscribe();
+    entry = { channel, refs: 0, listeners };
+    sharedConcChannels.set(campaignId, entry);
+  }
+  entry.refs++;
+  entry.listeners.add(onEvent);
+  const acquired = entry;
+  return () => {
+    acquired.listeners.delete(onEvent);
+    acquired.refs--;
+    if (acquired.refs <= 0) {
+      sharedConcChannels.delete(campaignId);
+      supabase.removeChannel(acquired.channel);
+    }
+  };
+}
+
 export function useCampaignConcentrations(campaignId: string | null | undefined): ConcentrationMap {
   const [map, setMap] = useState<ConcentrationMap>({});
 
@@ -63,44 +114,13 @@ export function useCampaignConcentrations(campaignId: string | null | undefined)
     }
 
     load();
-    // v2.475.0 — Channel name is per-hook-instance, NOT shared across
-    // hook callers on the same channel.
-    //
-    // Background: v2.472 consolidated callers to use this hook (one
-    // in CampaignDashboard for the BattleMap glyph, one in
-    // InitiativeStrip for the chip). The v2.472 ship comment claimed
-    // "Supabase dedupes the underlying realtime subscription per
-    // channel name" — that was wrong. Supabase's .channel(name)
-    // returns a reference to the EXISTING channel if one with that
-    // name is already registered; calling .on() against that channel
-    // after its previous .subscribe() throws "cannot add
-    // postgres_changes callbacks ... after subscribe()". Pre-v2.474
-    // this didn't surface because the chunk layout happened to mount
-    // the two consumers in an order that... well, it crashed there
-    // too in principle, but only after Start Combat (when both
-    // consumers are mounted simultaneously) — and that's exactly
-    // when the user reported it.
-    //
-    // Fix: append a per-instance random suffix so each hook gets its
-    // own channel. Both subscriptions independently receive the same
-    // postgres_changes events; slight bandwidth overhead but
-    // guaranteed correct. Using crypto.randomUUID for collision
-    // safety; falls back to Math.random for older runtimes.
-    const instanceId =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2);
-    const ch = supabase
-      .channel(`conc-${campaignId}-${instanceId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'characters',
-        filter: `campaign_id=eq.${campaignId}`,
-      }, () => load())
-      .subscribe();
+    // v2.637 — shared refcounted channel (see acquireConcChannel above;
+    // replaces the v2.475 per-instance random-suffix channels).
+    const release = acquireConcChannel(campaignId, () => { load(); });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(ch);
+      release();
     };
   }, [campaignId]);
 

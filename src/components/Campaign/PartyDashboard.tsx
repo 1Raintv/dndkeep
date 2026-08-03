@@ -203,9 +203,19 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
   useEffect(() => {
     loadCharacters();
+    // v2.637 perf (audit 6.6): this subscription had NO filter — every
+    // character update by ANY user in ANY campaign triggered a full
+    // party refetch here. Scoped to this campaign like the sibling in
+    // CampaignDashboard. Known edge (same trade-off the sibling makes):
+    // a character LEAVING the campaign sets campaign_id away from this
+    // id, so that one event no longer matches the filter — the list
+    // catches up on the next refetch/reload.
     const channel = supabase
       .channel(`party-dashboard-${campaignId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, () => loadCharacters())
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'characters',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, () => loadCharacters())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [campaignId]);
