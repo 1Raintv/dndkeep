@@ -2,7 +2,14 @@
 // (computeStats / computeActiveBonuses need full Character fixtures and
 // are exercised by the RAW regression suite; these cover the arithmetic
 // building blocks everything else leans on.)
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// gameUtils transitively reaches lib/supabase (gameUtils -> attunement ->
+// hooks/useMagicItems -> supabase), and supabase.ts THROWS at import time
+// when VITE_SUPABASE_* env vars are absent — which is exactly the case in
+// CI (no .env there, by design: unit tests must never touch the DB, which
+// is production). Mock it out; none of the functions under test use it.
+vi.mock('./supabase', () => ({ supabase: {} }));
 import {
   abilityModifier, concentrationDC, crToProficiencyBonus, formatModifier,
   generateAbilityScores, hpPerLevel, proficiencyBonus, roll4d6DropLowest,
