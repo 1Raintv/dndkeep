@@ -16,7 +16,9 @@
 
 import { supabase } from '../supabase';
 import { abilityModifier, crToProficiencyBonus } from '../gameUtils';
-import type { RosterEntryDraft } from './npcRoster';
+// audit A2 — RosterEntryDraft moved to src/types when npcRoster.ts was
+// deleted (its runtime queried the dropped dm_npc_roster table).
+import type { RosterEntryDraft } from '../../types';
 
 /** Subset of the monsters row we need for the picker + mapper. The
  *  full row has 49 columns; we pull only what informs the draft. */

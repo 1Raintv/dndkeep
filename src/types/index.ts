@@ -671,6 +671,42 @@ export interface MonsterData {
   is_editable?: boolean;
 }
 
+// audit A2 — moved here from lib/api/npcRoster.ts (deleted; every one
+// of its runtime functions queried dm_npc_roster, a table dropped in
+// v2.350). Originally defined as Omit<RosterEntry, server-managed
+// fields>; RosterEntry itself described the dropped table's row and
+// had no other users, so the draft is now a standalone interface.
+// This is the editable monster-stat-block shape shared by the
+// SRD-clone and homebrew mappers in lib/api/srdMonsters.ts and
+// lib/api/homebrewMonsters.ts.
+export interface RosterEntryDraft {
+  name: string;
+  type: string;          // 'Humanoid' | 'Beast' | 'Dragon' | etc.
+  cr: string;            // CR can be '1/4', '1/8', '0', '1', etc.
+  size: string;          // 'Tiny' | 'Small' | ... | 'Gargantuan'
+  hp: number;
+  max_hp: number;
+  ac: number;
+  speed: number;
+  str: number; dex: number; con: number; int: number; wis: number; cha: number;
+  attack_name: string;
+  attack_bonus: number;
+  attack_damage: string;
+  xp: number;
+  description: string;
+  traits: string;
+  immunities: string;
+  image_url: string | null;
+  emoji: string;         // '⚔' default
+  color: string;         // '#ef4444' hex string
+  source_monster_id: string | null;
+  // v2.253.0 — lowercase ability keys the NPC has save proficiency in.
+  // Allowed: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'. Not modeled
+  // as a string-literal union to keep the API helpers simple — the
+  // builder UI is the only writer and it constrains to the 6 values.
+  save_proficiencies: string[];
+}
+
 export interface ConditionData {
   name: ConditionName;
   description: string;

@@ -21,7 +21,9 @@
 // roster save (the modal exposes both buttons in v2.261).
 
 import { supabase } from '../supabase';
-import type { RosterEntryDraft } from './npcRoster';
+// audit A2 — RosterEntryDraft moved to src/types when npcRoster.ts was
+// deleted (its runtime queried the dropped dm_npc_roster table).
+import type { RosterEntryDraft } from '../../types';
 
 /** Subset of homebrew_monsters relevant to the modal. The table is
  *  leaner than `monsters` (no subtype, no saving_throws, no
