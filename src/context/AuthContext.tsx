@@ -9,6 +9,13 @@ interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  /** v2.637 perf (audit 6.5) — true while the profile row is still in
+   *  flight AFTER the session has resolved. `loading` now clears at
+   *  session-resolve so authenticated UI renders one round-trip sooner;
+   *  the few surfaces that branch on subscription state (Pro gates)
+   *  should wait on THIS flag to avoid flashing the upsell at a Pro
+   *  user whose profile hasn't landed yet. */
+  profileLoading: boolean;
   /** v2.563.0 — true when auth initialization failed to reach Supabase
    *  (network down or project paused). Gates render a "Can't reach
    *  server — Retry" state instead of an infinite spinner. */
@@ -37,6 +44,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   profile: null,
   loading: true,
+  profileLoading: true,
   initError: false,
   retryInit: () => {},
   isPro: false,
@@ -49,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [initError, setInitError] = useState(false);
   // v2.563.0 — bump to re-run the init effect (Retry button).
   const [initNonce, setInitNonce] = useState(0);
@@ -65,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function retryInit() {
     setInitError(false);
     setLoading(true);
+    setProfileLoading(true);
     setInitNonce(n => n + 1);
   }
 
@@ -83,12 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data: { session: s } }) => {
         if (cancelled) return;
         setSession(s);
+        // v2.637 perf (audit 6.5): loading clears the moment the session
+        // is known. Previously we serialized the profile fetch behind it,
+        // and nothing authenticated rendered until BOTH round-trips
+        // finished — which also delayed the route chunk download (a third
+        // serial round-trip). The profile only feeds the Pro badge,
+        // display name, and dice skin; consumers tolerate null, and the
+        // Pro gates wait on profileLoading instead.
+        setLoading(false);
         if (s?.user) {
           // Profile fetch failing shouldn't dead-end the app — proceed
           // with a null profile (degraded but usable) either way.
-          fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setLoading(false); });
+          fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false); });
         } else {
-          setLoading(false);
+          setProfileLoading(false);
         }
       })
       .catch(() => {
@@ -99,8 +117,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s?.user) fetchProfile(s.user.id).catch(() => {});
-      else setProfile(null);
+      if (s?.user) {
+        setProfileLoading(true);
+        fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false); });
+      } else {
+        setProfile(null);
+        setProfileLoading(false);
+      }
     });
 
     return () => { cancelled = true; subscription.unsubscribe(); };
@@ -112,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
+      profileLoading,
       initError,
       retryInit,
       isPro: profile?.subscription_tier === 'pro',
