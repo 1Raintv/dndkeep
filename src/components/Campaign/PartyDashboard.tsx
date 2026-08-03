@@ -4,6 +4,7 @@ import { asJsonb } from '../../lib/jsonbCast';
 import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { xpToLevel, xpForNextLevel, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
+import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/hp';
 import { SPELLS } from '../../data/spells';
 import {
   rollCheck, checkModifier, encodeCheckPrompt,
@@ -971,7 +972,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 <div style={{ padding: '8px 10px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 8 }}>
                   <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-green-l)', marginBottom: 4 }}>Applied</div>
                   {aoeApplied.map((r, i) => {
-                    const concDC = r.took > 0 ? Math.max(10, Math.floor(r.took / 2)) : 0;
+                    const concDC = r.took > 0 ? concentrationDC(r.took) : 0;
                     const modLabel =
                       r.modifier === 'resistant'  ? 'resistant'  :
                       r.modifier === 'vulnerable' ? 'vulnerable' :
@@ -1574,15 +1575,13 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
     let newTemp = oldTemp;
 
     if (delta < 0) {
-      // Damage — eat temp HP first
-      const damage = -delta;
-      const absorbed = Math.min(oldTemp, damage);
-      newTemp = oldTemp - absorbed;
-      const remaining = damage - absorbed;
-      newHP = Math.max(0, oldHP - remaining);
+      // Damage — eat temp HP first (v2.636: pool math in rules/hp.ts)
+      const applied = applyDamageToPools(oldHP, oldTemp, -delta);
+      newTemp = applied.tempAfter;
+      newHP = applied.hpAfter;
     } else {
       // Healing — regular HP only, capped at max
-      newHP = Math.min(c.max_hp, oldHP + delta);
+      newHP = applyHealing(oldHP, c.max_hp, delta);
     }
 
     const patch: Partial<Character> = { current_hp: newHP };
@@ -1593,7 +1592,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
     // If damage and concentrating, compute DC from the *total* damage dealt
     // (RAW: DC = max(10, floor(damage/2))). Temp HP absorption still counts.
     if (delta < 0 && c.concentration_spell) {
-      setConcDC(Math.max(10, Math.floor(Math.abs(delta) / 2)));
+      setConcDC(concentrationDC(Math.abs(delta)));
     } else {
       setConcDC(null);
     }

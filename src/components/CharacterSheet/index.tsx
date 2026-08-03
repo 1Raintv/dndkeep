@@ -12,6 +12,7 @@ import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
+import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/hp';
 import { formatRange } from '../../lib/formatRange';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
@@ -482,7 +483,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Total damage = HP lost + temp HP consumed. Per RAW, both count.
  const totalDamage = hpDrop + tempDrop;
  if (totalDamage > 0) {
- const dc = Math.min(30, Math.max(10, Math.floor(totalDamage / 2)));
+ const dc = concentrationDC(totalDamage);
  const mode = resolveAutomation(
  'concentration_on_damage',
  { ...characterRef.current, ...patch } as Character,
@@ -813,7 +814,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const totalDamage = damageDealt ?? inferredDamage;
  if (totalDamage > 0 && concentrationSpellId) {
  // RAW: DC = max(10, floor(damage / 2)), capped at 30
- const dc = Math.min(30, Math.max(10, Math.floor(totalDamage / 2)));
+ const dc = concentrationDC(totalDamage);
  const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
  if (mode === 'prompt') {
  setConcentrationSaveDC(dc);
@@ -1216,19 +1217,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  handleUpdateHP(character.current_hp, tempHP);
  } else if (delta < 0) {
  // v2.54.0: Damage path — absorb temp HP FIRST per RAW.
- // Temp HP is depleted before current HP. Concentration save is required
- // for ANY damage taken (even if fully absorbed by temp HP).
+ // Concentration save is required for ANY damage taken (even if fully
+ // absorbed by temp HP). v2.636: pool math in rules/hp.ts.
  const damage = -delta;
- const tempBefore = character.temp_hp ?? 0;
- const tempAfter = Math.max(0, tempBefore - damage);
- const damageThroughTemp = tempBefore - tempAfter;
- const damageToHP = damage - damageThroughTemp;
- const newHP = Math.max(0, character.current_hp - damageToHP);
- handleUpdateHP(newHP, tempAfter, damage);
+ const applied = applyDamageToPools(character.current_hp, character.temp_hp ?? 0, damage);
+ handleUpdateHP(applied.hpAfter, applied.tempAfter, damage);
  } else {
  // Heal path — heal current HP only, never overflows max.
- const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
- handleUpdateHP(newHP, character.temp_hp);
+ handleUpdateHP(applyHealing(character.current_hp, character.max_hp, delta), character.temp_hp);
  }
  }}
  />

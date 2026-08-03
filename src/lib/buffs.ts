@@ -18,6 +18,7 @@ import { supabase } from './supabase';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDiceExpr } from '../rules/dice';
+import { applyDamageToPools } from '../rules/hp';
 // v2.315: active_buffs reads come from combatants via JOIN.
 import {
   JOINED_COMBATANT_FIELDS,
@@ -644,11 +645,12 @@ export async function processTurnTicks(opts: {
             payload: { source_buff: buff.name, tick: true, failures, became_dead: isDead },
           });
         } else if (hp > 0 || !isCharacter) {
-          const tempBefore = tempHp;
-          tempHp = Math.max(0, tempHp - amount);
-          const toHp = amount - (tempBefore - tempHp);
           const hpBefore = hp;
-          hp = Math.max(0, hp - toHp);
+          // v2.636 — pool math consolidated into rules/hp.ts
+          const tickApplied = applyDamageToPools(hp, tempHp, amount);
+          tempHp = tickApplied.tempAfter;
+          const toHp = tickApplied.dmgToHp;
+          hp = tickApplied.hpAfter;
           const overflow = hpBefore > 0 && hp === 0 ? Math.max(0, toHp - hpBefore) : 0;
           if (isCharacter && hpBefore > 0 && hp === 0 && overflow >= maxHp && maxHp > 0) {
             isDead = true;

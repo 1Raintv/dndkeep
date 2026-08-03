@@ -46,6 +46,7 @@ import { isCreatureParticipantType } from './participantType';
 // aliases the canonical one, which fixes riders/ticks with dice like
 // "2d4+2" silently contributing 0.
 import { rollDie, rollDiceExpr, doubleDice } from '../rules/dice';
+import { applyDamageToPools, concentrationDC } from '../rules/hp';
 export { rollDiceExpr };
 const rollBuffDice = rollDiceExpr;
 
@@ -1204,11 +1205,12 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       }
 
       const tempBefore = tgt.temp_hp ?? 0;
-      const tempAfter = Math.max(0, tempBefore - dmg);
-      const dmgThroughTemp = tempBefore - tempAfter;
-      const dmgToHP = dmg - dmgThroughTemp;
       const hpBefore = tgt.current_hp ?? 0;
-      let hpAfter = Math.max(0, hpBefore - dmgToHP);
+      // v2.636 — pool math consolidated into rules/hp.ts
+      const applied = applyDamageToPools(hpBefore, tempBefore, dmg);
+      const tempAfter = applied.tempAfter;
+      const dmgToHP = applied.dmgToHp;
+      let hpAfter = applied.hpAfter;
 
       // v2.607.0 — ship 4c: melee-retaliation buffs (Armor of Agathys).
       // RAW: a creature that HITS the buff holder with a melee attack
@@ -1240,10 +1242,9 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
             let aHp = (attacker.current_hp as number | null) ?? 0;
             for (const rb of retalBuffs) {
               const rDmg = rb.meleeRetaliation!.damage;
-              const rTempAfter = Math.max(0, aTemp - rDmg);
-              const toHp = rDmg - (aTemp - rTempAfter);
-              aTemp = rTempAfter;
-              aHp = Math.max(0, aHp - toHp);
+              const rApplied = applyDamageToPools(aHp, aTemp, rDmg);
+              aTemp = rApplied.tempAfter;
+              aHp = rApplied.hpAfter;
               await emitCombatEvent({
                 campaignId: atk.campaign_id,
                 encounterId: atk.encounter_id,
@@ -1831,7 +1832,8 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
   const conMod = abilityModifier(con);
   const pb = proficiencyBonus(lvl);
   const bonus = conMod + (hasConProf ? pb : 0);
-  const dc = Math.max(10, Math.floor(ctx.damage / 2));
+  // v2.636 — was an inline max(10, floor(dmg/2)) missing the RAW DC 30 cap
+  const dc = concentrationDC(ctx.damage);
 
   // 'prompt' branch: insert a pending_concentration_saves row and return.
   // The player's modal subscribes via realtime, shows the damage/DC/spell,

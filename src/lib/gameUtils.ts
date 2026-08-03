@@ -282,10 +282,12 @@ export function computeMulticlassSlots(
   return MULTICLASS_SLOT_TABLE[capped] ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
 }
 
-// ── Concentration save DC (2024: max(10, damage/2), capped 30) ──────────────────
-export function concentrationDC(damageTaken: number): number {
-  return Math.min(30, Math.max(10, Math.ceil(damageTaken / 2)));
-}
+// ── Concentration save DC ──────────────────────────────────────────────────────
+// v2.636: moved to rules/hp.ts. The old local version used CEIL, which is
+// wrong per 2024 RAW ("half the damage taken, round down") — e.g. 21 damage
+// gave DC 11 instead of 10. It had no callers (every call site inlined its
+// own copy), so nothing shipped with the ceil behavior.
+export { concentrationDC } from '../rules/hp';
 
 // ── Roll a set of dice e.g. "2d6+3" ────────────────────────────────────────────
 // v2.636 dice consolidation: delegates to the canonical parser in
