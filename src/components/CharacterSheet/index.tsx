@@ -38,6 +38,11 @@ import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, legacySpellFeatureKey, type TieflingLegacy } from '../../data/speciesChoices';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
+
+// Classes that PREPARE spells (2024 PHB) — their Actions spell list only
+// shows prepared leveled spells; known-casters show everything known.
+// Module scope so the memoized ready-spell list has a stable reference.
+const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -1169,13 +1174,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ------------------------------------------------------------------
  // Derived
  // ------------------------------------------------------------------
+ // v2.637 perf: these spell lists were rebuilt (filter + two localeCompare
+ // sorts, plus a quadratic allSpellIds.includes scan over all ~282 spells)
+ // in the render body — and with 41 useState hooks in this component, that
+ // meant on EVERY HP keystroke, tab click, and modal toggle. Memoized on
+ // their actual inputs; owned-spell lookup switched to a Set.
  const { spells: allSpells, spellMap } = useSpells();
  const hasSpellSlots = Object.values(character.spell_slots).some((s: any) => s.total > 0);
- const allSpellIds = [...new Set([...character.known_spells, ...character.prepared_spells])];
- const knownSpellData = allSpellIds
+ const allSpellIds = useMemo(
+ () => [...new Set([...character.known_spells, ...character.prepared_spells])],
+ [character.known_spells, character.prepared_spells],
+ );
+ const knownSpellData = useMemo(
+ () => allSpellIds
  .map(id => spellMap[id])
  .filter(Boolean)
- .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+ .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+ [allSpellIds, spellMap],
+ );
 
  // Max spell level this character can cast based on their slots
  const maxSpellLevel = Object.keys(character.spell_slots).reduce((max, k) => {
@@ -1184,11 +1200,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }, 0);
 
  // All spells available to this class at this level (not yet added)
- const availableSpells = allSpells.filter(spell =>
+ const availableSpells = useMemo(() => {
+ const ownedIds = new Set(allSpellIds);
+ return allSpells.filter(spell =>
  spell.classes.includes(character.class_name) &&
  (spell.level === 0 || spell.level <= maxSpellLevel) &&
- !allSpellIds.includes(spell.id)
+ !ownedIds.has(spell.id)
  ).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+ }, [allSpells, allSpellIds, character.class_name, maxSpellLevel]);
+
+ // Ready-spell rows for the Actions spell section (hoisted out of the
+ // render IIFE below — hooks can't live in a conditional, and the sort
+ // was re-running per render there too).
+ const isPreparerClass = PREPARER_CLASSES.includes(character.class_name);
+ const readySpells = useMemo(
+ () => knownSpellData.filter(s =>
+ s.level === 0 || !isPreparerClass || character.prepared_spells.includes(s.id)),
+ [knownSpellData, isPreparerClass, character.prepared_spells],
+ );
+ const readyCantrips = useMemo(() => readySpells.filter(s => s.level === 0), [readySpells]);
+ const readyLeveled = useMemo(() => {
+ type ReadyRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
+ const rows: ReadyRow[] = readySpells
+ .filter(s => s.level > 0)
+ .map(s => ({ ...s, effectiveLevel: s.level, isUpcast: false }));
+ rows.sort((a, b) => a.effectiveLevel - b.effectiveLevel || a.name.localeCompare(b.name));
+ return rows;
+ }, [readySpells]);
 
  // ------------------------------------------------------------------
  // Render
@@ -3707,12 +3745,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  Object.values(character.spell_slots).some((s: any) => s.total > 0);
  if (!isSpellcaster) return null;
 
- const PREPARER_CLASSES_ACT = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
- const isPreparer = PREPARER_CLASSES_ACT.includes(character.class_name);
- const readySpells = knownSpellData.filter(s => {
- if (s.level === 0) return true;
- return !isPreparer || character.prepared_spells.includes(s.id);
- });
+ // v2.637 perf: readySpells/cantrips/leveled are memoized in the
+ // Derived section above (readySpells / readyCantrips / readyLeveled).
+ const isPreparer = isPreparerClass;
  if (readySpells.length === 0) return null;
 
  // Slot usage per level — to gray spells when exhausted
@@ -3725,16 +3760,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Highest slot level with any total — used to cap upcast expansion
  const maxSlotLevel = Math.max(0, ...Object.entries(slotsByLevel).map(([k, v]) => (v.total > 0 ? parseInt(k) : 0)));
 
- const cantrips = readySpells.filter(s => s.level === 0);
- const leveledBase = readySpells.filter(s => s.level > 0);
-
  // v2.34.1: expand leveled list with upcast variants when toggle is on.
  // v2.36.0: One row per spell (no upcast duplicates). Upcastability is signaled
  // via a small "↑" chip next to the level badge; actual tier selection happens
  // via the SpellCastButton's modal picker when the user clicks Cast.
- type ReadyRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
- const leveled: ReadyRow[] = leveledBase.map(s => ({ ...s, effectiveLevel: s.level, isUpcast: false }));
- leveled.sort((a, b) => a.effectiveLevel - b.effectiveLevel || a.name.localeCompare(b.name));
+ const cantrips = readyCantrips;
+ const leveled = readyLeveled;
 
  // Check if any leveled spells have slots remaining
  const hasAnySlots = leveled.some(s => {
