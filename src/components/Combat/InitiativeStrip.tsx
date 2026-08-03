@@ -182,6 +182,23 @@ export default function InitiativeStrip({ isDM }: Props) {
     }
   }
 
+  // v2.636.0 — In Lair toggle. Sole writer of in_lair since the v2.608
+  // config modal removal; without it the v2.625 in-lair benefit (+1 LA
+  // use, +1 LR/Day) was only reachable by editing the row in the DB.
+  // Deliberately does NOT touch lair_actions_config /
+  // lair_action_used_this_round — lair actions themselves are dropped
+  // in the 2025 MM; the flag now only feeds the legendary-use bonuses.
+  async function onToggleInLair() {
+    if (!encounter) return;
+    const { error } = await supabase
+      .from('combat_encounters')
+      .update({ in_lair: !inLair })
+      .eq('id', encounter.id);
+    if (error) {
+      showToast(`Couldn't toggle In Lair: ${error.message}`, 'error');
+    }
+  }
+
   async function onEndCombat() {
     if (!encounter) return;
     // v2.486.0 — In-app confirm via useModal.
@@ -858,6 +875,31 @@ export default function InitiativeStrip({ isDM }: Props) {
               button was unused surface area. Backend fields
               (in_lair, lair_actions_config, lair_action_used_this_round)
               are untouched. */}
+          {/* v2.636.0 — In Lair toggle in the old Lair button's slot.
+              Flags the encounter as fought in a legendary creature's
+              lair so the v2.625 bonuses apply. Amber to match the ✦
+              legendary affordances on the tiles it feeds. */}
+          <button
+            onClick={onToggleInLair}
+            title={inLair
+              ? 'In Lair: legendary creatures get +1 Legendary Action use and +1 Legendary Resistance/Day. Click to turn off.'
+              : 'Fighting in a legendary creature\'s lair? Grants +1 Legendary Action use and +1 Legendary Resistance/Day (2024 rules). Click to turn on.'}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              padding: '6px 10px', borderRadius: 6,
+              border: inLair
+                ? '1px solid rgba(245,158,11,0.8)'
+                : '1px solid var(--c-border)',
+              background: inLair
+                ? 'rgba(245,158,11,0.2)'
+                : 'transparent',
+              color: inLair ? '#f59e0b' : 'var(--t-2)',
+              cursor: 'pointer', minHeight: 0,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}
+          >
+            {inLair ? '✦ In Lair' : 'Lair'}
+          </button>
           {/* v2.108.0 — Phase G: Dash + Disengage action buttons. Show "ON"
               state when already used this turn; click does nothing in that
               state. Dash doubles remaining movement; Disengage suppresses
