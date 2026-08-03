@@ -107,7 +107,8 @@ the automations, improve them, add capability — without a graphics overhaul.
 geometry, 8-way direction snapping, reach visualization, concentration indicator,
 action-economy ring, condition/immunity systems.
 
-**Risk:** Production, so the gate applies (tsc = 271 baseline / TS2304 = 0,
+**Risk:** Production, so the gate applies (tsc ≤ the carried baseline —
+see `TS_BASELINE` in `.github/workflows/ci.yml` for the current number — / TS2304 = 0,
 rules-of-hooks clean, vite build). But this is engineering, not rules-judgment, so
 iteration can move faster than Track 1.
 
@@ -177,7 +178,7 @@ Deferred items that make the daily loop real:
   genuinely daily-scheduled, fully-safe-to-run-unattended task. Highest priority.
 - **Frontend resilience** — bounded timeout + retry on session restore, replacing
   the infinite "Loading…" spinner when auth is unreachable.
-- **GitHub Actions CI gate** — encode the gate (tsc ≤ 271 / TS2304 = 0, hooks
+- **GitHub Actions CI gate** — encode the gate (tsc ≤ `TS_BASELINE` in ci.yml / TS2304 = 0, hooks
   clean, build) on every push. Regressions can't reach prod.
 - **RAW regression suite** — the Track 1 detection layer; runs daily, opens issues
   on drift, never edits.

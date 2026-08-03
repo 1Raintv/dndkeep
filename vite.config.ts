@@ -24,6 +24,10 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           // Supabase client — also stable, used everywhere.
           'supabase': ['@supabase/supabase-js'],
+          // PixiJS renderer + viewport — heavy, only loaded with the battle
+          // map. Same caching rationale as dice-engine: pixi upgrades are
+          // rare, so app-code deploys shouldn't invalidate this chunk.
+          'pixi': ['pixi.js', 'pixi-viewport'],
         },
       },
     },

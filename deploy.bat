@@ -8,10 +8,12 @@ REM  Every command logs to deploy-log.txt so we can diagnose failures.
 REM  Window will NEVER auto-close - always waits for a keypress at the end.
 REM =================================================================
 
-cd /d "C:\dev\DNDKeep" 2>nul
+REM cd to the folder this script lives in (works from any checkout path,
+REM not just C:\dev\DNDKeep — %~dp0 is the script's own directory).
+cd /d "%~dp0" 2>nul
 if %errorlevel% neq 0 (
     echo.
-    echo  [FATAL] Cannot cd to C:\dev\DNDKeep
+    echo  [FATAL] Cannot cd to script directory %~dp0
     echo         Current dir: %CD%
     echo         Does the folder exist? Is it locked?
     echo.

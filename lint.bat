@@ -19,9 +19,10 @@ REM
 REM  Exit codes: 0 = pass, 1 = hook violations, 2 = TS scope errors.
 REM =================================================================
 
-cd /d "C:\dev\DNDKeep" 2>nul
+REM cd to the folder this script lives in (works from any checkout path).
+cd /d "%~dp0" 2>nul
 if %errorlevel% neq 0 (
-    echo  [FATAL] Cannot cd to C:\dev\DNDKeep
+    echo  [FATAL] Cannot cd to script directory %~dp0
     pause
     exit /b 1
 )
