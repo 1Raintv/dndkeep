@@ -80,5 +80,8 @@ jobs:
       - name: Anchor-legality regression (size-parity write paths)
         run: npm run anchor-check
 
+      - name: Unit tests (vitest — rules/, coords, parsers)
+        run: npm run test
+
       - name: Build
         run: node node_modules/vite/bin/vite.js build

@@ -11,7 +11,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "raw-check": "node scripts/raw-regression.mjs",
     "coords-check": "node scripts/coords-tests.mjs",
-    "anchor-check": "node scripts/anchor-check.mjs"
+    "anchor-check": "node scripts/anchor-check.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",
@@ -42,6 +43,7 @@
     "globals": "^15.9.0",
     "typescript": "^5.4.5",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "vitest": "^2.1.9"
   }
 }

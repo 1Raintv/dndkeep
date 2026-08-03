@@ -15,7 +15,15 @@ npm run build          # production build must succeed
 npm run raw-check      # 2024-rules regression suite
 npm run coords-check   # battle-map coordinate math
 npm run anchor-check   # battle-map anchor invariants
+npm run test           # vitest unit suite (rules/, coords, parsers)
 ```
+
+Unit tests are colocated `*.test.ts` files next to their modules and run
+with vitest. When you add or change logic in `src/rules/` or another pure
+module, extend its test file in the same commit. Modules that import
+`lib/supabase` at module scope need `vi.mock('./supabase', ...)` (see
+`src/lib/healSpells.test.ts`) — unit tests must NEVER touch the database,
+which is production.
 
 For lint, the gate is **rules-of-hooks violations = 0** (they crash at
 runtime as React error #310). `npm run lint` currently fails outright because
