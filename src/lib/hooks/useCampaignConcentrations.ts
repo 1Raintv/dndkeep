@@ -54,7 +54,9 @@ type SharedConcEntry = {
 };
 const sharedConcChannels = new Map<string, SharedConcEntry>();
 
-function acquireConcChannel(campaignId: string, onEvent: () => void): () => void {
+// Exported for unit tests (the refcount/fan-out rules are exactly the
+// part with crash history — see the v2.472 note above).
+export function acquireConcChannel(campaignId: string, onEvent: () => void): () => void {
   let entry = sharedConcChannels.get(campaignId);
   if (!entry) {
     const listeners = new Set<() => void>();
