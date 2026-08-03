@@ -1,6 +1,8 @@
 import { useState, lazy, Suspense } from 'react';
 import { SUMMON_TOKEN_SPELLS, placeSummonToken } from '../../lib/summonTokens';
+import { AURA_SPELLS } from '../../lib/auras';
 import SummonFormPickerModal from './SummonFormPickerModal';
+const AuraCastModal = lazy(() => import('./AuraCastModal'));
 import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
@@ -102,6 +104,9 @@ export default function SpellCastButton({
  // v2.607.0 — slot level captured at cast time so the buff picker can
  // scale slot-dependent buffs (Armor of Agathys 5×slot).
  const [buffPickerSlot, setBuffPickerSlot] = useState<number | undefined>(undefined);
+ // v2.635.0 — aura cast modal (Spirit Guardians). Holds the slot the
+ // spell was cast at so the AuraSpec scales its dice; null = closed.
+ const [auraCastSlot, setAuraCastSlot] = useState<number | null>(null);
  // v2.124.0 — Phase J: when set, opens the Counterspell pre-cast window.
  // Payload carries the slot level the player wanted to cast at so we can
  // resume after the window resolves. encounterId + casterParticipantId are
@@ -171,6 +176,14 @@ export default function SpellCastButton({
  // caster on the live battle map. Fire-and-forget: a missing scene
  // or RLS denial degrades silently (result logged), never blocking
  // the cast itself.
+ // v2.635.0 — aura spells (Spirit Guardians). Opens the Emanation
+ // modal so the player can designate unaffected creatures and pick
+ // the damage type, both cast-time choices per RAW. The modal
+ // resolves the active encounter itself and closes silently when
+ // there isn't one, so no combat check is needed here.
+ if (campaignId && AURA_SPELLS[spell.id]) {
+ setAuraCastSlot(isCantrip ? spell.level : slotLevel);
+ }
  if (campaignId && SUMMON_TOKEN_SPELLS[spell.id]) {
  const summonSpec = SUMMON_TOKEN_SPELLS[spell.id];
  if (summonSpec.creature) {
@@ -1366,6 +1379,16 @@ export default function SpellCastButton({
  });
  }}
  onClose={() => setSummonFormPickerFor(null)}
+ />
+ )}
+ {auraCastSlot !== null && campaignId && AURA_SPELLS[spell.id] && (
+ <AuraCastModal
+ campaignId={campaignId}
+ casterCharacterId={character.id}
+ spellId={spell.id}
+ saveDC={saveDC}
+ slotLevel={auraCastSlot}
+ onClose={() => setAuraCastSlot(null)}
  />
  )}
  {buffPickerOpen && campaignId && (

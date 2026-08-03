@@ -619,6 +619,92 @@ export async function auraSpeedMultiplier(input: {
 
 // ─── Reference aura: Spirit Guardians ────────────────────────────
 
+
+// ─── Cast-time registry ──────────────────────────────────────────
+// v2.635.0 — maps a spell id to the aura it creates, so SpellCastButton
+// can light one up the same way SUMMON_TOKEN_SPELLS drops a token and
+// BUFF_SPELL_REGISTRY applies a buff. Keyed by spells.ts `id`.
+
+export interface AuraSpellEntry {
+  /** Display label for the cast modal. */
+  label: string;
+  /** RAW: "you can designate creatures to be unaffected by it." */
+  allowsDesignation: boolean;
+  /** Offered damage types, when the spell lets the caster choose.
+   *  Spirit Guardians keys off the caster's alignment, which the app
+   *  doesn't model — so the player picks. Empty = no choice. */
+  damageTypeChoices: string[];
+  build(input: {
+    saveDC: number;
+    slotLevel: number;
+    damageType: string;
+    exemptParticipantIds: string[];
+  }): AuraSpec;
+}
+
+export const AURA_SPELLS: Record<string, AuraSpellEntry> = {
+  'spirit-guardians': {
+    label: 'Spirit Guardians',
+    allowsDesignation: true,
+    damageTypeChoices: ['radiant', 'necrotic'],
+    build: ({ saveDC, slotLevel, damageType, exemptParticipantIds }) =>
+      spiritGuardiansSpec({
+        saveDC,
+        slotLevel,
+        damageType: damageType === 'necrotic' ? 'necrotic' : 'radiant',
+        exemptParticipantIds,
+      }),
+  },
+};
+
+/**
+ * Tear down the aura a character created with `spellId`. Called from
+ * the single concentration-change funnel in CharacterSheet, alongside
+ * the summon-token despawn — every concentration clear path (Drop
+ * button, failed CON save, timer expiry, replacement cast) routes
+ * through there. No-ops when the caster isn't in an active encounter.
+ */
+export async function endAuraForSpell(input: {
+  campaignId: string;
+  casterCharacterId: string;
+  spellId: string;
+}): Promise<boolean> {
+  const entry = AURA_SPELLS[input.spellId];
+  if (!entry) return false;
+
+  const { data: enc } = await supabase
+    .from('combat_encounters')
+    .select('id')
+    .eq('campaign_id', input.campaignId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (!enc) return false;
+
+  const { data: casterRow } = await supabase
+    .from('combat_participants')
+    .select('id')
+    .eq('encounter_id', enc.id as string)
+    .eq('participant_type', 'character')
+    .eq('entity_id', input.casterCharacterId)
+    .maybeSingle();
+  if (!casterRow) return false;
+
+  await endAura({
+    campaignId: input.campaignId,
+    encounterId: enc.id as string,
+    originParticipantId: casterRow.id as string,
+    auraKey: buildAuraKeyForSpell(input.spellId),
+  });
+  return true;
+}
+
+/** The AuraSpec.key a given spell id produces. Kept as a function so
+ *  the teardown path never has to reconstruct a full spec just to
+ *  learn the key. */
+export function buildAuraKeyForSpell(spellId: string): string {
+  return spellId.replace(/-/g, '_');
+}
+
 /**
  * Build the Spirit Guardians AuraSpec (2024). Damage scales 3d8 at
  * level 3, +1d8 per slot level above 3. Radiant for good/neutral

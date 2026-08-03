@@ -24,7 +24,7 @@ export { FEATS } from '${process.cwd().replace(/\\/g, '/')}/src/data/feats';
 export { getCharacterResources } from '${process.cwd().replace(/\\/g, '/')}/src/data/classResources';
 export { MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons, weaponReachFt, isMeleeMasteryWeapon } from '${process.cwd().replace(/\\/g, '/')}/src/data/weaponMastery';
 export { stripAbilityModFromDamage, CLEAVE_ONCE_KEY } from '${process.cwd().replace(/\\/g, '/')}/src/lib/cleave';
-export { footprintAt, gapCells, isInsideEmanation, spiritGuardiansSpec, auraSaveMarkerKey } from '${process.cwd().replace(/\\/g, '/')}/src/lib/auras';
+export { footprintAt, gapCells, isInsideEmanation, spiritGuardiansSpec, auraSaveMarkerKey, AURA_SPELLS, buildAuraKeyForSpell } from '${process.cwd().replace(/\\/g, '/')}/src/lib/auras';
 `);
 
 buildSync({
@@ -43,7 +43,7 @@ buildSync({
   },
 });
 
-const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources, MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons, weaponReachFt, isMeleeMasteryWeapon, stripAbilityModFromDamage, CLEAVE_ONCE_KEY, footprintAt, gapCells, isInsideEmanation, spiritGuardiansSpec, auraSaveMarkerKey } = await import(pathToFileURL(out).href);
+const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources, MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons, weaponReachFt, isMeleeMasteryWeapon, stripAbilityModFromDamage, CLEAVE_ONCE_KEY, footprintAt, gapCells, isInsideEmanation, spiritGuardiansSpec, auraSaveMarkerKey, AURA_SPELLS, buildAuraKeyForSpell } = await import(pathToFileURL(out).href);
 
 let failures = 0;
 function check(name, cond, detail = '') {
@@ -261,6 +261,29 @@ console.log('— Auras: v2.634 Emanation geometry + Spirit Guardians (2024) —'
     sg.affects === 'all' && sg.exemptParticipantIds.length === 0);
   check('Aura save markers are scoped per origin AND per aura',
     auraSaveMarkerKey('origin-a', 'spirit_guardians') !== auraSaveMarkerKey('origin-b', 'spirit_guardians'));
+
+  // v2.635 cast wiring: every registry entry must key off a real
+  // spells.ts id, and the teardown path derives the AuraSpec key from
+  // that id without rebuilding the spec — the two must agree or an
+  // aura would be impossible to remove.
+  for (const [spellId, entry] of Object.entries(AURA_SPELLS)) {
+    check(`Aura spell '${spellId}' exists in the spell catalogue`,
+      SPELLS.some((sp) => sp.id === spellId));
+    const built = entry.build({
+      saveDC: 15, slotLevel: 3, damageType: entry.damageTypeChoices[0] ?? '', exemptParticipantIds: [],
+    });
+    check(`Aura spell '${spellId}' teardown key matches its spec key`,
+      buildAuraKeyForSpell(spellId) === built.key);
+  }
+  check('Spirit Guardians offers the RAW alignment damage choice',
+    JSON.stringify(AURA_SPELLS['spirit-guardians'].damageTypeChoices) ===
+      JSON.stringify(['radiant', 'necrotic']));
+  check('Spirit Guardians allows cast-time designation',
+    AURA_SPELLS['spirit-guardians'].allowsDesignation === true);
+  check('Designated creatures are carried into the spec',
+    AURA_SPELLS['spirit-guardians'].build({
+      saveDC: 15, slotLevel: 3, damageType: 'radiant', exemptParticipantIds: ['p1', 'p2'],
+    }).exemptParticipantIds.length === 2);
 }
 
 console.log('— Class resources: v2.623 Font of Inspiration gate —');

@@ -646,6 +646,22 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  });
  }).catch(() => { /* despawn is best-effort */ });
  }
+ // v2.635.0 — same funnel, same shape: when concentration on an aura
+ // spell ends (Drop, failed CON save, timer expiry, or replacement
+ // cast), remove the Emanation from the caster's participant row.
+ // Fire-and-forget — teardown never blocks the concentration write.
+ if (prevSpellId && prevSpellId !== spellId && character.campaign_id) {
+ import('../../lib/auras').then(({ AURA_SPELLS, endAuraForSpell }) => {
+ if (!AURA_SPELLS[prevSpellId]) return;
+ endAuraForSpell({
+ campaignId: character.campaign_id!,
+ casterCharacterId: character.id,
+ spellId: prevSpellId,
+ }).then(ended => {
+ if (ended) console.info(`[CharacterSheet] ended aura for ${prevSpellId}`);
+ });
+ }).catch(() => { /* aura teardown is best-effort */ });
+ }
  if (!spellId) {
  applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null }, true);
  return;
