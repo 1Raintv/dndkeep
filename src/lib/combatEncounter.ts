@@ -327,9 +327,12 @@ async function seedBuffsFromAuthoritativeTables(
         const byId = new Map<string, any>(
           (rows as Array<{ id: string; active_buffs: unknown }>).map(r => [r.id, r.active_buffs]),
         );
-        for (const link of charLinks) {
+        // v2.637 perf (audit 6.4): updates run concurrently — each row
+        // carries a different buff array so they can't be one query, but
+        // they don't need to be serial either.
+        await Promise.all(charLinks.map(async link => {
           const buffs = byId.get(link.characterId);
-          if (!Array.isArray(buffs) || buffs.length === 0) continue;
+          if (!Array.isArray(buffs) || buffs.length === 0) return;
           const { error: uErr } = await supabase
             .from('combatants')
             .update({ active_buffs: asJsonb(buffs) })
@@ -338,7 +341,7 @@ async function seedBuffsFromAuthoritativeTables(
           if (uErr) {
             console.warn('[seedBuffs] character combatant update failed', { combatantId: link.combatantId, error: uErr });
           }
-        }
+        }));
       }
     }
 
@@ -358,9 +361,10 @@ async function seedBuffsFromAuthoritativeTables(
         const byId = new Map<string, any>(
           (rows as Array<{ id: string; active_buffs: unknown }>).map(r => [r.id, r.active_buffs]),
         );
-        for (const link of creatureLinks) {
+        // v2.637 perf (audit 6.4): concurrent, same as the character branch.
+        await Promise.all(creatureLinks.map(async link => {
           const buffs = byId.get(link.creatureId);
-          if (!Array.isArray(buffs) || buffs.length === 0) continue;
+          if (!Array.isArray(buffs) || buffs.length === 0) return;
           const { error: uErr } = await supabase
             .from('combatants')
             .update({ active_buffs: asJsonb(buffs) })
@@ -369,7 +373,7 @@ async function seedBuffsFromAuthoritativeTables(
           if (uErr) {
             console.warn('[seedBuffs] creature combatant update failed', { combatantId: link.combatantId, error: uErr });
           }
-        }
+        }));
       }
     }
   } catch (err) {
@@ -519,23 +523,30 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
   const characterSeeds = participants.filter(p => p.participant_type === 'character' && !!p.entity_id);
   if (characterSeeds.length > 0) {
     import('./encumbrance').then(async ({ syncEncumbranceCondition }) => {
-      for (const p of characterSeeds) {
-        try {
-          const { data: charRow } = await supabase
-            .from('characters')
-            .select('*')
-            .eq('id', p.entity_id as string)
-            .maybeSingle();
-          if (!charRow) continue;
-          await syncEncumbranceCondition({
-            characterId: p.entity_id as string,
-            character: charRow as any,
-            campaignId: opts.campaignId,
-            encounterId: encounter.id,
-          });
-        } catch {
-          /* swallow — encumbrance sync must never break combat start */
-        }
+      // v2.637 perf (audit 6.4): was a select('*') per character in a
+      // serial loop against one of the widest tables in the schema.
+      // One batched .in() read, then the syncs run concurrently (each
+      // writes only its own character's rows).
+      try {
+        const ids = characterSeeds.map(p => p.entity_id as string);
+        const { data: charRows } = await supabase
+          .from('characters')
+          .select('*')
+          .in('id', ids);
+        await Promise.all((charRows ?? []).map(async (charRow: any) => {
+          try {
+            await syncEncumbranceCondition({
+              characterId: charRow.id as string,
+              character: charRow,
+              campaignId: opts.campaignId,
+              encounterId: encounter.id,
+            });
+          } catch {
+            /* swallow — encumbrance sync must never break combat start */
+          }
+        }));
+      } catch {
+        /* swallow — encumbrance sync must never break combat start */
       }
     }).catch(() => { /* dynamic import failure is non-fatal */ });
   }

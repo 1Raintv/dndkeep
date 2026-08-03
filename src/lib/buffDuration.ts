@@ -152,9 +152,15 @@ export function formatDurationLabel(rounds: number, secondsPerRound: number): st
 // ----------------------------------------------------------------
 //
 // Sweeps the three buff-bearing tables for the campaign and
-// decrements every row's active_buffs by `rounds`. Sequential
-// rather than parallel: the campaign data set is small (party-
-// sized) and sequential is easier to reason about under error.
+// decrements every row's active_buffs by `rounds`.
+//
+// v2.637 perf (audit 6.4): previously each table swept sequentially AND
+// updated its changed rows one await at a time — an 18-participant
+// campaign could stack ~18 serial round-trips behind the Advance Time /
+// next-turn button. Each row's decremented buff array is different, so
+// a single .in() update can't batch the writes; instead the three table
+// sweeps run concurrently and each sweep issues its row updates in
+// parallel. Wall-clock is now ~read + slowest single write.
 //
 // Never throws. Each table's failure is captured in the returned
 // errors[] so the Advance Time button can continue UI flow even
@@ -176,78 +182,43 @@ export async function elapseCampaignBuffDurations(
   }
 
   type RowWithBuffs = { id: string; active_buffs: unknown };
+  type BuffTable = 'characters' | 'combatants' | 'homebrew_monsters';
 
-  // characters
-  try {
-    const { data, error } = await supabase
-      .from('characters')
-      .select('id, active_buffs')
-      .eq('campaign_id', campaignId);
-    if (error) throw error;
-    for (const row of (data ?? []) as RowWithBuffs[]) {
-      const current = (row.active_buffs as ActiveBuff[] | null) ?? null;
-      const { changed, next } = decrementBuffDurations(current, ticks);
-      if (changed) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function sweepTable(table: BuffTable): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select('id, active_buffs')
+        .eq('campaign_id', campaignId);
+      if (error) throw error;
+
+      // Decrement in memory first; only changed rows get a write.
+      const writes = ((data ?? []) as RowWithBuffs[])
+        .map(row => {
+          const current = (row.active_buffs as ActiveBuff[] | null) ?? null;
+          const { changed, next } = decrementBuffDurations(current, ticks);
+          return changed ? { id: row.id, next } : null;
+        })
+        .filter((w): w is { id: string; next: ActiveBuff[] } => w !== null);
+
+      await Promise.all(writes.map(async w => {
         const { error: upErr } = await supabase
-          .from('characters')
-          .update({ active_buffs: asJsonb(next) })
-          .eq('id', row.id);
-        if (upErr) errors.push(`characters[${row.id}]: ${upErr.message}`);
-      }
+          .from(table)
+          .update({ active_buffs: asJsonb(w.next) })
+          .eq('id', w.id);
+        if (upErr) errors.push(`${table}[${w.id}]: ${upErr.message}`);
+      }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${table}: ${msg}`);
     }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    errors.push(`characters: ${msg}`);
   }
 
-  // combatants
-  try {
-    const { data, error } = await supabase
-      .from('combatants')
-      .select('id, active_buffs')
-      .eq('campaign_id', campaignId);
-    if (error) throw error;
-    for (const row of (data ?? []) as RowWithBuffs[]) {
-      const current = (row.active_buffs as ActiveBuff[] | null) ?? null;
-      const { changed, next } = decrementBuffDurations(current, ticks);
-      if (changed) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: upErr } = await supabase
-          .from('combatants')
-          .update({ active_buffs: asJsonb(next) })
-          .eq('id', row.id);
-        if (upErr) errors.push(`combatants[${row.id}]: ${upErr.message}`);
-      }
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    errors.push(`combatants: ${msg}`);
-  }
-
-  // homebrew_monsters
-  try {
-    const { data, error } = await supabase
-      .from('homebrew_monsters')
-      .select('id, active_buffs')
-      .eq('campaign_id', campaignId);
-    if (error) throw error;
-    for (const row of (data ?? []) as RowWithBuffs[]) {
-      const current = (row.active_buffs as ActiveBuff[] | null) ?? null;
-      const { changed, next } = decrementBuffDurations(current, ticks);
-      if (changed) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: upErr } = await supabase
-          .from('homebrew_monsters')
-          .update({ active_buffs: asJsonb(next) })
-          .eq('id', row.id);
-        if (upErr) errors.push(`homebrew_monsters[${row.id}]: ${upErr.message}`);
-      }
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    errors.push(`homebrew_monsters: ${msg}`);
-  }
+  await Promise.all([
+    sweepTable('characters'),
+    sweepTable('combatants'),
+    sweepTable('homebrew_monsters'),
+  ]);
 
   return { errors };
 }
