@@ -1857,6 +1857,26 @@ export function TokenLayer(props: {
     // elapses. The final position is covered by onPointerUp below.
     let lastBroadcastMs = 0;
 
+    // v2.637 perf (audit 6.2) — coalesce the LOCAL store write behind
+    // requestAnimationFrame. pointermove fires at the mouse's polling
+    // rate (240Hz+ on gaming mice), and every updatePos call shallow-
+    // clones the whole tokens map and re-renders every whole-map
+    // subscriber. The screen can only show one frame per ~16ms, so
+    // writing more often than rAF is pure waste — this was the frame
+    // drop while dragging tokens. The peer broadcast below was already
+    // throttled (50ms); this applies the same idea locally. Pending
+    // position is flushed synchronously on pointerup so the drop/
+    // snap-animation logic never reads a stale store.
+    let pendingDragPos: { id: string; x: number; y: number } | null = null;
+    let dragPosRaf = 0;
+    function flushDragPos() {
+      dragPosRaf = 0;
+      if (pendingDragPos) {
+        updatePos(pendingDragPos.id, pendingDragPos.x, pendingDragPos.y);
+        pendingDragPos = null;
+      }
+    }
+
     // v2.340.0 — Live drag-preview path (BG3-style).
     //
     // A single persistent Graphics overlay attached to the viewport,
@@ -2128,7 +2148,9 @@ export function TokenLayer(props: {
       const worldPoint = viewport.toWorld(screenX, screenY);
       const newX = worldPoint.x - drag.offsetX;
       const newY = worldPoint.y - drag.offsetY;
-      updatePos(drag.id, newX, newY);
+      // rAF-coalesced store write (see flushDragPos above).
+      pendingDragPos = { id: drag.id, x: newX, y: newY };
+      if (!dragPosRaf) dragPosRaf = requestAnimationFrame(flushDragPos);
 
       // v2.340.0 — live drag preview. Only show after the user has
       // actually moved (probe.didMove guards against firing on a
@@ -2151,6 +2173,11 @@ export function TokenLayer(props: {
     }
 
     function onPointerUp(e: PointerEvent) {
+      // Flush any rAF-pending drag position synchronously so the
+      // commit/snap logic below reads a current store (the animator
+      // path uses store state as its animation start point).
+      if (dragPosRaf) { cancelAnimationFrame(dragPosRaf); }
+      flushDragPos();
       const drag = dragRef.current;
       const probe = clickProbeRef.current;
       // v2.226 — click classifier. If pointer moved < threshold AND
@@ -2575,6 +2602,10 @@ export function TokenLayer(props: {
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      // v2.637 — drop any pending coalesced drag write; the store update
+      // targets a token that may belong to a torn-down scene.
+      if (dragPosRaf) { cancelAnimationFrame(dragPosRaf); dragPosRaf = 0; }
+      pendingDragPos = null;
       // v2.430.0 — kill the preview rAF loop if a drag was in flight
       // when the effect tore down (rare — mostly happens on hot-reload
       // during dev). Without this the rAF callback fires once more
