@@ -101,9 +101,13 @@ export default function DeclareSpellCastModal({
 
   // Countdown tick
   useEffect(() => {
+    // audit fix: this component is always mounted as a listener — only tick
+    // the 4 Hz countdown clock while there's actually something to count down.
+    if (!pscId) return;
+    setNow(Date.now()); // fresh baseline the moment a cast is declared
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [pscId]);
 
   // Terminal-state detection: fire onResolved once and let parent continue
   useEffect(() => {

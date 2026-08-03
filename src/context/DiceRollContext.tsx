@@ -1,4 +1,7 @@
-import { createContext, useContext, useState, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, Suspense, type ReactNode } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../lib/lazyWithRetry';
+
 import { logHistoryEvent } from '../lib/characterHistory';
 
 // Lazy-load DiceRoller3D — it pulls in three.js + cannon-es (~600 KB).

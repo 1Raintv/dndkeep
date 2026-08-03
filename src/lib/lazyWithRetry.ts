@@ -95,7 +95,13 @@ function recordReload(now: number): void {
  * Use exactly like lazy():
  *   const HomebrewPage = lazyWithRetry(() => import('./pages/HomebrewPage'));
  */
-export function lazyWithRetry<T extends ComponentType<unknown>>(
+// NOTE: the bound must be ComponentType<any>, not ComponentType<unknown> —
+// props are contravariant, so a component with required props (e.g.
+// ComponentType<{campaignId: string}>) does NOT extend ComponentType<unknown>,
+// and the wrapper would erase every wrapped component's prop types. <any>
+// matches React.lazy's own signature.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function lazyWithRetry<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): ReturnType<typeof lazy<T>> {
   return lazy<T>(async () => {

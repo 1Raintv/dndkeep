@@ -1,4 +1,7 @@
-import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
+
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
 import WildShapePanel from './WildShapePanel';
@@ -747,9 +750,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
  const concSpellIdAtRoll = concentrationSpellId; // capture for the callback
  let resolved = false;
+ // eslint-disable-next-line prefer-const -- assigned after resolveVerdict closes over it
+ let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
  const resolveVerdict = () => {
  if (resolved) return;
  resolved = true;
+ clearTimeout(fallbackTimer); // audit fix: don't leave the 3.5s fallback pending after onResult fires
  if (!passed) {
  showConcentrationLossToast(
  concSpellIdAtRoll,
@@ -770,7 +776,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  });
  // Fallback: if for any reason onResult never fires, resolve after 3.5s
  // so the toast + concentration-drop still happens.
- setTimeout(resolveVerdict, 3500);
+ fallbackTimer = setTimeout(resolveVerdict, 3500);
  // Action log can write immediately — it's a separate surface and doesn't
  // conflict with the dice animation.
  import('../shared/ActionLog').then(({ logAction }) => {

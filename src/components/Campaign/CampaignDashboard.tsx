@@ -1,4 +1,7 @@
-import { useState, useEffect, lazy, Suspense, type FormEvent } from 'react';
+import { useState, useEffect, Suspense, type FormEvent } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
+
 import type { Campaign, Character, CampaignMember } from '../../types';
 // v2.296.0 — useCampaign import dropped. Was used to read the now-
 // retired sessionState/updateSessionState fields off CampaignContext;
@@ -1126,6 +1129,12 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       </div>
       </ErrorBoundary>
     </div>
+    {/* v2.636 — audit fix: the always-mounted combat overlay (initiative
+        strip, resave listener, monster panel, pending-attack modals) sat
+        OUTSIDE the tab-content ErrorBoundary above, so a crash in any of
+        them white-screened the entire dashboard. Own boundary so combat
+        overlay crashes show the fallback while tab content stays alive. */}
+    <ErrorBoundary section="combat overlay">
     {/* v2.96.0 — Phase D: bottom initiative strip renders when active encounter exists */}
     <InitiativeStrip isDM={isOwner} />
     {/* v2.452.0 — DM-side end-of-turn re-save toast surfacing. Mounts
@@ -1151,6 +1160,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       {/* v2.139.0 — Phase M pt 2: DM-only LR prompt on failed monster saves */}
       <LegendaryResistancePromptModal campaignId={campaign.id} isDM={isOwner} />
     </Suspense>
+    </ErrorBoundary>
     </CombatProvider>
   );
 }

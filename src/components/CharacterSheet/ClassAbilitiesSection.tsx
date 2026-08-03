@@ -1,4 +1,7 @@
-import { useState, Fragment, lazy, Suspense } from 'react';
+import { useState, Fragment, Suspense } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
+
 import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
 import { PSION_DISCIPLINES } from '../../data/psionDisciplines';

@@ -75,9 +75,13 @@ export default function ReactionPromptModal({ campaignId }: Props) {
 
   // 250ms tick for countdown + auto-expire
   useEffect(() => {
+    // audit fix: this component is always mounted as a listener — only tick
+    // the 4 Hz countdown clock while there's actually something to count down.
+    if (!(allOffers.length)) return;
+    setNow(Date.now()); // fresh baseline the moment an offer appears
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [allOffers.length]);
 
   // Auto-expire any offer whose expires_at has passed
   useEffect(() => {

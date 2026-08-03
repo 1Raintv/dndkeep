@@ -60,9 +60,13 @@ export default function CleaveOfferModal({ campaignId }: Props) {
   }, [campaignId]);
 
   useEffect(() => {
+    // audit fix: this component is always mounted as a listener — only tick
+    // the 4 Hz countdown clock while there's actually something to count down.
+    if (!(offers.length)) return;
+    setNow(Date.now()); // fresh baseline the moment an offer appears
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [offers.length]);
 
   // Newest offer wins — there is never more than one open per attacker
   // (offerCleave refuses to stack), and cross-attacker overlap can't

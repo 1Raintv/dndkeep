@@ -1,4 +1,7 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, Suspense } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
+
 import { SUMMON_TOKEN_SPELLS, placeSummonToken } from '../../lib/summonTokens';
 import { AURA_SPELLS } from '../../lib/auras';
 import SummonFormPickerModal from './SummonFormPickerModal';
