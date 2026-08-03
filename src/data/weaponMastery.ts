@@ -49,6 +49,11 @@ export interface MasteryWeapon {
   mastery: MasteryName;
   light?: boolean;
   finesse?: boolean;
+  /** v2.633.0 — SRD 5.2.1 Reach property (Glaive, Halberd, Lance, Pike,
+   *  Whip): "adds 5 feet to your reach when you attack with it". Only
+   *  meaningful for melee weapons. Consumed by weaponReachFt(), which
+   *  gates Cleave's "also within your reach" clause. */
+  reach?: boolean;
 }
 
 // SRD 5.2.1 Weapons table (Mastery column).
@@ -72,22 +77,22 @@ export const MASTERY_WEAPONS: MasteryWeapon[] = [
   // Martial Melee
   { name: 'Battleaxe',      group: 'martial_melee', mastery: 'Topple' },
   { name: 'Flail',          group: 'martial_melee', mastery: 'Sap' },
-  { name: 'Glaive',         group: 'martial_melee', mastery: 'Graze' },
+  { name: 'Glaive',         group: 'martial_melee', mastery: 'Graze',  reach: true },
   { name: 'Greataxe',       group: 'martial_melee', mastery: 'Cleave' },
   { name: 'Greatsword',     group: 'martial_melee', mastery: 'Graze' },
-  { name: 'Halberd',        group: 'martial_melee', mastery: 'Cleave' },
-  { name: 'Lance',          group: 'martial_melee', mastery: 'Topple' },
+  { name: 'Halberd',        group: 'martial_melee', mastery: 'Cleave', reach: true },
+  { name: 'Lance',          group: 'martial_melee', mastery: 'Topple', reach: true },
   { name: 'Longsword',      group: 'martial_melee', mastery: 'Sap' },
   { name: 'Maul',           group: 'martial_melee', mastery: 'Topple' },
   { name: 'Morningstar',    group: 'martial_melee', mastery: 'Sap' },
-  { name: 'Pike',           group: 'martial_melee', mastery: 'Push' },
+  { name: 'Pike',           group: 'martial_melee', mastery: 'Push',   reach: true },
   { name: 'Rapier',         group: 'martial_melee', mastery: 'Vex',    finesse: true },
   { name: 'Scimitar',       group: 'martial_melee', mastery: 'Nick',   light: true, finesse: true },
   { name: 'Shortsword',     group: 'martial_melee', mastery: 'Vex',    light: true, finesse: true },
   { name: 'Trident',        group: 'martial_melee', mastery: 'Topple' },
   { name: 'War Pick',       group: 'martial_melee', mastery: 'Sap' },
   { name: 'Warhammer',      group: 'martial_melee', mastery: 'Push' },
-  { name: 'Whip',           group: 'martial_melee', mastery: 'Slow',   finesse: true },
+  { name: 'Whip',           group: 'martial_melee', mastery: 'Slow',   finesse: true, reach: true },
   // Martial Ranged
   { name: 'Blowgun',        group: 'martial_ranged', mastery: 'Vex' },
   { name: 'Hand Crossbow',  group: 'martial_ranged', mastery: 'Vex',   light: true },
@@ -140,4 +145,37 @@ export function masteryForWeapon(weaponName: string | null | undefined): Mastery
   if (exact) return exact.mastery;
   const prefix = MASTERY_WEAPONS.find(w => n.startsWith(w.name.toLowerCase()));
   return prefix ? prefix.mastery : null;
+}
+
+/** v2.633.0 — Full weapon entry for an inventory weapon name
+ *  (case-insensitive; exact match first, then prefix so "Halberd +1"
+ *  and "Greataxe (silvered)" still resolve). Returns null for weapons
+ *  outside the SRD table. */
+export function masteryWeaponEntry(weaponName: string | null | undefined): MasteryWeapon | null {
+  if (!weaponName) return null;
+  const n = weaponName.trim().toLowerCase();
+  const exact = MASTERY_WEAPONS.find(w => w.name.toLowerCase() === n);
+  if (exact) return exact;
+  const prefix = MASTERY_WEAPONS.find(w => n.startsWith(w.name.toLowerCase()));
+  return prefix ?? null;
+}
+
+/** v2.633.0 — Melee reach for a weapon, in feet: 5 ft, or 10 ft with
+ *  the Reach property (SRD 5.2.1). Returns null for ranged weapons and
+ *  for names outside the SRD weapons table — callers treat null as
+ *  "unknown, fall back to the standard 5 ft". */
+export function weaponReachFt(weaponName: string | null | undefined): number | null {
+  const entry = masteryWeaponEntry(weaponName);
+  if (!entry) return null;
+  if (entry.group === 'simple_ranged' || entry.group === 'martial_ranged') return null;
+  return entry.reach ? 10 : 5;
+}
+
+/** v2.633.0 — True when this weapon is a melee weapon per the SRD
+ *  weapons table. Cleave, Graze's melee framing, and the Topple/Push
+ *  riders all key off melee-ness. */
+export function isMeleeMasteryWeapon(weaponName: string | null | undefined): boolean {
+  const entry = masteryWeaponEntry(weaponName);
+  if (!entry) return false;
+  return entry.group === 'simple_melee' || entry.group === 'martial_melee';
 }

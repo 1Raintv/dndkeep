@@ -21,7 +21,7 @@ interface Props {
 }
 
 export default function ReactionPromptModal({ campaignId }: Props) {
-  const [offers, setOffers] = useState<PendingReaction[]>([]);
+  const [allOffers, setOffers] = useState<PendingReaction[]>([]);
   const [attacksById, setAttacksById] = useState<Record<string, PendingAttack>>({});
   const [now, setNow] = useState<number>(Date.now());
   const [busy, setBusy] = useState(false);
@@ -81,13 +81,16 @@ export default function ReactionPromptModal({ campaignId }: Props) {
 
   // Auto-expire any offer whose expires_at has passed
   useEffect(() => {
-    for (const o of offers) {
+    // v2.633.0 — allOffers (not visibleOffers): expiry is global
+    // housekeeping, and a Cleave offer must expire on its own timer
+    // even though this modal never renders it.
+    for (const o of allOffers) {
       const exp = new Date(o.expires_at).getTime();
       if (now >= exp) {
         expireReaction(o.id).catch(() => {});
       }
     }
-  }, [now, offers]);
+  }, [now, allOffers]);
 
   // RLS filters so players only see their own offers. DMs see all, but we
   // don't want the DM seeing the reaction prompt (they have their own view).
@@ -112,6 +115,11 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   }, [campaignId]);
 
   const visibleOffers = useMemo(() => {
+    // v2.633.0 — Cleave offers ride on pending_reactions for the offer
+    // lifecycle, but Cleave is NOT a reaction (it costs no reaction and
+    // happens on the attacker's own turn). CleaveOfferModal owns that
+    // UI; filter it out here for players and DM alike.
+    const offers = allOffers.filter(o => o.reaction_key !== 'cleave');
     // Player view: RLS already filtered to rows where this user is the
     // reactor's owner. Show everything that came back.
     if (!isDM) return offers;
@@ -122,7 +130,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
       o.reaction_key === 'opportunity_attack'
       && (o.reactor_type === 'monster' || o.reactor_type === 'npc')
     );
-  }, [isDM, offers]);
+  }, [isDM, allOffers]);
 
   // v2.124.0 — Phase J: most-urgent offer (least time remaining) memoized
   // so effects can key off it without re-running mid-render.

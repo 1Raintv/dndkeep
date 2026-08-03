@@ -16,8 +16,14 @@
 //            + PB); fail → Prone via the existing condition system
 //   Push   — hit: DM-facing event "may push target up to 10 ft
 //            straight away" (auto token movement is a later ship)
+//   Cleave — hit with a melee attack roll: offer ONE extra attack
+//            against a second creature within 5 ft of the first and
+//            within reach, damage minus the ability modifier, once per
+//            turn. Lives in lib/cleave.ts (v2.633) because it needs
+//            map geometry + an offer lifecycle; the case below is just
+//            the hook.
 //
-// Graze / Cleave / Nick land in Ship B part 2.
+// Nick lands with the two-weapon-fighting model.
 //
 // Riders fire only when the attacker is a character whose
 // weapon_masteries includes the weapon (matched through
@@ -258,8 +264,18 @@ export async function applyOnHitMasteryRiders(input: {
       });
       return;
     }
+    case 'Cleave': {
+      // v2.633.0 — RAW triggers on the HIT, so a target killed by this
+      // hit still lets you cleave into a neighbour; no targetIsDead
+      // gate. offerCleave re-checks every precondition itself
+      // (melee, attack_roll, hit/crit, once-per-turn, candidates
+      // present) and no-ops quietly when any fails.
+      const { offerCleave } = await import('./cleave');
+      await offerCleave({ atk, abilityMod: ctx.abilityMod });
+      return;
+    }
     default:
-      return;   // Graze / Cleave / Nick — Ship B part 2
+      return;   // Graze handled on the miss path; Nick needs TWF first
   }
 }
 

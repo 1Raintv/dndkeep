@@ -23,6 +23,7 @@ import InitiativeStrip from '../Combat/InitiativeStrip';
 // benefit. Suspense fallback={null} since they're invisible until
 // triggered anyway.
 const ReactionPromptModal = lazy(() => import('../Combat/ReactionPromptModal'));
+const CleaveOfferModal = lazy(() => import('../Combat/CleaveOfferModal'));
 const ConcentrationSavePromptModal = lazy(() => import('../Combat/ConcentrationSavePromptModal'));
 const DeathSavePromptModal = lazy(() => import('../Combat/DeathSavePromptModal'));
 // v2.452.0 — Player-side end-of-turn re-save toast surfacing. Filtered
@@ -4590,6 +4591,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <Suspense fallback={null}>
    {/* v2.98.0 — Phase E: reaction prompt for this character */}
    {character.campaign_id && <ReactionPromptModal campaignId={character.campaign_id} />}
+   {/* v2.633.0 — Weapon Mastery Cleave: second-target picker for this character */}
+   {character.campaign_id && <CleaveOfferModal campaignId={character.campaign_id} />}
    {/* v2.118.0 — Phase I pt 2: concentration save prompt when automation is 'prompt' */}
    <ConcentrationSavePromptModal characterId={character.id} />
    {/* v2.144.0 — Phase N pt 2: death save prompt when the downed character

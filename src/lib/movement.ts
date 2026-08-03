@@ -309,6 +309,28 @@ export async function logMovement(input: LogMovementInput): Promise<void> {
     toRow: input.toRow,
     toCol: input.toCol,
   });
+
+  // v2.634.0 — Aura/Emanation movement triggers. Handles BOTH RAW
+  // directions: the mover walking into a stationary Emanation, and an
+  // Emanation origin moving so the area sweeps over creatures. Runs
+  // after the OA offers so the log reads in the order play happens.
+  // Defensive: an aura failure must never break movement.
+  if (input.encounterId) {
+    try {
+      const { evaluateAurasOnMovement } = await import('./auras');
+      await evaluateAurasOnMovement({
+        campaignId: input.campaignId,
+        encounterId: input.encounterId,
+        moverParticipantId: input.participantId,
+        fromRow: input.fromRow,
+        fromCol: input.fromCol,
+        toRow: input.toRow,
+        toCol: input.toCol,
+      });
+    } catch (err) {
+      console.error('[logMovement] aura movement evaluation failed', err);
+    }
+  }
 }
 
 // ─── Reset Movement ──────────────────────────────────────────────

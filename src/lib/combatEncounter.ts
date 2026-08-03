@@ -727,6 +727,21 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
     } catch (err) {
       console.error('[advanceTurn] end-of-turn buff ticks failed', err);
     }
+
+    // v2.634.0 — Aura/Emanation "ends its turn there" trigger (2024
+    // Spirit Guardians). Must run BEFORE the once-per-turn marker
+    // sweep below, which clears the gate this save checks. Defensive:
+    // never blocks turn advance.
+    try {
+      const { evaluateAurasOnTurnEnd } = await import('./auras');
+      await evaluateAurasOnTurnEnd({
+        campaignId: outgoingForConditions.campaign_id as string,
+        encounterId,
+        participantId: outgoingForConditions.id as string,
+      });
+    } catch (err) {
+      console.error('[advanceTurn] end-of-turn aura evaluation failed', err);
+    }
   }
 
   // v2.506.0 — Movement-gated feature auto-reset for the OUTGOING actor.
@@ -803,6 +818,12 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       // multiattack count. Reads back attacks_per_action because
       // that's the source of truth (set at insert + DM-editable later).
       attacks_remaining: (incomingParticipant as any).attacks_per_action ?? 1,
+      // v2.633.0 — Clear the generic once-per-turn marker array
+      // (Cleave today; Sneak Attack / Nick share it later).
+      // v2.634.0 — see the encounter-wide sweep below: this entry is
+      // kept so the incoming actor is always clean even if the sweep
+      // fails, but the sweep is what makes the semantics correct.
+      once_per_turn_used: [],
       ...(needsLaRefill ? { legendary_actions_remaining: laCap } : {}),
       ...(expendedRecharge.length > 0 ? { expended_recharge: stillExpended } : {}),
     })
@@ -810,6 +831,24 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   if (partUpdErr) {
     console.error('[advanceTurn] participant turn-reset failed:', partUpdErr);
     return { ok: false, reason: partUpdErr.message ?? 'Failed to reset turn budgets' };
+  }
+
+  // v2.634.0 — RAW correction to v2.633. "Once per turn" means the
+  // turn currently in progress, whosever it is — not "once on your own
+  // turn". So the marker array clears for EVERY participant at each
+  // turn boundary, not just the incoming one. This matters for aura
+  // saves (a creature can be forced to save on the cleric's turn and
+  // again when it ends its own) and it was quietly wrong for Cleave
+  // too, which can fire on an opportunity attack during someone
+  // else's turn. Defensive: never blocks turn advance.
+  try {
+    await (supabase as any)
+      .from('combat_participants')
+      .update({ once_per_turn_used: [] })
+      .eq('encounter_id', encounterId)
+      .neq('once_per_turn_used', '{}');
+  } catch (err) {
+    console.error('[advanceTurn] once-per-turn sweep failed', err);
   }
 
   // v2.127.0 — Phase J: on round increment, reset lair_action_used_this_round

@@ -63,6 +63,7 @@ import StartCombatButton from '../Combat/StartCombatButton';
 // evaluated up front.
 const AttackResolutionModal = lazy(() => import('../Combat/AttackResolutionModal'));
 const ReactionPromptModal = lazy(() => import('../Combat/ReactionPromptModal'));
+const CleaveOfferModal = lazy(() => import('../Combat/CleaveOfferModal'));
 const LegendaryResistancePromptModal = lazy(() => import('../Combat/LegendaryResistancePromptModal'));
 import ErrorBoundary from '../ErrorBoundary';
 import CampaignSettings from './CampaignSettings';
@@ -1145,6 +1146,8 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       <AttackResolutionModal campaignId={campaign.id} isDM={isOwner} />
       {/* v2.98.0 — Phase E: reaction prompt for target player on hit */}
       <ReactionPromptModal campaignId={campaign.id} />
+      {/* v2.633.0 — Weapon Mastery Cleave: second-target picker (DM view) */}
+      <CleaveOfferModal campaignId={campaign.id} />
       {/* v2.139.0 — Phase M pt 2: DM-only LR prompt on failed monster saves */}
       <LegendaryResistancePromptModal campaignId={campaign.id} isDM={isOwner} />
     </Suspense>

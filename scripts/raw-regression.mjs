@@ -22,7 +22,9 @@ export { CLASS_COMBAT_ABILITIES } from '${process.cwd().replace(/\\/g, '/')}/src
 export { CLASS_MAP } from '${process.cwd().replace(/\\/g, '/')}/src/data/classes';
 export { FEATS } from '${process.cwd().replace(/\\/g, '/')}/src/data/feats';
 export { getCharacterResources } from '${process.cwd().replace(/\\/g, '/')}/src/data/classResources';
-export { MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons } from '${process.cwd().replace(/\\/g, '/')}/src/data/weaponMastery';
+export { MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons, weaponReachFt, isMeleeMasteryWeapon } from '${process.cwd().replace(/\\/g, '/')}/src/data/weaponMastery';
+export { stripAbilityModFromDamage, CLEAVE_ONCE_KEY } from '${process.cwd().replace(/\\/g, '/')}/src/lib/cleave';
+export { footprintAt, gapCells, isInsideEmanation, spiritGuardiansSpec, auraSaveMarkerKey } from '${process.cwd().replace(/\\/g, '/')}/src/lib/auras';
 `);
 
 buildSync({
@@ -41,7 +43,7 @@ buildSync({
   },
 });
 
-const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources, MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons } = await import(pathToFileURL(out).href);
+const { SPELLS, CLASS_COMBAT_ABILITIES, CLASS_MAP, FEATS, getCharacterResources, MASTERY_WEAPONS, masterySlots, masteryForWeapon, eligibleMasteryWeapons, weaponReachFt, isMeleeMasteryWeapon, stripAbilityModFromDamage, CLEAVE_ONCE_KEY, footprintAt, gapCells, isInsideEmanation, spiritGuardiansSpec, auraSaveMarkerKey } = await import(pathToFileURL(out).href);
 
 let failures = 0;
 function check(name, cond, detail = '') {
@@ -164,6 +166,101 @@ console.log('— Weapon Mastery: v2.629 data layer (SRD 5.2.1) —');
   check('Rogue eligibility excludes Longbow, includes Rapier',
     !eligibleMasteryWeapons('Rogue').some((w) => w.name === 'Longbow') &&
     eligibleMasteryWeapons('Rogue').some((w) => w.name === 'Rapier'));
+}
+
+console.log('— Weapon Mastery: v2.633 Cleave (SRD 5.2.1) —');
+{
+  // Only two SRD weapons carry Cleave.
+  const cleaveWeapons = MASTERY_WEAPONS.filter((w) => w.mastery === 'Cleave').map((w) => w.name).sort();
+  check('Cleave weapons are exactly Greataxe + Halberd',
+    JSON.stringify(cleaveWeapons) === JSON.stringify(['Greataxe', 'Halberd']));
+  // Reach property (SRD 5.2.1): Glaive, Halberd, Lance, Pike, Whip.
+  const reachWeapons = MASTERY_WEAPONS.filter((w) => w.reach).map((w) => w.name).sort();
+  check('Reach weapons are exactly Glaive/Halberd/Lance/Pike/Whip',
+    JSON.stringify(reachWeapons) === JSON.stringify(['Glaive', 'Halberd', 'Lance', 'Pike', 'Whip']));
+  check('Halberd reach is 10 ft, Greataxe is 5 ft',
+    weaponReachFt('Halberd') === 10 && weaponReachFt('Greataxe') === 5);
+  check('Reach resolves through magic-weapon name suffixes',
+    weaponReachFt('Halberd +1') === 10 && weaponReachFt('Greataxe (silvered)') === 5);
+  check('Ranged weapons have no melee reach; unknown names return null',
+    weaponReachFt('Longbow') === null && weaponReachFt('Bagpipes') === null);
+  check('isMeleeMasteryWeapon separates melee from ranged',
+    isMeleeMasteryWeapon('Greataxe') && isMeleeMasteryWeapon('Dagger') &&
+    !isMeleeMasteryWeapon('Longbow') && !isMeleeMasteryWeapon('Hand Crossbow'));
+  // "don't add your ability modifier to that damage unless that
+  // modifier is negative" — and only the ABILITY mod comes out, so a
+  // magic weapon's bonus survives.
+  check('Cleave strips a positive ability modifier',
+    stripAbilityModFromDamage('1d12+4', 4) === '1d12');
+  check('Cleave keeps a magic bonus after stripping the ability mod',
+    stripAbilityModFromDamage('1d10+5', 4) === '1d10+1');
+  check('Cleave keeps a NEGATIVE ability modifier (RAW exception)',
+    stripAbilityModFromDamage('1d12-1', -1) === '1d12-1');
+  check('Cleave with a zero modifier is a no-op',
+    stripAbilityModFromDamage('1d12+4', 0) === '1d12+4');
+  check('Cleave leaves unparseable damage untouched',
+    stripAbilityModFromDamage('2d6+1d4+3', 3) === '2d6+1d4+3');
+  check('Cleave once-per-turn marker key is stable',
+    CLEAVE_ONCE_KEY === 'weapon_mastery_cleave');
+}
+
+console.log('— Auras: v2.634 Emanation geometry + Spirit Guardians (2024) —');
+{
+  // Footprint parity convention: odd sizes anchor on the centre cell,
+  // even sizes on the top-left cell. Must match battleMapGeometry.
+  const med = footprintAt(5, 5, 1);
+  check('Size 1 footprint is the anchor cell',
+    med.rMin === 5 && med.rMax === 5 && med.cMin === 5 && med.cMax === 5);
+  const huge = footprintAt(5, 5, 3);
+  check('Odd size 3 centres on the anchor',
+    huge.rMin === 4 && huge.rMax === 6 && huge.cMin === 4 && huge.cMax === 6);
+  const large = footprintAt(5, 5, 2);
+  check('Even size 2 extends right/down from the anchor',
+    large.rMin === 5 && large.rMax === 6 && large.cMin === 5 && large.cMax === 6);
+
+  // Chebyshev gap in CELLS APART: the next square over is 1 (= 5 ft),
+  // and a diagonal counts as a single square per RAW 2024. Matches
+  // battleMapGeometry.distanceBetweenTokensFt, which multiplies by 5.
+  check('Adjacent cells are 1 apart (5 ft)',
+    gapCells(footprintAt(5, 5, 1), footprintAt(5, 6, 1)) === 1);
+  check('Diagonals count as a single square',
+    gapCells(footprintAt(5, 5, 1), footprintAt(6, 6, 1)) === 1);
+  check('Gap scales linearly with separation',
+    gapCells(footprintAt(5, 5, 1), footprintAt(5, 9, 1)) === 4);
+
+  // A 15-ft Emanation reaches 3 squares out from the origin's space.
+  const origin = footprintAt(5, 5, 1);
+  check('15-ft Emanation includes a creature 3 squares out',
+    isInsideEmanation(origin, footprintAt(5, 8, 1), 15));
+  check('15-ft Emanation excludes a creature 4 squares out',
+    !isInsideEmanation(origin, footprintAt(5, 9, 1), 15));
+  // Large origins project from their whole footprint, not their anchor.
+  check('Large origin projects from its footprint edge, not its anchor',
+    isInsideEmanation(footprintAt(5, 5, 2), footprintAt(5, 9, 1), 15) &&
+    !isInsideEmanation(footprintAt(5, 5, 1), footprintAt(5, 9, 1), 15));
+  // Paladin Aura of Protection is a 10-ft Emanation = 2 squares.
+  check('10-ft Emanation reaches exactly 2 squares',
+    isInsideEmanation(origin, footprintAt(5, 7, 1), 10) &&
+    !isInsideEmanation(origin, footprintAt(5, 8, 1), 10));
+
+  // Spirit Guardians 2024: 15-ft Emanation, WIS save, 3d8 at level 3
+  // scaling +1d8 per slot above 3rd, half on save, Speed halved,
+  // triggers on enter / emanation-sweep / END of turn (NOT start).
+  const sg = spiritGuardiansSpec({ saveDC: 15, slotLevel: 3, damageType: 'radiant' });
+  check('Spirit Guardians is a 15-ft WIS Emanation', sg.radiusFt === 15 && sg.saveAbility === 'WIS');
+  check('Spirit Guardians deals 3d8 at level 3', sg.damageDice === '3d8');
+  check('Spirit Guardians upcasts +1d8 per slot level',
+    spiritGuardiansSpec({ saveDC: 15, slotLevel: 5, damageType: 'radiant' }).damageDice === '5d8' &&
+    spiritGuardiansSpec({ saveDC: 15, slotLevel: 9, damageType: 'radiant' }).damageDice === '9d8');
+  check('Spirit Guardians deals half on a successful save', sg.halfOnSave === true);
+  check('Spirit Guardians halves Speed inside the area', sg.speedInside === 'half');
+  check('Spirit Guardians triggers on ENTER and END of turn (2024, not start)',
+    sg.triggers.includes('creature_entered') && sg.triggers.includes('turn_end') &&
+    sg.triggers.includes('emanation_entered'));
+  check('Spirit Guardians affects all non-designated creatures',
+    sg.affects === 'all' && sg.exemptParticipantIds.length === 0);
+  check('Aura save markers are scoped per origin AND per aura',
+    auraSaveMarkerKey('origin-a', 'spirit_guardians') !== auraSaveMarkerKey('origin-b', 'spirit_guardians'));
 }
 
 console.log('— Class resources: v2.623 Font of Inspiration gate —');
