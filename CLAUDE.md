@@ -42,9 +42,13 @@ count, ratchet `TS_BASELINE` down in ci.yml in the same commit. Never raise it.
 - **Lazy loading**: always `lazyWithRetry` from `src/lib/lazyWithRetry.ts`,
   never raw `React.lazy` — raw lazy white-screens when a deploy invalidates
   chunk hashes mid-session.
-- **BattleMapV2.tsx is ~11,000 lines** and under incremental decomposition.
-  Do not add new state or effects to its root component — extract or extend a
-  self-contained `*Layer` component instead.
+- **Battle-map structure**: `BattleMapV2.tsx` (~4,300 lines) is the root —
+  scene management, realtime subscriptions, toolbars, layer wiring. All 15
+  layer/panel components live in `src/components/Campaign/battlemap/`
+  (TokenLayer, VisionLayer, WallLayer, DrawingLayer, the panels, plus
+  `shared.ts` for their constants and geometry helpers). New map features go
+  in a new or existing `battlemap/` component, not the root; keep shrinking
+  the root, never grow it.
 - Heavy stable deps (`three`, `pixi.js`, react, supabase) are split via
   `manualChunks` in `vite.config.ts` so app deploys don't invalidate their
   browser cache. Keep new heavy deps out of the default chunk.
