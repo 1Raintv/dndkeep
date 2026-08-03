@@ -457,7 +457,9 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     const envMap=pmrem.fromScene(envScene2,0.0).texture;
     scene.environment=envMap;
     scene.environmentIntensity=0.7;
-    pmrem.dispose();envScene2.clear();
+    // v2.637 leak fix (audit 5.1): the dome mesh's GPU resources were
+    // orphaned once the env map was baked — dispose them now.
+    pmrem.dispose();envScene2.clear();envSphere.geometry.dispose();envSphere.material.dispose();
     // Camera slightly overhead — dice are clearly readable from above
     const FOV=62, aspect=W/H;
     const camera=new THREE.PerspectiveCamera(FOV,aspect,0.1,300);
@@ -828,10 +830,27 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     return()=>{
       dismissed=true;cancelAnimationFrame(raf);
       dice.forEach(d=>world.removeBody(d.body));
+      // v2.637 leak fix (audit 5.1): scene.clear() only detaches children —
+      // it does NOT free GPU buffers. Every roll leaked the dice geometries,
+      // per-face materials, edge lines, floor, and any in-flight sparks.
+      // Traverse and dispose geometry + materials explicitly. Materials'
+      // .dispose() does NOT touch their textures, which is what we want:
+      // face textures live in the module-level TC cache and are REUSED
+      // across rolls now — the old per-roll TC.clear() dropped them
+      // without disposing (GPU leak) and forced a full texture regen on
+      // the next roll (worst of both). The cache is bounded by
+      // die-faces × skins, so letting it live is the right trade.
+      scene.traverse((obj:object)=>{
+        const mesh=obj as THREE.Mesh;
+        if(mesh.geometry)mesh.geometry.dispose();
+        const mat=mesh.material as THREE.Material|THREE.Material[]|undefined;
+        if(Array.isArray(mat))mat.forEach(m=>m.dispose());
+        else if(mat)mat.dispose();
+      });
+      envMap.dispose(); // pmrem render-target texture on scene.environment
       renderer.dispose();
       if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
-      sparks.forEach(s=>{scene.remove(s.mesh);});
-      scene.clear();TC.clear();
+      scene.clear();
       audioCtx?.close();
     };
   },[]);
