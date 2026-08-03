@@ -2,6 +2,7 @@ import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
 import { CLASS_MAP } from '../data/classes';
 import { itemBonusesActive, getEffectiveAbilityScores } from './attunement';
+import { rollDie } from '../rules/dice';
 
 /** PHB formula: floor((score - 10) / 2) */
 export function abilityModifier(score: number): number {
@@ -180,10 +181,10 @@ export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Roll a single die of a given number of sides. */
-export function rollDie(sides: number): number {
-  return Math.floor(Math.random() * sides) + 1;
-}
+// rollDie moved to src/rules/dice.ts (a zero-import leaf module) so
+// components that only roll dice don't pull this file's data-table imports
+// into their bundle chunk. Re-exported here so existing imports keep working.
+export { rollDie };
 
 /** Roll NdX+modifier and return individual results and total. */
 export function rollDice(count: number, sides: number, modifier = 0): {

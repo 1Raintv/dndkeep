@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { rollDie } from '../../lib/gameUtils';
+// Import from rules/dice (leaf module), NOT lib/gameUtils — QuickRoll is
+// eagerly loaded by App.tsx, and gameUtils drags the full spell/class/item
+// data tables (~655 KB) into the entry chunk. See src/rules/dice.ts.
+import { rollDie } from '../../rules/dice';
 import { supabase } from '../../lib/supabase';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { useEffect, useRef } from 'react';
