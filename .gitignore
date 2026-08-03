@@ -20,6 +20,20 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea
+.vs/
 
 # TypeScript
 *.tsbuildinfo
+
+# Claude Code — local agent state
+.claude/
+
+# Vercel CLI — links this checkout to the Vercel project, do not share
+.vercel/
+
+# Deploy script scratch output
+deploy.lock
+deploy-log.txt
+deploy.log
+*.tmp
+*.patch
