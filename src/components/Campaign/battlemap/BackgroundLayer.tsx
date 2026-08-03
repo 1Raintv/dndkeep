@@ -34,6 +34,23 @@ export function BackgroundLayer(props: {
   const spriteRef = useRef<Sprite | null>(null);
   const loadGenRef = useRef(0);
   const currentPathRef = useRef<string | null>(null);
+  // v2.637 leak fix (audit 5.2) — URL of the texture currently held in
+  // Pixi's global Assets cache by THIS layer. Scene backgrounds are the
+  // largest textures in the app (full-map images, often multi-MB on the
+  // GPU); before this, every scene switch left the previous scene's
+  // background cached forever. Backgrounds are per-scene (not shared
+  // between sprites like token portraits), so unloading the old URL when
+  // the path changes is safe; revisiting a scene re-fetches through the
+  // browser's HTTP cache.
+  const loadedUrlRef = useRef<string | null>(null);
+
+  function unloadPrevious() {
+    const prev = loadedUrlRef.current;
+    if (prev) {
+      loadedUrlRef.current = null;
+      Assets.unload(prev).catch(() => { /* already gone — fine */ });
+    }
+  }
 
   useEffect(() => {
     if (!viewport) return;
@@ -58,6 +75,7 @@ export function BackgroundLayer(props: {
       }
       spriteRef.current = null;
     }
+    unloadPrevious();
 
     if (!backgroundPath) return; // nothing to render
 
@@ -65,8 +83,14 @@ export function BackgroundLayer(props: {
     if (!url) return;
 
     Assets.load<Texture>(url).then(texture => {
-      if (loadGenRef.current !== thisGen) return;
+      if (loadGenRef.current !== thisGen) {
+        // A newer load superseded this one — release the stale texture
+        // unless it's the one the newer generation holds.
+        if (loadedUrlRef.current !== url) Assets.unload(url).catch(() => {});
+        return;
+      }
       if (!viewport || viewport.destroyed) return;
+      loadedUrlRef.current = url;
 
       const sprite = new Sprite(texture);
       sprite.x = 0;
@@ -89,6 +113,13 @@ export function BackgroundLayer(props: {
       if (spriteRef.current && !spriteRef.current.destroyed) {
         spriteRef.current.destroy();
         spriteRef.current = null;
+      }
+      // v2.637 — release the background texture from the Assets cache
+      // when the layer unmounts (leaving the map tab / closing the scene).
+      const prev = loadedUrlRef.current;
+      if (prev) {
+        loadedUrlRef.current = null;
+        Assets.unload(prev).catch(() => {});
       }
     };
   }, []);
