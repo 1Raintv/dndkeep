@@ -101,6 +101,8 @@ vs `.slnx` default.)
 
    ```xml
    <Project Sdk="Microsoft.VisualStudio.JavaScript.Sdk/1.0.6237341">
+     <!-- Local-only VS wrapper for the Vite app. NOT tracked by git:
+          listed in .git/info/exclude so deploy.bat's `git add .` never sees it. -->
      <PropertyGroup>
        <StartupCommand>npm run dev</StartupCommand>
        <JavaScriptTestRoot>src\</JavaScriptTestRoot>
@@ -108,9 +110,63 @@ vs `.slnx` default.)
        <!-- F5 runs the dev server; don't let VS's Build invoke vite build -->
        <ShouldRunBuildScript>false</ShouldRunBuildScript>
        <BuildOutputFolder>$(MSBuildProjectDirectory)\dist</BuildOutputFolder>
+       <!-- Solution Explorer decluttering (display only — every tool reads the
+            filesystem directly, so hiding here changes nothing about builds):
+            1) tool output + scratch that git already ignores
+            2) root config/deploy files re-homed into the .slnx's virtual
+               /config/ and /deploy/ solution folders -->
+       <!-- Single line on purpose: MSBuild does not trim whitespace around
+            ';' separators, so a wrapped value breaks the glob matching. -->
+       <DefaultItemExcludes>$(DefaultItemExcludes);dist\**;playwright-report\**;test-results\**;obj\**;deploy.lock;deploy-log.txt;*.tsbuildinfo;tsconfig.json;tsconfig.node.json;vite.config.ts;playwright.config.ts;eslint.config.js;postcss.config.js;tailwind.config.js;vercel.json;launch.json;deploy.bat;lint.bat;setup.js;DEPLOYMENT.md;install-watcher.bat;uninstall-watcher.bat;watch-and-deploy.ps1;dndkeep.slnx;dndkeep.esproj</DefaultItemExcludes>
      </PropertyGroup>
    </Project>
    ```
+
+   And `dndkeep.slnx` next to it — the virtual `/config/` and
+   `/deploy/` solution folders regroup root-level files that their
+   tools force to live at the repo root; the `DefaultItemExcludes`
+   above hides the same files from the project glob so each appears
+   exactly once in Solution Explorer:
+
+   ```xml
+   <Solution>
+     <!-- Machine-local VS wrapper (in .git/info/exclude — never committed).
+          Solution folders below are VIRTUAL groupings of root files that
+          their tools require to live at the repo root; the esproj hides the
+          same files from the project glob so each appears exactly once. -->
+     <Folder Name="/config/">
+       <File Path="tsconfig.json" />
+       <File Path="tsconfig.node.json" />
+       <File Path="vite.config.ts" />
+       <File Path="playwright.config.ts" />
+       <File Path="eslint.config.js" />
+       <File Path="postcss.config.js" />
+       <File Path="tailwind.config.js" />
+       <File Path="vercel.json" />
+       <File Path="launch.json" />
+     </Folder>
+     <Folder Name="/deploy/">
+       <File Path="deploy.bat" />
+       <File Path="lint.bat" />
+       <File Path="setup.js" />
+       <File Path="DEPLOYMENT.md" />
+       <File Path="install-watcher.bat" />
+       <File Path="uninstall-watcher.bat" />
+       <File Path="watch-and-deploy.ps1" />
+     </Folder>
+     <Project Path="dndkeep.esproj">
+       <Build />
+       <Deploy />
+     </Project>
+   </Solution>
+   ```
+
+   (Both are display-level conveniences — new repo files still appear
+   automatically via the project glob; only the specific files named
+   above are re-homed or hidden. If a listed file is ever renamed or
+   deleted upstream, just drop its line. The `/config/` folder lists
+   `launch.json` — create it per step 5 *before* first opening the
+   solution so the reference resolves.)
 
 3. Hide it from git — append to `.git/info/exclude`:
 
@@ -126,13 +182,10 @@ vs `.slnx` default.)
    (`obj/` is MSBuild's intermediate output — the esproj build drops
    cache files there on first Build/Start.)
 
-4. **File → Open → Project/Solution** → `dndkeep.esproj` (first load
-   restores the JavaScript SDK from NuGet). If VS asks to save a
-   solution, save `dndkeep.sln` (or `.slnx` — newer VS defaults to the
-   XML format) in the repo root — both excluded. Right-click the
-   project → **Set as Startup Project** (an ad-hoc solution can come up
-   with none assigned, which alone makes Start fail). Open the saved
-   `.sln`/`.slnx` directly next time.
+4. **File → Open → Project/Solution** → `dndkeep.slnx` (first load
+   restores the JavaScript SDK from NuGet). Right-click the
+   project → **Set as Startup Project** (a fresh solution can come up
+   with none assigned, which alone makes Start fail).
 
 5. F5/Start needs a debug launch profile — without one you get "Unable
    to start debugging. The startup project cannot be launched." Create
@@ -176,9 +229,9 @@ Explorer** listing every `package.json` script (double-click to run —
 the gate scripts included). Verify invisibility with `git status`
 (clean) or `git check-ignore -v dndkeep.esproj`.
 
-Solution Explorer will show gitignored scratch (`dist/`,
-`test-results/`, `deploy.lock`…) that git doesn't track — expected, VS
-shows the whole folder.
+Solution Explorer shows the folder's real contents (minus the
+`DefaultItemExcludes` decluttering above) — so anything else gitignored
+that VS surfaces is expected, not a tracking bug.
 
 ## Troubleshooting
 
