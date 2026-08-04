@@ -17,6 +17,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    watch: {
+      // v2.638 — Visual Studio's .vs/ index files are exclusively locked
+      // while VS is open; Vite's watcher touching them crashes the dev
+      // server with EBUSY on this repo (VS + Vite coexistence).
+      ignored: ['**/.vs/**', '**/e2e/__screenshots__/**', '**/test-results/**', '**/playwright-report/**'],
+    },
   },
   build: {
     rollupOptions: {

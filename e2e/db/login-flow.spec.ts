@@ -2,36 +2,55 @@
 // ONLY ever run against a LOCAL Supabase (supabase start + .env.local).
 // Two locks have to open:
 //   1. E2E_DB=1 in the environment (explicit opt-in per run)
-//   2. The app's Supabase URL must be local — we hard-refuse otherwise,
-//      because this repo's default .env points at PRODUCTION.
+//   2. .env.local must exist AND point VITE_SUPABASE_URL at localhost —
+//      we hard-refuse otherwise, because this repo's default .env points
+//      at PRODUCTION. (Vite loads .env.local over .env, so this file is
+//      exactly what the dev server under test is using.)
+//
+// Credentials below are the supabase/seed.sql fixtures — local-only fake
+// data recreated by every `supabase db reset`.
 import { expect, test } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const E2E_DB = process.env.E2E_DB === '1';
 
-test.describe('db-backed flows', () => {
-  test.skip(!E2E_DB, 'set E2E_DB=1 (with a local Supabase) to run DB-backed tests');
+function localSupabaseUrl(): string | null {
+  const p = join(process.cwd(), '.env.local'); // playwright runs from the repo root
+  if (!existsSync(p)) return null;
+  const m = readFileSync(p, 'utf-8').match(/^VITE_SUPABASE_URL=(.+)$/m);
+  return m ? m[1].trim() : null;
+}
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    // Safety interlock: read the Supabase URL the app was BUILT with and
-    // refuse to continue unless it's local. This makes it impossible to
-    // point these tests at production by accident.
-    const url = await page.evaluate(() =>
-      // Vite inlines import.meta.env at build time; expose it via a probe.
-      (window as unknown as { __VITE_SUPA_PROBE?: string }).__VITE_SUPA_PROBE ?? '');
-    // The probe isn't wired yet (needs a one-line main.tsx addition when
-    // the local DB lands) — until then, require the env var on the test
-    // runner side as the second lock.
-    const runnerUrl = process.env.VITE_SUPABASE_URL ?? url;
-    const isLocal = /127\.0\.0\.1|localhost/.test(runnerUrl);
-    test.skip(!isLocal, `refusing DB tests against non-local Supabase (${runnerUrl || 'unknown'})`);
+const SEED_EMAIL = 'test-dm@dndkeep.local';
+const SEED_PASSWORD = 'dndkeep-local-test';
+
+test.describe('db-backed flows (local stack only)', () => {
+  test.skip(!E2E_DB, 'set E2E_DB=1 (with a local Supabase) to run DB-backed tests');
+  test.beforeEach(() => {
+    const url = localSupabaseUrl();
+    const isLocal = !!url && /127\.0\.0\.1|localhost/.test(url);
+    test.skip(!isLocal, `refusing DB tests: .env.local missing or non-local (${url ?? 'absent'})`);
   });
 
-  test('placeholder: sign in against local stack', async () => {
-    // First real DB-backed spec lands with the seeded local database:
-    // sign in as the seed user, open the seeded campaign, assert the
-    // character sheet renders. Kept as an executable TODO so the gating
-    // machinery above is exercised by `E2E_DB=1` runs from day one.
-    expect(true).toBe(true);
+  test('seeded DM signs in and sees the seeded campaign', async ({ page }) => {
+    await page.goto('/auth');
+    await page.getByPlaceholder(/your@email.com/i).fill(SEED_EMAIL);
+    await page.getByPlaceholder(/your password/i).fill(SEED_PASSWORD);
+    await page.getByRole('button', { name: /enter the keep/i }).click();
+
+    // Successful auth navigates away from /auth into the app shell.
+    await expect(page.getByPlaceholder(/your@email.com/i)).toBeHidden({ timeout: 20_000 });
+
+    // The seeded campaign proves the whole vertical: local auth, profile
+    // trigger, Pro entitlement (campaigns list is Pro-gated), campaign +
+    // auto-membership rows, and RLS letting the owner read them.
+    await page.goto('/campaigns');
+    // The name renders in both the sidebar nav and the campaign card, and
+    // on mobile the sidebar copy exists but is HIDDEN (collapsed nav) —
+    // filter to whichever instance is actually visible.
+    await expect(
+      page.locator('text=Local Test Campaign').locator('visible=true').first(),
+    ).toBeVisible({ timeout: 20_000 });
   });
 });

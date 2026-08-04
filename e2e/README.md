@@ -27,9 +27,28 @@ Failures write actual/expected/diff PNGs into `playwright-report/`
 
 ## Local database (opt-in per machine)
 
-See `.env.local.example`. Short version: install Docker + the Supabase
-CLI, run `supabase start` + `supabase db reset`, copy the printed keys
-into `.env.local`. Delete `.env.local` to go back to the shared prod DB.
+See `.env.local.example`. Short version: with Docker running,
+`npx supabase start` then `npx supabase db reset`, copy the printed
+API URL + anon key into `.env.local`. Delete `.env.local` to go back
+to the shared prod DB. The CLI is a devDependency — no global install.
+
+`db reset` replays the full migration chain and `supabase/seed.sql`,
+which creates a deterministic test login:
+
+- email `test-dm@dndkeep.local` / password `dndkeep-local-test`
+- Pro subscription (campaign creation is Pro-gated at the DB)
+- one campaign: "Local Test Campaign" (user is owner + dm)
+
+The chain includes four LOCAL-REPLAY shims that reconstruct objects
+production got via the Dashboard SQL editor (never migrated):
+`000_initial_schema` (the original schema.sql as a baseline),
+`003_…session_states` (recovered from git history; later legitimately
+dropped by the v2.296 migrations), `20260803990000_…dashboard_columns`
+(28 drifted columns + creature_folders, censused by diffing the
+generated prod types against the local schema), and
+`20260803991000_…grants` (hosted Supabase auto-grants the API roles;
+raw replays must do it explicitly). They are inert on production by
+construction — prod never replays this chain.
 
 ## Why Playwright is pinned to 1.49
 
