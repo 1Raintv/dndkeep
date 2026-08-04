@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Facade tests (audit 2.8). The contract that makes providers swappable:
  * call sites emit structured events; sinks receive them filtered by

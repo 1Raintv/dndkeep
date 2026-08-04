@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Audit 1.6 regression: roll-overlay labels carry user-controlled text
  * (another player's character name reaches the DM's overlay via

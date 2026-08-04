@@ -86,7 +86,15 @@
    `/setup-local-dndkeep` walkthrough) or keep developing against prod as he always
    has? His answer shapes the migration-workflow decisions (item 7) and whether
    dashboard-first schema editing continues.
-10. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
+10. **Apply the telemetry migrations to prod** (2026-08-04) — Dashboard → SQL Editor,
+    paste in order: `20260804120000_client_errors.sql` then
+    `20260804160000_client_errors_retention.sql` (both idempotent). Verify:
+    `select count(*) from public.client_errors;` and the `cron.job` row
+    `client_errors_retention` (empty → enable pg_cron extension, re-run file 2).
+    Rows flow once `audit-fixes` deploys; schema-first is fine by design. Include
+    both files in the future `migration repair` baseline (manual applies don't
+    write the ledger). Consider inviting Kyle to the Supabase org.
+11. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
    applied to prod, so do it as a pair). Agreed design: drop the `"Public share read"`
    policy; add a `SECURITY DEFINER get_shared_character(token)` function (`REVOKE ALL
    FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as

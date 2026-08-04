@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Supabase sink contract (audit 2.8). Insert fn is injected — these tests
  * never touch a database (repo unit-test rule) and never import the
