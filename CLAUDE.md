@@ -96,6 +96,10 @@ count, ratchet `TS_BASELINE` down in ci.yml in the same commit. Never raise it.
   repository modules — prefer extending those over inline `supabase.from()`
   in components.
 - Reference docs live in `docs/` (ROADMAP.md is the plan of record).
+  **`docs/CODING_STANDARDS.md` is the placement map — where new code
+  goes and the three placement sins. Read it before adding files or
+  features; it encodes exactly the mistakes the 2026-08 audit paid to
+  undo.
 - `.claude/` is a committed agent toolkit: repo-specific skills
   (local-env setup wizard, UI-verification loop), and the 2026-08 audit
   docs with a live status table — keep that table current when working
