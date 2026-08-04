@@ -45,6 +45,7 @@
 import { rollDie } from '../rules/dice';
 import { applyDamageToPools } from '../rules/hp';
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 import type { ActiveBuff } from './buffs';
@@ -364,14 +365,14 @@ async function applyAuraDamage(input: {
 
   const combatantId = (tgt as any).combatant_id as string | null;
   if (!combatantId) return;
-  await (supabase as any)
+  await checkedWrite('combatants.update aura-damage', { combatantId }, (supabase as any)
     .from('combatants')
     .update({
       current_hp: hpAfter,
       temp_hp: tempAfter,
       ...(monsterDied ? { is_dead: true } : {}),
     })
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   await emitCombatEvent({
     campaignId: input.campaignId,

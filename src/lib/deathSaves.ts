@@ -21,6 +21,7 @@
 
 import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
@@ -165,10 +166,10 @@ export async function resolvePendingDeathSave(
     console.warn('[resolveDeathSave] participant missing combatant_id; skipping write', partRow.id);
     return null;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update death-save', { combatantId }, (supabase as any)
     .from('combatants')
     .update(partUpdates)
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   // Mark pending row rolled
   const { data: updatedPending } = await supabase

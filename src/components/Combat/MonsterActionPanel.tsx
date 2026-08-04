@@ -44,6 +44,7 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import { useFastCombatRolls } from '../../lib/useFastCombatRolls';
 import { parseMultiattackDesc, type MultiattackStep } from '../../lib/multiattack';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack, rollSave, getTargetSaveBonus } from '../../lib/pendingAttack';
 import {
   loadActiveBattleMap,
@@ -1121,10 +1122,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
   async function spendRecharge(a: MonsterAction) {
     if (a.usage !== 'recharge on roll' || !currentActor) return;
     if (expendedRecharge.includes(a.name)) return;
-    await (supabase as any)
+    await checkedWrite('combat_participants.update spend-recharge', { participantId: currentActor.id }, (supabase as any)
       .from('combat_participants')
       .update({ expended_recharge: [...expendedRecharge, a.name] })
-      .eq('id', currentActor.id);
+      .eq('id', currentActor.id));
   }
 
   async function handlePick(target: CombatParticipant) {

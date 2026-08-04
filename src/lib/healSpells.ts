@@ -22,6 +22,7 @@
 // of combat 10 min cast), Mass Heal (700 HP distributive pool).
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { rollDie } from '../rules/dice';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
@@ -195,10 +196,10 @@ export async function applyHealToParticipant(
     console.warn('[applyHealToParticipant] participant missing combatant_id; skipping write', input.participantId);
     return 0;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update heal', { combatantId }, (supabase as any)
     .from('combatants')
     .update(updates)
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   // Emit event so the combat log captures the heal. Mirrors the shape of
   // the damage_applied events so the DMScreen log renders naturally.

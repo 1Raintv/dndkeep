@@ -21,7 +21,7 @@
 | 3.1 Dropped-table write | **Done** | Dead code removed (audit A1) |
 | 3.2 Five dice implementations | **Done** | src/rules/dice.ts canonical; fixed "2d4+2 rolls 0" bug |
 | 3.3 Damage math ×4 (actually ×7) | **Done** | src/rules/hp.ts; concentration DC unified (ceil bug + missing caps) |
-| 3.4 Unchecked DB writes (~38%) | **Open** | |
+| 3.4 Unchecked DB writes (~38%) | **In progress** | `checkedWrite` seam (src/lib/api/checked.ts) routes failures → telemetry; combat slice done (21 sites: conditions/buffs/combatEncounter/deathSaves/healSpells/cleave/auras + 5 combat components). Next slices: chat/social, character sheet, campaign mgmt |
 | 3.5 Stale generated types | **Open** | Needs prod access to regenerate |
 | 3.6 TS gate depth | **Improved** | Baseline single-sourced + ratcheted; still threshold-based |
 | 4.1 BattleMapV2 11,374 lines | **Done** | Root now 4,269; 15 components in battlemap/ (chunk byte-identical) |
@@ -62,8 +62,13 @@
    owner's call (unwired renderer-abstraction WIP: adopt or drop).
 5. **Regenerate `src/types/supabase.ts` + certified prod schema dump** (§3.5/§2.6) —
    needs the prod DB password; also certifies the local drift shims.
-6. **Node 20+/22 upgrade on the owner's machine** — Kyle's machine is on 24; unpins
-   Playwright/vitest when both machines are moved.
+6. **Node version: pick one, pin it everywhere** — owner's machine (version TBD),
+   Kyle's 24, CI 20 (GitHub is deprecating Node 20 runners). Decide 22 LTS vs 24,
+   then one commit: `.nvmrc` + package.json `engines` + ci.yml
+   `node-version-file: .nvmrc`. Motivation beyond unpinning Playwright/vitest:
+   the 2026-08-04 CI failure (jsdom/undici broke on CI's 20, invisible on local
+   24) is the class this eliminates — environment skew can't be tested away,
+   only aligned away.
 7. **CI/CD cost tune-up** (proposed 2026-08-04) — one ci.yml commit: drop the
    `pull_request` trigger (push + PR events double-run every PR-branch push); add a
    `concurrency` group with cancel-in-progress; `timeout-minutes: 15` (default is 6 h);

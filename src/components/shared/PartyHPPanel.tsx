@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 // v2.457.0 — Resolve spell IDs to names. Pre-v2.457 the concentration
 // chip rendered the raw spell ID (cosmetic bug — characters store
 // concentration_spell as a UUID, not a name).
@@ -73,7 +74,7 @@ export default function PartyHPPanel({ campaignId, isDM, userId, myCharacterId }
 
  async function setVisibilityMode(m: HpMode) {
  setMode(m);
- await supabase.from('campaigns').update({ hp_visibility_mode: m }).eq('id', campaignId);
+ await checkedWrite('campaigns.update hp-visibility', { campaignId }, supabase.from('campaigns').update({ hp_visibility_mode: m }).eq('id', campaignId));
  }
 
  if (loading) return null;

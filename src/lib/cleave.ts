@@ -40,6 +40,7 @@
 // forbids.
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { weaponReachFt, isMeleeMasteryWeapon } from '../data/weaponMastery';
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
@@ -138,10 +139,10 @@ export async function markUsedThisTurn(participantId: string, key: string): Prom
     .maybeSingle();
   const used = ((data?.once_per_turn_used ?? []) as string[]);
   if (used.includes(key)) return;
-  await (supabase as any)
+  await checkedWrite('combat_participants.update once-per-turn', { participantId }, (supabase as any)
     .from('combat_participants')
     .update({ once_per_turn_used: [...used, key] })
-    .eq('id', participantId);
+    .eq('id', participantId));
 }
 
 // ─── Candidate geometry ──────────────────────────────────────────
@@ -397,9 +398,9 @@ export async function acceptCleave(
  *  declining does NOT consume the once-per-turn allowance — no attack
  *  was made. */
 export async function declineCleave(offerId: string): Promise<void> {
-  await supabase
+  await checkedWrite('pending_reactions.update decline-cleave', { offerId }, supabase
     .from('pending_reactions')
     .update({ state: 'declined', decided_at: new Date().toISOString() })
     .eq('id', offerId)
-    .eq('state', 'offered');
+    .eq('state', 'offered'));
 }

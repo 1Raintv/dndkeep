@@ -15,6 +15,7 @@
 // pendingAttack.ts calls them at roll time to assemble the final dice.
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDiceExpr } from '../rules/dice';
@@ -132,10 +133,10 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
       tempGranted = granted;
     }
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update apply-buff', { combatantId }, (supabase as any)
     .from('combatants')
     .update(buffUpdates)
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   if (tempGranted > 0 && input.campaignId) {
     await emitCombatEvent({
@@ -204,10 +205,10 @@ export async function removeBuff(input: RemoveBuffInput): Promise<void> {
     console.warn('[removeBuff] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await supabase
+  await checkedWrite('combatants.update remove-buff', { combatantId }, supabase
     .from('combatants')
     .update({ active_buffs: asJsonb(next) })
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({
@@ -726,7 +727,7 @@ export async function processTurnTicks(opts: {
     if (removedKeys.length) {
       updates.active_buffs = asJsonb(buffs.filter(b => !removedKeys.includes(b.key)));
     }
-    await (supabase as any).from('combatants').update(updates).eq('id', combatantId);
+    await checkedWrite('combatants.update turn-ticks', { combatantId }, (supabase as any).from('combatants').update(updates).eq('id', combatantId));
 
     for (const evt of events) await emitCombatEvent(evt);
   } catch (e) {

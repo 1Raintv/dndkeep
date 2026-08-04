@@ -11,6 +11,7 @@
 
 import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, emitCombatEventChain, newChainId } from './combatEvents';
 // v2.494.0 — Per-round buff duration tick. See src/lib/buffDuration.ts.
 import { decrementBuffDurations } from './buffDuration';
@@ -854,11 +855,11 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   // too, which can fire on an opportunity attack during someone
   // else's turn. Defensive: never blocks turn advance.
   try {
-    await (supabase as any)
+    await checkedWrite('combat_participants.update reset-once-per-turn', { encounterId }, (supabase as any)
       .from('combat_participants')
       .update({ once_per_turn_used: [] })
       .eq('encounter_id', encounterId)
-      .neq('once_per_turn_used', '{}');
+      .neq('once_per_turn_used', '{}'));
   } catch (err) {
     console.error('[advanceTurn] once-per-turn sweep failed', err);
   }
@@ -1122,10 +1123,10 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       if (!combatantId) {
         console.warn('[advanceTurn:deathSave] participant missing combatant_id; skipping write', incomingParticipant.id);
       } else {
-        await (supabase as any)
+        await checkedWrite('combatants.update auto-death-save', { combatantId }, (supabase as any)
           .from('combatants')
           .update(updates)
-          .eq('id', combatantId);
+          .eq('id', combatantId));
       }
 
       // Emit a structured event for the log
@@ -1551,10 +1552,10 @@ export async function revealMonster(participantId: string, dexMod: number): Prom
   if (!part) return;
 
   // Unhide
-  await supabase
+  await checkedWrite('combat_participants.update unhide', { participantId }, supabase
     .from('combat_participants')
     .update({ hidden_from_players: false })
-    .eq('id', participantId);
+    .eq('id', participantId));
 
   // Roll initiative if not already rolled
   if (part.initiative === null) {
