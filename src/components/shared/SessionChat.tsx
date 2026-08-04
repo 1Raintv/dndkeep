@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 
 interface ChatMsg { id: string; character_name: string; message: string; created_at: string; message_type?: string; roll_total?: number; roll_label?: string; avatar_url?: string; user_id: string; }
 
@@ -43,7 +44,7 @@ export default function SessionChat({ campaignId, characterName, userId, avatarU
     if (!text || sending) return;
     setSending(true);
     setInput('');
-    await supabase.from('campaign_chat').insert({ campaign_id: campaignId, user_id: userId, character_name: characterName, avatar_url: avatarUrl, message: text, message_type: 'text' });
+    await checkedWrite('campaign_chat.insert message', { campaignId }, supabase.from('campaign_chat').insert({ campaign_id: campaignId, user_id: userId, character_name: characterName, avatar_url: avatarUrl, message: text, message_type: 'text' }));
     setSending(false);
   }
 

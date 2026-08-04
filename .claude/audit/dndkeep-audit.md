@@ -21,7 +21,7 @@
 | 3.1 Dropped-table write | **Done** | Dead code removed (audit A1) |
 | 3.2 Five dice implementations | **Done** | src/rules/dice.ts canonical; fixed "2d4+2 rolls 0" bug |
 | 3.3 Damage math ×4 (actually ×7) | **Done** | src/rules/hp.ts; concentration DC unified (ceil bug + missing caps) |
-| 3.4 Unchecked DB writes (~38%) | **In progress** | `checkedWrite` seam (src/lib/api/checked.ts) routes failures → telemetry; combat slice done (21 sites: conditions/buffs/combatEncounter/deathSaves/healSpells/cleave/auras + 5 combat components). Next slices: chat/social, character sheet, campaign mgmt |
+| 3.4 Unchecked DB writes (~38%) | **In progress** | `checkedWrite` seam (src/lib/api/checked.ts) routes failures → telemetry; combat slice done (21 sites) + chat/social slice done (11 sites: SessionChat, ActionLog, MonsterBrowser, PartyChat, RollRequest). Next slices: character sheet, campaign mgmt |
 | 3.5 Stale generated types | **Open** | Needs prod access to regenerate |
 | 3.6 TS gate depth | **Improved** | Baseline single-sourced + ratcheted; still threshold-based |
 | 4.1 BattleMapV2 11,374 lines | **Done** | Root now 4,269; 15 components in battlemap/ (chunk byte-identical) |

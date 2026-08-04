@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface RollRequestRow {
@@ -88,7 +89,7 @@ export function DMRollRequestPanel({ campaignId, userId, playerCharacters }: {
 
   async function sendRequest() {
     const target = playerCharacters.find(p => p.id === targetId);
-    await supabase.from('roll_requests').insert({
+    await checkedWrite('roll_requests.insert request', { campaignId, targetId }, supabase.from('roll_requests').insert({
       campaign_id: campaignId,
       requested_by: userId,
       target_character_id: targetId === 'all' ? null : targetId,
@@ -97,13 +98,13 @@ export function DMRollRequestPanel({ campaignId, userId, playerCharacters }: {
       roll_name: rollName,
       dc: dc ? parseInt(dc) : null,
       status: 'pending',
-    });
+    }));
     setOpen(false);
     setDc('');
   }
 
   async function dismissRequest(id: string) {
-    await supabase.from('roll_requests').update({ status: 'dismissed' }).eq('id', id);
+    await checkedWrite('roll_requests.update dismiss', { requestId: id }, supabase.from('roll_requests').update({ status: 'dismissed' }).eq('id', id));
   }
 
   const activePending = pending.filter(r => r.status === 'pending');
@@ -273,16 +274,16 @@ export function PlayerRollPrompt({ campaignId, characterId, character }: {
     const success = req.dc ? total >= req.dc : null;
 
     // Update the request
-    await supabase.from('roll_requests').update({
+    await checkedWrite('roll_requests.update complete', { requestId: req.id }, supabase.from('roll_requests').update({
       status: 'completed',
       result: total,
       success,
       rolled_by_name: character.name,
       completed_at: new Date().toISOString(),
-    }).eq('id', req.id);
+    }).eq('id', req.id));
 
     // Log to action_logs so everyone sees it
-    await supabase.from('action_logs').insert({
+    await checkedWrite('action_logs.insert requested-roll', { campaignId, requestId: req.id }, supabase.from('action_logs').insert({
       campaign_id: campaignId,
       character_id: characterId,
       character_name: character.name,
@@ -294,14 +295,14 @@ export function PlayerRollPrompt({ campaignId, characterId, character }: {
       total,
       hit_result: req.dc ? (success ? `✓ Success (DC ${req.dc})` : `✗ Failure (DC ${req.dc})`) : '',
       notes: `DM requested ${req.roll_name}`,
-    });
+    }));
 
     // Remove from local list
     setRequests(prev => prev.filter(r => r.id !== req.id));
   }
 
   async function dismissRequest(id: string) {
-    await supabase.from('roll_requests').update({ status: 'dismissed' }).eq('id', id);
+    await checkedWrite('roll_requests.update dismiss', { requestId: id }, supabase.from('roll_requests').update({ status: 'dismissed' }).eq('id', id));
     setRequests(prev => prev.filter(r => r.id !== id));
   }
 
