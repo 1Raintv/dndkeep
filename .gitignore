@@ -25,8 +25,11 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
-# Claude Code — local agent state
-.claude/
+# Claude Code — local agent state is ignored, but the repo SHIPS a
+# .claude/ toolkit (skills, audit docs, launch config) for anyone
+# pointing Claude at this codebase — see .claude/README.md.
+.claude/settings.local.json
+.claude/worktrees/
 
 # Vercel CLI — links this checkout to the Vercel project, do not share
 .vercel/
