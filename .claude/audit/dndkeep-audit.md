@@ -43,6 +43,27 @@
 | 6.6 Realtime channels | **Done** | Filtered sub + shared refcounted channel |
 | 6.7 Smaller perf items | **Open** | Fonts, unlimited cached reads, inline styles |
 
+**Pending owner decisions (queue for when both devs are together):**
+
+1. **Delete the auto-deploy watcher** (`watch-and-deploy.ps1`, `install-watcher.bat`,
+   `uninstall-watcher.bat`) — audit §2.3. It watches Downloads for `dndkeep.zip` and
+   auto-pushes to production, bypassing git/CI/the gate. Sequence: owner runs
+   `uninstall-watcher.bat` on his machine FIRST (scheduled task), then delete from repo.
+2. **Delete or rewrite `setup.js`** — it writes PROD credentials into `.env.local`
+   (which now silently flips a local-DB machine back to production) and ends with
+   `npx vercel --yes --prod` (setup = instant prod deploy). Superseded by
+   docs/LOCAL_DEV.md; a rewritten bootstrap should target `.env` and never deploy.
+3. **Refresh `DEPLOYMENT.md`** (keep it) — says 112 migrations (now 151), warns against
+   the schema.sql that's since been rehabilitated as the shimmed baseline, predates
+   LOCAL_DEV.md. Consider moving the deploy-script family to `tools/` at the same time
+   (deploy.bat move needs the owner's muscle-memory sign-off or a root shim).
+4. **`src/lib/map/mapRenderer.ts`** — kept during the dead-code pass pending the
+   owner's call (unwired renderer-abstraction WIP: adopt or drop).
+5. **Regenerate `src/types/supabase.ts` + certified prod schema dump** (§3.5/§2.6) —
+   needs the prod DB password; also certifies the local drift shims.
+6. **Node 20+/22 upgrade on the owner's machine** — Kyle's machine is on 24; unpins
+   Playwright/vitest when both machines are moved.
+
 **Added beyond the audit:** repo CLAUDE.md; unit-test convention; Playwright
 harness + committed visual baselines + gated DB-backed E2E; local Supabase
 with deterministic seed; docs/LOCAL_DEV.md; this .claude/ toolkit;
