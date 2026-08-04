@@ -71,6 +71,115 @@ every column the app actually queries. They are a faithful
 gold-standard cleanup (dumping prod's schema as a verified baseline)
 needs the production DB password and lives on the go-live checklist.
 
+## Optional: Visual Studio support
+
+Prefer full Visual Studio over VS Code/terminal? Same philosophy as
+`.env.local`: **per-machine, nothing committed**. The repo deliberately
+ships no `.sln`/`.esproj` — VS project files are local-only, hidden from
+git via `.git/info/exclude` (a per-clone ignore list that, unlike
+`.gitignore`, is never committed). That also keeps them out of
+`deploy.bat`'s `git add .`.
+
+**No drift risk for anyone**: the `.esproj` format is glob-based — it
+lists zero files, Solution Explorer just mirrors the folder on disk. A
+teammate adding/renaming/deleting files without VS changes nothing here;
+`git pull` and the new files simply appear. The wrapper never needs
+maintenance to track the repo.
+
+Heads-up: plain **Open Folder doesn't cut it** — Task Runner Explorer
+(even with the NPM Task Runner extension) only activates with a real
+project loaded. Hence the wrapper project. (This recipe was proven on
+VS 2026 Professional 18.8; VS 2022 17.x should match modulo the `.sln`
+vs `.slnx` default.)
+
+1. Requires the **"JavaScript and TypeScript development tools"**
+   component (VS Installer → Modify). For npm scripts in Task Runner
+   Explorer, also install the **NPM Task Runner** extension
+   (Mads Kristensen — skip its "Bindings" feature; those write into the
+   tracked `package.json`).
+2. Create `dndkeep.esproj` in the repo root:
+
+   ```xml
+   <Project Sdk="Microsoft.VisualStudio.JavaScript.Sdk/1.0.6237341">
+     <PropertyGroup>
+       <StartupCommand>npm run dev</StartupCommand>
+       <JavaScriptTestRoot>src\</JavaScriptTestRoot>
+       <JavaScriptTestFramework>Vitest</JavaScriptTestFramework>
+       <!-- F5 runs the dev server; don't let VS's Build invoke vite build -->
+       <ShouldRunBuildScript>false</ShouldRunBuildScript>
+       <BuildOutputFolder>$(MSBuildProjectDirectory)\dist</BuildOutputFolder>
+     </PropertyGroup>
+   </Project>
+   ```
+
+3. Hide it from git — append to `.git/info/exclude`:
+
+   ```
+   dndkeep.esproj
+   dndkeep.esproj.user
+   dndkeep.sln
+   dndkeep.slnx
+   launch.json
+   obj/
+   ```
+
+   (`obj/` is MSBuild's intermediate output — the esproj build drops
+   cache files there on first Build/Start.)
+
+4. **File → Open → Project/Solution** → `dndkeep.esproj` (first load
+   restores the JavaScript SDK from NuGet). If VS asks to save a
+   solution, save `dndkeep.sln` (or `.slnx` — newer VS defaults to the
+   XML format) in the repo root — both excluded. Right-click the
+   project → **Set as Startup Project** (an ad-hoc solution can come up
+   with none assigned, which alone makes Start fail). Open the saved
+   `.sln`/`.slnx` directly next time.
+
+5. F5/Start needs a debug launch profile — without one you get "Unable
+   to start debugging. The startup project cannot be launched." Create
+   `launch.json` (same schema as VS Code's, excluded above) in the repo
+   root, **mirrored at `.vscode/launch.json`** — which location a given
+   VS build reads varies, and `.vscode/` is already gitignored:
+
+   ```json
+   {
+     "version": "0.2.0",
+     "configurations": [
+       {
+         "type": "msedge",
+         "request": "launch",
+         "name": "localhost (Edge)",
+         "url": "http://localhost:5173",
+         "webRoot": "${workspaceFolder}",
+         "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+       }
+     ]
+   }
+   ```
+
+   `skipFiles` matters here: `@supabase/auth-js` throws (and internally
+   handles) `NavigatorLockAcquireTimeoutError` during routine auth-token
+   lock contention; without it the debugger false-positives that as an
+   unhandled exception on every launch.
+
+   Restart VS after adding it (profile discovery happens at project
+   load), then pick the profile from the Start button's dropdown. If
+   the dropdown still only shows "Start", use **"dndkeep Debug
+   Properties"** in that same dropdown — the profile editor is the
+   authoritative view, and profiles created there always take. If the
+   browser opens before Vite is up, start `dev` from Task Runner
+   Explorer first — with a `launch.json` present VS may not auto-run
+   `StartupCommand`.
+
+You get: **F5/Start** = debug browser attached to the Vite app
+(breakpoints in `src/` bind via sourcemaps), and **Task Runner
+Explorer** listing every `package.json` script (double-click to run —
+the gate scripts included). Verify invisibility with `git status`
+(clean) or `git check-ignore -v dndkeep.esproj`.
+
+Solution Explorer will show gitignored scratch (`dist/`,
+`test-results/`, `deploy.lock`…) that git doesn't track — expected, VS
+shows the whole folder.
+
 ## Troubleshooting
 
 - **`failed to connect to the docker API`** — Docker Desktop isn't
