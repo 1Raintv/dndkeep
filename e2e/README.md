@@ -38,6 +38,8 @@ which creates a deterministic test login:
 - email `test-dm@dndkeep.local` / password `dndkeep-local-test`
 - Pro subscription (campaign creation is Pro-gated at the DB)
 - one campaign: "Local Test Campaign" (user is owner + dm)
+- one character: "Seeded Fighter" (`/character/33333333-3333-3333-3333-333333333333`) —
+  hosts the sheet flows the 3D-roller and battle-map specs drive
 
 The chain includes four LOCAL-REPLAY shims that reconstruct objects
 production got via the Dashboard SQL editor (never migrated):
