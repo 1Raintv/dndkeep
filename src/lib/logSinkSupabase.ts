@@ -60,7 +60,15 @@ export function supabaseSink(insert: InsertRows = defaultInsert, flushMs = FLUSH
     const dirty = [...rows.values()].filter(r => r.dirty);
     if (!dirty.length) return;
     dirty.forEach(r => { r.dirty = false; }); // optimistic; re-marked on failure
-    const { error } = await insert(dirty.map(r => ({ ...r.payload, count: r.count })));
+    // insert can THROW (dynamic import / getSession offline), not just return
+    // {error}. A rejection here would hit our own unhandledrejection hook —
+    // telemetry logging its own failure in a feedback loop. Never let it out.
+    let error: unknown;
+    try {
+      ({ error } = await insert(dirty.map(r => ({ ...r.payload, count: r.count }))));
+    } catch (thrown) {
+      error = thrown;
+    }
     if (error) {
       // PGRST205 = table not in PostgREST schema cache (migration not applied
       // there yet); 42P01 = relation does not exist. Both mean "not an outage,

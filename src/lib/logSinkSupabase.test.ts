@@ -55,6 +55,15 @@ describe('supabaseSink', () => {
     expect(insert).toHaveBeenCalledTimes(1);
   });
 
+  it('a THROWING insert never escapes flush (self-feedback guard)', async () => {
+    const insert = vi.fn().mockRejectedValue(new Error('network down'));
+    const sink = supabaseSink(insert, 1e9);
+    sink.handle(evt());
+    await expect(sink.flush()).resolves.toBeUndefined(); // rejection contained
+    await sink.flush();                                  // and dormant after
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+
   it('caps distinct rows per session', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const sink = supabaseSink(insert, 1e9);

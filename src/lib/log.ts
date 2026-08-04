@@ -28,7 +28,11 @@ const LEVEL_RANK: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error
  *   3. the hardcoded fallback
  */
 export function configuredLevel(sinkName: string, envValue: unknown, fallback: LogLevel): LogLevel {
-  const valid = (v: unknown): v is LogLevel => typeof v === 'string' && v in LEVEL_RANK;
+  // Own-property check, not `in`: localStorage junk like 'toString' would pass
+  // an `in` check via the prototype chain and yield NaN ranks downstream.
+  // (hasOwnProperty.call, not Object.hasOwn — tsconfig lib predates ES2022.)
+  const valid = (v: unknown): v is LogLevel =>
+    typeof v === 'string' && Object.prototype.hasOwnProperty.call(LEVEL_RANK, v);
   try {
     const ls = localStorage.getItem(`dndkeep:log:${sinkName}`);
     if (valid(ls)) return ls;

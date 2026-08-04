@@ -69,6 +69,8 @@ describe('log facade', () => {
     expect(configuredLevel('t', 'warn', 'error')).toBe('off');            // localStorage wins
     localStorage.setItem('dndkeep:log:t', 'nonsense');
     expect(configuredLevel('t', 'warn', 'error')).toBe('warn');           // junk ls ignored
+    localStorage.setItem('dndkeep:log:t', 'toString');
+    expect(configuredLevel('t', 'warn', 'error')).toBe('warn');           // prototype keys rejected
     localStorage.removeItem('dndkeep:log:t');
   });
 
