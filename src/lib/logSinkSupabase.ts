@@ -33,6 +33,22 @@ const RETRY_AFTER_MS = 5 * 60_000;
 const MAX_SESSION_EVENTS = 50;
 const MSG_MAX = 500, STACK_MAX = 4_000;
 
+// v2.641 (Kyle): noise that must never reach the DB — each row costs
+// storage and triage attention. Only patterns with a KNOWN benign cause
+// belong here; when in doubt, let it through and triage via
+// /check-telemetry instead.
+const NOISE_PATTERNS: RegExp[] = [
+  // supabase auth-js throws + internally handles this during routine
+  // cross-tab token-lock contention, but it still surfaces as an
+  // unhandledrejection in some versions — would be telemetry's top spammer.
+  /NavigatorLockAcquireTimeoutError/,
+  // Benign browser-internal observer hiccup, universally ignored.
+  /ResizeObserver loop (limit exceeded|completed with undelivered notifications)/,
+  // Cross-origin scripts report only the literal string "Script error." —
+  // zero diagnostic content, not actionable.
+  /Script error\.?$/,
+];
+
 export function supabaseSink(insert: InsertRows = defaultInsert, flushMs = FLUSH_MS, minLevel: LogSink['minLevel'] = 'error'): LogSink & { flush(): Promise<void> } {
   interface Row { payload: Record<string, unknown>; count: number; dirty: boolean }
   const rows = new Map<string, Row>();   // dedupe key -> row
@@ -69,6 +85,11 @@ export function supabaseSink(insert: InsertRows = defaultInsert, flushMs = FLUSH
     minLevel,
     flush,
     handle(e: LogEvent) {
+      const composed = e.error ? `${e.message}: ${e.error.message}` : e.message;
+      // Probe includes the error NAME: NavigatorLockAcquireTimeoutError lives
+      // in .name, not .message ("NavigatorLockAcquireTimeoutError: Acquiring…").
+      const noiseProbe = e.error ? `${e.error.name}: ${composed}` : composed;
+      if (NOISE_PATTERNS.some(p => p.test(noiseProbe))) return; // known-benign: never buffered
       const stack = e.error?.stack?.slice(0, STACK_MAX);
       const key = `${e.message}|${stack?.split('\n')[1] ?? ''}`;
       const existing = rows.get(key);
@@ -83,7 +104,7 @@ export function supabaseSink(insert: InsertRows = defaultInsert, flushMs = FLUSH
           occurred_at: e.ts,
           app_version: e.version,
           level: e.level,
-          message: (e.error ? `${e.message}: ${e.error.message}` : e.message).slice(0, MSG_MAX),
+          message: composed.slice(0, MSG_MAX),
           stack,
           route: e.route,
           browser: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : null,

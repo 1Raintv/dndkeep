@@ -63,6 +63,19 @@ describe('supabaseSink', () => {
     expect(insert.mock.calls[0][0].length).toBeLessThanOrEqual(50);
   });
 
+  it('drops known-noise patterns before they cost a row (v2.641)', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const sink = supabaseSink(insert, 1e9);
+    sink.handle(evt({ message: 'unhandled promise rejection', error: { name: 'NavigatorLockAcquireTimeoutError', message: 'Acquiring an exclusive Navigator LockManager lock "lock:sb-127-auth-token" immediately failed' } }));
+    sink.handle(evt({ message: 'uncaught error', error: { name: 'Error', message: 'ResizeObserver loop limit exceeded' } }));
+    sink.handle(evt({ message: 'uncaught error', error: { name: 'Error', message: 'Script error.' } }));
+    sink.handle(evt({ message: 'real bug survives the filter' }));
+    await sink.flush();
+    const rows = insert.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].message).toContain('real bug survives the filter');
+  });
+
   it('truncates oversized messages and stacks', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const sink = supabaseSink(insert, 1e9);
