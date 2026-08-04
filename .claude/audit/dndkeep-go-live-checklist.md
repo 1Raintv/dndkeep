@@ -40,6 +40,12 @@ Even a free, invite-only launch. These protect user data and accounts.
 - **Note:** worth doing now rather than at launch if any real character data already exists.
 
 ### 1.4 Escape user-controlled text in the dice overlay
+**Status: ✅ DONE (label escaping) 2026-08-04, branch `audit-fixes`** — labels now
+built via `rollLabelNode()` (`textContent`, exported from `DiceRoller3D.tsx`) with a
+jsdom regression test (`DiceRoller3D.test.ts`) proving markup arrives inert. The
+**CSP header remains open** — deliberately split out because a wrong CSP can break
+the 3D dice / battle map; do it as its own verified change.
+
 **Why deferred:** `innerHTML` was the quick path.
 **Risk if shipped:** stored XSS. A player names their character with an image tag carrying an `onerror` handler; the DM rolls a secret check; it executes in the DM's browser. Supabase keeps the session JWT in `localStorage`, so the payload can steal the DM's token.
 
@@ -166,7 +172,7 @@ Highest-risk subset, all writing to `characters`: `DMScreen.tsx:155` (DM edits t
 | 1.1 | Lock `profiles` update policy | Users | 1 h |
 | 1.2 | JWT + CORS on edge functions | Users | 2 h |
 | 1.3 | Enforce share token in RLS | Users | 30 m |
-| 1.4 | Escape dice-overlay labels + add CSP | Users | 2 h |
+| 1.4 | Escape dice-overlay labels ✅ done 2026-08-04 (CSP still open) | Users | 30 m left |
 | 1.5 | Storage bucket folder ownership | Users | 30 m |
 | 1.6 | Revoke anon `get_campaign_by_code` | Users | 15 m |
 | 1.7 | Fix `session_states` data loss | Users | 1–2 d |

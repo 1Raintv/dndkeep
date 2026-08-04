@@ -6,7 +6,8 @@
 
 | Finding | Status | Where |
 |---|---|---|
-| 1.1–1.7 Security | **Deferred by design** | Go-live checklist (companion doc) — app not yet live; 1.4 share-token RLS + 1.6 XSS are the first two to do |
+| 1.1–1.7 Security | **Deferred by design** | Go-live checklist (companion doc) — app not yet live; 1.4 share-token RLS queued as owner decision #7 below |
+| 1.6 Dice-overlay XSS | **Done** (CSP follow-up open) | `rollLabelNode()` textContent + jsdom regression test; checklist §1.4 |
 | 2.1 One-machine deploy paths | **Done** | deploy.bat/lint.bat use %~dp0 |
 | 2.2 CI as a gate | **Improved** | CI: tsc baseline (ratcheted 267→222) + hooks + build + 104 unit tests + bundle budget. deploy.bat still bypasses it — open |
 | 2.3 Second deploy path / watcher | **Open** | |
@@ -63,6 +64,12 @@
    needs the prod DB password; also certifies the local drift shims.
 6. **Node 20+/22 upgrade on the owner's machine** — Kyle's machine is on 24; unpins
    Playwright/vitest when both machines are moved.
+7. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
+   applied to prod, so do it as a pair). Agreed design: drop the `"Public share read"`
+   policy; add a `SECURITY DEFINER get_shared_character(token)` function (`REVOKE ALL
+   FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as
+   `join_campaign_by_code`) returning an explicit column list that excludes `user_id`;
+   swap `SharePage.tsx` to the RPC; prove both directions with a DB-tier E2E.
 
 **Added beyond the audit:** repo CLAUDE.md; unit-test convention; Playwright
 harness + committed visual baselines + gated DB-backed E2E; local Supabase
