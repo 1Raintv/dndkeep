@@ -71,7 +71,21 @@ logged-in app is verifiable — sheet, dice roller, battle map:
 
 - **Sign in via `e2e/db/helpers.ts` → `signInAsSeedDm(page)`** — never hand-roll the
   login fill (see the hydration gotcha below). Seeded login:
-  `test-dm@dndkeep.local` / `dndkeep-local-test`, Pro, owns "Local Test Campaign".
+  `test-dm@dndkeep.local` / `dndkeep-local-test`, Pro, owns "Local Test Campaign"
+  and character `33333333-3333-3333-3333-333333333333` ("Seeded Fighter") at
+  `/character/<id>` — the sheet is where the 3D roller, skill checks, and HP
+  panel live.
+- **The 3D dice roller does NOT live on `/dice`** — that page is a flat roller
+  writing straight to the DB. `triggerRoll` (the 3D overlay) fires only from
+  sheet flows (SkillsList, WeaponsTracker, SpellCastButton…). A roll's
+  `roll_logs` POST happens inside `onResult` — i.e. on SETTLE — so counting
+  those POSTs is the ground-truth "did the roll resolve" signal.
+- **Double-trigger testing**: while the overlay is up, pointer clicks can't reach
+  UI beneath it — `locator.dispatchEvent('click')` bypasses hit-testing and
+  reproduces a programmatic double-trigger exactly (see e2e/db/dice-roller.spec.ts).
+- **Mutation-test new regression specs**: temporarily revert the fix under test,
+  confirm the spec FAILS, restore. Two minutes, and it's the only real proof a
+  green test guards anything (the dice spec passed vacuously in its first form).
 - **Ad-hoc probe scripts** (sign in, click around, screenshot, dump REST/console):
   write a `.mjs` using `import { chromium } from '@playwright/test'` and put it
   **inside the repo but NOT in `test-results/`** — `.claude/worktrees/` works. Two

@@ -38,12 +38,10 @@ Sign in with the seeded account:
 | Email | `test-dm@dndkeep.local` |
 | Password | `dndkeep-local-test` |
 | Entitlements | Pro (campaign creation is Pro-gated *at the database*) |
-| Data | owns **"Local Test Campaign"** (dm membership auto-created) |
+| Data | owns **"Local Test Campaign"** (dm membership auto-created) and **"Seeded Fighter"** (a Fighter 1 character — only 5 columns lack defaults, the rest come from the schema) |
 
-Characters are deliberately not seeded — creating one is itself a flow
-worth exercising, and the `characters` table is too wide to hand-seed
-durably. Anything you create locally is yours to trash: `npx supabase
-db reset` returns the database to the seeded state in seconds.
+Anything you create locally is yours to trash: `npx supabase db reset`
+returns the database to the seeded state in seconds.
 
 ## Day-to-day
 

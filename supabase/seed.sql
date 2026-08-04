@@ -8,9 +8,8 @@
 --   email:    test-dm@dndkeep.local
 --   password: dndkeep-local-test
 --   campaign: "Local Test Campaign" (user is owner + dm member)
--- Characters are intentionally NOT seeded — creating one IS a flow
--- worth testing, and the characters table is too wide to hand-seed
--- durably.
+--   character: "Seeded Fighter" (Fighter 1) — hosts the sheet flows
+--     (3D dice roller, skill checks, HP panel) for E2E and manual testing
 -- =============================================================
 
 -- Test user (fixed UUID so later seed rows and tests can reference it).
@@ -60,3 +59,17 @@ values (
 -- campaign_members: the owner's dm membership row is added automatically
 -- by a trigger on campaign insert — no explicit insert needed (it
 -- conflicts on the (campaign_id, user_id) unique key if attempted).
+
+-- Seed character: only 5 columns lack defaults; everything else
+-- (ability scores, HP, slots) comes from column defaults. Gives E2E and
+-- manual testing a ready character sheet — the surface that hosts the
+-- 3D dice roller, skill checks, and the HP panel.
+insert into characters (id, user_id, name, species, class_name, background)
+values (
+  '33333333-3333-3333-3333-333333333333',
+  '11111111-1111-1111-1111-111111111111',
+  'Seeded Fighter',
+  'Human',
+  'Fighter',
+  'Soldier'
+);

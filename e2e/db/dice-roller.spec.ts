@@ -1,42 +1,61 @@
-// DB-gated: exercises the 3D dice roller against the LOCAL stack.
-// Regression coverage for audit 5.3 (v2.637): rapid sequential rolls used
-// to be able to drop the second result — the roller re-rendered in place
-// (empty-dep scene effect) and the provider hard-unmounted at 4.5s. With
-// the per-roll key + self-dismissal, every roll must land in the Roll Log.
+// DB-gated: regression test for audit 5.3 (v2.637) — the dropped-second-
+// roll race. Pre-fix, a second triggerRoll while the 3D roller was still
+// mounted re-rendered the SAME instance (empty-dep scene effect) and the
+// second roll's onResult NEVER fired; the per-roll key now remounts a
+// fresh roller per trigger.
+//
+// Detection signal: SkillsList inserts into roll_logs INSIDE onResult —
+// i.e. only when the physics dice settle and report back. Two resolved
+// rolls ⇒ two POSTs. The second trigger is dispatched DOM-directly while
+// the first roll's overlay is still up (the overlay is a full-screen
+// click-anywhere-dismiss layer, so a pointer click can't reach the skill
+// row — dispatchEvent bypasses hit-testing, exactly reproducing a
+// programmatic attack→damage style double-trigger).
+//
+// NOTE: /dice (the Dice Roller page) does NOT use the 3D roller — it's a
+// flat roller writing straight to the DB. The 3D roller only mounts from
+// character-sheet flows, hence the seeded character here.
 import { expect, test } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
+const SEED_CHARACTER_ID = '33333333-3333-3333-3333-333333333333';
 
-
-test.describe('dice roller (local stack)', () => {
+test.describe('3D dice roller (local stack)', () => {
   gateDbSuite();
 
-  test('two rapid d20 rolls BOTH land in the roll log', async ({ page }) => {
+  test('rapid double-trigger: BOTH rolls resolve (audit 5.3 race)', async ({ page }) => {
+    test.setTimeout(90_000); // first roll pays the ~600 KB dice-engine chunk load under SwiftShader
+
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(String(e)));
+    let rollLogPosts = 0;
+    page.on('response', r => {
+      if (r.url().includes('/rest/v1/roll_logs') && r.request().method() === 'POST' && r.status() < 400) {
+        rollLogPosts++;
+      }
+    });
 
     await signInAsSeedDm(page);
+    await page.goto(`/character/${SEED_CHARACTER_ID}`);
 
-    await page.goto('/dice');
-    const d20 = page.getByRole('button', { name: 'd20', exact: true }).first();
-    await expect(d20).toBeVisible({ timeout: 15_000 });
+    // Skills tab hosts the d20 check rows.
+    await page.getByText('Skills', { exact: true }).first().click();
+    const athletics = page.getByText('Athletics').first();
+    await athletics.waitFor({ timeout: 15_000 });
 
-    // Roll 1 — the 3D overlay mounts (WebGL runs under SwiftShader headless).
-    await d20.click();
-    await page.waitForTimeout(800);
-    // Dismiss the overlay (click-anywhere) and roll again immediately —
-    // the rapid-reroll path that exercises the per-roll remount key.
-    await page.mouse.click(640, 400);
-    await page.waitForTimeout(300);
-    await d20.click();
+    // Roll 1 — wait for it to RESOLVE (POST #1), not just mount.
+    await athletics.click();
+    const overlayHint = page.getByText(/click anywhere to dismiss/i);
+    await expect(overlayHint).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => rollLogPosts, { timeout: 30_000 }).toBe(1);
 
-    // Both results must reach the session Roll Log (entries mention d20).
-    await expect
-      .poll(async () => page.locator('text=/d20/i').count(), { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(3); // quick-roll button + queue chip render "d20" too — log adds more
-    // Stronger signal: the "No rolls yet" placeholder is gone and the log
-    // region shows at least two result rows.
-    await expect(page.getByText(/no rolls yet/i)).toBeHidden();
-    if (errors.length) throw new Error('pageerror during rolls: ' + errors.join(' | '));
+    // Roll 2 — triggered while roll 1's overlay is STILL displayed (it
+    // lingers ~5.5s after settling). Pre-fix this second trigger was
+    // silently swallowed; post-fix the per-roll key remounts the roller.
+    await expect(overlayHint).toBeVisible();
+    await page.getByText('Acrobatics').first().dispatchEvent('click');
+    await expect.poll(() => rollLogPosts, { timeout: 30_000 }).toBe(2);
+
+    expect(errors, 'no page errors across the double-roll').toEqual([]);
   });
 });

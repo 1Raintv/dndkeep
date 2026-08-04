@@ -10,7 +10,7 @@ import { gateDbSuite, signInAsSeedDm } from './helpers';
 test.describe('battle map (local stack)', () => {
   gateDbSuite();
 
-  test('create a scene and render the Pixi canvas', async ({ page }) => {
+  test('create a scene and render the Pixi canvas', async ({ page }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(String(e)));
     // Diagnostics: surface FAILED scenes REST writes in the failure output
@@ -74,6 +74,8 @@ test.describe('battle map (local stack)', () => {
     expect(errors, 'no page errors while mounting the map').toEqual([]);
 
     // Artifact for human eyes — the rendered map goes into the report.
-    await page.screenshot({ path: 'test-results/battle-map-rendered.png' });
+    // testInfo.outputPath: parallel projects (desktop/mobile) must not
+    // overwrite each other's artifact.
+    await page.screenshot({ path: testInfo.outputPath('battle-map-rendered.png') });
   });
 });
