@@ -18,6 +18,17 @@ npm run anchor-check   # battle-map anchor invariants
 npm run test           # vitest unit suite (rules/, coords, parsers)
 ```
 
+Two OPTIONAL layers exist on top of the gate — nothing in normal dev or
+deploys requires them:
+- **E2E/visual**: Playwright specs in `e2e/` (`npm run test:e2e`). Visual
+  baselines are committed; DB-backed specs are double-locked behind
+  `E2E_DB=1` AND a localhost Supabase URL. See `e2e/README.md`.
+- **Local database**: copy `.env.local.example` → `.env.local` to point a
+  machine at a Docker Supabase (`supabase start`). Machines without
+  `.env.local` keep using `.env` → production, unchanged.
+`npm run budget-check` (after a build) enforces the ~300 KB entry-chunk
+budget and runs in CI.
+
 Unit tests are colocated `*.test.ts` files next to their modules and run
 with vitest. When you add or change logic in `src/rules/` or another pure
 module, extend its test file in the same commit. Modules that import

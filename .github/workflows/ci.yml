@@ -85,3 +85,6 @@ jobs:
 
       - name: Build
         run: node node_modules/vite/bin/vite.js build
+
+      - name: Bundle budget (entry chunk ≤ 300 KB — guards the v2.636 fix)
+        run: npm run budget-check

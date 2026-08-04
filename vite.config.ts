@@ -1,9 +1,15 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // e2e/ holds Playwright specs — a different runner. Without this,
+    // vitest tries to collect them and explodes on @playwright/test.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

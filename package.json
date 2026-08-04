@@ -12,7 +12,10 @@
     "raw-check": "node scripts/raw-regression.mjs",
     "coords-check": "node scripts/coords-tests.mjs",
     "anchor-check": "node scripts/anchor-check.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "budget-check": "node scripts/bundle-budget.mjs"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",
@@ -30,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@playwright/test": "1.49",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/uuid": "^10.0.0",
