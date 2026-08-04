@@ -15,7 +15,7 @@
 | 2.5 Local Docker database | **Done** | supabase start + db reset + seed; drift shims; docs/LOCAL_DEV.md |
 | 2.6 Migration drift | **Reconstructed locally** | 4 drift shims (censused vs generated types). Certified prod schema dump still open — needs prod DB password |
 | 2.7 Test framework | **Done** | vitest (104 tests) + Playwright (14 incl. DB flows) + visual baselines |
-| 2.8 Error telemetry | **Open** | |
+| 2.8 Error telemetry | **Done** (client) | log facade + Supabase sink → client_errors; prod table pending migration apply (owner queue); checklist §1.9 |
 | 2.9 Manual version bump | **Open** | |
 | 2.10 Repo hygiene | **Done** | .gitignore, artifacts untracked |
 | 3.1 Dropped-table write | **Done** | Dead code removed (audit A1) |
@@ -64,7 +64,29 @@
    needs the prod DB password; also certifies the local drift shims.
 6. **Node 20+/22 upgrade on the owner's machine** — Kyle's machine is on 24; unpins
    Playwright/vitest when both machines are moved.
-7. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
+7. **CI/CD cost tune-up** (proposed 2026-08-04) — one ci.yml commit: drop the
+   `pull_request` trigger (push + PR events double-run every PR-branch push); add a
+   `concurrency` group with cancel-in-progress; `timeout-minutes: 15` (default is 6 h);
+   `paths-ignore` for `**.md`/`docs/**`/`.claude/**`; scope the daily cron to
+   `raw-check` only. Owner-side: Vercel "Ignored Build Step" for docs-only pushes.
+   While in there: add a migration-apply job (`supabase db push` on main) so future
+   schema changes (client_errors, 1.4 policy fix) reach prod automatically — needs
+   the prod DB password as a repo secret (same credential as the schema-dump item).
+   **Prereq:** one-time `supabase migration repair` to baseline prod's
+   schema_migrations ledger (prod predates most migration files — an unbaselined
+   push would try to replay the entire chain). Convention going forward: new
+   migrations written idempotent (IF NOT EXISTS) as defense-in-depth.
+8. **Logging strategy** (proposed 2026-08-04) — 254 raw `console.*` calls across 65
+   files, no levels, no central module. Proposal: small `src/lib/log.ts`
+   (debug/info/warn/error), debug gated out of prod, error level feeding the 2.8
+   telemetry sink; migrate call sites as files are touched. App-wide convention →
+   owner buy-in first.
+9. **Owner's dev DB choice** (2026-08-04) — does he move his machine to the local
+   Docker DB (per-machine, reversible: `.env.local`; see docs/LOCAL_DEV.md and the
+   `/setup-local-dndkeep` walkthrough) or keep developing against prod as he always
+   has? His answer shapes the migration-workflow decisions (item 7) and whether
+   dashboard-first schema editing continues.
+10. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
    applied to prod, so do it as a pair). Agreed design: drop the `"Public share read"`
    policy; add a `SECURITY DEFINER get_shared_character(token)` function (`REVOKE ALL
    FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as

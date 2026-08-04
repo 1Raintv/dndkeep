@@ -81,6 +81,15 @@ the 3D dice / battle map; do it as its own verified change.
 - **Verify:** `supabase/functions/` contains all six; each has been read.
 
 ### 1.9 Add error telemetry
+**Status: ✅ DONE (client side) 2026-08-04, branch `audit-fixes`** — Serilog-style
+facade (`src/lib/log.ts`) + lazy Supabase sink (`src/lib/logSinkSupabase.ts`)
+shipping error-level events to `client_errors` (migration
+`20260804120000_client_errors.sql`, insert-only RLS, read via Studio). Hooks:
+ErrorBoundary + `window.onerror` + `unhandledrejection`. Sink batches, dedupes,
+caps per session, and goes dormant if the table doesn't exist yet — **prod is in
+that state until its migration is applied (owner sit-down)**. A future Sentry
+upgrade is a drop-in sink; call sites never change. 11 unit tests.
+
 **Risk if shipped:** you cannot operate a live service blind. There is no Sentry, no `window.onerror`, no `unhandledrejection` handler — and 194 `console.error` calls nobody will ever see.
 
 - **Fix:** a basic reporter is about an hour. Given 50 realtime channels and many fire-and-forget writes, unhandled rejections are the ones that matter most.
@@ -177,7 +186,7 @@ Highest-risk subset, all writing to `characters`: `DMScreen.tsx:155` (DM edits t
 | 1.6 | Revoke anon `get_campaign_by_code` | Users | 15 m |
 | 1.7 | Fix `session_states` data loss | Users | 1–2 d |
 | 1.8 | Commit the 3 missing edge functions | Users | 1 h |
-| 1.9 | Error telemetry | Users | 1 h |
+| 1.9 | Error telemetry ✅ done 2026-08-04 (prod table pending migration apply) | Users | — |
 | 1.10 | Real auth redirect URLs | Users | 15 m |
 | 2.1 | One-time purchase fulfillment | Money | 1 d |
 | 2.2 | Webhook idempotency | Money | 2 h |
