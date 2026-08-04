@@ -64,6 +64,27 @@ viewports, same engine as the committed baselines) and the **in-app Browser pane
 - [ ] Shot shows real content, not a loading/empty/error state (unless that state is
       the thing being verified).
 
+## Logged-in flows (local stack only)
+
+When `.env.local` points at the local Supabase (see `docs/LOCAL_DEV.md`), the whole
+logged-in app is verifiable — sheet, dice roller, battle map:
+
+- **Sign in via `e2e/db/helpers.ts` → `signInAsSeedDm(page)`** — never hand-roll the
+  login fill (see the hydration gotcha below). Seeded login:
+  `test-dm@dndkeep.local` / `dndkeep-local-test`, Pro, owns "Local Test Campaign".
+- **Ad-hoc probe scripts** (sign in, click around, screenshot, dump REST/console):
+  write a `.mjs` using `import { chromium } from '@playwright/test'` and put it
+  **inside the repo but NOT in `test-results/`** — `.claude/worktrees/` works. Two
+  traps: outside the repo, ESM can't resolve `@playwright/test`; inside
+  `test-results/`, the next `playwright test` run DELETES it.
+- **WebGL works headless** (SwiftShader): the three.js dice and the Pixi map both
+  render — `locator('canvas')` assertions and screenshots are valid evidence.
+- `npx supabase db reset` between iterations gives a clean slate in seconds — but it
+  regenerates dynamic values (campaign join codes), so never assert on those.
+- Debug ladder when a flow fails: failure screenshot (`test-results/**/test-failed-1.png`
+  → `Read` it) → REST capture (`page.on('response')` for non-GET >=400) → parse
+  `trace.zip` for the action timeline (unzip; `.trace` lines are JSON events).
+
 ## Reference
 
 - **Prod DB.** `.env` points at live Supabase; there is no staging. Never sign in,
@@ -93,3 +114,31 @@ viewports, same engine as the committed baselines) and the **in-app Browser pane
   generations** — different `?v=` hashes across chunks → two React copies →
   "Invalid hook call … useContext null" caught by the error boundary. Not an app bug;
   browser reloads can't fix it, only a fresh dev server can.
+
+> Logged-in-flow failures observed building the db E2E tier (2026-08-03 pt 2).
+
+- **`isVisible({timeout})` does NOT wait** — the timeout option is ignored; it
+  reports instant state. A conditional built on it silently skipped scene creation
+  whenever the empty-state hadn't rendered yet. Use `waitFor()` or
+  `expect(a.or(b).first()).toBeVisible()` to race two possible UI states.
+- **Filling `/auth` right after navigation races React hydration** — the first
+  controlled render blanks a too-early `fill` (symptom: password set, email empty,
+  native "Please fill out this field" bubble). Fill-and-verify with retries —
+  that's exactly what `signInAsSeedDm` does.
+- **The 3D dice overlay is a full-screen click-anywhere-dismiss layer** — while
+  it's up, clicks aimed at UI hit the overlay instead. Dismiss (click empty space),
+  then click the control.
+- **`page.reload()` can lose SPA state** — the campaign dashboard is state-driven,
+  so a reload lands back on the campaign LIST; re-enter via the card before waiting
+  on dashboard content.
+- **Strict-mode dupes**: hero CTA text appears twice on the landing page, and
+  entity names render in BOTH the sidebar and content (sidebar copy hidden on
+  mobile) — filter `locator('text=…').locator('visible=true')` or use `.first()`
+  deliberately.
+- **Full-suite CPU contention**: WebGL dice + Pixi maps + screenshots across 4
+  workers on one dev server flake the heavy mobile tests (~1-2/run, different each
+  time). Config carries `workers: 3` + `retries: 1`; the db tier alone runs clean
+  at full speed. Prefer `npx playwright test db` while iterating on a flow.
+- **Multi-client first-scene race (real app quirk)**: two DM sessions racing the
+  FIRST scene create can both keep a stale empty state despite 201s; a reload
+  resyncs. Documented in `e2e/db/battle-map.spec.ts`; low priority app-side.
