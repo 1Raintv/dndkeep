@@ -7,6 +7,7 @@
 // The helper never throws. A failed log write must not break the UI.
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import type { Character } from '../types';
 import { emitCombatEvent, type CombatEventType } from './combatEvents';
 
@@ -97,7 +98,7 @@ export interface HistoryEvent {
 
 export async function logHistoryEvent(evt: HistoryEvent): Promise<void> {
   try {
-    await supabase.from('character_history').insert({
+    await checkedWrite('character_history.insert event', { characterId: evt.characterId }, supabase.from('character_history').insert({
       character_id: evt.characterId,
       user_id: evt.userId,
       event_type: evt.eventType,
@@ -105,7 +106,7 @@ export async function logHistoryEvent(evt: HistoryEvent): Promise<void> {
       old_value: evt.oldValue ?? null,
       new_value: evt.newValue ?? null,
       description: evt.description,
-    });
+    }));
   } catch (e) {
     // Never throw — logging must not break the UI flow.
     // eslint-disable-next-line no-console
@@ -383,7 +384,7 @@ export async function logHistoryEvents(events: HistoryEvent[]): Promise<void> {
       new_value: e.newValue ?? null,
       description: e.description,
     }));
-    await supabase.from('character_history').insert(rows);
+    await checkedWrite('character_history.insert batch', { count: rows.length }, supabase.from('character_history').insert(rows));
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[history] logHistoryEvents failed:', e);

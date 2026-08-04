@@ -27,6 +27,7 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logAction } from '../../components/shared/ActionLog';
 import { supabase } from '../supabase';
+import { checkedWrite } from '../api/checked';
 
 export interface StrikeResult {
   weaponName: string;
@@ -111,7 +112,7 @@ export function useWeaponStrike(opts: UseWeaponStrikeOptions) {
       // the same insert shape and ships fine because RLS/the row's
       // trigger fills it in, but TS strict mode rejects the call.
       // Passing it explicitly satisfies the type and is correct.
-      await supabase.from('roll_logs').insert({
+      await checkedWrite('roll_logs.insert weapon-to-hit', { characterId }, supabase.from('roll_logs').insert({
         user_id: userId ?? characterId,
         character_id: characterId,
         campaign_id: campaignId ?? null,
@@ -120,7 +121,7 @@ export function useWeaponStrike(opts: UseWeaponStrikeOptions) {
         individual_results: [nat],
         total: hit,
         modifier: weapon.attackBonus,
-      });
+      }));
       await logAction({
         campaignId, characterId, characterName: characterName ?? '',
         actionType: 'attack', actionName: `${weapon.name} (Hit Roll)`,
@@ -197,7 +198,7 @@ export function useWeaponStrike(opts: UseWeaponStrikeOptions) {
     });
 
     if (characterId) {
-      await supabase.from('roll_logs').insert({
+      await checkedWrite('roll_logs.insert weapon-damage', { characterId }, supabase.from('roll_logs').insert({
         user_id: userId ?? characterId,
         character_id: characterId,
         campaign_id: campaignId ?? null,
@@ -206,7 +207,7 @@ export function useWeaponStrike(opts: UseWeaponStrikeOptions) {
         individual_results: individualRolls,
         total,
         modifier: weapon.damageBonus,
-      });
+      }));
       await logAction({
         campaignId, characterId, characterName: characterName ?? '',
         actionType: 'damage', actionName: `${weapon.name} (Damage)${isCrit ? ' (CRIT)' : ''}`,
