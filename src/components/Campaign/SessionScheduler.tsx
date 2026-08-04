@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { useAuth } from '../../context/AuthContext';
 
 interface Schedule {
@@ -96,7 +97,7 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
   async function createSchedule() {
     if (!newTitle.trim() || selectedDays.length < 2) return;
     setSaving(true);
-    await supabase.from('session_schedules').insert({
+    await checkedWrite('session_schedules.insert create', { campaignId }, supabase.from('session_schedules').insert({
       campaign_id: campaignId,
       created_by: user?.id,
       title: newTitle.trim(),
@@ -104,7 +105,7 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
       proposed_dates: selectedDays.sort(),
       deadline: deadline ? new Date(deadline + 'T23:59:59').toISOString() : null,
       status: 'polling',
-    });
+    }));
     setShowCreate(false);
     setNewTitle('Next Session');
     setNewDesc('');
@@ -120,20 +121,20 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
 
     const { data: existing } = await supabase.from('schedule_availability').select('id').eq('schedule_id', scheduleId).eq('player_name', playerName).single();
     if (existing) {
-      await supabase.from('schedule_availability').update({ available_dates: newDates }).eq('id', existing.id);
+      await checkedWrite('schedule_availability.update dates', { scheduleId }, supabase.from('schedule_availability').update({ available_dates: newDates }).eq('id', existing.id));
     } else {
-      await supabase.from('schedule_availability').insert({ schedule_id: scheduleId, user_id: user?.id, player_name: playerName, available_dates: newDates });
+      await checkedWrite('schedule_availability.insert dates', { scheduleId }, supabase.from('schedule_availability').insert({ schedule_id: scheduleId, user_id: user?.id, player_name: playerName, available_dates: newDates }));
     }
     loadSchedules();
   }
 
   async function confirmDate(scheduleId: string, date: string) {
-    await supabase.from('session_schedules').update({ confirmed_date: new Date(date + 'T18:00:00').toISOString(), status: 'confirmed' }).eq('id', scheduleId);
+    await checkedWrite('session_schedules.update confirm', { scheduleId }, supabase.from('session_schedules').update({ confirmed_date: new Date(date + 'T18:00:00').toISOString(), status: 'confirmed' }).eq('id', scheduleId));
     loadSchedules();
   }
 
   async function cancelSchedule(scheduleId: string) {
-    await supabase.from('session_schedules').update({ status: 'cancelled' }).eq('id', scheduleId);
+    await checkedWrite('session_schedules.update cancel', { scheduleId }, supabase.from('session_schedules').update({ status: 'cancelled' }).eq('id', scheduleId));
     loadSchedules();
   }
 
@@ -304,7 +305,7 @@ export default function SessionScheduler({ campaignId, isOwner }: SessionSchedul
             </div>
             {isOwner && (
               <button className="btn-ghost btn-sm" style={{ color: 'var(--t-2)', fontSize: 'var(--fs-xs)' }}
-                onClick={() => supabase.from('session_schedules').update({ status: 'polling', confirmed_date: null }).eq('id', schedule.id).then(() => loadSchedules())}>
+                onClick={() => checkedWrite('session_schedules.update reopen', { scheduleId: schedule.id }, supabase.from('session_schedules').update({ status: 'polling', confirmed_date: null }).eq('id', schedule.id)).then(() => loadSchedules())}>
                 Reopen
               </button>
             )}

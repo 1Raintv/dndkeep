@@ -1,5 +1,6 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { asJsonb } from '../../lib/jsonbCast';
 import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
@@ -236,7 +237,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     await Promise.all(targets.map((c, i) => {
       const gain = perPlayer + (i < remainder ? 1 : 0);
       const newXP = (c.experience_points ?? 0) + gain;
-      return supabase.from('characters').update({ experience_points: newXP }).eq('id', c.id);
+      return checkedWrite('characters.update award-xp', { characterId: c.id }, supabase.from('characters').update({ experience_points: newXP }).eq('id', c.id));
     }));
     setXpInput('');
     setXpNote('');
@@ -330,7 +331,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         patch.inventory = [...(c.inventory ?? []), newItem];
       }
       return Object.keys(patch).length
-        ? supabase.from('characters').update(patch).eq('id', c.id)
+        ? checkedWrite('characters.update distribute-loot', { characterId: c.id }, supabase.from('characters').update(patch).eq('id', c.id))
         : Promise.resolve();
     }));
     setLootPp(''); setLootGp(''); setLootEp(''); setLootSp(''); setLootCp('');
@@ -357,7 +358,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       results.push({ name: c.name, took: actual, concentration: concBreaks, modifier });
       const patch: Partial<Character> = { current_hp: newHP };
       if (concBreaks) patch.concentration_spell = '';
-      return supabase.from('characters').update(patch).eq('id', id);
+      return checkedWrite('characters.update aoe-damage', { characterId: id }, supabase.from('characters').update(patch).eq('id', id));
     }));
     setAoeApplied(results);
     setAoeDamage('');
@@ -457,7 +458,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         if (typeof val !== 'number') (newResources as any)[key] = val;
       }
       const recharge = rechargeMap.get(c.id);
-      return supabase.from('characters').update({
+      return checkedWrite('characters.update long-rest', { characterId: c.id }, supabase.from('characters').update({
         current_hp: c.max_hp,
         temp_hp: 0,
         spell_slots: recoveredSlots,
@@ -472,7 +473,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         // v2.498.0 — asJsonb() casts the typed InventoryItem[] into the
         // supabase-js Json union. See src/lib/jsonbCast.ts.
         inventory: asJsonb(recharge?.rechargedInventory ?? c.inventory),
-      }).eq('id', c.id);
+      }).eq('id', c.id));
     }));
 
     // v2.195.0 — fire-and-forget per-character rest_taken events.
@@ -537,13 +538,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     }
 
     // Notify players so the inbox / toast surfaces what just happened
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert long-rest-notice', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: 'The party takes a long rest. HP, spell slots, hit dice (half), and class resources restored. Exhaustion cleared.',
       message_type: 'long_rest_completed',
-    });
+    }));
     setDmPanel(null);
   }
 
@@ -552,13 +553,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // themselves in their existing CharacterSheet rest modal. This
   // function just sends the prompt and a notification.
   async function partyShortRest() {
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert short-rest-prompt', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: JSON.stringify({ kind: 'short' }),
       message_type: 'short_rest_prompt',
-    });
+    }));
     setDmPanel(null);
   }
 
@@ -574,13 +575,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     const payload = targeted
       ? JSON.stringify({ text: announceText.trim(), targets: Array.from(announceTargets!) })
       : announceText.trim();
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert announcement', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: payload,
       message_type: 'announcement',
-    });
+    }));
     setAnnounceText('');
     setAnnounceTargets(null);
     setDmPanel(null);
@@ -598,13 +599,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     const isPartial = saveTargets !== null && saveTargets.size > 0 && saveTargets.size < characters.length;
     const payload: any = { ability: saveAbility, dc };
     if (isPartial) payload.targets = Array.from(saveTargets!);
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert save-prompt', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: JSON.stringify(payload),
       message_type: 'save_prompt',
-    });
+    }));
     setSaveDC('');
     setSaveTargets(null);
     setDmPanel(null);
@@ -627,7 +628,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   }
 
   async function updateChar(id: string, patch: Partial<Character>) {
-    await supabase.from('characters').update(patch).eq('id', id);
+    await checkedWrite('characters.update party-dashboard', { characterId: id }, supabase.from('characters').update(patch).eq('id', id));
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>Loading party…</div>;

@@ -13,6 +13,7 @@ import {
   getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail, getCharacters, supabase,
   addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
 } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 // v2.286.0 — InitiativeTracker import dropped. The legacy player-side
 // view it provided was retired in this ship; the player session tab
 // now renders an inline pointer to the InitiativeStrip (the modern
@@ -1251,7 +1252,7 @@ function AssignMyCharacterPanel({ campaignId, userId, onRefresh }: {
 
   async function assign(charId: string) {
     setBusy(charId);
-    await supabase.from('characters').update({ campaign_id: campaignId }).eq('id', charId);
+    await checkedWrite('characters.update join-campaign', { characterId: charId, campaignId }, supabase.from('characters').update({ campaign_id: campaignId }).eq('id', charId));
     await onRefresh();
     const { data } = await getCharacters(userId);
     setMyChars(data ?? []);
@@ -1260,7 +1261,7 @@ function AssignMyCharacterPanel({ campaignId, userId, onRefresh }: {
 
   async function unassign(charId: string) {
     setBusy(charId);
-    await supabase.from('characters').update({ campaign_id: null }).eq('id', charId);
+    await checkedWrite('characters.update leave-campaign', { characterId: charId }, supabase.from('characters').update({ campaign_id: null }).eq('id', charId));
     await onRefresh();
     const { data } = await getCharacters(userId);
     setMyChars(data ?? []);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import CombatEventLog from '../shared/CombatEventLog';
 import type { Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
@@ -147,12 +148,12 @@ export default function DMScreen({ campaign }: DMScreenProps) {
   }
 
   async function updateNPC(id: string, patch: Partial<NPC>) {
-    await supabase.from('homebrew_monsters').update(patch).eq('id', id);
+    await checkedWrite('homebrew_monsters.update dm-screen', { monsterId: id }, supabase.from('homebrew_monsters').update(patch).eq('id', id));
     setNpcs(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n));
   }
 
   async function updatePlayer(id: string, patch: Partial<PartyMember>) {
-    await supabase.from('characters').update(patch).eq('id', id);
+    await checkedWrite('characters.update dm-screen', { characterId: id }, supabase.from('characters').update(patch).eq('id', id));
   }
 
   async function applyHPDelta(m: PartyMember, type: 'damage' | 'heal') {
@@ -264,7 +265,7 @@ export default function DMScreen({ campaign }: DMScreenProps) {
 
   async function saveNotes() {
     setSavingNotes(true);
-    await supabase.from('campaigns').update({ notes }).eq('id', campaign.id);
+    await checkedWrite('campaigns.update notes', { campaignId: campaign.id }, supabase.from('campaigns').update({ notes }).eq('id', campaign.id));
     setSavingNotes(false);
   }
 
@@ -636,9 +637,9 @@ export default function DMScreen({ campaign }: DMScreenProps) {
           onSave={async () => {
             if (!editingNPC.name?.trim()) return;
             if ((editingNPC as NPC).id) {
-              await supabase.from('homebrew_monsters').update({ ...editingNPC, updated_at: new Date().toISOString() }).eq('id', (editingNPC as NPC).id);
+              await checkedWrite('homebrew_monsters.update npc-editor', { monsterId: (editingNPC as NPC).id }, supabase.from('homebrew_monsters').update({ ...editingNPC, updated_at: new Date().toISOString() }).eq('id', (editingNPC as NPC).id));
             } else {
-              await supabase.from('homebrew_monsters').insert({ ...editingNPC, campaign_id: campaign.id });
+              await checkedWrite('homebrew_monsters.insert npc-editor', { campaignId: campaign.id }, supabase.from('homebrew_monsters').insert({ ...editingNPC, campaign_id: campaign.id }));
             }
             await loadNPCs();
             setEditingNPC(null);

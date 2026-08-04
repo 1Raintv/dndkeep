@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 
 interface DiscordIntegration {
   id: string;
@@ -38,9 +39,9 @@ export default function DiscordSettings({ campaignId }: DiscordSettingsProps) {
     if (!guildId.trim() || !guildName.trim()) return;
     setSaving(true);
     if (integration) {
-      await supabase.from('discord_integrations').update({ guild_id: guildId, guild_name: guildName, webhook_url: webhookUrl }).eq('id', integration.id);
+      await checkedWrite('discord_integrations.update settings', { integrationId: integration.id }, supabase.from('discord_integrations').update({ guild_id: guildId, guild_name: guildName, webhook_url: webhookUrl }).eq('id', integration.id));
     } else {
-      await supabase.from('discord_integrations').insert({ campaign_id: campaignId, guild_id: guildId, guild_name: guildName, webhook_url: webhookUrl });
+      await checkedWrite('discord_integrations.insert settings', { campaignId }, supabase.from('discord_integrations').insert({ campaign_id: campaignId, guild_id: guildId, guild_name: guildName, webhook_url: webhookUrl }));
     }
     await load();
     setSaving(false);
@@ -49,7 +50,7 @@ export default function DiscordSettings({ campaignId }: DiscordSettingsProps) {
 
   async function disconnect() {
     if (!integration) return;
-    await supabase.from('discord_integrations').delete().eq('id', integration.id);
+    await checkedWrite('discord_integrations.delete disconnect', { integrationId: integration.id }, supabase.from('discord_integrations').delete().eq('id', integration.id));
     setIntegration(null);
   }
 
