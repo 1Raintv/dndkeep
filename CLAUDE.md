@@ -25,7 +25,8 @@ deploys requires them:
   `E2E_DB=1` AND a localhost Supabase URL. See `e2e/README.md`.
 - **Local database**: copy `.env.local.example` → `.env.local` to point a
   machine at a Docker Supabase (`supabase start`). Machines without
-  `.env.local` keep using `.env` → production, unchanged.
+  `.env.local` keep using `.env` → production, unchanged. Full setup,
+  seeded test login, and troubleshooting: `docs/LOCAL_DEV.md`.
 `npm run budget-check` (after a build) enforces the ~300 KB entry-chunk
 budget and runs in CI.
 
