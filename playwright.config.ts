@@ -15,6 +15,13 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  // The DB tier renders WebGL dice + the Pixi map under SwiftShader; at
+  // full parallelism on one dev server the heavy mobile tests contend on
+  // CPU and flake (~1-2 per full run, different each time). Three workers
+  // + one retry makes the combined 18-test run deterministic; the db tier
+  // alone is stable at full speed.
+  workers: 3,
+  retries: 1,
   // Visual baselines live next to the specs, named per-platform so a
   // Windows-generated baseline doesn't fight the Linux CI render.
   snapshotPathTemplate: '{testDir}/__screenshots__/{platform}/{projectName}/{testFilePath}/{arg}{ext}',

@@ -3,24 +3,12 @@
 // canvas mounts, and no page errors fire. This is the "did the 11k-line
 // decomposition actually keep the map alive" smoke.
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { gateDbSuite, signInAsSeedDm } from './helpers';
 
-const E2E_DB = process.env.E2E_DB === '1';
 
-function localSupabaseUrl(): string | null {
-  const p = join(process.cwd(), '.env.local');
-  if (!existsSync(p)) return null;
-  const m = readFileSync(p, 'utf-8').match(/^VITE_SUPABASE_URL=(.+)$/m);
-  return m ? m[1].trim() : null;
-}
 
 test.describe('battle map (local stack)', () => {
-  test.skip(!E2E_DB, 'set E2E_DB=1 (with a local Supabase) to run DB-backed tests');
-  test.beforeEach(() => {
-    const url = localSupabaseUrl();
-    test.skip(!url || !/127\.0\.0\.1|localhost/.test(url), 'refusing: non-local Supabase');
-  });
+  gateDbSuite();
 
   test('create a scene and render the Pixi canvas', async ({ page }) => {
     const errors: string[] = [];
@@ -34,11 +22,7 @@ test.describe('battle map (local stack)', () => {
       }
     });
 
-    await page.goto('/auth');
-    await page.getByPlaceholder(/your@email.com/i).fill('test-dm@dndkeep.local');
-    await page.getByPlaceholder(/your password/i).fill('dndkeep-local-test');
-    await page.getByRole('button', { name: /enter the keep/i }).click();
-    await expect(page.getByPlaceholder(/your@email.com/i)).toBeHidden({ timeout: 20_000 });
+    await signInAsSeedDm(page);
 
     await page.goto('/campaigns');
     await page.locator('text=Local Test Campaign').locator('visible=true').first().click();
@@ -74,7 +58,11 @@ test.describe('battle map (local stack)', () => {
       } catch {
         // OBSERVED: concurrent DM sessions racing the first-scene create
         // can leave a stale empty state despite a 201 — reload resyncs.
+        // Reload may land on the campaign LIST (dashboard is state-driven),
+        // so re-enter the campaign if the card is showing.
         await page.reload();
+        const card = page.locator('text=Local Test Campaign').locator('visible=true').first();
+        try { await card.waitFor({ timeout: 4_000 }); await card.click(); } catch { /* already on dashboard */ }
       }
     }
 
