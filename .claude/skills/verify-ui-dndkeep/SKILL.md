@@ -51,7 +51,8 @@ viewports, same engine as the committed baselines) and the **in-app Browser pane
    `npx playwright test visual --update-snapshots` and commit the baselines with the
    change (the image diff in review is the change record). A brand-new public page gets
    a spec in `e2e/` following `smoke.spec.ts`'s `collectConsoleErrors` pattern.
-   — *done when:* `npm run test:e2e` is green locally, or the user explicitly deferred it.
+   — *done when:* `npm run test:e2e` is green locally, or the user explicitly deferred it —
+   AND any dev server this loop *launched* is stopped (one it merely reused stays up).
 
 ## Pass/fail checklist
 
