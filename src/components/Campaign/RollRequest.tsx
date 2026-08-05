@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
@@ -54,7 +55,7 @@ const SKILLS = [
 const ABILITY_LABELS = ['Strength','Dexterity','Constitution','Intelligence','Wisdom','Charisma'];
 const ABILITY_KEYS = ['strength','dexterity','constitution','intelligence','wisdom','charisma'] as const;
 const PROF_BONUS = (level: number) => Math.ceil(level / 4) + 1;
-const MOD = (s: number) => Math.floor((s - 10) / 2);
+const MOD = (s: number) => abilityModifier(s);
 
 function rollD20() { return Math.floor(Math.random() * 20) + 1; }
 

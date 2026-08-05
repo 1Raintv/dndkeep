@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
@@ -250,7 +251,7 @@ export default function SpellCastButton({
  };
  const key = spellAbilityMap[character.class_name] ?? 'intelligence';
  const score = (character[key] as number) ?? 10;
- const spellMod = Math.floor((score - 10) / 2);
+ const spellMod = abilityModifier(score);
  const profBonus = Math.ceil(character.level / 4) + 1;
  const spellAttack = spellMod + profBonus;
  const saveDC = 8 + spellAttack;

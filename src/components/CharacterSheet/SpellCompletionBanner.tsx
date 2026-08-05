@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { SPELLS } from '../../data/spells';
@@ -13,7 +14,7 @@ interface Props {
 function getPreparedNote(character: Character): string {
  if (!isPreparer(character.class_name)) return '';
  if (character.class_name === 'Artificer') {
- const mod = Math.floor((character.intelligence - 10) / 2);
+ const mod = abilityModifier(character.intelligence);
  return `INT mod (${mod}) + half level rounded up (${Math.ceil(character.level / 2)})`;
  }
  return `from the ${character.class_name} class table at level ${character.level}`;

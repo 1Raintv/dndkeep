@@ -728,7 +728,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  */
  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
  const conScore = character.constitution ?? 10;
- const conMod = Math.floor((conScore - 10) / 2);
+ const conMod = abilityModifier(conScore);
  const pb = Math.ceil(character.level / 4) + 1;
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
@@ -1716,7 +1716,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      capped at 30. */}
  {concentrationSaveDC !== null && concentrationSpellId && (() => {
  const conScore = character.constitution ?? 10;
- const conMod = Math.floor((conScore - 10) / 2);
+ const conMod = abilityModifier(conScore);
  const pb = Math.ceil(character.level / 4) + 1;
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
@@ -2274,7 +2274,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // so an attuned Headband of Intellect / Gauntlets of Ogre Power
  // actually changes the save modifier the player sees.
  const score = (computed.ability_scores as any)[abilityKey] ?? (character[abilityKey] as number) ?? 10;
- const mod = Math.floor((score - 10) / 2);
+ const mod = abilityModifier(score);
  // v2.260.0 — was reading computed.proficiencyBonus (camelCase),
  // but the ComputedStats field is proficiency_bonus (snake_case).
  // The ?? 2 fallback was masking the bug — every save prompt
@@ -2355,7 +2355,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    const skillTarget = SKILL_LIST_STATIC.find(s => s.name === checkPrompt.target);
    if (skillTarget) {
      const score = (character[skillTarget.ability as keyof typeof character] as number) ?? 10;
-     mod = Math.floor((score - 10) / 2);
+     mod = abilityModifier(score);
      proficient = (character.skill_proficiencies ?? []).includes(checkPrompt.target);
      // v2.260.0 — same camelCase→snake_case fix; was silently using
      // PB=2 for every skill check regardless of level.
@@ -2370,7 +2370,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      // overrides flow into ability-check prompts the same way they
      // do for skills (which already route through computed.skills).
      const score = (computed.ability_scores as any)[ability] ?? (character[ability] as number) ?? 10;
-     mod = Math.floor((score - 10) / 2);
+     mod = abilityModifier(score);
    }
  }
  const accent = '#a78bfa';

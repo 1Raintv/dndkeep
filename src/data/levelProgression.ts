@@ -2,6 +2,7 @@
  * Level progression milestones for all 12 classes — 2024 PHB.
  * Used by the character creator to show what a character gains at each level.
  */
+import { abilityModifier } from '../rules/abilities';
 
 export type ChoiceType =
   | 'asi'           // Ability Score Improvement or Feat
@@ -443,7 +444,7 @@ export function hpPerLevel(hitDie: number): number {
  * Level 1: hitDie + CON mod. Each level after: hpPerLevel(hitDie) + CON mod.
  */
 export function calcMaxHP(hitDie: number, constitutionScore: number, level: number): number {
-  const conMod = Math.floor((constitutionScore - 10) / 2);
+  const conMod = abilityModifier(constitutionScore);
   const level1HP = hitDie + conMod;
   const additionalHP = (level - 1) * (hpPerLevel(hitDie) + conMod);
   return Math.max(1, level1HP + additionalHP);

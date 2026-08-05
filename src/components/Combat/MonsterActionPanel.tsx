@@ -33,6 +33,7 @@
 //     melee, "range X/Y ft." for ranged) with a generous 60ft
 //     fallback when parsing fails (better than blocking valid plays).
 
+import { abilityModifier } from '../../rules/abilities';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
@@ -2108,7 +2109,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           const cr = parseCR(monsterStats?.cr);
           const pb = cr >= 29 ? 9 : cr >= 25 ? 8 : cr >= 21 ? 7 : cr >= 17 ? 6
                    : cr >= 13 ? 5 : cr >= 9 ? 4 : cr >= 5 ? 3 : 2;
-          const mod = (s: number | null) => Math.floor(((s ?? 10) - 10) / 2);
+          const mod = (s: number | null) => abilityModifier(s ?? 10);
           const profSaves = monsterStats?.save_proficiencies ?? [];
           const isProf = (a: string) => profSaves.includes(a) || profSaves.includes(a.toLowerCase());
           const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);

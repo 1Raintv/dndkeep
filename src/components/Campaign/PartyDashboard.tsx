@@ -1163,7 +1163,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                         Intelligence: 'intelligence', Wisdom: 'wisdom', Charisma: 'charisma',
                       };
                       const score = c[abilityMap[saveAbility] as keyof typeof c] as number ?? 10;
-                      const mod = Math.floor((score - 10) / 2);
+                      const mod = abilityModifier(score);
                       const hasSaveProf = true; // simplified — always show modifier
                       const total = mod; // players add their own prof bonus
                       return (

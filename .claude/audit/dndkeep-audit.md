@@ -27,7 +27,7 @@
 | 4.1 BattleMapV2 11,374 lines | **Done** | Root now 4,269; 15 components in battlemap/ (chunk byte-identical) |
 | 4.2 Stale root duplicates | **Done** | Deleted (audit A1) |
 | 4.3 ~8,000 lines dead code | **Done** | Deleted (A1/A2/A3) |
-| 4.4 abilityModifier ×83 | **Open** | Mechanical sweep, low risk |
+| 4.4 abilityModifier ×83 | **Done** | Canonical `abilityModifier()` in src/rules/abilities.ts (+tests); 54 inline formulas swept across 21 files; gameUtils re-exports for its 19 existing importers |
 | 4.5 Repository layer | **Ongoing** | Convention documented in CLAUDE.md; extend as touched |
 | 4.6 State management split | **Open** | |
 | 5.1 three.js never disposed | **Done** | Full GPU disposal + texture cache reuse |
@@ -91,7 +91,14 @@
    `/setup-local-dndkeep` walkthrough) or keep developing against prod as he always
    has? His answer shapes the migration-workflow decisions (item 7) and whether
    dashboard-first schema editing continues.
-10. **Apply the telemetry migrations to prod** (2026-08-04) — Dashboard → SQL Editor,
+10. **Automate the version bump (2.9)** (moved here 2026-08-05 — deploy.bat is the
+    owner's script; he gets a heads-up before its behavior changes). Ready design:
+    `scripts/bump-version.mjs` increments APP_VERSION's middle number; deploy.bat
+    runs it as step 0 (sw-cache stamp then picks it up); `SKIP_BUMP=1` escape.
+    Fixes: forgotten bump = unchanged sw cache name = returning users silently
+    keep the old app. Also decide: comment-version drift (comments cite v2.642,
+    version.ts says 2.635.0) — reunify or accept.
+11. **Apply the telemetry migrations to prod** (2026-08-04) — Dashboard → SQL Editor,
     paste in order: `20260804120000_client_errors.sql` then
     `20260804160000_client_errors_retention.sql` (both idempotent). Verify:
     `select count(*) from public.client_errors;` and the `cron.job` row
@@ -99,7 +106,7 @@
     Rows flow once `audit-fixes` deploys; schema-first is fine by design. Include
     both files in the future `migration repair` baseline (manual applies don't
     write the ledger). Consider inviting Kyle to the Supabase org.
-11. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
+12. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
    applied to prod, so do it as a pair). Agreed design: drop the `"Public share read"`
    policy; add a `SECURITY DEFINER get_shared_character(token)` function (`REVOKE ALL
    FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as

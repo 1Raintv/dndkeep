@@ -1,13 +1,14 @@
+import { abilityModifier } from '../rules/abilities';
 import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
 import { CLASS_MAP } from '../data/classes';
 import { itemBonusesActive, getEffectiveAbilityScores } from './attunement';
 import { rollDie, rollDiceExpr } from '../rules/dice';
 
-/** PHB formula: floor((score - 10) / 2) */
-export function abilityModifier(score: number): number {
-  return Math.floor((score - 10) / 2);
-}
+/** PHB formula: floor((score - 10) / 2) — canonical impl moved to
+ *  src/rules/abilities (v2.643, audit 4.4); re-exported here so the 19
+ *  existing lazy-side importers keep working unchanged. */
+export { abilityModifier };
 
 /** PHB formula: ceil(level / 4) + 1, clamped to levels 1–20 */
 export function proficiencyBonus(level: number): number {

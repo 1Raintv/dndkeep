@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { asJsonb } from '../../lib/jsonbCast';
@@ -994,7 +995,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
             const fromAS = ((npc as any).ability_scores ?? {})[col.toLowerCase()];
             return typeof fromAS === 'number' ? fromAS : 10;
           };
-          const mod = (s: number) => Math.floor((s - 10) / 2);
+          const mod = (s: number) => abilityModifier(s);
           // Parse CR. Accepts numeric or strings like "1/4", "1/2", "15".
           const parseCR = (raw: unknown): number => {
             if (typeof raw === 'number') return raw;

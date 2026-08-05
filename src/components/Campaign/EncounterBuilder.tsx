@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState } from 'react';
 import { useMonsters } from '../../lib/hooks/useMonsters';
 import { formatCR } from '../../lib/monsterUtils';
@@ -102,7 +103,7 @@ export default function EncounterBuilder({ partySize, partyLevel, onAddToCombat,
     const combatants: Combatant[] = [];
     for (const { monster, count } of encounter) {
       for (let i = 1; i <= count; i++) {
-        const initiative = rollDie(20) + Math.floor((monster.dex - 10) / 2);
+        const initiative = rollDie(20) + abilityModifier(monster.dex);
         combatants.push({
           id: uuidv4(),
           name: count > 1 ? `${monster.name} ${i}` : monster.name,

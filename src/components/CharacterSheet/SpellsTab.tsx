@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo, type ReactNode } from 'react';
 import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellCastButton from './SpellCastButton';
@@ -304,7 +305,7 @@ export default function SpellsTab({
  const spellAbility = ({ Bard:'charisma', Cleric:'wisdom', Druid:'wisdom', Paladin:'charisma', Ranger:'wisdom', Sorcerer:'charisma', Warlock:'charisma', Wizard:'intelligence', Artificer:'intelligence' } as Record<string,string>)[character.class_name];
  if (!spellAbility) return null;
  const score = (character as any)[spellAbility] ?? 10;
- const mod = Math.floor((score - 10) / 2);
+ const mod = abilityModifier(score);
  const atk = mod + computed.proficiency_bonus;
  const dc = 8 + atk;
  return (

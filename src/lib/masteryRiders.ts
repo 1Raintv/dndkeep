@@ -29,6 +29,7 @@
 // weapon_masteries includes the weapon (matched through
 // masteryForWeapon, which handles "Longsword +1"-style names).
 // Dynamic imports below avoid a require cycle with pendingAttack.
+import { abilityModifier } from '../rules/abilities';
 import { rollDie } from '../rules/dice';
 import { applyDamageToPools } from '../rules/hp';
 import { supabase } from './supabase';
@@ -48,7 +49,7 @@ export interface MasteryContext {
 }
 
 function mod(score: number | null | undefined): number {
-  return Math.floor((((score as number) ?? 10) - 10) / 2);
+  return abilityModifier((score as number) ?? 10);
 }
 
 /** Mastery context for this attack, or null when the attacker isn't a

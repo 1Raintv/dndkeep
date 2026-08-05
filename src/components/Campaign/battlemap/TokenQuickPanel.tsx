@@ -1,6 +1,7 @@
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 3).
 // See that file's header changelog for this code's full history.
 
+import { abilityModifier } from '../../../rules/abilities';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import ChecksPanel from '../ChecksPanel';
@@ -145,7 +146,7 @@ export function TokenQuickPanel(props: {
   }
 
   // Modifier helper — D&D 5e ability modifier formula.
-  const mod = (score: number) => Math.floor((score - 10) / 2);
+  const mod = (score: number) => abilityModifier(score);
   const modStr = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
   async function applyHp() {
