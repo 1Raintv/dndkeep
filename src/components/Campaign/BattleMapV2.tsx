@@ -149,7 +149,7 @@
 import { Application, extend } from '@pixi/react';
 import { Container, Graphics, Sprite, Text, TextStyle } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBattleMapStore, type Token, type DrawingKind } from '../../lib/stores/battleMapStore';
 import * as scenesApi from '../../lib/api/scenes';
@@ -369,7 +369,10 @@ export { snapToCellCenter, snapTokenAnchor };
 
 
 
-export default function BattleMapV2(props: BattleMapV2Props) {
+// v2.644 (audit 5.6/6.7 slice B): memo'd — pairs with CampaignDashboard's
+// memoized battleMapProps so dashboard re-renders that don't change map
+// data (chat ticks, tab-strip state, form typing) skip this whole tree.
+function BattleMapV2(props: BattleMapV2Props) {
   const { isDM, campaignId, userId } = props;
 
   // v2.222 — navigate to a linked character's full sheet from a token's
@@ -4267,3 +4270,5 @@ export default function BattleMapV2(props: BattleMapV2Props) {
     </div>
   );
 }
+
+export default memo(BattleMapV2);

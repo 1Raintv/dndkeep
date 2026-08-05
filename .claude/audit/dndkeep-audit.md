@@ -35,14 +35,14 @@
 | 5.3 Dice-roller races | **Done** | Per-roll key + backstop timeout |
 | 5.4 Chunk-retry bypassed | **Done** | lazyWithRetry everywhere (17 components); generic fixed |
 | 5.5 Combat outside error boundary | **Done** | Own boundary |
-| 5.6 Smaller robustness | **Partial** | Idle timers gated, concentration timer cleared; rest open |
+| 5.6 Smaller robustness | **Done** | Idle timers gated; concentration timer cleared; provider values memoized (×5); useMonsters error path + retry fixed; ErrorBoundary @ts-nocheck removed; houseRules parse test-pinned; memo boundary: battleMapProps useMemo + React.memo(BattleMapV2) — realtime ticks no longer re-render the map tree (verified: 7 db-tier E2E). Stale items recorded |
 | 6.1 655 KB entry-chunk data | **Done** | 848→~252 KB; CI budget guards it |
 | 6.2 Drag writes at pointer rate | **Done** | rAF-coalesced (selector narrowing = follow-up) |
 | 6.3 Spell re-filter per keystroke | **Done** | Memoized + Set |
 | 6.4 Per-row combat writes | **Done** | Concurrent batched |
 | 6.5 Profile blocks first paint | **Done** | Async + profileLoading (upsell-flash guarded) |
 | 6.6 Realtime channels | **Done** | Filtered sub + shared refcounted channel |
-| 6.7 Smaller perf items | **Open** | Fonts, unlimited cached reads, inline styles |
+| 6.7 Smaller perf items | **Partial** | The big one (memo boundary into BattleMapV2) done with 5.6. Deliberately deferred: 513 inline-style hoists (payoff only after memo proves out), self-hosted fonts, capping the three session-cached catalogue reads |
 
 **Pending owner decisions (queue for when both devs are together):**
 
