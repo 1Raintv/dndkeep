@@ -40,6 +40,13 @@ export function useCombatSelector<T>(selector: (s: CombatState) => T): T {
   return useStore(store, selector);
 }
 
+/** Granular currentActor. Because the store reconciles row identities
+ *  (v2.645 slice 2), the derived ref is stable across no-op ticks and
+ *  consumers re-render only when the actual actor (or its data) changes. */
+export function useCombatCurrentActor(): CombatParticipant | null {
+  return useCombatSelector(s => deriveCurrentActor(s.encounter, s.participants));
+}
+
 /** Pre-move contract, unchanged. Consumers that only need a slice should
  *  prefer useCombatSelector — this hook still re-renders on any combat
  *  change (it reads everything). */

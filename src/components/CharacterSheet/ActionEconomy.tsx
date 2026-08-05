@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useCombat } from '../../context/CombatContext';
+import { useCombatSelector, useCombatCurrentActor } from '../../context/CombatContext';
 import { advanceTurn } from '../../lib/combatEncounter';
 
 // Per 2024 rules: Action, Bonus Action, Reaction reset each round; Movement tracked separately
@@ -41,7 +41,8 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  });
  // v2.594.0 — combat awareness. Safe outside a CombatProvider: the
  // context default has encounter=null, so this is a no-op there.
- const { encounter, currentActor } = useCombat();
+ const encounter = useCombatSelector(s => s.encounter); // v2.645 slice 2
+ const currentActor = useCombatCurrentActor();
  const [endingTurn, setEndingTurn] = useState(false);
  const isMyCombatTurn = !!characterId && !!encounter && encounter.status === 'active'
  && !!currentActor

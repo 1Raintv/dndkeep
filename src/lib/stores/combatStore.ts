@@ -26,23 +26,54 @@ export interface CombatState {
   encounter: CombatEncounter | null;
   participants: CombatParticipant[];
   loading: boolean;
+  /** True once any load has completed — later loads are silent
+   *  background refreshes and never flip `loading` (v2.645 slice 2). */
+  hasLoaded: boolean;
   load: () => Promise<void>;
 }
 
 export type CombatStore = StoreApi<CombatState>;
 
+/** v2.645 slice 2 — identity-preserving reconciliation. Realtime load()
+ *  refetches the world, which used to mint fresh row objects every tick;
+ *  every selector and memo downstream then saw new references and
+ *  re-rendered even when NOTHING changed. Reusing the previous refs for
+ *  deep-equal rows makes "no-op tick → no re-render" true everywhere at
+ *  once. Deep-equal via JSON.stringify: rows are plain PostgREST data
+ *  with stable key order per endpoint. Exported for tests. */
+export function reconcileValue<T>(prev: T | null, next: T | null): T | null {
+  if (prev === null || next === null) return next;
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+export function reconcileById<T extends { id?: unknown }>(prev: T[], next: T[]): T[] {
+  const prevById = new Map(prev.map(p => [p.id, p]));
+  let allReused = prev.length === next.length;
+  const out = next.map((n, i) => {
+    const old = prevById.get(n.id);
+    if (old && JSON.stringify(old) === JSON.stringify(n)) {
+      if (allReused && prev[i] !== old) allReused = false; // reordered
+      return old;
+    }
+    allReused = false;
+    return n;
+  });
+  return allReused ? prev : out;
+}
+
 export function createCombatStore(campaignId: string | null | undefined): CombatStore {
-  return createStore<CombatState>((set) => ({
+  return createStore<CombatState>((set, get) => ({
     encounter: null,
     participants: [],
     loading: true,
+    hasLoaded: false,
 
     load: async () => {
       if (!campaignId) {
-        set({ encounter: null, participants: [], loading: false });
+        set({ encounter: null, participants: [], loading: false, hasLoaded: true });
         return;
       }
-      set({ loading: true });
+      if (!get().hasLoaded) set({ loading: true });
       const { data: encData } = await supabase
         .from('combat_encounters')
         .select('*')
@@ -126,13 +157,20 @@ export function createCombatStore(campaignId: string | null | undefined): Combat
 
         // v2.316: normalize flattens combatants.* onto each row so every
         // useCombat() consumer reads through to the combatant.
-        set({
-          encounter: enc,
-          participants: rows.map(normalizeParticipantRow) as unknown as CombatParticipant[],
+        const normalized = rows.map(normalizeParticipantRow) as unknown as CombatParticipant[];
+        set(state => ({
+          encounter: reconcileValue(state.encounter, enc),
+          participants: reconcileById(state.participants, normalized),
           loading: false,
-        });
+          hasLoaded: true,
+        }));
       } else {
-        set({ encounter: null, participants: [], loading: false });
+        set(state => ({
+          encounter: null,
+          participants: state.participants.length ? [] : state.participants,
+          loading: false,
+          hasLoaded: true,
+        }));
       }
     },
   }));
