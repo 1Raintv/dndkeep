@@ -23,7 +23,7 @@
 // full heap — for this size, a sorted-insert array is faster in
 // practice (cache-friendly, no allocation churn).
 
-import type { Wall, Token } from './stores/battleMapStore';
+import type { Wall, Token } from './map/mapTypes';
 import { segmentBlockedByWall } from './wallCollision';
 
 export interface Cell {

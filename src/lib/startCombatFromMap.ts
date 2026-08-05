@@ -23,7 +23,11 @@
 // fast path when it's primed.
 
 import { supabase } from './supabase';
-import { useBattleMapStore } from './stores/battleMapStore';
+// v2.646 (audit 4.6 slice 3): this module no longer reaches into the UI
+// store — the caller injects the map snapshot (StartCombatButton already
+// subscribes to it for the token-count preview). Lib→store dependency
+// inverted; module is unit-testable without React.
+import type { Token } from './map/mapTypes';
 import * as scenesApi from './api/scenes';
 // v2.495.0 — Pre-v2.495 this file bypassed tokensApiRouter because its
 // singleton cache was only set after BattleMapV2 mounted. The new
@@ -83,16 +87,18 @@ async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null>
 
 export async function startCombatFromMapTokens(
   campaignId: string,
+  /** The caller's live view of the map (v2.646: injected, not read from
+   *  the store here). sceneId null = map never mounted → DB cold path. */
+  map: { sceneId: string | null; tokens: Token[] },
 ): Promise<StartCombatFromMapResult> {
-  const state = useBattleMapStore.getState();
-  const sceneId = state.currentSceneId;
+  const sceneId = map.sceneId;
 
-  // Fast path: store is primed (DM has the battle map mounted).
-  // Cold path: store is empty — fall back to a direct DB read so
+  // Fast path: snapshot is primed (DM has the battle map mounted).
+  // Cold path: no mounted scene — fall back to a direct DB read so
   // the click works regardless of which tab the DM is on.
   let tokens: TokenLite[];
   if (sceneId) {
-    tokens = Object.values(state.tokens)
+    tokens = map.tokens
       .filter(t => t.sceneId === sceneId)
       .map(t => ({ characterId: t.characterId ?? null, creatureId: t.creatureId ?? null }));
   } else {

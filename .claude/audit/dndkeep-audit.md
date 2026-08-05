@@ -29,7 +29,7 @@
 | 4.3 ~8,000 lines dead code | **Done** | Deleted (A1/A2/A3) |
 | 4.4 abilityModifier ×83 | **Done** | Canonical `abilityModifier()` in src/rules/abilities.ts (+tests); 54 inline formulas swept across 21 files; gameUtils re-exports for its 19 existing importers |
 | 4.5 Repository layer | **Ongoing** | Convention documented in CLAUDE.md; extend as touched |
-| 4.6 State management split | **In progress** | Characterization net (12 unit pins + useCombat contract test + combat lifecycle E2E) committed first, per Kyle. Slices 1+2 done: combat state → scoped Zustand store behind unchanged useCombat(); identity-reconciled refreshes (no-op tick → zero re-renders, 5 store pins); useCombatSelector/useCombatCurrentActor + 3 exemplar consumers converted (rest migrate as touched). Remaining: (3) invert the 13 src/lib imports of battleMapStore |
+| 4.6 State management split | **Done** | Net-first (12 pins + useCombat contract test + combat lifecycle E2E), then: (1) combat state → scoped Zustand store behind unchanged useCombat(); (2) identity-reconciled refreshes (no-op tick → zero re-renders) + useCombatSelector/useCombatCurrentActor, 3 exemplar consumers (rest as touched); (3) lib→store inversion: 10 of 13 were type-only → domain types extracted to map/mapTypes.ts; startCombatFromMap fully inverted (snapshot injected, unit-tested); loadActiveBattleMap got an injectable seam (guarded store fallback kept deliberately — 8+ callers, v2.571 design). Suite: 160 unit + 10 db-tier E2E |
 | 5.1 three.js never disposed | **Done** | Full GPU disposal + texture cache reuse |
 | 5.2 Pixi textures never unloaded | **Done** | Scene backgrounds unloaded (portraits deliberately kept — shared) |
 | 5.3 Dice-roller races | **Done** | Per-roll key + backstop timeout |

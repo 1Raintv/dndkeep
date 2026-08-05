@@ -31,7 +31,7 @@
 // orphan combatants is a separate operation (v2.315+).
 
 import { supabase } from '../supabase';
-import type { Token, TokenSize } from '../stores/battleMapStore';
+import type { Token, TokenSize } from '../map/mapTypes';
 
 // supabase-js types are generated from a snapshot of the live schema.
 // The Phase 3 tables (combatants, scene_token_placements) and the

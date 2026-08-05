@@ -134,6 +134,13 @@ export function wallCoverPoints(w: WallSegment): number {
  */
 export async function loadActiveBattleMap(
   campaignId: string,
+  // v2.646 (audit 4.6 slice 3): injectable scene id — tests (and callers
+  // that already know the viewed scene) pass it and the store is never
+  // touched. When ABSENT, the guarded dynamic-import fallback below runs:
+  // threading this through the 8+ component callers and the lib distance
+  // helpers would recreate exactly the plumbing v2.571 removed, so the
+  // fallback stays for UI paths. Seam, not full inversion — deliberate.
+  opts?: { viewedSceneId?: string | null },
 ): Promise<ActiveBattleMap | null> {
   // 1. Pick the active scene.
   //
@@ -150,10 +157,14 @@ export async function loadActiveBattleMap(
   // avoids a static cycle. Falls back to most-recently-updated only
   // when no map is mounted (store empty).
   let viewedSceneId: string | null = null;
-  try {
-    const { useBattleMapStore } = await import('./stores/battleMapStore');
-    viewedSceneId = useBattleMapStore.getState().currentSceneId;
-  } catch { /* store unavailable (non-UI context) — use fallback */ }
+  if (opts && 'viewedSceneId' in opts) {
+    viewedSceneId = opts.viewedSceneId ?? null; // injected (v2.646) — store untouched
+  } else {
+    try {
+      const { useBattleMapStore } = await import('./stores/battleMapStore');
+      viewedSceneId = useBattleMapStore.getState().currentSceneId;
+    } catch { /* store unavailable (non-UI context) — use fallback */ }
+  }
 
   interface SceneRow { id: string; grid_size_px: number | null; width_cells: number | null; height_cells: number | null }
   let scene: SceneRow | null = null;

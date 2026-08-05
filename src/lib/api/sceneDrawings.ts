@@ -17,7 +17,7 @@
 // echo from postgres_changes syncs to all clients.
 
 import { supabase } from '../supabase';
-import type { SceneDrawing, DrawingKind } from '../stores/battleMapStore';
+import type { SceneDrawing, DrawingKind } from '../map/mapTypes';
 
 export function dbRowToSceneDrawing(row: any): SceneDrawing {
   const raw = Array.isArray(row.points) ? row.points : [];

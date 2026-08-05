@@ -73,7 +73,12 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
     if (starting) return;
     setStarting(true);
     try {
-      const r = await startCombatFromMapTokens(campaignId);
+      // v2.646: inject the map snapshot (this component already subscribes
+      // to the store for the token-count preview) — see startCombatFromMap.
+      const r = await startCombatFromMapTokens(campaignId, {
+        sceneId: storeSceneId,
+        tokens: Object.values(storeTokens),
+      });
       if (!r.ok) {
         if (r.reason === 'no_scene') {
           // v2.385.0 — With the DB fallback in place, no_scene now

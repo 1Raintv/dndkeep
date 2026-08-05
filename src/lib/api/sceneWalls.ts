@@ -11,7 +11,7 @@
 // to all clients including the originator.
 
 import { supabase } from '../supabase';
-import type { Wall } from '../stores/battleMapStore';
+import type { Wall } from '../map/mapTypes';
 
 /** Convert snake_case DB row to camelCase Wall. */
 export function dbRowToWall(row: any): Wall {

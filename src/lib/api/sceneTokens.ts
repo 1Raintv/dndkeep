@@ -16,7 +16,7 @@
 
 import { supabase } from '../supabase';
 import type { TableInsert, TableUpdate } from '../../types/supabase';
-import type { Token, TokenSize } from '../stores/battleMapStore';
+import type { Token, TokenSize } from '../map/mapTypes';
 
 type SceneTokenInsert = TableInsert<'scene_tokens'>;
 type SceneTokenUpdate = TableUpdate<'scene_tokens'>;

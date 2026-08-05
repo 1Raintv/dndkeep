@@ -28,7 +28,7 @@
 // or null behave like solid walls. v2.226+ will surface a door toggle
 // in the wall context menu; for now all walls are doorless solids.
 
-import type { Wall } from './stores/battleMapStore';
+import type { Wall } from './map/mapTypes';
 
 /** Returns true if the segment (x1,y1)→(x2,y2) crosses any wall in
  *  `walls` that blocks movement and isn't an open door. Exposed as a

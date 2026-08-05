@@ -33,7 +33,7 @@
 // repositions instead of duplicating.
 
 import { loadActiveBattleMap } from './battleMapGeometry';
-import type { TokenSize, Token } from './stores/battleMapStore';
+import type { TokenSize, Token } from './map/mapTypes';
 
 export interface SummonTokenSpec {
   /** Token label shown on the map (caster name appended). */
