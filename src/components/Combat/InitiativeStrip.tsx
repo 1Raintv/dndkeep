@@ -60,6 +60,23 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 };
 
 export default function InitiativeStrip({ isDM }: Props) {
+  // v2.646 — Narrow-viewport mode. The strip's fixed left/right offsets
+  // reserve 220px (sidebar) + 304px (MonsterActionPanel rail) = 524px of
+  // horizontal chrome that doesn't exist on phones: on a 393px viewport
+  // the content box went NEGATIVE and the End Turn / End Combat cluster
+  // rendered past the right edge — DMs on phones physically could not
+  // end a turn (found by the mobile E2E project's failed clicks).
+  // Below 700px: full-bleed, and the flex row wraps so the DM button
+  // cluster drops onto its own line instead of overflowing.
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const onChange = () => setIsNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   const { encounter, participants, currentActor } = useCombat();
   // v2.457.0 — Concentration map for the active campaign. Empty until
   // useCombat resolves the encounter; the inner subscription handles
@@ -263,13 +280,14 @@ export default function InitiativeStrip({ isDM }: Props) {
         // Sidebar width: 220px expanded, 60px collapsed (CSS var).
         // Dice fab cluster: ~80px wide on the right edge.
         bottom: 0,
-        left: 'var(--sidebar-w, 220px)',
+        left: isNarrow ? 0 : 'var(--sidebar-w, 220px)',
         // v2.572.0 — was right: 80. The MonsterActionPanel side rail is
         // 280px wide anchored at right:12, so the strip ran ~212px
         // underneath it and its right-side buttons (END TURN / END
         // COMBAT) collided with the rail. 304 = 280 + 12 + 12 gap.
-        right: 304,
-        padding: '8px 14px',
+        // v2.646 — neither the sidebar nor the rail applies on phones.
+        right: isNarrow ? 0 : 304,
+        padding: isNarrow ? '6px 8px' : '8px 14px',
         background: 'rgba(19, 19, 29, 0.96)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
@@ -281,7 +299,8 @@ export default function InitiativeStrip({ isDM }: Props) {
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        flexWrap: isNarrow ? 'wrap' : 'nowrap', // v2.646 — buttons wrap below tiles on phones
+        gap: isNarrow ? 8 : 12,
         boxShadow: '0 -4px 16px rgba(0,0,0,0.4)',
       }}
     >
@@ -868,7 +887,7 @@ export default function InitiativeStrip({ isDM }: Props) {
       </div>
 
       {isDM && (
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
           {/* v2.590.0 — Lair button removed. The 2025 MM dropped lair
               actions as a mechanic (lairs now grant extra Legendary
               Resistance/Action uses instead), and the manual trigger

@@ -71,12 +71,14 @@ test.describe('combat lifecycle (local stack)', () => {
 
     // End Turn → the encounter's turn index advances in the database and
     // the UI stays coherent (strip still up, no crash).
-    // dispatchEvent, not click: on the mobile viewport an overlaying
-    // element intercepts pointer events over the strip (same class of
-    // issue as the dice-overlay gotcha in verify-ui-dndkeep). The spec
-    // pins the ACTION's behavior; mobile hit-target ergonomics are a
-    // separate (real) observation, noted in the audit doc.
-    await page.getByRole('button', { name: 'End Turn' }).dispatchEvent('click');
+    // REAL clicks on purpose (v2.646): the original spec needed
+    // dispatchEvent because the strip's fixed offsets pushed these
+    // buttons off-screen on phones (End Turn at x=419 in a 393px
+    // viewport — DMs literally couldn't end turns on mobile). The
+    // narrow-viewport strip layout fixed it; real clicks now PROVE the
+    // buttons are reachable at both viewports. Don't regress this to
+    // dispatchEvent — unreachable-button bugs would go invisible again.
+    await page.getByRole('button', { name: 'End Turn' }).click();
     await expect
       .poll(() => Number(sql(`select current_turn_index from combat_encounters where id='${enc}'`)), {
         timeout: 15_000, intervals: [500],
@@ -85,8 +87,8 @@ test.describe('combat lifecycle (local stack)', () => {
     await expect(page.getByRole('button', { name: 'End Turn' })).toBeVisible();
 
     // End Combat → confirm modal → encounter completed → strip unmounts.
-    await page.getByRole('button', { name: 'End Combat' }).first().dispatchEvent('click');
-    await page.getByRole('button', { name: 'End Combat' }).last().dispatchEvent('click'); // modal confirm
+    await page.getByRole('button', { name: 'End Combat' }).first().click();
+    await page.getByRole('button', { name: 'End Combat' }).last().click(); // modal confirm
     await expect
       .poll(() => sql(`select status from combat_encounters where id='${enc}'`), {
         timeout: 15_000, intervals: [500],
