@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, Suspense, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, useCallback, useRef, Suspense, type ReactNode } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../lib/lazyWithRetry';
 
@@ -92,7 +92,7 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <DiceRollContext.Provider value={{ triggerRoll, current }}>
+    <DiceRollContext.Provider value={useMemo(() => ({ triggerRoll, current }), [triggerRoll, current])}>
       {children}
       {current && (
         <Suspense fallback={null}>

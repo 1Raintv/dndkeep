@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
 import { supabase, getProfile } from '../lib/supabase';
@@ -62,21 +62,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // v2.563.0 — bump to re-run the init effect (Retry button).
   const [initNonce, setInitNonce] = useState(0);
 
-  async function fetchProfile(userId: string) {
+  // v2.644 (audit 5.6): callbacks + value memoized — the provider wraps
+  // the whole app, and a fresh value object per render re-rendered every
+  // consumer on every provider render.
+  const fetchProfile = useCallback(async (userId: string) => {
     const { data } = await getProfile(userId);
     if (data) setProfile(data);
-  }
+  }, []);
 
-  async function refreshProfile() {
+  const refreshProfile = useCallback(async () => {
     if (session?.user) await fetchProfile(session.user.id);
-  }
+  }, [session, fetchProfile]);
 
-  function retryInit() {
+  const retryInit = useCallback(() => {
     setInitError(false);
     setLoading(true);
     setProfileLoading(true);
     setInitNonce(n => n + 1);
-  }
+  }, []);
 
   useEffect(() => {
     // v2.563.0 — Frontend resilience. `supabase.auth.getSession()` can
@@ -129,20 +132,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, [initNonce]);
 
+  const value = useMemo<AuthContextValue>(() => ({
+    session,
+    user: session?.user ?? null,
+    profile,
+    loading,
+    profileLoading,
+    initError,
+    retryInit,
+    isPro: profile?.subscription_tier === 'pro',
+    isSubscribed: isSubscriptionActive(profile),
+    showUaContent: profile?.show_ua_content === true,
+    refreshProfile,
+  }), [session, profile, loading, profileLoading, initError, retryInit, refreshProfile]);
+
   return (
-    <AuthContext.Provider value={{
-      session,
-      user: session?.user ?? null,
-      profile,
-      loading,
-      profileLoading,
-      initError,
-      retryInit,
-      isPro: profile?.subscription_tier === 'pro',
-      isSubscribed: isSubscriptionActive(profile),
-      showUaContent: profile?.show_ua_content === true,
-      refreshProfile,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

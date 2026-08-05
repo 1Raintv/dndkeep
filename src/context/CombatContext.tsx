@@ -54,7 +54,9 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
   const [participants, setParticipants] = useState<CombatParticipant[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  // v2.644 (audit 5.6): load memoized so the context value below can be —
+  // realtime ticks re-rendered every combat consumer via a fresh value.
+  const load = React.useCallback(async function load() {
     if (!campaignId) {
       setEncounter(null);
       setParticipants([]);
@@ -175,7 +177,7 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
       setParticipants([]);
     }
     setLoading(false);
-  }
+  }, [campaignId]);
 
   useEffect(() => {
     load();
@@ -236,13 +238,13 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
     return visibleOrdered[encounter.current_turn_index] ?? null;
   }, [encounter, participants]);
 
-  const value: CombatContextValue = {
+  const value = useMemo<CombatContextValue>(() => ({
     encounter,
     participants,
     currentActor,
     loading,
     refresh: load,
-  };
+  }), [encounter, participants, currentActor, loading, load]);
 
   return <CombatContext.Provider value={value}>{children}</CombatContext.Provider>;
 }

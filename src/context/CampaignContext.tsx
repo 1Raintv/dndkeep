@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import type { Campaign } from '../types';
 import { getCampaignsByMember } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -49,15 +49,15 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refreshCampaigns(); }, [refreshCampaigns]);
 
-  function setActiveCampaign(campaign: Campaign | null) {
-    setActiveCampaignState(campaign);
-  }
+  // v2.644 (audit 5.6): value memoized — fresh object per render was
+  // re-rendering every consumer on every provider render.
+  const value = useMemo<CampaignContextValue>(() => ({
+    campaigns, activeCampaign, loadingCampaigns,
+    setActiveCampaign: setActiveCampaignState, refreshCampaigns,
+  }), [campaigns, activeCampaign, loadingCampaigns, refreshCampaigns]);
 
   return (
-    <CampaignContext.Provider value={{
-      campaigns, activeCampaign, loadingCampaigns,
-      setActiveCampaign, refreshCampaigns,
-    }}>
+    <CampaignContext.Provider value={value}>
       {children}
     </CampaignContext.Provider>
   );
