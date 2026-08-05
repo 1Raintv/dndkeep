@@ -16,6 +16,7 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { deriveCurrentActor } from '../lib/combatSelectors';
 import type { CombatEncounter, CombatParticipant } from '../types';
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN so all useCombat() consumers see the unified source.
@@ -230,13 +231,12 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
     return () => { document.body.classList.remove('in-combat'); };
   }, [encounter]);
 
-  const currentActor = useMemo(() => {
-    if (!encounter) return null;
-    const visibleOrdered = [...participants]
-      .filter(p => !p.is_dead)
-      .sort((a, b) => a.turn_order - b.turn_order);
-    return visibleOrdered[encounter.current_turn_index] ?? null;
-  }, [encounter, participants]);
+  // v2.645 (audit 4.6 prep): derivation extracted to the pure, test-pinned
+  // combatSelectors module — the state-move swaps the carrier, not this.
+  const currentActor = useMemo(
+    () => deriveCurrentActor(encounter, participants),
+    [encounter, participants],
+  );
 
   const value = useMemo<CombatContextValue>(() => ({
     encounter,
