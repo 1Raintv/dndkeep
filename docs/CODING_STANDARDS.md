@@ -16,6 +16,7 @@ chunk. The build/test gate is in `CLAUDE.md`; this doc is the map.
 | Schema changes | `supabase/migrations/*.sql`, idempotent (`IF NOT EXISTS`) | The Supabase dashboard alone — dashboard-only schema is how prod drifted (audit 2.6) |
 | Battle-map features (layers, panels, tools) | A new or existing component in `src/components/Campaign/battlemap/` (geometry helpers: its `shared.ts`) | `BattleMapV2.tsx` — the root only shrinks (4,269 lines, down from 11,374; keep it falling) |
 | Logging / error reporting | Through `src/lib/log.ts` (facade); new destinations = new sink beside `logSinkSupabase.ts` | New bare `console.*` calls, ad-hoc reporters |
+| Live shared state (combat, map) | Selector stores in `src/lib/stores/` (`combatStore` is scoped — one instance per provider; `battleMapStore` is the singleton exemplar). Consume via `useCombatSelector`/granular selectors | A new React context carrying a state object — that's the all-consumers-re-render trap audit 4.6 spent days undoing |
 | Static game data (spells, classes, items) | `src/data/` tables, imported ONLY by lazy-loaded code | Anything `App.tsx` eagerly reaches — `src/lib/gameUtils.ts` imports the full tables, so eager components must not import from it (entry budget: ~300 KB, CI-enforced) |
 | A lazily-loaded route/component | `lazyWithRetry` from `src/lib/lazyWithRetry.ts` | Raw `React.lazy` (white-screens after deploys) |
 | A heavy new dependency | Its own `manualChunks` entry in `vite.config.ts`, loaded lazily | The default chunk |
