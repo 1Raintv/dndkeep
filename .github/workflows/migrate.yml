@@ -43,11 +43,21 @@ jobs:
     timeout-minutes: 20
     env:
       TIER: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
-      SUPABASE_DB_URL: ${{ github.ref_name == 'main' && secrets.SUPABASE_DB_URL || secrets.SUPABASE_DB_URL_TEST }}
+      # Selected in the gate step, NOT via `a && b || c` here: that GitHub
+      # expression falls through on EMPTY (not on branch), so main with an
+      # unset prod secret would silently target the test DB.
+      DB_URL_PROD: ${{ secrets.SUPABASE_DB_URL }}
+      DB_URL_TEST: ${{ secrets.SUPABASE_DB_URL_TEST }}
     steps:
       - name: Gate — skip cleanly until this tier's secret exists
         id: gate
         run: |
+          if [ "$TIER" = "prod" ]; then
+            SUPABASE_DB_URL="$DB_URL_PROD"
+          else
+            SUPABASE_DB_URL="$DB_URL_TEST"
+          fi
+          echo "SUPABASE_DB_URL=$SUPABASE_DB_URL" >> "$GITHUB_ENV"
           if [ -z "$SUPABASE_DB_URL" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             if [ "$TIER" = "prod" ]; then
