@@ -46,6 +46,12 @@
 
 **Pending owner decisions (queue for when both devs are together):**
 
+> **2026-08-06 sit-down in progress** — three-tier plan agreed: local Docker →
+> `test` branch + test Supabase project + Vercel previews → `main` + prod.
+> Owner-side steps are packaged for his own Claude session in
+> `owner-handoff-2026-08-06.md` (+ `prod-ledger-baseline.sql`), this folder.
+> Items 7/9/11/12/13 below are superseded-in-part by that plan.
+
 1. **Delete the auto-deploy watcher** (`watch-and-deploy.ps1`, `install-watcher.bat`,
    `uninstall-watcher.bat`) — audit §2.3. It watches Downloads for `dndkeep.zip` and
    auto-pushes to production, bypassing git/CI/the gate. Sequence: owner runs
@@ -74,14 +80,17 @@
    `concurrency` group with cancel-in-progress; `timeout-minutes: 15` (default is 6 h);
    `paths-ignore` for `**.md`/`docs/**`/`.claude/**`; scope the daily cron to
    `raw-check` only. Owner-side: Vercel "Ignored Build Step" for docs-only pushes.
-   The migration-apply job now EXISTS (2026-08-05): `.github/workflows/migrate.yml`
-   runs `supabase db push` when migration files land on main, but is a hard NO-OP
-   until the `SUPABASE_DB_URL` repo secret is set. At the sit-down, in order:
-   (1) one-time `supabase migration repair` to baseline prod's schema_migrations
-   ledger (prod predates most migration files — an unbaselined push would replay
-   the entire chain; needs the prod DB password), (2) add the secret, (3) test via
-   the workflow's manual dispatch. Local applies: the `/apply-migrations` skill.
-   Convention going forward: new migrations idempotent (IF NOT EXISTS).
+   The migration-apply job now EXISTS and is TWO-TIER (2026-08-06):
+   `.github/workflows/migrate.yml` routes by branch — `test` →
+   `SUPABASE_DB_URL_TEST`, `main` → `SUPABASE_DB_URL` — each tier a no-op until
+   its secret exists. Prod enablement, in order: (1) baseline prod's
+   schema_migrations ledger via `prod-ledger-baseline.sql` (Dashboard SQL paste —
+   151 historical versions marked applied; replaces the earlier `migration
+   repair` idea, no connection string leaves the dashboard), (2) add the secret,
+   (3) the `audit-fixes` PR merge is itself the first live apply (it adds the two
+   telemetry migrations to main). Full sequence: `owner-handoff-2026-08-06.md`.
+   Local applies: the `/apply-migrations` skill. Convention going forward: new
+   migrations idempotent (IF NOT EXISTS).
 8. **Logging strategy** (proposed 2026-08-04) — 254 raw `console.*` calls across 65
    files, no levels, no central module. Proposal: small `src/lib/log.ts`
    (debug/info/warn/error), debug gated out of prod, error level feeding the 2.8
@@ -111,12 +120,15 @@
     secret are done (item 7), merging `audit-fixes` to main auto-applies these via
     `.github/workflows/migrate.yml` — the manual paste is only needed if telemetry
     should go live on prod BEFORE that merge.
-12. **Sandbox Supabase project** (2026-08-05) — free tier allows 2 projects; create
-    "dndkeep-sandbox" (closes audit 2.4 / staging at $0). Vercel Preview env vars →
-    sandbox (branch previews stop touching prod); migrate.yml gets a sandbox secret
-    applying on PR branches (migration canary — no baseline needed, fresh project);
-    seed the test login; add a sandbox ping to Keep Supabase Warm (free projects
-    pause ~1wk idle). Also a Docker-free answer to the owner's dev-DB choice.
+12. **Test Supabase project** (2026-08-05; **AGREED 2026-08-06** as the plan of
+    record) — free tier allows 2 projects; create `dndkeep-test` (closes audit
+    2.4 / staging at $0). Long-lived `test` branch pairs with it: Vercel Preview
+    env vars → test project (branch previews stop touching prod); migrate.yml
+    applies migrations to it on push to `test` (fresh project — first push
+    replays the full 153-file chain, no baseline); keep-warm pings it
+    (secret-gated, warns not fails). Owner-side steps: Phase A of
+    `owner-handoff-2026-08-06.md`. Remaining after bootstrap: seed the test
+    login, decide what sample data the test DB carries.
 13. **Confirm telemetry retention on prod** (2026-08-05) — the 30-day pg_cron purge
     ships inside item 11's paste, but: confirm the window suits his storage budget
     (re-run `cron.schedule` with a new interval to change it), and VERIFY
@@ -129,6 +141,14 @@
    FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as
    `join_campaign_by_code`) returning an explicit column list that excludes `user_id`;
    swap `SharePage.tsx` to the RPC; prove both directions with a DB-tier E2E.
+15. **Supabase Vault for the Discord webhook URL** (2026-08-06, Kyle's ask) —
+    `campaign_settings.webhook_url` is plaintext
+    (20260331153742_discord_scheduling_npc_battlemap.sql). Move it into the
+    `supabase_vault` extension: secret in Vault, reference id on the row, reads
+    via a SECURITY DEFINER function so the URL never transits RLS-readable
+    columns. Scope note: Vault is DB-side only — CI/deploy secrets correctly
+    live in GitHub Actions secrets and Vercel env vars, which are those
+    platforms' vault equivalents. Rehearse the migration on the test DB first.
 
 **Added beyond the audit:** repo CLAUDE.md; unit-test convention; Playwright
 harness + committed visual baselines + gated DB-backed E2E; local Supabase

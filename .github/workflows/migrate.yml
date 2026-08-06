@@ -1,49 +1,63 @@
 name: Apply Migrations
 
-# v2.647 — applies supabase/migrations/ to the PRODUCTION database when
-# migration files land on main. Designed with a hard safety interlock:
+# v2.649 — applies supabase/migrations/ to the tier matching the branch:
 #
-#   THE JOB IS A NO-OP UNTIL THE `SUPABASE_DB_URL` SECRET EXISTS.
+#   push to `test` → TEST database   (secret SUPABASE_DB_URL_TEST)
+#   push to `main` → PROD database   (secret SUPABASE_DB_URL)
 #
-# That secret must be added ONLY AFTER the one-time ledger baseline
-# (`supabase migration repair` marking all historical files as applied
-# on prod) — prod's schema predates most of the migration chain, and an
-# unbaselined `db push` would try to replay everything. Sequence and
-# rationale: owner queue in .claude/audit/dndkeep-audit.md. Until then,
-# prod applies stay manual (Dashboard SQL editor; the local flow is the
-# /apply-migrations skill).
+# Each tier is a no-op until its secret exists — the gate step skips
+# cleanly with a notice. For PROD that gate is a hard safety interlock:
 #
-# Once enabled: `db push` consults prod's schema_migrations ledger and
-# applies ONLY never-run files, in order — running this twice is a no-op.
+#   ADD `SUPABASE_DB_URL` ONLY AFTER THE ONE-TIME LEDGER BASELINE.
+#
+# Prod's schema predates most of the migration chain; until the baseline
+# marks historical files as applied in prod's schema_migrations ledger,
+# an unbaselined `db push` would try to replay all ~150 files. Sequence
+# and rationale: owner queue in .claude/audit/dndkeep-audit.md. The TEST
+# project has no such constraint — it was born empty, so its first push
+# replays the whole chain by design.
+#
+# Once enabled: `db push` consults the target's schema_migrations ledger
+# and applies ONLY never-run files, in order — re-running is a no-op.
 # New migrations are also written idempotent (IF NOT EXISTS) as a
-# seatbelt per the 2026-08-04 convention.
+# seatbelt per the 2026-08-04 convention. Local dev stays on the
+# /apply-migrations skill (Docker DB).
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
     paths: ['supabase/migrations/**']
-  workflow_dispatch: {}
+  workflow_dispatch: {}   # applies to the tier of whichever ref you dispatch on
 
-# Never let two merges race the ledger.
+# Never let two pushes race the same ledger; test and prod may run
+# concurrently with each other (different databases).
 concurrency:
-  group: migrate-prod
+  group: migrate-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   push-migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # First test-DB run replays the full ~150-file chain (incl. spell
+    # seed data) — allow more than the usual couple of minutes.
+    timeout-minutes: 20
     env:
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      TIER: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
+      SUPABASE_DB_URL: ${{ github.ref_name == 'main' && secrets.SUPABASE_DB_URL || secrets.SUPABASE_DB_URL_TEST }}
     steps:
-      - name: Gate — skip cleanly until the secret exists
+      - name: Gate — skip cleanly until this tier's secret exists
         id: gate
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::SUPABASE_DB_URL not set — prod migration apply SKIPPED. Enable only after the ledger baseline (owner queue)."
+            if [ "$TIER" = "prod" ]; then
+              echo "::notice::SUPABASE_DB_URL not set — PROD migration apply SKIPPED. Enable only after the ledger baseline (owner queue)."
+            else
+              echo "::notice::SUPABASE_DB_URL_TEST not set — TEST migration apply SKIPPED. Create the test Supabase project and add the secret."
+            fi
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Applying migrations to the ${TIER^^} database."
           fi
 
       - uses: actions/checkout@v4
@@ -58,6 +72,6 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
 
-      - name: Apply pending migrations to prod
+      - name: Apply pending migrations
         if: steps.gate.outputs.enabled == 'true'
         run: supabase db push --db-url "$SUPABASE_DB_URL"

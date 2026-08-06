@@ -37,9 +37,11 @@ connection string typed into a session.
    — *done when:* probe passes, or the discrepancy is reported.
 
 5. **Prod** — two sanctioned routes, in order of preference:
-   - **CI**: `.github/workflows/migrate.yml` applies pending files when
-     migration changes reach `main` — IF the `SUPABASE_DB_URL` secret is
-     set. Check the latest "Apply Migrations" run (`gh run list
+   - **CI**: `.github/workflows/migrate.yml` is two-tier (v2.649): push to
+     `test` applies to the TEST Supabase project (`SUPABASE_DB_URL_TEST`),
+     merge to `main` applies to PROD (`SUPABASE_DB_URL`) — each tier a
+     no-op until its secret is set. Hosted applies go through branches,
+     never a local CLI push. Check the latest "Apply Migrations" run (`gh run list
      --workflow "Apply Migrations"`): a "SKIPPED" notice means the
      secret (and its prerequisite ledger baseline — see reference) isn't
      done yet.

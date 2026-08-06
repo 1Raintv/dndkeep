@@ -4,6 +4,10 @@ name: Keep Supabase Warm
 # site down mid-session twice. This pings a trivial RPC daily to register
 # activity. Runs twice daily for margin against skipped/delayed cron slots
 # (GitHub schedules are best-effort).
+#
+# v2.649 — also pings the TEST project (test branch + Vercel previews)
+# once its secrets exist; skips cleanly until then. A paused test project
+# wouldn't take prod down, so its ping warns instead of failing the run.
 
 on:
   schedule:
@@ -15,7 +19,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping keep_warm RPC
+      - name: Ping keep_warm RPC (prod)
         run: |
           status=$(curl -s -o /tmp/body -w "%{http_code}" \
             -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/keep_warm" \
@@ -27,4 +31,25 @@ jobs:
           if [ "$status" != "200" ]; then
             echo "::error::keep_warm ping failed (HTTP $status) — project may be paused or migration missing"
             exit 1
+          fi
+
+      - name: Ping keep_warm RPC (test)
+        if: always()   # prod ping failing shouldn't hide test status
+        env:
+          TEST_URL: ${{ secrets.SUPABASE_URL_TEST }}
+          TEST_KEY: ${{ secrets.SUPABASE_ANON_KEY_TEST }}
+        run: |
+          if [ -z "$TEST_URL" ] || [ -z "$TEST_KEY" ]; then
+            echo "::notice::Test project secrets not set — test ping SKIPPED."
+            exit 0
+          fi
+          status=$(curl -s -o /tmp/body -w "%{http_code}" \
+            -X POST "$TEST_URL/rest/v1/rpc/keep_warm" \
+            -H "apikey: $TEST_KEY" \
+            -H "Authorization: Bearer $TEST_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status — body: $(cat /tmp/body)"
+          if [ "$status" != "200" ]; then
+            echo "::warning::TEST keep_warm ping failed (HTTP $status) — test project may be paused or not yet migrated"
           fi
