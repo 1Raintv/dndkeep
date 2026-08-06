@@ -43,11 +43,57 @@ Sign in with the seeded account:
 Anything you create locally is yours to trash: `npx supabase db reset`
 returns the database to the seeded state in seconds.
 
+## Battle-map fixture (optional, but you want it)
+
+`seed.sql` stops at "a login, a campaign, a character" — enough for the
+sheet, nothing for the map. One command furnishes every local campaign
+with a map worth testing:
+
+```bash
+node scripts/seed-battlemap.mjs
+```
+
+It applies `supabase/seed/battlemap-fixture.sql` and generates + uploads
+the fixture's images (scene background, a few token portraits) to the
+local storage bucket. Re-run it any time — every row it writes has a
+deterministic id, so it rebuilds exactly its own rows and leaves
+whatever else you made alone. Re-run it after every `db reset`.
+
+What you get, per campaign:
+
+| | |
+|---|---|
+| **"Ruined Keep (fixture)"** | 30×20 @70px, `dark` ambient light, background image. Three rooms + corridors, 27 walls including a **closed**, an **open** and a **locked** door, a sight-only curtain and a movement-only set of bars |
+| Tokens | 14 — the party (blue, one per PC), a tiny ally, three goblin instances off *one* creature row, a 2×2 ogre, a 3×3 dragon, a 4×4 colossus, and one hidden-from-players assassin |
+| Annotations | one of each drawing kind (pencil/line/rect/circle) + room labels |
+| **"Overland Trail (fixture, hex)"** | hex grid, bright light, **unpublished** — for the hex renderer and the publish gate |
+| Creature library | 7 creatures in a 3-folder tree, plus 6 SRD monsters in the shared catalog for the bestiary / catalog-import flows |
+| Party | three level-5 PCs; the cleric starts damaged (21/38) so HP bars and healing have something to show |
+
+Tokens are written to `scene_tokens` only — the v2.389 sync trigger
+mirrors them into `combatants` + `scene_token_placements`, so the fixture
+is correct whether or not the campaign has
+`use_combatants_for_battlemap` on.
+
+A **second account** comes with it, so you can open the same map as DM in
+one window and as a player in another (fog-of-war per player, published-
+scene gating, drag permissions):
+
+| | |
+|---|---|
+| Email | `test-player@dndkeep.local` |
+| Password | `dndkeep-local-test` |
+| Data | joins every local campaign as `player` and owns one PC per campaign (its token is drag-enabled for that account) |
+
+The script refuses to run unless `.env.local` points at
+127.0.0.1/localhost, so it can never reach production.
+
 ## Day-to-day
 
 | Task | Command |
 |---|---|
 | Wipe + reseed the database | `npx supabase db reset` |
+| Re-lay the battle-map fixture | `node scripts/seed-battlemap.mjs` |
 | Browse the DB in a UI | Studio at <http://localhost:54323> |
 | Stop the stack (frees RAM) | `npx supabase stop` |
 | Back to the production DB | delete `.env.local` (dev server restarts itself) |

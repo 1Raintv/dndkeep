@@ -14,6 +14,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 // v2.330.0 — B1 fix: retry chunk imports + recover from stale-hash blank
 // screens after deploys. See src/lib/lazyWithRetry.ts for the full story.
 import { lazyWithRetry as lazy, clearLazyReloadGuard } from './lib/lazyWithRetry';
+import { unreachableMessage } from './lib/authErrors';
 
 import './styles/globals.css';
 
@@ -102,9 +103,12 @@ function useCrossTabVersionDetection(): { staleVersion: string | null } {
 function PageLoader({ unreachable, onRetry }: { unreachable?: boolean; onRetry?: () => void } = {}) {
   if (unreachable) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 'var(--space-3)', padding: '0 24px', textAlign: 'center' }}>
         <span style={{ fontSize: 15, color: 'var(--t-2)' }}>Can't reach the server right now.</span>
-        <span style={{ fontSize: 13, color: 'var(--t-3)' }}>Check your connection, then try again.</span>
+        {/* v2.648 — same guidance the sign-in form gives: on a machine
+            pointed at the local Docker stack, the actionable cause is
+            almost always "Docker isn't running", not the connection. */}
+        <span style={{ fontSize: 13, color: 'var(--t-3)', maxWidth: 520, lineHeight: 1.5 }}>{unreachableMessage()}</span>
         <button className="btn-ghost" onClick={onRetry} style={{ marginTop: 8 }}>Retry</button>
       </div>
     );

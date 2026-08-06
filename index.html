@@ -54,11 +54,51 @@
       #seo-shell .plan { border: 1px solid #1e2a3a; border-radius: 12px; padding: 24px; }
       #seo-shell .plan.pro { border-color: #c9922a60; }
       .js-ready #seo-shell { display: none !important; }
+
+      /* v2.648 — Boot loader. Shown ONLY when JS is on (so crawlers keep
+         getting the SEO shell above), from first paint until React mounts
+         and main.tsx removes it. Self-contained styles: the app's
+         stylesheet is inside the JS bundle, so .spinner/--tokens don't
+         exist yet at this point in the load. */
+      #boot { display: none; }
+      .js-ready #boot {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        height: 70vh; font-family: system-ui, sans-serif; font-size: 15px; color: #9aa5b4;
+      }
+      #boot .ring {
+        width: 22px; height: 22px; border-radius: 50%;
+        border: 2px solid rgba(201, 146, 42, 0.25); border-top-color: #c9922a;
+        animation: boot-spin 0.8s linear infinite;
+      }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { #boot .ring { animation: none; } }
     </style>
     <script>
-      // Mark JS as loading so we can hide the static shell after React mounts
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() { document.documentElement.classList.add('js-ready'); }, 50);
+      // v2.648 — Set synchronously, in <head>, BEFORE the body parses.
+      //
+      // Was: DOMContentLoaded + a 50ms setTimeout, which guaranteed the
+      // static marketing shell painted for several frames on every load.
+      // A signed-in user therefore saw the landing page flash by before
+      // the loader and their actual page — the app looked like it was
+      // logging them out and back in. Hiding the shell before first
+      // paint (and showing #boot in its place) makes the load read as
+      // one continuous step. No-JS crawlers never run this and still
+      // get the full shell.
+      document.documentElement.classList.add('js-ready');
+
+      // Dead-spinner guard. Hiding the shell means a bundle that never
+      // loads (stale chunk hash after a deploy, offline, blocked script)
+      // would otherwise leave a spinner turning forever — the failure
+      // mode lazyWithRetry exists for, one layer earlier. If React
+      // hasn't removed #boot by then, offer a reload instead.
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          var boot = document.getElementById('boot');
+          if (!boot) return; // normal path: React mounted and removed it
+          boot.innerHTML =
+            '<div style="text-align:center;line-height:1.7">The app is taking longer than usual to load.<br>' +
+            '<a href="" style="color:#c9922a">Reload the page</a></div>';
+        }, 15000);
       });
     </script>
   </head>
@@ -154,8 +194,11 @@
       </p>
     </div>
 
-    <!-- React app mounts here -->
-    <div id="root" style="position:relative;z-index:1"></div>
+    <!-- React app mounts here. #boot is the pre-React loader (v2.648);
+         main.tsx removes it immediately before the first render. -->
+    <div id="root" style="position:relative;z-index:1">
+      <div id="boot"><div class="ring"></div><span>Loading…</span></div>
+    </div>
 
     <script type="module" src="/src/main.tsx"></script>
     <script>

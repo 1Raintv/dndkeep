@@ -31,6 +31,11 @@ export function ViewportHost(props: {
   useEffect(() => {
     if (!pixiApp || !pixiApp.renderer || !isReady) return;
 
+    // v2.648 — dev-only escape hatch for debugging the live scene graph
+    // from the console / E2E scripts (also what the Pixi devtools
+    // extension looks for). Stripped from production builds.
+    if (import.meta.env.DEV) (globalThis as any).__PIXI_APP__ = pixiApp;
+
     const vp = new Viewport({
       screenWidth,
       screenHeight,

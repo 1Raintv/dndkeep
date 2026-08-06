@@ -31,6 +31,12 @@ if (telemetryLevel !== 'off') {
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found. Check index.html.');
 
+// v2.648 — Hand off from the index.html boot loader. createRoot clears
+// the container itself, but removing the node explicitly keeps the
+// handoff independent of React's container semantics (and of StrictMode's
+// double-invoked first render).
+document.getElementById('boot')?.remove();
+
 createRoot(root).render(
   <StrictMode>
     <App />

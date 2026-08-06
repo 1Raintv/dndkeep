@@ -85,11 +85,40 @@ export function BackgroundLayer(props: {
     Assets.load<Texture>(url).then(texture => {
       if (loadGenRef.current !== thisGen) {
         // A newer load superseded this one — release the stale texture
-        // unless it's the one the newer generation holds.
-        if (loadedUrlRef.current !== url) Assets.unload(url).catch(() => {});
+        // unless the newer generation wants the SAME url. v2.648 fix:
+        // comparing against loadedUrlRef alone was not enough. On a
+        // scene switch the effect can run twice back-to-back (path and
+        // world dims land in separate renders), issuing two loads for
+        // the same url. Load #1 resolved stale BEFORE load #2 recorded
+        // loadedUrlRef, unloaded the shared cache entry, and load #2
+        // then received an already-destroyed texture — Pixi's batcher
+        // crashed on source=null every frame and the map went
+        // permanently black until a reload.
+        const currentUrl = currentPathRef.current
+          ? assetsApi.getSceneBackgroundUrl(currentPathRef.current)
+          : null;
+        if (url !== currentUrl && loadedUrlRef.current !== url) {
+          Assets.unload(url).catch(() => {});
+        }
         return;
       }
       if (!viewport || viewport.destroyed) return;
+      // Defense-in-depth for any remaining unload/load interleaving:
+      // never mount a dead texture (it poisons the render loop — see
+      // above). Reload once; Assets re-fetches through the HTTP cache.
+      if (texture.destroyed || !texture.source) {
+        Assets.load<Texture>(url).then(fresh => {
+          if (loadGenRef.current !== thisGen || fresh.destroyed || !fresh.source) return;
+          if (!viewport || viewport.destroyed) return;
+          loadedUrlRef.current = url;
+          const s = new Sprite(fresh);
+          s.width = worldWidth;
+          s.height = worldHeight;
+          viewport.addChildAt(s, 0);
+          spriteRef.current = s;
+        }).catch(() => {});
+        return;
+      }
       loadedUrlRef.current = url;
 
       const sprite = new Sprite(texture);
