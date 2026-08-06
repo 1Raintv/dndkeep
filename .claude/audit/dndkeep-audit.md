@@ -106,7 +106,13 @@
     Rows flow once `audit-fixes` deploys; schema-first is fine by design. Include
     both files in the future `migration repair` baseline (manual applies don't
     write the ledger). Consider inviting Kyle to the Supabase org.
-12. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
+12. **Confirm telemetry retention on prod** (2026-08-05) — the 30-day pg_cron purge
+    ships inside item 11's paste, but: confirm the window suits his storage budget
+    (re-run `cron.schedule` with a new interval to change it), and VERIFY
+    `select jobname from cron.job where jobname='client_errors_retention'` returns a
+    row — empty means pg_cron is disabled (enable the extension, re-run file 2); the
+    migration warns instead of failing by design, so this is easy to miss.
+13. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
    applied to prod, so do it as a pair). Agreed design: drop the `"Public share read"`
    policy; add a `SECURITY DEFINER get_shared_character(token)` function (`REVOKE ALL
    FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as
