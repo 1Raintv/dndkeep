@@ -59,7 +59,8 @@ against a from-scratch local build.
 **Why deletes are required:** `supabase db push` *errors out* when the remote
 ledger holds versions with no matching local file — an insert-only baseline
 would not unblock CI. The script therefore deletes the 60 stale rows and
-inserts the 44 missing ones (minus three deliberately-pending files), inside a
+inserts the 41 missing ones (44 repo-only files minus the three
+deliberately-pending ones), inside a
 transaction with a hard assert: if the end state isn't **exactly 150 rows**,
 everything rolls back.
 
@@ -82,6 +83,11 @@ was changed — send Kyle's session the count it reported and stop.
 
 ## Phase C — flip prod CI on (only after B3 passes)
 
+0. **Enable pg_cron on prod first** (found missing 2026-08-06): Dashboard →
+   Database → Extensions → search `pg_cron` → enable. Do this BEFORE the merge
+   so the `client_errors_retention` migration schedules its 30-day purge on
+   first apply instead of warning past it (it warns-not-fails by design, so a
+   missing extension is silent — the `cron.job` verify below is the catch).
 1. GitHub → repo secrets → add `SUPABASE_DB_URL` = **prod** connection string
    (Settings → Database → Connection string URI, direct/5432, password filled).
    Same rule: paste it into the GitHub UI, not into a chat.
@@ -98,6 +104,13 @@ select count(*) from information_schema.columns
   where table_name = 'combat_participants' and column_name = 'concentration_spell_id';  -- 0 = the vestigial column is gone
 ```
 
+## Cleanup (after the first prod CI apply proves out)
+
+The reconciliation's pre-change snapshot lives at
+`supabase_migrations.schema_migrations_backup_20260806` (169 rows, outside
+`public` so it's invisible to the table editor). Keep it until the first CI
+apply has run green, then drop it.
+
 ## Phase D — one-time catalog copy to the test DB (after its bootstrap)
 
 The repo's migration chain rebuilds prod's **schema** but not its **catalog
@@ -113,7 +126,7 @@ app shows missing reference data on the test tier).
 
 - Phase A done (secrets named exactly as above? Vercel Preview repointed?)
 - B3: ledger count observed (must be exactly 150)
-- Phase C: secret set; after merge — did dry-run list exactly 2 files? Did
+- Phase C: secret set; after merge — did dry-run list exactly 3 files? Did
   `cron.job` show the retention job (i.e., is pg_cron enabled on prod)?
 
 ## Do-NOTs (encoded in the workflow, but belt-and-suspenders)
