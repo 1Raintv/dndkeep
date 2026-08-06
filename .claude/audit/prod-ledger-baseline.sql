@@ -1,11 +1,24 @@
--- Prod migration-ledger baseline — generated 2026-08-06 from audit-fixes @ f987bcc
--- Marks every migration file that prod's schema ALREADY reflects as applied,
--- so the first CI `supabase db push` applies ONLY the two new client_errors
--- files. Excluded (genuinely pending on prod):
---   20260804120000_client_errors.sql
---   20260804160000_client_errors_retention.sql
--- Idempotent: safe to re-run. Run in Supabase Dashboard SQL editor (prod)
--- or via psql. See owner-handoff-2026-08-06.md for the full sequence.
+-- Prod migration-ledger RECONCILIATION — v2, generated 2026-08-06 after the
+-- owner-side dump showed 169 existing rows whose versions diverge from the
+-- repo's filenames (repo history was renamed/squashed after those applies;
+-- diff: 109 exact matches, 60 prod-only rows, 44 repo-only files).
+--
+-- End state: ledger EXACTLY matches the repo's migration files, minus the
+-- three deliberately-pending ones CI will apply on the audit-fixes merge:
+--   20260509184735_drop_cp_concentration_spell_id_v2_471  (never ran on prod; DROP IF EXISTS — idempotent)
+--   20260804120000_client_errors
+--   20260804160000_client_errors_retention
+--
+-- Why deletes are required (not just inserts): `supabase db push` ERRORS
+-- when the remote ledger holds versions with no matching local file, so the
+-- 60 prod-only rows (old stamps + squashed seed chunks) must go. Their
+-- schema effects are retained — reproduced by 000_initial_schema + the
+-- drift shims, verified against a from-scratch local build 2026-08-06.
+--
+-- Transactional: the final assert ABORTS the whole thing unless the row
+-- count lands exactly on 150. Idempotent: safe to re-run.
+
+begin;
 
 create schema if not exists supabase_migrations;
 create table if not exists supabase_migrations.schema_migrations (
@@ -14,6 +27,162 @@ create table if not exists supabase_migrations.schema_migrations (
   name text
 );
 
+-- 1) Remove every ledger row that has no matching repo file.
+delete from supabase_migrations.schema_migrations
+where version not in (
+  '000',
+  '001',
+  '002',
+  '003',
+  '20260330122129',
+  '20260330122510',
+  '20260330124930',
+  '20260330170537',
+  '20260330170602',
+  '20260331000305',
+  '20260331010712',
+  '20260331024419',
+  '20260331032513',
+  '20260331042402',
+  '20260331131845',
+  '20260331140059',
+  '20260331153742',
+  '20260331180509',
+  '20260331220306',
+  '20260407152332',
+  '20260407183650',
+  '20260407185044',
+  '20260407193423',
+  '20260408163026',
+  '20260408171211',
+  '20260408190953',
+  '20260408203328',
+  '20260408211111',
+  '20260408224527',
+  '20260409050225',
+  '20260409134307',
+  '20260409140912',
+  '20260409145509',
+  '20260409153551',
+  '20260411002552',
+  '20260411020209',
+  '20260412164803',
+  '20260412171229',
+  '20260414144026',
+  '20260417001608',
+  '20260417002200',
+  '20260418154937',
+  '20260418160145',
+  '20260418171410',
+  '20260418173401',
+  '20260418184246',
+  '20260418212423',
+  '20260418212829',
+  '20260418215923',
+  '20260419003835',
+  '20260419032857',
+  '20260419032943',
+  '20260419033006',
+  '20260419044128',
+  '20260419051809',
+  '20260419055910',
+  '20260419060900',
+  '20260419193213',
+  '20260419221501',
+  '20260419232043',
+  '20260420020146',
+  '20260420021952',
+  '20260420132831',
+  '20260421221517',
+  '20260421230818',
+  '20260421232919',
+  '20260421234038',
+  '20260422001030',
+  '20260422002200',
+  '20260422003724',
+  '20260422003830',
+  '20260422005842',
+  '20260422010341',
+  '20260422012120',
+  '20260422012610',
+  '20260422013729',
+  '20260422015428',
+  '20260422021813',
+  '20260422024347',
+  '20260422032514',
+  '20260422040326',
+  '20260422041057',
+  '20260422044745',
+  '20260422053629',
+  '20260422145114',
+  '20260422150732',
+  '20260422151512',
+  '20260422153333',
+  '20260422154329',
+  '20260422165003',
+  '20260422234038',
+  '20260423003639',
+  '20260423035616',
+  '20260423172523',
+  '20260423221301',
+  '20260424023449',
+  '20260424140001',
+  '20260424155131',
+  '20260424160625',
+  '20260424161240',
+  '20260424203201',
+  '20260425011359',
+  '20260425012511',
+  '20260425055613',
+  '20260425180700',
+  '20260425202300',
+  '20260425202800',
+  '20260425202900',
+  '20260426041500',
+  '20260426053000',
+  '20260426063000',
+  '20260426143000',
+  '20260426200000',
+  '20260426210000',
+  '20260427012347',
+  '20260427014135',
+  '20260427015012',
+  '20260427015148',
+  '20260427020156',
+  '20260427023508',
+  '20260427140209',
+  '20260427140326',
+  '20260427144253',
+  '20260502223811',
+  '20260503000419',
+  '20260503131343',
+  '20260503174232',
+  '20260510023935',
+  '20260510190859',
+  '20260510201248',
+  '20260511043748',
+  '20260512182231',
+  '20260513170000',
+  '20260514150000',
+  '20260524190000',
+  '20260524230000',
+  '20260524230100',
+  '20260525000000',
+  '20260718120000',
+  '20260720000000',
+  '20260720010000',
+  '20260720020000',
+  '20260721000000',
+  '20260721010000',
+  '20260722010000',
+  '20260722020000',
+  '20260722030000',
+  '20260803010000',
+  '20260803990000',
+  '20260803991000'
+);
+
+-- 2) Insert every repo file the ledger is missing.
 insert into supabase_migrations.schema_migrations (version, name) values
   ('000', 'initial_schema'),
   ('001', 'death_saves'),
@@ -142,7 +311,6 @@ insert into supabase_migrations.schema_migrations (version, name) values
   ('20260503000419', 'cleanup_dnd404_stale_combat_state_v2_392'),
   ('20260503131343', 'join_campaign_by_code_rpc_v2_394'),
   ('20260503174232', 'cp_attack_counter_v2_399'),
-  ('20260509184735', 'drop_cp_concentration_spell_id_v2_471'),
   ('20260510023935', 'cross_encounter_immunity_foundation_v2_474'),
   ('20260510190859', 'drop_legacy_condition_source_immunities_v2_479'),
   ('20260510201248', 'add_active_immunities_to_homebrew_monsters_v2_482'),
@@ -168,6 +336,19 @@ insert into supabase_migrations.schema_migrations (version, name) values
   ('20260803991000', 'drift_shim_grants')
 on conflict (version) do nothing;
 
--- Verify: should return 151 (files baselined) and NOT include the client_errors versions.
+-- 3) Assert the exact end state or roll everything back.
+do $$
+declare c int;
+begin
+  select count(*) into c from supabase_migrations.schema_migrations;
+  if c <> 150 then
+    raise exception 'reconciliation failed: expected exactly 150 ledger rows, found % — transaction rolled back', c;
+  end if;
+end $$;
+
+commit;
+
+-- Verify (after commit): 150 rows; the three pending versions absent.
 select count(*) from supabase_migrations.schema_migrations;
-select version from supabase_migrations.schema_migrations where version like '20260804%';
+select version from supabase_migrations.schema_migrations
+  where version in ('20260509184735','20260804120000','20260804160000');  -- must return 0 rows

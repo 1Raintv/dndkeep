@@ -45,41 +45,40 @@ on-switches, and Phase C's must not be flipped before Phase B.**
    first CI run will replay the full 153-file migration chain into the empty test
    DB (that first run takes several minutes — later runs apply only new files).
 
-## Phase B — prod ledger baseline (the one careful step)
+## Phase B — prod ledger RECONCILIATION (updated 2026-08-06 after the dump)
 
-**Why:** prod's schema was built before the migration-file convention, so prod's
-`supabase_migrations.schema_migrations` ledger is empty/missing. If CI ran
-`supabase db push` against prod now, it would try to replay all ~150 files onto
-tables that already exist. The baseline marks every historical file as
-already-applied, so the first real push applies only the two new telemetry
-migrations (`20260804120000_client_errors`, `20260804160000_client_errors_retention`).
+**What changed:** the B1 pre-flight found prod's ledger is NOT empty — it holds
+**169 rows** from an earlier CLI-linked era, and the repo's migration history
+was renamed/squashed after those applies. Diff (computed from the actual dump):
+109 versions match exactly; 60 rows are prod-only (old timestamps + 15 squashed
+spell/monster seed chunks); 44 files are repo-only (renamed stamps, the
+`000`–`003` baseline/shim files, the drift shims, telemetry). All schema
+effects of the prod-only rows are reproduced by the repo chain — verified
+against a from-scratch local build.
 
-**B1 — pre-flight: confirm prod actually has the newest schema.** The baseline
-asserts "prod already reflects all 151 historical files" — verify, don't assume.
-In the **prod** Dashboard SQL editor:
+**Why deletes are required:** `supabase db push` *errors out* when the remote
+ledger holds versions with no matching local file — an insert-only baseline
+would not unblock CI. The script therefore deletes the 60 stale rows and
+inserts the 44 missing ones (minus three deliberately-pending files), inside a
+transaction with a hard assert: if the end state isn't **exactly 150 rows**,
+everything rolls back.
 
-```sql
--- All three must return a row / true. If any fails, STOP and tell Kyle's
--- session — it means prod is missing more than the two telemetry files and
--- the baseline list needs adjusting.
-select column_name from information_schema.columns
-  where table_name = 'combat_participants' and column_name = 'once_per_turn_used';
-select column_name from information_schema.columns
-  where table_name = 'profiles' and column_name = 'show_ua_content';
-select proname from pg_proc where proname = 'keep_warm';
-```
+**Deliberately left pending** (CI applies them on the `audit-fixes` merge —
+all three idempotent):
+- `20260509184735_drop_cp_concentration_spell_id_v2_471` — never ran on prod
+  (no ledger row under any name); vestigial-column drop, `DROP COLUMN IF EXISTS`.
+- `20260804120000_client_errors`, `20260804160000_client_errors_retention`.
 
-Also confirm with the owner directly: has every schema change up through app
-v2.633 been applied to prod (however it was applied at the time)? Any
-dashboard-only changes made since 2026-08-03 that never became a migration file?
-
-**B2 — run the baseline.** Open `.claude/audit/prod-ledger-baseline.sql` (same
-folder as this doc), paste the whole thing into the **prod** Dashboard SQL
-editor, run it. It is idempotent (`if not exists` / `on conflict do nothing`).
+**B2 — run it.** Open `.claude/audit/prod-ledger-baseline.sql` (regenerated as
+the reconciliation, same filename), paste the whole thing into the **prod**
+Dashboard SQL editor, run it. Safe to re-run.
 
 **B3 — verify.** The script's tail queries should show:
-- count = **151**
-- zero rows with version like `20260804%`
+- count = **exactly 150**
+- the three pending versions query returns **0 rows**
+
+If the transaction aborts with the "expected exactly 150" exception, nothing
+was changed — send Kyle's session the count it reported and stop.
 
 ## Phase C — flip prod CI on (only after B3 passes)
 
@@ -88,19 +87,32 @@ editor, run it. It is idempotent (`if not exists` / `on conflict do nothing`).
    Same rule: paste it into the GitHub UI, not into a chat.
 2. Done. No dispatch needed: when the `audit-fixes` PR merges into `main`, the
    `Apply Migrations` workflow fires (the PR adds files under
-   `supabase/migrations/`), the dry-run step logs exactly the two client_errors
-   files, and the apply runs them. Watch that run's log; then verify in prod:
+   `supabase/migrations/`), the dry-run step logs exactly **three** files
+   (`drop_cp_concentration_spell_id_v2_471` + the two `client_errors` ones),
+   and the apply runs them. Watch that run's log; then verify in prod:
 
 ```sql
 select 1 from client_errors limit 1;                      -- table exists (0 rows is fine)
 select jobname from cron.job where jobname = 'client_errors_retention';  -- retention scheduled (may be absent if pg_cron is off — that migration warns instead of failing; report which)
+select count(*) from information_schema.columns
+  where table_name = 'combat_participants' and column_name = 'concentration_spell_id';  -- 0 = the vestigial column is gone
 ```
+
+## Phase D — one-time catalog copy to the test DB (after its bootstrap)
+
+The repo's migration chain rebuilds prod's **schema** but not its **catalog
+data**: the original spell/monster seed chunks were squashed out of the repo,
+so a fresh DB gets ~32 spells / 6 monsters vs prod's full catalog. Once Kyle's
+session confirms the test DB is bootstrapped, export from prod and import to
+test (either Dashboard CSV export/import per table, or `pg_dump --data-only
+--table public.spells --table public.monsters` piped to the test DB — owner's
+machine, owner's credentials). Tables: `spells`, `monsters` (add others if the
+app shows missing reference data on the test tier).
 
 ## Report back to Kyle's session
 
 - Phase A done (secrets named exactly as above? Vercel Preview repointed?)
-- B1 spot-checks: all passed, or which failed
-- B3: ledger count observed
+- B3: ledger count observed (must be exactly 150)
 - Phase C: secret set; after merge — did dry-run list exactly 2 files? Did
   `cron.job` show the retention job (i.e., is pg_cron enabled on prod)?
 
