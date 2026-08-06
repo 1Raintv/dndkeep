@@ -111,13 +111,19 @@
     secret are done (item 7), merging `audit-fixes` to main auto-applies these via
     `.github/workflows/migrate.yml` — the manual paste is only needed if telemetry
     should go live on prod BEFORE that merge.
-12. **Confirm telemetry retention on prod** (2026-08-05) — the 30-day pg_cron purge
+12. **Sandbox Supabase project** (2026-08-05) — free tier allows 2 projects; create
+    "dndkeep-sandbox" (closes audit 2.4 / staging at $0). Vercel Preview env vars →
+    sandbox (branch previews stop touching prod); migrate.yml gets a sandbox secret
+    applying on PR branches (migration canary — no baseline needed, fresh project);
+    seed the test login; add a sandbox ping to Keep Supabase Warm (free projects
+    pause ~1wk idle). Also a Docker-free answer to the owner's dev-DB choice.
+13. **Confirm telemetry retention on prod** (2026-08-05) — the 30-day pg_cron purge
     ships inside item 11's paste, but: confirm the window suits his storage budget
     (re-run `cron.schedule` with a new interval to change it), and VERIFY
     `select jobname from cron.job where jobname='client_errors_retention'` returns a
     row — empty means pg_cron is disabled (enable the extension, re-run file 2); the
     migration warns instead of failing by design, so this is easy to miss.
-13. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
+14. **Fix 1.4 share-token RLS together** (moved here 2026-08-04 — it needs a migration
    applied to prod, so do it as a pair). Agreed design: drop the `"Public share read"`
    policy; add a `SECURITY DEFINER get_shared_character(token)` function (`REVOKE ALL
    FROM PUBLIC`, `GRANT EXECUTE TO anon, authenticated` — same pattern as
