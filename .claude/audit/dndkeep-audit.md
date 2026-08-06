@@ -74,13 +74,14 @@
    `concurrency` group with cancel-in-progress; `timeout-minutes: 15` (default is 6 h);
    `paths-ignore` for `**.md`/`docs/**`/`.claude/**`; scope the daily cron to
    `raw-check` only. Owner-side: Vercel "Ignored Build Step" for docs-only pushes.
-   While in there: add a migration-apply job (`supabase db push` on main) so future
-   schema changes (client_errors, 1.4 policy fix) reach prod automatically — needs
-   the prod DB password as a repo secret (same credential as the schema-dump item).
-   **Prereq:** one-time `supabase migration repair` to baseline prod's
-   schema_migrations ledger (prod predates most migration files — an unbaselined
-   push would try to replay the entire chain). Convention going forward: new
-   migrations written idempotent (IF NOT EXISTS) as defense-in-depth.
+   The migration-apply job now EXISTS (2026-08-05): `.github/workflows/migrate.yml`
+   runs `supabase db push` when migration files land on main, but is a hard NO-OP
+   until the `SUPABASE_DB_URL` repo secret is set. At the sit-down, in order:
+   (1) one-time `supabase migration repair` to baseline prod's schema_migrations
+   ledger (prod predates most migration files — an unbaselined push would replay
+   the entire chain; needs the prod DB password), (2) add the secret, (3) test via
+   the workflow's manual dispatch. Local applies: the `/apply-migrations` skill.
+   Convention going forward: new migrations idempotent (IF NOT EXISTS).
 8. **Logging strategy** (proposed 2026-08-04) — 254 raw `console.*` calls across 65
    files, no levels, no central module. Proposal: small `src/lib/log.ts`
    (debug/info/warn/error), debug gated out of prod, error level feeding the 2.8
@@ -106,6 +107,10 @@
     Rows flow once `audit-fixes` deploys; schema-first is fine by design. Include
     both files in the future `migration repair` baseline (manual applies don't
     write the ledger). Consider inviting Kyle to the Supabase org.
+    **Alternative (2026-08-05):** once the ledger baseline + `SUPABASE_DB_URL`
+    secret are done (item 7), merging `audit-fixes` to main auto-applies these via
+    `.github/workflows/migrate.yml` — the manual paste is only needed if telemetry
+    should go live on prod BEFORE that merge.
 12. **Confirm telemetry retention on prod** (2026-08-05) — the 30-day pg_cron purge
     ships inside item 11's paste, but: confirm the window suits his storage budget
     (re-run `cron.schedule` with a new interval to change it), and VERIFY

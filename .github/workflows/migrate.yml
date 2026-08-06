@@ -1,0 +1,63 @@
+name: Apply Migrations
+
+# v2.647 — applies supabase/migrations/ to the PRODUCTION database when
+# migration files land on main. Designed with a hard safety interlock:
+#
+#   THE JOB IS A NO-OP UNTIL THE `SUPABASE_DB_URL` SECRET EXISTS.
+#
+# That secret must be added ONLY AFTER the one-time ledger baseline
+# (`supabase migration repair` marking all historical files as applied
+# on prod) — prod's schema predates most of the migration chain, and an
+# unbaselined `db push` would try to replay everything. Sequence and
+# rationale: owner queue in .claude/audit/dndkeep-audit.md. Until then,
+# prod applies stay manual (Dashboard SQL editor; the local flow is the
+# /apply-migrations skill).
+#
+# Once enabled: `db push` consults prod's schema_migrations ledger and
+# applies ONLY never-run files, in order — running this twice is a no-op.
+# New migrations are also written idempotent (IF NOT EXISTS) as a
+# seatbelt per the 2026-08-04 convention.
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**']
+  workflow_dispatch: {}
+
+# Never let two merges race the ledger.
+concurrency:
+  group: migrate-prod
+  cancel-in-progress: false
+
+jobs:
+  push-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Gate — skip cleanly until the secret exists
+        id: gate
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_DB_URL not set — prod migration apply SKIPPED. Enable only after the ledger baseline (owner queue)."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          version: latest
+
+      - name: Dry run (log what WOULD apply)
+        if: steps.gate.outputs.enabled == 'true'
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+
+      - name: Apply pending migrations to prod
+        if: steps.gate.outputs.enabled == 'true'
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
