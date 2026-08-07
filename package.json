@@ -11,7 +11,11 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "raw-check": "node scripts/raw-regression.mjs",
     "coords-check": "node scripts/coords-tests.mjs",
-    "anchor-check": "node scripts/anchor-check.mjs"
+    "anchor-check": "node scripts/anchor-check.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "budget-check": "node scripts/bundle-budget.mjs"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",
@@ -29,18 +33,25 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@playwright/test": "1.49",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "esbuild": "^0.21.5",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.7",
     "globals": "^15.9.0",
+    "happy-dom": "^20.11.1",
+    "supabase": "^2.111.0",
     "typescript": "^5.4.5",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "vitest": "^2.1.9"
   }
 }

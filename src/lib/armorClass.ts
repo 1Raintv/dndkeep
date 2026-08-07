@@ -32,6 +32,7 @@
 // want the pure write-on-equip invariant wire this into the
 // Inventory component's equip toggle path.
 
+import { abilityModifier } from '../rules/abilities';
 import type { Character, InventoryItem } from '../types';
 import { itemBonusesActive } from './attunement';
 
@@ -59,7 +60,7 @@ export function recomputeAC(
   const enabled = options.enabled ?? true;
   if (!enabled) return character.armor_class;
 
-  const dexMod = Math.floor(((character.dexterity ?? 10) - 10) / 2);
+  const dexMod = abilityModifier(character.dexterity ?? 10);
 
   // Find the single equipped armor piece (non-shield). If the user
   // somehow has multiple armor pieces flagged equipped, we take the
@@ -122,7 +123,7 @@ export function describeACBreakdown(
   character: Pick<Character, 'dexterity'>,
   inventory: InventoryItem[],
 ): string {
-  const dexMod = Math.floor(((character.dexterity ?? 10) - 10) / 2);
+  const dexMod = abilityModifier(character.dexterity ?? 10);
 
   const armor = inventory.find(
     i => i.equipped && i.armorType && i.armorType !== 'shield' && typeof i.baseAC === 'number',
@@ -192,7 +193,7 @@ export function describeACBreakdownRows(
   character: Pick<Character, 'dexterity'>,
   inventory: InventoryItem[],
 ): ACBreakdown {
-  const dexMod = Math.floor(((character.dexterity ?? 10) - 10) / 2);
+  const dexMod = abilityModifier(character.dexterity ?? 10);
   const armor = inventory.find(
     i => i.equipped && i.armorType && i.armorType !== 'shield' && typeof i.baseAC === 'number',
   );

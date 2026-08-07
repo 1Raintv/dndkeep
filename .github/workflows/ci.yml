@@ -1,9 +1,10 @@
 name: CI Gate
 
 # Encodes THE GATE from docs/ROADMAP.md on every push:
-#   1. TypeScript error count must not RISE above the carried baseline (271).
-#      This is a threshold check, not fail-on-any-error — the 271 is known
-#      debt. TS2304 (cannot find name) must be exactly 0.
+#   1. TypeScript error count must not RISE above the carried baseline
+#      (TS_BASELINE below — the single source of truth for this number).
+#      This is a threshold check, not fail-on-any-error — the baseline is
+#      known debt. TS2304 (cannot find name) must be exactly 0.
 #   2. eslint rules-of-hooks must be clean (React error #310 class).
 #   3. Production build must succeed.
 # Uses the project-pinned TypeScript (NOT npx tsc — a global TS 6.x errors
@@ -18,7 +19,9 @@ on:
     - cron: "0 7 * * *"  # daily RAW regression sweep
 
 env:
-  TS_BASELINE: 267
+  # Ratcheted down as debt is paid: 271 → 267 → 222 (2026-08-03 audit
+  # dead-code removal + dice consolidation). Lower freely, never raise.
+  TS_BASELINE: 222
 
 jobs:
   gate:
@@ -34,7 +37,7 @@ jobs:
       - name: Install (fresh — gets correct linux natives)
         run: npm ci
 
-      - name: TypeScript baseline (<= 271 errors, TS2304 = 0)
+      - name: TypeScript baseline (<= TS_BASELINE errors, TS2304 = 0)
         run: |
           set +e
           node node_modules/typescript/bin/tsc --noEmit > ts-output.txt 2>&1
@@ -77,5 +80,11 @@ jobs:
       - name: Anchor-legality regression (size-parity write paths)
         run: npm run anchor-check
 
+      - name: Unit tests (vitest — rules/, coords, parsers)
+        run: npm run test
+
       - name: Build
         run: node node_modules/vite/bin/vite.js build
+
+      - name: Bundle budget (entry chunk ≤ 300 KB — guards the v2.636 fix)
+        run: npm run budget-check

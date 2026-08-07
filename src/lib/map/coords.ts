@@ -16,7 +16,7 @@
 //   EVEN footprints (2×2, 4×4): anchor is the TOP-LEFT grid
 //        INTERSECTION of the footprint.
 
-import type { TokenSize } from '../stores/battleMapStore';
+import type { TokenSize } from './mapTypes';
 
 export const DEFAULT_GRID_SIZE_PX = 70;
 

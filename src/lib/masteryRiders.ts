@@ -29,6 +29,9 @@
 // weapon_masteries includes the weapon (matched through
 // masteryForWeapon, which handles "Longsword +1"-style names).
 // Dynamic imports below avoid a require cycle with pendingAttack.
+import { abilityModifier } from '../rules/abilities';
+import { rollDie } from '../rules/dice';
+import { applyDamageToPools } from '../rules/hp';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { masteryForWeapon, MASTERY_WEAPONS, type MasteryName } from '../data/weaponMastery';
@@ -46,7 +49,7 @@ export interface MasteryContext {
 }
 
 function mod(score: number | null | undefined): number {
-  return Math.floor((((score as number) ?? 10) - 10) / 2);
+  return abilityModifier((score as number) ?? 10);
 }
 
 /** Mastery context for this attack, or null when the attacker isn't a
@@ -207,7 +210,7 @@ export async function applyOnHitMasteryRiders(input: {
       const dc = 8 + ctx.abilityMod + ctx.profBonus;
       const { getTargetSaveBonus } = await import('./pendingAttack');
       const { bonus, breakdown } = await getTargetSaveBonus(atk.target_participant_id, 'CON');
-      const d20 = Math.floor(Math.random() * 20) + 1;
+      const d20 = rollDie(20);
       const total = d20 + bonus;
       const failed = total < dc;
       await emitCombatEvent({
@@ -307,10 +310,8 @@ export async function grazeOnMiss(atk: PendingAttack): Promise<void> {
 
   const tempBefore = (tgt.temp_hp as number | null) ?? 0;
   const hpBefore = (tgt.current_hp as number | null) ?? 0;
-  const tempAfter = Math.max(0, tempBefore - dmg);
-  const toHp = Math.max(0, dmg - tempBefore);
-  const hpAfter = Math.max(0, hpBefore - toHp);
-  const droppedTo0 = hpAfter === 0 && hpBefore > 0;
+  // v2.636 — pool math consolidated into rules/hp.ts
+  const { tempAfter, hpAfter, droppedTo0 } = applyDamageToPools(hpBefore, tempBefore, dmg);
   const monsterDied = droppedTo0 && tgt.participant_type !== 'character';
 
   const combatantId = (tgt as any).combatant_id as string | null;

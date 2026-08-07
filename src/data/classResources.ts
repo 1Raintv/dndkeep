@@ -2,6 +2,7 @@
  * Class resource tracking — the feature D&D Beyond can't do properly.
  * Each resource knows its max uses per level, when it recovers, and how to display.
  */
+import { abilityModifier } from '../rules/abilities';
 
 // v2.606.0 — 'short-partial': regain ONE expended use on a Short Rest,
 // all on a Long Rest (2024 wording on Channel Divinity, Wild Shape,
@@ -20,7 +21,7 @@ export interface ClassResourceDef {
   // name-only, no icon replacement per Jared's call.
 }
 
-const abilityMod = (score: number) => Math.floor((score - 10) / 2);
+const abilityMod = (score: number) => abilityModifier(score);
 
 export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
   Barbarian: [

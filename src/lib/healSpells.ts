@@ -22,6 +22,8 @@
 // of combat 10 min cast), Mass Heal (700 HP distributive pool).
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
+import { rollDie } from '../rules/dice';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
@@ -122,7 +124,7 @@ export function rollResolvedHeal(
 ): { total: number; rolls: number[] } {
   const rolls: number[] = [];
   for (let i = 0; i < resolved.diceCount; i++) {
-    rolls.push(Math.floor(Math.random() * resolved.diceSides) + 1);
+    rolls.push(rollDie(resolved.diceSides));
   }
   const total = rolls.reduce((a, b) => a + b, 0) + resolved.flatBonus;
   return { total, rolls };
@@ -194,10 +196,10 @@ export async function applyHealToParticipant(
     console.warn('[applyHealToParticipant] participant missing combatant_id; skipping write', input.participantId);
     return 0;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update heal', { combatantId }, (supabase as any)
     .from('combatants')
     .update(updates)
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   // Emit event so the combat log captures the heal. Mirrors the shape of
   // the damage_applied events so the DMScreen log renders naturally.

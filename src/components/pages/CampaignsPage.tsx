@@ -132,10 +132,13 @@ function CampaignsContent() {
 
 // ── Page root ────────────────────────────────────────────────────────────────
 export default function CampaignsPage() {
-  const { isPro, loading } = useAuth();
+  const { isPro, loading, profileLoading } = useAuth();
   const navigate = useNavigate();
 
-  if (loading) {
+  // profileLoading: don't flash the free-tier upsell at a Pro user whose
+  // profile row hasn't landed yet (v2.637 — loading clears at session-
+  // resolve, subscription state arrives one round-trip later).
+  if (loading || profileLoading) {
     return (
       <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', padding: 'var(--sp-8)' }}>
         <div className="spinner" /><span className="loading-text">Loading...</span>

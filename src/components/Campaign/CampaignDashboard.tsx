@@ -1,4 +1,7 @@
-import { useState, useEffect, lazy, Suspense, type FormEvent } from 'react';
+import { useState, useEffect, useMemo, Suspense, type FormEvent } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
+
 import type { Campaign, Character, CampaignMember } from '../../types';
 // v2.296.0 — useCampaign import dropped. Was used to read the now-
 // retired sessionState/updateSessionState fields off CampaignContext;
@@ -10,6 +13,7 @@ import {
   getCharactersByCampaign, getCampaignMembers, lookupProfileByEmail, getCharacters, supabase,
   addCampaignMember, removeCampaignMember, refreshCampaignJoinCode, type MemberWithProfile,
 } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 // v2.286.0 — InitiativeTracker import dropped. The legacy player-side
 // view it provided was retired in this ship; the player session tab
 // now renders an inline pointer to the InitiativeStrip (the modern
@@ -555,6 +559,93 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
   // column stays in the schema for now to avoid a coupled migration;
   // schema cleanup is its own future ship.
 
+  // v2.644 (audit 5.6/6.7 slice B): the BattleMapV2 prop object used to be
+  // rebuilt inline on every dashboard render (three map/filter chains plus
+  // two fresh Maps) and spread into the unmemoized 4,300-line map root —
+  // so EVERY realtime tick re-rendered the entire map tree. Memoized here,
+  // paired with React.memo on BattleMapV2's export: the map now re-renders
+  // only when data it actually consumes changes. Field-level comments
+  // preserved from the original inline build (v2.229→v2.472 history).
+  const battleMapProps = useMemo(() => ({
+    campaignId: campaign.id,
+    isDM: isOwner,
+    userId: user?.id ?? '',
+    myCharacterId: characters.find(c => c.user_id === user?.id)?.id ?? null,
+    playerCharacters: characters.map(c => ({
+      id: c.id, name: c.name, class_name: c.class_name, level: c.level,
+      current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
+      active_conditions: c.active_conditions ?? [],
+      strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
+      intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
+      speed: c.speed,
+      // v2.229 — needed by ChecksPanel (rendered in TokenQuickPanel).
+      saving_throw_proficiencies: c.saving_throw_proficiencies ?? [],
+      skill_proficiencies: c.skill_proficiencies ?? [],
+      skill_expertises: c.skill_expertises ?? [],
+      // v2.231 — needed by PartyVitalsBar to render slot pips.
+      spell_slots: c.spell_slots ?? {},
+      // v2.413.0 — owning user_id for "Grant Player Control".
+      user_id: c.user_id ?? null,
+    })),
+    // v2.244 — NPC combat state for token visuals; players only see NPCs
+    // flagged visible_to_players, the DM sees everything.
+    npcs: npcs
+      .filter(n => n.hp != null && n.max_hp != null && n.max_hp > 0)
+      .filter(n => isOwner || n.visible_to_players === true)
+      .map(n => ({
+        id: n.id,
+        name: n.name,
+        current_hp: n.hp ?? 0,
+        max_hp: n.max_hp ?? 1,
+        conditions: n.conditions ?? [],
+      })),
+    // v2.393.0 — combatants keyed by id (== scene_tokens.id).
+    tokenStateMap: (() => {
+      const map = new Map<string, {
+        current_hp: number | null; max_hp: number | null;
+        conditions: string[]; is_dead: boolean;
+      }>();
+      for (const c of combatants) {
+        map.set(c.id, {
+          current_hp: c.current_hp,
+          max_hp: c.max_hp,
+          // v2.403.0 — combatants.active_conditions (legacy fallback kept).
+          conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
+          is_dead: !!c.is_dead,
+        });
+      }
+      return map;
+    })(),
+    // v2.427.0 — secondary `${type}:${id}` index for tokens whose sync
+    // trigger didn't run (token.id != combatant.id).
+    tokenStateMapByDef: (() => {
+      const map = new Map<string, {
+        current_hp: number | null; max_hp: number | null;
+        conditions: string[]; is_dead: boolean;
+      }>();
+      for (const c of combatants) {
+        if (!c.definition_type || !c.definition_id) continue;
+        const key = `${c.definition_type}:${c.definition_id}`;
+        if (map.has(key)) continue;
+        map.set(key, {
+          current_hp: c.current_hp,
+          max_hp: c.max_hp,
+          conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
+          is_dead: !!c.is_dead,
+        });
+      }
+      return map;
+    })(),
+    // v2.472.0 — concentration map for the token glyph.
+    characterConcentrationMap: (() => {
+      const map = new Map<string, { spellId: string; roundsRemaining: number | null }>();
+      for (const charId in concentrationMap) {
+        map.set(charId, concentrationMap[charId]);
+      }
+      return map;
+    })(),
+  }), [campaign.id, isOwner, user?.id, characters, npcs, combatants, concentrationMap]);
+
   return (
     <CombatProvider campaignId={campaign.id}>
     <div style={{ paddingBottom: 72 }}>
@@ -974,145 +1065,23 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
             added (walls, fog, drawings, ruler, FX, NPC roster, attunement
             tokens, etc.) so leaving it as the default was confusing — DMs
             kept reporting "walls don't work" because they were on v1. */}
-        {activeTab === 'map' && (() => {
-          const commonProps = {
-            campaignId: campaign.id,
-            isDM: isOwner,
-            userId: user?.id ?? '',
-            myCharacterId: characters.find(c => c.user_id === user?.id)?.id ?? null,
-            playerCharacters: characters.map(c => ({
-              id: c.id, name: c.name, class_name: c.class_name, level: c.level,
-              current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
-              active_conditions: c.active_conditions ?? [],
-              strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
-              intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
-              speed: c.speed,
-              // v2.229 — needed by ChecksPanel (rendered in TokenQuickPanel)
-              // for skill/save modifier computation.
-              saving_throw_proficiencies: c.saving_throw_proficiencies ?? [],
-              skill_proficiencies: c.skill_proficiencies ?? [],
-              skill_expertises: c.skill_expertises ?? [],
-              // v2.231 — needed by PartyVitalsBar to render slot pips.
-              spell_slots: c.spell_slots ?? {},
-              // v2.413.0 — owning user_id for the "Grant Player Control"
-              // context menu in BattleMapV2. The DM picks a character
-              // (the player's PC) and the token's player_id is set to
-              // that character's owner — granting drag rights via RLS.
-              user_id: c.user_id ?? null,
-            })),
-            // v2.296.0 — sessionState/onUpdateSession dropped from
-            // mount. session_states table dropped this ship; the
-            // props were a no-op shim. The "v2.231 initiative bar"
-            // referenced below was retired earlier in the unification
-            // arc and never depended on session_states data anyway.
-            //   was: sessionState: sessionState ?? null,
-            //   was: onUpdateSession: updateSessionState,
-            // v2.244 — NPC combat state for token visual feedback (HP
-            // bars, condition icons, dead overlay). Filtered to NPCs with
-            // numeric HP so plain marker NPCs (no HP/AC) don't show empty
-            // HP bars. Players only see NPCs flagged visible_to_players;
-            // the DM sees everything regardless.
-            npcs: npcs
-              .filter(n => n.hp != null && n.max_hp != null && n.max_hp > 0)
-              .filter(n => isOwner || n.visible_to_players === true)
-              .map(n => ({
-                id: n.id,
-                name: n.name,
-                current_hp: n.hp ?? 0,
-                max_hp: n.max_hp ?? 1,
-                conditions: n.conditions ?? [],
-              })),
-            // v2.393.0 — Per-token combat state. Combatants table is the
-            // canonical source for HP/conditions on tokens (Phase 3 made
-            // it canonical for combat; the v2.389 sync trigger gave it
-            // 1:1 lockstep with scene_tokens). Keyed by combatant.id
-            // which equals scene_tokens.id, so consumers look up by
-            // token.id directly. RLS already filters out combatants
-            // for tokens the player can't see.
-            tokenStateMap: (() => {
-              const map = new Map<string, {
-                current_hp: number | null; max_hp: number | null;
-                conditions: string[]; is_dead: boolean;
-              }>();
-              for (const c of combatants) {
-                map.set(c.id, {
-                  current_hp: c.current_hp,
-                  max_hp: c.max_hp,
-                  // v2.403.0 — Column name fix: combatants.active_conditions
-                  // (not .conditions). Same root cause as loadCombatants
-                  // above. Falls back to the legacy field name for any
-                  // in-flight realtime payloads from older code paths.
-                  conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
-                  is_dead: !!c.is_dead,
-                });
-              }
-              return map;
-            })(),
-            // v2.427.0 — Secondary index keyed by `${type}:${id}` for
-            // fallback lookups when token.id != combatant.id (i.e., the
-            // v2.389 sync trigger didn't run for this token, so the
-            // primary tokenStateMap lookup misses). User report: "the
-            // token is health bar is still out of sync from its actual
-            // health pool" — root cause was the token rendering falling
-            // through to npc template HP because the primary lookup
-            // missed. Now the renderer can try this index next.
-            tokenStateMapByDef: (() => {
-              const map = new Map<string, {
-                current_hp: number | null; max_hp: number | null;
-                conditions: string[]; is_dead: boolean;
-              }>();
-              for (const c of combatants) {
-                if (!c.definition_type || !c.definition_id) continue;
-                const key = `${c.definition_type}:${c.definition_id}`;
-                // First combatant for a given definition wins.
-                // (For multi-instance rosters this is fine because each
-                // unique instance gets a different definition_id; only
-                // the legacy "two combatants for the same monster"
-                // scenario could collide, and there the user wants
-                // either one — not stale template HP.)
-                if (map.has(key)) continue;
-                map.set(key, {
-                  current_hp: c.current_hp,
-                  max_hp: c.max_hp,
-                  conditions: (c as any).active_conditions ?? (c as any).conditions ?? [],
-                  is_dead: !!c.is_dead,
-                });
-              }
-              return map;
-            })(),
-            // v2.472.0 — Concentration map for token concentration glyph.
-            // Sourced from the shared useCampaignConcentrations hook
-            // (hoisted to the dashboard scope). Wrapping the hook's
-            // Record<characterId, entry> as a Map keeps the BattleMapV2
-            // prop shape stable; the map is rebuilt only when the
-            // hook's identity changes (i.e. the underlying record
-            // mutated), so this isn't on the hot path.
-            characterConcentrationMap: (() => {
-              const map = new Map<string, { spellId: string; roundsRemaining: number | null }>();
-              for (const charId in concentrationMap) {
-                map.set(charId, concentrationMap[charId]);
-              }
-              return map;
-            })(),
-          };
-          return (
-            <div className="battlemap-fullwidth">
-              <Suspense fallback={
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: 400, padding: 'var(--sp-6, 32px)',
-                  background: 'var(--c-card)', border: '1px solid var(--c-border)',
-                  borderRadius: 'var(--r-lg, 12px)',
-                  fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
-                }}>
-                  Loading Battle Map…
-                </div>
-              }>
-                <BattleMapV2 {...commonProps} />
-              </Suspense>
-            </div>
-          );
-        })()}
+        {activeTab === 'map' && (
+          <div className="battlemap-fullwidth">
+            <Suspense fallback={
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minHeight: 400, padding: 'var(--sp-6, 32px)',
+                background: 'var(--c-card)', border: '1px solid var(--c-border)',
+                borderRadius: 'var(--r-lg, 12px)',
+                fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)',
+              }}>
+                Loading Battle Map…
+              </div>
+            }>
+              <BattleMapV2 {...battleMapProps} />
+            </Suspense>
+          </div>
+        )}
 
         {activeTab === 'discord' && isOwner && (
           <div>
@@ -1126,6 +1095,12 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       </div>
       </ErrorBoundary>
     </div>
+    {/* v2.636 — audit fix: the always-mounted combat overlay (initiative
+        strip, resave listener, monster panel, pending-attack modals) sat
+        OUTSIDE the tab-content ErrorBoundary above, so a crash in any of
+        them white-screened the entire dashboard. Own boundary so combat
+        overlay crashes show the fallback while tab content stays alive. */}
+    <ErrorBoundary section="combat overlay">
     {/* v2.96.0 — Phase D: bottom initiative strip renders when active encounter exists */}
     <InitiativeStrip isDM={isOwner} />
     {/* v2.452.0 — DM-side end-of-turn re-save toast surfacing. Mounts
@@ -1151,6 +1126,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       {/* v2.139.0 — Phase M pt 2: DM-only LR prompt on failed monster saves */}
       <LegendaryResistancePromptModal campaignId={campaign.id} isDM={isOwner} />
     </Suspense>
+    </ErrorBoundary>
     </CombatProvider>
   );
 }
@@ -1241,7 +1217,7 @@ function AssignMyCharacterPanel({ campaignId, userId, onRefresh }: {
 
   async function assign(charId: string) {
     setBusy(charId);
-    await supabase.from('characters').update({ campaign_id: campaignId }).eq('id', charId);
+    await checkedWrite('characters.update join-campaign', { characterId: charId, campaignId }, supabase.from('characters').update({ campaign_id: campaignId }).eq('id', charId));
     await onRefresh();
     const { data } = await getCharacters(userId);
     setMyChars(data ?? []);
@@ -1250,7 +1226,7 @@ function AssignMyCharacterPanel({ campaignId, userId, onRefresh }: {
 
   async function unassign(charId: string) {
     setBusy(charId);
-    await supabase.from('characters').update({ campaign_id: null }).eq('id', charId);
+    await checkedWrite('characters.update leave-campaign', { characterId: charId }, supabase.from('characters').update({ campaign_id: null }).eq('id', charId));
     await onRefresh();
     const { data } = await getCharacters(userId);
     setMyChars(data ?? []);

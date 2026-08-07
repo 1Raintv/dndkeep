@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
 import { supabase, getProfile } from '../lib/supabase';
@@ -9,6 +9,13 @@ interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  /** v2.637 perf (audit 6.5) — true while the profile row is still in
+   *  flight AFTER the session has resolved. `loading` now clears at
+   *  session-resolve so authenticated UI renders one round-trip sooner;
+   *  the few surfaces that branch on subscription state (Pro gates)
+   *  should wait on THIS flag to avoid flashing the upsell at a Pro
+   *  user whose profile hasn't landed yet. */
+  profileLoading: boolean;
   /** v2.563.0 — true when auth initialization failed to reach Supabase
    *  (network down or project paused). Gates render a "Can't reach
    *  server — Retry" state instead of an infinite spinner. */
@@ -37,6 +44,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   profile: null,
   loading: true,
+  profileLoading: true,
   initError: false,
   retryInit: () => {},
   isPro: false,
@@ -49,24 +57,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [initError, setInitError] = useState(false);
   // v2.563.0 — bump to re-run the init effect (Retry button).
   const [initNonce, setInitNonce] = useState(0);
 
-  async function fetchProfile(userId: string) {
+  // v2.644 (audit 5.6): callbacks + value memoized — the provider wraps
+  // the whole app, and a fresh value object per render re-rendered every
+  // consumer on every provider render.
+  const fetchProfile = useCallback(async (userId: string) => {
     const { data } = await getProfile(userId);
     if (data) setProfile(data);
-  }
+  }, []);
 
-  async function refreshProfile() {
+  const refreshProfile = useCallback(async () => {
     if (session?.user) await fetchProfile(session.user.id);
-  }
+  }, [session, fetchProfile]);
 
-  function retryInit() {
+  const retryInit = useCallback(() => {
     setInitError(false);
     setLoading(true);
+    setProfileLoading(true);
     setInitNonce(n => n + 1);
-  }
+  }, []);
 
   useEffect(() => {
     // v2.563.0 — Frontend resilience. `supabase.auth.getSession()` can
@@ -83,12 +96,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data: { session: s } }) => {
         if (cancelled) return;
         setSession(s);
+        // v2.637 perf (audit 6.5): loading clears the moment the session
+        // is known. Previously we serialized the profile fetch behind it,
+        // and nothing authenticated rendered until BOTH round-trips
+        // finished — which also delayed the route chunk download (a third
+        // serial round-trip). The profile only feeds the Pro badge,
+        // display name, and dice skin; consumers tolerate null, and the
+        // Pro gates wait on profileLoading instead.
+        setLoading(false);
         if (s?.user) {
           // Profile fetch failing shouldn't dead-end the app — proceed
           // with a null profile (degraded but usable) either way.
-          fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setLoading(false); });
+          fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false); });
         } else {
-          setLoading(false);
+          setProfileLoading(false);
         }
       })
       .catch(() => {
@@ -99,26 +120,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s?.user) fetchProfile(s.user.id).catch(() => {});
-      else setProfile(null);
+      if (s?.user) {
+        setProfileLoading(true);
+        fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false); });
+      } else {
+        setProfile(null);
+        setProfileLoading(false);
+      }
     });
 
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, [initNonce]);
 
+  const value = useMemo<AuthContextValue>(() => ({
+    session,
+    user: session?.user ?? null,
+    profile,
+    loading,
+    profileLoading,
+    initError,
+    retryInit,
+    isPro: profile?.subscription_tier === 'pro',
+    isSubscribed: isSubscriptionActive(profile),
+    showUaContent: profile?.show_ua_content === true,
+    refreshProfile,
+  }), [session, profile, loading, profileLoading, initError, retryInit, refreshProfile]);
+
   return (
-    <AuthContext.Provider value={{
-      session,
-      user: session?.user ?? null,
-      profile,
-      loading,
-      initError,
-      retryInit,
-      isPro: profile?.subscription_tier === 'pro',
-      isSubscribed: isSubscriptionActive(profile),
-      showUaContent: profile?.show_ua_content === true,
-      refreshProfile,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { rollDie } from '../../lib/gameUtils';
+// Import from rules/dice (leaf module), NOT lib/gameUtils — QuickRoll is
+// eagerly loaded by App.tsx, and gameUtils drags the full spell/class/item
+// data tables (~655 KB) into the entry chunk. See src/rules/dice.ts.
+import { rollDie } from '../../rules/dice';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { useEffect, useRef } from 'react';
 import { DICE_SKINS } from '../../data/diceSkins';
@@ -28,7 +32,7 @@ export async function logRoll(p: {
 }) {
  if (!p.characterId) return;
  // Write to roll_logs (character's personal history) 
- await supabase.from('roll_logs').insert({
+ await checkedWrite('roll_logs.insert quick-roll', { characterId: p.characterId }, supabase.from('roll_logs').insert({
  user_id: p.userId ?? p.characterId,
  character_id: p.characterId,
  campaign_id: p.campaignId ?? null,
@@ -38,10 +42,10 @@ export async function logRoll(p: {
  individual_results: p.results,
  total: p.total,
  modifier: p.modifier ?? 0,
- });
+ }));
  // Also write to action_logs if in a campaign (shared roll log)
  if (p.campaignId) {
- await supabase.from('action_logs').insert({
+ await checkedWrite('action_logs.insert quick-roll', { campaignId: p.campaignId }, supabase.from('action_logs').insert({
  campaign_id: p.campaignId,
  character_id: p.characterId,
  character_name: p.characterName ?? '',
@@ -50,7 +54,7 @@ export async function logRoll(p: {
  dice_expression: p.expression,
  individual_results: p.results,
  total: p.total,
- });
+ }));
  }
 }
 

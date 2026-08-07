@@ -20,7 +20,7 @@ const emptyFeature = (): SubclassFeature => ({
 });
 
 export default function HomebrewPage() {
-  const { user, isPro, showUaContent } = useAuth();
+  const { user, isPro, profileLoading, showUaContent } = useAuth();
   const { classes, loading, refresh } = useClassRegistry(user?.id);
   const [tab, setTab] = useState<'browse' | 'create'>('browse');
   const [editing, setEditing] = useState<Partial<ClassEntry> | null>(null);
@@ -87,6 +87,9 @@ export default function HomebrewPage() {
     await refresh();
   }
 
+  // Don't flash the upsell at a Pro user whose profile row hasn't landed
+  // yet (v2.637 — subscription state arrives after session-resolve).
+  if (profileLoading) return null;
   if (!isPro) {
     return (
       <div style={{ maxWidth: 560, margin: '60px auto', padding: '0 20px', textAlign: 'center' }}>

@@ -9,7 +9,7 @@
 // on the battle map will then roll initiative."
 
 import { useState, useMemo } from 'react';
-import { useCombat } from '../../context/CombatContext';
+import { useCombatSelector } from '../../context/CombatContext';
 // v2.486.0 — In-app confirm via the existing useModal() system
 // (v2.241). Replaces the short-lived v2.485 ConfirmDialog helper,
 // which duplicated this pre-existing functionality.
@@ -36,7 +36,10 @@ interface Props {
 }
 
 export default function StartCombatButton({ campaignId, onStarted }: Props) {
-  const { encounter, refresh } = useCombat();
+  // v2.645 slice 2: granular selectors — this button re-renders only when
+  // the encounter itself changes, not on every participant tick.
+  const encounter = useCombatSelector(s => s.encounter);
+  const refresh = useCombatSelector(s => s.load);
   const [starting, setStarting] = useState(false);
   // v2.486.0 — In-app confirm hook (see useModal docstring in Modal.tsx).
   const { confirm: confirmModal } = useModal();
@@ -70,7 +73,12 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
     if (starting) return;
     setStarting(true);
     try {
-      const r = await startCombatFromMapTokens(campaignId);
+      // v2.646: inject the map snapshot (this component already subscribes
+      // to the store for the token-count preview) — see startCombatFromMap.
+      const r = await startCombatFromMapTokens(campaignId, {
+        sceneId: storeSceneId,
+        tokens: Object.values(storeTokens),
+      });
       if (!r.ok) {
         if (r.reason === 'no_scene') {
           // v2.385.0 — With the DB fallback in place, no_scene now

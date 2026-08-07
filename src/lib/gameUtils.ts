@@ -1,12 +1,14 @@
+import { abilityModifier } from '../rules/abilities';
 import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
 import { CLASS_MAP } from '../data/classes';
 import { itemBonusesActive, getEffectiveAbilityScores } from './attunement';
+import { rollDie, rollDiceExpr } from '../rules/dice';
 
-/** PHB formula: floor((score - 10) / 2) */
-export function abilityModifier(score: number): number {
-  return Math.floor((score - 10) / 2);
-}
+/** PHB formula: floor((score - 10) / 2) — canonical impl moved to
+ *  src/rules/abilities (v2.643, audit 4.4); re-exported here so the 19
+ *  existing lazy-side importers keep working unchanged. */
+export { abilityModifier };
 
 /** PHB formula: ceil(level / 4) + 1, clamped to levels 1–20 */
 export function proficiencyBonus(level: number): number {
@@ -180,10 +182,10 @@ export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Roll a single die of a given number of sides. */
-export function rollDie(sides: number): number {
-  return Math.floor(Math.random() * sides) + 1;
-}
+// rollDie moved to src/rules/dice.ts (a zero-import leaf module) so
+// components that only roll dice don't pull this file's data-table imports
+// into their bundle chunk. Re-exported here so existing imports keep working.
+export { rollDie };
 
 /** Roll NdX+modifier and return individual results and total. */
 export function rollDice(count: number, sides: number, modifier = 0): {
@@ -281,21 +283,19 @@ export function computeMulticlassSlots(
   return MULTICLASS_SLOT_TABLE[capped] ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
 }
 
-// ── Concentration save DC (2024: max(10, damage/2), capped 30) ──────────────────
-export function concentrationDC(damageTaken: number): number {
-  return Math.min(30, Math.max(10, Math.ceil(damageTaken / 2)));
-}
+// ── Concentration save DC ──────────────────────────────────────────────────────
+// v2.636: moved to rules/hp.ts. The old local version used CEIL, which is
+// wrong per 2024 RAW ("half the damage taken, round down") — e.g. 21 damage
+// gave DC 11 instead of 10. It had no callers (every call site inlined its
+// own copy), so nothing shipped with the ceil behavior.
+export { concentrationDC } from '../rules/hp';
 
 // ── Roll a set of dice e.g. "2d6+3" ────────────────────────────────────────────
+// v2.636 dice consolidation: delegates to the canonical parser in
+// src/rules/dice.ts (which also accepts bare integers like "1" — see the
+// v2.448 bestiary note there). Keeps this function's return shape.
 export function rollDiceExpression(expr: string): { rolls: number[]; total: number; expression: string } {
-  const match = expr.trim().match(/^(\d+)d(\d+)([+-]\d+)?$/i);
-  if (!match) return { rolls: [], total: 0, expression: expr };
-  const count = parseInt(match[1]);
-  const sides = parseInt(match[2]);
-  const bonus = match[3] ? parseInt(match[3]) : 0;
-  const rolls: number[] = [];
-  for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
-  const total = rolls.reduce((a, b) => a + b, 0) + bonus;
+  const { rolls, total } = rollDiceExpr(expr);
   return { rolls, total, expression: expr };
 }
 

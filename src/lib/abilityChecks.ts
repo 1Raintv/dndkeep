@@ -14,6 +14,7 @@
 //   ability_modifier + (expert ? proficiency_bonus * 2 : 0)
 // Raw ability check: just the ability modifier, no proficiency.
 
+import { rollDie } from '../rules/dice';
 import type { Character, AbilityKey } from '../types';
 import { SKILL_MAP } from '../data/skills';
 import { abilityModifier, proficiencyBonus } from './gameUtils';
@@ -137,7 +138,7 @@ export function rollCheck(
 }
 
 function rollD20(): number {
-  return Math.floor(Math.random() * 20) + 1;
+  return rollDie(20);
 }
 
 /** Wire-format payload broadcast in campaign_chat for check_prompt messages. */

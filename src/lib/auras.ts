@@ -42,7 +42,10 @@
 // payload, so it inherits buff removal, the caster-died sweep, and
 // concentration cleanup for free rather than needing its own table.
 
+import { rollDie } from '../rules/dice';
+import { applyDamageToPools } from '../rules/hp';
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 import type { ActiveBuff } from './buffs';
@@ -267,7 +270,7 @@ export async function resolveAuraSave(input: {
     input.targetParticipantId,
     aura.spec.saveAbility,
   );
-  const d20 = Math.floor(Math.random() * 20) + 1;
+  const d20 = rollDie(20);
   const total = d20 + bonus;
   const passed = total >= aura.spec.saveDC;
 
@@ -355,23 +358,21 @@ async function applyAuraDamage(input: {
 
   const tempBefore = (tgt.temp_hp as number | null) ?? 0;
   const hpBefore = (tgt.current_hp as number | null) ?? 0;
-  const tempAfter = Math.max(0, tempBefore - input.damage);
-  const toHp = Math.max(0, input.damage - tempBefore);
-  const hpAfter = Math.max(0, hpBefore - toHp);
-  const droppedTo0 = hpAfter === 0 && hpBefore > 0;
+  // v2.636 — pool math consolidated into rules/hp.ts
+  const { tempAfter, hpAfter, droppedTo0 } = applyDamageToPools(hpBefore, tempBefore, input.damage);
   const isCharacter = tgt.participant_type === 'character';
   const monsterDied = droppedTo0 && !isCharacter;
 
   const combatantId = (tgt as any).combatant_id as string | null;
   if (!combatantId) return;
-  await (supabase as any)
+  await checkedWrite('combatants.update aura-damage', { combatantId }, (supabase as any)
     .from('combatants')
     .update({
       current_hp: hpAfter,
       temp_hp: tempAfter,
       ...(monsterDied ? { is_dead: true } : {}),
     })
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   await emitCombatEvent({
     campaignId: input.campaignId,

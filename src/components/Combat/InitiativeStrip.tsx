@@ -60,6 +60,23 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 };
 
 export default function InitiativeStrip({ isDM }: Props) {
+  // v2.646 — Narrow-viewport mode. The strip's fixed left/right offsets
+  // reserve 220px (sidebar) + 304px (MonsterActionPanel rail) = 524px of
+  // horizontal chrome that doesn't exist on phones: on a 393px viewport
+  // the content box went NEGATIVE and the End Turn / End Combat cluster
+  // rendered past the right edge — DMs on phones physically could not
+  // end a turn (found by the mobile E2E project's failed clicks).
+  // Below 700px: full-bleed, and the flex row wraps so the DM button
+  // cluster drops onto its own line instead of overflowing.
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const onChange = () => setIsNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   const { encounter, participants, currentActor } = useCombat();
   // v2.457.0 — Concentration map for the active campaign. Empty until
   // useCombat resolves the encounter; the inner subscription handles
@@ -182,6 +199,23 @@ export default function InitiativeStrip({ isDM }: Props) {
     }
   }
 
+  // v2.636.0 — In Lair toggle. Sole writer of in_lair since the v2.608
+  // config modal removal; without it the v2.625 in-lair benefit (+1 LA
+  // use, +1 LR/Day) was only reachable by editing the row in the DB.
+  // Deliberately does NOT touch lair_actions_config /
+  // lair_action_used_this_round — lair actions themselves are dropped
+  // in the 2025 MM; the flag now only feeds the legendary-use bonuses.
+  async function onToggleInLair() {
+    if (!encounter) return;
+    const { error } = await supabase
+      .from('combat_encounters')
+      .update({ in_lair: !inLair })
+      .eq('id', encounter.id);
+    if (error) {
+      showToast(`Couldn't toggle In Lair: ${error.message}`, 'error');
+    }
+  }
+
   async function onEndCombat() {
     if (!encounter) return;
     // v2.486.0 — In-app confirm via useModal.
@@ -246,13 +280,14 @@ export default function InitiativeStrip({ isDM }: Props) {
         // Sidebar width: 220px expanded, 60px collapsed (CSS var).
         // Dice fab cluster: ~80px wide on the right edge.
         bottom: 0,
-        left: 'var(--sidebar-w, 220px)',
+        left: isNarrow ? 0 : 'var(--sidebar-w, 220px)',
         // v2.572.0 — was right: 80. The MonsterActionPanel side rail is
         // 280px wide anchored at right:12, so the strip ran ~212px
         // underneath it and its right-side buttons (END TURN / END
         // COMBAT) collided with the rail. 304 = 280 + 12 + 12 gap.
-        right: 304,
-        padding: '8px 14px',
+        // v2.646 — neither the sidebar nor the rail applies on phones.
+        right: isNarrow ? 0 : 304,
+        padding: isNarrow ? '6px 8px' : '8px 14px',
         background: 'rgba(19, 19, 29, 0.96)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
@@ -264,7 +299,8 @@ export default function InitiativeStrip({ isDM }: Props) {
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        flexWrap: isNarrow ? 'wrap' : 'nowrap', // v2.646 — buttons wrap below tiles on phones
+        gap: isNarrow ? 8 : 12,
         boxShadow: '0 -4px 16px rgba(0,0,0,0.4)',
       }}
     >
@@ -851,13 +887,38 @@ export default function InitiativeStrip({ isDM }: Props) {
       </div>
 
       {isDM && (
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
           {/* v2.590.0 — Lair button removed. The 2025 MM dropped lair
               actions as a mechanic (lairs now grant extra Legendary
               Resistance/Action uses instead), and the manual trigger
               button was unused surface area. Backend fields
               (in_lair, lair_actions_config, lair_action_used_this_round)
               are untouched. */}
+          {/* v2.636.0 — In Lair toggle in the old Lair button's slot.
+              Flags the encounter as fought in a legendary creature's
+              lair so the v2.625 bonuses apply. Amber to match the ✦
+              legendary affordances on the tiles it feeds. */}
+          <button
+            onClick={onToggleInLair}
+            title={inLair
+              ? 'In Lair: legendary creatures get +1 Legendary Action use and +1 Legendary Resistance/Day. Click to turn off.'
+              : 'Fighting in a legendary creature\'s lair? Grants +1 Legendary Action use and +1 Legendary Resistance/Day (2024 rules). Click to turn on.'}
+            style={{
+              fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
+              padding: '6px 10px', borderRadius: 6,
+              border: inLair
+                ? '1px solid rgba(245,158,11,0.8)'
+                : '1px solid var(--c-border)',
+              background: inLair
+                ? 'rgba(245,158,11,0.2)'
+                : 'transparent',
+              color: inLair ? '#f59e0b' : 'var(--t-2)',
+              cursor: 'pointer', minHeight: 0,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}
+          >
+            {inLair ? '✦ In Lair' : 'Lair'}
+          </button>
           {/* v2.108.0 — Phase G: Dash + Disengage action buttons. Show "ON"
               state when already used this turn; click does nothing in that
               state. Dash doubles remaining movement; Disengage suppresses

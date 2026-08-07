@@ -3,6 +3,7 @@ import { useMonsters } from '../../lib/hooks/useMonsters';
 import { formatCR } from '../../lib/monsterUtils';
 import { abilityModifier, rollDiceExpression } from '../../lib/gameUtils';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import type { MonsterData, Character } from '../../types';
 
 const CR_ORDER = ['0', '1/8', '1/4', '1/2', ...Array.from({ length: 30 }, (_, i) => String(i + 1))];
@@ -124,13 +125,13 @@ export default function MonsterBrowser({
       source: kwPicker.actionName,
       targets: Array.from(kwPicker.targets),
     });
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert save-prompt', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: payload,
       message_type: 'save_prompt',
-    });
+    }));
     setKwFlash(`Sent DC ${kwPicker.dc} ${kwPicker.saveType} save to ${kwPicker.targets.size} target${kwPicker.targets.size === 1 ? '' : 's'}`);
     setTimeout(() => setKwFlash(null), 3000);
     setKwPicker(null);

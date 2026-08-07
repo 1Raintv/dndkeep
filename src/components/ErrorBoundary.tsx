@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { Component, type ReactNode, type ErrorInfo } from 'react';
+import { log } from '../lib/log';
 
 interface Props {
   children: ReactNode;
@@ -24,7 +24,11 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     const section = this.props.section ?? '';
-    console.error(`[ErrorBoundary${section ? ':' + section : ''}]`, error, info);
+    // v2.640 audit 2.8 — route through the log facade: the console sink
+    // preserves the old DevTools output, the telemetry sink ships it.
+    log.error(`ErrorBoundary${section ? ':' + section : ''} caught render crash`, error, {
+      section, componentStack: info.componentStack?.slice(0, 1000),
+    });
   }
 
   render() {

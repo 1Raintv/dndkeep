@@ -1,3 +1,5 @@
+import { abilityModifier } from '../rules/abilities';
+
 export interface ArmorData {
   id: string;
   name: string;
@@ -37,7 +39,7 @@ export const ARMOR_MAP: Record<string, ArmorData> = Object.fromEntries(ARMOR_LIS
 
 export function calcArmorAC(armorId: string, dexterity: number, hasShield = false): number {
   const armor = ARMOR_MAP[armorId] ?? ARMOR_MAP['unarmored'];
-  const dexMod = Math.floor((dexterity - 10) / 2);
+  const dexMod = abilityModifier(dexterity);
 
   let ac: number;
   if (armor.dexBonus === 'full') ac = armor.baseAC + dexMod;

@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
+import { log } from '../log';
 import type { MonsterData, CreatureSize, MonsterTrait, MonsterAction, MonsterLegendaryAction } from '../../types';
 
 // ─── Module-scope cache (survives unmounts within a session) ────────
@@ -143,10 +144,10 @@ async function fetchMonstersFromDb(): Promise<MonsterData[]> {
     .select('id, name, type, subtype, alignment, cr, xp, size, hp, hp_formula, ac, ac_note, speed, fly_speed, swim_speed, climb_speed, burrow_speed, str, dex, con, int, wis, cha, saving_throws, skills, damage_immunities, damage_resistances, damage_vulnerabilities, condition_immunities, senses, languages, proficiency_bonus, traits, actions, reactions, legendary_actions, legendary_resistance_count, attack_name, attack_bonus, attack_damage')
     .order('name', { ascending: true });
 
-  if (error) {
-    console.error('[useMonsters] DB fetch failed:', error.message);
-    return [];
-  }
+  // v2.644 (audit 5.6): THROW on failure instead of returning [] — the
+  // old shape swallowed errors twice, so the hook's error state was
+  // unreachable and a failed fetch rendered as "no monsters" forever.
+  if (error) throw new Error(error.message);
   return (data as DbMonsterRow[]).map(rowToMonster);
 }
 
@@ -188,10 +189,14 @@ export function useMonsters(): UseMonstersResult {
           return dbMonsters;
         })
         .catch(err => {
-          console.error('[useMonsters] fetch threw:', err);
-          cachedMonsters = [];
-          buildDerivedCaches([]);
-          return [];
+          // v2.644 (audit 5.6): failures used to be CACHED as an empty
+          // list — every later mount showed an empty catalogue with no
+          // retry and no signal. Now: telemetry row, cache cleared so
+          // the next mount retries, rejection propagated so consumers'
+          // error state actually fires.
+          log.error('monsters catalogue fetch failed', err, { src: 'useMonsters' });
+          pendingFetch = null;
+          throw err;
         });
     }
 

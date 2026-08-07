@@ -20,6 +20,7 @@
 //   combatant sync (combatEncounter.ts) picks up the character HP
 //   change on the next tick.
 
+import { rollDie } from '../rules/dice';
 import type { InventoryItem, Character } from '../types';
 
 // ─── Healing dice parser ─────────────────────────────────────────────
@@ -53,7 +54,7 @@ export function rollPotionHeal(expr: string): {
   const rolls: number[] = [];
   let total = flat;
   for (let i = 0; i < count; i++) {
-    const r = Math.floor(Math.random() * size) + 1;
+    const r = rollDie(size);
     rolls.push(r);
     total += r;
   }

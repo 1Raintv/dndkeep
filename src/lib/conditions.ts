@@ -19,6 +19,7 @@
 //     tagged 'cascade:{parent}'.
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { CONDITION_MAP } from '../data/conditions';
 
@@ -245,13 +246,13 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
     console.warn('[applyCondition] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update apply-condition', { combatantId }, (supabase as any)
     .from('combatants')
     .update({
       active_conditions: nextConditions,
       condition_sources: sources,
     })
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   if (input.emitEvent !== false) {
     const chainId = newChainId();
@@ -326,13 +327,13 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
     console.warn('[removeCondition] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update remove-condition', { combatantId: combatantIdR }, (supabase as any)
     .from('combatants')
     .update({
       active_conditions: nextConditions,
       condition_sources: sources,
     })
-    .eq('id', combatantIdR);
+    .eq('id', combatantIdR));
 
   if (input.emitEvent !== false) {
     const chainId = newChainId();
@@ -644,10 +645,10 @@ export async function adjustExhaustion(input: AdjustExhaustionInput): Promise<nu
     console.warn('[adjustExhaustion] participant missing combatant_id; skipping write', input.participantId);
     return current;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update exhaustion', { combatantId: combatantIdE }, (supabase as any)
     .from('combatants')
     .update(updates)
-    .eq('id', combatantIdE);
+    .eq('id', combatantIdE));
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({

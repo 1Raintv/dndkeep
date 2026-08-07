@@ -33,6 +33,7 @@
 //     melee, "range X/Y ft." for ranged) with a generous 60ft
 //     fallback when parsing fails (better than blocking valid plays).
 
+import { abilityModifier } from '../../rules/abilities';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
@@ -44,6 +45,7 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import { useFastCombatRolls } from '../../lib/useFastCombatRolls';
 import { parseMultiattackDesc, type MultiattackStep } from '../../lib/multiattack';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack, rollSave, getTargetSaveBonus } from '../../lib/pendingAttack';
 import {
   loadActiveBattleMap,
@@ -1121,10 +1123,10 @@ export default function MonsterActionPanel({ isDM }: Props) {
   async function spendRecharge(a: MonsterAction) {
     if (a.usage !== 'recharge on roll' || !currentActor) return;
     if (expendedRecharge.includes(a.name)) return;
-    await (supabase as any)
+    await checkedWrite('combat_participants.update spend-recharge', { participantId: currentActor.id }, (supabase as any)
       .from('combat_participants')
       .update({ expended_recharge: [...expendedRecharge, a.name] })
-      .eq('id', currentActor.id);
+      .eq('id', currentActor.id));
   }
 
   async function handlePick(target: CombatParticipant) {
@@ -2107,7 +2109,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           const cr = parseCR(monsterStats?.cr);
           const pb = cr >= 29 ? 9 : cr >= 25 ? 8 : cr >= 21 ? 7 : cr >= 17 ? 6
                    : cr >= 13 ? 5 : cr >= 9 ? 4 : cr >= 5 ? 3 : 2;
-          const mod = (s: number | null) => Math.floor(((s ?? 10) - 10) / 2);
+          const mod = (s: number | null) => abilityModifier(s ?? 10);
           const profSaves = monsterStats?.save_proficiencies ?? [];
           const isProf = (a: string) => profSaves.includes(a) || profSaves.includes(a.toLowerCase());
           const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);

@@ -9,7 +9,9 @@
 //
 // All helpers emit structured combat_events via emitCombatEvent for the log.
 
+import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, emitCombatEventChain, newChainId } from './combatEvents';
 // v2.494.0 — Per-round buff duration tick. See src/lib/buffDuration.ts.
 import { decrementBuffDurations } from './buffDuration';
@@ -30,7 +32,7 @@ import {
 
 // ─── d20 ─────────────────────────────────────────────────────────
 export function rollD20(): number {
-  return Math.floor(Math.random() * 20) + 1;
+  return rollDie(20);
 }
 
 // ─── Initiative computation ──────────────────────────────────────
@@ -326,9 +328,12 @@ async function seedBuffsFromAuthoritativeTables(
         const byId = new Map<string, any>(
           (rows as Array<{ id: string; active_buffs: unknown }>).map(r => [r.id, r.active_buffs]),
         );
-        for (const link of charLinks) {
+        // v2.637 perf (audit 6.4): updates run concurrently — each row
+        // carries a different buff array so they can't be one query, but
+        // they don't need to be serial either.
+        await Promise.all(charLinks.map(async link => {
           const buffs = byId.get(link.characterId);
-          if (!Array.isArray(buffs) || buffs.length === 0) continue;
+          if (!Array.isArray(buffs) || buffs.length === 0) return;
           const { error: uErr } = await supabase
             .from('combatants')
             .update({ active_buffs: asJsonb(buffs) })
@@ -337,7 +342,7 @@ async function seedBuffsFromAuthoritativeTables(
           if (uErr) {
             console.warn('[seedBuffs] character combatant update failed', { combatantId: link.combatantId, error: uErr });
           }
-        }
+        }));
       }
     }
 
@@ -357,9 +362,10 @@ async function seedBuffsFromAuthoritativeTables(
         const byId = new Map<string, any>(
           (rows as Array<{ id: string; active_buffs: unknown }>).map(r => [r.id, r.active_buffs]),
         );
-        for (const link of creatureLinks) {
+        // v2.637 perf (audit 6.4): concurrent, same as the character branch.
+        await Promise.all(creatureLinks.map(async link => {
           const buffs = byId.get(link.creatureId);
-          if (!Array.isArray(buffs) || buffs.length === 0) continue;
+          if (!Array.isArray(buffs) || buffs.length === 0) return;
           const { error: uErr } = await supabase
             .from('combatants')
             .update({ active_buffs: asJsonb(buffs) })
@@ -368,7 +374,7 @@ async function seedBuffsFromAuthoritativeTables(
           if (uErr) {
             console.warn('[seedBuffs] creature combatant update failed', { combatantId: link.combatantId, error: uErr });
           }
-        }
+        }));
       }
     }
   } catch (err) {
@@ -518,23 +524,30 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
   const characterSeeds = participants.filter(p => p.participant_type === 'character' && !!p.entity_id);
   if (characterSeeds.length > 0) {
     import('./encumbrance').then(async ({ syncEncumbranceCondition }) => {
-      for (const p of characterSeeds) {
-        try {
-          const { data: charRow } = await supabase
-            .from('characters')
-            .select('*')
-            .eq('id', p.entity_id as string)
-            .maybeSingle();
-          if (!charRow) continue;
-          await syncEncumbranceCondition({
-            characterId: p.entity_id as string,
-            character: charRow as any,
-            campaignId: opts.campaignId,
-            encounterId: encounter.id,
-          });
-        } catch {
-          /* swallow — encumbrance sync must never break combat start */
-        }
+      // v2.637 perf (audit 6.4): was a select('*') per character in a
+      // serial loop against one of the widest tables in the schema.
+      // One batched .in() read, then the syncs run concurrently (each
+      // writes only its own character's rows).
+      try {
+        const ids = characterSeeds.map(p => p.entity_id as string);
+        const { data: charRows } = await supabase
+          .from('characters')
+          .select('*')
+          .in('id', ids);
+        await Promise.all((charRows ?? []).map(async (charRow: any) => {
+          try {
+            await syncEncumbranceCondition({
+              characterId: charRow.id as string,
+              character: charRow,
+              campaignId: opts.campaignId,
+              encounterId: encounter.id,
+            });
+          } catch {
+            /* swallow — encumbrance sync must never break combat start */
+          }
+        }));
+      } catch {
+        /* swallow — encumbrance sync must never break combat start */
       }
     }).catch(() => { /* dynamic import failure is non-fatal */ });
   }
@@ -788,7 +801,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   const stillExpended: string[] = [];
   const rechargeRolls: { name: string; roll: number; recharged: boolean }[] = [];
   for (const name of expendedRecharge) {
-    const roll = Math.floor(Math.random() * 6) + 1;
+    const roll = rollDie(6);
     const recharged = roll >= 5;
     if (!recharged) stillExpended.push(name);
     rechargeRolls.push({ name, roll, recharged });
@@ -842,11 +855,11 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   // too, which can fire on an opportunity attack during someone
   // else's turn. Defensive: never blocks turn advance.
   try {
-    await (supabase as any)
+    await checkedWrite('combat_participants.update reset-once-per-turn', { encounterId }, (supabase as any)
       .from('combat_participants')
       .update({ once_per_turn_used: [] })
       .eq('encounter_id', encounterId)
-      .neq('once_per_turn_used', '{}');
+      .neq('once_per_turn_used', '{}'));
   } catch (err) {
     console.error('[advanceTurn] once-per-turn sweep failed', err);
   }
@@ -1069,7 +1082,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       //   d20 ≥ 10 → success, < 10 → failure
       //   nat 1    → 2 failures (cumulative)
       //   nat 20   → regain 1 HP + conscious (clears both counters)
-      const d20 = Math.floor(Math.random() * 20) + 1;
+      const d20 = rollDie(20);
       let successes = incomingParticipant.death_save_successes ?? 0;
       let failures = incomingParticipant.death_save_failures ?? 0;
       let isStable = false;
@@ -1110,10 +1123,10 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       if (!combatantId) {
         console.warn('[advanceTurn:deathSave] participant missing combatant_id; skipping write', incomingParticipant.id);
       } else {
-        await (supabase as any)
+        await checkedWrite('combatants.update auto-death-save', { combatantId }, (supabase as any)
           .from('combatants')
           .update(updates)
-          .eq('id', combatantId);
+          .eq('id', combatantId));
       }
 
       // Emit a structured event for the log
@@ -1539,10 +1552,10 @@ export async function revealMonster(participantId: string, dexMod: number): Prom
   if (!part) return;
 
   // Unhide
-  await supabase
+  await checkedWrite('combat_participants.update unhide', { participantId }, supabase
     .from('combat_participants')
     .update({ hidden_from_players: false })
-    .eq('id', participantId);
+    .eq('id', participantId));
 
   // Roll initiative if not already rolled
   if (part.initiative === null) {

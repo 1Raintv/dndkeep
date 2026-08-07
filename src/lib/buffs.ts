@@ -15,9 +15,11 @@
 // pendingAttack.ts calls them at roll time to assemble the final dice.
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
-import { rollDie } from './gameUtils';
+import { rollDiceExpr } from '../rules/dice';
+import { applyDamageToPools } from '../rules/hp';
 // v2.315: active_buffs reads come from combatants via JOIN.
 import {
   JOINED_COMBATANT_FIELDS,
@@ -131,10 +133,10 @@ export async function applyBuff(input: ApplyBuffInput): Promise<void> {
       tempGranted = granted;
     }
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update apply-buff', { combatantId }, (supabase as any)
     .from('combatants')
     .update(buffUpdates)
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   if (tempGranted > 0 && input.campaignId) {
     await emitCombatEvent({
@@ -203,10 +205,10 @@ export async function removeBuff(input: RemoveBuffInput): Promise<void> {
     console.warn('[removeBuff] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await supabase
+  await checkedWrite('combatants.update remove-buff', { combatantId }, supabase
     .from('combatants')
     .update({ active_buffs: asJsonb(next) })
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   if (input.emitEvent !== false) {
     await emitCombatEvent({
@@ -280,16 +282,16 @@ export function getDamageRiders(
   return out;
 }
 
-/** Roll a simple NdM expression. Returns individual die results + total. */
-export function rollDiceExpr(expr: string): { rolls: number[]; total: number } {
-  const m = expr.trim().match(/^(\d+)d(\d+)$/i);
-  if (!m) return { rolls: [], total: 0 };
-  const count = parseInt(m[1], 10);
-  const size = parseInt(m[2], 10);
-  const rolls: number[] = [];
-  for (let i = 0; i < count; i++) rolls.push(rollDie(size));
-  return { rolls, total: rolls.reduce((s, r) => s + r, 0) };
-}
+/**
+ * Roll an NdM(±K) expression. Returns individual die results + total.
+ *
+ * v2.636 dice consolidation: delegates to the canonical parser in
+ * src/rules/dice.ts. The old local implementation only matched bare "NdM"
+ * and silently returned total 0 for anything with a modifier — a buff tick
+ * or damage rider defined as "2d4+2" contributed nothing. The canonical
+ * parser handles "NdM", "NdM±K", and bare integers.
+ */
+export { rollDiceExpr };
 
 // ─── Concentration cleanup ───────────────────────────────────────
 // v2.113.0 — Phase H pt 4: parallel to clearConditionsFromConcentration.
@@ -644,11 +646,12 @@ export async function processTurnTicks(opts: {
             payload: { source_buff: buff.name, tick: true, failures, became_dead: isDead },
           });
         } else if (hp > 0 || !isCharacter) {
-          const tempBefore = tempHp;
-          tempHp = Math.max(0, tempHp - amount);
-          const toHp = amount - (tempBefore - tempHp);
           const hpBefore = hp;
-          hp = Math.max(0, hp - toHp);
+          // v2.636 — pool math consolidated into rules/hp.ts
+          const tickApplied = applyDamageToPools(hp, tempHp, amount);
+          tempHp = tickApplied.tempAfter;
+          const toHp = tickApplied.dmgToHp;
+          hp = tickApplied.hpAfter;
           const overflow = hpBefore > 0 && hp === 0 ? Math.max(0, toHp - hpBefore) : 0;
           if (isCharacter && hpBefore > 0 && hp === 0 && overflow >= maxHp && maxHp > 0) {
             isDead = true;
@@ -724,7 +727,7 @@ export async function processTurnTicks(opts: {
     if (removedKeys.length) {
       updates.active_buffs = asJsonb(buffs.filter(b => !removedKeys.includes(b.key)));
     }
-    await (supabase as any).from('combatants').update(updates).eq('id', combatantId);
+    await checkedWrite('combatants.update turn-ticks', { combatantId }, (supabase as any).from('combatants').update(updates).eq('id', combatantId));
 
     for (const evt of events) await emitCombatEvent(evt);
   } catch (e) {

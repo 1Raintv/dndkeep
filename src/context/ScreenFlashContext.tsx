@@ -14,7 +14,7 @@
 // Mounted at the root (alongside DiceRollProvider) so it's available app-wide.
 // `pointer-events: none` on the overlay means it never blocks clicks.
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 type FlashColor = 'heal' | 'damage';
 
@@ -50,7 +50,7 @@ export function ScreenFlashProvider({ children }: { children: ReactNode }) {
   }, [nonce, active]);
 
   return (
-    <ScreenFlashContext.Provider value={{ flashEdge }}>
+    <ScreenFlashContext.Provider value={useMemo(() => ({ flashEdge }), [flashEdge])}>
       {children}
       {active && <EdgeFlashOverlay key={nonce} color={active} />}
     </ScreenFlashContext.Provider>

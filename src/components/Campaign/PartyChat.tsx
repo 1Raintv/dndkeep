@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { useAuth } from '../../context/AuthContext';
 
 // v2.288.0 — Campaign chat now supports inline GIFs via Giphy. The
@@ -151,14 +152,14 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
     setSending(true);
     const msg = input.trim();
     setInput('');
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert message', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: user.id,
       character_name: characterName ?? 'Unknown',
       avatar_url: avatarUrl ?? null,
       message: msg,
       message_type: 'text',
-    });
+    }));
     setSending(false);
     inputRef.current?.focus();
   }
@@ -229,14 +230,14 @@ export default function PartyChat({ campaignId, characterName, avatarUrl }: Part
     setPickerOpen(false);
     setGifQuery('');
     setGifResults([]);
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert gif', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: user.id,
       character_name: characterName ?? 'Unknown',
       avatar_url: avatarUrl ?? null,
       message: url,
       message_type: 'gif',
-    });
+    }));
     setSending(false);
     inputRef.current?.focus();
   }

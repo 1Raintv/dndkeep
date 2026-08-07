@@ -17,6 +17,21 @@ export interface DiceRollEvent {
 }
 interface Props { event: DiceRollEvent; onDismiss: () => void; onResult?: (allDice: {die:number,value:number}[], total:number) => void; skinId?: string; }
 
+/**
+ * v2.639 audit 1.6: roll labels carry user-controlled text (character names
+ * reach the overlay via ChecksPanel), so the label node is built with
+ * textContent — markup in a name renders as inert text, never as HTML.
+ * Exported for the regression test; keep every user string on this path.
+ */
+export function rollLabelNode(lbl:string,multi:boolean):HTMLDivElement{
+  const d=document.createElement('div');
+  d.style.cssText=multi
+    ?'font:700 10px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px'
+    :'font:700 11px system-ui;color:rgba(255,255,255,0.4);letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px';
+  d.textContent=lbl;
+  return d;
+}
+
 const PHI = (1+Math.sqrt(5))/2;
 type V3 = [number,number,number];
 const unit=(vs:V3[]):V3[]=>vs.map(v=>{const l=Math.sqrt(v[0]**2+v[1]**2+v[2]**2)||1;return[v[0]/l,v[1]/l,v[2]/l];});
@@ -457,7 +472,9 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     const envMap=pmrem.fromScene(envScene2,0.0).texture;
     scene.environment=envMap;
     scene.environmentIntensity=0.7;
-    pmrem.dispose();envScene2.clear();
+    // v2.637 leak fix (audit 5.1): the dome mesh's GPU resources were
+    // orphaned once the env map was baked — dispose them now.
+    pmrem.dispose();envScene2.clear();envSphere.geometry.dispose();envSphere.material.dispose();
     // Camera slightly overhead — dice are clearly readable from above
     const FOV=62, aspect=W/H;
     const camera=new THREE.PerspectiveCamera(FOV,aspect,0.1,300);
@@ -715,23 +732,25 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
             `<span style="font:900 46px system-ui;color:rgba(255,255,255,0.5);line-height:1">${event.flatBonus}</span>` +
             `<span style="font:700 9px system-ui;color:rgba(255,255,255,0.3);letter-spacing:.12em">BONUS</span>` +
           `</span>`:'';
+        // v2.639 audit 1.6: lbl is user-controlled (character names reach it via
+        // ChecksPanel) — it must go through textContent, never innerHTML.
+        // Everything interpolated below is number-derived and safe.
         div.innerHTML=
-          `<div style="font:700 10px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px">${lbl}</div>`+
           `<div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:0;margin-bottom:10px">${exprParts.join('')}${bonusPart}</div>`+
           `<div style="border-top:1px solid rgba(255,255,255,0.12);padding-top:8px;margin-top:2px">`+
             `<div style="font:500 11px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px">Total</div>`+
             `<div style="font:900 52px system-ui;color:#eef2f7;line-height:1;text-shadow:0 2px 30px rgba(255,255,255,0.3)">${tot}</div>`+
           `</div>`;
       } else {
-        // Single die: big number with nat20/nat1 effects
+        // Single die: big number with nat20/nat1 effects (label prepended below — see audit 1.6)
         div.innerHTML=
-          `<div style="font:700 11px system-ui;color:rgba(255,255,255,0.4);letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px">${lbl}</div>`+
           `<div style="font:900 92px system-ui;color:${numColor};line-height:1;text-shadow:0 2px 40px rgba(255,255,255,0.5)${glow2}">${tot}</div>`+
           (isNat20?`<div style="font:700 14px system-ui;color:#ffd700;letter-spacing:.2em;margin-top:8px;animation:nat20Badge 0.4s 0.3s both">★ NATURAL 20 ★</div>`:'')  +
           (isNat1 ?`<div style="font:700 14px system-ui;color:#ff4444;letter-spacing:.2em;margin-top:8px">✕ NATURAL 1 ✕</div>`:'') +
           (d100Breakdown?`<div style="font:500 15px system-ui;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:.05em">${d100Breakdown} = ${tot}</div>`:'') +
           (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
       }
+      div.prepend(rollLabelNode(lbl,multi)); // user text → textContent (audit 1.6)
       el.appendChild(div);
     }
 
@@ -828,10 +847,27 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     return()=>{
       dismissed=true;cancelAnimationFrame(raf);
       dice.forEach(d=>world.removeBody(d.body));
+      // v2.637 leak fix (audit 5.1): scene.clear() only detaches children —
+      // it does NOT free GPU buffers. Every roll leaked the dice geometries,
+      // per-face materials, edge lines, floor, and any in-flight sparks.
+      // Traverse and dispose geometry + materials explicitly. Materials'
+      // .dispose() does NOT touch their textures, which is what we want:
+      // face textures live in the module-level TC cache and are REUSED
+      // across rolls now — the old per-roll TC.clear() dropped them
+      // without disposing (GPU leak) and forced a full texture regen on
+      // the next roll (worst of both). The cache is bounded by
+      // die-faces × skins, so letting it live is the right trade.
+      scene.traverse((obj:object)=>{
+        const mesh=obj as THREE.Mesh;
+        if(mesh.geometry)mesh.geometry.dispose();
+        const mat=mesh.material as THREE.Material|THREE.Material[]|undefined;
+        if(Array.isArray(mat))mat.forEach(m=>m.dispose());
+        else if(mat)mat.dispose();
+      });
+      envMap.dispose(); // pmrem render-target texture on scene.environment
       renderer.dispose();
       if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
-      sparks.forEach(s=>{scene.remove(s.mesh);});
-      scene.clear();TC.clear();
+      scene.clear();
       audioCtx?.close();
     };
   },[]);

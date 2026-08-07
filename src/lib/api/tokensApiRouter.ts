@@ -39,7 +39,7 @@
 
 import * as legacy from './sceneTokens';
 import * as next from './scenePlacements';
-import type { Token } from '../stores/battleMapStore';
+import type { Token } from '../map/mapTypes';
 
 // ---------------------------------------------------------------
 // Per-campaign flag cache.

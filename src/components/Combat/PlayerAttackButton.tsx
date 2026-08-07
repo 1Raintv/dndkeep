@@ -14,7 +14,7 @@
 // v2.101+.
 
 import { useState } from 'react';
-import { useCombat } from '../../context/CombatContext';
+import { useCombatSelector } from '../../context/CombatContext';
 import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
 import TargetPickerModal from './TargetPickerModal';
 import type { CombatParticipant } from '../../types';
@@ -68,7 +68,9 @@ export default function PlayerAttackButton({
   label,
   onDeclared,
 }: Props) {
-  const { encounter, participants } = useCombat();
+  // v2.645 slice 2: granular selectors (identity-reconciled upstream).
+  const encounter = useCombatSelector(s => s.encounter);
+  const participants = useCombatSelector(s => s.participants);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
 

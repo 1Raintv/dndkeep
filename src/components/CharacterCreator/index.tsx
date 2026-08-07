@@ -377,7 +377,7 @@ export default function CharacterCreator() {
                 if (bg.asi_primary === key) v += 2;
                 else if (bg.asi_secondary === key) v += 1;
               }
-              return Math.floor((v - 10) / 2);
+              return abilityModifier(v);
             })()}
           />
         )}

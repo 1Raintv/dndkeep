@@ -19,6 +19,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { rollDie } from '../../lib/gameUtils';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDiceExpr } from '../../lib/buffs';
@@ -90,7 +91,7 @@ export default function MinionPanel({ character }: MinionPanelProps) {
     const max = m.max_hp ?? 1;
     const next = Math.max(0, Math.min(max, (m.current_hp ?? 0) + delta));
     setMinions(list => list.map(x => x.id === m.id ? { ...x, current_hp: next } : x));
-    void (supabase as any).from('combatants').update({ current_hp: next }).eq('id', m.id);
+    void checkedWrite('combatants.update minion-hp', { combatantId: m.id }, (supabase as any).from('combatants').update({ current_hp: next }).eq('id', m.id));
   }
 
   async function dismiss(m: MinionRow) {

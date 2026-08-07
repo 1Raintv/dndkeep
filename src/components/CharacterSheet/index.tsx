@@ -1,4 +1,7 @@
-import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
+
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { ACTIVE_EFFECT_PROMPTS } from '../../data/activeEffectPrompts';
 import WildShapePanel from './WildShapePanel';
@@ -9,6 +12,7 @@ import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
 import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
+import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/hp';
 import { formatRange } from '../../lib/formatRange';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
@@ -34,6 +38,11 @@ import { FEATS } from '../../data/feats';
 import { SPECIES } from '../../data/species';
 import { TIEFLING_LEGACIES, getTieflingLegacy, getActiveLegacySpells, getSpeciesGrantedSpellIds, getAllPossibleSpeciesSpellIds, legacySpellFeatureKey, type TieflingLegacy } from '../../data/speciesChoices';
 import { STANDARD_ACTIONS } from '../../data/standardActions';
+
+// Classes that PREPARE spells (2024 PHB) — their Actions spell list only
+// shows prepared leveled spells; known-casters show everything known.
+// Module scope so the memoized ready-spell list has a stable reference.
+const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
 import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -479,7 +488,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Total damage = HP lost + temp HP consumed. Per RAW, both count.
  const totalDamage = hpDrop + tempDrop;
  if (totalDamage > 0) {
- const dc = Math.min(30, Math.max(10, Math.floor(totalDamage / 2)));
+ const dc = concentrationDC(totalDamage);
  const mode = resolveAutomation(
  'concentration_on_damage',
  { ...characterRef.current, ...patch } as Character,
@@ -719,7 +728,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  */
  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
  const conScore = character.constitution ?? 10;
- const conMod = Math.floor((conScore - 10) / 2);
+ const conMod = abilityModifier(conScore);
  const pb = Math.ceil(character.level / 4) + 1;
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
@@ -747,9 +756,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
  const concSpellIdAtRoll = concentrationSpellId; // capture for the callback
  let resolved = false;
+ // eslint-disable-next-line prefer-const -- assigned after resolveVerdict closes over it
+ let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
  const resolveVerdict = () => {
  if (resolved) return;
  resolved = true;
+ clearTimeout(fallbackTimer); // audit fix: don't leave the 3.5s fallback pending after onResult fires
  if (!passed) {
  showConcentrationLossToast(
  concSpellIdAtRoll,
@@ -770,7 +782,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  });
  // Fallback: if for any reason onResult never fires, resolve after 3.5s
  // so the toast + concentration-drop still happens.
- setTimeout(resolveVerdict, 3500);
+ fallbackTimer = setTimeout(resolveVerdict, 3500);
  // Action log can write immediately — it's a separate surface and doesn't
  // conflict with the dice animation.
  import('../shared/ActionLog').then(({ logAction }) => {
@@ -807,7 +819,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const totalDamage = damageDealt ?? inferredDamage;
  if (totalDamage > 0 && concentrationSpellId) {
  // RAW: DC = max(10, floor(damage / 2)), capped at 30
- const dc = Math.min(30, Math.max(10, Math.floor(totalDamage / 2)));
+ const dc = concentrationDC(totalDamage);
  const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
  if (mode === 'prompt') {
  setConcentrationSaveDC(dc);
@@ -1162,13 +1174,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ------------------------------------------------------------------
  // Derived
  // ------------------------------------------------------------------
+ // v2.637 perf: these spell lists were rebuilt (filter + two localeCompare
+ // sorts, plus a quadratic allSpellIds.includes scan over all ~282 spells)
+ // in the render body — and with 41 useState hooks in this component, that
+ // meant on EVERY HP keystroke, tab click, and modal toggle. Memoized on
+ // their actual inputs; owned-spell lookup switched to a Set.
  const { spells: allSpells, spellMap } = useSpells();
  const hasSpellSlots = Object.values(character.spell_slots).some((s: any) => s.total > 0);
- const allSpellIds = [...new Set([...character.known_spells, ...character.prepared_spells])];
- const knownSpellData = allSpellIds
+ const allSpellIds = useMemo(
+ () => [...new Set([...character.known_spells, ...character.prepared_spells])],
+ [character.known_spells, character.prepared_spells],
+ );
+ const knownSpellData = useMemo(
+ () => allSpellIds
  .map(id => spellMap[id])
  .filter(Boolean)
- .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+ .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+ [allSpellIds, spellMap],
+ );
 
  // Max spell level this character can cast based on their slots
  const maxSpellLevel = Object.keys(character.spell_slots).reduce((max, k) => {
@@ -1177,11 +1200,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }, 0);
 
  // All spells available to this class at this level (not yet added)
- const availableSpells = allSpells.filter(spell =>
+ const availableSpells = useMemo(() => {
+ const ownedIds = new Set(allSpellIds);
+ return allSpells.filter(spell =>
  spell.classes.includes(character.class_name) &&
  (spell.level === 0 || spell.level <= maxSpellLevel) &&
- !allSpellIds.includes(spell.id)
+ !ownedIds.has(spell.id)
  ).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+ }, [allSpells, allSpellIds, character.class_name, maxSpellLevel]);
+
+ // Ready-spell rows for the Actions spell section (hoisted out of the
+ // render IIFE below — hooks can't live in a conditional, and the sort
+ // was re-running per render there too).
+ const isPreparerClass = PREPARER_CLASSES.includes(character.class_name);
+ const readySpells = useMemo(
+ () => knownSpellData.filter(s =>
+ s.level === 0 || !isPreparerClass || character.prepared_spells.includes(s.id)),
+ [knownSpellData, isPreparerClass, character.prepared_spells],
+ );
+ const readyCantrips = useMemo(() => readySpells.filter(s => s.level === 0), [readySpells]);
+ const readyLeveled = useMemo(() => {
+ type ReadyRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
+ const rows: ReadyRow[] = readySpells
+ .filter(s => s.level > 0)
+ .map(s => ({ ...s, effectiveLevel: s.level, isUpcast: false }));
+ rows.sort((a, b) => a.effectiveLevel - b.effectiveLevel || a.name.localeCompare(b.name));
+ return rows;
+ }, [readySpells]);
 
  // ------------------------------------------------------------------
  // Render
@@ -1210,19 +1255,14 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  handleUpdateHP(character.current_hp, tempHP);
  } else if (delta < 0) {
  // v2.54.0: Damage path — absorb temp HP FIRST per RAW.
- // Temp HP is depleted before current HP. Concentration save is required
- // for ANY damage taken (even if fully absorbed by temp HP).
+ // Concentration save is required for ANY damage taken (even if fully
+ // absorbed by temp HP). v2.636: pool math in rules/hp.ts.
  const damage = -delta;
- const tempBefore = character.temp_hp ?? 0;
- const tempAfter = Math.max(0, tempBefore - damage);
- const damageThroughTemp = tempBefore - tempAfter;
- const damageToHP = damage - damageThroughTemp;
- const newHP = Math.max(0, character.current_hp - damageToHP);
- handleUpdateHP(newHP, tempAfter, damage);
+ const applied = applyDamageToPools(character.current_hp, character.temp_hp ?? 0, damage);
+ handleUpdateHP(applied.hpAfter, applied.tempAfter, damage);
  } else {
  // Heal path — heal current HP only, never overflows max.
- const newHP = Math.max(0, Math.min(character.max_hp, character.current_hp + delta));
- handleUpdateHP(newHP, character.temp_hp);
+ handleUpdateHP(applyHealing(character.current_hp, character.max_hp, delta), character.temp_hp);
  }
  }}
  />
@@ -1676,7 +1716,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      capped at 30. */}
  {concentrationSaveDC !== null && concentrationSpellId && (() => {
  const conScore = character.constitution ?? 10;
- const conMod = Math.floor((conScore - 10) / 2);
+ const conMod = abilityModifier(conScore);
  const pb = Math.ceil(character.level / 4) + 1;
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
@@ -2234,7 +2274,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // so an attuned Headband of Intellect / Gauntlets of Ogre Power
  // actually changes the save modifier the player sees.
  const score = (computed.ability_scores as any)[abilityKey] ?? (character[abilityKey] as number) ?? 10;
- const mod = Math.floor((score - 10) / 2);
+ const mod = abilityModifier(score);
  // v2.260.0 — was reading computed.proficiencyBonus (camelCase),
  // but the ComputedStats field is proficiency_bonus (snake_case).
  // The ?? 2 fallback was masking the bug — every save prompt
@@ -2315,7 +2355,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    const skillTarget = SKILL_LIST_STATIC.find(s => s.name === checkPrompt.target);
    if (skillTarget) {
      const score = (character[skillTarget.ability as keyof typeof character] as number) ?? 10;
-     mod = Math.floor((score - 10) / 2);
+     mod = abilityModifier(score);
      proficient = (character.skill_proficiencies ?? []).includes(checkPrompt.target);
      // v2.260.0 — same camelCase→snake_case fix; was silently using
      // PB=2 for every skill check regardless of level.
@@ -2330,7 +2370,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      // overrides flow into ability-check prompts the same way they
      // do for skills (which already route through computed.skills).
      const score = (computed.ability_scores as any)[ability] ?? (character[ability] as number) ?? 10;
-     mod = Math.floor((score - 10) / 2);
+     mod = abilityModifier(score);
    }
  }
  const accent = '#a78bfa';
@@ -3705,12 +3745,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  Object.values(character.spell_slots).some((s: any) => s.total > 0);
  if (!isSpellcaster) return null;
 
- const PREPARER_CLASSES_ACT = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion'];
- const isPreparer = PREPARER_CLASSES_ACT.includes(character.class_name);
- const readySpells = knownSpellData.filter(s => {
- if (s.level === 0) return true;
- return !isPreparer || character.prepared_spells.includes(s.id);
- });
+ // v2.637 perf: readySpells/cantrips/leveled are memoized in the
+ // Derived section above (readySpells / readyCantrips / readyLeveled).
+ const isPreparer = isPreparerClass;
  if (readySpells.length === 0) return null;
 
  // Slot usage per level — to gray spells when exhausted
@@ -3723,16 +3760,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Highest slot level with any total — used to cap upcast expansion
  const maxSlotLevel = Math.max(0, ...Object.entries(slotsByLevel).map(([k, v]) => (v.total > 0 ? parseInt(k) : 0)));
 
- const cantrips = readySpells.filter(s => s.level === 0);
- const leveledBase = readySpells.filter(s => s.level > 0);
-
  // v2.34.1: expand leveled list with upcast variants when toggle is on.
  // v2.36.0: One row per spell (no upcast duplicates). Upcastability is signaled
  // via a small "↑" chip next to the level badge; actual tier selection happens
  // via the SpellCastButton's modal picker when the user clicks Cast.
- type ReadyRow = SpellData & { effectiveLevel: number; isUpcast: boolean };
- const leveled: ReadyRow[] = leveledBase.map(s => ({ ...s, effectiveLevel: s.level, isUpcast: false }));
- leveled.sort((a, b) => a.effectiveLevel - b.effectiveLevel || a.name.localeCompare(b.name));
+ const cantrips = readyCantrips;
+ const leveled = readyLeveled;
 
  // Check if any leveled spells have slots remaining
  const hasAnySlots = leveled.some(s => {

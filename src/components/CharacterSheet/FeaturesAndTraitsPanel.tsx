@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
 import { proficiencyBonus, classSaveDC } from '../../lib/gameUtils';
@@ -21,7 +22,7 @@ const TRACKER_CONFIG: Record<string, { rest: 'short' | 'long'; maxFn: (c: Charac
  'Wild Shape': { rest: 'short', maxFn: _c => 2 },
  'Action Surge': { rest: 'short', maxFn: c => c.level >= 17 ? 2 : 1 },
  'Second Wind': { rest: 'short', maxFn: _c => 1 },
- 'Bardic Inspiration': { rest: 'short', maxFn: c => Math.max(1, Math.floor((c.charisma - 10) / 2)) },
+ 'Bardic Inspiration': { rest: 'short', maxFn: c => Math.max(1, abilityModifier(c.charisma)) },
  'Channel Divinity': { rest: 'short', maxFn: c => c.level >= 18 ? 3 : c.level >= 6 ? 2 : 1 },
  'Hurl Through Hell': { rest: 'long', maxFn: _c => 1 },
  'Eldritch Master': { rest: 'long', maxFn: _c => 1 },
@@ -55,11 +56,11 @@ function getCalcNote(name: string, c: Character): string {
  // regardless of the character's actual level. Compute from level
  // via the helper instead.
  const prof = proficiencyBonus(level);
- const cha = Math.floor((c.charisma - 10) / 2);
- const wis = Math.floor((c.wisdom - 10) / 2);
- const int_ = Math.floor((c.intelligence - 10) / 2);
- const dex = Math.floor((c.dexterity - 10) / 2);
- const con = Math.floor((c.constitution - 10) / 2);
+ const cha = abilityModifier(c.charisma);
+ const wis = abilityModifier(c.wisdom);
+ const int_ = abilityModifier(c.intelligence);
+ const dex = abilityModifier(c.dexterity);
+ const con = abilityModifier(c.constitution);
 
  if (name === 'Bardic Inspiration') {
  const die = level >= 15 ? 'd12' : level >= 10 ? 'd10' : level >= 5 ? 'd8' : 'd6';

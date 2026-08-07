@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { useAuth } from '../../context/AuthContext';
 import { emitCombatEvent, type CombatEventType } from '../../lib/combatEvents';
 
@@ -164,13 +165,13 @@ export default function ActionLog({ campaignId, characterId, mode = 'campaign', 
     const myReactions = reactions[logId]?.filter(r => r.myReaction);
     const alreadyReacted = myReactions?.some(r => r.emoji === emoji);
     if (alreadyReacted) {
-      await supabase.from('action_log_reactions').delete()
-        .eq('log_id', logId).eq('user_id', user.id).eq('emoji', emoji);
+      await checkedWrite('action_log_reactions.delete toggle-off', { logId }, supabase.from('action_log_reactions').delete()
+        .eq('log_id', logId).eq('user_id', user.id).eq('emoji', emoji));
     } else {
-      await supabase.from('action_log_reactions').insert({
+      await checkedWrite('action_log_reactions.insert toggle-on', { logId }, supabase.from('action_log_reactions').insert({
         log_id: logId, user_id: user.id,
         character_name: profile?.display_name ?? 'Unknown', emoji,
-      });
+      }));
     }
   }
 

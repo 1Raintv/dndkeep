@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { declareSpellCast } from '../../lib/pendingReaction';
 import type { PendingSpellCast } from '../../types';
 
@@ -101,9 +102,13 @@ export default function DeclareSpellCastModal({
 
   // Countdown tick
   useEffect(() => {
+    // audit fix: this component is always mounted as a listener — only tick
+    // the 4 Hz countdown clock while there's actually something to count down.
+    if (!pscId) return;
+    setNow(Date.now()); // fresh baseline the moment a cast is declared
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [pscId]);
 
   // Terminal-state detection: fire onResolved once and let parent continue
   useEffect(() => {
@@ -129,7 +134,7 @@ export default function DeclareSpellCastModal({
     if (row.state !== 'declared') return;
     setResolving(true);
     (async () => {
-      await supabase
+      await checkedWrite('pending_spell_casts.update resolve', { castId: row.id }, supabase
         .from('pending_spell_casts')
         .update({
           state: 'resolved',
@@ -137,7 +142,7 @@ export default function DeclareSpellCastModal({
           resolved_at: new Date().toISOString(),
         })
         .eq('id', row.id)
-        .eq('state', 'declared');   // race-safe
+        .eq('state', 'declared'));   // race-safe
     })().finally(() => setResolving(false));
   }, [row, now, resolving]);
 

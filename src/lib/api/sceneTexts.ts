@@ -9,7 +9,7 @@
 // Realtime echo from postgres_changes syncs to all clients.
 
 import { supabase } from '../supabase';
-import type { SceneText } from '../stores/battleMapStore';
+import type { SceneText } from '../map/mapTypes';
 
 /** Convert snake_case DB row to camelCase SceneText. */
 export function dbRowToSceneText(row: any): SceneText {

@@ -1,4 +1,7 @@
-import { createContext, useContext, useState, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, useCallback, useRef, Suspense, type ReactNode } from 'react';
+// Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
+import { lazyWithRetry as lazy } from '../lib/lazyWithRetry';
+
 import { logHistoryEvent } from '../lib/characterHistory';
 
 // Lazy-load DiceRoller3D — it pulls in three.js + cannon-es (~600 KB).
@@ -45,11 +48,25 @@ export function useDiceRoll() {
 export function DiceRollProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<DiceRollEvent | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // v2.637 (audit 5.3) — monotonically increasing roll id, used as the
+  // component key below. Without it, a second triggerRoll while the
+  // roller was still mounted re-rendered the SAME instance — whose
+  // scene-construction effect has empty deps — so the dice on screen
+  // stayed the first roll's and the second roll's onResult NEVER fired.
+  // That's exactly an attack-then-damage chain stalling.
+  const rollIdRef = useRef(0);
 
   const triggerRoll = useCallback((event: DiceRollEvent) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    rollIdRef.current += 1;
     setCurrent(event);
-    timeoutRef.current = setTimeout(() => setCurrent(null), 4500);
+    // v2.637 (audit 5.3) — this used to clear at 4,500ms, BEFORE the
+    // roller's own lifecycle finishes (force-settle ~5s, self-dismiss
+    // 5.5s after settle): slow-settling dice were unmounted with
+    // onResult never fired, silently stalling the combat pipeline.
+    // The roller dismisses ITSELF (click or settle+5.5s), so this
+    // timeout is now only a backstop against a wedged roller.
+    timeoutRef.current = setTimeout(() => setCurrent(null), 15000);
 
     // v2.82.0: opt-in history logging. Caller passes `logHistory` with the
     // character's ID and owner user ID; we build a short human-readable
@@ -75,13 +92,17 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <DiceRollContext.Provider value={{ triggerRoll, current }}>
+    <DiceRollContext.Provider value={useMemo(() => ({ triggerRoll, current }), [triggerRoll, current])}>
       {children}
       {current && (
         <Suspense fallback={null}>
           <DiceRoller3D
+            key={rollIdRef.current}
             event={current}
-            onDismiss={() => setCurrent(null)}
+            onDismiss={() => {
+              if (timeoutRef.current) clearTimeout(timeoutRef.current);
+              setCurrent(null);
+            }}
             onResult={current.onResult}
             skinId={typeof window!=='undefined'?localStorage.getItem('dndkeep_dice_skin')||'classic':'classic'}
           />

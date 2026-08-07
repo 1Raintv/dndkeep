@@ -9,6 +9,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { acceptReaction, declineReaction, expireReaction } from '../../lib/pendingReaction';
 import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
 import type { PendingReaction, PendingAttack } from '../../types';
@@ -75,9 +76,13 @@ export default function ReactionPromptModal({ campaignId }: Props) {
 
   // 250ms tick for countdown + auto-expire
   useEffect(() => {
+    // audit fix: this component is always mounted as a listener — only tick
+    // the 4 Hz countdown clock while there's actually something to count down.
+    if (!(allOffers.length)) return;
+    setNow(Date.now()); // fresh baseline the moment an offer appears
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [allOffers.length]);
 
   // Auto-expire any offer whose expires_at has passed
   useEffect(() => {
@@ -244,13 +249,13 @@ export default function ReactionPromptModal({ campaignId }: Props) {
       // Auto-roll to attack_rolled so the DM's AttackResolutionModal engages
       await rollAttackRoll(attack.id);
       // Mark the reactor's reaction as used + close out the offer
-      await supabase
+      await checkedWrite('combat_participants.update reaction-used', { participantId: urgent.reactor_participant_id }, supabase
         .from('combat_participants')
         .update({ reaction_used: true })
-        .eq('id', urgent.reactor_participant_id);
+        .eq('id', urgent.reactor_participant_id));
     }
 
-    await supabase
+    await checkedWrite('pending_reactions.update accept', { reactionId: urgent.id }, supabase
       .from('pending_reactions')
       .update({
         state: 'accepted',
@@ -264,7 +269,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
           damage_type: oaType,
         },
       })
-      .eq('id', urgent.id);
+      .eq('id', urgent.id));
     setBusy(false);
   }
 

@@ -27,6 +27,7 @@
 //   • When recharge_dice rolls higher than missing charges, we cap at
 //     charges_max. RAW: "you regain 1d6+1 charges up to the maximum."
 
+import { rollDie } from '../rules/dice';
 import type { InventoryItem } from '../types';
 
 /** Roll a dice expression like "1d6+1", "2d8", "1d3". Returns total. */
@@ -38,7 +39,7 @@ export function rollRechargeDice(expr: string): number {
   const flat = match[3] ? parseInt(match[3], 10) : 0;
   let total = flat;
   for (let i = 0; i < count; i++) {
-    total += Math.floor(Math.random() * size) + 1;
+    total += rollDie(size);
   }
   return total;
 }

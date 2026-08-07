@@ -6,10 +6,10 @@
 // are gone. This API exposes the full creature shape with all the
 // fields v2.351 UI needs.
 //
-// Backwards compat: src/lib/api/homebrewMonsters.ts still exists for
-// the v2.261 "save as homebrew" picker flow. That helper has a
-// narrower shape and predates the v2.350 columns; new code should
-// use this one.
+// audit A3 — the old narrower helpers (src/lib/api/homebrewMonsters.ts,
+// src/lib/api/srdMonsters.ts) were removed once their last consumer,
+// the v2.261 "save as homebrew" picker flow, was deleted in audit A1.
+// This is the one creature API now.
 
 import { supabase } from '../supabase';
 

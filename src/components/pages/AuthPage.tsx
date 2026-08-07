@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signIn, signUp } from '../../lib/supabase';
+// v2.648 — raw gotrue/browser wordings ("Failed to fetch") are useless to
+// a user; friendlyAuthError turns the ones that matter into next steps.
+import { friendlyAuthError } from '../../lib/authErrors';
 
 type Mode = 'signin' | 'signup';
 
@@ -18,14 +21,22 @@ export default function AuthPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    if (mode === 'signup') {
-      const { error: err } = await signUp(email, password, displayName);
-      if (err) setError(err.message);
-      else setConfirmed(true);
-    } else {
-      const { error: err } = await signIn(email, password);
-      if (err) setError(err.message);
-      else navigate('/lobby');
+    try {
+      if (mode === 'signup') {
+        const { error: err } = await signUp(email, password, displayName);
+        if (err) setError(friendlyAuthError(err));
+        else setConfirmed(true);
+      } else {
+        const { error: err } = await signIn(email, password);
+        if (err) setError(friendlyAuthError(err));
+        else navigate('/lobby');
+      }
+    } catch (err) {
+      // supabase-js returns auth failures rather than throwing, but a
+      // transport error can still escape (a fetch rejection outside the
+      // gotrue client). Without this the form silently stuck on
+      // "Working..." with no message at all.
+      setError(friendlyAuthError(err as { message?: string }));
     }
     setLoading(false);
   }

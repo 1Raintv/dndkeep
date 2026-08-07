@@ -19,7 +19,9 @@
 // via a future UI, or a round-advance could auto-expire old rows). The
 // state column + expired status are there for future use.
 
+import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
@@ -124,7 +126,7 @@ export async function resolvePendingDeathSave(
   //   d20 < 10   → failure
   //   nat 1      → 2 failures
   //   nat 20     → regain 1 HP + conscious (clears both counters)
-  const d20 = Math.floor(Math.random() * 20) + 1;
+  const d20 = rollDie(20);
   let successes = (partRow.death_save_successes as number | null) ?? 0;
   let failures = (partRow.death_save_failures as number | null) ?? 0;
   let isStable = false;
@@ -164,10 +166,10 @@ export async function resolvePendingDeathSave(
     console.warn('[resolveDeathSave] participant missing combatant_id; skipping write', partRow.id);
     return null;
   }
-  await (supabase as any)
+  await checkedWrite('combatants.update death-save', { combatantId }, (supabase as any)
     .from('combatants')
     .update(partUpdates)
-    .eq('id', combatantId);
+    .eq('id', combatantId));
 
   // Mark pending row rolled
   const { data: updatedPending } = await supabase

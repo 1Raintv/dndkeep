@@ -1,9 +1,11 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import { asJsonb } from '../../lib/jsonbCast';
 import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
 import { xpToLevel, xpForNextLevel, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
+import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/hp';
 import { SPELLS } from '../../data/spells';
 import {
   rollCheck, checkModifier, encodeCheckPrompt,
@@ -202,9 +204,19 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
   useEffect(() => {
     loadCharacters();
+    // v2.637 perf (audit 6.6): this subscription had NO filter — every
+    // character update by ANY user in ANY campaign triggered a full
+    // party refetch here. Scoped to this campaign like the sibling in
+    // CampaignDashboard. Known edge (same trade-off the sibling makes):
+    // a character LEAVING the campaign sets campaign_id away from this
+    // id, so that one event no longer matches the filter — the list
+    // catches up on the next refetch/reload.
     const channel = supabase
       .channel(`party-dashboard-${campaignId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, () => loadCharacters())
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'characters',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, () => loadCharacters())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [campaignId]);
@@ -225,7 +237,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     await Promise.all(targets.map((c, i) => {
       const gain = perPlayer + (i < remainder ? 1 : 0);
       const newXP = (c.experience_points ?? 0) + gain;
-      return supabase.from('characters').update({ experience_points: newXP }).eq('id', c.id);
+      return checkedWrite('characters.update award-xp', { characterId: c.id }, supabase.from('characters').update({ experience_points: newXP }).eq('id', c.id));
     }));
     setXpInput('');
     setXpNote('');
@@ -319,7 +331,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         patch.inventory = [...(c.inventory ?? []), newItem];
       }
       return Object.keys(patch).length
-        ? supabase.from('characters').update(patch).eq('id', c.id)
+        ? checkedWrite('characters.update distribute-loot', { characterId: c.id }, supabase.from('characters').update(patch).eq('id', c.id))
         : Promise.resolve();
     }));
     setLootPp(''); setLootGp(''); setLootEp(''); setLootSp(''); setLootCp('');
@@ -346,7 +358,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       results.push({ name: c.name, took: actual, concentration: concBreaks, modifier });
       const patch: Partial<Character> = { current_hp: newHP };
       if (concBreaks) patch.concentration_spell = '';
-      return supabase.from('characters').update(patch).eq('id', id);
+      return checkedWrite('characters.update aoe-damage', { characterId: id }, supabase.from('characters').update(patch).eq('id', id));
     }));
     setAoeApplied(results);
     setAoeDamage('');
@@ -446,7 +458,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         if (typeof val !== 'number') (newResources as any)[key] = val;
       }
       const recharge = rechargeMap.get(c.id);
-      return supabase.from('characters').update({
+      return checkedWrite('characters.update long-rest', { characterId: c.id }, supabase.from('characters').update({
         current_hp: c.max_hp,
         temp_hp: 0,
         spell_slots: recoveredSlots,
@@ -461,7 +473,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         // v2.498.0 — asJsonb() casts the typed InventoryItem[] into the
         // supabase-js Json union. See src/lib/jsonbCast.ts.
         inventory: asJsonb(recharge?.rechargedInventory ?? c.inventory),
-      }).eq('id', c.id);
+      }).eq('id', c.id));
     }));
 
     // v2.195.0 — fire-and-forget per-character rest_taken events.
@@ -526,13 +538,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     }
 
     // Notify players so the inbox / toast surfaces what just happened
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert long-rest-notice', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: 'The party takes a long rest. HP, spell slots, hit dice (half), and class resources restored. Exhaustion cleared.',
       message_type: 'long_rest_completed',
-    });
+    }));
     setDmPanel(null);
   }
 
@@ -541,13 +553,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // themselves in their existing CharacterSheet rest modal. This
   // function just sends the prompt and a notification.
   async function partyShortRest() {
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert short-rest-prompt', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: JSON.stringify({ kind: 'short' }),
       message_type: 'short_rest_prompt',
-    });
+    }));
     setDmPanel(null);
   }
 
@@ -563,13 +575,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     const payload = targeted
       ? JSON.stringify({ text: announceText.trim(), targets: Array.from(announceTargets!) })
       : announceText.trim();
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert announcement', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: payload,
       message_type: 'announcement',
-    });
+    }));
     setAnnounceText('');
     setAnnounceTargets(null);
     setDmPanel(null);
@@ -587,13 +599,13 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     const isPartial = saveTargets !== null && saveTargets.size > 0 && saveTargets.size < characters.length;
     const payload: any = { ability: saveAbility, dc };
     if (isPartial) payload.targets = Array.from(saveTargets!);
-    await supabase.from('campaign_chat').insert({
+    await checkedWrite('campaign_chat.insert save-prompt', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
       message: JSON.stringify(payload),
       message_type: 'save_prompt',
-    });
+    }));
     setSaveDC('');
     setSaveTargets(null);
     setDmPanel(null);
@@ -616,7 +628,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   }
 
   async function updateChar(id: string, patch: Partial<Character>) {
-    await supabase.from('characters').update(patch).eq('id', id);
+    await checkedWrite('characters.update party-dashboard', { characterId: id }, supabase.from('characters').update(patch).eq('id', id));
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)' }}>Loading party…</div>;
@@ -971,7 +983,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 <div style={{ padding: '8px 10px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 8 }}>
                   <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-green-l)', marginBottom: 4 }}>Applied</div>
                   {aoeApplied.map((r, i) => {
-                    const concDC = r.took > 0 ? Math.max(10, Math.floor(r.took / 2)) : 0;
+                    const concDC = r.took > 0 ? concentrationDC(r.took) : 0;
                     const modLabel =
                       r.modifier === 'resistant'  ? 'resistant'  :
                       r.modifier === 'vulnerable' ? 'vulnerable' :
@@ -1151,7 +1163,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                         Intelligence: 'intelligence', Wisdom: 'wisdom', Charisma: 'charisma',
                       };
                       const score = c[abilityMap[saveAbility] as keyof typeof c] as number ?? 10;
-                      const mod = Math.floor((score - 10) / 2);
+                      const mod = abilityModifier(score);
                       const hasSaveProf = true; // simplified — always show modifier
                       const total = mod; // players add their own prof bonus
                       return (
@@ -1574,15 +1586,13 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
     let newTemp = oldTemp;
 
     if (delta < 0) {
-      // Damage — eat temp HP first
-      const damage = -delta;
-      const absorbed = Math.min(oldTemp, damage);
-      newTemp = oldTemp - absorbed;
-      const remaining = damage - absorbed;
-      newHP = Math.max(0, oldHP - remaining);
+      // Damage — eat temp HP first (v2.636: pool math in rules/hp.ts)
+      const applied = applyDamageToPools(oldHP, oldTemp, -delta);
+      newTemp = applied.tempAfter;
+      newHP = applied.hpAfter;
     } else {
       // Healing — regular HP only, capped at max
-      newHP = Math.min(c.max_hp, oldHP + delta);
+      newHP = applyHealing(oldHP, c.max_hp, delta);
     }
 
     const patch: Partial<Character> = { current_hp: newHP };
@@ -1593,7 +1603,7 @@ function PlayerCard({ character: c, isDM, perceptionDC, campaignId, onUpdate }: 
     // If damage and concentrating, compute DC from the *total* damage dealt
     // (RAW: DC = max(10, floor(damage/2))). Temp HP absorption still counts.
     if (delta < 0 && c.concentration_spell) {
-      setConcDC(Math.max(10, Math.floor(Math.abs(delta) / 2)));
+      setConcDC(concentrationDC(Math.abs(delta)));
     } else {
       setConcDC(null);
     }

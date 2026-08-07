@@ -20,6 +20,7 @@
 // central engine.
 
 import { supabase } from './supabase';
+import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
@@ -110,7 +111,7 @@ REACTION_REGISTRY.push({
       const slot = slots[String(levelUsed)];
       if (slot && slot.used < slot.total) {
         slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
-        await supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id);
+        await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id }, supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
       }
     }
 
@@ -272,7 +273,7 @@ REACTION_REGISTRY.push({
       const slot = slots[String(levelUsed)];
       if (slot && slot.used < slot.total) {
         slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
-        await supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id);
+        await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id }, supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
       }
     }
 
@@ -417,7 +418,7 @@ REACTION_REGISTRY.push({
       const slot = slots[String(levelUsed)];
       if (slot && slot.used < slot.total) {
         slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
-        await supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id);
+        await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id }, supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
       }
     }
 
@@ -564,7 +565,7 @@ REACTION_REGISTRY.push({
       const slot = slots[String(levelUsed)];
       if (slot && slot.used < slot.total) {
         slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
-        await supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id);
+        await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id }, supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
       }
     }
 
@@ -870,7 +871,7 @@ export async function offerCounterspell(
   }
 
   if (offers.length > 0) {
-    await supabase.from('pending_reactions').insert(offers);
+    await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
   }
 
   return offers.length;
@@ -958,7 +959,7 @@ export async function offerReactionsFor(
   }
 
   if (offers.length > 0) {
-    await supabase.from('pending_reactions').insert(offers);
+    await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
   }
 
   return offers.length;
@@ -1233,7 +1234,7 @@ export async function offerOpportunityAttacks(
   }
 
   if (offers.length > 0) {
-    await supabase.from('pending_reactions').insert(offers);
+    await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
   }
 
   return offers.length;

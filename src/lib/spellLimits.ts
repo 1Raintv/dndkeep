@@ -9,6 +9,7 @@
  * so granted spells are excluded consistently and limits stay aligned.
  */
 
+import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
 import { SPELL_MAP } from '../data/spells';
 import { getGrantedSpellIds } from './grantedSpells';
@@ -55,7 +56,7 @@ export function getSpellAbility(className: string): 'intelligence' | 'wisdom' | 
 export function getSpellAbilityMod(character: Character): number {
   const key = getSpellAbility(character.class_name);
   const score = (character[key] as number) ?? 10;
-  return Math.floor((score - 10) / 2);
+  return abilityModifier(score);
 }
 
 /**

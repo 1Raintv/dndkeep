@@ -1,9 +1,15 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // e2e/ holds Playwright specs — a different runner. Without this,
+    // vitest tries to collect them and explodes on @playwright/test.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -11,6 +17,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    watch: {
+      // v2.638 — Visual Studio's .vs/ index files are exclusively locked
+      // while VS is open; Vite's watcher touching them crashes the dev
+      // server with EBUSY on this repo (VS + Vite coexistence).
+      ignored: ['**/.vs/**', '**/e2e/__screenshots__/**', '**/test-results/**', '**/playwright-report/**'],
+    },
   },
   build: {
     rollupOptions: {
@@ -24,6 +36,10 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           // Supabase client — also stable, used everywhere.
           'supabase': ['@supabase/supabase-js'],
+          // PixiJS renderer + viewport — heavy, only loaded with the battle
+          // map. Same caching rationale as dice-engine: pixi upgrades are
+          // rare, so app-code deploys shouldn't invalidate this chunk.
+          'pixi': ['pixi.js', 'pixi-viewport'],
         },
       },
     },

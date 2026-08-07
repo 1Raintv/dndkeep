@@ -1,3 +1,8 @@
+# v2.638 — project_id required by `supabase start` for the OPTIONAL local
+# dev database (see .env.local.example). Purely a local-Docker label; has
+# no connection to the production project.
+project_id = "dndkeep"
+
 [api]
 port = 54321
 schemas = ["public", "storage", "graphql_public"]

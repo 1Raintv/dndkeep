@@ -1,3 +1,4 @@
+import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
 import { proficiencyBonus } from '../lib/gameUtils';
 
@@ -96,8 +97,8 @@ export interface ClassAbility {
   range?: string;
 }
 
-function cha(c: Character) { return Math.floor((c.charisma - 10) / 2); }
-function wis(c: Character) { return Math.floor((c.wisdom - 10) / 2); }
+function cha(c: Character) { return abilityModifier(c.charisma); }
+function wis(c: Character) { return abilityModifier(c.wisdom); }
 // v2.260.0 — was reading c.proficiency_bonus (?? 2), which doesn't
 // exist on Character. Same bug as FeaturesAndTraitsPanel — every
 // CLASS_COMBAT_ABILITIES description used PB=2. Compute from level.
@@ -219,7 +220,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       descriptionLong: (c: any) => {
         const lvl = c?.level ?? 1;
         const die = lvl >= 15 ? 'd12' : lvl >= 10 ? 'd10' : lvl >= 5 ? 'd8' : 'd6';
-        const uses = Math.max(1, Math.floor(((c?.charisma ?? 10) - 10) / 2));
+        const uses = Math.max(1, abilityModifier(c?.charisma ?? 10));
         const recharge = lvl >= 5 ? 'Short or Long Rest (Font of Inspiration)' : 'Long Rest';
         return `As a Bonus Action, you give one creature other than yourself within 60 ft a Bardic Inspiration die: a ${die} at your level (d6 at 1\u20134, d8 at 5\u20139, d10 at 10\u201314, d12 at 15+).\n\nOnce within 10 minutes, the creature can roll the die and add it to one d20 Test it makes (ability check, attack roll, or saving throw). It can do so after seeing the d20 roll but before the outcome is announced.\n\nUses: equal to your Charisma modifier (currently ${uses}, minimum 1), regained on a ${recharge}.${lvl >= 20 ? '\n\nSuperior Inspiration (level 20): when you roll Initiative, you regain expended uses until you have at least two.' : ''}`;
       },
@@ -307,13 +308,13 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: (c: any) => {
         const lvl = c?.level ?? 2;
         const dice = lvl >= 18 ? 4 : lvl >= 13 ? 3 : lvl >= 7 ? 2 : 1;
-        const wis = Math.floor(((c?.wisdom ?? 10) - 10) / 2);
+        const wis = abilityModifier(c?.wisdom ?? 10);
         return `Magic Action (spend 1 Channel Divinity): roll ${dice}d8 + ${wis} (WIS mod). Restore that many Hit Points to a creature within 30 ft, OR force a Constitution save for that much Radiant or Necrotic damage (half on a success).`;
       },
       descriptionLong: (c: any) => {
         const lvl = c?.level ?? 2;
         const dice = lvl >= 18 ? 4 : lvl >= 13 ? 3 : lvl >= 7 ? 2 : 1;
-        const wis = Math.floor(((c?.wisdom ?? 10) - 10) / 2);
+        const wis = abilityModifier(c?.wisdom ?? 10);
         return `As a Magic action, you point your Holy Symbol at another creature you can see within 30 ft and spend one use of Channel Divinity. Roll ${dice}d8 (1d8 at levels 2\u20136, 2d8 at 7\u201312, 3d8 at 13\u201317, 4d8 at 18+) and add your Wisdom modifier (+${wis}), then choose:\n\u2022 Heal \u2014 restore Hit Points equal to that total.\n\u2022 Harm \u2014 the target makes a Constitution saving throw, taking Radiant or Necrotic damage (your choice) equal to that total on a failure, or half as much (round down) on a success.`;
       },
       minLevel: 2,
@@ -338,7 +339,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // damage equal to the full d8-roll total (not divided; successes take
       // nothing), and the damage doesn't end the turn effect.
       description: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         return `When you use Turn Undead, roll ${wis}d8: each Undead that fails its save also takes Radiant damage equal to the total. This damage doesn\u2019t end the turn effect.`;
       },
       descriptionLong: 'Whenever you use Turn Undead, you can roll a number of d8s equal to your Wisdom modifier (minimum 1d8) and add the rolls together. Each Undead that fails its saving throw against that use of Turn Undead takes Radiant damage equal to the roll\u2019s total. This damage doesn\u2019t end the turn effect \u2014 they take the hit and still flee.',
@@ -429,12 +430,12 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // Elemental Fury at L15 scales Primal Strike to 2d8 (and gives
       // Potent Spellcasting +300 ft cantrip range).
       description: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         const dice = (c?.level ?? 7) >= 15 ? '2d8' : '1d8';
         return `Your level-7 fury: Potent Spellcasting (add +${wis} WIS to your Druid cantrip damage) or Primal Strike (once per turn, add ${dice} Cold/Fire/Lightning/Thunder damage to an attack, including in Wild Shape).`;
       },
       descriptionLong: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         const dice = (c?.level ?? 7) >= 15 ? '2d8' : '1d8';
         return `At level 7 you chose one expression of elemental power:\n\u2022 Potent Spellcasting \u2014 you add your Wisdom modifier (currently +${wis}) to the damage you deal with any Druid cantrip${(c?.level ?? 7) >= 15 ? ', and your Druid cantrips gain +300 ft range (Improved Elemental Fury)' : ''}.\n\u2022 Primal Strike \u2014 once per turn when you hit with an attack roll (including attacks in Wild Shape), you can deal an extra ${dice} Cold, Fire, Lightning, or Thunder damage (choose the type each time).`;
       },
@@ -741,12 +742,12 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.523.0 — Aura grants a bonus to saves equal to CHA mod (min +1)
       // to you and allies within range. Range expands 10ft -> 30ft at 18.
       description: (c: any) => {
-        const cha = Math.max(1, Math.floor(((c?.charisma ?? 10) - 10) / 2));
+        const cha = Math.max(1, abilityModifier(c?.charisma ?? 10));
         const range = c?.level >= 18 ? 30 : 10;
         return `You and allies within ${range} ft gain a +${cha} bonus to all saving throws (equal to your Charisma modifier, minimum +1).`;
       },
       descriptionLong: (c: any) => {
-        const cha = Math.max(1, Math.floor(((c?.charisma ?? 10) - 10) / 2));
+        const cha = Math.max(1, abilityModifier(c?.charisma ?? 10));
         const range = c?.level >= 18 ? 30 : 10;
         return `While you\'re conscious, you and friendly creatures within ${range} ft of you gain a bonus to saving throws equal to your Charisma modifier (currently +${cha}, minimum +1).\n\nThe aura\'s radius is 10 ft (expanding to 30 ft at level 18 via Aura Expansion). This is the Paladin\'s defining party-buff — stacking with Aura of Courage (immunity to Frightened) at level 10.`;
       },
@@ -827,16 +828,16 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.524.0 — Magic action to grant self temp HP = 1d8 + WIS mod,
       // WIS-mod times per Long Rest; also reduces Exhaustion on a Short Rest.
       description: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         return `Magic Action: give yourself 1d8 + ${wis} Temporary Hit Points (${wis}× per Long Rest). Your Exhaustion also drops by 1 whenever you finish a Short Rest.`;
       },
       descriptionLong: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         return `As a Magic Action, you can give yourself Temporary Hit Points equal to 1d8 + your Wisdom modifier (currently 1d8 + ${wis}). You can use this ${wis} time(s) (equal to your Wisdom modifier, minimum once) per Long Rest.\n\nIn addition, whenever you finish a Short Rest, your Exhaustion level decreases by 1.`;
       },
       minLevel: 6,
       rest: 'long',
-      maxUsesFn: (c: any) => Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2)),
+      maxUsesFn: (c: any) => Math.max(1, abilityModifier(c?.wisdom ?? 10)),
     },
     {
       name: "Nature's Veil",
@@ -844,16 +845,16 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.524.0 — Bonus Action invisibility until end of next turn,
       // WIS-mod times per Long Rest.
       description: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         return `Bonus Action: become Invisible until the end of your next turn. ${wis}× per Long Rest.`;
       },
       descriptionLong: (c: any) => {
-        const wis = Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2));
+        const wis = Math.max(1, abilityModifier(c?.wisdom ?? 10));
         return `As a Bonus Action, you draw on the spirits of nature to become Invisible, along with any equipment you are wearing or carrying, until the end of your next turn.\n\nYou can use this ${wis} time(s) (equal to your Wisdom modifier, minimum once) per Long Rest. Excellent for repositioning, escaping, or setting up an Advantage attack.`;
       },
       minLevel: 7,
       rest: 'long',
-      maxUsesFn: (c: any) => Math.max(1, Math.floor(((c?.wisdom ?? 10) - 10) / 2)),
+      maxUsesFn: (c: any) => Math.max(1, abilityModifier(c?.wisdom ?? 10)),
     },
   ],
 
@@ -1249,16 +1250,16 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.532.0 — Uses = INT modifier per Long Rest; add INT mod to a
       // check or save you or a nearby creature makes.
       description: (c: any) => {
-        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        const int = Math.max(1, abilityModifier(c?.intelligence ?? 10));
         return `Reaction when you or a creature within 30 ft makes an ability check or saving throw: add your Intelligence modifier (+${int}) to the roll. ${int} use(s) per Long Rest.`;
       },
       descriptionLong: (c: any) => {
-        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        const int = Math.max(1, abilityModifier(c?.intelligence ?? 10));
         return `When you or another creature within 30 ft of you makes an ability check or a saving throw, you can use your Reaction to add your Intelligence modifier (currently +${int}) to the roll.\n\nUses: equal to your Intelligence modifier (${int}, minimum 1), regained on a Long Rest. A clutch way to turn a party member\u2019s near-miss save into a success.`;
       },
       minLevel: 7,
       rest: 'long',
-      maxUsesFn: (c: any) => Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2)),
+      maxUsesFn: (c: any) => Math.max(1, abilityModifier(c?.intelligence ?? 10)),
     },
     {
       name: 'Magic Item Adept',
@@ -1284,11 +1285,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.532.0 — Store a 1st/2nd-level spell; wielder casts it using your
       // spell attack/DC, usable 2 x INT mod times before it must be redone.
       description: (c: any) => {
-        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        const int = Math.max(1, abilityModifier(c?.intelligence ?? 10));
         return `After a Long Rest, store a 1st- or 2nd-level Artificer spell in a weapon or spellcasting focus. The holder can cast it (your spell attack bonus / save DC) up to ${int * 2} times before it must be re-stored.`;
       },
       descriptionLong: (c: any) => {
-        const int = Math.max(1, Math.floor(((c?.intelligence ?? 10) - 10) / 2));
+        const int = Math.max(1, abilityModifier(c?.intelligence ?? 10));
         return `When you finish a Long Rest, you can touch one simple/martial weapon or an item that can serve as a Spellcasting Focus, and store one Artificer spell of level 1 or 2 in it (the spell must have a casting time of an action).\n\nWhile holding the item, a creature can take a Magic action to cast the stored spell using your spellcasting ability modifier (spell attack bonus and save DC). The spell can be cast a total of ${int * 2} times (twice your Intelligence modifier) before the energy is depleted; you can store a new spell on a later Long Rest.`;
       },
       minLevel: 11,

@@ -1,3 +1,4 @@
+import { abilityModifier } from '../../rules/abilities';
 import { useState } from 'react';
 import type { Character } from '../../types';
 import { getFeaturesForLevel, getSneakAttackDice, getMartialArtsDie, getBardicInspirationDie, type ClassFeature } from '../../data/classFeatures';
@@ -34,8 +35,8 @@ export default function FeaturesPanel({ character, onUpdateNotes }: FeaturesPane
  function getDescription(feature: ClassFeature): string {
  let desc = feature.description;
  const level = character.level;
- const cha = Math.floor((character.charisma - 10) / 2);
- const wis = Math.floor((character.wisdom - 10) / 2);
+ const cha = abilityModifier(character.charisma);
+ const wis = abilityModifier(character.wisdom);
 
  if (feature.name.includes('Bardic Inspiration')) {
  const die = getBardicInspirationDie(level);

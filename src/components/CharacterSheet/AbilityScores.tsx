@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { checkedWrite } from '../../lib/api/checked';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
 import { formatModifier, rollDie } from '../../lib/gameUtils';
 import { getActiveAbilityOverrides } from '../../lib/attunement';
@@ -69,7 +70,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  const hasAutoFail = (character.active_conditions ?? []).some(c => CONDITION_MAP[c]?.autoFailSaves?.includes(ability));
  if (hasAutoFail) {
  triggerRoll({ result: 1, dieType: 20, modifier: mod, total: 1 + mod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, logHistory });
- supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod, modifier: mod });
+ void checkedWrite('roll_logs.insert auto-fail', { characterId: character.id }, supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, character_name: character.name, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} (Auto-Fail)`, dice_expression: '1d20', individual_results: [1], total: 1 + mod, modifier: mod }));
  return;
  }
  const sightAutoFail = isBlinded && SIGHT_LIKELY_ABILITIES.has(ability);
@@ -80,7 +81,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  triggerRoll({ result: 0, dieType: 20, modifier: mod, label, logHistory,
  onResult: (_dice, physTotal) => {
  const physRoll = physTotal - mod;
- supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }).then(({error}) => { if (error) console.error(error); });
+ void checkedWrite('roll_logs.insert ability-check', { characterId: character.id }, supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: mod }));
  },
  });
  void d20; // d20 captured for parity with skill rolls; auto-fail is label-level
@@ -99,7 +100,7 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label, logHistory,
  onResult: (_dice, physTotal) => {
  const physRoll = physTotal - saveMod;
- supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }).then(({error}) => { if (error) console.error(error); });
+ void checkedWrite('roll_logs.insert saving-throw', { characterId: character.id }, supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }));
  },
  });
  }
