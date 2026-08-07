@@ -51,8 +51,9 @@ try {
 const errors = [];
 const netFails = [];
 const browser = await chromium.launch();
+let page; // hoisted: the catch below needs it to salvage a diagnostic shot
 try {
-  const page = await browser.newPage({ viewport: vp });
+  page = await browser.newPage({ viewport: vp });
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
   page.on('requestfailed', r => netFails.push(`${r.failure()?.errorText ?? 'failed'} ${r.url()}`));
@@ -64,6 +65,16 @@ try {
   // Navigation/wait failures get a clean one-liner, not an uncaught stack —
   // exit 4 distinguishes "page unreachable/never ready" from "console dirty".
   console.error(`FAIL: ${String(e.message ?? e).split('\n')[0]}`);
+  // Still shoot whatever IS on screen. A --wait selector that never matches used
+  // to abort before the screenshot, so the one artifact that would show WHY was
+  // the one thing you didn't get (cost a full debug cycle on /srd, 2026-08-07).
+  // Exit stays 4 — this shot is a diagnostic, not a pass.
+  try {
+    if (page) {
+      await page.screenshot({ path: out, fullPage: !!opt.full, animations: 'disabled' });
+      console.error(`(diagnostic shot written anyway: ${out})`);
+    }
+  } catch { /* page may be gone entirely — nothing more to salvage */ }
   await browser.close();
   process.exit(4);
 } finally {
