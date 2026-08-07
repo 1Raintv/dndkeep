@@ -13,16 +13,19 @@ viewports, same engine as the committed baselines) and the **in-app Browser pane
 
 ## When to use
 
+- Use when: a change alters what a browser renders — layout, spacing, colour, a new or
+  restyled component, responsive behaviour — and you need to see it rather than infer it.
 - Don't use when: the change isn't previewable in a browser (`src/rules/`, scripts, build
   config) — run the repo gate (`CLAUDE.md` § The gate) instead.
-- 
+
 ## Steps
 
 1. **Server** — reuse before launching. If something answers on `http://localhost:5173`,
    reuse it read-only — and if another session/agent owns it, coordinate before trusting
-   its rendering (see gotchas: stale dep cache, mid-edit drift). If nothing is listening:
-   Playwright mode → `npx vite --port 5173` via Bash `run_in_background: true`; pane
-   mode → `preview_start {name: "dndkeep-dev"}`. — *done when:* the URL returns HTTP 200.
+   its rendering (see gotchas: stale dep cache, mid-edit drift). If nothing is listening,
+   start it with `preview_start {name: "dndkeep-dev"}` in BOTH modes — the harness forbids
+   launching dev servers via Bash, and headless Playwright is happy to shoot a
+   preview-started server. — *done when:* the URL returns HTTP 200.
 
 2. **Detect the mode** — from the dndkeep repo root, run the probe:
    `node <this skill>/scripts/ui-shot.mjs http://localhost:5173/ <scratchpad>/probe.png`
@@ -37,10 +40,17 @@ viewports, same engine as the committed baselines) and the **in-app Browser pane
    clipping hides there):
    - Playwright: `node .../ui-shot.mjs <url> <scratchpad>/<name>.png --viewport
      desktop|mobile [--wait <css unique to the changed element>] [--full]`.
+     Make `--wait` **text-specific** (`'h1:has-text("SRD Attribution")'`), never a bare
+     tag or comma list — see the zero-size-`h1` gotcha, which hangs the wait for the
+     full timeout.
    - Pane: `navigate` → `resize_window` preset → `computer {screenshot}`; confirm the
      route landed via `location.pathname` and cross-check suspect layout with
      `getBoundingClientRect` through `javascript_tool` (see gotchas for the three pane
      traps). — *done when:* a shot of the changed element exists per relevant viewport.
+
+   Then run `scripts/overflow-check.mjs` on the same URL at the same viewports —
+   `ui-shot` reports the console, this reports the layout, and you need both before
+   checklist item 1 can be called green.
 
 4. **Judge, fix, re-shoot** — `Read` the PNG and compare against intent; scan the
    script's console/network dump (pane mode: `read_console_messages onlyErrors`). Edit
@@ -51,13 +61,31 @@ viewports, same engine as the committed baselines) and the **in-app Browser pane
    `npx playwright test visual --update-snapshots` and commit the baselines with the
    change (the image diff in review is the change record). A brand-new public page gets
    a spec in `e2e/` following `smoke.spec.ts`'s `collectConsoleErrors` pattern.
+   **Check the route is actually covered before trusting a green run** — `visual.spec.ts`
+   silently had no `/srd` case, so `--update-snapshots` regenerated nothing and looked
+   like success. **Then mutation-test anything you added**: revert the fix, confirm the
+   new spec FAILS, restore. A guard asserting the wrong quantity passes cheerfully
+   against the broken page (see the `innerWidth` gotcha — that is exactly how it went).
    — *done when:* `npm run test:e2e` is green locally, or the user explicitly deferred it —
    AND any dev server this loop *launched* is stopped (one it merely reused stays up).
 
 ## Pass/fail checklist
 
+> **`VERDICT: PASS` means the CONSOLE was clean — it says nothing about layout.**
+> Both shots of a nav whose CTA was clipped clean off the right edge came back PASS.
+> Item 1 is judged by your eyes and the overflow probe, never by the verdict line.
+
 - [ ] Changed element renders and matches intent at desktop AND mobile (393 px) —
-      no clipping, overlap, or hidden overflow.
+      no clipping, overlap, or hidden overflow. **Run the probe, don't eyeball it:**
+      `node <this skill>/scripts/overflow-check.mjs <url> --viewport mobile|desktop`
+      (exit 0 clean / 1 overflow; `--json` for machine-readable). It reports the two
+      ways overflow hides, because catching one tells you nothing about the other:
+      - *page scrolls sideways* — `scrollWidth` exceeds the screen.
+      - *element silently clipped by an ancestor* — page `scrollWidth` looks
+        **completely normal** while content is cut off unseen. This was the
+        landing-nav bug: page 393, screen 393, CTA sliced off at 414.
+      Don't hand-roll this check — the obvious one-liner is wrong under mobile
+      emulation (see the `innerWidth` gotcha) and that error passes silently.
 - [ ] `VERDICT: PASS` from ui-shot (zero console errors); pane mode: zero errors
       beyond the allowlisted HMR-websocket pair.
 - [ ] No unexpected ≥400 or failed network requests for the view.
@@ -128,6 +156,40 @@ logged-in app is verifiable — sheet, dice roller, battle map:
   generations** — different `?v=` hashes across chunks → two React copies →
   "Invalid hook call … useContext null" caught by the error boundary. Not an app bug;
   browser reloads can't fix it, only a fresh dev server can.
+
+> Real failures observed (2026-08-07 trial, Playwright mode end-to-end).
+
+- **A fresh worktree has no `.env.local`, so every shot is a `Loading…` spinner.**
+  Env files are gitignored and do NOT come across with `git worktree add`. Symptom is
+  two `Missing Supabase environment variables` console errors and a spinner that looks
+  like a slow page. Copy `.env.local` from the main checkout — verify it points at
+  `127.0.0.1:54321` (local Docker), NOT prod — and **restart Vite**, which reads env
+  only at boot. Checklist item 4 catches the symptom; nothing else warns you.
+- **`--wait 'main, h1'` hangs for the full timeout on any route.** `index.html` ships a
+  static `#seo-shell` whose `<h1>` stays in the DOM at **zero size** (`display:block`,
+  `visibility:visible`, but `0×0`) — and Playwright's "visible" state requires a
+  non-empty box. A CSS list resolves to the FIRST DOM match, which is that dead h1, so
+  the wait never satisfies even though `main` is right there and visible. Use a
+  text-specific selector. `e2e/smoke.spec.ts:43` documents the same trap for locators.
+- **`querySelector('nav')` returns the wrong nav.** The app renders a fixed bottom tab
+  bar that precedes page-level navs in the DOM. Select by what distinguishes it —
+  `[...document.querySelectorAll('nav')].find(n => getComputedStyle(n).position === 'sticky')`
+  — or you will measure the tab bar and conclude the page is fine.
+- **Inline styles outrank media queries.** `globals.css` is full of
+  `@media (max-width: 480px)` rules, but a value written inline on the element wins
+  and the breakpoint silently does nothing. Any dimension that must respond to
+  viewport has to live in a class — that WAS the landing-nav clipping bug.
+- **`scrollWidth > innerWidth` cannot fail under the `mobile` project.** `Pixel 5`
+  sets `isMobile: true`, so Chromium honours `<meta viewport>` by WIDENING the
+  layout viewport to fit overflowing content: on a page that overflowed to 468px,
+  `innerWidth` reported 468 too, and the assertion compared 468 ≤ 468 and passed.
+  `visualViewport.width` stays at the true 393. A guard written the obvious way
+  passes on a page that visibly scrolls sideways — this was caught ONLY by
+  mutation-testing the new spec, which is why that step is not optional.
+- **`sed -i` rewrites the whole file's line endings** (CRLF → LF) on this repo.
+  `git diff --stat` still shows just your real edits because `core.autocrlf`
+  normalises, but a raw `diff` against a `cp` backup reports every line changed
+  and looks alarming. Prefer the Edit tool over `sed -i` for tracked files.
 
 > Logged-in-flow failures observed building the db E2E tier (2026-08-03 pt 2).
 

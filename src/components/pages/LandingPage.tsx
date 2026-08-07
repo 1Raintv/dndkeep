@@ -30,11 +30,15 @@ export default function LandingPage() {
       </div>
 
       {/* NAV */}
-      <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 48px', borderBottom: '1px solid var(--c-border)', position: 'sticky', top: 0, background: 'rgba(13,13,21,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', zIndex: 50 }}>
-        <span style={{ fontFamily: 'var(--ff-brand)', fontSize: 20, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.12em' }}>DNDKEEP</span>
+      {/* Padding / brand size / CTA size live in globals.css (.landing-nav), NOT inline:
+          at 393px the fixed 48px side padding left only 297px for 366px of content, so
+          the gold CTA was clipped off the right edge with no scrollbar to reveal it.
+          Inline styles beat media queries, so these three values must stay in the class. */}
+      <nav className="landing-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)', position: 'sticky', top: 0, background: 'rgba(13,13,21,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', zIndex: 50 }}>
+        <span className="landing-nav-brand" style={{ fontFamily: 'var(--ff-brand)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.12em' }}>DNDKEEP</span>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button onClick={() => navigate('/auth')} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', fontSize: 14, padding: '8px 16px', minHeight: 0, borderRadius: 8 }}>Sign in</button>
-          <button className="btn-gold" onClick={() => navigate('/auth')} style={{ fontSize: 14 }}>Get started free →</button>
+          <button className="landing-nav-signin" onClick={() => navigate('/auth')} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', minHeight: 0, borderRadius: 8 }}>Sign in</button>
+          <button className="btn-gold landing-nav-cta" onClick={() => navigate('/auth')}>Get started free →</button>
         </div>
       </nav>
 

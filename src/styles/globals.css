@@ -1196,6 +1196,28 @@ button:not(:disabled):active {
    LANDING PAGE (v2.6.0)
    ================================================================ */
 
+/* Sticky top nav. The desktop values live here rather than inline on the element
+   because inline styles outrank media queries — at 393px the fixed 48px side
+   padding left 297px for 366px of brand + CTA, so the gold button was clipped
+   off the right edge silently (no scrollbar: an ancestor hid the overflow). */
+.landing-nav { padding: 18px 48px; }
+.landing-nav-brand { font-size: 20px; }
+.landing-nav-signin { font-size: 14px; padding: 8px 16px; }
+.landing-nav-cta { font-size: 14px; }
+
+@media (max-width: 480px) {
+  .landing-nav { padding: 14px 16px; }
+  .landing-nav-brand { font-size: 17px; letter-spacing: 0.08em; }
+  .landing-nav-signin { padding: 8px 8px; }
+  .landing-nav-cta { font-size: 13px; padding-left: 12px; padding-right: 12px; }
+}
+
+/* SRD attribution page. The CC-BY licence obliges us to print the licence URLs
+   verbatim, and a bare 45-char URL is one unbreakable token: at 393px it pushed
+   documentElement.scrollWidth to 468 and the whole page scrolled sideways.
+   Scoped to links so ordinary prose keeps normal word wrapping. */
+.srd-page a { overflow-wrap: anywhere; }
+
 /* Hero gradient text */
 .landing-hero-title {
   font-family: var(--ff-brand);
