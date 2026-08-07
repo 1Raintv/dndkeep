@@ -14,7 +14,11 @@ export default function SrdAttributionPage() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--t-1)', fontFamily: 'var(--ff-body)' }}>
+    // .srd-page (globals.css) lets the bare license URLs break mid-string. The
+    // CC/SRD attribution text must reproduce them in full, and an unbroken
+    // 45-char URL pushed the page to 468px in a 393px viewport — the whole page
+    // scrolled sideways on a phone.
+    <div className="srd-page" style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--t-1)', fontFamily: 'var(--ff-body)' }}>
 
       {/* Nav */}
       <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 48px', borderBottom: '1px solid var(--c-border)', background: 'var(--c-bg)', position: 'sticky', top: 0, zIndex: 50 }}>
