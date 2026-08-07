@@ -65,10 +65,21 @@ transaction with a hard assert: if the end state isn't **exactly 150 rows**,
 everything rolls back.
 
 **Deliberately left pending** (CI applies them on the `audit-fixes` merge —
-all three idempotent):
+all idempotent):
 - `20260509184735_drop_cp_concentration_spell_id_v2_471` — never ran on prod
   (no ledger row under any name); vestigial-column drop, `DROP COLUMN IF EXISTS`.
+  NOTE (2026-08-07): on its own this would NOT keep the column gone — the
+  drift shim `20260803990000` (authored from prod, which still had the column)
+  re-adds it later in the chain. The convergence migration below lands the
+  final drop.
 - `20260804120000_client_errors`, `20260804160000_client_errors_retention`.
+- `20260807000000_converge_drop_dead_npc_and_concentration_orphans` (added
+  2026-08-07 from the owner-side column diff): drops the dead NPC cluster
+  (`npcs`, `dm_npc_roster`, `scene_tokens.npc_id` — dropped from prod
+  out-of-band ~v2.350, but re-created by any chain replay) and finally lands
+  the concentration-column drop after the shim's re-add. Already applied to
+  the TEST project (CI run 31200635239); no-ops on prod except the
+  concentration column.
 
 **B2 — run it.** Open `.claude/audit/prod-ledger-baseline.sql` (regenerated as
 the reconciliation, same filename), paste the whole thing into the **prod**
@@ -93,9 +104,10 @@ was changed — send Kyle's session the count it reported and stop.
    Same rule: paste it into the GitHub UI, not into a chat.
 2. Done. No dispatch needed: when the `audit-fixes` PR merges into `main`, the
    `Apply Migrations` workflow fires (the PR adds files under
-   `supabase/migrations/`), the dry-run step logs exactly **three** files
-   (`drop_cp_concentration_spell_id_v2_471` + the two `client_errors` ones),
-   and the apply runs them. Watch that run's log; then verify in prod:
+   `supabase/migrations/`), the dry-run step logs exactly **four** files
+   (`drop_cp_concentration_spell_id_v2_471`, the two `client_errors` ones,
+   and the `20260807000000_converge_…` migration), and the apply runs them.
+   Watch that run's log; then verify in prod:
 
 ```sql
 select 1 from client_errors limit 1;                      -- table exists (0 rows is fine)
@@ -126,7 +138,9 @@ app shows missing reference data on the test tier).
 
 - Phase A done (secrets named exactly as above? Vercel Preview repointed?)
 - B3: ledger count observed (must be exactly 150)
-- Phase C: secret set; after merge — did dry-run list exactly 3 files? Did
+- Phase C: secret set; after merge — did dry-run list exactly 4 files? Did
+  a fresh prod-vs-test column diff come back CLEAN (both have client_errors,
+  neither has the NPC cluster or concentration_spell_id)? Did
   `cron.job` show the retention job (i.e., is pg_cron enabled on prod)?
 
 ## Do-NOTs (encoded in the workflow, but belt-and-suspenders)
