@@ -82,3 +82,19 @@ connection string typed into a session.
 - After DDL lands, PostgREST's schema cache refresh isn't instant —
   telemetry's sink retries after its dormancy window (PGRST205 is
   expected briefly), don't diagnose that as a failed migration.
+
+> Observed 2026-08-07, first prod CI apply.
+
+- **`workflow_dispatch` only sees workflows on the DEFAULT branch** — a
+  migrate.yml living only on a feature branch can't be dispatched by name
+  or filename (404). Push events DO read the workflow from the pushed ref.
+  This repo's push-webhook delivery also flakes (~4 observed misses) —
+  when a push should have triggered a run and didn't, `gh workflow run
+  migrate.yml --ref <branch>` is the reliable kick.
+- **Out-of-order pending files** (older timestamp than the ledger's newest
+  row — e.g. a branch merging late) make plain `db push` refuse. The CI
+  workflow passes `--include-all` for exactly this; if running locally,
+  add it too. Apply order stays oldest-first either way.
+- Connection-string secrets: session-pooler host, port **5432** (not
+  6543), real password with URL-special characters percent-encoded —
+  `[YOUR-PASSWORD]` left in place is a parse error, not an auth error.

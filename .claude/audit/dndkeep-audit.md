@@ -15,7 +15,7 @@
 | 2.5 Local Docker database | **Done** | supabase start + db reset + seed; drift shims; docs/LOCAL_DEV.md |
 | 2.6 Migration drift | **Reconstructed locally** | 4 drift shims (censused vs generated types). Certified prod schema dump still open — needs prod DB password |
 | 2.7 Test framework | **Done** | vitest (104 tests) + Playwright (14 incl. DB flows) + visual baselines |
-| 2.8 Error telemetry | **Done** (client) | log facade + Supabase sink → client_errors; prod table pending migration apply (owner queue); checklist §1.9 |
+| 2.8 Error telemetry | **Done** | log facade + Supabase sink → client_errors, live on prod + test since 2026-08-07 (30-day pg_cron retention scheduled); checklist §1.9 |
 | 2.9 Manual version bump | **Open** | |
 | 2.10 Repo hygiene | **Done** | .gitignore, artifacts untracked |
 | 3.1 Dropped-table write | **Done** | Dead code removed (audit A1) |
@@ -46,11 +46,16 @@
 
 **Pending owner decisions (queue for when both devs are together):**
 
-> **2026-08-06 sit-down in progress** — three-tier plan agreed: local Docker →
-> `test` branch + test Supabase project + Vercel previews → `main` + prod.
-> Owner-side steps are packaged for his own Claude session in
-> `owner-handoff-2026-08-06.md` (+ `prod-ledger-baseline.sql`), this folder.
-> Items 7/9/11/12/13 below are superseded-in-part by that plan.
+> **2026-08-07: the migration-delivery sit-down is DONE.** Three-tier plan
+> shipped end-to-end: local Docker → `test` branch + test Supabase project →
+> `main` + prod. Prod ledger reconciled (169 diverged rows → exact match,
+> backup taken and dropped after verification); test DB bootstrapped 153
+> files by CI then converged; PR #1 merged — 4 pending migrations applied
+> to prod by CI and the prod↔test column diff came back byte-identical
+> (43/43 tables). `owner-handoff-2026-08-06.md` records the full sequence.
+> Remaining from that arc, owner-side, non-blocking: Vercel Preview env
+> repoint → test DB, and the one-time spells/monsters catalog copy
+> (378/334 rows) into test. Items 7/11/12/13 below updated accordingly.
 
 1. **Delete the auto-deploy watcher** (`watch-and-deploy.ps1`, `install-watcher.bat`,
    `uninstall-watcher.bat`) — audit §2.3. It watches Downloads for `dndkeep.zip` and
@@ -80,6 +85,9 @@
    `concurrency` group with cancel-in-progress; `timeout-minutes: 15` (default is 6 h);
    `paths-ignore` for `**.md`/`docs/**`/`.claude/**`; scope the daily cron to
    `raw-check` only. Owner-side: Vercel "Ignored Build Step" for docs-only pushes.
+   The migration-delivery half of this item is **DONE 2026-08-07** (see the
+   banner above); what remains here is the cost tune-up itself (double-run
+   triggers, concurrency, paths-ignore, Vercel ignored-build-step).
    The migration-apply job now EXISTS and is TWO-TIER (2026-08-06):
    `.github/workflows/migrate.yml` routes by branch — `test` →
    `SUPABASE_DB_URL_TEST`, `main` → `SUPABASE_DB_URL` — each tier a no-op until
@@ -108,7 +116,9 @@
     Fixes: forgotten bump = unchanged sw cache name = returning users silently
     keep the old app. Also decide: comment-version drift (comments cite v2.642,
     version.ts says 2.635.0) — reunify or accept.
-11. **Apply the telemetry migrations to prod** (2026-08-04) — Dashboard → SQL Editor,
+11. **DONE 2026-08-07** — applied by CI on the PR #1 merge (with the
+    convergence migration; cron.job verified). Original item: **Apply the
+    telemetry migrations to prod** (2026-08-04) — Dashboard → SQL Editor,
     paste in order: `20260804120000_client_errors.sql` then
     `20260804160000_client_errors_retention.sql` (both idempotent). Verify:
     `select count(*) from public.client_errors;` and the `cron.job` row
@@ -120,8 +130,10 @@
     secret are done (item 7), merging `audit-fixes` to main auto-applies these via
     `.github/workflows/migrate.yml` — the manual paste is only needed if telemetry
     should go live on prod BEFORE that merge.
-12. **Test Supabase project** (2026-08-05; **AGREED 2026-08-06** as the plan of
-    record) — free tier allows 2 projects; create `dndkeep-test` (closes audit
+12. **Mostly DONE 2026-08-07** — project live, CI-bootstrapped (153 files) and
+    converged; remaining: Vercel Preview repoint + catalog copy (owner side).
+    Original item: **Test Supabase project** (2026-08-05; **AGREED 2026-08-06**
+    as the plan of record) — free tier allows 2 projects; create `dndkeep-test` (closes audit
     2.4 / staging at $0). Long-lived `test` branch pairs with it: Vercel Preview
     env vars → test project (branch previews stop touching prod); migrate.yml
     applies migrations to it on push to `test` (fresh project — first push
@@ -129,7 +141,10 @@
     (secret-gated, warns not fails). Owner-side steps: Phase A of
     `owner-handoff-2026-08-06.md`. Remaining after bootstrap: seed the test
     login, decide what sample data the test DB carries.
-13. **Confirm telemetry retention on prod** (2026-08-05) — the 30-day pg_cron purge
+13. **DONE 2026-08-07** — pg_cron enabled pre-merge, `client_errors_retention`
+    cron.job verified on prod at the 30-day default. Re-open only if the owner
+    wants a different window. Original item: **Confirm telemetry retention on
+    prod** (2026-08-05) — the 30-day pg_cron purge
     ships inside item 11's paste, but: confirm the window suits his storage budget
     (re-run `cron.schedule` with a new interval to change it), and VERIFY
     `select jobname from cron.job where jobname='client_errors_retention'` returns a

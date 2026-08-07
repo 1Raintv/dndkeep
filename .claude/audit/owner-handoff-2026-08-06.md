@@ -1,5 +1,11 @@
 # Owner handoff — stand up the test tier + enable CI prod migrations
 
+> **✅ COMPLETE 2026-08-07.** All phases executed: ledger reconciled (150),
+> test tier bootstrapped + converged, PR #1 merged, 4 migrations CI-applied
+> to prod, verify green, column diff byte-identical, backup table dropped.
+> Kept for the record. Still open (non-blocking): Vercel Preview repoint
+> and the Phase D catalog copy.
+
 > **For the repo owner's Claude session.** Self-contained: everything needed is
 > in this doc plus `prod-ledger-baseline.sql` next to it. Written 2026-08-06 from
 > the `audit-fixes` branch. Kyle's session handles the code side; this doc is the
