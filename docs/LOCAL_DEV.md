@@ -296,3 +296,40 @@ that VS surfaces is expected, not a tracking bug.
   `npx supabase db reset` (picks up any new shims), and if it persists,
   compare `src/types/supabase.ts` against local `information_schema`
   columns — a single missing column 400s the whole profile select.
+- **Stuck on "Loading…", then "taking longer than usual", console says
+  `Missing Supabase environment variables`** — the dev server was started
+  BEFORE `.env.local` was created. Vite reads env files once at startup
+  and never re-reads them, so a server that predates the file serves the
+  app with no credentials at all — `.env.local` looks correct on disk the
+  whole time. Restart the dev server. (Confirm with the process start
+  time vs. the file's mtime; they'll be minutes-to-hours apart.)
+- **A config change has no effect even after restarting the dev server
+  and reloading** — the service worker (`public/sw.js`) is serving a
+  cached bundle, and its cache survives both. Two tells: the console
+  error names a file you already fixed, and the version banner at boot
+  doesn't match `src/version.ts` (a cache named `dndkeep-v<prod version>`
+  means you're being served production assets, not your local build).
+  Clear it from the DevTools console, then reload:
+
+  ```js
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+  caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+  ```
+
+  Keep those as two separate statements — chaining them into one
+  `async` IIFE means an early throw silently skips everything after it.
+- **Signed in, but the app acts like a different (empty) account —
+  "No characters yet", and the network tab shows
+  `profiles?id=eq.<some other uuid>` returning 406** — your browser is
+  holding a JWT for a user id that no longer exists. Any operation that
+  rewrites `auth.users.id` does this: `npx supabase db reset` (rebuilds
+  the seeded user), or cloning prod data under your local account. RLS is
+  `uid() = id`, so the orphaned token matches no profile row, `.single()`
+  404s into a 406, and every derived flag falls back to its default
+  (`show_ua_content` → false, which quietly hides UA classes like Psion).
+  Signing out via the UI often can't fix it — that path needs the profile
+  it can't fetch — so clear storage directly and sign in again:
+
+  ```js
+  localStorage.clear(); sessionStorage.clear(); location.reload();
+  ```
