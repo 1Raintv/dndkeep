@@ -78,10 +78,17 @@ jobs:
         with:
           version: latest
 
+      # --include-all: apply pending files even when they sort BEFORE the
+      # ledger's newest entry. Without it the CLI refuses out-of-order
+      # inserts — which is exactly what a feature branch merging late with
+      # an older-timestamped migration produces (first hit: 2026-08-07,
+      # drop_cp_concentration vs the reconciled ledger's 2026-08 shims).
+      # Safe here: the ledger provides once-ness, idempotent files are the
+      # seatbelt, and apply order is still oldest-first.
       - name: Dry run (log what WOULD apply)
         if: steps.gate.outputs.enabled == 'true'
-        run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run --include-all
 
       - name: Apply pending migrations
         if: steps.gate.outputs.enabled == 'true'
-        run: supabase db push --db-url "$SUPABASE_DB_URL"
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all
