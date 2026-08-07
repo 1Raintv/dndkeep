@@ -32,17 +32,24 @@ REM writing dist/ is how a partial dist reached production (v2.592
 REM outage: shell booted but sibling chunks 404'd). deploy.lock makes
 REM runs mutually exclusive; watch-and-deploy.ps1 honors it too.
 REM Stale locks (>30 min, crashed run) are ignored.
+REM v2.651.0: unnested (see the branch guard below for why) - the abort
+REM used to sit in an if nested inside `if exist deploy.lock (...)` whose
+REM block continued, so it printed [FATAL] and still exited 0.
+set LOCK_ACTIVE=0
 if exist deploy.lock (
     powershell -NoProfile -Command "if ((Get-Date) - (Get-Item 'deploy.lock').LastWriteTime -lt [TimeSpan]::FromMinutes(30)) { exit 1 } else { exit 0 }" >nul 2>&1
-    if !errorlevel! neq 0 (
-        echo  [FATAL] Another deploy appears to be running ^(deploy.lock exists^).
-        echo          If you're sure it isn't, delete deploy.lock and retry.
-        echo.
-        pause
-        exit /b 1
-    )
-    echo  [WARN] Stale deploy.lock found ^(older than 30 min^) - taking over.
+    if !errorlevel! neq 0 set LOCK_ACTIVE=1
 )
+
+if "%LOCK_ACTIVE%"=="1" (
+    echo  [FATAL] Another deploy appears to be running ^(deploy.lock exists^).
+    echo          If you're sure it isn't, delete deploy.lock and retry.
+    echo.
+    pause
+    exit /b 1
+)
+
+if exist deploy.lock echo  [WARN] Stale deploy.lock found ^(older than 30 min^) - taking over.
 echo locked at %DATE% %TIME% > deploy.lock
 
 echo.
@@ -80,6 +87,56 @@ if %errorlevel% neq 0 (
     echo          Run: git init ^&^& git remote add origin ^<url^>
     echo. & pause & exit /b 1
 )
+
+REM ---- v2.651.0: branch guard --------------------------------------
+REM Vercel builds PRODUCTION from `main` only. Work now lands through
+REM feature branches merged by PR (the audit-fixes -> PR #1 flow), which
+REM this script predates. Run from a feature branch it did something
+REM worse than nothing: step 6 committed to the CURRENT branch while
+REM step 7 pushed the LOCAL `main` ref - two different branches - and
+REM then printed "DEPLOYED!" for a build Vercel never saw.
+REM Set DNDKEEP_ALLOW_BRANCH=1 to push a feature branch anyway (that is
+REM a preview push; it does NOT deploy production).
+for /f "tokens=*" %%B in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set BRANCH=%%B
+if not defined BRANCH (
+    echo  [FATAL] Could not determine the current git branch.
+    del deploy.lock >nul 2>&1
+    echo. & pause & exit /b 1
+)
+echo  Current branch: %BRANCH%
+echo  Current branch: %BRANCH% >> deploy-log.txt
+
+set DEPLOY_PREVIEW=0
+if /i not "%BRANCH%"=="main" set DEPLOY_PREVIEW=1
+
+REM Flattened into chained top-level ifs on purpose. `exit /b N` from an
+REM if nested inside another if WHOSE OUTER BLOCK CONTINUES AFTERWARDS
+REM does not propagate - cmd returns 0, so a caller reads the refusal as
+REM success. Verified 2026-08-07; the deploy.lock guard above had the
+REM same shape and the same bug. Keep these guards unnested.
+if "%DEPLOY_PREVIEW%"=="1" if not "%DNDKEEP_ALLOW_BRANCH%"=="1" (
+    echo.
+    echo  ============================================
+    echo   [ERROR] Not on main - refusing to deploy.
+    echo.
+    echo   You are on: %BRANCH%
+    echo   Production is served from main, so deploying from
+    echo   here would push a branch nothing serves.
+    echo.
+    echo   Land the work first:
+    echo     git push -u origin %BRANCH%
+    echo     gh pr create --fill
+    echo     gh pr merge --merge
+    echo     git checkout main ^&^& git pull
+    echo.
+    echo   Or push this branch as a preview ^(no prod deploy^):
+    echo     set DNDKEEP_ALLOW_BRANCH=1 ^&^& deploy.bat
+    echo  ============================================
+    del deploy.lock >nul 2>&1
+    echo. & pause & exit /b 1
+)
+
+if "%DEPLOY_PREVIEW%"=="1" echo  [WARN] Deploying from %BRANCH% - PREVIEW only, not production.
 
 REM ---- Extract version ----
 
@@ -226,62 +283,66 @@ if %errorlevel% neq 0 (
     )
 )
 
+REM ---- v2.651.0: a clean tree is now the NORMAL case ---------------
+REM This script was built for the zip-extract era: Claude produced
+REM dndkeep.zip, it was unpacked over the tree, and "nothing staged"
+REM genuinely meant the extraction had failed - hence the hard abort
+REM below with its OneDrive/subfolder diagnostic. Work is now committed
+REM as it happens, so arriving here with nothing to stage just means
+REM "already committed" and must NOT block the build+push.
+set DID_COMMIT=1
 git diff --cached --quiet
 if %errorlevel% == 0 (
-    echo.
-    echo  ============================================
-    echo   [ERROR] No staged changes detected!
-    echo.
-    echo   The extraction didn't change any files vs.
-    echo   what's already committed. This usually means:
-    echo.
-    echo   - OneDrive / Windows refused to overwrite files
-    echo   - The zip extracted into a subfolder by mistake
-    echo   - VS Code was holding files locked
-    echo.
-    echo   Current git status:
-    git status --short
-    echo.
-    echo   Folder: %CD%
-    echo  ============================================
-    del deploy.lock >nul 2>&1
-    echo. & pause & exit /b 1
+    set DID_COMMIT=0
+    echo        Nothing new to stage - tree already clean.
 )
 
 echo  [6/7] Committing...
-for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
-git commit -m "deploy: v%VER% built %TIMESTAMP%" >>deploy-log.txt 2>&1
-if %errorlevel% neq 0 (
-    echo  [ERROR] git commit failed. See deploy-log.txt
-    del deploy.lock >nul 2>&1
-    echo. & pause & exit /b 1
-)
-
-echo  [7/7] Pushing to GitHub...
-git push origin main >>deploy-log.txt 2>&1
-if %errorlevel% neq 0 (
-    git push origin master >>deploy-log.txt 2>&1
+if "!DID_COMMIT!"=="1" (
+    for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
+    git commit -m "deploy: v%VER% built !TIMESTAMP!" >>deploy-log.txt 2>&1
     if !errorlevel! neq 0 (
-        echo.
-        echo  ============================================
-        echo   [ERROR] Push failed. See deploy-log.txt
-        echo.
-        echo   Possible causes:
-        echo   - No internet connection
-        echo   - GitHub credentials expired
-        echo   - Remote branch protection rules
-        echo  ============================================
+        echo  [ERROR] git commit failed. See deploy-log.txt
         del deploy.lock >nul 2>&1
         echo. & pause & exit /b 1
     )
+    echo        Committed v%VER%.
+) else (
+    echo        Skipped - nothing to commit.
+)
+
+REM v2.651.0: push the branch we actually committed to. This used to be
+REM a hardcoded `git push origin main` with a `master` fallback, which
+REM pushed the local main REF regardless of which branch step 6 had just
+REM committed to - so off main it shipped stale main and reported success.
+echo  [7/7] Pushing %BRANCH% to GitHub...
+git push origin %BRANCH% >>deploy-log.txt 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo  ============================================
+    echo   [ERROR] Push failed. See deploy-log.txt
+    echo.
+    echo   Possible causes:
+    echo   - No internet connection
+    echo   - GitHub credentials expired
+    echo   - Remote branch protection rules
+    echo   - Branch is behind the remote ^(run: git pull --rebase^)
+    echo  ============================================
+    del deploy.lock >nul 2>&1
+    echo. & pause & exit /b 1
 )
 
 del deploy.lock >nul 2>&1
 
 echo.
 echo  ============================================
-echo   DEPLOYED v%VER%! Live in ~60 seconds:
-echo   https://dndkeep.vercel.app
+if /i "%BRANCH%"=="main" (
+    echo   DEPLOYED v%VER%! Live in ~60 seconds:
+    echo   https://dndkeep.vercel.app
+) else (
+    echo   PUSHED %BRANCH% at v%VER% - PREVIEW only.
+    echo   Production still serves main - open a PR to ship.
+)
 echo  ============================================
 echo.
 echo  Press any key to close this window...
