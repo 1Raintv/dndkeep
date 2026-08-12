@@ -346,7 +346,10 @@ export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
     { level: 3,  name: 'Psionic Archetype', description: 'Choose your Psionic Archetype: Metamorph (biological reshaping), Psi Warper (space-time distortion), Psykinetic (force and telekinesis), or Telepath (minds and emotions). Grants features at levels 3, 6, 10, and 14.', isSubclassFeature: true },
     { level: 4,  name: 'Ability Score Improvement', description: 'Increase one ability score by 2, or two scores by 1 each (max 20). Or take a feat.', isASI: true },
     { level: 4,  name: '3rd Cantrip', description: 'Learn a third cantrip from the Psion spell list.' },
-    { level: 5,  name: 'Psionic Restoration', description: 'You can perform a 1-minute meditation. At the end, you regain expended Psionic Energy Dice. Once you use this feature, you can\'t do so again until you finish a Long Rest.' },
+    // v2.660.0 — "regain expended Psionic Energy Dice" was already the v2
+    // reading but stopped short of saying *all* of them, which is the whole
+    // difference from v1's "no more than half your number of dice".
+    { level: 5,  name: 'Psionic Restoration', description: 'You can perform a 1-minute meditation. At the end, you regain all expended Psionic Energy Dice. Once you use this feature, you can\'t do so again until you finish a Long Rest.' },
     { level: 5,  name: 'Psionic Disciplines: 3rd Choice', description: 'Choose a third Psionic Discipline to add to your repertoire.' },
     { level: 6,  name: 'Psionic Archetype Feature', description: 'Your Psionic Archetype grants its second feature.', isSubclassFeature: true },
     { level: 7,  name: 'Psionic Surge', description: 'After you roll one or more Psionic Energy Dice, you can expend one of your Hit Point Dice and treat any roll of 1, 2, or 3 on those Psionic Energy Dice as a 4.' },

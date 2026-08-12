@@ -1,31 +1,35 @@
-# DNDKeep — Three-Track Roadmap
+# DNDKeep — Two-Track Roadmap
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
-**Current version:** v2.548.0
+**Current version:** v2.660.0
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the
-three parallel efforts don't drift into each other's risk budgets.
+parallel efforts don't drift into each other's risk budgets.
+
+> **2026-08-12 — Track 3 was retired.** The roadmap ran three tracks until the
+> separate Roll20-caliber mini-app was killed and its goals folded into Track 2.
+> See [Track 3 — retired](#track-3--retired-2026-08-12) for the reasoning.
 
 ---
 
-## The core principle: three tracks, three risk profiles
+## The core principle: two tracks, two risk profiles
 
-DNDKeep's development is split into three tracks that deliberately do **not**
+DNDKeep's development is split into two tracks that deliberately do **not**
 compete for the same risk budget. Each has its own cadence and its own tolerance
 for breakage.
 
 | Track | What | Risk profile | Cadence |
 |-------|------|--------------|---------|
 | **1 — RAW accuracy + automation** | Correctness of rules data; detection/verification automation | Low tolerance for silent error. Human-gated. | Gated sessions when real RAW work exists |
-| **2 — Live lightweight map** | Iterate the current production map; keep + improve automations | Production, so gated — but engineering, not rules-judgment | Daily default; small visible ships |
-| **3 — Graphics-rich map** | Roll20-caliber map, built in isolation, imported later | High tolerance — quarantined from production | Dedicated deeper sessions |
+| **2 — The map** | Evolve the production map toward Roll20 parity; keep + improve automations | Production, so gated — but engineering, not rules-judgment | Daily default; small visible ships |
 
-The insight that makes this work: **Track 3's risk is quarantined.** Aggressive
-"break things and iterate" is safe there precisely because it is not in the
-production path. Track 2 gives daily visible progress; Track 3 gives the ambitious
-long-term goal; Track 1 keeps the core trustworthy.
+The split is by **kind of judgment**, not by feature area. Track 1 is rules
+judgment, where a silent error is a wrong number in someone's game and no test
+catches it — so a human decides every edit. Track 2 is engineering, where the
+gate (tsc, build, tests, hooks) actually catches regressions, so iteration can
+move fast. Keeping them apart stops map velocity from leaking into rules data.
 
 ---
 
@@ -124,11 +128,18 @@ Scope:
 
 ---
 
-## Track 2 — Live lightweight map (daily iteration)
+## Track 2 — The map (daily iteration)
 
-**Goal:** Iterate daily on the current production map. It is graphically minimal
-(import a picture for token/background) but carries all current automations. Keep
-the automations, improve them, add capability — without a graphics overhaul.
+**Goal:** Evolve the production map toward Roll20 parity, in place, one gated
+ship at a time. It starts graphically minimal (import a picture for
+token/background) but carries all current automations. Keep the automations,
+improve them, add capability.
+
+Since Track 3 was retired (2026-08-12) this is the *only* map track: there is no
+separate graphics-rich app to defer ambitious features into. Anything that would
+once have been "Track 3 work" is now a Track 2 backlog item that has to earn its
+way through the normal gate. The parity tiers are listed under
+[Roll20 parity](#roll20-parity-inherited-from-track-3) below.
 
 **What exists today:** PixiJS canvas, token placement (`scene_token_placements`),
 `combatants` source-of-truth, SAT-based AOE footprint hit-testing, cone/line
@@ -166,73 +177,113 @@ iteration can move faster than Track 1.
   bolting a bulk path onto that pipeline risks the single-token drag everyone
   relies on. Arrow-key nudge covers aligning a cluster out of combat. Do this
   properly when the drag pipeline is next refactored, not before.
-- **RLS recursion on `scene_token_placements` (found v2.653, not yet fixed).**
-  `stp_player_update_owned_combatant` (v2.616) subqueries `combatants`;
-  `combatants_player_select_via_placement` (v2.309) subqueries placements right
-  back. Postgres evaluates all permissive policies, so **every** placement
-  UPDATE dies with 42P17 — including the DM's. Reproduces locally 100%: drag any
-  token with the fixture loaded. Production has both policies but is not broken
-  today only because its one campaign predates the flag flip
-  (`use_combatants_for_battlemap = false`); the column DEFAULT is `true`, so the
-  next campaign created there gets an unmovable battle map. Fix needs a
-  `SECURITY DEFINER` ownership helper so the placement policies stop re-entering
-  combatants' policies — and must be verified as both DM and player, since RLS
-  is the security boundary.
+- ~~**RLS recursion on `scene_token_placements`**~~ — **fixed in v2.654.**
+  `stp_player_update_owned_combatant` (v2.616) subqueried `combatants` while
+  `combatants_player_select_via_placement` (v2.309) subqueried placements right
+  back; Postgres evaluates all permissive policies, so every placement UPDATE
+  died with 42P17. Resolved with a `SECURITY DEFINER` ownership helper so the
+  placement policies stop re-entering combatants' policies. Left here as a note
+  because the failure mode (mutually-recursive permissive policies) is easy to
+  reintroduce the next time a policy subqueries across these two tables.
 - Grid tooling: square/hex, adjustable size, snap-to-grid.
 - Measurement/ruler in grid units.
 - Basic drawing primitives (shapes, freehand) if they serve automation.
-- Layer concept (map / token / DM-hidden) — foundational, also unlocks Track 3.
 - Automation improvements surfaced from live play.
+- **Character size selection (Track 1 seam).** The 2024 rule letting Aasimar,
+  Human and Tiefling pick Small or Medium. Needs a `characters.size` column, a
+  picker in the creator, and the `CampaignDashboard` seam that already resolves
+  species size (v2.657). Whether Small should *render* smaller is an open
+  question — see below.
+- **Open question: should Small tokens render smaller?** v2.657 made PC tokens
+  take their species' size, but `tokenRadiusForSize` draws Small and Medium
+  identically (both `0.95`) and both occupy one cell, which is RAW-correct.
+  Making Small visibly smaller is a one-line change in
+  `battlemap/shared.ts` — but it shrinks every Small *monster* too, not just
+  PCs. Undecided.
+
+### Roll20 parity (inherited from Track 3)
+
+Folded in when Track 3 was retired. Roughly ordered by dependency; each is a
+normal Track 2 item now, shipped through the gate against the live map.
+
+1. **Canvas & navigation** (pan/zoom, pages) — partially have via PixiJS.
+2. **Layers** (map / object / GM-hidden / lighting) — foundational; several
+   items below assume it.
+3. **Drawing tools** (pen, shapes, text, color/opacity) — partially have.
+4. **Grid** (square/hex, snap, per-page scale) — see grid tooling above.
+5. **Tokens**: art library, resize/rotate, status markers, bars, auras, sheet
+   link. Status markers, bars and sheet link already exist.
+6. **Measurement** (ruler, movement tracking) — movement tracking exists.
+7. **Fog of war / dynamic lighting** — highest complexity and risk; depends on
+   the wall-drawing tools. Manual fog of war is the cheaper first step. **Do
+   not lead with this.**
+8. **Asset / art library + uploads.**
+
+**Sequencing note (carried over):** dynamic lighting is the "wow" but also the
+hardest and riskiest — occlusion geometry, wall performance, per-token vision.
+The layers + drawing + grid foundation underneath it is lower-risk, higher daily
+value, and lighting depends on it. Build the foundation first.
 
 ---
 
-## Track 3 — Graphics-rich map (long-term, isolated)
+## Track 3 — retired (2026-08-12)
 
-**Goal:** Build a Roll20-caliber, graphics-intensive map carrying the same
-automations, in isolation, designed to import into the live site later.
+**Was:** build a Roll20-caliber, graphics-intensive map as a separate mini-app,
+in isolation, designed to import into the live site later.
 
-**Isolation mechanism (LOCKED):** Separate mini-app / project.
+**Decision: killed. Evolve the live map instead.** Its target feature set moved
+into Track 2 under [Roll20 parity](#roll20-parity-inherited-from-track-3).
 
-**Implication of a separate mini-app:** the shared automation layer (see Track 0)
-must be extractable/importable so both the live map and the graphics map run the
-*same* automation logic rather than two diverging copies. Without that, "the same
-automations in both maps" degrades into double-maintenance. This makes Track 0 a
-hard prerequisite for Track 3.
+**Why.** The quarantine that justified a separate app was also its main cost. A
+second app only carries "the same automations" if the automation layer is
+genuinely shared, which made Track 0 a *hard* prerequisite — so nothing
+graphics-rich could ship until an extraction with no user-visible payoff was
+finished first. And the isolation that made aggressive iteration safe is the
+same thing that kept the results away from real play: a feature is only proven
+once a real session uses it. Meanwhile Track 2 kept absorbing the parity list
+anyway — PixiJS canvas, drawing, walls, vision, multi-select and cover all
+landed on the live map, which is most of tiers 1–6.
 
-**Target feature set (Roll20 parity, roughly ordered by dependency):**
-1. Canvas & navigation (pan/zoom, pages) — partially have via PixiJS.
-2. Layers (map / object / GM-hidden / lighting).
-3. Drawing tools (pen, shapes, text, color/opacity).
-4. Grid (square/hex, snap, per-page scale).
-5. Tokens (art library, resize/rotate, status markers, bars, auras, sheet link).
-6. Measurement (ruler, movement tracking).
-7. **Fog of war / dynamic lighting** — highest complexity/risk; depends on
-   wall-drawing tools; do NOT lead with this.
-8. Asset/art library + uploads.
+**What this costs.** Real, and worth naming: the live map is production, so
+every parity feature now pays the gate and there is nowhere to prototype
+recklessly. Fog of war and dynamic lighting — tier 7, the riskiest work — have
+to land incrementally behind the existing map rather than arriving finished.
+That is the accepted trade.
 
-**Sequencing note:** Dynamic lighting is the "wow" but also the hardest and
-riskiest (occlusion geometry, wall performance, per-token vision). The layers +
-drawing + grid foundation underneath it is lower-risk, higher daily value, and
-lighting depends on it. Build foundation first.
+**If this is ever revisited,** the reason to reopen it would be a specific
+feature that genuinely cannot be built incrementally against the live map.
+Nothing on the parity list currently looks like that.
 
 ---
 
-## Track 0 — Shared foundation (prerequisite for Tracks 2 & 3)
+## Track 0 — Shared foundation
 
-**Not a separate goal — the enabling work both map tracks depend on.**
+**Not a separate goal — enabling work the map depends on.**
 
-**The decoupling requirement:** For both maps to carry "the same automations," the
-automation/geometry logic must be **map-agnostic** — operating on abstract
-coordinates + state, decoupled from any specific renderer. Each map (lightweight
-PixiJS, graphics-rich Track 3) becomes a *renderer* on top of a shared automation
-core.
+**Status note (2026-08-12):** this was a *hard* prerequisite when Track 3
+existed, because two separate apps could not otherwise share automation logic.
+With one map, it is no longer blocking — but it is still worth doing on its own
+merits, and the argument is now about testability rather than code-sharing.
 
-- Get this right → Track 3 inherits every automation for free; fixes apply to both.
-- Get it wrong → two copies of AOE/cone/reach/condition logic, maintained forever.
+**The decoupling requirement:** the automation/geometry logic should be
+**renderer-agnostic** — operating on abstract coordinates + state rather than
+reaching into PixiJS. The map becomes a *renderer* on top of an automation core.
 
-**First engineering task of the whole roadmap:** audit how coupled the current
-automation logic is to the PixiJS rendering layer, and extract a rendering-agnostic
-automation core if it isn't already one. Everything in Tracks 2 and 3 sits on this.
+- Get this right → automation is unit-testable without a canvas, and the
+  rendering layer can be replaced or upgraded without touching rules behavior.
+- Get it wrong → geometry logic stays welded to display objects, and the only
+  way to test it is to boot a browser.
+
+This is already partly true and trending the right way: `src/rules/` is pure by
+construction, and the battle-map decomposition keeps pulling logic out into
+testable modules (`battlemap/marqueeGeometry.ts`, `battlemap/coverState.ts`,
+`lib/map/coords.ts`). Continue that direction rather than attempting one big
+extraction.
+
+> **Practical constraint:** a test that imports a battle-map component passes
+> locally and fails in CI. `ci.yml` pins `node-version: 20`, which has no global
+> `navigator`; pixi.js reads it at module scope, and Node 21+ locally hides the
+> problem. This is the concrete reason to keep pure logic in its own module.
 
 ---
 
@@ -253,8 +304,9 @@ Deferred items that make the daily loop real:
 ## Cadence
 
 - **Track 1:** gated sessions when real RAW work exists.
-- **Track 2:** daily default — small, visible, gated ships.
-- **Track 3:** dedicated deeper sessions; aggressive iteration OK (isolated).
+- **Track 2:** daily default — small, visible, gated ships. Bigger parity items
+  (layers, fog of war) get dedicated deeper sessions, but still ship
+  incrementally through the gate — there is no isolated sandbox any more.
 - **Infra:** slot in as capacity allows; keep-warm cron first.
 
 The daily continuous-improvement loop (once infra lands): keep-warm ping fires →

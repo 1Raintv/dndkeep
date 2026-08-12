@@ -419,7 +419,14 @@ export const CLASS_RESOURCES: Record<string, ClassResourceDef[]> = {
     {
       id: 'psionic-restoration',
       name: 'Psionic Restoration',
-      description: 'Once per Long Rest: 1-minute meditation to regain Psionic Energy Dice equal to half your Psion level (rounded up).',
+      // v2.660.0 — was "regain Psionic Energy Dice equal to half your Psion
+      // level (rounded up)", which matched neither UA version: v1 gave half
+      // your *number of dice* on a Short Rest, v2 gives ALL expended dice
+      // after a 1-minute meditation, 1/Long Rest. classFeatures.ts already
+      // carried the v2 wording, so the two files contradicted each other.
+      // Jared's ruling on the v1/v2 relationship (see docs/PSION_UA_SOURCES.md):
+      // v2 supersedes whatever it covers, and it covers this feature.
+      description: 'Once per Long Rest: 1-minute meditation to regain ALL expended Psionic Energy Dice.',
       recovery: 'long',
       minLevel: 5,
       getMax: () => 1,

@@ -383,7 +383,10 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
                  choices: [ASI] },
     { level: 5,  features: [
         'Psionic Discipline: +1 option (now 3 total)',
-        'Psionic Restoration (1 min meditation to regain Psionic Energy Dice, 1/LR)',
+        // v2.660.0 — "regain Psionic Energy Dice" was vague enough to read as
+        // either UA version; v2 restores ALL expended dice. Spelled out here
+        // so the three Psion data files state the same rule.
+        'Psionic Restoration (1 min meditation to regain ALL expended Psionic Energy Dice, 1/LR)',
       ], newSpellLevel: 3 },
     { level: 6,  features: ['Subclass feature'], subclassFeature: true },
     { level: 7,  features: ['Psionic Surge: after rolling Psionic Energy Dice, spend Hit Die to treat any 1–3 as 4'], newSpellLevel: 4 },
