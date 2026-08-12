@@ -10,6 +10,7 @@ import { SPECIES_MAP } from '../../data/species';
 import { SPECIES_AUTO_SKILLS } from '../../data/classAbilities';
 import { slotRowToSpellSlots, getSpellSlotRow } from '../../data/spellSlots';
 import { abilityModifier } from '../../lib/gameUtils';
+import { applyAbilityIncreases, buildAbilityIncreases } from '../../rules/abilities';
 import { calcMaxHP } from '../../data/levelProgression';
 import StepSpecies from './StepSpecies';
 import StepClass from './StepClass';
@@ -121,11 +122,17 @@ export default function CharacterCreator() {
     const bg = BACKGROUND_MAP[background];
     const sp = SPECIES_MAP[species];
 
-    const finalScores = { ...scores };
-    if (bg) {
-      finalScores[bg.asi_primary] += 2;
-      finalScores[bg.asi_secondary] += 1;
-    }
+    // v2.655.0 — ONE list of increases, used for BOTH the saved scores
+    // and the `ability_score_improvements` provenance below.
+    //
+    // Before this, the two were built independently: the scores applied
+    // only the background +2/+1, while the provenance also recorded the
+    // level-4/8/12/16/19 ASIs the player picked in StepBuild. So a
+    // character created above level 3 was saved with its ASIs on record
+    // and the points missing from the scores. Deriving both from the
+    // same array is what stops them drifting apart again.
+    const abilityIncreases = buildAbilityIncreases(bg, buildChoices.asiChoices);
+    const finalScores = applyAbilityIncreases(scores, abilityIncreases);
 
     // HP using average per level
     const hp = cls
@@ -235,16 +242,9 @@ export default function CharacterCreator() {
         ...(originFeat ? [originFeat] : []),
         ...Object.values(buildChoices.feats as Record<string, string>).filter(Boolean),
       ],
-      ability_score_improvements: [
-        ...(bg ? [
-          { ability: bg.asi_primary,   amount: 2, source: 'background' },
-          { ability: bg.asi_secondary, amount: 1, source: 'background' },
-        ] : []),
-        ...Object.entries(buildChoices.asiChoices).map(([lvl, asiChoice]) => {
-          const a = asiChoice as { ability: string; amount: number; ability2?: string; amount2?: number };
-          return { ability: a.ability as import('../../types').AbilityKey, amount: a.amount, source: `level_${lvl}` };
-        }),
-      ],
+      // v2.655.0 — the same array the scores above were computed from,
+      // so provenance and scores cannot disagree.
+      ability_score_improvements: abilityIncreases,
       ability_score_method: method,
     };
 
@@ -366,18 +366,19 @@ export default function CharacterCreator() {
             currentLevel={currentBuildLevel}
             onCurrentLevelChange={setCurrentBuildLevel}
             spellAbilityMod={(() => {
-              // v2.583.0 — mirror handleCreate's finalScores math
-              // (base scores + background ASI) for the spellcasting
-              // ability, so the Artificer prepared-cap fallback in
-              // StepBuild uses the real modifier.
+              // v2.583.0 — mirror handleCreate's finalScores math for
+              // the spellcasting ability, so the Artificer prepared-cap
+              // fallback in StepBuild uses the real modifier.
+              // v2.655.0 — was re-implementing "base + background" by
+              // hand and, like handleCreate, ignored the level ASIs.
+              // Both now go through the same two rules functions.
               const key = getSpellAbility(className);
               const bg = BACKGROUND_MAP[background];
-              let v = scores[key];
-              if (bg) {
-                if (bg.asi_primary === key) v += 2;
-                else if (bg.asi_secondary === key) v += 1;
-              }
-              return abilityModifier(v);
+              const withAsi = applyAbilityIncreases(
+                scores,
+                buildAbilityIncreases(bg, buildChoices.asiChoices),
+              );
+              return abilityModifier(withAsi[key]);
             })()}
           />
         )}
@@ -427,8 +428,15 @@ export default function CharacterCreator() {
           const cls = CLASS_MAP[className];
           if (!cls) return null;
           const bg = BACKGROUND_MAP[background];
-          const finalScores = { ...scores };
-          if (bg) { finalScores[bg.asi_primary as keyof typeof finalScores] += 2; finalScores[bg.asi_secondary as keyof typeof finalScores] += 1; }
+          // v2.655.0 — same two rules functions as handleCreate. This
+          // preview previously showed HP from a Constitution that
+          // ignored any CON point spent on a level ASI, so the number
+          // the player saw here could differ from the character they
+          // actually got.
+          const finalScores = applyAbilityIncreases(
+            scores,
+            buildAbilityIncreases(bg, buildChoices.asiChoices),
+          );
           const hp = calcMaxHP(cls.hit_die, finalScores.constitution, level);
           const profBonus = level < 5 ? 2 : level < 9 ? 3 : level < 13 ? 4 : level < 17 ? 5 : 6;
           return (
