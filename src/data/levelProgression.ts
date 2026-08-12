@@ -367,7 +367,11 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
         'Psionic Power: 4d6 Psionic Energy Dice — Telekinetic Propel (BA: push/pull creature 5 ft or roll die × 5 ft) + Telepathic Connection (BA: telepathy 30 ft, roll die to extend range by die × 10 ft for 1 hr)',
         'Subtle Telekinesis: Mage Hand cantrip (invisible, no somatic components)',
       ] },
-    { level: 2,  features: ['Psionic Discipline (choose 2 disciplines)'],
+    // v2.659.0 — the once-per-turn limit was never recorded anywhere,
+    // even though two disciplines (Psionic Guards, Sharpened Mind) carry
+    // the "you can also use a different Discipline this turn" exception
+    // to it. Stating the base rule makes those exceptions legible.
+    { level: 2,  features: ['Psionic Discipline (choose 2 disciplines — you can use only one Discipline per turn, and only once, unless a Discipline says otherwise)'],
                  choices: [
                    { type: 'other', label: 'Choose 2 Psionic Disciplines (Biofeedback, Bolstering Precognition, Destructive Thoughts, Devilish Tongue, Expanded Awareness, Id Insinuation, Inerrant Aim, Observant Mind, Psionic Backlash, Psionic Guards, Sharpened Mind)' },
                  ] },
@@ -389,7 +393,13 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
         'Psionic Discipline: +1 option (now 4 total)',
         '4th cantrip',
       ], subclassFeature: true },
-    { level: 11, features: ['Subclass feature'], newSpellLevel: 6, subclassFeature: true },
+    // v2.659.0 — was `features: ['Subclass feature'], subclassFeature: true`.
+    // UA 2025 v2 grants subclass features at 3/6/10/14, confirmed across
+    // all three subclasses; there is no level-11 feature. Our own
+    // classes.ts agreed — no Psion subclass defines anything at 11 — so
+    // the wizard raised a "choose your subclass feature" prompt at both
+    // 10 and 11 with nothing behind the second one.
+    { level: 11, features: [], newSpellLevel: 6 },
     { level: 12, features: [], choices: [ASI] },
     { level: 13, features: ['Psionic Discipline: +1 option (now 5 total)'], newSpellLevel: 7 },
     { level: 14, features: ['Subclass feature'], subclassFeature: true },
@@ -397,7 +407,10 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
     { level: 16, features: [], choices: [ASI] },
     { level: 17, features: ['Psionic Discipline: +1 option (now 6 total)'], newSpellLevel: 9 },
     { level: 18, features: ['Psionic Reserves: on Initiative roll, regain Psionic Energy Dice until you have at least 4'] },
-    { level: 19, features: [], choices: [ASI, EPIC] },
+    // v2.659.0 — was choices: [ASI, EPIC]. UA 2025 v2's level-4 text
+    // reads "You gain this feature again at Psion levels 8, 12, and 16",
+    // so ASIs are 4/8/12/16 only; level 19 is the Epic Boon.
+    { level: 19, features: [], choices: [EPIC] },
     { level: 20, features: ['Enkindled Life Force: once per turn when you roll Psionic Energy Dice, expend 1–2 Hit Dice to roll extra Psionic Energy Dice (they are not expended)'] },
   ],
 

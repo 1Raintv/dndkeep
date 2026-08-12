@@ -815,7 +815,10 @@ export const CLASSES: ClassData[] = [
         source: 'ua',
         description: "Master the landscape of the mind — read thoughts undetected, distract attackers, and eventually scramble the minds of many at once. Bulwark Mind grants psychic resistance and saving throw bonuses.",
         unlock_level: 3,
-        spell_list: ['Bane', 'Command', 'Detect Thoughts', 'Mind Spike', 'Counterspell', 'Speak with Plants', 'Compulsion', 'Confusion', 'Awaken', 'Modify Memory'],
+        // v2.659.0 — was the UA v1 list. v2 replaced the level-5 pick
+        // (Speak with Plants → Slow) and the level-9 one (Awaken →
+        // Yolande's Regal Presence). Order is L3 ×4, then L5, L7, L9 ×2.
+        spell_list: ['Bane', 'Command', 'Detect Thoughts', 'Mind Spike', 'Counterspell', 'Slow', 'Compulsion', 'Confusion', "Yolande's Regal Presence", 'Modify Memory'],
         features: [
           { level: 3, name: 'Telepath Spells', description: "Always have Bane, Command, Detect Thoughts, Mind Spike prepared. More spells at 5, 7, 9.", isChoice: false },
           { level: 3, name: 'Mind Infiltrator', description: "Cast Detect Thoughts spending only 1 Psionic Energy Die: no components, no Concentration. Target doesn't know you're probing if it fails its Wisdom save.", isChoice: false },
