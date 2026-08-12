@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cellCenterWorld, intersectionWorld, screenToWorld, snapToCellCenter,
-  snapTokenAnchor, tokenAnchorWorld, tokenSizeCells, worldToCell, worldToScreen,
+  snapTokenAnchor, toTokenSize, tokenAnchorWorld, tokenSizeCells, worldToCell, worldToScreen,
 } from './coords';
 
 const CELL = 70;
@@ -76,5 +76,42 @@ describe('world ↔ screen affine transform', () => {
     const back = screenToWorld(p.x, p.y, v);
     expect(back.x).toBeCloseTo(300, 10);
     expect(back.y).toBeCloseTo(200, 10);
+  });
+});
+
+// ─── v2.657.0 — size vocabulary crossover ─────────────────────────
+
+describe('toTokenSize', () => {
+  it('accepts CreatureSize casing from species / stat-block data', () => {
+    // species.ts and monster stat blocks say 'Medium'; the map says
+    // 'medium'. Crossing that boundary is the whole job.
+    expect(toTokenSize('Medium')).toBe('medium');
+    expect(toTokenSize('Small')).toBe('small');
+    expect(toTokenSize('Gargantuan')).toBe('gargantuan');
+  });
+
+  it('passes through TokenSize unchanged', () => {
+    for (const s of ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const) {
+      expect(toTokenSize(s)).toBe(s);
+    }
+  });
+
+  it('falls back to medium for junk rather than throwing', () => {
+    // A bad size must still place a token, not blank the map.
+    expect(toTokenSize(null)).toBe('medium');
+    expect(toTokenSize(undefined)).toBe('medium');
+    expect(toTokenSize('')).toBe('medium');
+    expect(toTokenSize('colossal')).toBe('medium');
+  });
+
+  it('tolerates stray whitespace', () => {
+    expect(toTokenSize('  Small ')).toBe('small');
+  });
+
+  it('round-trips into the footprint math', () => {
+    // The point of the conversion: a Small species occupies 1 cell and
+    // a Large one occupies 2, once the string has been normalised.
+    expect(tokenSizeCells(toTokenSize('Small'))).toBe(1);
+    expect(tokenSizeCells(toTokenSize('Large'))).toBe(2);
   });
 });

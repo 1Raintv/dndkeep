@@ -20,6 +20,48 @@
 //   closed instead.
 
 import { supabase } from './supabase';
+// v2.652.0 — cover levels, the RAW combination rule, size gating and the
+// segment/rect geometry now live in the pure domain layer. This module
+// keeps the supabase-backed loaders and the shapes its callers already
+// import, and re-exports the moved pieces so nothing downstream changed.
+import {
+  combineCover,
+  deriveCoverFromCreatures,
+  segmentsIntersect,
+  toSizeKey,
+  type CellRect,
+  type CombinedCover,
+  type CoverBlocker,
+  type CreatureCoverResult,
+} from '../rules/cover';
+
+export {
+  bestCover,
+  coverAcBonus,
+  coverLabel,
+  coverSaveBonus,
+  combineCover,
+  creatureCoverContribution,
+  deriveCoverFromWalls,
+  findNearbyCoverBlockers,
+  isMoreCover,
+  pointsToCoverLevel,
+  segmentsIntersect,
+  summariseCoverAgainstThreats,
+  toSizeKey,
+  wallCoverPoints,
+} from '../rules/cover';
+export type {
+  CellRect,
+  CombinedCover,
+  CoverBlocker,
+  CoverLevel,
+  CoverThreat,
+  CoverWall,
+  CreatureCoverResult,
+  CreatureSizeKey,
+  ThreatCoverSummary,
+} from '../rules/cover';
 
 const FEET_PER_SQUARE = 5;   // D&D RAW, not battle_maps.grid_size (which is px)
 
@@ -28,6 +70,8 @@ const FEET_PER_SQUARE = 5;   // D&D RAW, not battle_maps.grid_size (which is px)
  * other properties (name, character_id, etc.) are used for lookup.
  */
 export interface BattleMapToken {
+  /** Row id of the backing scene_tokens / scene_token_placements row. */
+  id?: string;
   row: number;
   col: number;
   name?: string;
@@ -37,7 +81,13 @@ export interface BattleMapToken {
   // findTokenForParticipant can ID-match instead of name-matching.
   creature_id?: string;
   participant_id?: string;
+  /** Footprint span in CELLS (tiny/small/medium all collapse to 1). */
   size?: number;
+  /** v2.652.0 — the size CATEGORY, which `size` cannot express: tiny,
+   *  small and medium are all 1 cell, but creature cover cares whether
+   *  the body in the way is a rat or a person. Populated by
+   *  loadActiveBattleMap from the same column `size` is derived from. */
+  size_label?: string;
   [k: string]: unknown;
 }
 
@@ -76,41 +126,15 @@ export interface WallSegment {
   y1: number;
   x2: number;
   y2: number;
-  /** v2.145.0 — Phase N pt 3: wall type determines cover contribution.
-   *    'wall'   — solid wall; single wall alone = total cover (RAW 2024 p.204)
-   *    'low'    — low wall / furniture; single alone = half cover
-   *    'window' — arrow slit / portcullis / barred window; single = ¾ cover
-   *    'door'   — closed door; single = total cover (treat as solid)
-   *    undefined/null — legacy untyped wall; treated as a small obstacle so
-   *    existing maps preserve their multi-wall-stacking behavior
-   *    (1 wall → half, 2 → ¾, 3+ → total). Migrate legacy walls by editing
-   *    them in the drawing tool; no bulk migration forced. */
+  /** v2.145.0 — wall type determines cover contribution; see
+   *  `CoverWall.type` in src/rules/cover.ts for the table and for why
+   *  nothing populates this field yet. */
   type?: 'wall' | 'low' | 'window' | 'door';
 }
 
-/**
- * v2.145.0 — Phase N pt 3: cover-point contribution per wall type.
- *
- * Each typed wall contributes the cover-equivalent points for its RAW
- * category. Points are summed across all walls on the line of effect
- * and mapped via {@link pointsToCoverLevel}. Untyped walls keep their
- * legacy single-point behavior (multi-wall stacking to total cover).
- *
- * Rationale: RAW "creatures use the best cover available" — with typed
- * walls, a single solid wall already gives total cover, so the additive
- * model still picks the correct level for clean test cases. Ambiguous
- * cases (e.g. "low wall + window") resolve toward more cover, which is
- * defensible since both obstacles do contribute.
- */
-export function wallCoverPoints(w: WallSegment): number {
-  switch (w.type) {
-    case 'wall':   return 3;   // alone → total
-    case 'door':   return 3;   // alone → total (closed)
-    case 'window': return 2;   // alone → three_quarters
-    case 'low':    return 1;   // alone → half
-    default:       return 1;   // legacy: preserves 1=half / 2=¾ / 3+=total
-  }
-}
+// v2.652.0 — `wallCoverPoints` and `deriveCoverFromWalls` moved to
+// src/rules/cover.ts (pure, no supabase) and are re-exported above.
+// WallSegment structurally satisfies the `CoverWall` shape they take.
 
 /**
  * Load the active battle map for a campaign. Returns null if no scene
@@ -225,6 +249,7 @@ export async function loadActiveBattleMap(
       const c = (r.combatants ?? {}) as { name?: string; definition_type?: string; definition_id?: string };
       const sizeLabel = ((r.size_override as string) ?? 'medium').toLowerCase();
       return {
+        id: (r.id as string) ?? undefined,
         row: Math.floor(((r.y as number) ?? 0) / gridSizePx),
         col: Math.floor(((r.x as number) ?? 0) / gridSizePx),
         name: c.name ?? undefined,
@@ -236,6 +261,7 @@ export async function loadActiveBattleMap(
         character_id: c.definition_type === 'character' ? (c.definition_id ?? undefined) : undefined,
         creature_id: c.definition_type === 'homebrew_monster' ? (c.definition_id ?? undefined) : undefined,
         size: SIZE_TO_CELLS[sizeLabel] ?? 1,
+        size_label: sizeLabel,
       };
     });
   } else {
@@ -250,23 +276,30 @@ export async function loadActiveBattleMap(
   tokens = (tokenRows ?? []).map(t => {
     const sizeLabel = ((t.size as string) ?? 'medium').toLowerCase();
     return {
+      id: (t.id as string) ?? undefined,
       row: Math.floor(((t.y as number) ?? 0) / gridSizePx),
       col: Math.floor(((t.x as number) ?? 0) / gridSizePx),
       name: (t.name as string) ?? undefined,
       character_id: (t.character_id as string) ?? undefined,
       creature_id: (t.creature_id as string) ?? undefined,
       size: SIZE_TO_CELLS[sizeLabel] ?? 1,
+      size_label: sizeLabel,
     };
   });
   }
 
   // 3. Walls for this scene (v2 system).
+  // v2.652.0 — open doors are excluded. Every other consumer of walls
+  // already skips `door_state === 'open'` (VisionLayer v2.271,
+  // wallCollision, WallLayer's dashed render); this loader only filtered
+  // on blocks_sight, which stays true for an opened door — so walking
+  // through a doorway left you counting as behind half cover.
   const { data: wallRows } = await supabase
     .from('scene_walls')
-    .select('id, x1, y1, x2, y2, blocks_sight')
+    .select('id, x1, y1, x2, y2, blocks_sight, door_state')
     .eq('scene_id', sceneId);
   const walls: WallSegment[] = (wallRows ?? [])
-    .filter(w => w.blocks_sight !== false)
+    .filter(w => w.blocks_sight !== false && w.door_state !== 'open')
     .map(w => ({
       id: (w.id as string),
       x1: (w.x1 as number) ?? 0,
@@ -547,10 +580,21 @@ export function findParticipantsInRadius<P extends ParticipantForTokenLookup>(
 // Walls tagged as "solid" in future schema extensions will upgrade to total
 // cover regardless of count.
 //
-// Coordinate conventions (matches BattleMap.tsx):
+// Coordinate conventions:
+//   - Positions are 0-INDEXED anchor cells, as produced by
+//     loadActiveBattleMap (`row = floor(y / gridSize)`).
 //   - Token at {row: N, col: M} occupies the cell whose top-left is at
-//     pixel ((M-1)*gridSize, (N-1)*gridSize)
-//   - Cell center is at ((M - 0.5) * gridSize, (N - 0.5) * gridSize)
+//     pixel (M*gridSize, N*gridSize)
+//   - Cell center is at ((M + 0.5) * gridSize, (N + 0.5) * gridSize)
+//
+// v2.652.0 — that last line used to read (M - 0.5) / (N - 0.5), a
+// convention comment from a 1-indexed era that never matched the only
+// producer of these positions (buildParticipantPositions copies the
+// loader's 0-indexed row/col straight through). Every LoS ray was
+// therefore translated one full cell up-and-left before being tested
+// against walls, so wall-derived cover was computed for the wrong
+// square. Distance math was never affected — it subtracts two positions,
+// so the shift cancelled — which is why this survived since v2.131.
 
 /**
  * Convert a token's grid position to its pixel center. Used by all LoS
@@ -561,29 +605,9 @@ export function tokenCenterPx(
   gridSize: number,
 ): { x: number; y: number } {
   return {
-    x: (pos.col - 0.5) * gridSize,
-    y: (pos.row - 0.5) * gridSize,
+    x: (pos.col + 0.5) * gridSize,
+    y: (pos.row + 0.5) * gridSize,
   };
-}
-
-/**
- * Classic 2D segment-segment intersection via parametric form. Segments AB
- * and CD intersect iff the solved parameters t and u are both in [0, 1].
- *
- * Returns true for proper intersections AND for T-junction endpoints (a
- * ray that JUST grazes a wall endpoint still counts as crossing). Returns
- * false for collinear-but-non-overlapping cases — walls on the same line
- * as the ray are edge cases the DM can resolve manually.
- */
-export function segmentsIntersect(
-  ax: number, ay: number, bx: number, by: number,   // segment AB
-  cx: number, cy: number, dx: number, dy: number,   // segment CD
-): boolean {
-  const denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
-  if (denom === 0) return false;   // parallel or collinear — skip edge case
-  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / denom;
-  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / denom;
-  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
 /**
@@ -631,57 +655,91 @@ export function hasLineOfSight(
   return countWallsBetween(from, to, walls, gridSize) === 0;
 }
 
-/**
- * Derive 2024-PHB cover level from walls crossing the line of effect.
- *
- * RAW 2024 p.204:
- *   - Half cover: +2 AC, +2 Dex save. Examples: low wall, creature.
- *   - Three-quarters cover: +5 AC, +5 Dex save. Examples: portcullis, arrow slit.
- *   - Total cover: can't be targeted directly.
- *
- * Algorithm (v2.145+): sum cover points from all walls crossed using
- * {@link wallCoverPoints}, then bucket:
- *   - 0 pts → 'none'
- *   - 1     → 'half'
- *   - 2     → 'three_quarters'
- *   - 3+    → 'total'
- *
- * Typed walls (new in v2.145) provide RAW-accurate cover in isolation:
- * a single `wall` or `door` gives total, a `window` gives ¾, a `low` gives
- * half. Untyped legacy walls contribute 1 each so existing maps preserve
- * their multi-wall-stacking behavior (1 = half, 2 = ¾, 3+ = total).
- */
-export type CoverLevel = 'none' | 'half' | 'three_quarters' | 'total';
+// v2.652.0 — `CoverLevel`, `pointsToCoverLevel`, `wallCoverPoints` and
+// `deriveCoverFromWalls` all moved to src/rules/cover.ts and are
+// re-exported at the top of this file; callers importing them from here
+// are unchanged.
+
+// ─── v2.652.0 — Cover from creatures ─────────────────────────────
+//
+// RAW 2024 lists "another creature" as a half-cover obstacle, but until
+// now only walls were ever consulted, so a rogue ducking behind the
+// barbarian got nothing. These adapters feed the map's token shapes
+// into the pure derivation in src/rules/cover.ts.
+//
+// Terrain the DM places (crates, pillars, low walls) is deliberately NOT
+// here yet — it needs a `wall_type` column and an authoring tool, and
+// is queued in docs/ROADMAP.md under Track 2. `deriveCover` is already
+// shaped to fold it in as a third source when it lands.
 
 /**
- * Map cover points to a cover level. Exposed so callers can reuse the
- * bucketing (e.g. in a "cover score" debug overlay on the map).
+ * Adapt a map token to a {@link CoverBlocker}. `size` on a token is a
+ * cell span, which cannot tell a rat from a person — the size CATEGORY
+ * comes from `size_label` (v2.652), defaulting to Medium when a token
+ * predates it or came from a payload that doesn't carry it.
  */
-export function pointsToCoverLevel(points: number): CoverLevel {
-  if (points <= 0) return 'none';
-  if (points <= 1) return 'half';
-  if (points <= 2) return 'three_quarters';
-  return 'total';
+export function tokenToCoverBlocker(t: BattleMapToken, index: number): CoverBlocker {
+  const footprint: CellRect = tokenFootprintRange(t);
+  return {
+    // Loader rows carry `id`; the index keeps blockers distinguishable
+    // for any caller building tokens by hand (tests, previews).
+    id: (typeof t.id === 'string' && t.id) || `${t.name ?? 'token'}#${index}`,
+    name: t.name,
+    size: toSizeKey(t.size_label),
+    footprint,
+  };
 }
 
-export function deriveCoverFromWalls(
+/**
+ * Cover the target gets from creatures standing between it and the
+ * attacker. The attacker's and target's own tokens are skipped by
+ * footprint, so callers don't have to filter them out.
+ */
+export function deriveCoverFromTokens(
   from: ParticipantPosition,
   to: ParticipantPosition,
-  walls: WallSegment[],
+  targetSizeLabel: string | null | undefined,
+  tokens: BattleMapToken[],
   gridSize: number,
-): CoverLevel {
-  // Compute crossed walls then sum contributions. We inline the segment
-  // intersection here rather than calling countWallsBetween so we can
-  // preserve type info without a second pass.
-  const a = tokenCenterPx(from, gridSize);
-  const b = tokenCenterPx(to, gridSize);
-  let points = 0;
-  for (const w of walls) {
-    if (segmentsIntersect(a.x, a.y, b.x, b.y, w.x1, w.y1, w.x2, w.y2)) {
-      points += wallCoverPoints(w);
-    }
-  }
-  return pointsToCoverLevel(points);
+): CreatureCoverResult {
+  return deriveCoverFromCreatures(
+    from, to, targetSizeLabel,
+    tokens.map(tokenToCoverBlocker),
+    gridSize,
+  );
+}
+
+/**
+ * Full cover picture for one line of effect, over the map's own token
+ * and wall shapes. Thin adapter over `combineCover` in the rules layer.
+ */
+export function deriveCover(
+  from: ParticipantPosition,
+  to: ParticipantPosition,
+  targetSizeLabel: string | null | undefined,
+  walls: WallSegment[],
+  tokens: BattleMapToken[],
+  gridSize: number,
+): CombinedCover {
+  return combineCover(
+    from, to, targetSizeLabel,
+    walls,
+    tokens.map(tokenToCoverBlocker),
+    gridSize,
+  );
+}
+
+/**
+ * Size label of the token backing a participant, for use as the
+ * `targetSizeLabel` argument above. Medium when the participant has no
+ * token — the same fail-open posture the distance helpers take.
+ */
+export function participantSizeLabel(
+  participant: ParticipantForTokenLookup,
+  tokens: BattleMapToken[],
+): string {
+  const token = findTokenForParticipant(participant, tokens);
+  return (token?.size_label as string | undefined) ?? 'medium';
 }
 
 // ─── v2.343.0 — Shape-aware AoE helpers ──────────────────────────

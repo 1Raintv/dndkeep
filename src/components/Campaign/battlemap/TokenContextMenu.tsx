@@ -8,6 +8,20 @@ import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import { useModal } from '../../shared/Modal';
 import { SIZE_OPTIONS, TOKEN_COLORS, type ContextMenuState } from './shared';
 
+// v2.653.0 — the eight facings, 0° = up (matches Token.rotation's
+// docstring and the renderer's notch). Same 45° increments the AoE
+// cone/line picker snaps to.
+const FACINGS: ReadonlyArray<{ deg: number; label: string; arrow: string }> = [
+  { deg: 0,   label: 'North',     arrow: '↑' },
+  { deg: 45,  label: 'Northeast', arrow: '↗' },
+  { deg: 90,  label: 'East',      arrow: '→' },
+  { deg: 135, label: 'Southeast', arrow: '↘' },
+  { deg: 180, label: 'South',     arrow: '↓' },
+  { deg: 225, label: 'Southwest', arrow: '↙' },
+  { deg: 270, label: 'West',      arrow: '←' },
+  { deg: 315, label: 'Northwest', arrow: '↖' },
+];
+
 export function TokenContextMenu(props: {
   state: ContextMenuState;
   // v2.282: gate Hide/Show on DM. Players who somehow trigger the
@@ -22,6 +36,9 @@ export function TokenContextMenu(props: {
   // menu calls updateToken (Hide/Show, rename, color, size) and
   // deleteToken from its handlers. Threaded through from BattleMapV2.
   campaignId: string;
+  // v2.653.0 — cell size in world px, for the Duplicate offset (one
+  // cell down-right). Lives on the scene, not the store.
+  gridSizePx: number;
   onClose: () => void;
   onRequestUpload: (tokenId: string) => void;
   // v2.222 — when set, the menu shows a "View Character Sheet" item
@@ -43,11 +60,12 @@ export function TokenContextMenu(props: {
     user_id?: string | null;
   }>;
 }) {
-  const { state, isDM, campaignId, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel, playerCharacters } = props;
+  const { state, isDM, campaignId, gridSizePx, onClose, onRequestUpload, onOpenCharacter, onOpenQuickPanel, playerCharacters } = props;
   const token = useBattleMapStore(s => s.tokens[state.tokenId]);
   const removeToken = useBattleMapStore(s => s.removeToken);
+  const addToken = useBattleMapStore(s => s.addToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
-  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant'>('none');
+  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant' | 'facing'>('none');
   // v2.241 — modal handle for the rename prompt.
   const { prompt: promptModal } = useModal();
 
@@ -84,6 +102,43 @@ export function TokenContextMenu(props: {
     tokensApi.deleteToken(state.tokenId, { campaignId }).catch(err =>
       console.error('[BattleMapV2] token delete commit failed', err)
     );
+  }
+
+  /**
+   * v2.653.0 — Duplicate. Copies the token one cell down-right, which
+   * is the Roll20 convention and keeps the copy visible instead of
+   * hidden exactly beneath the original.
+   *
+   * The copy is deliberately NOT linked to whatever the original was
+   * linked to. `characterId` would put a second token for one PC on the
+   * map, and both would fight over the same HP bar and turn ring;
+   * `creatureId` is the sharper trap, because a creature-linked token
+   * gets its own combatant + HP pool through the v2.310 sync trigger,
+   * so a duplicate would silently spawn a second stat block the DM
+   * never asked for. Duplicating is for scenery and quick mobs — the
+   * roster's "Add NPCs" path is what makes a real second creature.
+   */
+  function applyDuplicate() {
+    const copy: Token = {
+      ...token,
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `token-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      x: token.x + gridSizePx,
+      y: token.y + gridSizePx,
+      characterId: null,
+      npcId: null,
+      creatureId: null,
+      combatantId: null,
+      // A duplicate is the DM's staging copy — don't hand control of it
+      // to whoever could drive the original.
+      playerId: null,
+    };
+    addToken(copy);
+    tokensApi.createToken(copy, { campaignId }).catch(err => {
+      console.error('[BattleMapV2] token duplicate commit failed', err);
+      removeToken(copy.id);
+    });
   }
 
   const menuWidth = 180;
@@ -143,6 +198,38 @@ export function TokenContextMenu(props: {
             {token.size === sz && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
           </div>
         ))}
+      </div>,
+      document.body,
+    );
+  }
+
+  // v2.653.0 — Facing submenu. Eight compass points, matching the
+  // 8-way direction snapping the cone/line AoE picker already uses, so
+  // "facing" means the same thing everywhere on this map. Writes
+  // Token.rotation, which has existed since v2.212 but had no UI and
+  // no renderer until now.
+  if (submenu === 'facing') {
+    const current = ((token.rotation ?? 0) % 360 + 360) % 360;
+    return createPortal(
+      <div style={menuBaseStyle} onMouseDown={stop}>
+        <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+          Facing
+        </div>
+        {FACINGS.map(({ deg, label, arrow }) => {
+          const active = current === deg;
+          return (
+            <div
+              key={deg}
+              style={{ ...itemStyle, background: active ? 'rgba(167,139,250,0.12)' : undefined }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+              onClick={() => { applyPatch({ rotation: deg }); onClose(); }}
+            >
+              <span><span style={{ display: 'inline-block', width: 16 }}>{arrow}</span> {label}</span>
+              {active && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
+            </div>
+          );
+        })}
       </div>,
       document.body,
     );
@@ -332,6 +419,13 @@ export function TokenContextMenu(props: {
         }},
         { label: 'Resize ▸', onClick: () => setSubmenu('size') },
         { label: 'Recolor ▸', onClick: () => setSubmenu('color') },
+        // v2.653.0 — Facing (writes the long-dormant rotation column)
+        // and Duplicate. Both DM-only: duplicating writes a new row,
+        // which RLS refuses for players anyway.
+        ...(isDM ? [
+          { label: 'Facing ▸', onClick: () => setSubmenu('facing') },
+          { label: '⧉ Duplicate', onClick: () => { applyDuplicate(); onClose(); } },
+        ] : []),
         // v2.215: portrait upload. Closes the menu and lets the parent
         // trigger the hidden file input for tokenId.
         { label: token.imageStoragePath ? 'Replace portrait…' : 'Upload portrait…', onClick: () => {

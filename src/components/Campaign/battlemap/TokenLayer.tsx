@@ -92,11 +92,22 @@ export function TokenLayer(props: {
   // concentration at a glance while scanning the map. Complements
   // the v2.457 InitiativeStrip chip — same data, different surface.
   characterConcentrationMap?: Map<string, { spellId: string; roundsRemaining: number | null }>;
+  // v2.652.0 — Cover state per token, keyed by token.id. Built by
+  // BattleMapV2 via buildTokenCoverMap (battlemap/coverState.ts) from
+  // the same tokens + walls the layer renders. A token present in the
+  // map has cover against at least one opposing token and gets a shield
+  // glyph carrying the level; absent tokens render nothing. The value
+  // that actually reaches a die roll is still derived per-attack in
+  // DeclareAttackModal — this is the at-a-glance surface, and the two
+  // agree because both go through src/rules/cover.
+  tokenCoverMap?: Map<string, import('./coverState').TokenCoverState>;
   // v2.226 — left-click-without-drag opens the token quick-info panel.
   // Fires only after the user releases the pointer with negligible
   // movement (and the token wasn't dragged). Receives world-screen
   // coordinates so the parent can place the panel near the token.
-  onTokenClick?: (tokenId: string, screenX: number, screenY: number) => void;
+  // v2.653.0 — `additive` is true when the click carried shift/ctrl,
+  // i.e. toggle this token in the selection instead of replacing it.
+  onTokenClick?: (tokenId: string, screenX: number, screenY: number, additive: boolean) => void;
   // v2.268.0 — fired when a drop is rejected because the path crosses
   // a movement-blocking wall. The parent shows a toast; TokenLayer
   // doesn't import the toast hook directly so it stays test-friendly
@@ -150,7 +161,10 @@ export function TokenLayer(props: {
   // Distinct from activeTokenInfo.tokenId (gold ring, driven by
   // initiative) — both can be visible simultaneously when the DM
   // selects a non-active token.
-  selectedTokenId?: string | null;
+  // v2.653.0 — was a single `selectedTokenId`. Multi-select made it a
+  // set; the footprint-accurate ring (v2.431) now draws on every
+  // member, which is all the visual multi-select needed.
+  selectedTokenIds?: ReadonlySet<string>;
   // v2.339.0 — BG3 turn UX. When combat is active, this carries the
   // token id of the participant whose turn it is + their movement
   // budget so the renderer can stamp a gold pulse outline + an
@@ -190,8 +204,9 @@ export function TokenLayer(props: {
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
     textActive, drawActive, fxActive, eraserActive, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap,
     characterConcentrationMap,
+    tokenCoverMap,
     onTokenClick, onMovementBlocked, isDM, myCharacterId, activeTokenInfo,
-    recordUndoable, selectedTokenId, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded,
+    recordUndoable, selectedTokenIds, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded,
   } = props;
   const tokens = useBattleMapStore(s => s.tokens);
   const updatePos = useBattleMapStore(s => s.updateTokenPosition);
@@ -334,6 +349,19 @@ export function TokenLayer(props: {
     // entirely (they don't track concentration in this field — see
     // useCampaignConcentrations docstring).
     concentrationGlyph: Text | null;
+    // v2.652.0 — Cover glyph: a shield carrying the cover level this
+    // token currently has against at least one opposing token. Sits on
+    // the token's RIGHT edge at mid-height, the one band the crowded
+    // -(r + 18) row (lock / concentration / movement badge) and the
+    // -(r + 32) conditions strip both leave free.
+    coverGlyph: Text | null;
+    // v2.653.0 — Facing notch: a small wedge on the rim pointing the
+    // way the token faces. Lazy-created the first time a token is
+    // rotated off 0°, hidden again when it returns. Without it, facing
+    // would be invisible on the majority of tokens — a colored circle
+    // is rotationally symmetric, so only portrait tokens would show
+    // any sign of having been turned.
+    facingMarker: Graphics | null;
     // v2.453.0 — Action Economy Ring. Three 60° arc segments around
     // the active token at radius r + 14, encoding A/B/R availability
     // (bright cyan = available, dim charcoal = consumed). Replaces the
@@ -444,15 +472,32 @@ export function TokenLayer(props: {
   } | null>(null);
 
   const layerContainerRef = useRef<Container | null>(null);
+  // v2.652.0 — Cover glyphs live in their OWN container, mounted after
+  // the token layer so they always draw on top. They cannot be children
+  // of the token container like the lock/concentration glyphs are:
+  // those sit above the token where nothing overlaps, but a cover glyph
+  // sits on the token's flank — and cover comes precisely from a body
+  // in the ADJACENT cell, whose container is a later sibling and painted
+  // over it. First build had every glyph in the party line invisible for
+  // exactly this reason. Positions here are world coords, not local.
+  const coverLayerRef = useRef<Container | null>(null);
   useEffect(() => {
     if (!viewport) return;
     const c = new Container();
     viewport.addChild(c);
     layerContainerRef.current = c;
+    const cover = new Container();
+    viewport.addChild(cover);
+    coverLayerRef.current = cover;
     return () => {
-      if (viewport && !viewport.destroyed) viewport.removeChild(c);
+      if (viewport && !viewport.destroyed) {
+        viewport.removeChild(c);
+        viewport.removeChild(cover);
+      }
       c.destroy({ children: true });
+      cover.destroy({ children: true });
       layerContainerRef.current = null;
+      coverLayerRef.current = null;
       gfxMapRef.current.clear();
     };
   }, [viewport]);
@@ -466,6 +511,12 @@ export function TokenLayer(props: {
       if (!tokens[id]) {
         layer.removeChild(entry.container);
         entry.container.destroy({ children: true });
+        // v2.652.0 — the cover glyph lives in the sibling cover layer,
+        // so destroying the token container does NOT take it with it.
+        if (entry.coverGlyph && !entry.coverGlyph.destroyed) {
+          entry.coverGlyph.destroy();
+          entry.coverGlyph = null;
+        }
         gfxMap.delete(id);
       }
     }
@@ -514,6 +565,10 @@ export function TokenLayer(props: {
           lockGlyph: null,
           // v2.460.0
           concentrationGlyph: null,
+          // v2.652.0
+          coverGlyph: null,
+          // v2.653.0
+          facingMarker: null,
           // v2.453.0
           actionEconomyRing: null,
           actionEconomyLabels: null,
@@ -943,6 +998,46 @@ export function TokenLayer(props: {
           currentEntry.mask.circle(0, 0, r - 1);
           currentEntry.mask.fill(0xffffff);
         }
+      }
+
+      // v2.653.0 — Token facing. `Token.rotation` has round-tripped
+      // through scene_tokens since v2.212 marked "reserved for v2.212+"
+      // and was never rendered — the column stored a value nothing
+      // read. Applied here at last.
+      //
+      // ONLY the artwork turns. Rotating the whole container would spin
+      // the name plate, HP bar, condition strip and every badge with
+      // it, leaving text upside-down at 180° — Roll20 has the same
+      // split for the same reason. The colored circle is rotationally
+      // symmetric so turning it is a no-op; we rotate the portrait
+      // sprite (and the initials, which visibly carry facing when a
+      // token has no portrait).
+      const rotationDeg = token.rotation ?? 0;
+      const facing = (rotationDeg * Math.PI) / 180;
+      if (currentEntry.sprite && !currentEntry.sprite.destroyed) {
+        currentEntry.sprite.rotation = facing;
+      }
+      if (rotationDeg !== 0) {
+        let notch = currentEntry.facingMarker;
+        if (!notch || notch.destroyed) {
+          notch = new Graphics();
+          container.addChild(notch);
+          currentEntry.facingMarker = notch;
+        }
+        // 0° = up, matching the Token.rotation docstring ("degrees,
+        // 0 = facing up"). Screen y grows downward, so up is -y.
+        notch.clear();
+        const tip = r + 7;
+        const base = r + 1;
+        const spread = 0.30;   // radians either side of the facing ray
+        const ang = facing - Math.PI / 2;
+        notch.moveTo(Math.cos(ang) * tip, Math.sin(ang) * tip);
+        notch.lineTo(Math.cos(ang - spread) * base, Math.sin(ang - spread) * base);
+        notch.lineTo(Math.cos(ang + spread) * base, Math.sin(ang + spread) * base);
+        notch.fill({ color: 0xe5e7eb, alpha: 0.9 });
+        notch.visible = true;
+      } else if (currentEntry.facingMarker) {
+        currentEntry.facingMarker.visible = false;
       }
 
       // v2.216 — lock ring for tokens being dragged by a remote user.
@@ -1538,7 +1633,7 @@ export function TokenLayer(props: {
       // of "this is which cells the token occupies" — separate from
       // the token visual itself. Modeled on the blue selection
       // rectangle Roll20 draws around selected tokens.
-      const isSelected = selectedTokenId === token.id;
+      const isSelected = !!selectedTokenIds?.has(token.id);
       if (isSelected) {
         if (!currentEntry.selectionRing) {
           const ring = new Graphics();
@@ -1782,8 +1877,57 @@ export function TokenLayer(props: {
       } else if (currentEntry.concentrationGlyph) {
         currentEntry.concentrationGlyph.visible = false;
       }
+
+      // v2.652.0 — Cover glyph. A shield plus the level's shorthand,
+      // on the token's right edge at mid-height (the crowded band
+      // above the token is already lock + concentration + movement
+      // badge, and the conditions strip owns the row above that).
+      // Colours match the cover chips in AttackResolutionModal and
+      // the DM's target list so one visual language covers all three
+      // surfaces: blue = half, purple = ¾, red = total.
+      const cover = tokenCoverMap?.get(token.id);
+      const coverLayer = coverLayerRef.current;
+      if (cover && coverLayer) {
+        const coverText = cover.level === 'total' ? '⛊'
+          : cover.level === 'three_quarters' ? '⛨¾'
+          : '⛨½';
+        const coverColor = cover.level === 'total' ? 0xf87171
+          : cover.level === 'three_quarters' ? 0xa78bfa
+          : 0x60a5fa;
+        if (!currentEntry.coverGlyph) {
+          const glyph = new Text({
+            text: coverText,
+            style: new TextStyle({
+              fontFamily: 'sans-serif',
+              fontWeight: '900',
+              fontSize: 13,
+              fill: coverColor,
+              align: 'center',
+              stroke: { color: 0x0a0c10, width: 3 },
+            }),
+          });
+          glyph.anchor.set(0.5, 0.5);
+          coverLayer.addChild(glyph);
+          currentEntry.coverGlyph = glyph;
+        }
+        const covGlyph = currentEntry.coverGlyph;
+        // Level can change between passes (an ally steps aside, a door
+        // shuts) — restyle rather than recreate.
+        if (covGlyph.text !== coverText) covGlyph.text = coverText;
+        covGlyph.style.fill = coverColor;
+        // World coords — this glyph is NOT a child of the token
+        // container. Upper-right diagonal keeps it off the horizontal
+        // neighbour and below the -(r + 18) badge row.
+        covGlyph.position.set(
+          token.x + visualOffset + r * 0.78,
+          token.y + visualOffset - r * 0.78,
+        );
+        covGlyph.visible = true;
+      } else if (currentEntry.coverGlyph) {
+        currentEntry.coverGlyph.visible = false;
+      }
     }
-  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap, characterConcentrationMap, isDM, myCharacterId, activeTokenInfo, selectedTokenId]);
+  }, [tokens, viewport, setDragging, onContextMenu, gridSizePx, remoteDragLocks, currentUserId, characterHpMap, npcHpMap, tokenStateMap, tokenStateMapByDef, tokenConditionsMap, characterConcentrationMap, tokenCoverMap, isDM, myCharacterId, activeTokenInfo, selectedTokenIds]);
 
   // v2.456.0 — Hover-targeting preview render. Subscribes to
   // aoePreviewTargetTokenIds (populated by the cone/line picker's
@@ -2590,7 +2734,9 @@ export function TokenLayer(props: {
       // v2.226: fire click callback AFTER drag teardown so the parent
       // can rely on store/lock state being clean.
       if (wasClick && probe) {
-        onTokenClick?.(probe.id, e.clientX, e.clientY);
+        // v2.653.0 — shift/ctrl means "add to the selection" rather
+        // than "replace it", the standard multi-select modifier.
+        onTokenClick?.(probe.id, e.clientX, e.clientY, e.shiftKey || e.ctrlKey || e.metaKey);
       }
       dragRef.current = null;
       clickProbeRef.current = null;
