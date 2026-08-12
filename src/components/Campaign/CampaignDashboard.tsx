@@ -82,6 +82,8 @@ import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 // subscription canonical (no chance of one stalling while the other
 // updates) and shrinks the consumer-side cognitive surface.
 import { useCampaignConcentrations } from '../../lib/hooks/useCampaignConcentrations';
+import { SPECIES_MAP } from '../../data/species';
+import { toTokenSize } from '../../lib/map/coords';
 
 interface CampaignDashboardProps {
   campaign: Campaign;
@@ -573,6 +575,16 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
     myCharacterId: characters.find(c => c.user_id === user?.id)?.id ?? null,
     playerCharacters: characters.map(c => ({
       id: c.id, name: c.name, class_name: c.class_name, level: c.level,
+      // v2.657.0 — battle-map size. PC tokens were hardcoded 'medium' at
+      // placement, so a Halfling or Gnome (the two Small species in the
+      // 2024 set) took a Medium square and, since v2.652, granted and
+      // received cover as though they were Medium. Creature tokens
+      // always derived size from their stat block; this closes the same
+      // loop for players. Resolved here rather than in BattleMapV2 so
+      // the map component stays clear of the species data table — and
+      // so this line is the single seam to change when characters gain
+      // their own chosen size.
+      size: toTokenSize(SPECIES_MAP[c.species]?.size),
       current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
       active_conditions: c.active_conditions ?? [],
       strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,

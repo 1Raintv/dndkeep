@@ -31,6 +31,26 @@ export function tokenSizeCells(size: TokenSize): number {
   }
 }
 
+const TOKEN_SIZES: ReadonlySet<string> = new Set<TokenSize>([
+  'tiny', 'small', 'medium', 'large', 'huge', 'gargantuan',
+]);
+
+/**
+ * v2.657.0 — Normalise any size spelling to a `TokenSize`.
+ *
+ * The app carries two vocabularies for one idea, differing only in
+ * case: `CreatureSize` ('Medium') on species data and monster stat
+ * blocks, and `TokenSize` ('medium') on the battle map. Placement code
+ * that has a species/creature size in hand needs this to cross over.
+ *
+ * Unrecognised input falls back to Medium rather than throwing — a bad
+ * size string must still place a token, not blank the map.
+ */
+export function toTokenSize(size: string | null | undefined): TokenSize {
+  const key = (size ?? '').trim().toLowerCase();
+  return (TOKEN_SIZES.has(key) ? key : 'medium') as TokenSize;
+}
+
 // ── Grid → World ─────────────────────────────────────────────────────
 
 /** World coords of the CENTER of cell (row, col). */

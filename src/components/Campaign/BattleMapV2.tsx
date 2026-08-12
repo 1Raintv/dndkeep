@@ -254,6 +254,10 @@ export interface BattleMapV2Props {
     name: string;
     class_name: string;
     level: number;
+    /** v2.657.0 — battle-map size for this character, resolved by the
+     *  caller (species size today; the character's own chosen size once
+     *  that ships). Absent falls back to Medium. */
+    size?: import('../../lib/map/mapTypes').TokenSize;
     current_hp: number;
     max_hp: number;
     armor_class: number;
@@ -1639,7 +1643,13 @@ function BattleMapV2(props: BattleMapV2Props) {
         sceneId: currentScene.id,
         x: clampedX,
         y: clampedY,
-        size: 'medium',
+        // v2.657.0 — was hardcoded 'medium'. A PC token now takes the
+        // size its species grants, the same way a creature token takes
+        // the size on its stat block. Halfling and Gnome are the two
+        // Small species in the 2024 set; before this they occupied a
+        // Medium square and, since v2.652, granted and received cover
+        // as though they were Medium.
+        size: pc.size ?? 'medium',
         rotation: 0,
         name: pc.name,
         color: TOKEN_COLORS[(baseCount + idx) % TOKEN_COLORS.length],
