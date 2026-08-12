@@ -20,6 +20,7 @@ import { useSpells } from '../../lib/hooks/useSpells';
 import { rechargeOnLongRest } from '../../lib/charges';
 import { CombatProvider, useCombat } from '../../context/CombatContext';
 import InitiativeStrip from '../Combat/InitiativeStrip';
+import { TakeCoverChip } from '../Combat/TakeCoverChip';
 // v2.443.0 — Lazy-load combat modals on the character sheet. Same
 // rationale as CampaignDashboard: these listen for state to self-
 // open and render null otherwise. Eager-importing them dragged ~860
@@ -2499,7 +2500,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      the existing CombatProvider tree. Was a JSX block driven by
      parent state; the parent state itself was driven by a dead
      session_states sub. */}
- <YourTurnBanner characterId={character.id} characterName={character.name} />
+ <YourTurnBanner characterId={character.id} characterName={character.name} campaignId={character.campaign_id} />
 
  {/* ── Divider ── */}
  <div style={{ height: 1, background: 'var(--c-border)' }} />
@@ -4785,9 +4786,11 @@ function SpellRow({
 // link back to the npcs table; modern combat doesn't have that
 // problem so the name fallback is dropped.
 // ──────────────────────────────────────────────────────────────────
-function YourTurnBanner({ characterId, characterName: _characterName }: {
+function YourTurnBanner({ characterId, characterName: _characterName, campaignId }: {
  characterId: string;
  characterName: string;
+ // v2.652.0 — needed by TakeCoverChip to load the active scene.
+ campaignId: string | null | undefined;
 }) {
  const { encounter, currentActor } = useCombat();
  if (!encounter || encounter.status !== 'active') return null;
@@ -4812,7 +4815,13 @@ function YourTurnBanner({ characterId, characterName: _characterName }: {
  transition: 'all 0.3s',
  animation: isMyTurn ? 'pulse-gold 2s infinite' : 'none',
  }}>
- <div />
+ {/* v2.652.0 — cover chip fills what was an empty spacer cell in the
+     1fr/auto/1fr grid. It renders nothing unless it IS this player's
+     turn and their token is next to something worth ducking behind,
+     so the banner looks unchanged the rest of the time. */}
+ <div style={{ justifySelf: 'start' }}>
+ <TakeCoverChip campaignId={campaignId} characterId={characterId} />
+ </div>
  <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
  <div style={{
  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,

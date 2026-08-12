@@ -23,7 +23,8 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { declareAttack } from '../../lib/pendingAttack';
 import {
-  deriveCoverFromWalls,
+  deriveCover,
+  participantSizeLabel,
   loadActiveBattleMap,
   buildParticipantPositions,
   // v2.458.0 — Footprint-aware Chebyshev for inline distance display.
@@ -132,17 +133,19 @@ export default function MultiAttackPickerModal({
         .filter(p => p.id !== caster.id && !p.is_dead);
       setParticipants(list);
 
-      // Cover preview if a map with walls exists. Per-beam cover applies
-      // to every beam targeting that creature, so we compute once per
-      // target, not once per beam.
+      // Cover preview if a map exists. Per-beam cover applies to every
+      // beam targeting that creature, so we compute once per target, not
+      // once per beam.
       // v2.458.0 — Always stash the map (for distance display); cover
       // work still gated on walls being present.
+      // v2.652.0 — ungated: creatures on the line give half cover, so a
+      // wall-less scene can still produce a preview.
       try {
         const map = await loadActiveBattleMap(campaignId);
         if (!cancelled && map) {
           setBattleMap(map);
         }
-        if (!cancelled && map && map.walls.length > 0) {
+        if (!cancelled && map) {
           const posInput = [
             {
               id: caster.id as string,
@@ -164,7 +167,11 @@ export default function MultiAttackPickerModal({
             for (const p of list) {
               const tPos = positions.get(p.id);
               if (!tPos) continue;
-              const lvl = deriveCoverFromWalls(casterPos, tPos, map.walls, map.grid_size);
+              const lvl = deriveCover(
+                casterPos, tPos,
+                participantSizeLabel(p, map.tokens),
+                map.walls, map.tokens, map.grid_size,
+              ).level;
               if (lvl !== 'none') derived[p.id] = lvl;
             }
             setCoverByTarget(derived);
