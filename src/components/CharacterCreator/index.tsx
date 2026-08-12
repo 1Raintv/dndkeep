@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AbilityKey, Alignment, AbilityScoreMethod, Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -86,6 +86,19 @@ export default function CharacterCreator() {
     setStep(n);
   };
   const [originFeat, setOriginFeat] = useState('');
+
+  // v2.655.0 / v2.656.0 — the scores this build currently has: base +
+  // background + every level ASI picked so far. Exactly what
+  // handleCreate persists, so previews and the saved character agree.
+  // Feeds the HP preview, the spellcasting modifier, and the feature
+  // descriptions that interpolate an ability modifier.
+  const previewScores = useMemo(
+    () => applyAbilityIncreases(
+      scores,
+      buildAbilityIncreases(BACKGROUND_MAP[background], buildChoices.asiChoices),
+    ),
+    [scores, background, buildChoices.asiChoices],
+  );
 
   function handleSkillToggle(skill: string) {
     setSelectedSkills(prev =>
@@ -365,6 +378,7 @@ export default function CharacterCreator() {
             }}
             currentLevel={currentBuildLevel}
             onCurrentLevelChange={setCurrentBuildLevel}
+            abilityScores={previewScores}
             spellAbilityMod={(() => {
               // v2.583.0 — mirror handleCreate's finalScores math for
               // the spellcasting ability, so the Artificer prepared-cap
@@ -373,12 +387,7 @@ export default function CharacterCreator() {
               // hand and, like handleCreate, ignored the level ASIs.
               // Both now go through the same two rules functions.
               const key = getSpellAbility(className);
-              const bg = BACKGROUND_MAP[background];
-              const withAsi = applyAbilityIncreases(
-                scores,
-                buildAbilityIncreases(bg, buildChoices.asiChoices),
-              );
-              return abilityModifier(withAsi[key]);
+              return abilityModifier(previewScores[key]);
             })()}
           />
         )}
@@ -427,17 +436,12 @@ export default function CharacterCreator() {
         {className && (() => {
           const cls = CLASS_MAP[className];
           if (!cls) return null;
-          const bg = BACKGROUND_MAP[background];
-          // v2.655.0 — same two rules functions as handleCreate. This
-          // preview previously showed HP from a Constitution that
-          // ignored any CON point spent on a level ASI, so the number
-          // the player saw here could differ from the character they
-          // actually got.
-          const finalScores = applyAbilityIncreases(
-            scores,
-            buildAbilityIncreases(bg, buildChoices.asiChoices),
-          );
-          const hp = calcMaxHP(cls.hit_die, finalScores.constitution, level);
+          // v2.655.0 — previewScores is the same base + background +
+          // level-ASI math handleCreate persists. This preview used to
+          // show HP from a Constitution that ignored any CON point
+          // spent on a level ASI, so the number the player saw here
+          // could differ from the character they actually got.
+          const hp = calcMaxHP(cls.hit_die, previewScores.constitution, level);
           const profBonus = level < 5 ? 2 : level < 9 ? 3 : level < 13 ? 4 : level < 17 ? 5 : 6;
           return (
             <div style={{ marginTop: 'var(--sp-2)', padding: 'var(--sp-3)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', display: 'flex', flexDirection: 'column', gap: 6 }}>
