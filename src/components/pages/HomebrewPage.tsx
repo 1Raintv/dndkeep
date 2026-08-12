@@ -4,6 +4,7 @@ import { CLASSES } from '../../data/classes';
 import { useClassRegistry, type ClassEntry } from '../../lib/classRegistry';
 import { supabase } from '../../lib/supabase';
 import type { SubclassData, SubclassFeature } from '../../types';
+import { resolveFeatureText } from '../../lib/featureText';
 
 const ABILITIES = ['strength','dexterity','constitution','intelligence','wisdom','charisma'];
 const ALL_SKILLS = ['Acrobatics','Animal Handling','Arcana','Athletics','Deception','History',
@@ -209,7 +210,11 @@ function UACard({ className, sub }: { className: string; sub: SubclassData }) {
               {sub.features.map(f => (
                 <div key={f.name} style={{ padding: '6px 8px', background: 'var(--c-raised)', borderRadius: 6, borderLeft: '2px solid rgba(167,139,250,0.4)' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>Lv {f.level} — {f.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.5 }}>{typeof f.description === 'function' ? f.description({ level: 20 } as any) : f.description}</div>
+                  {/* v2.656.0 — was `f.description({ level: 20 } as any)`,
+                      which left c.wisdom/charisma/intelligence undefined;
+                      the ~50 features that read one rendered the literal
+                      string "NaN". The resolver defaults them to 10. */}
+                  <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2, lineHeight: 1.5 }}>{resolveFeatureText(f.description, { level: f.level ?? 20 })}</div>
                   {f.mechanics?.map((m, i) => (
                     <div key={i} style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 3 }}>
                       [{m.type}] {m.details}{m.dice ? ` · ${m.dice}` : ''}{m.ability ? ` · ${m.ability}` : ''}

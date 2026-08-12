@@ -13,6 +13,7 @@ import {
   METAMAGIC_OPTIONS, FIGHTING_STYLE_OPTIONS, WARLOCK_INVOCATIONS,
   EXPERTISE_SKILLS, DIVINE_ORDERS, PRIMAL_ORDERS,
 } from '../../data/choiceOptions';
+import { resolveFeatureText } from '../../lib/featureText';
 
 export interface BuildChoices {
   subclass: string;
@@ -49,11 +50,32 @@ interface StepBuildProps {
   /** Spellcasting-ability modifier (scores + background ASI). Only used
       for the Artificer prepared-cap fallback; defaults to 0. */
   spellAbilityMod?: number;
+  /** v2.656.0 — the build's current ability scores (base + background +
+      any level ASIs picked so far). Feature descriptions can be
+      `(c) => string` and many interpolate a modifier, so without these
+      the preview text would be computed against a flat 10 in every
+      ability. Optional: absent just means those numbers read as +0. */
+  abilityScores?: Partial<Record<
+    'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma', number
+  >>;
 }
 
 const SPELL_ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
 
-export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange, spellAbilityMod = 0 }: StepBuildProps) {
+type CreatorAbilityScores = StepBuildProps['abilityScores'];
+
+/**
+ * v2.656.0 — context for resolveFeatureText. The level is the level the
+ * FEATURE is granted at, not whichever level the wizard happens to be
+ * showing, so a level-10 feature previewed from the level-3 panel still
+ * describes itself correctly.
+ */
+function featureCtxFor(abilityScores: CreatorAbilityScores, featureLevel: number) {
+  return { ...abilityScores, level: featureLevel };
+}
+
+export default function StepBuild({ className, level, choices, onChoicesChange, constitutionMod = 0, onBack, onNext, currentLevel: controlledLevel, onCurrentLevelChange, spellAbilityMod = 0, abilityScores }: StepBuildProps) {
+  const featureCtx = (featureLevel: number) => featureCtxFor(abilityScores, featureLevel);
   const cls = CLASS_MAP[className];
   const progression = CLASS_LEVEL_PROGRESSION[className] ?? [];
   // Level is fully controlled by parent via currentLevel prop.
@@ -219,7 +241,12 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
                             return subFeats.map((f: any) => (
                               <div key={f.name}>
                                 <span style={{ fontWeight: 700 }}>{f.name}</span>
-                                {f.description && <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>{f.description}</div>}
+                                {/* v2.656.0 — descriptions can be
+                                    (c) => string; handing the function
+                                    to JSX rendered nothing and logged
+                                    "Functions are not valid as a React
+                                    child". */}
+                                {f.description && <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>{resolveFeatureText(f.description, featureCtx(currentLevel))}</div>}
                               </div>
                             ));
                           }
@@ -252,6 +279,7 @@ export default function StepBuild({ className, level, choices, onChoicesChange, 
                 onUpdate={update}
                 maxSpellLevel={prog.newSpellLevel ?? getMaxSpellLevel(currentLevel, cls.spellcaster_type ?? 'full')}
                 spellAbilityMod={spellAbilityMod}
+                abilityScores={abilityScores}
               />
             ))}
           </div>
@@ -320,15 +348,15 @@ function getMaxSpellLevel(level: number, casterType: string): number {
 
 // ── Choice panel renders ────────────────────────────────────────────
 
-function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpellLevel, spellAbilityMod = 0 }: {
+function ChoicePanel({ type, label, level, className, choices, onUpdate, maxSpellLevel, spellAbilityMod = 0, abilityScores }: {
   type: string; label: string; level: number; className: string;
   choices: BuildChoices; onUpdate: (patch: Partial<BuildChoices>) => void;
-  maxSpellLevel: number; spellAbilityMod?: number;
+  maxSpellLevel: number; spellAbilityMod?: number; abilityScores?: CreatorAbilityScores;
 }) {
   const cls = CLASS_MAP[className];
 
   if (type === 'subclass') {
-    return <SubclassPicker label={label} cls={cls} choices={choices} onUpdate={onUpdate} />;
+    return <SubclassPicker label={label} cls={cls} choices={choices} onUpdate={onUpdate} abilityScores={abilityScores} />;
   }
 
   if (type === 'cantrips' || type === 'spells') {
@@ -777,9 +805,9 @@ function MultiPicker({ label, options, selected, onToggle, single, max, excluded
 }
 
 // ── Subclass Picker ─────────────────────────────────────────────────
-function SubclassPicker({ label, cls, choices, onUpdate }: {
+function SubclassPicker({ label, cls, choices, onUpdate, abilityScores }: {
   label: string; cls: any;
-  choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
+  choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void; abilityScores?: CreatorAbilityScores;
 }) {
   // v2.40.0: Single-click selection — clicking a subclass row selects it AND
   // expands the description for review. No "Confirm" button needed.
@@ -872,7 +900,7 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
                     {sc.features.map((f: any) => (
                       <div key={f.name} style={{ padding: '6px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: 6, borderLeft: '2px solid var(--c-border-m)' }}>
                         <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--t-2)' }}>Lv {f.level} — {f.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.5 }}>{f.description}</div>
+                        <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.5 }}>{resolveFeatureText(f.description, featureCtxFor(abilityScores, f.level))}</div>
                       </div>
                     ))}
                   </div>
@@ -897,7 +925,7 @@ function SubclassPicker({ label, cls, choices, onUpdate }: {
 // ── ASI / Feat picker ─────────────────────────────────────────────────────────
 function ASIFeatPicker({ label, level, choices, onUpdate }: {
   label: string; level: number;
-  choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void;
+  choices: BuildChoices; onUpdate: (p: Partial<BuildChoices>) => void; abilityScores?: CreatorAbilityScores;
 }) {
   const asi = choices.asiChoices[level];
   const hasFeat = !!choices.feats[level];
