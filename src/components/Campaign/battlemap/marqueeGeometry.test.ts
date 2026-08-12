@@ -1,4 +1,4 @@
-// v2.653.0 — Marquee hit-testing.
+// v2.653.0 — Marquee hit-testing (geometry extracted v2.658).
 //
 // 70 px grid (DEFAULT_GRID_SIZE_PX). Odd footprints anchor at their
 // centre cell's centre, even ones at the footprint's top-left grid
@@ -12,7 +12,7 @@ import {
   rectsOverlap,
   tokensInRect,
   pointHitsToken,
-} from './MarqueeLayer';
+} from './marqueeGeometry';
 
 const G = 70;
 

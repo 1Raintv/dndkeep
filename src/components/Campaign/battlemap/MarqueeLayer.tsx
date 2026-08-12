@@ -24,75 +24,12 @@ import { Graphics } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useEffect, useRef } from 'react';
 import type { Token } from '../../../lib/map/mapTypes';
-import { tokenSizeCells } from '../../../lib/map/coords';
-
-export interface WorldRect {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
-/** Normalise a dragged rect so x1<x2 and y1<y2 whichever way it was swept. */
-export function normaliseRect(r: WorldRect): WorldRect {
-  return {
-    x1: Math.min(r.x1, r.x2),
-    y1: Math.min(r.y1, r.y2),
-    x2: Math.max(r.x1, r.x2),
-    y2: Math.max(r.y1, r.y2),
-  };
-}
-
-/**
- * World-space bounding box of a token's footprint.
- *
- * Mirrors the anchor convention in src/lib/map/coords.ts: odd
- * footprints (1×1, 3×3) anchor at their centre cell's centre, even
- * ones (2×2, 4×4) at the footprint's top-left grid intersection.
- */
-export function tokenBoundsWorld(t: Token, cellSize: number): WorldRect {
-  const cells = tokenSizeCells(t.size);
-  const span = cells * cellSize;
-  if (cells % 2 === 1) {
-    const half = span / 2;
-    return { x1: t.x - half, y1: t.y - half, x2: t.x + half, y2: t.y + half };
-  }
-  return { x1: t.x, y1: t.y, x2: t.x + span, y2: t.y + span };
-}
-
-/** Axis-aligned overlap test; touching edges count as a hit. */
-export function rectsOverlap(a: WorldRect, b: WorldRect): boolean {
-  return a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1;
-}
-
-/** Ids of every token whose footprint overlaps the swept rectangle. */
-export function tokensInRect(
-  tokens: Token[],
-  rect: WorldRect,
-  cellSize: number,
-): string[] {
-  const norm = normaliseRect(rect);
-  return tokens
-    .filter(t => rectsOverlap(tokenBoundsWorld(t, cellSize), norm))
-    .map(t => t.id);
-}
-
-/**
- * True when a world point lands on any token. Used to stand the marquee
- * down so pressing a token drags it instead of sweeping a box — see the
- * Pixi/DOM propagation note in the module header.
- */
-export function pointHitsToken(
-  tokens: Token[],
-  x: number,
-  y: number,
-  cellSize: number,
-): boolean {
-  return tokens.some(t => {
-    const b = tokenBoundsWorld(t, cellSize);
-    return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2;
-  });
-}
+import {
+  normaliseRect,
+  pointHitsToken,
+  tokensInRect,
+  type WorldRect,
+} from './marqueeGeometry';
 
 /** Below this many world px the gesture reads as a click, not a sweep. */
 const MIN_DRAG_PX = 6;
