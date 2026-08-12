@@ -224,6 +224,7 @@ import { buildTokenCoverMap } from './battlemap/coverState';
 import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
+import { WallTypePanel } from './battlemap/WallTypePanel';
 import { ViewportHost } from './battlemap/ViewportHost';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
 import { GridOverlay } from './battlemap/GridOverlay';
@@ -3514,6 +3515,12 @@ function BattleMapV2(props: BattleMapV2Props) {
             onClear={clearSelection}
           />
         )}
+
+        {/* v2.661.0 — material picker for the wall tool. HTML, so it
+            lives outside <Application> rather than beside WallLayer.
+            Only while the tool is active: it is authoring state with
+            nothing to say when you aren't drawing walls. */}
+        {isDM && wallActive && <WallTypePanel />}
 
         <div
           style={{

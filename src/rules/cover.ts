@@ -338,10 +338,12 @@ export interface CoverWall {
    *    so existing maps keep their multi-wall-stacking behavior
    *    (1 wall → half, 2 → ¾, 3+ → total).
    *
-   *  NOTE (v2.652): nothing populates this yet — there is no
-   *  `wall_type` column and no authoring tool, so every wall on a live
-   *  map is the legacy untyped case. Wiring it up is queued in
-   *  docs/ROADMAP.md under Track 2. */
+   *  v2.661: now populated. `scene_walls.wall_type` stores the
+   *  material, the wall toolbar authors it, and `coverWalls` in
+   *  battlemap/coverState.ts resolves it — mapping a closed door to
+   *  'door' from `doorState` rather than from the stored column.
+   *  Walls drawn before v2.661 stay NULL and keep the legacy
+   *  behavior; the migration documents the opt-in backfill. */
   type?: 'wall' | 'low' | 'window' | 'door' | null;
 }
 

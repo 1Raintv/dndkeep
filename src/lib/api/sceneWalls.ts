@@ -25,6 +25,9 @@ export function dbRowToWall(row: any): Wall {
     blocksSight: row.blocks_sight ?? true,
     blocksMovement: row.blocks_movement ?? true,
     doorState: row.door_state ?? null,
+    // v2.661.0 — NULL on rows written before the wall_type column
+    // existed, and on any door segment. Both read as legacy untyped.
+    wallType: row.wall_type ?? null,
   };
 }
 
@@ -40,6 +43,7 @@ function wallToInsertRow(wall: Wall) {
     blocks_sight: wall.blocksSight,
     blocks_movement: wall.blocksMovement,
     door_state: wall.doorState,
+    wall_type: wall.wallType,
   };
 }
 
@@ -102,9 +106,9 @@ export async function clearSceneWalls(sceneId: string): Promise<number> {
   return (data ?? []).length;
 }
 
-/** v2.271.0 — Update a wall's mutable fields (currently only
- *  doorState; blocksSight / blocksMovement are reserved for future
- *  ships and aren't surfaced in the UI yet). RLS gates DM-only
+/** v2.271.0 — Update a wall's mutable fields (doorState and, since
+ *  v2.661, wallType; blocksSight / blocksMovement are reserved for
+ *  future ships and aren't surfaced in the UI yet). RLS gates DM-only
  *  UPDATE; party members of published scenes only have SELECT.
  *
  *  Pass only the fields you want to change. Unspecified fields are
@@ -112,7 +116,7 @@ export async function clearSceneWalls(sceneId: string): Promise<number> {
  *  current value" UPDATE semantics. */
 export async function updateWall(
   id: string,
-  patch: Partial<Pick<Wall, 'doorState' | 'blocksSight' | 'blocksMovement'>>,
+  patch: Partial<Pick<Wall, 'doorState' | 'blocksSight' | 'blocksMovement' | 'wallType'>>,
 ): Promise<boolean> {
   // Strictly typed row shape — Record<string, unknown> doesn't pass
   // supabase-js's RejectExcessProperties guard. Use a proper interface
@@ -124,10 +128,12 @@ export async function updateWall(
     door_state?: 'open' | 'closed' | 'locked' | null;
     blocks_sight?: boolean;
     blocks_movement?: boolean;
+    wall_type?: 'wall' | 'low' | 'window' | null;
   } = {};
   if ('doorState' in patch) row.door_state = patch.doorState ?? null;
   if ('blocksSight' in patch) row.blocks_sight = patch.blocksSight;
   if ('blocksMovement' in patch) row.blocks_movement = patch.blocksMovement;
+  if ('wallType' in patch) row.wall_type = patch.wallType ?? null;
   if (Object.keys(row).length === 0) return true; // no-op
   const { error } = await supabase.from('scene_walls').update(row).eq('id', id);
   if (error) {

@@ -2247,6 +2247,8 @@ export type Database = {
           blocks_sight: boolean;
           blocks_movement: boolean;
           door_state: string | null;
+          /** v2.661.0 — cover material. NULL = legacy untyped. */
+          wall_type: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -2260,6 +2262,7 @@ export type Database = {
           blocks_sight?: boolean;
           blocks_movement?: boolean;
           door_state?: string | null;
+          wall_type?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -2273,6 +2276,7 @@ export type Database = {
           blocks_sight?: boolean;
           blocks_movement?: boolean;
           door_state?: string | null;
+          wall_type?: string | null;
           created_at?: string;
           updated_at?: string;
         };

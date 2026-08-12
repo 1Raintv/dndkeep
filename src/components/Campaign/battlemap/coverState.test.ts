@@ -43,6 +43,10 @@ const wall = (x: number, y1: number, y2: number, over: Partial<Wall> = {}): Wall
   id: `w-${x}-${y1}`, sceneId: null,
   x1: x, y1, x2: x, y2,
   blocksSight: true, blocksMovement: true, doorState: null,
+  // v2.661.0 — default to legacy untyped, matching every wall drawn
+  // before the wall_type column existed. Tests that care about a
+  // material pass it explicitly.
+  wallType: null,
   ...over,
 });
 
@@ -75,6 +79,34 @@ describe('sides and walls', () => {
     const seeThrough = wall(350, 0, 140, { blocksSight: false });
     expect(coverWalls([solid, open, closed, seeThrough]).map(w => w.x1))
       .toEqual([140, 280]);
+  });
+
+  // v2.661.0 — coverWalls now resolves a material onto CoverWall.type.
+  // Before this it passed Wall through structurally, so `type` was
+  // always undefined and every wall scored as legacy untyped.
+  describe('material resolution', () => {
+    it('passes each stored material through', () => {
+      expect(coverWalls([wall(0, 0, 70, { wallType: 'wall' })])[0].type).toBe('wall');
+      expect(coverWalls([wall(0, 0, 70, { wallType: 'low' })])[0].type).toBe('low');
+      expect(coverWalls([wall(0, 0, 70, { wallType: 'window' })])[0].type).toBe('window');
+    });
+
+    it('leaves pre-v2.661 walls untyped rather than assuming solid', () => {
+      // The deliberate no-backfill choice: existing maps keep scoring
+      // half cover per wall instead of silently jumping to total.
+      expect(coverWalls([wall(0, 0, 70)])[0].type).toBeNull();
+    });
+
+    it('types a closed door as a door regardless of material', () => {
+      expect(coverWalls([wall(0, 0, 70, { doorState: 'closed' })])[0].type).toBe('door');
+      // doorState wins even if a material somehow got stored too.
+      expect(coverWalls([wall(0, 0, 70, { doorState: 'closed', wallType: 'low' })])[0].type)
+        .toBe('door');
+    });
+
+    it('types a locked door as a door', () => {
+      expect(coverWalls([wall(0, 0, 70, { doorState: 'locked' })])[0].type).toBe('door');
+    });
   });
 });
 

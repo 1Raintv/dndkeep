@@ -2,7 +2,7 @@
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
-**Current version:** v2.660.0
+**Current version:** v2.661.0
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the
@@ -121,7 +121,11 @@ Scope:
   a choice; validate the pick against that species' allowed set on write.
 - **Token:** PC tokens hardcode `size: 'medium'` (`BattleMapV2.tsx` ~L1634) — derive
   from the character instead, so a Small character occupies a Small token and gets
-  the cover treatment their size earns.
+  the cover treatment their size earns. (v2.657 did this via the species seam in
+  `CampaignDashboard`; the remaining piece is the per-character override.)
+- **Not in scope: drawing Small tokens smaller.** Settled 2026-08-12 — Small and
+  Medium occupy the same 5-ft space in the 2024 rules, so they render
+  identically. See the Track 2 note.
 - **Knock-ons to check:** carrying capacity (Powerful Build already counts as one
   size larger), Halfling Nimbleness ("move through the space of a creature one size
   larger"), grapple/shove size limits, and Naturally Stealthy.
@@ -152,22 +156,28 @@ rules-of-hooks clean, vite build). But this is engineering, not rules-judgment, 
 iteration can move faster than Track 1.
 
 **Candidate backlog (to be prioritized):**
-- **Cover from walls and DM-placed terrain (queued — the other half of v2.652).**
-  v2.652 shipped cover from *creatures*; walls are still second-class and terrain
-  doesn't exist:
-  - `wall_type` is dead code. `CoverWall.type` (`src/rules/cover.ts`) scores
-    solid / low / window / door, but there's no `scene_walls.wall_type` column and
-    no way to set it — so **every wall on every live map is the legacy untyped
-    case worth 1 point, i.e. half cover.** A stone wall reads the same as a
-    railing, and it takes three stacked walls to reach total cover. Needs: an
-    idempotent migration, the column plumbed through `sceneWalls` + the loader,
-    and a type selector in the wall tool (which today only cycles door states).
-  - **Terrain objects.** The DM can place tokens, walls, drawings and text —
-    nothing that reads as a crate, pillar or boulder. Decide whether these become
-    typed low walls (reuses everything above) or a first-class object entity with
-    a cover level, then feed them in as a third source. `combineCover` is already
-    shaped for it: add to the blockers list, the RAW "most protective wins" merge
-    handles the rest.
+- **Cover from walls — shipped in v2.661.** `wall_type` is no longer dead code:
+  `scene_walls.wall_type` stores the material, a picker in the wall toolbar
+  (`battlemap/WallTypePanel.tsx`) sets it for new walls, ctrl+click retypes an
+  existing one, and `coverWalls` in `battlemap/coverState.ts` resolves it onto
+  `CoverWall.type`. Closed doors now score as doors (total cover) instead of
+  half, derived from `doorState` rather than stored twice.
+  - **Existing walls were deliberately NOT backfilled.** They stay NULL and keep
+    scoring as legacy untyped (half cover each). Converting them to solid would
+    be the "correct" reading, but it silently upgrades every wall on every live
+    map to total cover mid-campaign — a gameplay change, not a migration. The
+    opt-in `update` is in the migration's header comment. **Live maps therefore
+    see no change until a DM opts in or redraws.**
+  - Not verified in a browser yet — Docker was down when it shipped, so the
+    toolbar and the three wall colours have only been checked by unit test and
+    build. Worth a look on next run.
+- **Terrain objects (queued — the remaining half of v2.652).** The DM can place
+  tokens, walls, drawings and text — nothing that reads as a crate, pillar or
+  boulder. Decide whether these become typed low walls (which would now reuse
+  the whole v2.661 pipeline) or a first-class object entity with a cover level,
+  then feed them in as a third source. `combineCover` is already shaped for it:
+  add to the blockers list and the RAW "most protective wins" merge handles the
+  rest.
 - **Pointer group-drag (deferred from v2.653).** Multi-select shipped with
   marquee sweep, shift-click, a bulk action bar (lock / hide / reveal / delete)
   and arrow-key nudge — but dragging a whole selection with the mouse was left
@@ -189,17 +199,13 @@ iteration can move faster than Track 1.
 - Measurement/ruler in grid units.
 - Basic drawing primitives (shapes, freehand) if they serve automation.
 - Automation improvements surfaced from live play.
-- **Character size selection (Track 1 seam).** The 2024 rule letting Aasimar,
-  Human and Tiefling pick Small or Medium. Needs a `characters.size` column, a
-  picker in the creator, and the `CampaignDashboard` seam that already resolves
-  species size (v2.657). Whether Small should *render* smaller is an open
-  question — see below.
-- **Open question: should Small tokens render smaller?** v2.657 made PC tokens
-  take their species' size, but `tokenRadiusForSize` draws Small and Medium
-  identically (both `0.95`) and both occupy one cell, which is RAW-correct.
-  Making Small visibly smaller is a one-line change in
-  `battlemap/shared.ts` — but it shrinks every Small *monster* too, not just
-  PCs. Undecided.
+- ~~Should Small tokens render smaller?~~ **Settled 2026-08-12: no.** A Small
+  creature and a Medium creature both occupy a 5-by-5-ft space in the 2024
+  rules — size only changes the occupied area at Large and above (Tiny is the
+  exception below Medium, taking 2½ ft, and `tokenRadiusForSize` already draws
+  it at `0.5` for distinction). Drawing Small smaller would imply a mechanical
+  difference that does not exist, and would shrink every Small monster as a
+  side effect. Small and Medium stay identical at `0.95`.
 
 ### Roll20 parity (inherited from Track 3)
 

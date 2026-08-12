@@ -100,14 +100,34 @@ export function WallLayer(props: {
     // immaterial.
     const baseAlpha = active ? 0.95 : 0.85;
     const allWalls = Object.values(walls);
-    const solid = allWalls.filter(w => w.doorState === null);
+    const nonDoors = allWalls.filter(w => w.doorState === null);
     const closedDoors = allWalls.filter(w => w.doorState === 'closed');
     const openDoors = allWalls.filter(w => w.doorState === 'open');
 
-    // Pass 1: solid walls — purple, the existing style.
-    if (solid.length > 0) {
-      gfx.setStrokeStyle({ color: 0xa78bfa, width: 3, alpha: baseAlpha });
-      for (const w of solid) {
+    // v2.661.0 — pass 1 split by material, because a DM who can't see
+    // which walls are low or glazed can't tell why a shot got half
+    // cover instead of total. Purple stays the solid/legacy colour so
+    // existing maps look unchanged; the two lesser materials read as
+    // visibly thinner and cooler.
+    //   solid + legacy null — purple, 3px  (total / legacy half)
+    //   low                 — slate, 2px   (half cover)
+    //   window              — cyan,  2px   (three-quarters)
+    const MATERIAL_STYLE: Record<string, { color: number; width: number }> = {
+      wall:   { color: 0xa78bfa, width: 3 },
+      low:    { color: 0x94a3b8, width: 2 },
+      window: { color: 0x67e8f9, width: 2 },
+    };
+    for (const [material, style] of Object.entries(MATERIAL_STYLE)) {
+      // Legacy untyped walls ride along with 'wall' so they keep the
+      // look they have always had, even though they score as a small
+      // obstacle rather than as solid.
+      const group = nonDoors.filter(w =>
+        material === 'wall' ? (w.wallType === 'wall' || w.wallType == null)
+                            : w.wallType === material
+      );
+      if (group.length === 0) continue;
+      gfx.setStrokeStyle({ ...style, alpha: baseAlpha });
+      for (const w of group) {
         gfx.moveTo(w.x1, w.y1);
         gfx.lineTo(w.x2, w.y2);
       }
@@ -182,6 +202,24 @@ export function WallLayer(props: {
       return viewport.toWorld(screenX, screenY);
     }
 
+    /** v2.661.0 — id of the wall nearest `world` within the click
+     *  threshold, or null. Extracted when ctrl+click retype became the
+     *  third caller of this loop (right-click delete and shift+click
+     *  door toggle were the first two, copy-pasted). One threshold,
+     *  one scene filter, one tie-break rule for all three. */
+    function nearestWallId(world: { x: number; y: number }): string | null {
+      const THRESHOLD = Math.max(6, gridSizePx * 0.25);
+      let best: { id: string; dist: number } | null = null;
+      for (const w of Object.values(useBattleMapStore.getState().walls)) {
+        if (w.sceneId !== currentSceneId) continue;
+        const d = pointSegmentDistance(world.x, world.y, w.x1, w.y1, w.x2, w.y2);
+        if (d < THRESHOLD && (!best || d < best.dist)) {
+          best = { id: w.id, dist: d };
+        }
+      }
+      return best?.id ?? null;
+    }
+
     function onDown(e: PointerEvent) {
       // Only intercept events targeting the canvas.
       if (e.target !== canvasEl) return;
@@ -190,19 +228,11 @@ export function WallLayer(props: {
       if (e.button === 2) {
         const world = worldFromEvent(e);
         if (!world) return;
-        const THRESHOLD = Math.max(6, gridSizePx * 0.25);
-        let best: { id: string; dist: number } | null = null;
-        for (const w of Object.values(useBattleMapStore.getState().walls)) {
-          if (w.sceneId !== currentSceneId) continue;
-          const d = pointSegmentDistance(world.x, world.y, w.x1, w.y1, w.x2, w.y2);
-          if (d < THRESHOLD && (!best || d < best.dist)) {
-            best = { id: w.id, dist: d };
-          }
-        }
-        if (best) {
+        const nearest = nearestWallId(world);
+        if (nearest) {
           // Optimistic local remove + async DB delete.
-          useBattleMapStore.getState().removeWall(best.id);
-          wallsApi.deleteWall(best.id).catch(err =>
+          useBattleMapStore.getState().removeWall(nearest);
+          wallsApi.deleteWall(nearest).catch(err =>
             console.error('[WallLayer] deleteWall failed', err)
           );
         }
@@ -224,29 +254,55 @@ export function WallLayer(props: {
       // shift-clicks to flip closed↔open as players approach.
       // Skips placement: when this branch fires, we don't continue
       // into the vertex-placement flow below.
-      if (e.shiftKey) {
-        const THRESHOLD = Math.max(6, gridSizePx * 0.25);
-        let best: { id: string; dist: number } | null = null;
-        for (const w of Object.values(useBattleMapStore.getState().walls)) {
-          if (w.sceneId !== currentSceneId) continue;
-          const d = pointSegmentDistance(world.x, world.y, w.x1, w.y1, w.x2, w.y2);
-          if (d < THRESHOLD && (!best || d < best.dist)) {
-            best = { id: w.id, dist: d };
+      // v2.661.0 — ctrl+left-click = cycle MATERIAL on nearest wall,
+      // the sibling of shift+click's door cycle: solid → low → window
+      // → solid. Ctrl rather than alt because alt+click is the ping
+      // (v2.653). Doors are skipped — their cover comes from
+      // doorState, so giving them a material would be two sources of
+      // truth for the same segment.
+      if (e.ctrlKey || e.metaKey) {
+        const nearest = nearestWallId(world);
+        if (nearest) {
+          const wall = useBattleMapStore.getState().walls[nearest];
+          if (wall && wall.doorState === null) {
+            const nextType: Wall['wallType'] =
+              wall.wallType === 'wall' ? 'low'
+              : wall.wallType === 'low' ? 'window'
+              : 'wall';   // covers 'window' and legacy null
+            useBattleMapStore.getState().updateWall(nearest, { wallType: nextType });
+            wallsApi.updateWall(nearest, { wallType: nextType }).catch(err =>
+              console.error('[WallLayer] updateWall (wallType) failed', err)
+            );
           }
         }
-        if (best) {
-          const wall = useBattleMapStore.getState().walls[best.id];
+        e.preventDefault();
+        return;
+      }
+
+      if (e.shiftKey) {
+        const nearest = nearestWallId(world);
+        if (nearest) {
+          const wall = useBattleMapStore.getState().walls[nearest];
           if (wall) {
             // Cycle: null → 'closed' → 'open' → null
             const nextState: Wall['doorState'] =
               wall.doorState === null ? 'closed'
               : wall.doorState === 'closed' ? 'open'
               : null;
+            // v2.661.0 — becoming a door clears any material, and
+            // ceasing to be one restores the default. Otherwise a
+            // segment cycled wall→door→wall would keep a stale
+            // wall_type that coverType silently ignores while it is a
+            // door, and that would resurface on the way back out.
+            const patch: Partial<Wall> = {
+              doorState: nextState,
+              wallType: nextState === null ? 'wall' : null,
+            };
             // Optimistic update + async DB patch. Realtime echo is
             // idempotent (updateWall merges patch into existing) so
             // the originator's echo is a no-op.
-            useBattleMapStore.getState().updateWall(best.id, { doorState: nextState });
-            wallsApi.updateWall(best.id, { doorState: nextState }).catch(err =>
+            useBattleMapStore.getState().updateWall(nearest, patch);
+            wallsApi.updateWall(nearest, patch).catch(err =>
               console.error('[WallLayer] updateWall failed', err)
             );
           }
@@ -278,6 +334,11 @@ export function WallLayer(props: {
           blocksSight: true,
           blocksMovement: true,
           doorState: null,
+          // v2.661.0 — walls drawn from now on carry a material so
+          // they score real cover. Read at commit time rather than
+          // captured in the effect, so switching type mid-chain
+          // applies to the next segment.
+          wallType: useBattleMapStore.getState().wallDrawType,
         };
         // Optimistic insert; realtime echoes back (idempotent).
         useBattleMapStore.getState().addWall(wall);

@@ -25,6 +25,12 @@ export interface Wall {
   blocksMovement: boolean;
   /** NULL = regular wall. Door states come from the DB CHECK set. */
   doorState: 'closed' | 'open' | 'locked' | null;
+  /** v2.661.0 — material type, driving how much cover this wall gives
+   *  (see `CoverWall.type` in src/rules/cover.ts). NULL = legacy
+   *  untyped, scored as a small obstacle. Orthogonal to `doorState`:
+   *  a door's cover is derived from its open/closed state at read
+   *  time, so door segments leave this NULL. */
+  wallType: 'wall' | 'low' | 'window' | null;
 }
 
 /** v2.234.0 — Map text annotation. Anchored at world (x,y); rendered
