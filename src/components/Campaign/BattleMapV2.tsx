@@ -220,6 +220,10 @@ import {
   TOKEN_COLORS,
   type ContextMenuState,
 } from './battlemap/shared';
+import { buildTokenCoverMap } from './battlemap/coverState';
+import { PingLayer } from './battlemap/PingLayer';
+import { MarqueeLayer } from './battlemap/MarqueeLayer';
+import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { ViewportHost } from './battlemap/ViewportHost';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
 import { GridOverlay } from './battlemap/GridOverlay';
@@ -462,7 +466,11 @@ function BattleMapV2(props: BattleMapV2Props) {
   // right-click → "Open Quick Panel" is how the DM accesses the
   // character/NPC quick panel that left-click used to open before
   // this ship.
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  // v2.653.0 — multi-select. Was a single `selectedTokenId`; a Set now
+  // backs marquee sweeps, shift-click, and the bulk action bar. A
+  // one-member set behaves exactly as the old single selection did.
+  const [selectedTokenIds, setSelectedTokenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const clearSelection = useCallback(() => setSelectedTokenIds(new Set()), []);
   // Escape clears selection. Bails on text inputs so a user typing
   // in the rename modal can press Escape to dismiss the modal
   // without also wiping their selection.
@@ -474,7 +482,7 @@ function BattleMapV2(props: BattleMapV2Props) {
         const tag = t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
       }
-      setSelectedTokenId(null);
+      setSelectedTokenIds(new Set());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -2053,6 +2061,34 @@ function BattleMapV2(props: BattleMapV2Props) {
     return map;
   }, [liveTokens, props.playerCharacters, props.npcs, props.tokenStateMap, liveTokenStateByDef]);
 
+  // v2.652.0 — token.id → cover state. Feeds the shield glyph
+  // TokenLayer stamps on any token currently behind something. All the
+  // work is in battlemap/coverState.ts (pure, unit-tested); the root
+  // just supplies the live tokens + walls and memoises.
+  const liveWalls = useBattleMapStore(s => s.walls);
+  const tokenCoverMap = useMemo(
+    () => buildTokenCoverMap(Object.values(liveTokens), Object.values(liveWalls), gridSizePx),
+    [liveTokens, liveWalls, gridSizePx],
+  );
+
+  // v2.653.0 — True while any tool owns the left mouse button. The
+  // marquee has to stand down for all of them: each already treats a
+  // left-drag on empty canvas as its own gesture (draw a wall, sweep a
+  // ruler, place text), and two listeners on the same drag would both
+  // fire. Mirrors the identical guard list in TokenLayer's pointerdown.
+  const anyToolActive = rulerActive || wallActive || textActive
+    || drawActive != null || fxActive != null || eraserActive;
+
+  // v2.653.0 — Ping colour. A player's ping takes their own PC token's
+  // colour so the table can tell at a glance who is pointing; the DM
+  // (and any player without a token on this scene) pings in gold.
+  const myPingColor = useMemo(() => {
+    const mine = props.myCharacterId
+      ? Object.values(liveTokens).find(t => t.characterId === props.myCharacterId)
+      : undefined;
+    return mine?.color ?? 0xfbbf24;
+  }, [liveTokens, props.myCharacterId]);
+
   // v2.339.0 — BG3 turn UX. Derive on-map signals for active-turn
   // outline + movement-remaining badge from the combat context.
   //
@@ -2138,6 +2174,51 @@ function BattleMapV2(props: BattleMapV2Props) {
       participantEntityId: (currentActor as any).entity_id ?? null,
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
+
+  // v2.653.0 — Arrow-key nudge: shift the whole selection one cell.
+  //
+  // This is the "group move" half of multi-select, and it is keyboard
+  // rather than drag on purpose. Pointer drags run through TokenLayer's
+  // gate — movement budget, wall collision, remote drag locks, active
+  // turn — and there is no honest way to spend six separate movement
+  // budgets in one gesture. So the nudge is DM-only and refuses while
+  // combat has an active actor; out of combat the DM already has "free
+  // reign" in that same gate, which is exactly the case this mirrors.
+  // A true pointer group-drag is queued in docs/ROADMAP.md.
+  //
+  // Placed after activeTokenInfo rather than beside the other
+  // selection state because it reads it — hoisting it would be a
+  // temporal-dead-zone reference.
+  const nudgeBlocked = !isDM || !!activeTokenInfo.participantId;
+  useEffect(() => {
+    if (nudgeBlocked || selectedTokenIds.size === 0) return;
+    const DELTAS: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const delta = DELTAS[e.key];
+      if (!delta) return;
+      const t = e.target;
+      if (t instanceof HTMLElement) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      e.preventDefault();
+      const [dc, dr] = delta;
+      const store = useBattleMapStore.getState();
+      for (const id of selectedTokenIds) {
+        const tok = store.tokens[id];
+        if (!tok) continue;
+        const x = Math.max(0, Math.min(WORLD_WIDTH, tok.x + dc * gridSizePx));
+        const y = Math.max(0, Math.min(WORLD_HEIGHT, tok.y + dr * gridSizePx));
+        store.updateTokenPosition(id, x, y);
+        tokensApi.updateTokenPos(id, x, y, { campaignId }).catch(err =>
+          console.error('[BattleMapV2] nudge commit failed', id, err));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [nudgeBlocked, selectedTokenIds, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, campaignId]);
 
   // v2.423.0 — Reset pending-move counter when:
   //   (a) the active actor changes (turn ended or someone else's
@@ -2755,10 +2836,30 @@ function BattleMapV2(props: BattleMapV2Props) {
   // all the menu system that we currently have." Quick panels are
   // still accessible via the right-click menu's "Open Quick Panel"
   // item — users who want them just take the explicit extra step.
-  const handleTokenClick = useCallback((tokenId: string, _screenX: number, _screenY: number) => {
-    setSelectedTokenId(tokenId);
+  // v2.653.0 — `additive` (shift/ctrl held) toggles the token in the
+  // selection instead of replacing it.
+  const handleTokenClick = useCallback((tokenId: string, _screenX: number, _screenY: number, additive = false) => {
+    setSelectedTokenIds(prev => {
+      if (!additive) return new Set([tokenId]);
+      const next = new Set(prev);
+      if (next.has(tokenId)) next.delete(tokenId); else next.add(tokenId);
+      return next;
+    });
     // Close any open quick panels so selection is the only active
     // surface — keeps the canvas clean.
+    setClickedToken(null);
+    setClickedNpcToken(null);
+  }, []);
+
+  // v2.653.0 — Marquee result. A plain sweep replaces the selection;
+  // shift-sweep unions with what's already there.
+  const handleMarqueeSelect = useCallback((ids: string[], additive: boolean) => {
+    setSelectedTokenIds(prev => {
+      if (!additive) return new Set(ids);
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
     setClickedToken(null);
     setClickedNpcToken(null);
   }, []);
@@ -3264,13 +3365,14 @@ function BattleMapV2(props: BattleMapV2Props) {
                     tokenStateMapByDef={liveTokenStateByDef}
                     tokenConditionsMap={tokenConditionsMap}
                     characterConcentrationMap={props.characterConcentrationMap}
+                    tokenCoverMap={tokenCoverMap}
                     onTokenClick={handleTokenClick}
                     onMovementBlocked={handleMovementBlocked}
                     isDM={isDM}
                     myCharacterId={props.myCharacterId}
                     activeTokenInfo={activeTokenInfo}
                     recordUndoable={recordUndoable}
-                    selectedTokenId={selectedTokenId}
+                    selectedTokenIds={selectedTokenIds}
                     onCommitPos={markSelfWrite}
                     getEffectiveUsed={getEffectiveUsed}
                     recordMoved={recordMoved}
@@ -3326,6 +3428,30 @@ function BattleMapV2(props: BattleMapV2Props) {
                     triggerRef={triggerFxRef}
                     intensity={fxIntensity}
                   />
+                  {/* v2.653.0 — Alt+click pings the map for everyone
+                      in the scene; Alt+Shift+click also pulls their
+                      viewports to the spot. Not DM-gated — pointing
+                      is exactly what players need it for, and it
+                      writes nothing. */}
+                  <PingLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    currentSceneId={currentScene?.id ?? null}
+                    gridSizePx={gridSizePx}
+                    myColor={myPingColor}
+                  />
+                  {/* v2.653.0 — rubber-band multi-select. Disabled
+                      while any other tool owns the left button, and
+                      DM-only (every bulk action it feeds is a write
+                      RLS refuses for players). */}
+                  <MarqueeLayer
+                    viewport={vp}
+                    canvasEl={canvasEl}
+                    tokens={Object.values(liveTokens)}
+                    gridSizePx={gridSizePx}
+                    enabled={isDM && !anyToolActive}
+                    onSelect={handleMarqueeSelect}
+                  />
                   {/* v2.224 — fog of war overlay. DM sees nothing
                       (no fog applied); players see dark over anything
                       outside any party PC token's visibility polygon.
@@ -3367,6 +3493,17 @@ function BattleMapV2(props: BattleMapV2Props) {
             }}
           </ViewportHost>
         </Application>
+
+        {/* v2.653.0 — bulk actions for a multi-token selection. Renders
+            itself away below two selected, so single-select behaves
+            exactly as it did before this ship. */}
+        {isDM && (
+          <SelectionActionBar
+            selectedIds={selectedTokenIds}
+            campaignId={campaignId}
+            onClear={clearSelection}
+          />
+        )}
 
         <div
           style={{
@@ -4062,6 +4199,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             state={contextMenu}
             isDM={isDM}
             campaignId={campaignId}
+            gridSizePx={gridSizePx}
             onClose={() => setContextMenu(null)}
             onRequestUpload={handleRequestUpload}
             onOpenCharacter={handleOpenCharacter}

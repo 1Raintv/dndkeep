@@ -33,7 +33,8 @@ import { declareMultiTargetAttack } from '../../lib/pendingAttack';
 // player can see exactly which area they're about to drop.
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 import {
-  deriveCoverFromWalls,
+  deriveCover,
+  participantSizeLabel,
   loadActiveBattleMap,
   buildParticipantPositions,
   findParticipantsInArea,
@@ -375,14 +376,20 @@ export default function SpellTargetPickerModal({
           if (computed.has(caster.id as string)) {
             setCenterId(caster.id as string);
           }
-          if (map.walls.length > 0) {
+          // v2.652.0 — derivation no longer gated on walls existing:
+          // creatures on the line of effect grant half cover too.
+          {
             const casterPos = computed.get(caster.id as string);
             if (casterPos) {
               const derived: Record<string, 'half' | 'three_quarters' | 'total'> = {};
               for (const p of list) {
                 const tPos = computed.get(p.id);
                 if (!tPos) continue;
-                const lvl = deriveCoverFromWalls(casterPos, tPos, map.walls, map.grid_size);
+                const lvl = deriveCover(
+                  casterPos, tPos,
+                  participantSizeLabel(p, map.tokens),
+                  map.walls, map.tokens, map.grid_size,
+                ).level;
                 if (lvl !== 'none') derived[p.id] = lvl;
               }
               setCoverByTarget(derived);

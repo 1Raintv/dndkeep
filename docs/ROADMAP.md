@@ -94,6 +94,34 @@ Outstanding:
 - **Playtest hygiene:** strip Psion-UA spells from non-Psion class lists.
 - **Regression suite:** encode all corrected values as assertions (see Track 0).
 
+### Character size selection (queued — v2.652 dependency)
+
+**Ask:** let a player choose their character's size where the 2024 species
+permits it, and have that choice feed the cover rules that landed in v2.652.
+
+**Why it's blocked on nothing but time:** `src/rules/cover.ts` already gates
+creature cover on size (`creatureCoverContribution`, `CREATURE_COVER_MAX_SIZE_GAP`)
+and the whole path reads a size label end to end. Today that label always comes
+from the token, which defaults to `medium` — so the gate is real but nobody can
+move it. This work is what makes the choice matter.
+
+Scope:
+- **Data:** `SpeciesData.size` is a single `CreatureSize` (`src/data/species.ts` —
+  currently 12 × Medium, 2 × Small). 2024 PHB lets **Aasimar, Human and Tiefling**
+  pick Small *or* Medium. Widen the field to allow a choice set, leaving fixed-size
+  species as they are.
+- **Character:** no `size` column exists on `characters`. Add one (idempotent
+  migration), defaulting to the species' fixed size so every existing character is
+  unchanged.
+- **Creation + settings UI:** a size picker that only appears for species offering
+  a choice; validate the pick against that species' allowed set on write.
+- **Token:** PC tokens hardcode `size: 'medium'` (`BattleMapV2.tsx` ~L1634) — derive
+  from the character instead, so a Small character occupies a Small token and gets
+  the cover treatment their size earns.
+- **Knock-ons to check:** carrying capacity (Powerful Build already counts as one
+  size larger), Halfling Nimbleness ("move through the space of a creature one size
+  larger"), grapple/shove size limits, and Naturally Stealthy.
+
 ---
 
 ## Track 2 — Live lightweight map (daily iteration)
@@ -113,6 +141,43 @@ rules-of-hooks clean, vite build). But this is engineering, not rules-judgment, 
 iteration can move faster than Track 1.
 
 **Candidate backlog (to be prioritized):**
+- **Cover from walls and DM-placed terrain (queued — the other half of v2.652).**
+  v2.652 shipped cover from *creatures*; walls are still second-class and terrain
+  doesn't exist:
+  - `wall_type` is dead code. `CoverWall.type` (`src/rules/cover.ts`) scores
+    solid / low / window / door, but there's no `scene_walls.wall_type` column and
+    no way to set it — so **every wall on every live map is the legacy untyped
+    case worth 1 point, i.e. half cover.** A stone wall reads the same as a
+    railing, and it takes three stacked walls to reach total cover. Needs: an
+    idempotent migration, the column plumbed through `sceneWalls` + the loader,
+    and a type selector in the wall tool (which today only cycles door states).
+  - **Terrain objects.** The DM can place tokens, walls, drawings and text —
+    nothing that reads as a crate, pillar or boulder. Decide whether these become
+    typed low walls (reuses everything above) or a first-class object entity with
+    a cover level, then feed them in as a third source. `combineCover` is already
+    shaped for it: add to the blockers list, the RAW "most protective wins" merge
+    handles the rest.
+- **Pointer group-drag (deferred from v2.653).** Multi-select shipped with
+  marquee sweep, shift-click, a bulk action bar (lock / hide / reveal / delete)
+  and arrow-key nudge — but dragging a whole selection with the mouse was left
+  out on purpose. TokenLayer's drag path enforces per-creature movement budgets,
+  wall collision, remote drag locks and the active-turn gate; "move six tokens
+  at once" has no honest answer during combat (six separate budgets), and
+  bolting a bulk path onto that pipeline risks the single-token drag everyone
+  relies on. Arrow-key nudge covers aligning a cluster out of combat. Do this
+  properly when the drag pipeline is next refactored, not before.
+- **RLS recursion on `scene_token_placements` (found v2.653, not yet fixed).**
+  `stp_player_update_owned_combatant` (v2.616) subqueries `combatants`;
+  `combatants_player_select_via_placement` (v2.309) subqueries placements right
+  back. Postgres evaluates all permissive policies, so **every** placement
+  UPDATE dies with 42P17 — including the DM's. Reproduces locally 100%: drag any
+  token with the fixture loaded. Production has both policies but is not broken
+  today only because its one campaign predates the flag flip
+  (`use_combatants_for_battlemap = false`); the column DEFAULT is `true`, so the
+  next campaign created there gets an unmovable battle map. Fix needs a
+  `SECURITY DEFINER` ownership helper so the placement policies stop re-entering
+  combatants' policies — and must be verified as both DM and player, since RLS
+  is the security boundary.
 - Grid tooling: square/hex, adjustable size, snap-to-grid.
 - Measurement/ruler in grid units.
 - Basic drawing primitives (shapes, freehand) if they serve automation.

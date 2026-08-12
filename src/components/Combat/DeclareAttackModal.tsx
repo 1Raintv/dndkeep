@@ -12,7 +12,8 @@ import { emitCombatEvent } from '../../lib/combatEvents';
 import {
   buildParticipantPositions,
   loadActiveBattleMap,
-  deriveCoverFromWalls,
+  deriveCover,
+  participantSizeLabel,
   // v2.481.0 — Footprint-aware AOE inclusion (RAW: any part of the
   // creature's space in the area is hit). Replaces the point-target
   // findParticipantsInRadius previously used for AOE auto-select.
@@ -61,7 +62,9 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // means the DM changed the dropdown themselves (or the default 'none').
   // The auto-fill useEffect sets this to 'walls' or 'persistent' when it
   // updates cover; the dropdown onChange resets it to 'manual'.
-  const [coverSource, setCoverSource] = useState<'manual' | 'walls' | 'persistent'>('manual');
+  // v2.652.0 — 'creatures' joins the set: an ally standing between the
+  // attacker and the target now derives half cover the same way a wall does.
+  const [coverSource, setCoverSource] = useState<'manual' | 'walls' | 'creatures' | 'persistent'>('manual');
   // v2.105.0 — Phase F pt 3d: friendly-fire confirmation (R4)
   const [friendlyFireAck, setFriendlyFireAck] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -122,25 +125,32 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // v2.132.0 — Phase K pt 5: walls on the battle map now take priority —
   // they represent physical obstacles and are more authoritative than
   // manually-tagged persistent cover. Order:
-  //   1. Wall derivation via deriveCoverFromWalls (if map + both tokens + walls exist)
+  //   1. Map derivation via deriveCover (if map + both tokens exist)
   //   2. Target's persistent_cover tag (v2.103 — DM manual)
   //   3. 'none'
+  // v2.652.0 — step 1 now also considers creatures on the line of effect,
+  // so the gate dropped its `walls.length > 0` precondition: a scene with
+  // no walls drawn can still produce cover from an intervening body.
   useEffect(() => {
     if (!attacker || !target) { setCoverLevel('none'); setCoverSource('manual'); return; }
 
-    // 1. Try wall-derived cover first
-    if (activeBattleMap && activeBattleMap.walls.length > 0) {
+    // 1. Try map-derived cover first (walls + intervening creatures)
+    if (activeBattleMap) {
       const attackerPos = participantPositions.get(attacker.id);
       const targetPos = participantPositions.get(target.id);
       if (attackerPos && targetPos) {
-        const wallCover = deriveCoverFromWalls(
+        const derived = deriveCover(
           attackerPos, targetPos,
+          participantSizeLabel(target, activeBattleMap.tokens),
           activeBattleMap.walls,
+          activeBattleMap.tokens,
           activeBattleMap.grid_size,
         );
-        if (wallCover !== 'none') {
-          setCoverLevel(wallCover);
-          setCoverSource('walls');
+        if (derived.level !== 'none') {
+          setCoverLevel(derived.level);
+          // Attribute to whichever source actually produced the winning
+          // level, so the badge tells the DM what to look at on the map.
+          setCoverSource(derived.fromWalls === derived.level ? 'walls' : 'creatures');
           setPersistCover(false);
           return;
         }
@@ -260,29 +270,36 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
       setSaving(true);
       setError('');
 
-      // v2.146.0 — Phase N pt 4: compute per-target cover from walls.
+      // v2.146.0 — Phase N pt 4: compute per-target cover from the map.
       // Each target gets its own cover level based on the line of effect
-      // from the attacker to that target. Targets with no walls in
+      // from the attacker to that target. Targets with nothing in
       // between fall through to the blanket `coverLevel` set by the DM.
       // This fixes the prior behavior where a DM picking "half cover"
       // once applied it uniformly — now the one target hiding behind a
       // wall gets total while the three in the open get what the DM
       // chose manually.
+      // v2.652.0 — intervening creatures count too, so this no longer
+      // requires the scene to have walls.
       const attackerPos = attacker ? participantPositions.get(attacker.id) : null;
       const wallsForCover = activeBattleMap?.walls ?? [];
+      const tokensForCover = activeBattleMap?.tokens ?? [];
       const gridSizeForCover = activeBattleMap?.grid_size ?? 50;
       const targets = targetIds
         .map(id => participants.find(p => p.id === id))
         .filter((p): p is CombatParticipant => !!p)
         .map(p => {
-          // Per-target wall derivation; only runs when we have both the
-          // attacker and target on the grid AND walls exist. Otherwise
-          // undefined → pending_attack row uses the blanket value.
+          // Per-target derivation; only runs when we have both the
+          // attacker and target on the grid. Otherwise undefined →
+          // pending_attack row uses the blanket value.
           let perTargetCover: 'none' | 'half' | 'three_quarters' | 'total' | undefined;
           const targetPos = participantPositions.get(p.id);
-          if (attackerPos && targetPos && wallsForCover.length > 0) {
-            const derived = deriveCoverFromWalls(attackerPos, targetPos, wallsForCover, gridSizeForCover);
-            if (derived !== 'none') perTargetCover = derived;
+          if (attackerPos && targetPos && activeBattleMap) {
+            const derived = deriveCover(
+              attackerPos, targetPos,
+              participantSizeLabel(p, tokensForCover),
+              wallsForCover, tokensForCover, gridSizeForCover,
+            );
+            if (derived.level !== 'none') perTargetCover = derived.level;
           }
           return {
             participantId: p.id,
@@ -490,17 +507,32 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                       && attacker?.participant_type === 'character'
                       && p.participant_type === 'character';
                     // v2.146.0 — Phase N pt 4: preview per-target cover
-                    // derived from walls so DM sees which targets are
+                    // derived from the map so DM sees which targets are
                     // behind obstacles before declaring. Matches the
                     // actual per-target value that will land on their
                     // pending_attacks row.
+                    // v2.652.0 — includes creatures on the line; the
+                    // tooltip names the ones providing it.
                     let previewCover: 'half' | 'three_quarters' | 'total' | null = null;
-                    if (checked && attacker && activeBattleMap && activeBattleMap.walls.length > 0) {
+                    let previewCoverWhy = '';
+                    if (checked && attacker && activeBattleMap) {
                       const aPos = participantPositions.get(attacker.id);
                       const tPos = participantPositions.get(p.id);
                       if (aPos && tPos) {
-                        const lvl = deriveCoverFromWalls(aPos, tPos, activeBattleMap.walls, activeBattleMap.grid_size);
-                        if (lvl !== 'none') previewCover = lvl;
+                        const derived = deriveCover(
+                          aPos, tPos,
+                          participantSizeLabel(p, activeBattleMap.tokens),
+                          activeBattleMap.walls, activeBattleMap.tokens,
+                          activeBattleMap.grid_size,
+                        );
+                        if (derived.level !== 'none') {
+                          previewCover = derived.level;
+                          const bodies = derived.fromCreatures.blockers
+                            .map(b => b.name).filter(Boolean).join(', ');
+                          previewCoverWhy = derived.fromWalls === derived.level
+                            ? 'from walls'
+                            : bodies ? `behind ${bodies}` : 'from creatures';
+                        }
                       }
                     }
                     return (
@@ -536,7 +568,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
                             : '#60a5fa';
                           const label = previewCover === 'three_quarters' ? '¾' : previewCover;
                           return (
-                            <span title={`Wall-derived cover for this target: ${previewCover}`} style={{
+                            <span title={`Map-derived cover for this target: ${previewCover} (${previewCoverWhy})`} style={{
                               fontSize: 9, fontWeight: 800,
                               padding: '1px 5px', borderRadius: 3,
                               background: `${color}22`, color,
@@ -745,6 +777,12 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
               {coverSource === 'walls' && coverLevel !== 'none' && (
                 <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 700 }}>
                   · ▦ from walls
+                </span>
+              )}
+              {/* v2.652.0 — same badge, creature source. */}
+              {coverSource === 'creatures' && coverLevel !== 'none' && (
+                <span style={{ color: '#60a5fa', marginLeft: 8, fontSize: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 700 }}>
+                  · ◍ behind a creature
                 </span>
               )}
               {coverSource === 'persistent' && target && attacker && target.persistent_cover?.[attacker.id] && (
