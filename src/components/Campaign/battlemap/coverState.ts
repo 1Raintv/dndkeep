@@ -89,11 +89,38 @@ export function isPartyToken(t: Token): boolean {
 }
 
 /**
+ * v2.661.0 — Resolve a wall's cover type. `doorState` wins over
+ * `wallType` because the two describe different things and a segment
+ * that is a door is a door regardless of what it's made of: a shut
+ * door blocks completely, so it scores as 'door' (total cover alone).
+ * Open doors never reach here — `coverWalls` drops them.
+ *
+ * A NULL result is the legacy untyped case, deliberately preserved:
+ * walls drawn before v2.661 keep scoring as a small obstacle (half
+ * cover) rather than silently becoming total cover mid-campaign. See
+ * the migration for the opt-in backfill.
+ */
+function coverType(w: Wall): CoverWall['type'] {
+  if (w.doorState === 'closed' || w.doorState === 'locked') return 'door';
+  return w.wallType ?? null;
+}
+
+/**
  * Walls that can contribute cover. Open doors are skipped, matching
  * VisionLayer (v2.271) and wallCollision.
+ *
+ * v2.661.0 — projects each Wall onto the CoverWall shape rather than
+ * passing it through structurally, so the rules layer sees a resolved
+ * `type`. Before this, `type` was always undefined and every wall
+ * scored as legacy untyped.
  */
 export function coverWalls(walls: Wall[]): CoverWall[] {
-  return walls.filter(w => w.blocksSight && w.doorState !== 'open');
+  return walls
+    .filter(w => w.blocksSight && w.doorState !== 'open')
+    .map(w => ({
+      x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
+      type: coverType(w),
+    }));
 }
 
 /**

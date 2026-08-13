@@ -338,10 +338,12 @@ export interface CoverWall {
    *    so existing maps keep their multi-wall-stacking behavior
    *    (1 wall → half, 2 → ¾, 3+ → total).
    *
-   *  NOTE (v2.652): nothing populates this yet — there is no
-   *  `wall_type` column and no authoring tool, so every wall on a live
-   *  map is the legacy untyped case. Wiring it up is queued in
-   *  docs/ROADMAP.md under Track 2. */
+   *  v2.661: now populated. `scene_walls.wall_type` stores the
+   *  material, the wall toolbar authors it, and `coverWalls` in
+   *  battlemap/coverState.ts resolves it — mapping a closed door to
+   *  'door' from `doorState` rather than from the stored column.
+   *  Walls drawn before v2.661 stay NULL and keep the legacy
+   *  behavior; the migration documents the opt-in backfill. */
   type?: 'wall' | 'low' | 'window' | 'door' | null;
 }
 
@@ -353,6 +355,40 @@ export function wallCoverPoints(w: CoverWall): number {
     case 'window': return 2;   // alone → three_quarters
     case 'low':    return 1;   // alone → half
     default:       return 1;   // legacy: preserves 1=half / 2=¾ / 3+=total
+  }
+}
+
+/**
+ * v2.662.0 — Does this wall material block LINE OF SIGHT?
+ *
+ * Distinct from cover, and deliberately so: cover asks "how much of the
+ * target is shielded", sight asks "can you see them at all". 5e keeps
+ * these apart and so must the map — a creature behind an arrow slit has
+ * three-quarters cover *and* is perfectly visible; that is the entire
+ * point of an arrow slit.
+ *
+ *   'wall'   → blocks. Solid.
+ *   'door'   → blocks while shut (open doors are filtered out upstream).
+ *   'window' → does NOT block. Arrow slit, portcullis, barred window:
+ *              you see through it, you just can't be shot cleanly.
+ *   'low'    → does NOT block. Railing, crate, low wall — you see over
+ *              it. Consistent with half cover, which by definition
+ *              leaves the target visible.
+ *   null     → blocks. Legacy untyped walls predate materials and every
+ *              one of them was drawn to be a wall, so the safe reading
+ *              is the opaque one. (Moot on this deployment — production
+ *              had zero walls when materials shipped — but a map
+ *              imported from an older backup would rely on it.)
+ *
+ * Lives here beside {@link wallCoverPoints} on purpose: both answer
+ * "what does this material do", and splitting that taxonomy across two
+ * modules is how the two would drift.
+ */
+export function wallMaterialBlocksSight(type: CoverWall['type']): boolean {
+  switch (type) {
+    case 'window': return false;
+    case 'low':    return false;
+    default:       return true;   // 'wall', 'door', legacy null
   }
 }
 

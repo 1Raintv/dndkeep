@@ -1,5 +1,11 @@
 # Track 0 Step 1 — Renderer Interface
 
+> **Still current, one motivation removed (2026-08-12): Track 3 was retired.**
+> The `MapRenderer` seam keeps its main justification — `BattleMapV2` (Pixi) and
+> `PlayerBattleMap` (DOM) are two live renderers on the same data, and this is
+> what stops their types diverging. Ignore references below to a future
+> graphics-rich renderer plugging into it. See `docs/ROADMAP.md` → Track 3.
+
 **Date:** July 2026 (chat 15)
 **Ships in:** v2.549.0
 **Artifact:** `src/lib/map/mapRenderer.ts` (pure types, zero runtime deps)

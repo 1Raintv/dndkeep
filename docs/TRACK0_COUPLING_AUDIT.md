@@ -1,5 +1,12 @@
 # Track 0 — Automation/Rendering Coupling Audit
 
+> **Partly superseded (2026-08-12): Track 3 was retired.** This audit's
+> *findings* still hold — the automation core is renderer-agnostic, and that is
+> still worth preserving. What no longer applies is its *framing*: the question
+> "can a separate graphics-rich app inherit the same automations?" is moot now
+> that there is one map. The case for decoupling is now testability, not
+> code-sharing across two apps. See `ROADMAP.md` → Track 0 and Track 3.
+
 **Date:** July 2026 (chat 15)
 **Purpose:** Assess how coupled the map automation/geometry logic is to the PixiJS
 renderer, per the Track 0 prerequisite in ROADMAP.md. Determines whether Track 3

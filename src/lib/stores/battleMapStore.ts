@@ -205,6 +205,13 @@ interface BattleMapStore {
   updateWall: (id: string, patch: Partial<Wall>) => void;
   removeWall: (id: string) => void;
   setWallsBulk: (walls: Wall[]) => void;
+  /** v2.661.0 — material applied to the NEXT wall drawn. Authoring
+   *  state, not scene state: it is never persisted, and it lives here
+   *  rather than in WallLayer because the toolbar that sets it and the
+   *  layer that consumes it are siblings. Existing walls are retyped
+   *  with ctrl+click, which doesn't read this. */
+  wallDrawType: 'wall' | 'low' | 'window';
+  setWallDrawType: (t: 'wall' | 'low' | 'window') => void;
   // v2.234 text mutators — parallel to walls. updateText is exposed
   // because text rows mutate (rename, recolor, reposition); walls
   // are immutable except for delete+insert, so they don't have one.
@@ -325,6 +332,9 @@ export const useBattleMapStore = create<BattleMapStore>((set) => ({
   setLoading: (loading) => set({ loading }),
 
   setRemoteDragLocks: (locks) => set({ remoteDragLocks: locks }),
+
+  wallDrawType: 'wall',
+  setWallDrawType: (t) => set({ wallDrawType: t }),
 
   addWall: (wall) =>
     set((s) => ({ walls: { ...s.walls, [wall.id]: wall } })),
