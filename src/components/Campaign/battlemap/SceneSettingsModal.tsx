@@ -47,6 +47,9 @@ export function SceneSettingsModal(props: {
   const [widthCells, setWidthCells] = useState(scene.widthCells);
   const [heightCells, setHeightCells] = useState(scene.heightCells);
   const [isPublished, setIsPublished] = useState(scene.isPublished);
+  // v2.664.0 — fog mode. Lives here rather than the toolbar because
+  // it is a property OF the scene, not a tool you toggle mid-turn.
+  const [fogMode, setFogMode] = useState(scene.fogMode);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -59,6 +62,7 @@ export function SceneSettingsModal(props: {
     setWidthCells(scene.widthCells);
     setHeightCells(scene.heightCells);
     setIsPublished(scene.isPublished);
+    setFogMode(scene.fogMode);
   }, [scene.id, scene.updatedAt]);
 
   // Escape closes the modal.
@@ -118,6 +122,7 @@ export function SceneSettingsModal(props: {
         widthCells,
         heightCells,
         isPublished,
+        fogMode,
       };
       // Optimistic update first.
       onScenePatched(patch);
@@ -278,6 +283,67 @@ export function SceneSettingsModal(props: {
             Fit to map image
           </button>
         )}
+
+        {/* v2.664.0 — fog mode. The two modes answer the same question
+            in incompatible ways, so this is a radio, not a pair of
+            toggles: reveals are either derived or painted, never both.
+            Switching does NOT clear revealed_cells, so a DM can flip to
+            dynamic for a fight and back without losing their painting. */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+            textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 8,
+          }}>
+            Fog of war
+          </div>
+          {([
+            {
+              id: 'dynamic' as const,
+              label: 'Dynamic lighting',
+              hint: 'Players see what their characters can see — line of sight through walls, limited by darkvision and carried light. Updates as tokens move.',
+            },
+            {
+              id: 'manual' as const,
+              label: 'Manual fog',
+              hint: 'You paint what is revealed with the ☁ brush, and it stays revealed. Walls, darkvision and light are ignored.',
+            },
+          ]).map(m => (
+            <label
+              key={m.id}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '8px 10px', marginBottom: 6, cursor: 'pointer',
+                borderRadius: 'var(--r-sm, 4px)',
+                background: fogMode === m.id ? 'rgba(103,232,249,0.10)' : 'transparent',
+                border: `1px solid ${fogMode === m.id ? 'rgba(103,232,249,0.55)' : 'var(--c-border)'}`,
+              }}
+            >
+              <input
+                type="radio"
+                name="fog-mode"
+                checked={fogMode === m.id}
+                onChange={() => setFogMode(m.id)}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                <span style={{
+                  display: 'block', fontSize: 12,
+                  color: fogMode === m.id ? 'var(--t-1)' : 'var(--t-2)',
+                  fontWeight: fogMode === m.id ? 700 : 500,
+                }}>
+                  {m.label}
+                </span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
+                  {m.hint}
+                </span>
+              </span>
+            </label>
+          ))}
+          <div style={{ fontSize: 10, color: 'var(--t-3)', marginTop: 2 }}>
+            Either way, the LIGHT buttons on the toolbar still decide whether
+            fog renders at all — a Bright scene shows everything.
+          </div>
+        </div>
 
         <div style={{ marginBottom: 18 }}>
           <label style={{

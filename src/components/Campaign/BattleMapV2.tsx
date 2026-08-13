@@ -225,6 +225,8 @@ import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { WallTypePanel } from './battlemap/WallTypePanel';
+import { FogBrushLayer } from './battlemap/FogBrushLayer';
+import { FogBrushPanel } from './battlemap/FogBrushPanel';
 import { ViewportHost } from './battlemap/ViewportHost';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
 import { GridOverlay } from './battlemap/GridOverlay';
@@ -949,23 +951,11 @@ function BattleMapV2(props: BattleMapV2Props) {
         (payload: any) => {
           if (payload.eventType === 'INSERT') {
             const newRow = payload.new;
-            const scene: scenesApi.Scene = {
-              id: newRow.id,
-              campaignId: newRow.campaign_id,
-              ownerId: newRow.owner_id,
-              name: newRow.name,
-              gridType: newRow.grid_type,
-              gridSizePx: newRow.grid_size_px,
-              widthCells: newRow.width_cells,
-              heightCells: newRow.height_cells,
-              backgroundStoragePath: newRow.background_storage_path,
-              dmNotes: newRow.dm_notes,
-              isPublished: newRow.is_published,
-              // v2.274.0 — ambient_light defaults to 'dark' if missing.
-              ambientLight: newRow.ambient_light ?? 'dark',
-              createdAt: newRow.created_at,
-              updatedAt: newRow.updated_at,
-            };
+            // v2.664.0 — was a hand-rolled copy of scenes.rowToScene.
+            // It silently went stale every time Scene gained a field
+            // (ambient_light in v2.274, fog_mode here), so realtime
+            // INSERTs arrived missing whatever was newest. One mapper.
+            const scene: scenesApi.Scene = scenesApi.rowToScene(newRow);
             setScenes(prev => {
               // Avoid dupes in case the originator's state already
               // includes this scene from its own create flow.
@@ -974,35 +964,20 @@ function BattleMapV2(props: BattleMapV2Props) {
             });
           } else if (payload.eventType === 'UPDATE') {
             const newRow = payload.new;
-            setScenes(prev => prev.map(s => s.id === newRow.id ? {
-              ...s,
-              name: newRow.name,
-              gridSizePx: newRow.grid_size_px,
-              widthCells: newRow.width_cells,
-              heightCells: newRow.height_cells,
-              backgroundStoragePath: newRow.background_storage_path,
-              dmNotes: newRow.dm_notes,
-              isPublished: newRow.is_published,
-              // v2.274.0 — pull ambient_light through realtime so the
-              // DM's lighting toggle reaches all connected players
-              // without a refetch.
-              ambientLight: newRow.ambient_light ?? 'dark',
-              updatedAt: newRow.updated_at,
-            } : s));
-            // If the currently-selected scene was renamed / retuned,
-            // reflect that in `currentScene` too.
-            setCurrentScene(prev => prev && prev.id === newRow.id ? {
-              ...prev,
-              name: newRow.name,
-              gridSizePx: newRow.grid_size_px,
-              widthCells: newRow.width_cells,
-              heightCells: newRow.height_cells,
-              backgroundStoragePath: newRow.background_storage_path,
-              dmNotes: newRow.dm_notes,
-              isPublished: newRow.is_published,
-              ambientLight: newRow.ambient_light ?? 'dark',
-              updatedAt: newRow.updated_at,
-            } : prev);
+            // v2.664.0 — both branches were field-by-field copies that
+            // had to be extended in lockstep for every new Scene column;
+            // ambient_light (v2.274) shows the pattern, and fog_mode
+            // would have been the third. Remap the whole row instead.
+            // `id`/`campaignId`/`ownerId`/`createdAt` are immutable, so
+            // a full remap is equivalent to the old spread — minus the
+            // chance of forgetting a field.
+            //
+            // This is the path the manual-fog brush rides: every stroke
+            // UPDATEs scenes.revealed_cells, and players repaint from
+            // the echo without a refetch.
+            const updated = scenesApi.rowToScene(newRow);
+            setScenes(prev => prev.map(s => s.id === updated.id ? updated : s));
+            setCurrentScene(prev => prev && prev.id === updated.id ? updated : prev);
           } else if (payload.eventType === 'DELETE') {
             const oldId = payload.old?.id;
             if (!oldId) return;
@@ -1775,6 +1750,10 @@ function BattleMapV2(props: BattleMapV2Props) {
   // v2.223 — wall drawing mode. Mutually exclusive with ruler mode —
   // enabling one disables the other so tool intent is unambiguous.
   const [wallActive, setWallActive] = useState(false);
+  // v2.664.0 — manual-fog brush. Only reachable while the scene is in
+  // manual fog mode; in dynamic mode reveals are derived, not painted.
+  const [fogBrushActive, setFogBrushActive] = useState(false);
+  const [fogBrushRadius, setFogBrushRadius] = useState(1);
   // v2.234 — text annotation mode. Three-way mutex with ruler + walls.
   const [textActive, setTextActive] = useState(false);
   // v2.235 — drawing tool mode. Either null (no drawing tool), or one
@@ -1812,21 +1791,42 @@ function BattleMapV2(props: BattleMapV2Props) {
   const toggleRuler = useCallback(() => {
     setRulerActive(a => {
       const next = !a;
-      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
+      if (next) { setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }
       return next;
     });
   }, []);
   const toggleWallMode = useCallback(() => {
     setWallActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
+      if (next) { setRulerActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }
+      return next;
+    });
+  }, []);
+  // v2.664.0 — optimistic reveal update while the brush is dragging.
+  // The stroke only hits the DB on pointer-up, so without this the DM
+  // would paint blind and see nothing until they released.
+  // Only `currentScene` is updated: VisionLayer reads its reveals from
+  // there, and the `scenes` list only feeds the scene picker, which
+  // doesn't show fog. The realtime echo of the pointer-up commit
+  // reconciles the list for free.
+  const handleFogLocalChange = useCallback((cells: Array<[number, number]>) => {
+    setCurrentScene(prev => prev ? { ...prev, revealedCells: cells } : prev);
+  }, []);
+
+  const toggleFogBrushMode = useCallback(() => {
+    setFogBrushActive(a => {
+      const next = !a;
+      // NB: no setFogBrushActive(false) here — every OTHER tool's
+      // exclusivity list clears this one, but doing it inside this
+      // updater turns the tool off the instant it turns on.
+      if (next) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
       return next;
     });
   }, []);
   const toggleTextMode = useCallback(() => {
     setTextActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); }
+      if (next) { setRulerActive(false); setWallActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }
       return next;
     });
   }, []);
@@ -1836,7 +1836,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   const toggleDrawMode = useCallback((kind: DrawingKind) => {
     setDrawActive(curr => {
       const next = curr === kind ? null : kind;
-      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setFxActive(null); setEraserActive(false); }
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }
       return next;
     });
   }, []);
@@ -1844,7 +1844,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   const toggleFxMode = useCallback((kind: FxKind) => {
     setFxActive(curr => {
       const next = curr === kind ? null : kind;
-      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setEraserActive(false); }
+      if (next != null) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setEraserActive(false); setFogBrushActive(false); }
       return next;
     });
   }, []);
@@ -1852,7 +1852,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   const toggleEraserMode = useCallback(() => {
     setEraserActive(a => {
       const next = !a;
-      if (next) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); }
+      if (next) { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setFogBrushActive(false); }
       return next;
     });
   }, []);
@@ -2095,7 +2095,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   // left-drag on empty canvas as its own gesture (draw a wall, sweep a
   // ruler, place text), and two listeners on the same drag would both
   // fire. Mirrors the identical guard list in TokenLayer's pointerdown.
-  const anyToolActive = rulerActive || wallActive || textActive
+  const anyToolActive = fogBrushActive || rulerActive || wallActive || textActive
     || drawActive != null || fxActive != null || eraserActive;
 
   // v2.653.0 — Ping colour. A player's ping takes their own PC token's
@@ -3497,7 +3497,27 @@ function BattleMapV2(props: BattleMapV2Props) {
                     darkvisionByCharacterId={darkvisionByCharacterId}
                     dmPreviewFog={dmPreviewFog}
                     ambientLight={currentScene?.ambientLight ?? 'dark'}
+                    fogMode={currentScene?.fogMode ?? 'dynamic'}
+                    revealedCells={currentScene?.revealedCells ?? []}
                   />
+                  {/* v2.664.0 — the DM's manual-fog brush. Mounts only
+                      while the tool is on; commits one write per stroke
+                      and updates `currentScene` optimistically so the
+                      paint appears under the cursor immediately. */}
+                  {isDM && fogBrushActive && (
+                    <FogBrushLayer
+                      viewport={vp}
+                      canvasEl={canvasEl}
+                      active={fogBrushActive}
+                      gridSizePx={gridSizePx}
+                      widthCells={currentScene?.widthCells ?? 30}
+                      heightCells={currentScene?.heightCells ?? 20}
+                      sceneId={currentScene?.id ?? null}
+                      revealedCells={currentScene?.revealedCells ?? []}
+                      radiusCells={fogBrushRadius}
+                      onLocalChange={handleFogLocalChange}
+                    />
+                  )}
                   {/* v2.469.0 — Reach hover overlay, extracted from
                       VisionLayer. Mounted unconditionally so the melee-
                       reach preview works in every state (DM with
@@ -3539,6 +3559,13 @@ function BattleMapV2(props: BattleMapV2Props) {
             Only while the tool is active: it is authoring state with
             nothing to say when you aren't drawing walls. */}
         {isDM && wallActive && <WallTypePanel />}
+
+        {/* v2.664.0 — brush size, in the same slot and on the same
+            terms as WallTypePanel: it owns the corner and carries its
+            own hints, so nothing can overlap it at any width. */}
+        {isDM && fogBrushActive && (
+          <FogBrushPanel radiusCells={fogBrushRadius} onChange={setFogBrushRadius} />
+        )}
 
         <div
           style={{
@@ -3671,6 +3698,33 @@ function BattleMapV2(props: BattleMapV2Props) {
           >
             ↔
           </button>
+
+          {/* v2.664.0 — Manual fog brush. DM only, and only in manual
+              mode: in dynamic mode reveals come from line of sight, so
+              a brush would have nothing to write that the next
+              recompute wouldn't overwrite. Hidden rather than disabled
+              so the rail doesn't carry a permanently dead button. */}
+          {isDM && (currentScene?.fogMode ?? 'dynamic') === 'manual' && (
+            <button
+              onClick={toggleFogBrushMode}
+              title={fogBrushActive
+                ? 'Fog brush active — drag to reveal, right-drag or shift+drag to hide again. Revealed cells stay revealed. Click this button to exit.'
+                : 'Fog brush — paint what the players can see. This scene is in manual fog mode, so nothing is revealed automatically. DM only.'}
+              style={{
+                width: 36, height: 36,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: fogBrushActive ? 'rgba(103,232,249,0.28)' : 'transparent',
+                border: `1px solid ${fogBrushActive ? 'rgba(103,232,249,0.85)' : 'rgba(103,232,249,0.25)'}`,
+                borderRadius: 'var(--r-sm, 4px)',
+                color: fogBrushActive ? '#67e8f9' : 'var(--t-2)',
+                fontSize: 16,
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+            >
+              ☁
+            </button>
+          )}
 
           {/* Walls — DM only. */}
           {isDM && (
@@ -4200,7 +4254,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             lines and grows down through anything placed below it. One
             element in the slot makes the collision impossible rather than
             merely unlikely. */}
-        {!(isDM && wallActive) && (
+        {!(isDM && (wallActive || fogBrushActive)) && (
         <div
           style={{
             // v2.270.0 — moved to top-right so the floating party
