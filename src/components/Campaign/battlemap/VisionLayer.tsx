@@ -7,6 +7,7 @@ import { useApplication } from '@pixi/react';
 import { useEffect, useMemo, useRef } from 'react';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
+import { wallMaterialBlocksSight } from '../../../rules/cover';
 
 /**
  * v2.224 — VisionLayer.
@@ -473,6 +474,13 @@ export function VisionLayer(props: {
     for (const w of Object.values(walls)) {
       if (!w.blocksSight) continue;
       if (w.doorState === 'open') continue;
+      // v2.662.0 — material decides transparency. Before this every wall
+      // was opaque to vision, so an arrow slit fogged the room exactly
+      // like a stone wall. Windows and low walls now let sight through
+      // while still contributing their cover (that path reads
+      // `blocksSight` directly and is untouched — a window giving ¾
+      // cover to someone you can plainly see is correct, not a bug).
+      if (!wallMaterialBlocksSight(w.wallType)) continue;
       sightWalls.push({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 });
     }
     // 60ft = 12 cells × cell size in pixels. Hardcoded for v2.224;

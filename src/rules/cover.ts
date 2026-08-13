@@ -359,6 +359,40 @@ export function wallCoverPoints(w: CoverWall): number {
 }
 
 /**
+ * v2.662.0 — Does this wall material block LINE OF SIGHT?
+ *
+ * Distinct from cover, and deliberately so: cover asks "how much of the
+ * target is shielded", sight asks "can you see them at all". 5e keeps
+ * these apart and so must the map — a creature behind an arrow slit has
+ * three-quarters cover *and* is perfectly visible; that is the entire
+ * point of an arrow slit.
+ *
+ *   'wall'   → blocks. Solid.
+ *   'door'   → blocks while shut (open doors are filtered out upstream).
+ *   'window' → does NOT block. Arrow slit, portcullis, barred window:
+ *              you see through it, you just can't be shot cleanly.
+ *   'low'    → does NOT block. Railing, crate, low wall — you see over
+ *              it. Consistent with half cover, which by definition
+ *              leaves the target visible.
+ *   null     → blocks. Legacy untyped walls predate materials and every
+ *              one of them was drawn to be a wall, so the safe reading
+ *              is the opaque one. (Moot on this deployment — production
+ *              had zero walls when materials shipped — but a map
+ *              imported from an older backup would rely on it.)
+ *
+ * Lives here beside {@link wallCoverPoints} on purpose: both answer
+ * "what does this material do", and splitting that taxonomy across two
+ * modules is how the two would drift.
+ */
+export function wallMaterialBlocksSight(type: CoverWall['type']): boolean {
+  switch (type) {
+    case 'window': return false;
+    case 'low':    return false;
+    default:       return true;   // 'wall', 'door', legacy null
+  }
+}
+
+/**
  * Cover from walls crossing the line of effect. Points from every
  * crossed wall are summed and bucketed by {@link pointsToCoverLevel} —
  * the v2.145 model, kept as-is because an untyped wall carries no

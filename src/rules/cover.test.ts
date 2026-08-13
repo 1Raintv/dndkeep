@@ -24,6 +24,7 @@ import {
   deriveCoverFromCreatures,
   deriveCoverFromWalls,
   wallCoverPoints,
+  wallMaterialBlocksSight,
   combineCover,
   summariseCoverAgainstThreats,
   findNearbyCoverBlockers,
@@ -278,13 +279,30 @@ describe('cover from walls', () => {
     expect(wallCoverPoints(wall(undefined))).toBe(1);  // legacy untyped
   });
 
+  // v2.662 — sight and cover are separate questions about the same
+  // material, and the interesting cases are the ones where they disagree.
+  it('separates blocking sight from granting cover', () => {
+    expect(wallMaterialBlocksSight('wall')).toBe(true);
+    expect(wallMaterialBlocksSight('door')).toBe(true);
+    // Legacy untyped walls were all drawn as walls; opaque is the safe read.
+    expect(wallMaterialBlocksSight(undefined)).toBe(true);
+    expect(wallMaterialBlocksSight(null)).toBe(true);
+
+    // An arrow slit gives ¾ cover to someone you can see perfectly well.
+    expect(wallMaterialBlocksSight('window')).toBe(false);
+    expect(wallCoverPoints(wall('window'))).toBe(2);
+
+    // A railing gives half cover and you see straight over it.
+    expect(wallMaterialBlocksSight('low')).toBe(false);
+    expect(wallCoverPoints(wall('low'))).toBe(1);
+  });
+
   it('derives no cover with nothing in the way', () => {
     expect(deriveCoverFromWalls({ row: 0, col: 0 }, { row: 0, col: 4 }, [], G)).toBe('none');
   });
 
   it('derives half cover from a single legacy untyped wall', () => {
-    // Every wall on a live map is currently this case — no wall_type
-    // column exists yet (queued, see the CoverWall docstring).
+    // Pre-v2.661 walls carry no material and fall back to this.
     expect(deriveCoverFromWalls({ row: 0, col: 0 }, { row: 0, col: 4 }, [wall()], G)).toBe('half');
   });
 

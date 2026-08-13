@@ -2,7 +2,7 @@
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
-**Current version:** v2.661.0
+**Current version:** v2.662.0
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the
@@ -171,13 +171,35 @@ iteration can move faster than Track 1.
   - Not verified in a browser yet — Docker was down when it shipped, so the
     toolbar and the three wall colours have only been checked by unit test and
     build. Worth a look on next run.
-- **Terrain objects (queued — the remaining half of v2.652).** The DM can place
-  tokens, walls, drawings and text — nothing that reads as a crate, pillar or
-  boulder. Decide whether these become typed low walls (which would now reuse
-  the whole v2.661 pipeline) or a first-class object entity with a cover level,
-  then feed them in as a third source. `combineCover` is already shaped for it:
-  add to the blockers list and the RAW "most protective wins" merge handles the
-  rest.
+- **Terrain objects — deliberately deferred (2026-08-12).** Crates, pillars,
+  boulders as a cover source. Jared's call: *walls only for now* — get walls
+  plus fog of war genuinely solid before widening the surface. When it is
+  picked up, the choice is typed low walls (which would now reuse the whole
+  v2.661 pipeline for free) versus a first-class object entity with its own
+  cover level; `combineCover` already takes a third blocker source either way.
+- **Walls + fog of war is the current focus.** Sequenced deliberately, since
+  the wall system and the lighting system are the same system viewed twice —
+  a wall's material has to answer both "how much cover" and "can you see
+  through it".
+  - ~~Materials drive line of sight~~ — **shipped v2.662.** Windows and low
+    walls transmit sight while still granting ¾ and half cover; solid walls
+    and shut doors block. Before this every wall was opaque to vision, so an
+    arrow slit fogged a room exactly like a stone wall.
+  - **Per-character vision range (the standing v2.226 TODO).** `VisionLayer`
+    hardcodes `VISION_RANGE_PX = 12 * gridSizePx` — 60 ft for everyone. The
+    data to fix it already exists (`character.darkvision ?? species.darkvision`,
+    surfaced in the creator and on the sheet), so a Dwarf's 60 ft darkvision
+    and a Human's none currently render identically in a dark room. This is
+    the biggest remaining correctness gap in lighting.
+  - **Light sources.** No emitters exist — a torch, lantern or *Light* cantrip
+    illuminates nothing. Needs a placeable light entity (position, bright/dim
+    radius, colour) feeding the same visibility-polygon pass tokens use.
+  - **Manual fog.** No way for a DM to hand-reveal or re-hide a region
+    independent of token vision, which is the usual escape hatch when the
+    automatic answer is wrong for a set piece.
+  - **Per-player fog** is still party-shared (the v2.225 note in `VisionLayer`).
+    Matches Roll20/Foundry defaults, so this is a preference rather than a bug —
+    revisit only if a table wants split parties to see separately.
 - **Pointer group-drag (deferred from v2.653).** Multi-select shipped with
   marquee sweep, shift-click, a bulk action bar (lock / hide / reveal / delete)
   and arrow-key nudge — but dragging a whole selection with the mouse was left
