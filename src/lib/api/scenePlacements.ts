@@ -121,6 +121,9 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     // so the legacy placement path tokens render unlocked. If we
     // later move locks to placements, mirror is_locked here.
     isLocked: false,
+    // v2.663.0 — own light, feet. Mirrors scene_tokens.light_radius_ft
+    // for the combatant-backed placement path.
+    lightRadiusFt: (row as any).light_radius_ft ?? 0,
     // v2.413.0: same situation for player_id — scene_token_placements
     // doesn't carry the grant column. Default null; Grant Player
     // Control via context menu writes to scene_tokens.player_id which
@@ -138,19 +141,35 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
   };
 }
 
+/**
+ * v2.663.0 — columns `listPlacements` fetches, hoisted out of the call
+ * so it can be asserted against.
+ *
+ * This list enumerates columns instead of using `*`, which makes it a
+ * silent single point of failure: v2.663 added `light_radius_ft`, the
+ * mapper, the writer, the migration and the UI — and the feature was
+ * still dead, because rows arrived without the field and the mapper's
+ * `?? 0` turned that into "carries no light". Nothing in tsc or the unit
+ * suite could see it; it took driving the real app to notice the torch
+ * did nothing.
+ *
+ * If you add a column that `dbRowToPlacementToken` reads, add it HERE
+ * too. `scenePlacements.test.ts` asserts the two agree.
+ */
+export const PLACEMENT_SELECT =
+  'id, scene_id, combatant_id, x, y, rotation, z_index, ' +
+  'size_override, color_override, image_storage_path_override, ' +
+  'visible_to_all, light_radius_ft, ' +
+  'combatants:combatant_id ( id, name, portrait_storage_path, owner_id, ' +
+  'definition_type, definition_id )';
+
 /** List all placements for a scene, JOINed with their combatants.
  *  RLS filters per user (DM sees all; players see visible_to_all
  *  placements on published scenes — the v2.309 policies enforce this). */
 export async function listPlacements(sceneId: string): Promise<Token[]> {
   const { data, error } = await db
     .from('scene_token_placements')
-    .select(
-      'id, scene_id, combatant_id, x, y, rotation, z_index, ' +
-        'size_override, color_override, image_storage_path_override, ' +
-        'visible_to_all, ' +
-        'combatants:combatant_id ( id, name, portrait_storage_path, owner_id, ' +
-        'definition_type, definition_id )'
-    )
+    .select(PLACEMENT_SELECT)
     .eq('scene_id', sceneId)
     .order('z_index', { ascending: true });
   if (error) {
@@ -307,7 +326,7 @@ export async function updatePlacementPos(
 export async function updatePlacement(
   id: string,
   patch: Partial<
-    Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll'>
+    Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'lightRadiusFt'>
   >
 ): Promise<boolean> {
   const placementPatch: Record<string, unknown> = {};
@@ -318,6 +337,10 @@ export async function updatePlacement(
     placementPatch.image_storage_path_override = patch.imageStoragePath;
   }
   if (patch.visibleToAll !== undefined) placementPatch.visible_to_all = patch.visibleToAll;
+  // v2.663.0 — carried light. Not an `_override`: the placement row owns
+  // this outright, since light is a property of the token on the map
+  // rather than of the combatant's definition.
+  if (patch.lightRadiusFt !== undefined) placementPatch.light_radius_ft = patch.lightRadiusFt;
 
   if (Object.keys(placementPatch).length > 0) {
     const { error } = await db

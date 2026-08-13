@@ -117,6 +117,12 @@ export interface Token {
   // new path is on, since the combatant's definition_id mirrors
   // characterId in that case.
   combatantId?: string | null;
+  /** v2.663.0 — radius in FEET this token's own light reaches; 0 = it
+   *  carries none. Combined with the creature's darkvision by
+   *  `sightRadiusFt` (src/rules/vision.ts) — the larger of the two wins,
+   *  they do not stack. Feet rather than pixels so a torch is 40 ft on
+   *  every map whatever `scenes.grid_size` is. */
+  lightRadiusFt: number;
   // v2.617.0 — B3a: owning auth user of the backing combatant (new
   // path only). Null on the legacy scene_tokens path.
   combatantOwnerId?: string | null;

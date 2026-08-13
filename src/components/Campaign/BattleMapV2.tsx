@@ -259,6 +259,10 @@ export interface BattleMapV2Props {
      *  caller (species size today; the character's own chosen size once
      *  that ships). Absent falls back to Medium. */
     size?: import('../../lib/map/mapTypes').TokenSize;
+    /** v2.663.0 — darkvision in feet, resolved by the caller from the
+     *  species table (same seam as `size`). Absent falls back to 0,
+     *  which only matters in a Dark scene. */
+    darkvision?: number;
     current_hp: number;
     max_hp: number;
     armor_class: number;
@@ -1651,6 +1655,10 @@ function BattleMapV2(props: BattleMapV2Props) {
         // Medium square and, since v2.652, granted and received cover
         // as though they were Medium.
         size: pc.size ?? 'medium',
+        // v2.663.0 — no light by default. A PC's darkvision comes from
+        // their species and needs nothing stored here; this is the
+        // torch/lantern they're carrying, which only the DM knows about.
+        lightRadiusFt: 0,
         rotation: 0,
         name: pc.name,
         color: TOKEN_COLORS[(baseCount + idx) % TOKEN_COLORS.length],
@@ -2754,6 +2762,15 @@ function BattleMapV2(props: BattleMapV2Props) {
     [props.playerCharacters],
   );
 
+  // v2.663.0 — darkvision lookup for VisionLayer, keyed by character id.
+  // Built here rather than passed as a list so the layer can resolve a
+  // token's range in O(1) without re-scanning playerCharacters per frame.
+  const darkvisionByCharacterId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const c of props.playerCharacters) map[c.id] = c.darkvision ?? 0;
+    return map;
+  }, [props.playerCharacters]);
+
   const handleRequestMapUpload = useCallback(() => {
     if (!currentScene) return;
     mapInputRef.current?.click();
@@ -3477,6 +3494,7 @@ function BattleMapV2(props: BattleMapV2Props) {
                     gridSizePx={gridSizePx}
                     isDM={isDM}
                     visionOriginCharacterIds={visionOriginCharacterIds}
+                    darkvisionByCharacterId={darkvisionByCharacterId}
                     dmPreviewFog={dmPreviewFog}
                     ambientLight={currentScene?.ambientLight ?? 'dark'}
                   />

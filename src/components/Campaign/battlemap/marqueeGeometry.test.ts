@@ -24,7 +24,7 @@ function tok(id: string, row: number, col: number, size: Token['size'] = 'medium
     id, sceneId: null, x, y, size, rotation: 0, name: id,
     color: 0, imageStoragePath: null, characterId: null,
     npcId: null, creatureId: null,
-    visibleToAll: true, isLocked: false, playerId: null,
+    visibleToAll: true, isLocked: false, playerId: null, lightRadiusFt: 0,
   };
 }
 

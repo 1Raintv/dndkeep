@@ -365,6 +365,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
         visibleToAll: npc.visible_to_players ?? true,
         // v2.412.0 — default LOCKED.
         isLocked: true,
+        lightRadiusFt: 0,   // v2.663.0 — no light unless the DM gives it one
         // v2.413.0 — no granted controller by default.
         playerId: null,
       };

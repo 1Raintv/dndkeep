@@ -35,7 +35,7 @@ function tok(
     color: 0, imageStoragePath: null,
     characterId: opts.pc ? `char-${id}` : null,
     npcId: null, creatureId: null,
-    visibleToAll: true, isLocked: false, playerId: null,
+    visibleToAll: true, isLocked: false, playerId: null, lightRadiusFt: 0,
   };
 }
 
