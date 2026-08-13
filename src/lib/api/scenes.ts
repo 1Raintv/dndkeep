@@ -32,12 +32,26 @@ export interface Scene {
   // = opaque fog (the v2.224+ default — dungeons, night). DM-controlled
   // via the in-app toolbar; backed by a CHECK-constrained text column.
   ambientLight: 'bright' | 'dim' | 'dark';
+  // v2.664.0 — how fog is decided. 'dynamic' is the v2.224-v2.663
+  // behaviour: line of sight from tokens, occluded by walls, bounded by
+  // darkvision and carried light. 'manual' ignores all of that and
+  // shows exactly the cells the DM painted.
+  fogMode: 'dynamic' | 'manual';
+  /** v2.664.0 — manual-fog reveals as [row, col] pairs. Meaningless
+   *  while fogMode is 'dynamic', but kept rather than cleared so
+   *  flipping modes back and forth doesn't destroy the painting. */
+  revealedCells: Array<[number, number]>;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Convert a snake_case DB row into the camelCase Scene shape. */
-function rowToScene(row: any): Scene {
+/** Convert a snake_case DB row into the camelCase Scene shape.
+ *
+ *  v2.664.0 — exported. BattleMapV2's realtime handler carried its own
+ *  copy of this mapping, which is how adding a Scene field broke it:
+ *  two places had to learn about `fog_mode` and only one did. One
+ *  mapper, used by both the fetch path and the realtime path. */
+export function rowToScene(row: any): Scene {
   return {
     id: row.id,
     campaignId: row.campaign_id,
@@ -54,6 +68,12 @@ function rowToScene(row: any): Scene {
     // (shouldn't happen post-migration, but defensive against stale
     // server response shapes during the migration rollout window).
     ambientLight: row.ambient_light ?? 'dark',
+    // v2.664.0 — fall back to the pre-existing behaviour if the column
+    // is missing, and only treat the exact string 'manual' as manual.
+    // Anything else meaning "dynamic" fails safe: a garbled value hides
+    // the map behind normal fog rather than revealing it wholesale.
+    fogMode: row.fog_mode === 'manual' ? 'manual' : 'dynamic',
+    revealedCells: Array.isArray(row.revealed_cells) ? row.revealed_cells : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -116,7 +136,7 @@ export async function deleteScene(sceneId: string): Promise<boolean> {
 /** Update mutable scene fields (name, grid settings, background, published state, ambient light). */
 export async function updateScene(
   sceneId: string,
-  patch: Partial<Pick<Scene, 'name' | 'isPublished' | 'dmNotes' | 'gridSizePx' | 'widthCells' | 'heightCells' | 'backgroundStoragePath' | 'ambientLight'>>
+  patch: Partial<Pick<Scene, 'name' | 'isPublished' | 'dmNotes' | 'gridSizePx' | 'widthCells' | 'heightCells' | 'backgroundStoragePath' | 'ambientLight' | 'fogMode' | 'revealedCells'>>
 ): Promise<boolean> {
   const dbPatch: Record<string, any> = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -129,6 +149,10 @@ export async function updateScene(
   if (patch.backgroundStoragePath !== undefined) dbPatch.background_storage_path = patch.backgroundStoragePath;
   // v2.274.0 — ambient lighting toggle.
   if (patch.ambientLight !== undefined) dbPatch.ambient_light = patch.ambientLight;
+  // v2.664.0 — through `any`: the generated supabase types lag the
+  // migration, same as is_locked and light_radius_ft before it.
+  if (patch.fogMode !== undefined) (dbPatch as any).fog_mode = patch.fogMode;
+  if (patch.revealedCells !== undefined) (dbPatch as any).revealed_cells = patch.revealedCells;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scenes').update(dbPatch).eq('id', sceneId);
   if (error) {

@@ -9,6 +9,7 @@ import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
 import { wallMaterialBlocksSight } from '../../../rules/cover';
 import { sightRadiusPx } from '../../../rules/vision';
+import { parseRevealedCells } from '../../../rules/manualFog';
 
 /**
  * v2.224 — VisionLayer.
@@ -74,8 +75,15 @@ export function VisionLayer(props: {
    *  ambient layer outside their cones is partly transparent rather
    *  than fully opaque. */
   ambientLight: 'bright' | 'dim' | 'dark';
+  /** v2.664.0 — how fog is decided. 'dynamic' derives it from line of
+   *  sight (walls, darkvision, carried light); 'manual' shows exactly
+   *  the cells in `revealedCells` and ignores tokens entirely. */
+  fogMode: 'dynamic' | 'manual';
+  /** v2.664.0 — [row, col] pairs the DM has painted as revealed. Read
+   *  only in manual mode. */
+  revealedCells: Array<[number, number]>;
 }) {
-  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight } = props;
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight, fogMode, revealedCells } = props;
   // v2.267.0 — effective "should this layer render fog" check. When
   // the DM has enabled Player View preview, treat them like a player
   // for the purposes of mounting + recomputing the fog texture. The
@@ -448,7 +456,11 @@ export function VisionLayer(props: {
     // to be meaningful. For real player views, keep the solid fog —
     // a player who can't see anything because their character isn't
     // placed is the correct semantic state, not a UX bug.
-    if (isDM && dmPreviewFog && visionOriginTokenIds.length === 0) {
+    // v2.664.0 — the DM-preview escape hatch below is a DYNAMIC-mode
+    // concern only. In manual mode "no PC tokens" is irrelevant: the
+    // reveals are painted, not derived, so there is something to show
+    // either way and clearing the texture would wrongly reveal the map.
+    if (fogMode === 'dynamic' && isDM && dmPreviewFog && visionOriginTokenIds.length === 0) {
       app.renderer.render({ container: scratch, target: rt, clear: true });
       return;
     }
@@ -468,6 +480,29 @@ export function VisionLayer(props: {
     fog.rect(0, 0, worldWidth, worldHeight);
     fog.fill({ color: 0x0a0c10, alpha: fogAlpha });
     scratch.addChild(fog);
+
+    // v2.664.0 — MANUAL MODE. Reveals are painted, not derived: erase a
+    // rectangle per revealed cell and stop. Tokens, walls, darkvision
+    // and carried light are all deliberately ignored here — the whole
+    // point of the mode is that the DM decides, and a cell stays
+    // revealed once shown even after the party walks away.
+    if (fogMode === 'manual') {
+      const revealed = parseRevealedCells(revealedCells);
+      if (revealed.size > 0) {
+        const holes = new Graphics();
+        for (const key of revealed) {
+          const [row, col] = key.split(',').map(Number);
+          holes.rect(col * gridSizePx, row * gridSizePx, gridSizePx, gridSizePx);
+        }
+        // One fill for every cell: the rects are batched into a single
+        // draw, so a fully-painted 30x20 map costs one call, not 600.
+        holes.fill({ color: 0xffffff, alpha: 1 });
+        holes.blendMode = 'erase';
+        scratch.addChild(holes);
+      }
+      app.renderer.render({ container: scratch, target: rt, clear: true });
+      return;
+    }
 
     // 2. For each origin token, compute polygon and draw with erase
     //    blend mode to cut a hole in the fog.
@@ -528,7 +563,7 @@ export function VisionLayer(props: {
 
     // 3. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
-  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, app]);
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, fogMode, revealedCells, app]);
 
   return null;
 }

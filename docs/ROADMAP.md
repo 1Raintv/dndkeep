@@ -2,7 +2,7 @@
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
-**Current version:** v2.663.0
+**Current version:** v2.664.0
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the
@@ -198,9 +198,16 @@ iteration can move faster than Track 1.
     emitters not attached to a token (a brazier, a lit doorway), coloured
     light, and separate bright/dim bands — the fog is binary, so a light
     currently reveals one flat radius.
-  - **Manual fog.** No way for a DM to hand-reveal or re-hide a region
-    independent of token vision, which is the usual escape hatch when the
-    automatic answer is wrong for a set piece.
+  - ~~Manual fog~~ — **shipped v2.664.** `scenes.fog_mode` picks per scene
+    between `dynamic` (line of sight, the v2.224–v2.663 behaviour, still
+    the default) and `manual` (the DM paints reveals with the ☁ brush and
+    they stay revealed). Switching modes does not clear the painting, so
+    a DM can flip to dynamic for a fight and back. Reveals are grid cells
+    in `scenes.revealed_cells`, one write per stroke rather than per
+    pointer-move.
+    - Not done: a rectangle/lasso reveal (the brush is round only), and
+      "reveal what the party has already seen" — remembered-terrain fog,
+      which is a third mode rather than a tweak to either of these.
   - **Per-player fog** is still party-shared (the v2.225 note in `VisionLayer`).
     Matches Roll20/Foundry defaults, so this is a preference rather than a bug —
     revisit only if a table wants split parties to see separately.
