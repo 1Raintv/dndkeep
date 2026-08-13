@@ -38,9 +38,15 @@ an exhaustive roster of the class's subclasses. Psi Warper was not revised,
 so v1's version of it stands unchanged.
 
 This was previously logged as drift and came within one commit of being
-deleted. It is not drift. Both production Psion characters use it, including
-Jared's own (Myelin) — but that is a reason to be careful, not the reason
-it stays. It stays because it is still valid content.
+deleted. It is not drift.
+
+**Note the argument does not depend on anyone using it.** When this was
+decided there were two production Psion characters on Psi Warper, and that
+made deleting it costly — but the reason it stays is that it is still valid
+content, not that removing it would have hurt. Both of those characters have
+since been deleted (2026-08-12, starting the Psion fresh) and **production now
+has zero Psion characters**, which changes nothing here. Anyone re-opening
+this should argue the v1/v2 relationship above, not the character count.
 
 `classes.ts` already carries the marker: *"(Passed UA v1 playtest
 unchanged.)"*
@@ -84,8 +90,8 @@ Each of these is a case where v2 *does* cover the material, so v2 won:
   list — both called out in its "new spells" note — but weren't tagged.
 - **Animate Dead** was tagged for Psion. It is on v1's list and absent from
   v2's — and v2 reprints the base spell list in full, so this absence *is* a
-  removal under the rule above. Untagged. (Neither live Psion character had
-  it known or prepared.)
+  removal under the rule above. Untagged. (At the time, neither live Psion
+  character had it known or prepared.)
 - **Level 19 offered an ASI.** v2's level-4 text reads "You gain this feature
   again at Psion levels 8, 12, and 16", so ASIs are 4/8/12/16 and 19 is the
   Epic Boon.
@@ -105,6 +111,10 @@ Metamorph and Psykinetic features and spell lists.
 - Psion is **invisible to the seeded local test account** — it is RLS-scoped
   to Jared's real account. Anything Psion-specific must be verified against
   production data, not the local Docker stack.
+- **Production has no Psion characters as of 2026-08-12**, so there is
+  currently nothing live to verify a Psion change against. Roll a fresh one
+  first rather than concluding from an empty result set that something is
+  broken.
 - Extracting the PDFs: `pdftotext` ships with Git for Windows. Use it
   **without** `-layout` for the spell tables (the columns flow correctly)
   and **with** `-layout` for the features table.
