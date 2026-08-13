@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
 import { wallMaterialBlocksSight } from '../../../rules/cover';
+import { sightRadiusPx } from '../../../rules/vision';
 
 /**
  * v2.224 — VisionLayer.
@@ -54,6 +55,11 @@ export function VisionLayer(props: {
    *  polygons. v2.224: every PC in the campaign (party-shared sight).
    *  v2.225 will narrow this to the current user's own characters. */
   visionOriginCharacterIds: string[];
+  /** v2.663.0 — darkvision in FEET keyed by character id. Resolved by
+   *  CampaignDashboard from the species table so this layer stays clear
+   *  of `src/data`. A character missing from the map has none, which is
+   *  the correct default for anything non-PC. */
+  darkvisionByCharacterId: Record<string, number>;
   /** v2.267.0 — when true, render fog for the DM too (Player View
    *  preview). Default false; only the DM toolbar's preview button
    *  flips this. Players never see this prop set. */
@@ -69,7 +75,7 @@ export function VisionLayer(props: {
    *  than fully opaque. */
   ambientLight: 'bright' | 'dim' | 'dark';
 }) {
-  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, dmPreviewFog, ambientLight } = props;
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight } = props;
   // v2.267.0 — effective "should this layer render fog" check. When
   // the DM has enabled Player View preview, treat them like a player
   // for the purposes of mounting + recomputing the fog texture. The
@@ -483,14 +489,33 @@ export function VisionLayer(props: {
       if (!wallMaterialBlocksSight(w.wallType)) continue;
       sightWalls.push({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 });
     }
-    // 60ft = 12 cells × cell size in pixels. Hardcoded for v2.224;
-    // v2.226 will read per-character darkvision/normal-vision range.
-    const VISION_RANGE_PX = 12 * gridSizePx;
+    // v2.663.0 — per-token sight radius, closing the v2.226 TODO. This
+    // was `12 * gridSizePx` — a flat 60 ft for every creature — which
+    // made darkvision decorative.
+    //
+    // Unlimited (bright/dim) is clamped to the world diagonal: that is
+    // the furthest two points on the map can be, so it bounds the ray
+    // cast without ever cutting the polygon short.
+    const unlimitedPx = Math.hypot(worldWidth, worldHeight);
 
     for (const tokenId of visionOriginTokenIds) {
       const t = tokens[tokenId];
       if (!t) continue;
-      const polygon = computeVisibilityPolygon(t.x, t.y, sightWalls, VISION_RANGE_PX, 180);
+      const darkvisionFt = t.characterId
+        ? (darkvisionByCharacterId[t.characterId] ?? 0)
+        : 0;
+      const radiusPx = sightRadiusPx(
+        ambientLight, darkvisionFt, t.lightRadiusFt ?? 0, gridSizePx,
+      );
+      // 0 = genuinely blind (dark scene, no darkvision, no light). Skip
+      // it rather than drawing a zero-radius polygon: this creature
+      // contributes nothing to what the party can see, which is the
+      // point. Someone else's torch still reveals the room for everyone,
+      // since the fog is a union over all origins.
+      if (radiusPx === 0) continue;
+      const polygon = computeVisibilityPolygon(
+        t.x, t.y, sightWalls, radiusPx ?? unlimitedPx, 180,
+      );
       if (polygon.length < 6) continue; // need at least 3 points to form a polygon
       const lightGfx = new Graphics();
       lightGfx.poly(polygon);
@@ -503,7 +528,7 @@ export function VisionLayer(props: {
 
     // 3. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
-  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, app]);
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, app]);
 
   return null;
 }

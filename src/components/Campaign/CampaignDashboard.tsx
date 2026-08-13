@@ -585,6 +585,14 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       // so this line is the single seam to change when characters gain
       // their own chosen size.
       size: toTokenSize(SPECIES_MAP[c.species]?.size),
+      // v2.663.0 — darkvision in feet, resolved at the same seam and for
+      // the same reason as size: the map must not import the species
+      // table. VisionLayer hardcoded 60 ft for everyone since v2.224, so
+      // a Dwarf and a Human rendered identically in a dark room even
+      // though the sheet has always shown the difference. Species value
+      // for now; a character-level override (Goggles of Night, the
+      // Artificer infusion) would land on this line.
+      darkvision: SPECIES_MAP[c.species]?.darkvision ?? 0,
       current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
       active_conditions: c.active_conditions ?? [],
       strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,

@@ -51,6 +51,10 @@ export function dbRowToToken(row: any): Token {
     // through any to tolerate stale generated supabase types until
     // the next type-regen pass.
     isLocked: (row as any).is_locked ?? false,
+    // v2.663.0 — own light source, in feet. Null on rows written before
+    // the column existed; 0 means "carries no light", which only has a
+    // visible effect in a Dark scene.
+    lightRadiusFt: (row as any).light_radius_ft ?? 0,
     // v2.413.0: read player_id. Column exists since v2.208; the
     // store didn't mirror it until now. RLS uses this for the
     // UPDATE policy (player_id match grants drag-position).
@@ -88,6 +92,9 @@ function tokenToInsertRow(token: Token): SceneTokenInsert {
     // the generated supabase types will pick up the column after the
     // next regen, but this write is safe today against the live DB.
     ...({ is_locked: token.isLocked } as any),
+    // v2.663.0 — persist carried light on insert so a duplicated token
+    // keeps its torch.
+    ...({ light_radius_ft: token.lightRadiusFt ?? 0 } as any),
     // v2.413.0: persist player_id (granted-control field). Null
     // when no player has been granted control.
     player_id: token.playerId,
@@ -163,7 +170,7 @@ export async function updateTokenPos(id: string, x: number, y: number): Promise<
  *  path — kept the rest of the API surface identical. */
 export async function updateToken(
   id: string,
-  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'isLocked' | 'playerId'>>
+  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'isLocked' | 'playerId' | 'lightRadiusFt'>>
 ): Promise<boolean> {
   const dbPatch: SceneTokenUpdate = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -179,6 +186,9 @@ export async function updateToken(
   // v2.413.0: pass-through for player_id (Grant/Revoke Player
   // Control writes through here). Null clears the grant.
   if (patch.playerId !== undefined) dbPatch.player_id = patch.playerId;
+  // v2.663.0: carried light, in feet. Through `any` for the same
+  // reason is_locked is — the generated types lag the migration.
+  if (patch.lightRadiusFt !== undefined) (dbPatch as any).light_radius_ft = patch.lightRadiusFt;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id);
   if (error) {

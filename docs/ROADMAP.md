@@ -2,7 +2,7 @@
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
-**Current version:** v2.662.0
+**Current version:** v2.663.0
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the
@@ -185,15 +185,19 @@ iteration can move faster than Track 1.
     walls transmit sight while still granting ¾ and half cover; solid walls
     and shut doors block. Before this every wall was opaque to vision, so an
     arrow slit fogged a room exactly like a stone wall.
-  - **Per-character vision range (the standing v2.226 TODO).** `VisionLayer`
-    hardcodes `VISION_RANGE_PX = 12 * gridSizePx` — 60 ft for everyone. The
-    data to fix it already exists (`character.darkvision ?? species.darkvision`,
-    surfaced in the creator and on the sheet), so a Dwarf's 60 ft darkvision
-    and a Human's none currently render identically in a dark room. This is
-    the biggest remaining correctness gap in lighting.
-  - **Light sources.** No emitters exist — a torch, lantern or *Light* cantrip
-    illuminates nothing. Needs a placeable light entity (position, bright/dim
-    radius, colour) feeding the same visibility-polygon pass tokens use.
+  - ~~Per-character vision range (the v2.226 TODO)~~ — **shipped v2.663.**
+    Sight range is `sightRadiusFt` (`src/rules/vision.ts`): unlimited in
+    bright and dim (lightly obscured is disadvantage, not a distance cap),
+    and in the dark the better of the creature's darkvision and its own
+    light. Darkvision is resolved from the species table at the same
+    `CampaignDashboard` seam that resolves token size.
+  - ~~Light sources~~ — **first cut shipped v2.663.** `light_radius_ft` on a
+    token, set from the context menu (None / Candle / Torch / Lantern /
+    Daylight), because darkvision alone would have left every Human blind
+    the moment a scene went Dark. Still missing: *standalone* light
+    emitters not attached to a token (a brazier, a lit doorway), coloured
+    light, and separate bright/dim bands — the fog is binary, so a light
+    currently reveals one flat radius.
   - **Manual fog.** No way for a DM to hand-reveal or re-hide a region
     independent of token vision, which is the usual escape hatch when the
     automatic answer is wrong for a set piece.

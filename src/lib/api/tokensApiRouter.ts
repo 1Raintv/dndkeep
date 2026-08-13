@@ -140,7 +140,11 @@ export async function updateTokenPos(
 export async function updateToken(
   id: string,
   patch: Partial<
-    Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll'>
+    // v2.663.0 — lightRadiusFt must survive the flag split: both
+    // backing tables carry the column, and omitting it here would make
+    // the Light menu a silent no-op on the placements path (the DEFAULT
+    // for newly created campaigns).
+    Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'lightRadiusFt'>
   >,
   opts: { campaignId: string },
 ): Promise<boolean> {
