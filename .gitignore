@@ -41,6 +41,16 @@ deploy.log
 *.tmp
 *.patch
 
+# Editor/manual backup copies. deploy.bat runs `git add .`, so an ignore
+# pattern is the only thing that reliably stops these getting committed —
+# FeaturesPanel.tsx.bak survived tracked for months as a stale duplicate of
+# a live component, exactly the "duplicate-file drift" hazard in CLAUDE.md.
+*.bak
+*.old
+*.orig
+*.rej
+*~
+
 # Playwright — run artifacts (baselines in e2e/__screenshots__ ARE committed)
 test-results/
 playwright-report/
