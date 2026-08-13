@@ -4175,6 +4175,14 @@ function BattleMapV2(props: BattleMapV2Props) {
           </div>
         )}
 
+        {/* v2.661 — while the wall tool is up, WallTypePanel occupies this
+            slot and carries the wall hints itself. Two elements sharing the
+            band could not be made safe at every width: the panel clipped
+            this bar's chip at 1280px, and at 393px this bar wraps to five
+            lines and grows down through anything placed below it. One
+            element in the slot makes the collision impossible rather than
+            merely unlikely. */}
+        {!(isDM && wallActive) && (
         <div
           style={{
             // v2.270.0 — moved to top-right so the floating party
@@ -4205,11 +4213,16 @@ function BattleMapV2(props: BattleMapV2Props) {
             : eraserActive
             ? 'Eraser ON — click any drawing to delete it. Click ✕ again to exit.'
             : wallActive
-            ? 'Click to place wall vertices · shift+click a wall = cycle door state · right-click to delete · Esc to cancel · right/middle drag pans · wheel zooms'
+            // v2.661 — a DM never sees this branch (WallTypePanel replaces
+            // the whole bar and carries these hints). Kept for a non-DM
+            // who somehow has the wall tool up, where the panel does not
+            // render and this bar is still the only guidance.
+            ? 'Click to place wall vertices · shift+click a wall = cycle door state · ctrl+click = cycle material · right-click to delete · Esc to cancel'
             : rulerActive
               ? 'Click to add waypoints · right-click/Esc to finish · right/middle drag pans · wheel zooms'
               : 'Drag tokens · right-click for options · right/middle drag pans · wheel zooms'}
         </div>
+        )}
 
         {contextMenu && (
           <TokenContextMenu

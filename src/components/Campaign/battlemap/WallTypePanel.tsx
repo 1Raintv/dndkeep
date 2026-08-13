@@ -40,11 +40,30 @@ export function WallTypePanel() {
   return (
     <div
       style={{
-        position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', alignItems: 'center', gap: 6,
+        // v2.661 — takes the tool hint bar's exact slot; BattleMapV2 hides
+        // that bar for a DM while this is up. Three positions were tried
+        // and measured before settling here:
+        //   top:12 centred — the hint bar (`right:12 maxWidth:40%`) reached
+        //     back to x=844 at 1280px and clipped the "Window" chip by 69px.
+        //   bottom:12      — PartyVitalsBar owns that strip; it covered the
+        //     panel and swallowed every click, so the chips rendered dead.
+        //   top:56         — fine at 1280px, but at 393px the hint bar wraps
+        //     to five lines and grows down straight through this row.
+        // Sharing the band could not be made safe at every width, so the
+        // panel now owns it outright. zIndex matches the bar it replaces.
+        position: 'absolute', top: 12, right: 12,
+        // Wrap rather than overflow on narrow viewports — the mobile map
+        // is 393px and three chips plus the hint do not fit on one line.
+        // `max-content` shrink-wraps to the widest row; without it the box
+        // stretches well past its content and reads as a misdrawn panel.
+        width: 'max-content', maxWidth: 'calc(100% - 24px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+        flexWrap: 'wrap', gap: 6,
         padding: '6px 8px', borderRadius: 10,
-        background: 'rgba(15,16,18,0.92)', border: '1px solid rgba(255,255,255,0.12)',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.4)', zIndex: 20,
+        // Near-opaque: at 393px this panel covers the scene-info chip, and
+        // at 0.92 that chip's text bled through and looked like a glitch.
+        background: 'rgba(15,16,18,0.985)', border: '1px solid rgba(255,255,255,0.12)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4)', zIndex: 30,
         fontSize: 12, color: 'var(--t-2)',
       }}
     >
@@ -82,14 +101,23 @@ export function WallTypePanel() {
           </button>
         );
       })}
+      {/* v2.661 — the wall tool's hints live here now, because this panel
+          replaces the bar that used to carry them. Own line (flex-basis
+          100%) so it never competes with the chips for horizontal space
+          at any width. */}
       <span
         style={{
-          fontSize: 10, color: 'var(--t-3)', paddingLeft: 4,
-          borderLeft: '1px solid rgba(255,255,255,0.10)', marginLeft: 2,
-          lineHeight: 1.3, maxWidth: 150,
+          flexBasis: '100%', textAlign: 'right',
+          // Capped so the panel's `max-content` width comes from the chips
+          // row, not from this string laid out on a single line — which
+          // stretched the box to ~770px with a large empty left half.
+          maxWidth: 330, marginLeft: 'auto',
+          fontSize: 9, lineHeight: 1.4, color: 'var(--t-3)',
+          letterSpacing: '0.02em', paddingTop: 2,
         }}
       >
-        shift+click door · ctrl+click retype
+        Click to place vertices · shift+click = door · ctrl+click = material
+        · right-click deletes · Esc cancels
       </span>
     </div>
   );
