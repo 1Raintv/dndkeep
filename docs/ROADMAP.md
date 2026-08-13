@@ -2,7 +2,7 @@
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
-**Current version:** v2.664.0
+**Current version:** v2.665.0
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the
@@ -191,13 +191,23 @@ iteration can move faster than Track 1.
     and in the dark the better of the creature's darkvision and its own
     light. Darkvision is resolved from the species table at the same
     `CampaignDashboard` seam that resolves token size.
-  - ~~Light sources~~ — **first cut shipped v2.663.** `light_radius_ft` on a
-    token, set from the context menu (None / Candle / Torch / Lantern /
-    Daylight), because darkvision alone would have left every Human blind
-    the moment a scene went Dark. Still missing: *standalone* light
-    emitters not attached to a token (a brazier, a lit doorway), coloured
-    light, and separate bright/dim bands — the fog is binary, so a light
-    currently reveals one flat radius.
+  - ~~Light sources~~ — **shipped v2.663, completed v2.665.** v2.663 put
+    `light_radius_ft` on a token (None / Candle / Torch / Lantern /
+    Daylight in the context menu), because darkvision alone would have
+    left every Human blind the moment a scene went Dark. v2.665 made any
+    token carrying a light actually *emit* it, so a token named "Brazier"
+    lights the room — no `scene_lights` table, because a light source is
+    a thing at a position that can be placed, moved, hidden and synced,
+    which is the definition of a token.
+    - Emission is gated on a PC having line of sight to the source, or a
+      brazier would light its room for the party from anywhere on the
+      map. The gate tests the source's centre point, so light spilling
+      around a corner from a lamp you cannot see is not shown — the
+      error is conservative (hides light, never reveals a dark room).
+      Fixing it properly means intersecting visibility polygons per
+      (viewer, light) pair.
+    - Still missing: coloured light, and separate bright/dim bands — the
+      fog is binary, so a light reveals one flat radius.
   - ~~Manual fog~~ — **shipped v2.664.** `scenes.fog_mode` picks per scene
     between `dynamic` (line of sight, the v2.224–v2.663 behaviour, still
     the default) and `manual` (the DM paints reveals with the ☁ brush and

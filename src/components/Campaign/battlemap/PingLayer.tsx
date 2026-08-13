@@ -101,7 +101,10 @@ export function PingLayer(props: {
       const dt = Math.min(64, now - last);   // clamp: tab refocus can hand us seconds
       lastTimeRef.current = now;
       const gfx = gfxRef.current;
-      if (gfx) {
+      // v2.665.0 — see the matching note in FxLayer: a destroyed
+      // Graphics is non-null with a null context, and the ticker can
+      // run one more frame after teardown.
+      if (gfx && !gfx.destroyed) {
         gfx.clear();
         const live: Ping[] = [];
         const maxRadius = gridRef.current * 1.8;

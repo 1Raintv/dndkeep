@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
 import { wallMaterialBlocksSight } from '../../../rules/cover';
-import { sightRadiusPx } from '../../../rules/vision';
+import { sightRadiusPx, visibleLightSources, FEET_PER_SQUARE } from '../../../rules/vision';
 import { parseRevealedCells } from '../../../rules/manualFog';
 
 /**
@@ -559,6 +559,42 @@ export function VisionLayer(props: {
       // alpha from the fog beneath it, leaving a transparent hole.
       lightGfx.blendMode = 'erase';
       scratch.addChild(lightGfx);
+    }
+
+    // v2.665.0 — STANDALONE LIGHT SOURCES.
+    //
+    // Any token carrying a light illuminates its surroundings, not just
+    // the PCs who set a torch on themselves. A DM drops a token, names
+    // it "Brazier", sets Light → Torch, and the area lights up.
+    //
+    // Deliberately no `scene_lights` table: a light source is a thing at
+    // a position on the map that can be placed, moved, hidden, deleted
+    // and synced — which is the entire definition of a token. A parallel
+    // entity would have meant duplicating placement, realtime, RLS and
+    // the context menu to gain nothing.
+    //
+    // Gated on line of sight to the source, or a brazier anywhere would
+    // light its room for the party permanently regardless of where they
+    // stand. `visibleLightSources` documents the approximation.
+    const viewers = visionOriginTokenIds
+      .map(id => tokens[id])
+      .filter(Boolean)
+      .map(t => ({ x: t.x, y: t.y }));
+    const emitters = Object.values(tokens)
+      // A PC's own carried light already shaped their sight radius
+      // above; re-emitting it here would double-draw the same disc.
+      .filter(t => (t.lightRadiusFt ?? 0) > 0 && !visionOriginTokenIds.includes(t.id))
+      .map(t => ({ id: t.id, x: t.x, y: t.y, radiusFt: t.lightRadiusFt ?? 0 }));
+
+    for (const src of visibleLightSources(viewers, emitters, sightWalls)) {
+      const radiusPx = (src.radiusFt / FEET_PER_SQUARE) * gridSizePx;
+      const polygon = computeVisibilityPolygon(src.x, src.y, sightWalls, radiusPx, 180);
+      if (polygon.length < 6) continue;
+      const lit = new Graphics();
+      lit.poly(polygon);
+      lit.fill({ color: 0xffffff, alpha: 1 });
+      lit.blendMode = 'erase';
+      scratch.addChild(lit);
     }
 
     // 3. Render the scratch container to our RenderTexture.

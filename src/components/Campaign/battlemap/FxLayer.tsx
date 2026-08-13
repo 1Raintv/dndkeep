@@ -269,7 +269,13 @@ export function FxLayer(props: {
       const dt = Math.min(64, now - last); // clamp to avoid huge dt on tab refocus
       lastTimeRef.current = now;
       const gfx = gfxRef.current;
-      if (gfx) {
+      // v2.665.0 — `destroyed` as well as null. A destroyed Graphics is
+      // still a non-null object but its context is gone, so `.clear()`
+      // throws "Cannot read properties of null (reading 'clear')". The
+      // ticker can outlive teardown by a frame — switching scenes is the
+      // reliable way to see it — and the null check alone let that
+      // through.
+      if (gfx && !gfx.destroyed) {
         gfx.clear();
         const live: FxEffect[] = [];
         for (const eff of effectsRef.current) {
