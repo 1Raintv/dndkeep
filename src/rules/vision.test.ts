@@ -1,7 +1,9 @@
 // v2.663.0 — sight radius rules. The cases that matter are the ones
 // where two characters standing in the same square see differently.
 import { describe, it, expect } from 'vitest';
-import { sightRadiusFt, sightRadiusPx, FEET_PER_SQUARE } from './vision';
+import {
+  sightRadiusFt, sightRadiusPx, FEET_PER_SQUARE, visibleLightSources,
+} from './vision';
 
 describe('sightRadiusFt', () => {
   it('is unlimited in bright light regardless of darkvision', () => {
@@ -62,5 +64,42 @@ describe('sightRadiusPx', () => {
 
   it('is zero for the blind case, not a tiny non-zero smear', () => {
     expect(sightRadiusPx('dark', 0, 0, GRID)).toBe(0);
+  });
+});
+
+describe('visibleLightSources', () => {
+  const light = (id: string, x: number, y: number, radiusFt = 40) => ({ id, x, y, radiusFt });
+  // A vertical wall at x=100 spanning y 0..200.
+  const wall = { x1: 100, y1: 0, x2: 100, y2: 200 };
+
+  it('illuminates a source in plain sight', () => {
+    const seen = visibleLightSources([{ x: 0, y: 50 }], [light('brazier', 50, 50)], []);
+    expect(seen.map(l => l.id)).toEqual(['brazier']);
+  });
+
+  it('hides a source behind a wall', () => {
+    // Viewer left of the wall, brazier right of it.
+    const seen = visibleLightSources([{ x: 0, y: 50 }], [light('brazier', 200, 50)], [wall]);
+    expect(seen).toEqual([]);
+  });
+
+  it('lights up as soon as ANY viewer can see it', () => {
+    // One viewer blocked, one with a clear line — party-shared sight.
+    const seen = visibleLightSources(
+      [{ x: 0, y: 50 }, { x: 150, y: 50 }],
+      [light('brazier', 200, 50)],
+      [wall],
+    );
+    expect(seen.map(l => l.id)).toEqual(['brazier']);
+  });
+
+  it('reveals nothing when nobody is on the map', () => {
+    // Otherwise an unattended brazier would light a room for a party
+    // that has not arrived yet.
+    expect(visibleLightSources([], [light('brazier', 50, 50)], [])).toEqual([]);
+  });
+
+  it('ignores sources that emit no light', () => {
+    expect(visibleLightSources([{ x: 0, y: 0 }], [light('unlit', 10, 10, 0)], [])).toEqual([]);
   });
 });
