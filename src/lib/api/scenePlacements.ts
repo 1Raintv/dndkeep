@@ -124,6 +124,8 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     // v2.663.0 — own light, feet. Mirrors scene_tokens.light_radius_ft
     // for the combatant-backed placement path.
     lightRadiusFt: (row as any).light_radius_ft ?? 0,
+    // v2.668.0 — light colour, 0xRRGGBB or null for untinted.
+    lightColor: (row as any).light_color ?? null,
     // v2.413.0: same situation for player_id — scene_token_placements
     // doesn't carry the grant column. Default null; Grant Player
     // Control via context menu writes to scene_tokens.player_id which
@@ -159,7 +161,7 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
 export const PLACEMENT_SELECT =
   'id, scene_id, combatant_id, x, y, rotation, z_index, ' +
   'size_override, color_override, image_storage_path_override, ' +
-  'visible_to_all, light_radius_ft, ' +
+  'visible_to_all, light_radius_ft, light_color, ' +
   'combatants:combatant_id ( id, name, portrait_storage_path, owner_id, ' +
   'definition_type, definition_id )';
 
@@ -326,7 +328,7 @@ export async function updatePlacementPos(
 export async function updatePlacement(
   id: string,
   patch: Partial<
-    Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'lightRadiusFt'>
+    Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'lightRadiusFt' | 'lightColor'>
   >
 ): Promise<boolean> {
   const placementPatch: Record<string, unknown> = {};
@@ -341,6 +343,11 @@ export async function updatePlacement(
   // this outright, since light is a property of the token on the map
   // rather than of the combatant's definition.
   if (patch.lightRadiusFt !== undefined) placementPatch.light_radius_ft = patch.lightRadiusFt;
+  // v2.668.0 — light colour. `null` is a meaningful value here (clear the
+  // tint back to neutral), so the guard tests `!== undefined`, not
+  // truthiness — `if (patch.lightColor)` would silently drop both the
+  // clear AND a legitimate 0x000000.
+  if (patch.lightColor !== undefined) placementPatch.light_color = patch.lightColor;
 
   if (Object.keys(placementPatch).length > 0) {
     const { error } = await db

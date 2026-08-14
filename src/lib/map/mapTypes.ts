@@ -123,6 +123,11 @@ export interface Token {
    *  they do not stack. Feet rather than pixels so a torch is 40 ft on
    *  every map whatever `scenes.grid_size` is. */
   lightRadiusFt: number;
+  /** v2.668.0 — colour of that light as 0xRRGGBB, or null for untinted
+   *  (neutral) light. Only meaningful when `lightRadiusFt` > 0. Optional
+   *  so realtime payloads written by an older client still typecheck;
+   *  absent reads as null. */
+  lightColor?: number | null;
   // v2.617.0 — B3a: owning auth user of the backing combatant (new
   // path only). Null on the legacy scene_tokens path.
   combatantOwnerId?: string | null;

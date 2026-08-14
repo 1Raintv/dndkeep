@@ -26,7 +26,7 @@ describe('PLACEMENT_SELECT', () => {
   const READ_BY_MAPPER = [
     'id', 'scene_id', 'combatant_id', 'x', 'y', 'rotation', 'z_index',
     'size_override', 'color_override', 'image_storage_path_override',
-    'visible_to_all', 'light_radius_ft',
+    'visible_to_all', 'light_radius_ft', 'light_color',
   ];
 
   it.each(READ_BY_MAPPER)('fetches %s', (col) => {

@@ -196,7 +196,21 @@ export function TokenContextMenu(props: {
       { ft: 60,  label: 'Lantern', hint: '30 ft bright + 30 dim' },
       { ft: 120, label: 'Daylight', hint: '60 ft bright + 60 dim' },
     ];
+    // v2.668.0 — light colours. Deliberately a short, opinionated list
+    // rather than a colour wheel: this gets set mid-session with a right
+    // click, and six named moods are faster to pick from than a
+    // gradient. `null` is untinted and always first, so there is a way
+    // back to plain white.
+    const LIGHT_COLOURS: ReadonlyArray<{ value: number | null; label: string; hint: string }> = [
+      { value: null,      label: 'Neutral',   hint: 'untinted white light' },
+      { value: 0xff8a3d,  label: 'Firelight', hint: 'torch, brazier, hearth' },
+      { value: 0x9ad8ff,  label: 'Cold',      hint: 'moonlight, Continual Flame' },
+      { value: 0x7cf5a0,  label: 'Sickly',    hint: 'fey, poison, cult shrines' },
+      { value: 0xc08aff,  label: 'Arcane',    hint: 'portals, wizardry' },
+      { value: 0xff5c5c,  label: 'Infernal',  hint: 'alarm, hellish light' },
+    ];
     const current = (token as any).lightRadiusFt ?? 0;
+    const currentColour = (token as any).lightColor ?? null;
     return createPortal(
       <div style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
@@ -222,6 +236,43 @@ export function TokenContextMenu(props: {
             {current === l.ft && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
           </div>
         ))}
+        {/* v2.668.0 — light COLOUR. Only offered once the token actually
+            carries a light: a colour picker on an unlit token would set
+            a value nothing renders. Neutral (null) is the default and
+            the first swatch, so a DM can always get back to plain
+            white. */}
+        {current > 0 && (
+          <>
+            <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, paddingTop: 8 }}>
+              Colour
+            </div>
+            <div style={{ display: 'flex', gap: 6, padding: '2px 12px 8px', flexWrap: 'wrap' }}>
+              {LIGHT_COLOURS.map(c => {
+                const selected = (currentColour ?? null) === c.value;
+                return (
+                  <button
+                    key={c.label}
+                    type="button"
+                    title={`${c.label} — ${c.hint}`}
+                    aria-pressed={selected}
+                    onClick={() => { applyPatch({ lightColor: c.value } as any); onClose(); }}
+                    style={{
+                      width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+                      background: c.value === null
+                        ? 'linear-gradient(135deg,#fff8e7 50%,#cbd5e1 50%)'
+                        : `#${c.value.toString(16).padStart(6, '0')}`,
+                      border: selected
+                        ? '2px solid #a78bfa'
+                        : '1px solid rgba(255,255,255,0.25)',
+                      boxShadow: selected ? '0 0 0 2px rgba(167,139,250,0.35)' : undefined,
+                      padding: 0,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>,
       document.body,
     );

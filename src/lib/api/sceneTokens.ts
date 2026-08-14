@@ -55,6 +55,10 @@ export function dbRowToToken(row: any): Token {
     // the column existed; 0 means "carries no light", which only has a
     // visible effect in a Dark scene.
     lightRadiusFt: (row as any).light_radius_ft ?? 0,
+    // v2.668.0 — light colour, 0xRRGGBB. Null on rows written before the
+    // column existed, and null is also the "untinted" value, so no
+    // migration of existing rows is needed.
+    lightColor: (row as any).light_color ?? null,
     // v2.413.0: read player_id. Column exists since v2.208; the
     // store didn't mirror it until now. RLS uses this for the
     // UPDATE policy (player_id match grants drag-position).
@@ -95,6 +99,8 @@ function tokenToInsertRow(token: Token): SceneTokenInsert {
     // v2.663.0 — persist carried light on insert so a duplicated token
     // keeps its torch.
     ...({ light_radius_ft: token.lightRadiusFt ?? 0 } as any),
+    // v2.668.0 — and its colour, so a duplicated brazier stays green.
+    ...({ light_color: token.lightColor ?? null } as any),
     // v2.413.0: persist player_id (granted-control field). Null
     // when no player has been granted control.
     player_id: token.playerId,
@@ -170,7 +176,7 @@ export async function updateTokenPos(id: string, x: number, y: number): Promise<
  *  path — kept the rest of the API surface identical. */
 export async function updateToken(
   id: string,
-  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'isLocked' | 'playerId' | 'lightRadiusFt'>>
+  patch: Partial<Pick<Token, 'name' | 'size' | 'color' | 'rotation' | 'imageStoragePath' | 'visibleToAll' | 'isLocked' | 'playerId' | 'lightRadiusFt' | 'lightColor'>>
 ): Promise<boolean> {
   const dbPatch: SceneTokenUpdate = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
@@ -189,6 +195,9 @@ export async function updateToken(
   // v2.663.0: carried light, in feet. Through `any` for the same
   // reason is_locked is — the generated types lag the migration.
   if (patch.lightRadiusFt !== undefined) (dbPatch as any).light_radius_ft = patch.lightRadiusFt;
+  // v2.668.0: light colour. `null` clears the tint and is a real value,
+  // so this checks `!== undefined` rather than truthiness.
+  if (patch.lightColor !== undefined) (dbPatch as any).light_color = patch.lightColor;
   dbPatch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id);
   if (error) {

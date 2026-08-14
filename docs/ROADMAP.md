@@ -223,7 +223,25 @@ iteration can move faster than Track 1.
       - Fixed in passing: the Candle preset stored 20 ft while its own
         hint said 5 + 5. A candle lit as far as a torch's bright band.
         Invisible while the fog was binary; obvious once bands drew.
-    - Still missing: coloured light.
+    - ~~Coloured light~~ — **shipped v2.668.** `light_color` (0xRRGGBB,
+      NULL = untinted) on BOTH token tables with a mirror trigger, same
+      shape as v2.663; six named swatches in the token context menu,
+      offered only once a token actually carries a light.
+      - Rendered as an additive polygon in a container BENEATH the fog
+        sprite. It cannot go in the fog texture — that texture is an
+        alpha mask being erased, so colour painted where alpha reached 0
+        is invisible by construction. Under the fog is also what makes a
+        second visibility gate unnecessary: tint in an unseen region is
+        covered by opaque fog and tint in a dim region shows through at
+        the dim tier's residual alpha, so it grades itself.
+      - **Masked to the world rect.** A light near the edge throws a
+        polygon past the map, and out there is no fog to attenuate it —
+        first attempt smeared bright orange across the empty page.
+      - **The DM does not see the tint in normal DM view**, because
+        VisionLayer does not mount at all when fog is off. Consistent
+        with the DM seeing no fog either, and Player View previews it.
+        Worth revisiting only if setting mood without toggling preview
+        turns out to matter at the table.
   - ~~Manual fog~~ — **shipped v2.664.** `scenes.fog_mode` picks per scene
     between `dynamic` (line of sight, the v2.224–v2.663 behaviour, still
     the default) and `manual` (the DM paints reveals with the ☁ brush and

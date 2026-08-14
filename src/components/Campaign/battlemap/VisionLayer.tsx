@@ -122,6 +122,17 @@ export function VisionLayer(props: {
   // compositing comment in the recompute effect for why the dim tier
   // cannot be drawn straight onto the fog like the bright tier can.
   const dimRtRef = useRef<RenderTexture | null>(null);
+  // v2.668.0 — coloured light. A separate container UNDER the fog sprite
+  // holding one additive polygon per tinted light. It cannot live in the
+  // fog texture: that texture is an alpha mask being erased, so colour
+  // painted where alpha reached 0 would be invisible by construction.
+  //
+  // Under the fog rather than over it is what makes this safe without a
+  // second visibility gate: a tint that falls in an unseen region is
+  // simply covered by opaque fog, and one in a dim region shows through
+  // at the dim tier's residual alpha. The tint grades itself.
+  const tintContainerRef = useRef<Container | null>(null);
+  const tintRootRef = useRef<Container | null>(null);
 
   // Mount + teardown. v2.267.0 — was `if (!viewport || isDM) return`;
   // now respects dmPreviewFog so the DM's preview button can mount
@@ -169,9 +180,34 @@ export function VisionLayer(props: {
     // viewport children. RulerLayer's children are added on its own
     // mount and we ensure it mounts AFTER VisionLayer in JSX order
     // by render-tree placement.
+    // v2.668.0 — ORDER MATTERS. addChild appends, so the tint container
+    // added first sits BELOW the fog sprite. Reverse these two and every
+    // coloured light glows straight through solid fog.
+    //
+    // MASKED TO THE WORLD RECT. A light near the map edge throws a
+    // polygon past it, and past it there is no fog to attenuate the
+    // tint — a torch by the west wall painted a bright orange smear
+    // across the empty page outside the map. The fog covers exactly the
+    // world rect, so the tint has to as well.
+    //
+    // Two containers because the mask must stay in the display tree
+    // while the tinted polygons are cleared and rebuilt every recompute:
+    // `tintRoot` owns the mask, `tintLayer` is the part that gets wiped.
+    const tintRoot = new Container();
+    tintRoot.eventMode = 'none';
+    const tintMask = new Graphics();
+    tintMask.rect(0, 0, worldWidth, worldHeight);
+    tintMask.fill({ color: 0xffffff, alpha: 1 });
+    tintRoot.addChild(tintMask);
+    tintRoot.mask = tintMask;
+    const tintLayer = new Container();
+    tintRoot.addChild(tintLayer);
+    viewport.addChild(tintRoot);
     viewport.addChild(sprite);
     rtRef.current = rt;
     dimRtRef.current = dimRt;
+    tintContainerRef.current = tintLayer;
+    tintRootRef.current = tintRoot;
     fogSpriteRef.current = sprite;
     scratchContainerRef.current = new Container();
 
@@ -180,6 +216,13 @@ export function VisionLayer(props: {
         if (!viewport.destroyed) viewport.removeChild(sprite);
         sprite.destroy({ children: false });
       }
+      if (tintRoot && !tintRoot.destroyed) {
+        if (!viewport.destroyed) viewport.removeChild(tintRoot);
+        // Drop the mask reference before destroying, or Pixi keeps a
+        // handle to a destroyed Graphics on the next render pass.
+        tintRoot.mask = null;
+        tintRoot.destroy({ children: true });
+      }
       if (rt && !rt.destroyed) rt.destroy(true);
       if (dimRt && !dimRt.destroyed) dimRt.destroy(true);
       if (scratchContainerRef.current && !scratchContainerRef.current.destroyed) {
@@ -187,6 +230,8 @@ export function VisionLayer(props: {
       }
       rtRef.current = null;
       dimRtRef.current = null;
+      tintContainerRef.current = null;
+      tintRootRef.current = null;
       fogSpriteRef.current = null;
       scratchContainerRef.current = null;
     };
@@ -463,6 +508,18 @@ export function VisionLayer(props: {
       if (!(child as any).destroyed) (child as any).destroy({ children: true });
     });
 
+    // v2.668.0 — clear the tint HERE, above the early returns, not beside
+    // the code that refills it. Manual mode and the DM-preview escape
+    // hatch both bail out before the dynamic pass, and a clear that lived
+    // down there would leave a deleted brazier's glow burning on the map
+    // the moment the DM switched the scene to manual fog.
+    const tintContainer = tintContainerRef.current;
+    if (tintContainer && !tintContainer.destroyed) {
+      tintContainer.removeChildren().forEach(child => {
+        if (!(child as Container).destroyed) (child as Container).destroy({ children: true });
+      });
+    }
+
     // v2.267.0 — guard for the DM-preview case: if the DM toggles
     // Player View on but no PC tokens exist on the scene, there's
     // no vision origin to compute from. Rendering a solid-black fog
@@ -562,15 +619,38 @@ export function VisionLayer(props: {
 
     const brightPolys: number[][] = [];
     const dimPolys: number[][] = [];
+    // v2.668.0 — polygons that carry a colour, paired with the alpha
+    // their tier tints at. Collected alongside the fog work so a light's
+    // shape is ray-cast ONCE and reused, rather than recomputed by a
+    // separate tint pass.
+    const tintPolys: Array<{ polygon: number[]; color: number; alpha: number }> = [];
     /** Cast a visibility polygon and file it under a tier. Polygons with
      *  fewer than 3 points cannot be filled, so they are dropped here
-     *  once rather than checked at every call site. */
-    const collect = (into: number[][], x: number, y: number, radiusPx: number) => {
-      if (!(radiusPx > 0)) return;
+     *  once rather than checked at every call site. Returns the polygon
+     *  so callers can also tint it. */
+    const collect = (
+      into: number[][],
+      x: number, y: number, radiusPx: number,
+      tint?: { color: number | null | undefined; alpha: number },
+    ): number[] | null => {
+      if (!(radiusPx > 0)) return null;
       const polygon = computeVisibilityPolygon(x, y, sightWalls, radiusPx, 180);
-      if (polygon.length < 6) return;
+      if (polygon.length < 6) return null;
       into.push(polygon);
+      if (tint && tint.color != null) {
+        tintPolys.push({ polygon, color: tint.color, alpha: tint.alpha });
+      }
+      return polygon;
     };
+    // Additive, so overlapping lights genuinely add up — which is how
+    // light behaves and the opposite of the dim tier's union (where
+    // overlap must NOT compound; see the compositing note below).
+    // The bright polygon is drawn ON TOP of the dim one, so the core
+    // ends up at the sum (~0.16). Kept low deliberately: the first pass
+    // at 0.16/0.09 stacked to 0.25 and the map art underneath stopped
+    // being readable, which defeats the point of lighting it at all.
+    const TINT_BRIGHT_ALPHA = 0.10;
+    const TINT_DIM_ALPHA = 0.06;
 
     for (const tokenId of visionOriginTokenIds) {
       const t = tokens[tokenId];
@@ -587,6 +667,14 @@ export function VisionLayer(props: {
         // so it bounds the ray cast without ever cutting the polygon
         // short. All of it is bright-tier.
         collect(brightPolys, t.x, t.y, unlimitedPx);
+        // A carried lamp still tints its own radius here — the sight is
+        // unlimited because the room is lit, but the lantern is orange
+        // regardless. Tinting the unlimited SIGHT polygon instead would
+        // wash the entire map in one torch's colour.
+        collect(
+          [], t.x, t.y, feetToPx(lightBandsFt(t.lightRadiusFt ?? 0).dimFt, gridSizePx),
+          { color: t.lightColor, alpha: TINT_DIM_ALPHA },
+        );
         continue;
       }
       // dimPx 0 = genuinely blind (dark scene, no darkvision, no light).
@@ -598,7 +686,15 @@ export function VisionLayer(props: {
       // A Dwarf's own torch is genuinely bright out to 20 ft even though
       // darkvision carries the outer edge to 60 — the two tiers are
       // independent radii, not a subdivision of one.
-      collect(brightPolys, t.x, t.y, bands.brightPx);
+      collect(brightPolys, t.x, t.y, bands.brightPx,
+        { color: t.lightColor, alpha: TINT_BRIGHT_ALPHA });
+      // v2.668.0 — the dim TINT follows the lamp, not the sight radius.
+      // A Dwarf with a green lantern sees 60 ft by darkvision, but only
+      // the lantern's 40 ft is green; darkvision has no colour.
+      collect(
+        [], t.x, t.y, feetToPx(lightBandsFt(t.lightRadiusFt ?? 0).dimFt, gridSizePx),
+        { color: t.lightColor, alpha: TINT_DIM_ALPHA },
+      );
     }
 
     // v2.665.0 — STANDALONE LIGHT SOURCES.
@@ -624,17 +720,42 @@ export function VisionLayer(props: {
       // A PC's own carried light already shaped their sight radius
       // above; re-emitting it here would double-draw the same disc.
       .filter(t => (t.lightRadiusFt ?? 0) > 0 && !visionOriginTokenIds.includes(t.id))
-      .map(t => ({ id: t.id, x: t.x, y: t.y, radiusFt: t.lightRadiusFt ?? 0 }));
+      .map(t => ({
+        id: t.id, x: t.x, y: t.y, radiusFt: t.lightRadiusFt ?? 0,
+        color: t.lightColor,
+      }));
 
     for (const src of visibleLightSources(viewers, emitters, sightWalls)) {
       const bands = lightBandsFt(src.radiusFt);
+      const color = src.color;
       if (ambientLight === 'dark') {
-        collect(dimPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx));
-        collect(brightPolys, src.x, src.y, feetToPx(bands.brightFt, gridSizePx));
+        collect(dimPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx),
+          { color, alpha: TINT_DIM_ALPHA });
+        collect(brightPolys, src.x, src.y, feetToPx(bands.brightFt, gridSizePx),
+          { color, alpha: TINT_BRIGHT_ALPHA });
       } else {
         // Dim ambient: there is no darkness for the outer band to grade
         // against, so the brazier simply lights its full radius.
-        collect(brightPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx));
+        collect(brightPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx),
+          { color, alpha: TINT_DIM_ALPHA });
+      }
+    }
+
+    // v2.668.0 — refill the tint container (cleared at the top of this
+    // effect). Rebuilt wholesale each recompute, same as the fog
+    // scratch: a light can move, change colour, be hidden or be deleted,
+    // and diffing a handful of Graphics is not worth the bug surface.
+    if (tintContainer && !tintContainer.destroyed) {
+      for (const { polygon, color, alpha } of tintPolys) {
+        const g = new Graphics();
+        g.poly(polygon);
+        g.fill({ color, alpha });
+        // 'add' rather than 'normal': light adds to what is under it, so
+        // two lamps overlapping genuinely brighten, and the map art
+        // stays legible through the wash instead of being painted over.
+        g.blendMode = 'add';
+        g.eventMode = 'none';
+        tintContainer.addChild(g);
       }
     }
 

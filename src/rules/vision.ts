@@ -168,11 +168,15 @@ function segmentsCross(
  * error is conservative in the direction that matters: it hides light
  * that should be visible, never reveals a room that should be dark.
  */
-export function visibleLightSources(
+// Generic over the light type so callers keep whatever else they hang on
+// a source — v2.668's `color`, for one. Returning bare `LightSource[]`
+// would force a cast at the call site to read fields this function never
+// touched and never dropped.
+export function visibleLightSources<T extends LightSource>(
   viewers: ReadonlyArray<{ x: number; y: number }>,
-  lights: readonly LightSource[],
+  lights: readonly T[],
   blockers: readonly SightBlocker[],
-): LightSource[] {
+): T[] {
   if (viewers.length === 0) return [];
   return lights.filter(light => {
     if (!(light.radiusFt > 0)) return false;
