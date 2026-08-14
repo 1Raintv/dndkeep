@@ -8,8 +8,11 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
 import { wallMaterialBlocksSight } from '../../../rules/cover';
-import { sightRadiusPx, visibleLightSources, FEET_PER_SQUARE } from '../../../rules/vision';
-import { parseRevealedCells } from '../../../rules/manualFog';
+import { sightBandsPx, visibleLightSources, lightBandsFt, feetToPx } from '../../../rules/vision';
+import {
+  parseRevealedCells, cellsInPolygon, fogCellKey, serialiseRevealedCells,
+} from '../../../rules/manualFog';
+import * as scenesApi from '../../../lib/api/scenes';
 
 /**
  * v2.224 — VisionLayer.
@@ -77,13 +80,28 @@ export function VisionLayer(props: {
   ambientLight: 'bright' | 'dim' | 'dark';
   /** v2.664.0 — how fog is decided. 'dynamic' derives it from line of
    *  sight (walls, darkvision, carried light); 'manual' shows exactly
-   *  the cells in `revealedCells` and ignores tokens entirely. */
-  fogMode: 'dynamic' | 'manual';
+   *  the cells in `revealedCells` and ignores tokens entirely.
+   *
+   *  v2.669.0 — 'remembered' renders the dynamic tiers exactly as
+   *  'dynamic' does, and additionally draws the WALL LAYOUT of anywhere
+   *  the party has been over otherwise-solid fog. */
+  fogMode: 'dynamic' | 'manual' | 'remembered';
   /** v2.664.0 — [row, col] pairs the DM has painted as revealed. Read
-   *  only in manual mode. */
+   *  in manual mode, and in remembered mode as cells the DM has decided
+   *  the party knows about. */
   revealedCells: Array<[number, number]>;
+  /** v2.669.0 — [row, col] pairs the party has ever been able to see.
+   *  Read only in remembered mode. */
+  exploredCells: Array<[number, number]>;
+  /** v2.669.0 — needed to record newly-explored cells. Null disables
+   *  accumulation (the memory still renders from what is already
+   *  stored). */
+  sceneId: string | null;
+  /** v2.669.0 — cells wide/high, to bound the cell scan. */
+  widthCells: number;
+  heightCells: number;
 }) {
-  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight, fogMode, revealedCells } = props;
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight, fogMode, revealedCells, exploredCells, sceneId, widthCells, heightCells } = props;
   // v2.267.0 — effective "should this layer render fog" check. When
   // the DM has enabled Player View preview, treat them like a player
   // for the purposes of mounting + recomputing the fog texture. The
@@ -117,6 +135,41 @@ export function VisionLayer(props: {
   const rtRef = useRef<RenderTexture | null>(null);
   const fogSpriteRef = useRef<Sprite | null>(null);
   const scratchContainerRef = useRef<Container | null>(null);
+  // v2.666.0 — a second, off-screen RenderTexture holding the union of
+  // every DIM region before it is composited onto the fog. See the
+  // compositing comment in the recompute effect for why the dim tier
+  // cannot be drawn straight onto the fog like the bright tier can.
+  const dimRtRef = useRef<RenderTexture | null>(null);
+  // v2.668.0 — coloured light. A separate container UNDER the fog sprite
+  // holding one additive polygon per tinted light. It cannot live in the
+  // fog texture: that texture is an alpha mask being erased, so colour
+  // painted where alpha reached 0 would be invisible by construction.
+  //
+  // Under the fog rather than over it is what makes this safe without a
+  // second visibility gate: a tint that falls in an unseen region is
+  // simply covered by opaque fog, and one in a dim region shows through
+  // at the dim tier's residual alpha. The tint grades itself.
+  const tintContainerRef = useRef<Container | null>(null);
+  const tintRootRef = useRef<Container | null>(null);
+  // v2.669.0 — remembered terrain. This container sits ABOVE the fog
+  // sprite, and the fog under a remembered cell is never erased. That
+  // ordering is the whole safety argument: tokens render BENEATH the
+  // fog, so a remembered room shows its wall layout and cannot show the
+  // goblin that wandered into it after the party left.
+  const memoryRootRef = useRef<Container | null>(null);
+  const memoryMaskRef = useRef<Graphics | null>(null);
+  const memoryWallsRef = useRef<Graphics | null>(null);
+  /** What THIS client has observed since the last scene change, which is
+   *  ahead of the server between a sighting and its write landing. Kept
+   *  separate from the props rather than merged into one growing set, so
+   *  that a DM un-painting a manual reveal actually takes effect instead
+   *  of being remembered forever by whoever had it in memory. */
+  const localSeenRef = useRef<Set<string>>(new Set());
+  /** Newly-seen cells waiting to be written, and the timer that will
+   *  write them. Batched because the recompute fires on every token
+   *  move and a write per step would be a write per footfall. */
+  const pendingExploreRef = useRef<Set<string>>(new Set());
+  const exploreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mount + teardown. v2.267.0 — was `if (!viewport || isDM) return`;
   // now respects dmPreviewFog so the DM's preview button can mount
@@ -129,6 +182,13 @@ export function VisionLayer(props: {
     // want to downscale, but for typical 30x20 scenes (2100x1400) it
     // fits comfortably in GPU memory (~12MB).
     const rt = RenderTexture.create({
+      width: worldWidth,
+      height: worldHeight,
+      antialias: true,
+    });
+    // v2.666.0 — same dimensions, never added to the display tree: it is
+    // a scratch surface the dim-tier union is flattened into.
+    const dimRt = RenderTexture.create({
       width: worldWidth,
       height: worldHeight,
       antialias: true,
@@ -157,8 +217,51 @@ export function VisionLayer(props: {
     // viewport children. RulerLayer's children are added on its own
     // mount and we ensure it mounts AFTER VisionLayer in JSX order
     // by render-tree placement.
+    // v2.668.0 — ORDER MATTERS. addChild appends, so the tint container
+    // added first sits BELOW the fog sprite. Reverse these two and every
+    // coloured light glows straight through solid fog.
+    //
+    // MASKED TO THE WORLD RECT. A light near the map edge throws a
+    // polygon past it, and past it there is no fog to attenuate the
+    // tint — a torch by the west wall painted a bright orange smear
+    // across the empty page outside the map. The fog covers exactly the
+    // world rect, so the tint has to as well.
+    //
+    // Two containers because the mask must stay in the display tree
+    // while the tinted polygons are cleared and rebuilt every recompute:
+    // `tintRoot` owns the mask, `tintLayer` is the part that gets wiped.
+    const tintRoot = new Container();
+    tintRoot.eventMode = 'none';
+    const tintMask = new Graphics();
+    tintMask.rect(0, 0, worldWidth, worldHeight);
+    tintMask.fill({ color: 0xffffff, alpha: 1 });
+    tintRoot.addChild(tintMask);
+    tintRoot.mask = tintMask;
+    const tintLayer = new Container();
+    tintRoot.addChild(tintLayer);
+    viewport.addChild(tintRoot);
     viewport.addChild(sprite);
+
+    // v2.669.0 — memory overlay, ABOVE the fog sprite (see the ref's
+    // comment for why that ordering is what keeps tokens hidden). Masked
+    // to the remembered cells, which are rebuilt each recompute.
+    const memoryRoot = new Container();
+    memoryRoot.eventMode = 'none';
+    memoryRoot.visible = false;
+    const memoryMask = new Graphics();
+    const memoryWalls = new Graphics();
+    memoryRoot.addChild(memoryMask);
+    memoryRoot.addChild(memoryWalls);
+    memoryRoot.mask = memoryMask;
+    viewport.addChild(memoryRoot);
+
     rtRef.current = rt;
+    dimRtRef.current = dimRt;
+    tintContainerRef.current = tintLayer;
+    tintRootRef.current = tintRoot;
+    memoryRootRef.current = memoryRoot;
+    memoryMaskRef.current = memoryMask;
+    memoryWallsRef.current = memoryWalls;
     fogSpriteRef.current = sprite;
     scratchContainerRef.current = new Container();
 
@@ -167,15 +270,57 @@ export function VisionLayer(props: {
         if (!viewport.destroyed) viewport.removeChild(sprite);
         sprite.destroy({ children: false });
       }
+      if (tintRoot && !tintRoot.destroyed) {
+        if (!viewport.destroyed) viewport.removeChild(tintRoot);
+        // Drop the mask reference before destroying, or Pixi keeps a
+        // handle to a destroyed Graphics on the next render pass.
+        tintRoot.mask = null;
+        tintRoot.destroy({ children: true });
+      }
+      if (memoryRoot && !memoryRoot.destroyed) {
+        if (!viewport.destroyed) viewport.removeChild(memoryRoot);
+        memoryRoot.mask = null;
+        memoryRoot.destroy({ children: true });
+      }
       if (rt && !rt.destroyed) rt.destroy(true);
+      if (dimRt && !dimRt.destroyed) dimRt.destroy(true);
       if (scratchContainerRef.current && !scratchContainerRef.current.destroyed) {
         scratchContainerRef.current.destroy({ children: true });
       }
       rtRef.current = null;
+      dimRtRef.current = null;
+      tintContainerRef.current = null;
+      tintRootRef.current = null;
+      memoryRootRef.current = null;
+      memoryMaskRef.current = null;
+      memoryWallsRef.current = null;
       fogSpriteRef.current = null;
       scratchContainerRef.current = null;
     };
   }, [viewport, worldWidth, worldHeight, fogActive]);
+
+  // v2.669.0 — one scene's exploration must not bleed into the next.
+  // The refs outlive a scene switch (the layer itself does not remount
+  // for it), so they are cleared explicitly. Any pending batch is
+  // dropped rather than flushed: it belongs to the scene being left, and
+  // writing it against the new sceneId would explore the wrong map.
+  useEffect(() => {
+    localSeenRef.current = new Set();
+    pendingExploreRef.current = new Set();
+    if (exploreTimerRef.current) {
+      clearTimeout(exploreTimerRef.current);
+      exploreTimerRef.current = null;
+    }
+  }, [sceneId]);
+
+  // Never leave a timer behind on unmount — it would fire against a
+  // scene the user has navigated away from.
+  useEffect(() => () => {
+    if (exploreTimerRef.current) {
+      clearTimeout(exploreTimerRef.current);
+      exploreTimerRef.current = null;
+    }
+  }, []);
 
   // v2.342.0 — AoE preview overlay.
   //
@@ -438,6 +583,7 @@ export function VisionLayer(props: {
   useEffect(() => {
     if (!fogActive) return;
     const rt = rtRef.current;
+    const dimRt = dimRtRef.current;
     const scratch = scratchContainerRef.current;
     if (!rt || !scratch || !app?.renderer) return;
 
@@ -446,6 +592,23 @@ export function VisionLayer(props: {
     scratch.removeChildren().forEach(child => {
       if (!(child as any).destroyed) (child as any).destroy({ children: true });
     });
+
+    // v2.668.0 — clear the tint HERE, above the early returns, not beside
+    // the code that refills it. Manual mode and the DM-preview escape
+    // hatch both bail out before the dynamic pass, and a clear that lived
+    // down there would leave a deleted brazier's glow burning on the map
+    // the moment the DM switched the scene to manual fog.
+    const tintContainer = tintContainerRef.current;
+    if (tintContainer && !tintContainer.destroyed) {
+      tintContainer.removeChildren().forEach(child => {
+        if (!(child as Container).destroyed) (child as Container).destroy({ children: true });
+      });
+    }
+    // v2.669.0 — and hide the memory overlay for the same reason. Only
+    // the remembered branch below turns it back on, so switching a scene
+    // to dynamic or manual cannot leave an automap stranded on top.
+    const memoryRoot = memoryRootRef.current;
+    if (memoryRoot && !memoryRoot.destroyed) memoryRoot.visible = false;
 
     // v2.267.0 — guard for the DM-preview case: if the DM toggles
     // Player View on but no PC tokens exist on the scene, there's
@@ -506,6 +669,17 @@ export function VisionLayer(props: {
 
     // 2. For each origin token, compute polygon and draw with erase
     //    blend mode to cut a hole in the fog.
+    //
+    // v2.666.0 — TWO TIERS. Polygons are collected into `brightPolys`
+    // and `dimPolys` rather than erased as they are computed, because
+    // the two tiers composite differently (see step 4).
+    //   bright — fog erased completely. You see normally.
+    //   dim    — fog erased most of the way, leaving a murk. You can
+    //            navigate and fight; you are lightly obscured.
+    // Only a DARK scene grades sight this way. In a dim-ambient scene
+    // sight is unlimited and the 0.55 ambient veil already carries the
+    // gloom, so everything visible lands in the bright tier and the
+    // scene looks exactly as it did before this ship.
     // v2.271.0 — open doors ('open' doorState) don't block sight,
     // mirroring the same rule the movement-collision check uses. A
     // door that's been opened by the DM creates a vision corridor.
@@ -533,32 +707,84 @@ export function VisionLayer(props: {
     // cast without ever cutting the polygon short.
     const unlimitedPx = Math.hypot(worldWidth, worldHeight);
 
+    const brightPolys: number[][] = [];
+    const dimPolys: number[][] = [];
+    // v2.668.0 — polygons that carry a colour, paired with the alpha
+    // their tier tints at. Collected alongside the fog work so a light's
+    // shape is ray-cast ONCE and reused, rather than recomputed by a
+    // separate tint pass.
+    const tintPolys: Array<{ polygon: number[]; color: number; alpha: number }> = [];
+    /** Cast a visibility polygon and file it under a tier. Polygons with
+     *  fewer than 3 points cannot be filled, so they are dropped here
+     *  once rather than checked at every call site. Returns the polygon
+     *  so callers can also tint it. */
+    const collect = (
+      into: number[][],
+      x: number, y: number, radiusPx: number,
+      tint?: { color: number | null | undefined; alpha: number },
+    ): number[] | null => {
+      if (!(radiusPx > 0)) return null;
+      const polygon = computeVisibilityPolygon(x, y, sightWalls, radiusPx, 180);
+      if (polygon.length < 6) return null;
+      into.push(polygon);
+      if (tint && tint.color != null) {
+        tintPolys.push({ polygon, color: tint.color, alpha: tint.alpha });
+      }
+      return polygon;
+    };
+    // Additive, so overlapping lights genuinely add up — which is how
+    // light behaves and the opposite of the dim tier's union (where
+    // overlap must NOT compound; see the compositing note below).
+    // The bright polygon is drawn ON TOP of the dim one, so the core
+    // ends up at the sum (~0.16). Kept low deliberately: the first pass
+    // at 0.16/0.09 stacked to 0.25 and the map art underneath stopped
+    // being readable, which defeats the point of lighting it at all.
+    const TINT_BRIGHT_ALPHA = 0.10;
+    const TINT_DIM_ALPHA = 0.06;
+
     for (const tokenId of visionOriginTokenIds) {
       const t = tokens[tokenId];
       if (!t) continue;
       const darkvisionFt = t.characterId
         ? (darkvisionByCharacterId[t.characterId] ?? 0)
         : 0;
-      const radiusPx = sightRadiusPx(
+      const bands = sightBandsPx(
         ambientLight, darkvisionFt, t.lightRadiusFt ?? 0, gridSizePx,
       );
-      // 0 = genuinely blind (dark scene, no darkvision, no light). Skip
-      // it rather than drawing a zero-radius polygon: this creature
+      if (bands === null) {
+        // Unlimited (bright or dim ambient), clamped to the world
+        // diagonal: that is the furthest two points on the map can be,
+        // so it bounds the ray cast without ever cutting the polygon
+        // short. All of it is bright-tier.
+        collect(brightPolys, t.x, t.y, unlimitedPx);
+        // A carried lamp still tints its own radius here — the sight is
+        // unlimited because the room is lit, but the lantern is orange
+        // regardless. Tinting the unlimited SIGHT polygon instead would
+        // wash the entire map in one torch's colour.
+        collect(
+          [], t.x, t.y, feetToPx(lightBandsFt(t.lightRadiusFt ?? 0).dimFt, gridSizePx),
+          { color: t.lightColor, alpha: TINT_DIM_ALPHA },
+        );
+        continue;
+      }
+      // dimPx 0 = genuinely blind (dark scene, no darkvision, no light).
+      // Skip rather than drawing a zero-radius polygon: this creature
       // contributes nothing to what the party can see, which is the
       // point. Someone else's torch still reveals the room for everyone,
       // since the fog is a union over all origins.
-      if (radiusPx === 0) continue;
-      const polygon = computeVisibilityPolygon(
-        t.x, t.y, sightWalls, radiusPx ?? unlimitedPx, 180,
+      collect(dimPolys, t.x, t.y, bands.dimPx);
+      // A Dwarf's own torch is genuinely bright out to 20 ft even though
+      // darkvision carries the outer edge to 60 — the two tiers are
+      // independent radii, not a subdivision of one.
+      collect(brightPolys, t.x, t.y, bands.brightPx,
+        { color: t.lightColor, alpha: TINT_BRIGHT_ALPHA });
+      // v2.668.0 — the dim TINT follows the lamp, not the sight radius.
+      // A Dwarf with a green lantern sees 60 ft by darkvision, but only
+      // the lantern's 40 ft is green; darkvision has no colour.
+      collect(
+        [], t.x, t.y, feetToPx(lightBandsFt(t.lightRadiusFt ?? 0).dimFt, gridSizePx),
+        { color: t.lightColor, alpha: TINT_DIM_ALPHA },
       );
-      if (polygon.length < 6) continue; // need at least 3 points to form a polygon
-      const lightGfx = new Graphics();
-      lightGfx.poly(polygon);
-      lightGfx.fill({ color: 0xffffff, alpha: 1 });
-      // 'erase' blend = destination-out. The white polygon erases
-      // alpha from the fog beneath it, leaving a transparent hole.
-      lightGfx.blendMode = 'erase';
-      scratch.addChild(lightGfx);
     }
 
     // v2.665.0 — STANDALONE LIGHT SOURCES.
@@ -584,22 +810,178 @@ export function VisionLayer(props: {
       // A PC's own carried light already shaped their sight radius
       // above; re-emitting it here would double-draw the same disc.
       .filter(t => (t.lightRadiusFt ?? 0) > 0 && !visionOriginTokenIds.includes(t.id))
-      .map(t => ({ id: t.id, x: t.x, y: t.y, radiusFt: t.lightRadiusFt ?? 0 }));
+      .map(t => ({
+        id: t.id, x: t.x, y: t.y, radiusFt: t.lightRadiusFt ?? 0,
+        color: t.lightColor,
+      }));
 
     for (const src of visibleLightSources(viewers, emitters, sightWalls)) {
-      const radiusPx = (src.radiusFt / FEET_PER_SQUARE) * gridSizePx;
-      const polygon = computeVisibilityPolygon(src.x, src.y, sightWalls, radiusPx, 180);
-      if (polygon.length < 6) continue;
-      const lit = new Graphics();
-      lit.poly(polygon);
-      lit.fill({ color: 0xffffff, alpha: 1 });
-      lit.blendMode = 'erase';
-      scratch.addChild(lit);
+      const bands = lightBandsFt(src.radiusFt);
+      const color = src.color;
+      if (ambientLight === 'dark') {
+        collect(dimPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx),
+          { color, alpha: TINT_DIM_ALPHA });
+        collect(brightPolys, src.x, src.y, feetToPx(bands.brightFt, gridSizePx),
+          { color, alpha: TINT_BRIGHT_ALPHA });
+      } else {
+        // Dim ambient: there is no darkness for the outer band to grade
+        // against, so the brazier simply lights its full radius.
+        collect(brightPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx),
+          { color, alpha: TINT_DIM_ALPHA });
+      }
     }
 
-    // 3. Render the scratch container to our RenderTexture.
+    // v2.668.0 — refill the tint container (cleared at the top of this
+    // effect). Rebuilt wholesale each recompute, same as the fog
+    // scratch: a light can move, change colour, be hidden or be deleted,
+    // and diffing a handful of Graphics is not worth the bug surface.
+    if (tintContainer && !tintContainer.destroyed) {
+      for (const { polygon, color, alpha } of tintPolys) {
+        const g = new Graphics();
+        g.poly(polygon);
+        g.fill({ color, alpha });
+        // 'add' rather than 'normal': light adds to what is under it, so
+        // two lamps overlapping genuinely brighten, and the map art
+        // stays legible through the wash instead of being painted over.
+        g.blendMode = 'add';
+        g.eventMode = 'none';
+        tintContainer.addChild(g);
+      }
+    }
+
+    // 3. Composite the DIM tier — through its own RenderTexture, as one
+    //    sprite.
+    //
+    // 'erase' is destination-out: it MULTIPLIES the destination alpha by
+    // (1 - source alpha). Drawing each dim polygon straight onto the fog
+    // would therefore compound where they overlap — a party of four
+    // Dwarves standing together would erase 0.55 four times over and
+    // their shared murk would read brighter than a torch. Flattening the
+    // union into `dimRt` first makes overlap idempotent, which is what
+    // dim light actually means: two candles do not make bright light.
+    //
+    // The sprite is rebuilt each recompute and destroyed by the scratch
+    // sweep at the top of this effect. That sweep passes `{children:
+    // true}` and NOT `{texture: true}`, so `dimRt` survives — do not add
+    // texture destruction there without giving this sprite its own
+    // lifetime.
+    const DIM_TIER_ERASE = 0.55;
+    if (dimPolys.length > 0 && dimRt) {
+      const dimScratch = new Container();
+      for (const polygon of dimPolys) {
+        const g = new Graphics();
+        g.poly(polygon);
+        g.fill({ color: 0xffffff, alpha: 1 });
+        dimScratch.addChild(g);
+      }
+      app.renderer.render({ container: dimScratch, target: dimRt, clear: true });
+      dimScratch.destroy({ children: true });
+      const dimSprite = new Sprite(dimRt);
+      dimSprite.alpha = DIM_TIER_ERASE;
+      dimSprite.blendMode = 'erase';
+      scratch.addChild(dimSprite);
+    }
+
+    // 4. Composite the BRIGHT tier. Alpha 1 erases completely, so
+    //    overlap is already idempotent and these go on directly.
+    for (const polygon of brightPolys) {
+      const lightGfx = new Graphics();
+      lightGfx.poly(polygon);
+      lightGfx.fill({ color: 0xffffff, alpha: 1 });
+      // 'erase' blend = destination-out. The white polygon erases
+      // alpha from the fog beneath it, leaving a transparent hole.
+      lightGfx.blendMode = 'erase';
+      scratch.addChild(lightGfx);
+    }
+
+    // 5. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
-  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, fogMode, revealedCells, app]);
+
+    // 6. v2.669.0 — REMEMBERED TERRAIN.
+    //
+    // Everything above is unchanged dynamic fog. This adds the memory:
+    // cells the party has ever been able to see, minus the ones they can
+    // see right now, get their wall layout drawn over solid fog.
+    //
+    // Note what is NOT done here: the fog over a remembered cell is not
+    // erased even slightly. Tokens render beneath the fog, so any erase
+    // at all would leak a monster standing in a room the party walked
+    // out of. Structure is drawn ON TOP instead — the party remembers
+    // the shape of the room, not its current occupants.
+    if (fogMode !== 'remembered' || !memoryRoot || memoryRoot.destroyed) return;
+
+    const visibleKeys = new Set<string>();
+    for (const polygon of [...brightPolys, ...dimPolys]) {
+      for (const c of cellsInPolygon(polygon, gridSizePx, widthCells, heightCells)) {
+        visibleKeys.add(fogCellKey(c.row, c.col));
+      }
+    }
+
+    // What the party knows: the stored memory, plus anything the DM has
+    // painted in by hand (remembered mode keeps the ☁ brush working, so
+    // "they were told about this wing" is expressible), plus whatever
+    // this client has seen since its last write landed.
+    const known = new Set<string>();
+    for (const key of parseRevealedCells(exploredCells)) known.add(key);
+    for (const key of parseRevealedCells(revealedCells)) known.add(key);
+    for (const key of localSeenRef.current) known.add(key);
+
+    // Accumulate anything genuinely new into the pending batch.
+    for (const key of visibleKeys) {
+      if (known.has(key)) continue;
+      known.add(key);
+      localSeenRef.current.add(key);
+      pendingExploreRef.current.add(key);
+    }
+    if (pendingExploreRef.current.size > 0 && sceneId && !exploreTimerRef.current) {
+      // Batched: the recompute fires on every token move, and a write
+      // per step would be a write per footfall. Memory is cumulative and
+      // add-only, so a dropped batch costs nothing permanent — the next
+      // recompute simply sends those cells again.
+      exploreTimerRef.current = setTimeout(() => {
+        exploreTimerRef.current = null;
+        const batch = pendingExploreRef.current;
+        if (batch.size === 0) return;
+        pendingExploreRef.current = new Set();
+        void scenesApi.exploreCells(sceneId, serialiseRevealedCells(batch));
+      }, 1200);
+    }
+
+    // Remembered = everything known, minus what is visible right now
+    // (which the fog tiers above are already showing properly).
+    const mask = memoryMaskRef.current;
+    const wallsGfx = memoryWallsRef.current;
+    if (!mask || mask.destroyed || !wallsGfx || wallsGfx.destroyed) return;
+    mask.clear();
+    let remembered = 0;
+    for (const key of known) {
+      if (visibleKeys.has(key)) continue;
+      const [row, col] = key.split(',').map(Number);
+      mask.rect(col * gridSizePx, row * gridSizePx, gridSizePx, gridSizePx);
+      remembered++;
+    }
+    if (remembered === 0) {
+      memoryRoot.visible = false;
+      return;
+    }
+    mask.fill({ color: 0xffffff, alpha: 1 });
+
+    wallsGfx.clear();
+    // A faint floor tone so "explored but dark" reads as different from
+    // "never been here", which is otherwise identical black.
+    wallsGfx.rect(0, 0, worldWidth, worldHeight);
+    wallsGfx.fill({ color: 0x8fa3c8, alpha: 0.07 });
+    // Every wall, not just the sight-blocking ones: a remembered map is
+    // about layout, and a window or a low wall is part of the layout
+    // even though it does not stop you seeing through it.
+    wallsGfx.setStrokeStyle({ color: 0x9db4dd, width: 2, alpha: 0.5 });
+    for (const w of Object.values(walls)) {
+      wallsGfx.moveTo(w.x1, w.y1);
+      wallsGfx.lineTo(w.x2, w.y2);
+    }
+    wallsGfx.stroke();
+    memoryRoot.visible = true;
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, fogMode, revealedCells, exploredCells, sceneId, widthCells, heightCells, app]);
 
   return null;
 }

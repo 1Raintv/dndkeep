@@ -225,7 +225,7 @@ import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { WallTypePanel } from './battlemap/WallTypePanel';
-import { FogBrushLayer } from './battlemap/FogBrushLayer';
+import { FogBrushLayer, type FogBrushShape } from './battlemap/FogBrushLayer';
 import { FogBrushPanel } from './battlemap/FogBrushPanel';
 import { ViewportHost } from './battlemap/ViewportHost';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
@@ -1754,6 +1754,9 @@ function BattleMapV2(props: BattleMapV2Props) {
   // manual fog mode; in dynamic mode reveals are derived, not painted.
   const [fogBrushActive, setFogBrushActive] = useState(false);
   const [fogBrushRadius, setFogBrushRadius] = useState(1);
+  // v2.667.0 — freehand brush or rectangle drag. Most map features are
+  // rectangular rooms, which the round brush could only approximate.
+  const [fogBrushShape, setFogBrushShape] = useState<FogBrushShape>('brush');
   // v2.234 — text annotation mode. Three-way mutex with ruler + walls.
   const [textActive, setTextActive] = useState(false);
   // v2.235 — drawing tool mode. Either null (no drawing tool), or one
@@ -3499,6 +3502,10 @@ function BattleMapV2(props: BattleMapV2Props) {
                     ambientLight={currentScene?.ambientLight ?? 'dark'}
                     fogMode={currentScene?.fogMode ?? 'dynamic'}
                     revealedCells={currentScene?.revealedCells ?? []}
+                    exploredCells={currentScene?.exploredCells ?? []}
+                    sceneId={currentScene?.id ?? null}
+                    widthCells={currentScene?.widthCells ?? 30}
+                    heightCells={currentScene?.heightCells ?? 20}
                   />
                   {/* v2.664.0 — the DM's manual-fog brush. Mounts only
                       while the tool is on; commits one write per stroke
@@ -3515,6 +3522,7 @@ function BattleMapV2(props: BattleMapV2Props) {
                       sceneId={currentScene?.id ?? null}
                       revealedCells={currentScene?.revealedCells ?? []}
                       radiusCells={fogBrushRadius}
+                      shape={fogBrushShape}
                       onLocalChange={handleFogLocalChange}
                     />
                   )}
@@ -3564,7 +3572,12 @@ function BattleMapV2(props: BattleMapV2Props) {
             terms as WallTypePanel: it owns the corner and carries its
             own hints, so nothing can overlap it at any width. */}
         {isDM && fogBrushActive && (
-          <FogBrushPanel radiusCells={fogBrushRadius} onChange={setFogBrushRadius} />
+          <FogBrushPanel
+            radiusCells={fogBrushRadius}
+            onChange={setFogBrushRadius}
+            shape={fogBrushShape}
+            onShapeChange={setFogBrushShape}
+          />
         )}
 
         <div
@@ -3703,8 +3716,12 @@ function BattleMapV2(props: BattleMapV2Props) {
               mode: in dynamic mode reveals come from line of sight, so
               a brush would have nothing to write that the next
               recompute wouldn't overwrite. Hidden rather than disabled
-              so the rail doesn't carry a permanently dead button. */}
-          {isDM && (currentScene?.fogMode ?? 'dynamic') === 'manual' && (
+              so the rail doesn't carry a permanently dead button.
+              v2.669.0 — also available in remembered mode, where painted
+              cells are additive to what the party has explored ("they
+              were told about this wing") rather than being overwritten
+              by the next recompute. */}
+          {isDM && ['manual', 'remembered'].includes(currentScene?.fogMode ?? 'dynamic') && (
             <button
               onClick={toggleFogBrushMode}
               title={fogBrushActive

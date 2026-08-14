@@ -12,8 +12,39 @@
 export type AmbientLight = 'bright' | 'dim' | 'dark';
 
 /**
- * Radius a creature can see, in FEET. `null` means unlimited — sight is
- * bounded by walls alone, not by range.
+ * v2.666.0 — the two radii a light throws, in FEET.
+ *
+ * `brightFt` is fully lit; `dimFt` is the OUTER edge of the dim band,
+ * measured from the same centre (not an additional distance). A torch
+ * is `{ brightFt: 20, dimFt: 40 }`.
+ */
+export interface LightBands {
+  brightFt: number;
+  dimFt: number;
+}
+
+/**
+ * v2.666.0 — split a light's total radius into its bright and dim bands.
+ *
+ * Every light source the DM can pick sheds bright light to R and dim for
+ * a further R — candle 5+5, torch 20+20, hooded lantern 30+30, the
+ * Daylight spell 60+60 — so the bright band is exactly half the total
+ * the token stores. That is why v2.663 could get away with a single
+ * `light_radius_ft` column and why bands need no migration to arrive:
+ * the information was always there, the renderer just could not draw it.
+ *
+ * If a light that breaks the 1:1 ratio is ever added (a bullseye lantern
+ * is a cone, not a disc, and would break more than this), it needs a
+ * second column and this becomes a lookup rather than a halving.
+ */
+export function lightBandsFt(totalFt: number): LightBands {
+  const total = Math.max(0, totalFt || 0);
+  return { brightFt: total / 2, dimFt: total };
+}
+
+/**
+ * How far a creature sees at each tier, in FEET. `null` means unlimited
+ * at the BRIGHT tier — sight is bounded by walls alone, not by range.
  *
  * The 2024 rules only ever gate sight on light:
  *   Bright light  — see normally.
@@ -26,26 +57,39 @@ export type AmbientLight = 'bright' | 'dim' | 'dark';
  *                   nothing except what your own darkvision or your own
  *                   light source reaches.
  *
- * Hence only 'dark' produces a finite radius, and there it is the better
- * of the two things a creature brings with it.
+ * Hence only 'dark' produces finite bands.
  *
- * `carriedLightFt` is the total radius a creature's own light reaches
- * (a torch's 20 ft bright + 20 ft dim = 40). Kept as one number rather
- * than a bright/dim pair because the fog is binary — a cell is revealed
- * or it is not — so splitting it would model a distinction the renderer
- * cannot draw.
+ * v2.666.0 — was `sightRadiusFt`, one flat number, because the fog was
+ * binary and a bright/dim pair would have modelled a distinction the
+ * renderer could not draw. It can now, so the two things a creature
+ * brings into a dark room land in the tier each actually grants:
  *
- * Returning 0 (blind) is deliberate and correct: a Human with no torch
- * in a dark room genuinely cannot see. It is also why light sources had
- * to land alongside this — see `carriedLightFt` on the token.
+ *   - Its own light: bright band bright, dim band dim (`lightBandsFt`).
+ *   - DARKVISION IS DIM, NOT BRIGHT. RAW: within the radius you treat
+ *     darkness as dim light. A Dwarf in an unlit room can navigate and
+ *     act, but is lightly obscured the whole way — which is why the
+ *     Dwarf's 60 ft now renders murky rather than as clear as daylight.
+ *     That is a fidelity fix, not a nerf: the old flat disc claimed a
+ *     Dwarf saw as well in pitch dark as under a torch.
+ *
+ * Returning `{ 0, 0 }` (blind) is deliberate and correct: a Human with
+ * no torch in a dark room genuinely cannot see. It is also why light
+ * sources had to land alongside v2.663 in the first place.
  */
-export function sightRadiusFt(
+export function sightBandsFt(
   ambient: AmbientLight,
   darkvisionFt: number,
   carriedLightFt: number,
-): number | null {
+): LightBands | null {
   if (ambient !== 'dark') return null;          // bright + dim: unlimited
-  return Math.max(0, darkvisionFt || 0, carriedLightFt || 0);
+  const own = lightBandsFt(carriedLightFt);
+  const darkvision = Math.max(0, darkvisionFt || 0);
+  // Darkvision and torchlight overlap; they never sum. A Dwarf holding
+  // a torch sees 60 ft, not 100.
+  return {
+    brightFt: own.brightFt,
+    dimFt: Math.max(darkvision, own.dimFt),
+  };
 }
 
 /**
@@ -58,15 +102,23 @@ export function sightRadiusFt(
  */
 export const FEET_PER_SQUARE = 5;
 
-export function sightRadiusPx(
+/** Feet → world pixels at this grid scale. */
+export function feetToPx(ft: number, gridSizePx: number): number {
+  return (ft / FEET_PER_SQUARE) * gridSizePx;
+}
+
+export function sightBandsPx(
   ambient: AmbientLight,
   darkvisionFt: number,
   carriedLightFt: number,
   gridSizePx: number,
-): number | null {
-  const ft = sightRadiusFt(ambient, darkvisionFt, carriedLightFt);
-  if (ft === null) return null;
-  return (ft / FEET_PER_SQUARE) * gridSizePx;
+): { brightPx: number; dimPx: number } | null {
+  const bands = sightBandsFt(ambient, darkvisionFt, carriedLightFt);
+  if (bands === null) return null;
+  return {
+    brightPx: feetToPx(bands.brightFt, gridSizePx),
+    dimPx: feetToPx(bands.dimFt, gridSizePx),
+  };
 }
 
 /** A thing that emits light. Any token with `lightRadiusFt > 0`. */
@@ -116,11 +168,15 @@ function segmentsCross(
  * error is conservative in the direction that matters: it hides light
  * that should be visible, never reveals a room that should be dark.
  */
-export function visibleLightSources(
+// Generic over the light type so callers keep whatever else they hang on
+// a source — v2.668's `color`, for one. Returning bare `LightSource[]`
+// would force a cast at the call site to read fields this function never
+// touched and never dropped.
+export function visibleLightSources<T extends LightSource>(
   viewers: ReadonlyArray<{ x: number; y: number }>,
-  lights: readonly LightSource[],
+  lights: readonly T[],
   blockers: readonly SightBlocker[],
-): LightSource[] {
+): T[] {
   if (viewers.length === 0) return [];
   return lights.filter(light => {
     if (!(light.radiusFt > 0)) return false;

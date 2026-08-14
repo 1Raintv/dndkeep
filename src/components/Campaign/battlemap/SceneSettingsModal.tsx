@@ -307,6 +307,13 @@ export function SceneSettingsModal(props: {
               label: 'Manual fog',
               hint: 'You paint what is revealed with the ☁ brush, and it stays revealed. Walls, darkvision and light are ignored.',
             },
+            // v2.669.0 — the third mode. Dynamic forgets: walk out of a
+            // room and it goes black again. This keeps the layout.
+            {
+              id: 'remembered' as const,
+              label: 'Remembered terrain',
+              hint: 'Dynamic lighting, plus a memory: anywhere the party has been keeps its wall layout drawn on the map. Contents stay hidden — they remember the room, not who is standing in it now. Moving a token explores; the ☁ brush still works for revealing areas by hand.',
+            },
           ]).map(m => (
             <label
               key={m.id}

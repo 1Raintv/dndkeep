@@ -6,6 +6,8 @@
 // corner cannot be made collision-free at every viewport width (see
 // the v2.661 notes). One element in the slot, carrying its own hints.
 
+import type { FogBrushShape } from './FogBrushLayer';
+
 interface Size { cells: number; label: string; span: string }
 
 const SIZES: readonly Size[] = [
@@ -15,11 +17,21 @@ const SIZES: readonly Size[] = [
   { cells: 4, label: 'Large', span: '~9×9' },
 ];
 
+// v2.667.0 — shape picker. The round brush is the wrong tool for the
+// shape most maps are made of: revealing a rectangular room with it
+// means scrubbing the corners and still catching a cell of the corridor.
+const SHAPES: ReadonlyArray<{ shape: FogBrushShape; label: string; hint: string }> = [
+  { shape: 'brush', label: 'Brush', hint: 'paint freehand as you drag' },
+  { shape: 'rect', label: 'Rect', hint: 'drag one diagonal of a rectangle' },
+];
+
 export function FogBrushPanel(props: {
   radiusCells: number;
   onChange: (cells: number) => void;
+  shape: FogBrushShape;
+  onShapeChange: (shape: FogBrushShape) => void;
 }) {
-  const { radiusCells, onChange } = props;
+  const { radiusCells, onChange, shape, onShapeChange } = props;
   return (
     <div
       style={{
@@ -35,7 +47,35 @@ export function FogBrushPanel(props: {
       }}
     >
       <span style={{ fontWeight: 700, color: 'var(--t-3)', paddingRight: 2 }}>Fog brush</span>
-      {SIZES.map(s => {
+      {SHAPES.map(s => {
+        const selected = shape === s.shape;
+        return (
+          <button
+            key={s.shape}
+            type="button"
+            onClick={() => onShapeChange(s.shape)}
+            aria-pressed={selected}
+            title={`${s.label} — ${s.hint}`}
+            style={{
+              padding: '4px 8px', borderRadius: 7, cursor: 'pointer',
+              background: selected ? 'rgba(167,139,250,0.18)' : 'transparent',
+              border: selected
+                ? '1px solid rgba(167,139,250,0.65)'
+                : '1px solid rgba(255,255,255,0.10)',
+              color: selected ? 'var(--t-1)' : 'var(--t-2)',
+              fontWeight: selected ? 700 : 500,
+              fontSize: 12,
+            }}
+          >
+            {s.label}
+          </button>
+        );
+      })}
+      {/* Size only means something to the freehand brush — the
+          rectangle's size is the drag itself. Hiding the buttons rather
+          than disabling them keeps the panel from implying the setting
+          is doing nothing. */}
+      {shape === 'brush' && SIZES.map(s => {
         const selected = radiusCells === s.cells;
         return (
           <button
@@ -68,7 +108,9 @@ export function FogBrushPanel(props: {
           letterSpacing: '0.02em', paddingTop: 2,
         }}
       >
-        Drag to reveal · right-drag or shift+drag to hide · revealed cells stay revealed
+        {shape === 'rect'
+          ? 'Drag a rectangle to reveal · right-drag or shift+drag to hide · revealed cells stay revealed'
+          : 'Drag to reveal · right-drag or shift+drag to hide · revealed cells stay revealed'}
       </span>
     </div>
   );
