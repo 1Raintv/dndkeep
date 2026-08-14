@@ -231,9 +231,22 @@ iteration can move faster than Track 1.
     a DM can flip to dynamic for a fight and back. Reveals are grid cells
     in `scenes.revealed_cells`, one write per stroke rather than per
     pointer-move.
-    - Not done: a rectangle/lasso reveal (the brush is round only), and
-      "reveal what the party has already seen" — remembered-terrain fog,
-      which is a third mode rather than a tweak to either of these.
+    - ~~Rectangle reveal~~ — **shipped v2.667.** A Brush/Rect toggle in
+      `FogBrushPanel`; Rect drags one diagonal and applies on release,
+      previewing the rectangle live while the drag chooses its far
+      corner. Most map features are rectangular rooms, which the round
+      brush could only approximate by scrubbing the corners and still
+      catching a cell of the corridor outside.
+      - Size buttons are hidden rather than disabled in Rect mode — the
+        drag *is* the size, and a visible-but-inert control reads as
+        broken.
+      - **No lasso.** A freeform polygon would be a third interaction
+        for a case the freehand brush already covers; rect handles the
+        regular shapes, brush the irregular ones. Revisit only if a
+        real map wants a shape neither can express.
+    - Not done: "reveal what the party has already seen" —
+      remembered-terrain fog, which is a third mode rather than a tweak
+      to either of these.
   - **Per-player fog** is still party-shared (the v2.225 note in `VisionLayer`).
     Matches Roll20/Foundry defaults, so this is a preference rather than a bug —
     revisit only if a table wants split parties to see separately.

@@ -82,6 +82,39 @@ export function brushCells(
 }
 
 /**
+ * v2.667.0 — every cell in the inclusive rectangle between two corners.
+ *
+ * The round brush is the wrong tool for the shape most maps are made of:
+ * revealing a rectangular room with it means scrubbing the corners and
+ * still catching a cell of the corridor outside. Drag one diagonal
+ * instead and the room lands in a single stroke.
+ *
+ * Both corners are INCLUSIVE, so a click that never moves reveals
+ * exactly the cell under the cursor — a rectangle tool that needs a drag
+ * to do anything reads as broken on the first click.
+ *
+ * Clamped to the grid, same as `brushCells` and for the same reason: a
+ * drag off the edge must not store cells that stop existing if the map
+ * is later resized.
+ */
+export function rectCells(
+  a: FogCell,
+  b: FogCell,
+  widthCells: number,
+  heightCells: number,
+): FogCell[] {
+  const out: FogCell[] = [];
+  const rowFrom = Math.max(0, Math.min(a.row, b.row));
+  const rowTo = Math.min(heightCells - 1, Math.max(a.row, b.row));
+  const colFrom = Math.max(0, Math.min(a.col, b.col));
+  const colTo = Math.min(widthCells - 1, Math.max(a.col, b.col));
+  for (let row = rowFrom; row <= rowTo; row++) {
+    for (let col = colFrom; col <= colTo; col++) out.push({ row, col });
+  }
+  return out;
+}
+
+/**
  * Apply a brush stroke. `reveal: false` is the eraser.
  *
  * Returns a NEW set, and returns the original untouched when nothing

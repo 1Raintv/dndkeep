@@ -4,6 +4,7 @@ import {
   parseRevealedCells,
   serialiseRevealedCells,
   brushCells,
+  rectCells,
   applyBrush,
   cellAtPoint,
 } from './manualFog';
@@ -74,6 +75,46 @@ describe('brushCells', () => {
     expect(cells.every(c => c.row >= 0 && c.col >= 0)).toBe(true);
     const far = brushCells({ row: 9, col: 9 }, 3, W, H);
     expect(far.every(c => c.row < H && c.col < W)).toBe(true);
+  });
+});
+
+describe('rectCells', () => {
+  const W = 10, H = 10;
+
+  it('fills the inclusive rectangle between two corners', () => {
+    const cells = rectCells({ row: 1, col: 1 }, { row: 3, col: 4 }, W, H);
+    expect(cells).toHaveLength(3 * 4);              // rows 1-3, cols 1-4
+    expect(cells).toContainEqual({ row: 1, col: 1 });
+    expect(cells).toContainEqual({ row: 3, col: 4 });
+    expect(cells).not.toContainEqual({ row: 4, col: 4 });
+  });
+
+  it('does not care which corner was dragged from', () => {
+    const forward = rectCells({ row: 1, col: 1 }, { row: 3, col: 4 }, W, H);
+    for (const [a, b] of [
+      [{ row: 3, col: 4 }, { row: 1, col: 1 }],     // bottom-right first
+      [{ row: 1, col: 4 }, { row: 3, col: 1 }],     // top-right first
+      [{ row: 3, col: 1 }, { row: 1, col: 4 }],     // bottom-left first
+    ] as const) {
+      expect(rectCells(a, b, W, H)).toEqual(forward);
+    }
+  });
+
+  it('reveals exactly one cell when the drag never moves', () => {
+    // A click with no movement is the common case for a single doorway,
+    // and a rect tool that needs a drag to do anything reads as broken.
+    expect(rectCells({ row: 5, col: 5 }, { row: 5, col: 5 }, W, H))
+      .toEqual([{ row: 5, col: 5 }]);
+  });
+
+  it('clamps to the grid when a drag runs off the edge', () => {
+    const cells = rectCells({ row: -4, col: -4 }, { row: 40, col: 40 }, W, H);
+    expect(cells).toHaveLength(W * H);
+    expect(cells.every(c => c.row >= 0 && c.col >= 0 && c.row < H && c.col < W)).toBe(true);
+  });
+
+  it('yields nothing when the rectangle lies entirely off-grid', () => {
+    expect(rectCells({ row: 20, col: 20 }, { row: 30, col: 30 }, W, H)).toEqual([]);
   });
 });
 

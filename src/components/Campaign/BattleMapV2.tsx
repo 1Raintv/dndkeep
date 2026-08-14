@@ -225,7 +225,7 @@ import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { WallTypePanel } from './battlemap/WallTypePanel';
-import { FogBrushLayer } from './battlemap/FogBrushLayer';
+import { FogBrushLayer, type FogBrushShape } from './battlemap/FogBrushLayer';
 import { FogBrushPanel } from './battlemap/FogBrushPanel';
 import { ViewportHost } from './battlemap/ViewportHost';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
@@ -1754,6 +1754,9 @@ function BattleMapV2(props: BattleMapV2Props) {
   // manual fog mode; in dynamic mode reveals are derived, not painted.
   const [fogBrushActive, setFogBrushActive] = useState(false);
   const [fogBrushRadius, setFogBrushRadius] = useState(1);
+  // v2.667.0 — freehand brush or rectangle drag. Most map features are
+  // rectangular rooms, which the round brush could only approximate.
+  const [fogBrushShape, setFogBrushShape] = useState<FogBrushShape>('brush');
   // v2.234 — text annotation mode. Three-way mutex with ruler + walls.
   const [textActive, setTextActive] = useState(false);
   // v2.235 — drawing tool mode. Either null (no drawing tool), or one
@@ -3515,6 +3518,7 @@ function BattleMapV2(props: BattleMapV2Props) {
                       sceneId={currentScene?.id ?? null}
                       revealedCells={currentScene?.revealedCells ?? []}
                       radiusCells={fogBrushRadius}
+                      shape={fogBrushShape}
                       onLocalChange={handleFogLocalChange}
                     />
                   )}
@@ -3564,7 +3568,12 @@ function BattleMapV2(props: BattleMapV2Props) {
             terms as WallTypePanel: it owns the corner and carries its
             own hints, so nothing can overlap it at any width. */}
         {isDM && fogBrushActive && (
-          <FogBrushPanel radiusCells={fogBrushRadius} onChange={setFogBrushRadius} />
+          <FogBrushPanel
+            radiusCells={fogBrushRadius}
+            onChange={setFogBrushRadius}
+            shape={fogBrushShape}
+            onShapeChange={setFogBrushShape}
+          />
         )}
 
         <div

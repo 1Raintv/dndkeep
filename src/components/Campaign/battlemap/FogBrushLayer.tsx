@@ -24,10 +24,15 @@ import * as scenesApi from '../../../lib/api/scenes';
 import {
   applyBrush,
   brushCells,
+  rectCells,
   cellAtPoint,
   parseRevealedCells,
   serialiseRevealedCells,
+  type FogCell,
 } from '../../../rules/manualFog';
+
+/** v2.667.0 — which tool the fog panel has selected. */
+export type FogBrushShape = 'brush' | 'rect';
 
 export function FogBrushLayer(props: {
   viewport: Viewport | null;
@@ -38,15 +43,18 @@ export function FogBrushLayer(props: {
   heightCells: number;
   sceneId: string | null;
   revealedCells: Array<[number, number]>;
-  /** Brush radius in cells. 0 paints a single cell. */
+  /** Brush radius in cells. 0 paints a single cell. Ignored by 'rect'. */
   radiusCells: number;
+  /** v2.667.0 — 'brush' paints as you drag; 'rect' previews a rectangle
+   *  between the press and the cursor and applies it on release. */
+  shape: FogBrushShape;
   /** Optimistic local update so the DM sees the stroke as they draw,
    *  before the round trip. */
   onLocalChange: (cells: Array<[number, number]>) => void;
 }) {
   const {
     viewport, canvasEl, active, gridSizePx, widthCells, heightCells,
-    sceneId, revealedCells, radiusCells, onLocalChange,
+    sceneId, revealedCells, radiusCells, shape, onLocalChange,
   } = props;
 
   // Brush outline under the cursor, so the DM can see what a click will
@@ -54,7 +62,10 @@ export function FogBrushLayer(props: {
   const cursorGfxRef = useRef<Graphics | null>(null);
   // Live stroke state. Refs, not state: these mutate on every pointer
   // move and must not drive a React render.
-  const paintingRef = useRef<null | { reveal: boolean }>(null);
+  // v2.667.0 — `anchor` is the cell the press landed on. Only 'rect'
+  // uses it: the rectangle spans from there to wherever the cursor is
+  // now, and nothing is applied until release.
+  const paintingRef = useRef<null | { reveal: boolean; anchor: FogCell }>(null);
   const cellsRef = useRef<Set<string>>(new Set());
   const dirtyRef = useRef(false);
 
@@ -90,13 +101,23 @@ export function FogBrushLayer(props: {
       return viewport.toWorld(e.clientX - rect.left, e.clientY - rect.top);
     }
 
+    /** Cells the current gesture covers — what a release would apply,
+     *  which is exactly what the cursor outline should show. */
+    function gestureCells(world: { x: number; y: number }) {
+      const at = cellAtPoint(world.x, world.y, gridSizePx);
+      if (shape !== 'rect') return brushCells(at, radiusCells, widthCells, heightCells);
+      // Before the press there is no anchor yet, so preview the single
+      // cell under the cursor — which is also what a click applies.
+      const anchor = paintingRef.current?.anchor ?? at;
+      return rectCells(anchor, at, widthCells, heightCells);
+    }
+
     function drawCursor(world: { x: number; y: number } | null) {
       const gfx = cursorGfxRef.current;
       if (!gfx || gfx.destroyed) return;
       gfx.clear();
       if (!world) return;
-      const centre = cellAtPoint(world.x, world.y, gridSizePx);
-      const cells = brushCells(centre, radiusCells, widthCells, heightCells);
+      const cells = gestureCells(world);
       for (const c of cells) {
         gfx.rect(c.col * gridSizePx, c.row * gridSizePx, gridSizePx, gridSizePx);
       }
@@ -109,13 +130,9 @@ export function FogBrushLayer(props: {
       gfx.stroke();
     }
 
-    /** Paint the brush at this point into the local set. */
-    function paintAt(world: { x: number; y: number }) {
-      const stroke = paintingRef.current;
-      if (!stroke) return;
-      const centre = cellAtPoint(world.x, world.y, gridSizePx);
-      const cells = brushCells(centre, radiusCells, widthCells, heightCells);
-      const next = applyBrush(cellsRef.current, cells, stroke.reveal);
+    /** Fold cells into the local set, repaint, and mark for commit. */
+    function applyCells(cells: readonly { row: number; col: number }[], reveal: boolean) {
+      const next = applyBrush(cellsRef.current, cells, reveal);
       // applyBrush hands back the SAME object when nothing changed, so
       // this identity check is what keeps a slow drag across one cell
       // from re-rendering and re-committing on every move event.
@@ -125,14 +142,28 @@ export function FogBrushLayer(props: {
       onLocalChange(serialiseRevealedCells(cellsRef.current));
     }
 
+    /** Paint the brush at this point into the local set. */
+    function paintAt(world: { x: number; y: number }) {
+      const stroke = paintingRef.current;
+      if (!stroke) return;
+      const centre = cellAtPoint(world.x, world.y, gridSizePx);
+      applyCells(brushCells(centre, radiusCells, widthCells, heightCells), stroke.reveal);
+    }
+
     function onDown(e: PointerEvent) {
       if (e.target !== canvasEl) return;
       if (e.button !== 0 && e.button !== 2) return;
       const world = worldFromEvent(e);
       if (!world) return;
       // Right-click or shift hides; plain left reveals.
-      paintingRef.current = { reveal: e.button === 0 && !e.shiftKey };
-      paintAt(world);
+      paintingRef.current = {
+        reveal: e.button === 0 && !e.shiftKey,
+        anchor: cellAtPoint(world.x, world.y, gridSizePx),
+      };
+      // v2.667.0 — 'rect' applies nothing until release: the drag is
+      // still choosing the far corner, and painting as it goes would
+      // leave every intermediate rectangle behind it.
+      if (shape !== 'rect') paintAt(world);
       drawCursor(world);
       e.preventDefault();
       e.stopPropagation();
@@ -142,12 +173,26 @@ export function FogBrushLayer(props: {
       const world = worldFromEvent(e);
       drawCursor(world);
       if (!paintingRef.current || !world) return;
-      paintAt(world);
+      if (shape !== 'rect') paintAt(world);
     }
 
-    function onUp() {
-      const wasPainting = paintingRef.current !== null;
+    function onUp(e: PointerEvent) {
+      const stroke = paintingRef.current;
+      const world = worldFromEvent(e);
+      // v2.667.0 — the rectangle lands here, spanning the press cell to
+      // wherever the release happened. Read from the event rather than a
+      // "last seen" ref so a release that never generated a move event
+      // (a plain click) still applies the anchor cell.
+      if (stroke && shape === 'rect' && world) {
+        const at = cellAtPoint(world.x, world.y, gridSizePx);
+        applyCells(rectCells(stroke.anchor, at, widthCells, heightCells), stroke.reveal);
+      }
+      const wasPainting = stroke !== null;
       paintingRef.current = null;
+      // Redraw with the gesture over: in rect mode the outline collapses
+      // from the dragged rectangle back to the single cell under the
+      // cursor, which is what the next click would apply.
+      drawCursor(world);
       if (!wasPainting || !dirtyRef.current || !sceneId) return;
       dirtyRef.current = false;
       // One write per stroke. Fire-and-forget, matching every other
@@ -183,7 +228,7 @@ export function FogBrushLayer(props: {
         }).catch(() => {});
       }
     };
-  }, [canvasEl, viewport, active, gridSizePx, widthCells, heightCells, sceneId, radiusCells, onLocalChange]);
+  }, [canvasEl, viewport, active, gridSizePx, widthCells, heightCells, sceneId, radiusCells, shape, onLocalChange]);
 
   return null;
 }
