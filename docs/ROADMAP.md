@@ -130,6 +130,35 @@ Scope:
   size larger), Halfling Nimbleness ("move through the space of a creature one size
   larger"), grapple/shove size limits, and Naturally Stealthy.
 
+### Choice pickers: show the full text, always (queued — 2026-08-14)
+
+**Ask (Jared, from the Psionic Disciplines picker):** every description should be
+expanded by default, and the **Less** button should go entirely. You are choosing
+between mechanics you have to compare — you read all of them, every time — so
+truncation is pure friction.
+
+**Where:** `src/components/CharacterSheet/PendingChoicesAlert.tsx` (~L221-230). The
+row renders `{isExpanded ? 'Less' : 'More'}` against `expandedDisc`, which holds a
+**single** id — so opening one description collapses the previous one. That is the
+real cost: comparing two disciplines is impossible without toggling back and forth
+between them.
+
+Scope:
+- Drop the `expandedDisc` state and the toggle button; render `disc.description`
+  in full on every row. Deleting state is the whole fix — no "expand all" control,
+  which would just be the same friction with an extra click.
+- Check the surrounding scroll container still reads well once every row is tall:
+  the list is inside a fixed-height scroller, and full text on ~10 disciplines
+  makes it much longer. If it gets unwieldy the answer is a taller panel, not
+  re-truncating.
+- **Apply the same rule to the other choice pickers, not just disciplines.** Same
+  file handles the other pending-choice types; whatever else truncates a mechanic
+  the player is choosing between should stop. Audit before changing, so this lands
+  as one consistent rule rather than a one-off.
+- `DMlobby.tsx:97` has the same `More`/`Less` pattern — **out of scope**, and worth
+  saying why: that one expands a campaign blurb you are reading, not comparing.
+  Truncation is reasonable there. This rule is about *choosing*, not *reading*.
+
 ---
 
 ## Track 2 — The map (daily iteration)
