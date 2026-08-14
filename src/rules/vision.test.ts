@@ -1,69 +1,110 @@
 // v2.663.0 — sight radius rules. The cases that matter are the ones
 // where two characters standing in the same square see differently.
+// v2.666.0 — retargeted from the flat `sightRadiusFt` onto the bright/dim
+// band pair that replaced it. Every rule the old tests pinned is still
+// pinned here, now against `dimFt` (the outer edge of sight).
 import { describe, it, expect } from 'vitest';
 import {
-  sightRadiusFt, sightRadiusPx, FEET_PER_SQUARE, visibleLightSources,
+  sightBandsFt, sightBandsPx, lightBandsFt, FEET_PER_SQUARE, visibleLightSources,
 } from './vision';
 
-describe('sightRadiusFt', () => {
+describe('lightBandsFt', () => {
+  it('splits every RAW preset into equal bright and dim bands', () => {
+    // The picker's four lights, as the token stores them (total radius).
+    expect(lightBandsFt(10)).toEqual({ brightFt: 5, dimFt: 10 });    // candle
+    expect(lightBandsFt(40)).toEqual({ brightFt: 20, dimFt: 40 });   // torch
+    expect(lightBandsFt(60)).toEqual({ brightFt: 30, dimFt: 60 });   // lantern
+    expect(lightBandsFt(120)).toEqual({ brightFt: 60, dimFt: 120 }); // Daylight
+  });
+
+  it('measures dim from the centre, not as an additional distance', () => {
+    // A torch is "20 ft bright + 20 ft dim BEYOND that" in the rules,
+    // which is a 40 ft outer edge — not 20.
+    expect(lightBandsFt(40).dimFt).toBe(40);
+  });
+
+  it('is inert for an unlit token', () => {
+    expect(lightBandsFt(0)).toEqual({ brightFt: 0, dimFt: 0 });
+    expect(lightBandsFt(NaN as never)).toEqual({ brightFt: 0, dimFt: 0 });
+    expect(lightBandsFt(-40)).toEqual({ brightFt: 0, dimFt: 0 });
+  });
+});
+
+describe('sightBandsFt', () => {
   it('is unlimited in bright light regardless of darkvision', () => {
-    expect(sightRadiusFt('bright', 0, 0)).toBeNull();
-    expect(sightRadiusFt('bright', 60, 0)).toBeNull();
+    expect(sightBandsFt('bright', 0, 0)).toBeNull();
+    expect(sightBandsFt('bright', 60, 0)).toBeNull();
   });
 
   it('is unlimited in dim light — lightly obscured is not a range limit', () => {
     // Dim light costs you disadvantage on sight-based Perception, not
     // distance. A Human sees the whole lit corridor, just poorly.
-    expect(sightRadiusFt('dim', 0, 0)).toBeNull();
-    expect(sightRadiusFt('dim', 60, 0)).toBeNull();
+    expect(sightBandsFt('dim', 0, 0)).toBeNull();
+    expect(sightBandsFt('dim', 60, 0)).toBeNull();
   });
 
   it('uses darkvision in the dark', () => {
-    expect(sightRadiusFt('dark', 60, 0)).toBe(60);
-    expect(sightRadiusFt('dark', 120, 0)).toBe(120);
+    expect(sightBandsFt('dark', 60, 0)?.dimFt).toBe(60);
+    expect(sightBandsFt('dark', 120, 0)?.dimFt).toBe(120);
+  });
+
+  it('grants darkvision as DIM sight, never bright', () => {
+    // RAW: within the radius you treat darkness as dim light. Rendering
+    // it as bright is what v2.666 fixed — it claimed a Dwarf in pitch
+    // dark saw as well as a Human under a torch.
+    expect(sightBandsFt('dark', 60, 0)?.brightFt).toBe(0);
   });
 
   it('blinds a creature with neither darkvision nor a light', () => {
     // The whole reason light sources shipped alongside this: RAW, a
     // Human in an unlit room sees nothing at all.
-    expect(sightRadiusFt('dark', 0, 0)).toBe(0);
+    expect(sightBandsFt('dark', 0, 0)).toEqual({ brightFt: 0, dimFt: 0 });
   });
 
   it('takes the better of darkvision and carried light, never the sum', () => {
     // A Dwarf holding a torch does not see 100 ft. Darkvision and
     // torchlight overlap; they do not stack.
-    expect(sightRadiusFt('dark', 60, 40)).toBe(60);
-    expect(sightRadiusFt('dark', 30, 40)).toBe(40);
-    expect(sightRadiusFt('dark', 0, 40)).toBe(40);
+    expect(sightBandsFt('dark', 60, 40)?.dimFt).toBe(60);
+    expect(sightBandsFt('dark', 30, 40)?.dimFt).toBe(40);
+    expect(sightBandsFt('dark', 0, 40)?.dimFt).toBe(40);
+  });
+
+  it('keeps a torch bright band even when darkvision reaches further', () => {
+    // The Dwarf's outer edge is darkvision's 60, but the 20 ft around
+    // the torch is genuinely bright and must not be flattened to dim.
+    expect(sightBandsFt('dark', 60, 40)).toEqual({ brightFt: 20, dimFt: 60 });
   });
 
   it('treats missing values as zero rather than NaN', () => {
     // darkvision arrives from `SPECIES_MAP[...]?.darkvision ?? 0` and
     // carried light from a nullable column; a NaN radius would silently
     // erase the whole fog polygon.
-    expect(sightRadiusFt('dark', undefined as never, undefined as never)).toBe(0);
-    expect(sightRadiusFt('dark', NaN as never, 30)).toBe(30);
+    expect(sightBandsFt('dark', undefined as never, undefined as never))
+      .toEqual({ brightFt: 0, dimFt: 0 });
+    expect(sightBandsFt('dark', NaN as never, 30)?.dimFt).toBe(30);
   });
 });
 
-describe('sightRadiusPx', () => {
+describe('sightBandsPx', () => {
   const GRID = 70;   // px per 5 ft square
 
   it('converts feet to pixels via the RAW 5 ft square', () => {
     expect(FEET_PER_SQUARE).toBe(5);
     // 60 ft = 12 squares = 840 px. This is the number VisionLayer used
     // to hardcode as `12 * gridSizePx`.
-    expect(sightRadiusPx('dark', 60, 0, GRID)).toBe(12 * GRID);
-    expect(sightRadiusPx('dark', 30, 0, GRID)).toBe(6 * GRID);
+    expect(sightBandsPx('dark', 60, 0, GRID)?.dimPx).toBe(12 * GRID);
+    expect(sightBandsPx('dark', 30, 0, GRID)?.dimPx).toBe(6 * GRID);
+    // A torch: 20 ft bright = 4 squares, 40 ft outer = 8.
+    expect(sightBandsPx('dark', 0, 40, GRID)).toEqual({ brightPx: 4 * GRID, dimPx: 8 * GRID });
   });
 
   it('passes unlimited through as null', () => {
-    expect(sightRadiusPx('bright', 60, 0, GRID)).toBeNull();
-    expect(sightRadiusPx('dim', 0, 0, GRID)).toBeNull();
+    expect(sightBandsPx('bright', 60, 0, GRID)).toBeNull();
+    expect(sightBandsPx('dim', 0, 0, GRID)).toBeNull();
   });
 
   it('is zero for the blind case, not a tiny non-zero smear', () => {
-    expect(sightRadiusPx('dark', 0, 0, GRID)).toBe(0);
+    expect(sightBandsPx('dark', 0, 0, GRID)).toEqual({ brightPx: 0, dimPx: 0 });
   });
 });
 

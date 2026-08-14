@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
 import { wallMaterialBlocksSight } from '../../../rules/cover';
-import { sightRadiusPx, visibleLightSources, FEET_PER_SQUARE } from '../../../rules/vision';
+import { sightBandsPx, visibleLightSources, lightBandsFt, feetToPx } from '../../../rules/vision';
 import { parseRevealedCells } from '../../../rules/manualFog';
 
 /**
@@ -117,6 +117,11 @@ export function VisionLayer(props: {
   const rtRef = useRef<RenderTexture | null>(null);
   const fogSpriteRef = useRef<Sprite | null>(null);
   const scratchContainerRef = useRef<Container | null>(null);
+  // v2.666.0 — a second, off-screen RenderTexture holding the union of
+  // every DIM region before it is composited onto the fog. See the
+  // compositing comment in the recompute effect for why the dim tier
+  // cannot be drawn straight onto the fog like the bright tier can.
+  const dimRtRef = useRef<RenderTexture | null>(null);
 
   // Mount + teardown. v2.267.0 — was `if (!viewport || isDM) return`;
   // now respects dmPreviewFog so the DM's preview button can mount
@@ -129,6 +134,13 @@ export function VisionLayer(props: {
     // want to downscale, but for typical 30x20 scenes (2100x1400) it
     // fits comfortably in GPU memory (~12MB).
     const rt = RenderTexture.create({
+      width: worldWidth,
+      height: worldHeight,
+      antialias: true,
+    });
+    // v2.666.0 — same dimensions, never added to the display tree: it is
+    // a scratch surface the dim-tier union is flattened into.
+    const dimRt = RenderTexture.create({
       width: worldWidth,
       height: worldHeight,
       antialias: true,
@@ -159,6 +171,7 @@ export function VisionLayer(props: {
     // by render-tree placement.
     viewport.addChild(sprite);
     rtRef.current = rt;
+    dimRtRef.current = dimRt;
     fogSpriteRef.current = sprite;
     scratchContainerRef.current = new Container();
 
@@ -168,10 +181,12 @@ export function VisionLayer(props: {
         sprite.destroy({ children: false });
       }
       if (rt && !rt.destroyed) rt.destroy(true);
+      if (dimRt && !dimRt.destroyed) dimRt.destroy(true);
       if (scratchContainerRef.current && !scratchContainerRef.current.destroyed) {
         scratchContainerRef.current.destroy({ children: true });
       }
       rtRef.current = null;
+      dimRtRef.current = null;
       fogSpriteRef.current = null;
       scratchContainerRef.current = null;
     };
@@ -438,6 +453,7 @@ export function VisionLayer(props: {
   useEffect(() => {
     if (!fogActive) return;
     const rt = rtRef.current;
+    const dimRt = dimRtRef.current;
     const scratch = scratchContainerRef.current;
     if (!rt || !scratch || !app?.renderer) return;
 
@@ -506,6 +522,17 @@ export function VisionLayer(props: {
 
     // 2. For each origin token, compute polygon and draw with erase
     //    blend mode to cut a hole in the fog.
+    //
+    // v2.666.0 — TWO TIERS. Polygons are collected into `brightPolys`
+    // and `dimPolys` rather than erased as they are computed, because
+    // the two tiers composite differently (see step 4).
+    //   bright — fog erased completely. You see normally.
+    //   dim    — fog erased most of the way, leaving a murk. You can
+    //            navigate and fight; you are lightly obscured.
+    // Only a DARK scene grades sight this way. In a dim-ambient scene
+    // sight is unlimited and the 0.55 ambient veil already carries the
+    // gloom, so everything visible lands in the bright tier and the
+    // scene looks exactly as it did before this ship.
     // v2.271.0 — open doors ('open' doorState) don't block sight,
     // mirroring the same rule the movement-collision check uses. A
     // door that's been opened by the DM creates a vision corridor.
@@ -533,32 +560,45 @@ export function VisionLayer(props: {
     // cast without ever cutting the polygon short.
     const unlimitedPx = Math.hypot(worldWidth, worldHeight);
 
+    const brightPolys: number[][] = [];
+    const dimPolys: number[][] = [];
+    /** Cast a visibility polygon and file it under a tier. Polygons with
+     *  fewer than 3 points cannot be filled, so they are dropped here
+     *  once rather than checked at every call site. */
+    const collect = (into: number[][], x: number, y: number, radiusPx: number) => {
+      if (!(radiusPx > 0)) return;
+      const polygon = computeVisibilityPolygon(x, y, sightWalls, radiusPx, 180);
+      if (polygon.length < 6) return;
+      into.push(polygon);
+    };
+
     for (const tokenId of visionOriginTokenIds) {
       const t = tokens[tokenId];
       if (!t) continue;
       const darkvisionFt = t.characterId
         ? (darkvisionByCharacterId[t.characterId] ?? 0)
         : 0;
-      const radiusPx = sightRadiusPx(
+      const bands = sightBandsPx(
         ambientLight, darkvisionFt, t.lightRadiusFt ?? 0, gridSizePx,
       );
-      // 0 = genuinely blind (dark scene, no darkvision, no light). Skip
-      // it rather than drawing a zero-radius polygon: this creature
+      if (bands === null) {
+        // Unlimited (bright or dim ambient), clamped to the world
+        // diagonal: that is the furthest two points on the map can be,
+        // so it bounds the ray cast without ever cutting the polygon
+        // short. All of it is bright-tier.
+        collect(brightPolys, t.x, t.y, unlimitedPx);
+        continue;
+      }
+      // dimPx 0 = genuinely blind (dark scene, no darkvision, no light).
+      // Skip rather than drawing a zero-radius polygon: this creature
       // contributes nothing to what the party can see, which is the
       // point. Someone else's torch still reveals the room for everyone,
       // since the fog is a union over all origins.
-      if (radiusPx === 0) continue;
-      const polygon = computeVisibilityPolygon(
-        t.x, t.y, sightWalls, radiusPx ?? unlimitedPx, 180,
-      );
-      if (polygon.length < 6) continue; // need at least 3 points to form a polygon
-      const lightGfx = new Graphics();
-      lightGfx.poly(polygon);
-      lightGfx.fill({ color: 0xffffff, alpha: 1 });
-      // 'erase' blend = destination-out. The white polygon erases
-      // alpha from the fog beneath it, leaving a transparent hole.
-      lightGfx.blendMode = 'erase';
-      scratch.addChild(lightGfx);
+      collect(dimPolys, t.x, t.y, bands.dimPx);
+      // A Dwarf's own torch is genuinely bright out to 20 ft even though
+      // darkvision carries the outer edge to 60 — the two tiers are
+      // independent radii, not a subdivision of one.
+      collect(brightPolys, t.x, t.y, bands.brightPx);
     }
 
     // v2.665.0 — STANDALONE LIGHT SOURCES.
@@ -587,17 +627,63 @@ export function VisionLayer(props: {
       .map(t => ({ id: t.id, x: t.x, y: t.y, radiusFt: t.lightRadiusFt ?? 0 }));
 
     for (const src of visibleLightSources(viewers, emitters, sightWalls)) {
-      const radiusPx = (src.radiusFt / FEET_PER_SQUARE) * gridSizePx;
-      const polygon = computeVisibilityPolygon(src.x, src.y, sightWalls, radiusPx, 180);
-      if (polygon.length < 6) continue;
-      const lit = new Graphics();
-      lit.poly(polygon);
-      lit.fill({ color: 0xffffff, alpha: 1 });
-      lit.blendMode = 'erase';
-      scratch.addChild(lit);
+      const bands = lightBandsFt(src.radiusFt);
+      if (ambientLight === 'dark') {
+        collect(dimPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx));
+        collect(brightPolys, src.x, src.y, feetToPx(bands.brightFt, gridSizePx));
+      } else {
+        // Dim ambient: there is no darkness for the outer band to grade
+        // against, so the brazier simply lights its full radius.
+        collect(brightPolys, src.x, src.y, feetToPx(bands.dimFt, gridSizePx));
+      }
     }
 
-    // 3. Render the scratch container to our RenderTexture.
+    // 3. Composite the DIM tier — through its own RenderTexture, as one
+    //    sprite.
+    //
+    // 'erase' is destination-out: it MULTIPLIES the destination alpha by
+    // (1 - source alpha). Drawing each dim polygon straight onto the fog
+    // would therefore compound where they overlap — a party of four
+    // Dwarves standing together would erase 0.55 four times over and
+    // their shared murk would read brighter than a torch. Flattening the
+    // union into `dimRt` first makes overlap idempotent, which is what
+    // dim light actually means: two candles do not make bright light.
+    //
+    // The sprite is rebuilt each recompute and destroyed by the scratch
+    // sweep at the top of this effect. That sweep passes `{children:
+    // true}` and NOT `{texture: true}`, so `dimRt` survives — do not add
+    // texture destruction there without giving this sprite its own
+    // lifetime.
+    const DIM_TIER_ERASE = 0.55;
+    if (dimPolys.length > 0 && dimRt) {
+      const dimScratch = new Container();
+      for (const polygon of dimPolys) {
+        const g = new Graphics();
+        g.poly(polygon);
+        g.fill({ color: 0xffffff, alpha: 1 });
+        dimScratch.addChild(g);
+      }
+      app.renderer.render({ container: dimScratch, target: dimRt, clear: true });
+      dimScratch.destroy({ children: true });
+      const dimSprite = new Sprite(dimRt);
+      dimSprite.alpha = DIM_TIER_ERASE;
+      dimSprite.blendMode = 'erase';
+      scratch.addChild(dimSprite);
+    }
+
+    // 4. Composite the BRIGHT tier. Alpha 1 erases completely, so
+    //    overlap is already idempotent and these go on directly.
+    for (const polygon of brightPolys) {
+      const lightGfx = new Graphics();
+      lightGfx.poly(polygon);
+      lightGfx.fill({ color: 0xffffff, alpha: 1 });
+      // 'erase' blend = destination-out. The white polygon erases
+      // alpha from the fog beneath it, leaving a transparent hole.
+      lightGfx.blendMode = 'erase';
+      scratch.addChild(lightGfx);
+    }
+
+    // 5. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
   }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, fogMode, revealedCells, app]);
 

@@ -180,12 +180,18 @@ export function TokenContextMenu(props: {
   // v2.663.0 — carried light. Only bites in a Dark scene, where sight
   // range became darkvision-driven: a creature with neither darkvision
   // nor a light genuinely sees nothing, and this is how the DM hands
-  // them a torch. Radii are the RAW light-source totals (bright + dim),
-  // since the fog is binary and cannot draw the two bands separately.
+  // them a torch. Radii are the RAW light-source totals (bright + dim).
+  // v2.666.0 — the two bands now render separately, and Candle was
+  // corrected from 20 ft to 10: its own hint said 5 + 5, but the stored
+  // total said 20, so a candle lit as far as a torch's bright band. It
+  // went unnoticed while the fog was binary — one flat disc, no band to
+  // check the number against. `lightBandsFt` halves these totals, which
+  // is exact for all four (every RAW light sheds dim for exactly as far
+  // again as it sheds bright).
   if (submenu === 'light') {
     const LIGHTS: ReadonlyArray<{ ft: number; label: string; hint: string }> = [
       { ft: 0,   label: 'None',    hint: 'carries no light' },
-      { ft: 20,  label: 'Candle',  hint: '5 ft bright + 5 dim' },
+      { ft: 10,  label: 'Candle',  hint: '5 ft bright + 5 dim' },
       { ft: 40,  label: 'Torch',   hint: '20 ft bright + 20 dim' },
       { ft: 60,  label: 'Lantern', hint: '30 ft bright + 30 dim' },
       { ft: 120, label: 'Daylight', hint: '60 ft bright + 60 dim' },

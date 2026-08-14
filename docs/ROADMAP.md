@@ -206,8 +206,24 @@ iteration can move faster than Track 1.
       error is conservative (hides light, never reveals a dark room).
       Fixing it properly means intersecting visibility polygons per
       (viewer, light) pair.
-    - Still missing: coloured light, and separate bright/dim bands — the
-      fog is binary, so a light reveals one flat radius.
+    - ~~Separate bright/dim bands~~ — **shipped v2.666.** The fog is no
+      longer binary: a light erases its bright band completely and its
+      dim band most of the way, leaving a murk. `lightBandsFt` halves
+      the stored total, which is exact for all four presets (every RAW
+      light sheds dim for as far again as it sheds bright), so no
+      migration was needed — the information was always in the column.
+      - **Darkvision now reads as DIM, not bright**, per RAW: within the
+        radius you treat darkness as dim light. The visible change is
+        that a Dwarf's 60 ft is murky rather than daylight-clear.
+      - The dim tier composites through its own RenderTexture. 'erase'
+        multiplies, so drawing dim discs straight onto the fog would
+        compound where they overlap and four Dwarves standing together
+        would out-shine a torch. Flattening the union first makes
+        overlap idempotent — two candles do not make bright light.
+      - Fixed in passing: the Candle preset stored 20 ft while its own
+        hint said 5 + 5. A candle lit as far as a torch's bright band.
+        Invisible while the fog was binary; obvious once bands drew.
+    - Still missing: coloured light.
   - ~~Manual fog~~ — **shipped v2.664.** `scenes.fog_mode` picks per scene
     between `dynamic` (line of sight, the v2.224–v2.663 behaviour, still
     the default) and `manual` (the DM paints reveals with the ☁ brush and
