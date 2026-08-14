@@ -5,6 +5,7 @@ import {
   serialiseRevealedCells,
   brushCells,
   rectCells,
+  cellsInPolygon,
   applyBrush,
   cellAtPoint,
 } from './manualFog';
@@ -142,6 +143,60 @@ describe('applyBrush', () => {
   it('returns a new set when anything changed', () => {
     const cur = new Set(['1,1']);
     expect(applyBrush(cur, [{ row: 1, col: 1 }, { row: 2, col: 2 }], true)).not.toBe(cur);
+  });
+});
+
+describe('cellsInPolygon', () => {
+  const G = 70, W = 10, H = 10;
+  /** Axis-aligned rectangle as the flat polygon form. */
+  const rect = (x0: number, y0: number, x1: number, y1: number) =>
+    [x0, y0, x1, y0, x1, y1, x0, y1];
+
+  it('returns the cells whose centres lie inside', () => {
+    // Exactly covers cells (0,0)..(1,1) — four cells, centres at 35/105.
+    const cells = cellsInPolygon(rect(0, 0, 2 * G, 2 * G), G, W, H);
+    expect(cells).toHaveLength(4);
+    expect(cells).toContainEqual({ row: 0, col: 0 });
+    expect(cells).toContainEqual({ row: 1, col: 1 });
+    expect(cells).not.toContainEqual({ row: 2, col: 0 });
+  });
+
+  it('excludes a cell the polygon only clips', () => {
+    // Reaches 10px into the second column — nowhere near its centre.
+    const cells = cellsInPolygon(rect(0, 0, G + 10, G), G, W, H);
+    expect(cells).toEqual([{ row: 0, col: 0 }]);
+  });
+
+  it('clamps to the grid when the polygon runs off the map', () => {
+    const cells = cellsInPolygon(rect(-500, -500, 5000, 5000), G, W, H);
+    expect(cells).toHaveLength(W * H);
+    expect(cells.every(c => c.row >= 0 && c.col >= 0 && c.row < H && c.col < W)).toBe(true);
+  });
+
+  it('handles a concave polygon — the shape vision actually produces', () => {
+    // An L: the visibility polygon around a corner is never convex, and
+    // a naive bounding-box or convex test would wrongly claim the whole
+    // 3x3 including the notch the wall hides.
+    const L = [
+      0, 0,
+      3 * G, 0,
+      3 * G, G,
+      G, G,
+      G, 3 * G,
+      0, 3 * G,
+    ];
+    const cells = cellsInPolygon(L, G, W, H);
+    expect(cells).toContainEqual({ row: 0, col: 2 });   // along the top arm
+    expect(cells).toContainEqual({ row: 2, col: 0 });   // down the left arm
+    expect(cells).not.toContainEqual({ row: 2, col: 2 }); // inside the notch
+    expect(cells).toHaveLength(5);
+  });
+
+  it('yields nothing for a degenerate polygon', () => {
+    // Fewer than 3 points cannot enclose anything, and a zero grid size
+    // would divide by zero — both arrive from real teardown states.
+    expect(cellsInPolygon([0, 0, 10, 10], G, W, H)).toEqual([]);
+    expect(cellsInPolygon(rect(0, 0, G, G), 0, W, H)).toEqual([]);
   });
 });
 

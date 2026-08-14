@@ -139,6 +139,76 @@ export function applyBrush(
   return changed ? next : current;
 }
 
+/**
+ * v2.669.0 — grid cells whose CENTRE falls inside a polygon.
+ *
+ * `polygon` is the flat [x, y, x, y, …] a visibility polygon comes in,
+ * in world pixels. Used by remembered-terrain fog to turn "what can the
+ * party see right now" into a set of cells it can accumulate.
+ *
+ * Centre-sampling, not coverage: a cell counts as seen when you can see
+ * the middle of it. Any cell the polygon merely clips at a corner is
+ * left out, which errs toward remembering less than the party saw —
+ * the safe direction, since the alternative is a map that reveals
+ * itself through the gaps around a doorway.
+ *
+ * Scanning the polygon's bounding box rather than the whole grid keeps
+ * this proportional to the lit area: a candle in the corner of a 60×40
+ * map tests a handful of cells, not 2,400.
+ */
+export function cellsInPolygon(
+  polygon: readonly number[],
+  gridSizePx: number,
+  widthCells: number,
+  heightCells: number,
+): FogCell[] {
+  const out: FogCell[] = [];
+  if (polygon.length < 6 || !(gridSizePx > 0)) return out;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < polygon.length; i += 2) {
+    if (polygon[i] < minX) minX = polygon[i];
+    if (polygon[i] > maxX) maxX = polygon[i];
+    if (polygon[i + 1] < minY) minY = polygon[i + 1];
+    if (polygon[i + 1] > maxY) maxY = polygon[i + 1];
+  }
+
+  const colFrom = Math.max(0, Math.floor(minX / gridSizePx));
+  const colTo = Math.min(widthCells - 1, Math.floor(maxX / gridSizePx));
+  const rowFrom = Math.max(0, Math.floor(minY / gridSizePx));
+  const rowTo = Math.min(heightCells - 1, Math.floor(maxY / gridSizePx));
+
+  for (let row = rowFrom; row <= rowTo; row++) {
+    for (let col = colFrom; col <= colTo; col++) {
+      const cx = (col + 0.5) * gridSizePx;
+      const cy = (row + 0.5) * gridSizePx;
+      if (pointInPolygon(cx, cy, polygon)) out.push({ row, col });
+    }
+  }
+  return out;
+}
+
+/**
+ * Standard even-odd ray cast. Kept private: it is a primitive for the
+ * function above, and `src/rules/` already carries one segment-crossing
+ * helper per module rather than a shared geometry grab-bag.
+ */
+function pointInPolygon(x: number, y: number, polygon: readonly number[]): boolean {
+  let inside = false;
+  const n = polygon.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i * 2], yi = polygon[i * 2 + 1];
+    const xj = polygon[j * 2], yj = polygon[j * 2 + 1];
+    // Strict-then-inclusive comparison so a vertex exactly on the ray is
+    // counted once, not twice (which would flip `inside` and punch a
+    // hole in the result along that scanline).
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 /** World-pixel point → grid cell. */
 export function cellAtPoint(x: number, y: number, gridSizePx: number): FogCell {
   return {

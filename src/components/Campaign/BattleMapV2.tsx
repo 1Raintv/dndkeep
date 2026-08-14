@@ -3502,6 +3502,10 @@ function BattleMapV2(props: BattleMapV2Props) {
                     ambientLight={currentScene?.ambientLight ?? 'dark'}
                     fogMode={currentScene?.fogMode ?? 'dynamic'}
                     revealedCells={currentScene?.revealedCells ?? []}
+                    exploredCells={currentScene?.exploredCells ?? []}
+                    sceneId={currentScene?.id ?? null}
+                    widthCells={currentScene?.widthCells ?? 30}
+                    heightCells={currentScene?.heightCells ?? 20}
                   />
                   {/* v2.664.0 — the DM's manual-fog brush. Mounts only
                       while the tool is on; commits one write per stroke
@@ -3712,8 +3716,12 @@ function BattleMapV2(props: BattleMapV2Props) {
               mode: in dynamic mode reveals come from line of sight, so
               a brush would have nothing to write that the next
               recompute wouldn't overwrite. Hidden rather than disabled
-              so the rail doesn't carry a permanently dead button. */}
-          {isDM && (currentScene?.fogMode ?? 'dynamic') === 'manual' && (
+              so the rail doesn't carry a permanently dead button.
+              v2.669.0 — also available in remembered mode, where painted
+              cells are additive to what the party has explored ("they
+              were told about this wing") rather than being overwritten
+              by the next recompute. */}
+          {isDM && ['manual', 'remembered'].includes(currentScene?.fogMode ?? 'dynamic') && (
             <button
               onClick={toggleFogBrushMode}
               title={fogBrushActive

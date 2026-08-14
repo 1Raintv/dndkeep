@@ -36,11 +36,21 @@ export interface Scene {
   // behaviour: line of sight from tokens, occluded by walls, bounded by
   // darkvision and carried light. 'manual' ignores all of that and
   // shows exactly the cells the DM painted.
-  fogMode: 'dynamic' | 'manual';
+  //
+  // v2.669.0 — 'remembered' is dynamic PLUS a memory: what the party can
+  // currently see renders exactly as dynamic, and everywhere they have
+  // been keeps its wall layout drawn over otherwise-solid fog.
+  fogMode: 'dynamic' | 'manual' | 'remembered';
   /** v2.664.0 — manual-fog reveals as [row, col] pairs. Meaningless
    *  while fogMode is 'dynamic', but kept rather than cleared so
    *  flipping modes back and forth doesn't destroy the painting. */
   revealedCells: Array<[number, number]>;
+  /** v2.669.0 — cells the party has ever been able to see, accumulated
+   *  automatically in 'remembered' mode. Deliberately NOT the same
+   *  column as `revealedCells`: that one is the DM's hand painting, and
+   *  merging the two would overwrite it the first time anyone switched
+   *  modes. Remembered mode renders the union. */
+  exploredCells: Array<[number, number]>;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,8 +82,13 @@ export function rowToScene(row: any): Scene {
     // is missing, and only treat the exact string 'manual' as manual.
     // Anything else meaning "dynamic" fails safe: a garbled value hides
     // the map behind normal fog rather than revealing it wholesale.
-    fogMode: row.fog_mode === 'manual' ? 'manual' : 'dynamic',
+    // v2.669.0 — same fail-safe extended to the third mode: anything
+    // unrecognised still lands on 'dynamic'.
+    fogMode: row.fog_mode === 'manual' ? 'manual'
+      : row.fog_mode === 'remembered' ? 'remembered'
+      : 'dynamic',
     revealedCells: Array.isArray(row.revealed_cells) ? row.revealed_cells : [],
+    exploredCells: Array.isArray(row.explored_cells) ? row.explored_cells : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -157,6 +172,44 @@ export async function updateScene(
   const { error } = await supabase.from('scenes').update(dbPatch).eq('id', sceneId);
   if (error) {
     console.error('[scenes] updateScene failed', error);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * v2.669.0 — add cells to a scene's remembered-terrain memory.
+ *
+ * NOT an `updateScene` patch, and that is the whole point. Players have
+ * no UPDATE on scenes and must not get one — a blanket grant would let
+ * any player rewrite the DM's fog, scene name or published flag. But
+ * remembered fog only works if moving YOUR OWN token uncovers the map,
+ * so a player's client has to be able to record what it just saw.
+ *
+ * `explore_scene_cells` is a SECURITY DEFINER function that checks
+ * campaign membership and can only ever UNION cells in — there is no
+ * code path in it that removes one. So the worst a hostile client can
+ * do is reveal map it could already see.
+ *
+ * Fire-and-forget at the call site: memory is cumulative, so a dropped
+ * call costs nothing permanent — the next recompute sends the cells
+ * again.
+ */
+export async function exploreCells(
+  sceneId: string,
+  cells: Array<[number, number]>,
+): Promise<boolean> {
+  if (cells.length === 0) return true;
+  // Through `any`: the generated supabase types are regenerated from the
+  // live schema and lag a new migration, same as `fog_mode` and
+  // `light_radius_ft` did. Typing the arguments here does nothing for
+  // safety anyway — the function validates its own inputs.
+  const { error } = await (supabase as any).rpc('explore_scene_cells', {
+    p_scene_id: sceneId,
+    p_cells: cells,
+  });
+  if (error) {
+    console.error('[scenes] exploreCells failed', error);
     return false;
   }
   return true;

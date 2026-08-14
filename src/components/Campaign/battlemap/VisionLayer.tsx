@@ -9,7 +9,10 @@ import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { computeVisibilityPolygon, type WallSegment } from '../../../lib/vision/visibilityPolygon';
 import { wallMaterialBlocksSight } from '../../../rules/cover';
 import { sightBandsPx, visibleLightSources, lightBandsFt, feetToPx } from '../../../rules/vision';
-import { parseRevealedCells } from '../../../rules/manualFog';
+import {
+  parseRevealedCells, cellsInPolygon, fogCellKey, serialiseRevealedCells,
+} from '../../../rules/manualFog';
+import * as scenesApi from '../../../lib/api/scenes';
 
 /**
  * v2.224 — VisionLayer.
@@ -77,13 +80,28 @@ export function VisionLayer(props: {
   ambientLight: 'bright' | 'dim' | 'dark';
   /** v2.664.0 — how fog is decided. 'dynamic' derives it from line of
    *  sight (walls, darkvision, carried light); 'manual' shows exactly
-   *  the cells in `revealedCells` and ignores tokens entirely. */
-  fogMode: 'dynamic' | 'manual';
+   *  the cells in `revealedCells` and ignores tokens entirely.
+   *
+   *  v2.669.0 — 'remembered' renders the dynamic tiers exactly as
+   *  'dynamic' does, and additionally draws the WALL LAYOUT of anywhere
+   *  the party has been over otherwise-solid fog. */
+  fogMode: 'dynamic' | 'manual' | 'remembered';
   /** v2.664.0 — [row, col] pairs the DM has painted as revealed. Read
-   *  only in manual mode. */
+   *  in manual mode, and in remembered mode as cells the DM has decided
+   *  the party knows about. */
   revealedCells: Array<[number, number]>;
+  /** v2.669.0 — [row, col] pairs the party has ever been able to see.
+   *  Read only in remembered mode. */
+  exploredCells: Array<[number, number]>;
+  /** v2.669.0 — needed to record newly-explored cells. Null disables
+   *  accumulation (the memory still renders from what is already
+   *  stored). */
+  sceneId: string | null;
+  /** v2.669.0 — cells wide/high, to bound the cell scan. */
+  widthCells: number;
+  heightCells: number;
 }) {
-  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight, fogMode, revealedCells } = props;
+  const { viewport, worldWidth, worldHeight, gridSizePx, isDM, visionOriginCharacterIds, darkvisionByCharacterId, dmPreviewFog, ambientLight, fogMode, revealedCells, exploredCells, sceneId, widthCells, heightCells } = props;
   // v2.267.0 — effective "should this layer render fog" check. When
   // the DM has enabled Player View preview, treat them like a player
   // for the purposes of mounting + recomputing the fog texture. The
@@ -133,6 +151,25 @@ export function VisionLayer(props: {
   // at the dim tier's residual alpha. The tint grades itself.
   const tintContainerRef = useRef<Container | null>(null);
   const tintRootRef = useRef<Container | null>(null);
+  // v2.669.0 — remembered terrain. This container sits ABOVE the fog
+  // sprite, and the fog under a remembered cell is never erased. That
+  // ordering is the whole safety argument: tokens render BENEATH the
+  // fog, so a remembered room shows its wall layout and cannot show the
+  // goblin that wandered into it after the party left.
+  const memoryRootRef = useRef<Container | null>(null);
+  const memoryMaskRef = useRef<Graphics | null>(null);
+  const memoryWallsRef = useRef<Graphics | null>(null);
+  /** What THIS client has observed since the last scene change, which is
+   *  ahead of the server between a sighting and its write landing. Kept
+   *  separate from the props rather than merged into one growing set, so
+   *  that a DM un-painting a manual reveal actually takes effect instead
+   *  of being remembered forever by whoever had it in memory. */
+  const localSeenRef = useRef<Set<string>>(new Set());
+  /** Newly-seen cells waiting to be written, and the timer that will
+   *  write them. Batched because the recompute fires on every token
+   *  move and a write per step would be a write per footfall. */
+  const pendingExploreRef = useRef<Set<string>>(new Set());
+  const exploreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mount + teardown. v2.267.0 — was `if (!viewport || isDM) return`;
   // now respects dmPreviewFog so the DM's preview button can mount
@@ -204,10 +241,27 @@ export function VisionLayer(props: {
     tintRoot.addChild(tintLayer);
     viewport.addChild(tintRoot);
     viewport.addChild(sprite);
+
+    // v2.669.0 — memory overlay, ABOVE the fog sprite (see the ref's
+    // comment for why that ordering is what keeps tokens hidden). Masked
+    // to the remembered cells, which are rebuilt each recompute.
+    const memoryRoot = new Container();
+    memoryRoot.eventMode = 'none';
+    memoryRoot.visible = false;
+    const memoryMask = new Graphics();
+    const memoryWalls = new Graphics();
+    memoryRoot.addChild(memoryMask);
+    memoryRoot.addChild(memoryWalls);
+    memoryRoot.mask = memoryMask;
+    viewport.addChild(memoryRoot);
+
     rtRef.current = rt;
     dimRtRef.current = dimRt;
     tintContainerRef.current = tintLayer;
     tintRootRef.current = tintRoot;
+    memoryRootRef.current = memoryRoot;
+    memoryMaskRef.current = memoryMask;
+    memoryWallsRef.current = memoryWalls;
     fogSpriteRef.current = sprite;
     scratchContainerRef.current = new Container();
 
@@ -223,6 +277,11 @@ export function VisionLayer(props: {
         tintRoot.mask = null;
         tintRoot.destroy({ children: true });
       }
+      if (memoryRoot && !memoryRoot.destroyed) {
+        if (!viewport.destroyed) viewport.removeChild(memoryRoot);
+        memoryRoot.mask = null;
+        memoryRoot.destroy({ children: true });
+      }
       if (rt && !rt.destroyed) rt.destroy(true);
       if (dimRt && !dimRt.destroyed) dimRt.destroy(true);
       if (scratchContainerRef.current && !scratchContainerRef.current.destroyed) {
@@ -232,10 +291,36 @@ export function VisionLayer(props: {
       dimRtRef.current = null;
       tintContainerRef.current = null;
       tintRootRef.current = null;
+      memoryRootRef.current = null;
+      memoryMaskRef.current = null;
+      memoryWallsRef.current = null;
       fogSpriteRef.current = null;
       scratchContainerRef.current = null;
     };
   }, [viewport, worldWidth, worldHeight, fogActive]);
+
+  // v2.669.0 — one scene's exploration must not bleed into the next.
+  // The refs outlive a scene switch (the layer itself does not remount
+  // for it), so they are cleared explicitly. Any pending batch is
+  // dropped rather than flushed: it belongs to the scene being left, and
+  // writing it against the new sceneId would explore the wrong map.
+  useEffect(() => {
+    localSeenRef.current = new Set();
+    pendingExploreRef.current = new Set();
+    if (exploreTimerRef.current) {
+      clearTimeout(exploreTimerRef.current);
+      exploreTimerRef.current = null;
+    }
+  }, [sceneId]);
+
+  // Never leave a timer behind on unmount — it would fire against a
+  // scene the user has navigated away from.
+  useEffect(() => () => {
+    if (exploreTimerRef.current) {
+      clearTimeout(exploreTimerRef.current);
+      exploreTimerRef.current = null;
+    }
+  }, []);
 
   // v2.342.0 — AoE preview overlay.
   //
@@ -519,6 +604,11 @@ export function VisionLayer(props: {
         if (!(child as Container).destroyed) (child as Container).destroy({ children: true });
       });
     }
+    // v2.669.0 — and hide the memory overlay for the same reason. Only
+    // the remembered branch below turns it back on, so switching a scene
+    // to dynamic or manual cannot leave an automap stranded on top.
+    const memoryRoot = memoryRootRef.current;
+    if (memoryRoot && !memoryRoot.destroyed) memoryRoot.visible = false;
 
     // v2.267.0 — guard for the DM-preview case: if the DM toggles
     // Player View on but no PC tokens exist on the scene, there's
@@ -806,7 +896,92 @@ export function VisionLayer(props: {
 
     // 5. Render the scratch container to our RenderTexture.
     app.renderer.render({ container: scratch, target: rt, clear: true });
-  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, fogMode, revealedCells, app]);
+
+    // 6. v2.669.0 — REMEMBERED TERRAIN.
+    //
+    // Everything above is unchanged dynamic fog. This adds the memory:
+    // cells the party has ever been able to see, minus the ones they can
+    // see right now, get their wall layout drawn over solid fog.
+    //
+    // Note what is NOT done here: the fog over a remembered cell is not
+    // erased even slightly. Tokens render beneath the fog, so any erase
+    // at all would leak a monster standing in a room the party walked
+    // out of. Structure is drawn ON TOP instead — the party remembers
+    // the shape of the room, not its current occupants.
+    if (fogMode !== 'remembered' || !memoryRoot || memoryRoot.destroyed) return;
+
+    const visibleKeys = new Set<string>();
+    for (const polygon of [...brightPolys, ...dimPolys]) {
+      for (const c of cellsInPolygon(polygon, gridSizePx, widthCells, heightCells)) {
+        visibleKeys.add(fogCellKey(c.row, c.col));
+      }
+    }
+
+    // What the party knows: the stored memory, plus anything the DM has
+    // painted in by hand (remembered mode keeps the ☁ brush working, so
+    // "they were told about this wing" is expressible), plus whatever
+    // this client has seen since its last write landed.
+    const known = new Set<string>();
+    for (const key of parseRevealedCells(exploredCells)) known.add(key);
+    for (const key of parseRevealedCells(revealedCells)) known.add(key);
+    for (const key of localSeenRef.current) known.add(key);
+
+    // Accumulate anything genuinely new into the pending batch.
+    for (const key of visibleKeys) {
+      if (known.has(key)) continue;
+      known.add(key);
+      localSeenRef.current.add(key);
+      pendingExploreRef.current.add(key);
+    }
+    if (pendingExploreRef.current.size > 0 && sceneId && !exploreTimerRef.current) {
+      // Batched: the recompute fires on every token move, and a write
+      // per step would be a write per footfall. Memory is cumulative and
+      // add-only, so a dropped batch costs nothing permanent — the next
+      // recompute simply sends those cells again.
+      exploreTimerRef.current = setTimeout(() => {
+        exploreTimerRef.current = null;
+        const batch = pendingExploreRef.current;
+        if (batch.size === 0) return;
+        pendingExploreRef.current = new Set();
+        void scenesApi.exploreCells(sceneId, serialiseRevealedCells(batch));
+      }, 1200);
+    }
+
+    // Remembered = everything known, minus what is visible right now
+    // (which the fog tiers above are already showing properly).
+    const mask = memoryMaskRef.current;
+    const wallsGfx = memoryWallsRef.current;
+    if (!mask || mask.destroyed || !wallsGfx || wallsGfx.destroyed) return;
+    mask.clear();
+    let remembered = 0;
+    for (const key of known) {
+      if (visibleKeys.has(key)) continue;
+      const [row, col] = key.split(',').map(Number);
+      mask.rect(col * gridSizePx, row * gridSizePx, gridSizePx, gridSizePx);
+      remembered++;
+    }
+    if (remembered === 0) {
+      memoryRoot.visible = false;
+      return;
+    }
+    mask.fill({ color: 0xffffff, alpha: 1 });
+
+    wallsGfx.clear();
+    // A faint floor tone so "explored but dark" reads as different from
+    // "never been here", which is otherwise identical black.
+    wallsGfx.rect(0, 0, worldWidth, worldHeight);
+    wallsGfx.fill({ color: 0x8fa3c8, alpha: 0.07 });
+    // Every wall, not just the sight-blocking ones: a remembered map is
+    // about layout, and a window or a low wall is part of the layout
+    // even though it does not stop you seeing through it.
+    wallsGfx.setStrokeStyle({ color: 0x9db4dd, width: 2, alpha: 0.5 });
+    for (const w of Object.values(walls)) {
+      wallsGfx.moveTo(w.x1, w.y1);
+      wallsGfx.lineTo(w.x2, w.y2);
+    }
+    wallsGfx.stroke();
+    memoryRoot.visible = true;
+  }, [tokens, walls, visionOriginKey, visionOriginTokenIds, darkvisionByCharacterId, worldWidth, worldHeight, gridSizePx, fogActive, isDM, dmPreviewFog, ambientLight, fogMode, revealedCells, exploredCells, sceneId, widthCells, heightCells, app]);
 
   return null;
 }

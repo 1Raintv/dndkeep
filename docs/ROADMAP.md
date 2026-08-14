@@ -262,9 +262,38 @@ iteration can move faster than Track 1.
         for a case the freehand brush already covers; rect handles the
         regular shapes, brush the irregular ones. Revisit only if a
         real map wants a shape neither can express.
-    - Not done: "reveal what the party has already seen" —
-      remembered-terrain fog, which is a third mode rather than a tweak
-      to either of these.
+    - ~~"Reveal what the party has already seen"~~ — **shipped v2.669
+      as `fog_mode = 'remembered'`**, the third mode. What the party can
+      see right now renders exactly as `dynamic`; everywhere they have
+      been keeps its WALL LAYOUT drawn over otherwise-solid fog, like a
+      dungeon-crawler automap.
+      - **Contents stay hidden, by construction.** The fog over a
+        remembered cell is never erased even slightly. Tokens render
+        BENEATH the fog, so any erase at all would leak a monster
+        standing in a room the party walked out of; structure is drawn
+        ON TOP instead. You remember the room, not its occupants.
+      - **Players explore, not just the DM** — moving your own token
+        uncovers the map. Players have no UPDATE on scenes and must not
+        get one, so this goes through `explore_scene_cells`, a SECURITY
+        DEFINER function that checks campaign membership and can only
+        ever UNION cells in. Verified: a seeded player's cell lands, a
+        non-member is refused, `anon` is refused at the grant, and a
+        repeat call does not change the count.
+      - `explored_cells` is a SEPARATE column from `revealed_cells`.
+        Merging them would overwrite the DM's hand-painted manual fog
+        the first time anyone switched modes. Remembered mode renders
+        the union, and the ☁ brush stays available in it so a DM can
+        still mark "they were told about this wing" by hand.
+      - Writes are batched (1.2 s) — the recompute fires on every token
+        move, and a write per step is a write per footfall. Memory is
+        add-only, so a dropped batch costs nothing: the next recompute
+        sends those cells again.
+      - **Accumulation needs someone watching.** It happens on any
+        client rendering fog — every player, and the DM in Player View.
+        A token moved while no player is connected AND the DM has
+        preview off records only where it ended up, not the corridor it
+        crossed. At a live table that does not arise; if it ever does,
+        the fix is letting the DM's client compute without rendering.
   - **Per-player fog** is still party-shared (the v2.225 note in `VisionLayer`).
     Matches Roll20/Foundry defaults, so this is a preference rather than a bug —
     revisit only if a table wants split parties to see separately.
