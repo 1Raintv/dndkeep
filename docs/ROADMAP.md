@@ -130,7 +130,7 @@ Scope:
   size larger), Halfling Nimbleness ("move through the space of a creature one size
   larger"), grapple/shove size limits, and Naturally Stealthy.
 
-### Choice pickers: show the full text, always (queued — 2026-08-14)
+### Choice pickers: show the full text, always — **shipped v2.670** (disciplines only)
 
 **Ask (Jared, from the Psionic Disciplines picker):** every description should be
 expanded by default, and the **Less** button should go entirely. You are choosing
@@ -158,6 +158,31 @@ Scope:
 - `DMlobby.tsx:97` has the same `More`/`Less` pattern — **out of scope**, and worth
   saying why: that one expands a campaign blurb you are reading, not comparing.
   Truncation is reasonable there. This rule is about *choosing*, not *reading*.
+
+**What shipped (v2.670):** both Psionic Discipline pickers —
+`PendingChoicesAlert.tsx` and `LevelUpWizard.tsx`'s `DisciplineStep`. Expand state
+and the More/Less (▼/▲) buttons are gone, every row renders the full description,
+and both scrollers went `300`/`360px` → `min(60vh, 520px)` rather than re-truncating.
+Verified in a browser at 1280 and 393px.
+
+Two traps the wizard hit, worth knowing before the remaining pickers are done:
+`globals.css` sets `white-space: nowrap; overflow: hidden` on **every** `button`, so
+a description moved inside one is silently clipped to a single cut-off line — the
+text must sit outside the button. And a `flex-direction: column` list with a
+max-height shrinks its rows by default, squashing full-length descriptions into each
+other until the rows get `flex-shrink: 0`.
+
+**Still queued — the rule was applied to disciplines only** (Jared's call,
+2026-08-15; the audit found no other picker left in `PendingChoicesAlert.tsx` —
+the cantrip/spell prompts moved to `SpellCompletionBanner`, which doesn't truncate).
+Same friction still lives in the feat and spell pickers, which also serve character
+creation, so they were left for a deliberate pass:
+- `LevelUp.tsx:43` — `FeatCard`, `slice(0,100)` + per-card toggle, benefits list
+  hidden until expanded.
+- `shared/FeatPicker.tsx:23` — single-line CSS ellipsis + a single `expanded` id;
+  expanding is coupled to selecting. Used by CharacterCreator's StepBuild **and**
+  LevelUpWizard.
+- `shared/SpellPickerDropdown.tsx:42` — single `expanded` id.
 
 ---
 

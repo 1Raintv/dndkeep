@@ -10,7 +10,6 @@ interface Props {
 export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  const [showDisciplinePicker, setShowDisciplinePicker] = useState(false);
  const [discSearch, setDiscSearch] = useState('');
- const [expandedDisc, setExpandedDisc] = useState<string | null>(null);
  const [dismissed, setDismissed] = useState(false);
 
  if (dismissed) return null;
@@ -150,9 +149,11 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  />
  </div>
 
- <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+ {/* v2.670 — full descriptions make every row taller, so the
+ scroller grew with them (viewport-relative, capped) instead of
+ the text being cut back down. */}
+ <div style={{ maxHeight: 'min(60vh, 520px)', overflowY: 'auto' }}>
  {filteredDiscs.map(disc => {
- const isExpanded = expandedDisc === disc.id;
  const isSelected = currentDisciplines.includes(disc.name);
  const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
  return (
@@ -164,7 +165,10 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  background: isSelected ? 'rgba(232,121,249,0.04)' : 'transparent',
  opacity: isSelected ? 0.65 : 1,
  }}>
- <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8 }}>
+ {/* v2.670 — top-aligned: rows are now as tall as their full
+ description, so a vertically-centred button floats away from
+ the name it belongs to. */}
+ <div style={{ display: 'flex', alignItems: 'flex-start', padding: '8px 12px', gap: 8 }}>
  <div style={{ flex: 1, minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: isSelected ? '#e879f9' : 'var(--t-1)' }}>
@@ -183,16 +187,13 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  </span>
  )}
  </div>
- {!isExpanded && (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
- {disc.description.slice(0, 85)}{disc.description.length > 85 ? '…' : ''}
- </div>
- )}
- {isExpanded && (
+ {/* v2.670 — always the full text. This is a comparison list:
+ you read every discipline before picking one, and the old
+ More/Less toggle held a SINGLE expanded id, so opening one
+ description collapsed the one you were comparing it against. */}
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.55, marginTop: 3 }}>
  {disc.description}
  </div>
- )}
  </div>
  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
  {isSelected ? (
@@ -218,16 +219,6 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  Choose
  </button>
  )}
- <button
- onClick={() => setExpandedDisc(isExpanded ? null : disc.id)}
- style={{
- padding: '2px 6px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
- background: 'transparent', border: '1px solid var(--c-border)',
- color: 'var(--t-3)', fontFamily: 'var(--ff-body)', fontSize: 10,
- }}
- >
- {isExpanded ? 'Less' : 'More'}
- </button>
  </div>
  </div>
  </div>
