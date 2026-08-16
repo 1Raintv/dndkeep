@@ -8,6 +8,16 @@ export interface FeatData {
   benefits: string[];
 }
 
+// v2.673.0 — every origin/general `description` rewritten in original voice.
+// Several were verbatim or near-verbatim 2014 PHB flavour prose (Sharpshooter,
+// Sentinel, Great Weapon Master, Grappler...), which the ROADMAP content-scope
+// rule forbids for non-SRD entries: "never copied PHB prose". Each replacement
+// is a functional summary derived ONLY from that feat's own `benefits` below —
+// no new mechanics, no invented numbers. Functional text is also better UI:
+// `description` is the subtitle in every feat picker, and "You gain the
+// following benefits." told the player nothing.
+// `benefits` are untouched — that's the rules text, and where an entry is in
+// SRD 5.2.1 it stays verbatim on purpose (CC-BY-4.0, attributed at /srd).
 export const FEATS: FeatData[] = [
 
   // ─── ORIGIN FEATS ──────────────────────────────────────────────────────────
@@ -16,7 +26,7 @@ export const FEATS: FeatData[] = [
     category: 'origin',
     // v2.553.0 — RAW fix (audit #7): full 2024 rewrite. Text is verbatim
     // SRD 5.2.1 (CC-BY-4.0). No +5, no surprise immunity in 2024.
-    description: 'You gain the following benefits.',
+    description: 'Add your Proficiency Bonus to Initiative, and swap Initiative with a willing ally.',
     benefits: [
       'Initiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll.',
       'Initiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can\'t make this swap if you or the ally has the Incapacitated condition.',
@@ -25,7 +35,7 @@ export const FEATS: FeatData[] = [
   {
     name: 'Crafter',
     category: 'origin',
-    description: 'You have studied the art of craftsmanship.',
+    description: 'Artisan tool proficiencies, a discount on gear, and faster crafting.',
     benefits: [
       'Gain proficiency with three Artisan\'s Tools of your choice.',
       'Whenever you buy a nonmagical item, you receive a 20% discount on its cost.',
@@ -35,7 +45,7 @@ export const FEATS: FeatData[] = [
   {
     name: 'Healer',
     category: 'origin',
-    description: 'You have training and intuition to administer first aid effectively.',
+    description: 'Use a Healer\'s Kit to restore Hit Points in combat and stabilize the dying.',
     benefits: [
       'Battle Medic: If you have a Healer\'s Kit, as a Magic action you can restore HP to a creature — it spends up to half its Hit Dice, rolling each and adding its CON modifier.',
       'Stabilize: As a Bonus Action, expend one use of a Healer\'s Kit to stabilize a creature at 0 HP without making a Medicine check.',
@@ -49,7 +59,7 @@ export const FEATS: FeatData[] = [
     // for Advantage on your own D20 Test (declared when you roll, not
     // after seeing the result) or to impose Disadvantage on an attack
     // roll against you. The 2014 extra-d20 reroll is gone.
-    description: 'You have inexplicable luck that can kick in at just the right moment.',
+    description: 'Spend Luck Points for Advantage, or to impose Disadvantage on an attacker.',
     benefits: [
       'Luck Points. You have Luck Points equal to your Proficiency Bonus, and regain all of them when you finish a Long Rest.',
       'Advantage. When you roll a d20 for a D20 Test, you can spend 1 Luck Point to give yourself Advantage on that roll.',
@@ -59,7 +69,7 @@ export const FEATS: FeatData[] = [
   {
     name: 'Magic Initiate',
     category: 'origin',
-    description: 'You have learned the basics of a particular magical tradition.',
+    description: 'Two cantrips and a 1st-level spell from the Cleric, Druid, or Wizard list.',
     benefits: [
       'Choose Cleric, Druid, or Wizard. Learn two cantrips from that list.',
       'Learn one 1st-level spell from the same list. Cast it once per Long Rest without a spell slot, or using any spell slots you have.',
@@ -69,7 +79,7 @@ export const FEATS: FeatData[] = [
   {
     name: 'Savage Attacker',
     category: 'origin',
-    description: 'You have practiced brutality with your weapons.',
+    description: 'Reroll your weapon damage dice once per turn and keep the better total.',
     benefits: [
       'Once per turn when you hit a target with a weapon, you can reroll the weapon\'s damage dice and use either total.',
     ],
@@ -80,7 +90,7 @@ export const FEATS: FeatData[] = [
     // v2.553.0 — RAW fix (audit #8): 2024 wording — any tools, not just
     // Artisan's Tools, and the feat is Repeatable. (Paraphrased; Skilled
     // is not in SRD 5.2.1.)
-    description: 'You have exceptional training across a range of disciplines.',
+    description: 'Three skill or tool proficiencies of your choice. Repeatable.',
     benefits: [
       'Gain proficiency in any combination of three skills or tools of your choice.',
       'Repeatable. You can take this feat more than once.',
@@ -93,7 +103,7 @@ export const FEATS: FeatData[] = [
     // not in SRD 5.2.1). Stripped the fabricated Reaction-unarmed-strike
     // benefit (verified: no such benefit in 2024 or 2014). 2024 kit is
     // Enhanced Unarmed Strike, Damage Rerolls, Improvised Weaponry, Push.
-    description: 'You\'ve spent time brawling in rough places.',
+    description: 'Stronger Unarmed Strikes, damage rerolls, and a free 5-foot push.',
     benefits: [
       'Enhanced Unarmed Strike. When you hit with your Unarmed Strike and deal damage, you can deal Bludgeoning damage equal to 1d4 + your Strength modifier instead of the normal damage.',
       'Damage Rerolls. Whenever you roll a damage die for your Unarmed Strike, you can reroll the die if it rolls a 1, and you must use the new roll.',
@@ -104,7 +114,7 @@ export const FEATS: FeatData[] = [
   {
     name: 'Tough',
     category: 'origin',
-    description: 'Your hit point maximum increases.',
+    description: 'A permanently larger Hit Point maximum that keeps scaling as you level.',
     benefits: [
       'Your Hit Point Maximum increases by 2 × your character level when you take this feat.',
       'Each time you gain a level, your Hit Point Maximum increases by an additional 2.',
@@ -128,7 +138,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Charisma', amount: 1 }],
-    description: 'Skilled at mimicry and dramatics.',
+    description: '+1 Charisma, convincing mimicry, and an edge on impersonation.',
     benefits: [
       '+1 Charisma (max 20).',
       'Mimicry: You can mimic another person\'s speech or creature sounds. Listeners must beat your Charisma (Deception) with Wisdom (Insight) to detect the mimicry.',
@@ -140,7 +150,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You have undergone extensive physical training.',
+    description: '+1 STR or DEX, a Climb Speed, and cheaper standing from Prone.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Climb Speed equal to your Speed.',
@@ -152,7 +162,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You have trained to charge headlong into battle.',
+    description: '+1 STR or DEX, extra damage after a Dash, and a knockdown on a running start.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Improved Dash: When you take the Dash action, weapon attacks you make before the end of the turn deal 1d8 extra damage on a hit.',
@@ -164,7 +174,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Constitution or Wisdom', amount: 1 }],
-    description: 'Time spent mastering the culinary arts has paid off.',
+    description: '+1 CON or WIS, plus rest-time cooking that grants healing and Temporary HP.',
     benefits: [
       '+1 Constitution or Wisdom (max 20).',
       'Cook\'s Utensils: Gain proficiency with Cook\'s Utensils.',
@@ -177,7 +187,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Dexterity', amount: 1 }],
-    description: 'Thanks to extensive practice with crossbows, you gain the following benefits.',
+    description: '+1 DEX, no Loading delay, no penalty up close, and a Bonus Action hand crossbow shot.',
     benefits: [
       '+1 Dexterity (max 20).',
       'Ignore the Loading property of crossbows.',
@@ -190,7 +200,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Constitution', amount: 1 }],
-    description: 'You are practiced in the art of bludgeoning opponents.',
+    description: '+1 STR or CON, plus pushes and crit openings whenever you deal Bludgeoning damage.',
     benefits: [
       '+1 Strength or Constitution (max 20).',
       'Once per turn, when you deal Bludgeoning damage, you can push the target 5 feet away.',
@@ -202,7 +212,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You master fighting with two weapons.',
+    description: '+1 STR or DEX, two-weapon fighting with non-Light weapons, and +1 AC.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'You can use Two-Weapon Fighting even when the weapons aren\'t Light.',
@@ -214,7 +224,7 @@ export const FEATS: FeatData[] = [
     name: 'Dungeon Delver',
     category: 'general',
     prerequisite: 'Level 4+',
-    description: 'Alert to the hidden traps and secret doors found in dungeons.',
+    description: 'Find traps and secret doors reliably, and shrug off the ones you miss.',
     benefits: [
       'Advantage on Perception and Investigation checks to detect secret doors and traps.',
       'Advantage on saving throws against traps.',
@@ -227,7 +237,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Constitution', amount: 1 }],
-    description: 'Hardy and resilient, you gain the following benefits.',
+    description: '+1 CON, Hit Points back on a successful Death Save, and better Hit Die rerolls.',
     benefits: [
       '+1 Constitution (max 20).',
       'Defy Death: Each time you succeed on a Death Saving Throw, you regain Hit Points equal to 2 × your Constitution modifier (minimum 2).',
@@ -252,7 +262,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Intelligence, Wisdom, or Charisma', amount: 1 }],
-    description: 'Your exposure to the Feywild\'s magic has changed you.',
+    description: '+1 mental ability, Misty Step, and a Divination or Enchantment spell.',
     benefits: [
       '+1 Intelligence, Wisdom, or Charisma (max 20).',
       'Learn the Misty Step spell. Cast it once per Long Rest for free, or using a spell slot.',
@@ -264,7 +274,7 @@ export const FEATS: FeatData[] = [
     name: 'Gift of the Chromatic Dragon',
     category: 'general',
     prerequisite: 'Level 4+',
-    description: 'You\'ve manifested gifts from chromatic dragons.',
+    description: 'Infuse a weapon with elemental damage, and shrug off elemental hits with your Reaction.',
     benefits: [
       'Chromatic Infusion: As a Bonus Action, touch a simple or martial weapon and infuse it with acid, cold, fire, lightning, or poison damage for 1 minute. While infused, it deals an extra 1d4 of that damage type on a hit. Uses = proficiency bonus, recovered on Long Rest.',
       'Reactive Resistance: When you take acid, cold, fire, lightning, or poison damage, you can use your Reaction to give yourself resistance to that damage instance. Uses = proficiency bonus, recovered on Long Rest.',
@@ -275,7 +285,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You\'ve developed the skills necessary to hold your own in close-quarters grappling.',
+    description: '+1 STR or DEX, Advantage against grappled targets, and an extra Grapple or Shove.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Advantage on attack rolls against creatures you are grappling.',
@@ -288,7 +298,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength', amount: 1 }],
-    description: 'You\'ve learned to put the weight of a weapon to your advantage.',
+    description: '+1 STR, a Bonus Action attack on a crit or kill, and a −5/+10 power swing.',
     benefits: [
       '+1 Strength (max 20).',
       'When you score a Critical Hit or reduce a creature to 0 HP with a melee weapon, you can make one melee weapon attack as a Bonus Action.',
@@ -300,7 +310,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Medium Armor proficiency, Level 4+',
     asi: [{ ability: 'Strength', amount: 1 }],
-    description: 'You have trained to master the use of heavy armor.',
+    description: '+1 STR and proficiency with Heavy Armor.',
     benefits: [
       '+1 Strength (max 20).',
       'Gain proficiency with Heavy Armor.',
@@ -311,7 +321,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Heavy Armor proficiency, Level 4+',
     asi: [{ ability: 'Constitution', amount: 1 }],
-    description: 'You can use your armor to deflect strikes that would kill others.',
+    description: '+1 CON, and Heavy Armor cuts 3 off every physical hit you take.',
     benefits: [
       '+1 Constitution (max 20).',
       'While wearing Heavy Armor, Bludgeoning, Piercing, and Slashing damage you take is reduced by 3.',
@@ -322,7 +332,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Wisdom or Charisma', amount: 1 }],
-    description: 'You can spend 10 minutes inspiring your companions.',
+    description: '+1 WIS or CHA, and a 10-minute speech that hands out Temporary HP.',
     benefits: [
       '+1 Wisdom or Charisma (max 20).',
       'After a 10-minute speech, up to six friendly creatures (including yourself) each gain Temporary HP equal to your level + your Charisma modifier.',
@@ -334,7 +344,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Intelligence', amount: 1 }],
-    description: 'You have a mind that can track time, direction, and detail with uncanny precision.',
+    description: '+1 INT, perfect recall and direction sense, and Advantage on Intelligence checks.',
     benefits: [
       '+1 Intelligence (max 20).',
       'You always know which way is north and how many hours are left before the next sunrise or sunset.',
@@ -347,7 +357,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You have trained to master the use of light armor.',
+    description: '+1 STR or DEX and proficiency with Light Armor.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Gain proficiency with Light Armor.',
@@ -357,7 +367,7 @@ export const FEATS: FeatData[] = [
     name: 'Mage Slayer',
     category: 'general',
     prerequisite: 'Level 4+',
-    description: 'You have practiced techniques to counter spellcasters.',
+    description: 'Punish nearby casters with your Reaction, and resist the spells they cast.',
     benefits: [
       'Whenever a creature within 5 feet of you casts a spell, you can use your Reaction to make a melee weapon attack against that creature.',
       'You have Advantage on saving throws against spells cast by creatures within 5 feet of you.',
@@ -367,7 +377,7 @@ export const FEATS: FeatData[] = [
     name: 'Medium Armor Master',
     category: 'general',
     prerequisite: 'Medium Armor proficiency, Level 4+',
-    description: 'You have practiced moving in medium armor to gain the following benefits.',
+    description: 'Medium Armor without the Stealth penalty, and up to +3 AC from Dexterity.',
     benefits: [
       'Wearing Medium Armor doesn\'t impose Disadvantage on Stealth checks.',
       'When wearing Medium Armor, you can add up to +3 to AC from your Dexterity modifier (instead of the normal +2 maximum).',
@@ -377,7 +387,7 @@ export const FEATS: FeatData[] = [
     name: 'Metamagic Adept',
     category: 'general',
     prerequisite: 'Spellcasting or Pact Magic feature, Level 4+',
-    description: 'You\'ve learned how to exert your will on your spells to alter how they function.',
+    description: 'Two Metamagic options from the Sorcerer list, and 2 Sorcery Points to fuel them.',
     benefits: [
       'Learn two Metamagic options from the Sorcerer\'s Metamagic list.',
       'Gain 2 Sorcery Points. You can spend them only on Metamagic (they don\'t add to a Sorcerer\'s pool).',
@@ -388,7 +398,7 @@ export const FEATS: FeatData[] = [
     name: 'Mobile',
     category: 'general',
     prerequisite: 'Level 4+',
-    description: 'You are exceptionally speedy and agile.',
+    description: '+10 feet of Speed, free movement over difficult terrain on a Dash, and no Opportunity Attacks from targets you strike.',
     benefits: [
       'Your Speed increases by 10 feet.',
       'When you use the Dash action, difficult terrain doesn\'t cost extra movement for the rest of the turn.',
@@ -400,7 +410,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Light Armor proficiency, Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You have trained to master the use of medium armor and shields.',
+    description: '+1 STR or DEX, plus proficiency with Medium Armor and Shields.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Gain proficiency with Medium Armor and Shields.',
@@ -411,7 +421,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength, Dexterity, or Wisdom', amount: 1 }],
-    description: 'You are a dangerous foe to face while mounted.',
+    description: '+1 STR, DEX, or WIS, and a mount that is far harder to bring down.',
     benefits: [
       '+1 Strength, Dexterity, or Wisdom (max 20).',
       'Advantage on melee attack rolls against unmounted creatures smaller than your mount.',
@@ -424,7 +434,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Intelligence or Wisdom', amount: 1 }],
-    description: 'Quick to notice details of your environment, you gain the following benefits.',
+    description: '+1 INT or WIS, lip reading, and +5 to passive Perception and Investigation.',
     benefits: [
       '+1 Intelligence or Wisdom (max 20).',
       'If you can see a creature\'s mouth and understand its language, you can interpret what it\'s saying by reading lips.',
@@ -436,7 +446,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You can keep enemies at bay with reach weapons.',
+    description: '+1 STR or DEX, a Bonus Action butt-end strike, and Opportunity Attacks on approach.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'When attacking with a glaive, halberd, pike, quarterstaff, or spear, you can use a Bonus Action to make a melee attack with the butt of the weapon (1d4 Bludgeoning damage).',
@@ -448,7 +458,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Any', amount: 1 }],
-    description: 'You have developed the resilience to better withstand certain dangers.',
+    description: '+1 to an ability score of your choice, and saving throw proficiency in it.',
     benefits: [
       '+1 to an ability score of your choice (max 20).',
       'Gain proficiency in saving throws for that ability score.',
@@ -458,7 +468,7 @@ export const FEATS: FeatData[] = [
     name: 'Ritual Caster',
     category: 'general',
     prerequisite: 'Spellcasting or Pact Magic feature, Level 4+',
-    description: 'You have learned how to cast spells as rituals.',
+    description: 'Learn ritual spells from any class list and cast them without spending slots.',
     benefits: [
       'Learn two 1st-level spells with the Ritual tag from any class list. These are added to your spellbook.',
       'You can cast them as rituals (10 minutes extra casting time, no spell slot needed).',
@@ -469,7 +479,7 @@ export const FEATS: FeatData[] = [
     name: 'Sentinel',
     category: 'general',
     prerequisite: 'Level 4+',
-    description: 'You have mastered techniques to take advantage of every drop in your enemy\'s guard.',
+    description: 'Opportunity Attacks that stop movement, catch those who Disengage, and defend your allies.',
     benefits: [
       'When you hit a creature with an Opportunity Attack, its Speed drops to 0 for the rest of the turn.',
       'Creatures within your reach provoke Opportunity Attacks even if they use the Disengage action.',
@@ -481,7 +491,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Intelligence, Wisdom, or Charisma', amount: 1 }],
-    description: 'Your exposure to the Shadowfell\'s magic has changed you.',
+    description: '+1 mental ability, Invisibility, and an Illusion or Necromancy spell.',
     benefits: [
       '+1 Intelligence, Wisdom, or Charisma (max 20).',
       'Learn the Invisibility spell. Cast it once per Long Rest for free, or using a spell slot.',
@@ -493,7 +503,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Dexterity', amount: 1 }],
-    description: 'You have mastered ranged weapons and can make shots that others find difficult.',
+    description: '+1 DEX, no long-range or cover penalties, and a −5/+10 power shot.',
     benefits: [
       '+1 Dexterity (max 20).',
       'Attacking at long range doesn\'t impose Disadvantage on ranged weapon attack rolls.',
@@ -505,7 +515,7 @@ export const FEATS: FeatData[] = [
     name: 'Shield Master',
     category: 'general',
     prerequisite: 'Level 4+',
-    description: 'You use shields not just for protection but also for offense.',
+    description: 'Shove with your shield, and put it between you and area effects.',
     benefits: [
       'If you use the Attack action, you can use a Bonus Action to try to shove a creature within 5 feet with your shield.',
       'If you aren\'t Incapacitated, you can add your shield\'s AC bonus to saving throws against effects targeting only you.',
@@ -517,7 +527,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Dexterity', amount: 1 }],
-    description: 'You are expert at slinking through shadows.',
+    description: '+1 DEX, Hide while only lightly obscured, and stay hidden after a missed shot.',
     benefits: [
       '+1 Dexterity (max 20).',
       'You can try to Hide when you are only lightly obscured.',
@@ -530,7 +540,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You have learned where to cut to have the greatest effect.',
+    description: '+1 STR or DEX, plus slowing and crit debuffs whenever you deal Slashing damage.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Once per turn when you deal Slashing damage, you can reduce the target\'s Speed by 10 feet until the start of your next turn.',
@@ -542,7 +552,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Spellcasting or Pact Magic feature, Level 4+',
     asi: [{ ability: 'Intelligence, Wisdom, or Charisma', amount: 1 }],
-    description: 'You have learned techniques to enhance your attacks with certain kinds of spells.',
+    description: '+1 mental ability, doubled spell attack range, ignored cover, and a bonus cantrip.',
     benefits: [
       '+1 Intelligence, Wisdom, or Charisma (max 20).',
       'The range of spells that require attack rolls is doubled.',
@@ -555,7 +565,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Intelligence, Wisdom, or Charisma', amount: 1 }],
-    description: 'You learn to move things with your mind.',
+    description: '+1 mental ability, an invisible Mage Hand, and a Bonus Action telekinetic shove.',
     benefits: [
       '+1 Intelligence, Wisdom, or Charisma (max 20).',
       'Learn the Mage Hand cantrip (if you already know it, learn a different cantrip). The hand is invisible.',
@@ -567,7 +577,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Intelligence, Wisdom, or Charisma', amount: 1 }],
-    description: 'You awaken the ability to mentally connect with others.',
+    description: '+1 mental ability, 60-foot telepathy, and Detect Thoughts once per Long Rest.',
     benefits: [
       '+1 Intelligence, Wisdom, or Charisma (max 20).',
       'Speak telepathically with any creature you can see within 60 feet. The creature must understand a language.',
@@ -587,7 +597,7 @@ export const FEATS: FeatData[] = [
     name: 'War Caster',
     category: 'general',
     prerequisite: 'Spellcasting or Pact Magic feature, Level 4+',
-    description: 'You have practiced casting spells in the midst of combat.',
+    description: 'Hold Concentration under fire, cast with your hands full, and cast as an Opportunity Attack.',
     benefits: [
       'Advantage on Constitution saving throws to maintain Concentration when you take damage.',
       'You can perform Somatic components even when both hands are occupied (e.g., holding a weapon and shield).',
@@ -599,7 +609,7 @@ export const FEATS: FeatData[] = [
     category: 'general',
     prerequisite: 'Level 4+',
     asi: [{ ability: 'Strength or Dexterity', amount: 1 }],
-    description: 'You have practiced extensively with a variety of weapons.',
+    description: '+1 STR or DEX and proficiency with four weapons of your choice.',
     benefits: [
       '+1 Strength or Dexterity (max 20).',
       'Gain proficiency with four weapons of your choice. Each must be a Simple or Martial weapon.',
