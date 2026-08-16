@@ -70,7 +70,11 @@ export default function BestiaryPage() {
         <div>
           <h2 style={{ marginBottom: 4 }}>Bestiary</h2>
           <p style={{ fontSize: 13, color: 'var(--t-3)', margin: 0 }}>
-            Browse {monsters.length} monsters · {myHomebrew.length} homebrew · official SRD content freely usable under OGL 1.0a
+            {/* v2.672.0 — was "freely usable under OGL 1.0a". Wrong licence:
+                WotC re-released SRD 5.1 under CC-BY-4.0 in Jan 2023, and
+                SRD 5.2.1 is CC-BY-4.0 only (never OGL). The /srd page has
+                always said CC-BY; this line contradicted it. */}
+            Browse {monsters.length} monsters · {myHomebrew.length} homebrew · official SRD content used under CC-BY-4.0
           </p>
         </div>
         <button className="btn-gold btn-sm" onClick={() => { setEditing(null); setTab('create'); }}>
