@@ -130,7 +130,7 @@ Scope:
   size larger), Halfling Nimbleness ("move through the space of a creature one size
   larger"), grapple/shove size limits, and Naturally Stealthy.
 
-### Choice pickers: show the full text, always — **shipped v2.670** (disciplines only)
+### Choice pickers: show the full text, always — **shipped v2.670 + v2.671** (complete)
 
 **Ask (Jared, from the Psionic Disciplines picker):** every description should be
 expanded by default, and the **Less** button should go entirely. You are choosing
@@ -172,17 +172,29 @@ text must sit outside the button. And a `flex-direction: column` list with a
 max-height shrinks its rows by default, squashing full-length descriptions into each
 other until the rows get `flex-shrink: 0`.
 
-**Still queued — the rule was applied to disciplines only** (Jared's call,
-2026-08-15; the audit found no other picker left in `PendingChoicesAlert.tsx` —
-the cantrip/spell prompts moved to `SpellCompletionBanner`, which doesn't truncate).
-Same friction still lives in the feat and spell pickers, which also serve character
-creation, so they were left for a deliberate pass:
-- `LevelUp.tsx:43` — `FeatCard`, `slice(0,100)` + per-card toggle, benefits list
-  hidden until expanded.
-- `shared/FeatPicker.tsx:23` — single-line CSS ellipsis + a single `expanded` id;
-  expanding is coupled to selecting. Used by CharacterCreator's StepBuild **and**
-  LevelUpWizard.
-- `shared/SpellPickerDropdown.tsx:42` — single `expanded` id.
+**What shipped (v2.671):** the feat and spell pickers, closing the rule out. The
+audit had found no second picker left in `PendingChoicesAlert.tsx` — the
+cantrip/spell prompts moved to `SpellCompletionBanner`, which doesn't truncate — so
+the remaining friction was in three shared/creation surfaces, all of which lost
+their expand state:
+- `LevelUp.tsx` `FeatCard` — was `slice(0,100)` + a per-card ▼; now full
+  description and benefits on every card, list `320px` → `min(60vh, 520px)`.
+- `shared/FeatPicker.tsx` — was a one-line CSS ellipsis + a single `expanded` id
+  with expanding coupled to selecting; now every row carries its full description,
+  prerequisites, ASI and benefits, and a row click just selects. The duplicated
+  description inside the old expanded block is gone. Serves CharacterCreator's
+  StepBuild and LevelUpWizard.
+- `shared/SpellPickerDropdown.tsx` — description and stat line always shown; the
+  row is no longer a clickable expander (Add/Remove is the only action) and the
+  duplicate Add/Remove pair that lived in the expanded block went with it.
+
+Both `LevelUp`'s feat list and the earlier discipline lists hit the same
+`flex-shrink` trap noted above — worth assuming it applies to any list of this
+shape. Verified in a browser at 1280 and 393px.
+
+Deliberately left truncated, both being *reading* not *choosing*: `DMlobby.tsx:97`
+(campaign blurb) and `FeatPicker`'s closed trigger, which summarises the feat you
+already picked.
 
 ---
 

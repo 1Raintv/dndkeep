@@ -39,7 +39,9 @@ export default function SpellPickerDropdown({
  const [open, setOpen] = useState(false);
  const [activeLevel, setActiveLevel] = useState(0);
  const [search, setSearch] = useState('');
- const [expanded, setExpanded] = useState<string | null>(null);
+ // v2.671 — no expanded state. Choosing spells means comparing them, so every
+ // row carries its full description and stat line (see ROADMAP, "Choice
+ // pickers: show the full text, always").
  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
  const triggerRef = useRef<HTMLButtonElement>(null);
  const dropRef = useRef<HTMLDivElement>(null);
@@ -189,7 +191,7 @@ export default function SpellPickerDropdown({
  <input
  ref={searchRef}
  value={search}
- onChange={e => { setSearch(e.target.value); setExpanded(null); }}
+ onChange={e => setSearch(e.target.value)}
  placeholder={`Search ${isCantrip ? 'cantrips' : 'spells'} by name, school, or effect…`}
  style={{
  width: '100%', fontSize: 13, padding: '7px 12px',
@@ -215,7 +217,7 @@ export default function SpellPickerDropdown({
  return (
  <button
  key={lvl}
- onClick={() => { setActiveLevel(lvl); setSearch(''); setExpanded(null); }}
+ onClick={() => { setActiveLevel(lvl); setSearch(''); }}
  style={{
  fontSize: 12, fontWeight: 600, padding: '5px 13px', borderRadius: 999,
  cursor: 'pointer', minHeight: 0,
@@ -298,7 +300,6 @@ export default function SpellPickerDropdown({
  </div>
  ) : spellsAtLevel.map(spell => {
  const sel = selected.includes(spell.id);
- const isExp = expanded === spell.id;
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
  const isGranted = grantedSpellIds.includes(spell.id);
  // Gray out: at limit AND this spell isn't already selected
@@ -309,12 +310,10 @@ export default function SpellPickerDropdown({
  background: sel ? 'rgba(212,160,23,0.05)' : blocked ? 'rgba(0,0,0,0.15)' : 'transparent',
  opacity: blocked ? 0.5 : 1,
  }}>
- {/* Main row */}
+ {/* Main row — v2.671: nothing left to expand, so the row is no
+ longer clickable; Add/Remove is the only action. */}
  <div
- onClick={() => !blocked && setExpanded(isExp ? null : spell.id)}
- style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: blocked ? 'not-allowed' : 'pointer', minHeight: 48 }}
- onMouseEnter={e => { if (!sel && !blocked) (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
- onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+ style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px 4px', cursor: blocked ? 'not-allowed' : 'default', minHeight: 48 }}
  >
  {/* School color bar */}
  <div style={{ width: 3, height: 32, borderRadius: 2, background: schoolColor, opacity: blocked ? 0.3 : 0.8, flexShrink: 0 }} />
@@ -386,13 +385,11 @@ export default function SpellPickerDropdown({
  </button>
  )}
 
- <span style={{ fontSize: 9, color: 'var(--t-3)', flexShrink: 0, transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
  </div>
 
- {/* Expanded description */}
- {isExp && (
- <div style={{ padding: '0 14px 12px 27px', borderTop: '1px solid var(--c-border)', background: 'rgba(255,255,255,0.02)' }}>
- <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '10px 0 8px' }}>
+ {/* Description — always shown (v2.671) */}
+ <div style={{ padding: '0 14px 12px 27px' }}>
+ <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '2px 0 8px' }}>
  {spell.description}
  </p>
  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
@@ -402,38 +399,11 @@ export default function SpellPickerDropdown({
  <span><strong style={{ color: 'var(--t-2)' }}>Duration:</strong> {spell.duration}</span>
  <span><strong style={{ color: 'var(--t-2)' }}>Range:</strong> {spell.range}</span>
  </div>
- {/* Remove button — only shown when spell is already added */}
- {sel && (
- <button
- onClick={e => { e.stopPropagation(); onToggle(spell.id); }}
- style={{
- fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6,
- cursor: 'pointer', flexShrink: 0,
- border: '1px solid rgba(248,113,113,0.4)',
- background: 'rgba(248,113,113,0.1)',
- color: '#f87171',
- }}
- >
- − Remove Spell
- </button>
- )}
- {!sel && !blocked && (
- <button
- onClick={e => { e.stopPropagation(); onToggle(spell.id); }}
- style={{
- fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6,
- cursor: 'pointer', flexShrink: 0,
- border: '1px solid var(--c-gold-bdr)',
- background: 'var(--c-gold-bg)',
- color: 'var(--c-gold-l)',
- }}
- >
- + Add Spell
- </button>
- )}
+ {/* v2.671 — the duplicate Add/Remove pair that used to live down
+ here went with the expander: the row's own button is always
+ visible now, so a second one is just noise. */}
  </div>
  </div>
- )}
  </div>
  );
  })}
