@@ -574,16 +574,15 @@ export const FEATS: FeatData[] = [
       'Cast Detect Thoughts once per Long Rest for free, or using a spell slot. No components needed.',
     ],
   },
-  {
-    name: 'Tough',
-    category: 'general',
-    prerequisite: 'Level 4+',
-    description: 'Your hit point maximum increases significantly.',
-    benefits: [
-      'Your Hit Point Maximum increases by 2 × your character level.',
-      'Each time you gain a level, your Hit Point Maximum increases by an additional 2.',
-    ],
-  },
+  // v2.672.0 — A second 'Tough' lived here as a General feat (a 2014-era
+  // holdover; 2024 moved Tough into the Origin block, where it already
+  // exists above). Both entries were in FEATS at once, so every list that
+  // renders the unfiltered table keyed by feat.name collided on 'Tough'
+  // — React "two children with the same key" + a dropped card in the
+  // Features & Traits "add feat" search. Deleted, not merged: feat NAMES
+  // are the identity everywhere (gained_feats stores names, featRiders
+  // switches on them, every lookup is FEATS.find(f => f.name === …)), so
+  // duplicates are never valid. raw-check now asserts name uniqueness.
   {
     name: 'War Caster',
     category: 'general',

@@ -140,6 +140,22 @@ console.log('— Feats (v2.553) —');
   check('Tavern Brawler: no fabricated Reaction benefit', !(tb?.benefits ?? []).some((b) => /Reaction/.test(b)));
   const skilled = featByName('Skilled');
   check('Skilled: skills or tools + Repeatable', (skilled?.benefits ?? []).some((b) => /skills or tools/i.test(b)) && (skilled?.benefits ?? []).some((b) => /Repeatable/i.test(b)));
+
+  // v2.672.0 — Feat names are the identity everywhere: gained_feats stores
+  // names, featRiders switches on them, and every picker keys its React
+  // list by feat.name. A duplicate name silently shadows one entry in
+  // FEATS.find() AND collides as a React key (dropped/duplicated card).
+  // Caught by a real 'Tough' duplicate (origin + a 2014-era general copy).
+  {
+    const seen = new Set();
+    const dupes = FEATS.map((f) => f.name).filter((n) => seen.size === seen.add(n).size);
+    check(`Feat names are unique${dupes.length ? ` (dupes: ${[...new Set(dupes)].join(', ')})` : ''}`, dupes.length === 0);
+  }
+
+  // 2024 PHB: Tough is an ORIGIN feat, taken at level 1 via Background —
+  // not a level-4 General feat as in 2014.
+  const tough = featByName('Tough');
+  check('Tough is an Origin feat with no prerequisite', tough?.category === 'origin' && !tough?.prerequisite);
 }
 
 rmSync(tmp, { recursive: true, force: true });
