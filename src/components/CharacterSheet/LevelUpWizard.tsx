@@ -590,7 +590,9 @@ function OverviewStep({ newLevel, character, effectiveClassName, classData, avgH
 }
 
 function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onSearch, onToggle }: any) {
- const [expandedId, setExpandedId] = useState<string | null>(null);
+ // v2.670 — no expand/collapse state here. This is a comparison list: you
+ // read every discipline before picking one, and the old single-expanded-id
+ // toggle collapsed the description you were comparing against.
  const filtered = PSION_DISCIPLINES.filter(d =>
  search === '' ||
  d.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -635,10 +637,12 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  }}
  />
 
- <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+ {/* v2.670 — full descriptions make every row taller, so the scroller
+ grew with them (viewport-relative, capped) instead of the text
+ being cut back down. */}
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 'min(60vh, 520px)', overflowY: 'auto' }}>
  {filtered.map(disc => {
  const isSelected = currentDisciplines.includes(disc.name);
- const isExpanded = expandedId === disc.id;
  const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
  return (
  <div key={disc.id} style={{
@@ -646,6 +650,10 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  borderRadius: 'var(--r-lg)',
  background: isSelected ? 'rgba(212,160,23,0.06)' : 'var(--c-raised)',
  overflow: 'hidden',
+ // v2.670 — the list is a column flex with a max height, so rows
+ // would otherwise flex-shrink to fit and squash their now
+ // full-length descriptions into each other.
+ flexShrink: 0,
  }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
  <button
@@ -657,6 +665,9 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  flex: 1, textAlign: 'left', background: 'transparent', border: 'none',
  cursor: isSelected || canAdd ? 'pointer' : 'not-allowed', padding: 0,
  display: 'flex', flexDirection: 'column', gap: 3,
+ // v2.670 — globals.css centres every button's content; the name row
+ // has to opt out so it lines up with the description beneath it.
+ alignItems: 'flex-start', justifyContent: 'flex-start', minHeight: 0,
  }}
  >
  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -672,24 +683,15 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  </span>
  )}
  </div>
- {!isExpanded && (
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
- {disc.description.slice(0, 90)}{disc.description.length > 90 ? '…' : ''}
- </span>
- )}
- </button>
- <button
- onClick={() => setExpandedId(isExpanded ? null : disc.id)}
- style={{ background: 'transparent', border: 'none', color: 'var(--t-3)', cursor: 'pointer', fontSize: 11, padding: '0 4px', flexShrink: 0 }}
- >
- {isExpanded ? '▲' : '▼'}
  </button>
  </div>
- {isExpanded && (
- <div style={{ padding: '0 14px 12px', fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65, borderTop: '1px solid var(--c-border)' }}>
+ {/* v2.670 — always the full text, and OUTSIDE the select button:
+ globals.css gives every button `white-space: nowrap; overflow:
+ hidden`, which silently clipped the description to one cut-off
+ line when it lived inside. */}
+ <div style={{ padding: '0 14px 12px', fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65 }}>
  {disc.description}
  </div>
- )}
  </div>
  );
  })}
