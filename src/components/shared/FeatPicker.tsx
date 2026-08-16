@@ -20,7 +20,9 @@ interface FeatPickerProps {
 export default function FeatPicker({ selected, onSelect, generalOnly = true, character, classData }: FeatPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // v2.671 — no expanded state. Choosing a feat means comparing all of them,
+  // so every row carries its full description, prerequisites, ASI and benefits
+  // (see ROADMAP, "Choice pickers: show the full text, always").
   const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -106,7 +108,7 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
         <input
           ref={searchRef}
           value={search}
-          onChange={e => { setSearch(e.target.value); setExpanded(null); }}
+          onChange={e => setSearch(e.target.value)}
           placeholder="Search feats by name or effect…"
           style={{
             width: '100%', fontSize: 13, padding: '6px 10px',
@@ -118,7 +120,7 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
 
       {/* Count */}
       <div style={{ padding: '5px 12px 3px', fontSize: 10, color: 'var(--t-3)', flexShrink: 0 }}>
-        {feats.length} feat{feats.length !== 1 ? 's' : ''} · click row to view & select · close to lock in
+        {feats.length} feat{feats.length !== 1 ? 's' : ''} · click a row to select · close to lock in
       </div>
 
       {/* Feat list */}
@@ -130,7 +132,6 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
         )}
         {feats.map(feat => {
           const isSel = selected === feat.name;
-          const isExp = expanded === feat.name;
           // v2.513.0 — prerequisite gating. If character context is
           // provided, evaluate eligibility; locked feats stay visible
           // and readable but can't be selected.
@@ -140,14 +141,11 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
           const locked = !elig.met;
           return (
             <div key={feat.name} style={{ borderBottom: '1px solid var(--c-border)', background: isSel ? 'rgba(212,160,23,0.06)' : 'transparent', opacity: locked ? 0.72 : 1 }}>
-              {/* Row — click to expand; select only if not locked */}
+              {/* Row — click selects, unless the feat is locked (v2.671: there
+                  is nothing left to expand, so a locked row is read-only). */}
               <div
-                onClick={() => {
-                  setExpanded(isExp ? null : feat.name);
-                  // Locked feats can be read (expand) but not selected.
-                  if (!isSel && !locked) onSelect(feat.name);
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', minHeight: 44 }}
+                onClick={() => { if (!isSel && !locked) onSelect(feat.name); }}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 14px', cursor: locked ? 'default' : 'pointer', minHeight: 44 }}
                 onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = 'var(--c-raised)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
               >
@@ -184,22 +182,24 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
                     )}
                   </div>
                   {/* v2.513.0 — red lock reason when ineligible; else description */}
+                  {/* v2.671 — the description wraps in full instead of being
+                      cut to one ellipsised line; the lock reason still gets
+                      one line, since it is a short status, not a mechanic. */}
                   {locked ? (
                     <div style={{ fontSize: 11, color: 'var(--c-red-l, #f87171)', marginTop: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {elig.reason}
                     </div>
                   ) : (
-                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2, lineHeight: 1.5 }}>
                       {feat.description}
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: 10, color: 'var(--t-3)', flexShrink: 0, transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
               </div>
 
-              {/* Expanded — full details (no separate Select button needed; the row click already selected it) */}
-              {isExp && (
-                <div style={{ padding: '0 14px 12px 38px', borderTop: '1px solid var(--c-border)' }}>
+              {/* Details — always shown (no separate Select button needed; the row click already selected it) */}
+              {(feat.prerequisite || (feat.asi && feat.asi.length > 0) || isSel || (feat.benefits && feat.benefits.length > 0)) && (
+                <div style={{ padding: '0 14px 12px 38px' }}>
 
                   {/* Prerequisite banner */}
                   {feat.prerequisite && (
@@ -236,9 +236,9 @@ export default function FeatPicker({ selected, onSelect, generalOnly = true, cha
                     </div>
                   )}
 
-                  <p style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.65, margin: '8px 0 8px' }}>
-                    {feat.description}
-                  </p>
+                  {/* v2.671 — the description used to repeat here; it now
+                      lives on the row itself, in full, so this block carries
+                      only what the row does not. */}
                   {feat.benefits && feat.benefits.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
                       {feat.benefits.map((b, i) => (

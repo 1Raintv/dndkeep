@@ -25,11 +25,15 @@ const ABILITY_LABELS: Record<string,string> = {
  intelligence:'Intelligence', wisdom:'Wisdom', charisma:'Charisma',
 };
 
+// v2.671 — no expand/collapse state. Picking a feat means reading every feat,
+// so the description and its benefits are always in full (see ROADMAP,
+// "Choice pickers: show the full text, always").
 function FeatCard({ feat, selected, onSelect }: { feat: FeatData; selected: boolean; onSelect: () => void }) {
- const [expanded, setExpanded] = useState(false);
  const catColor: Record<string,string> = { general:'#60a5fa', 'fighting-style':'#f87171', 'epic-boon':'#d946ef', origin:'var(--c-gold)' };
  return (
- <div style={{ borderRadius:'var(--r-md)', border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border)', background: selected ? 'rgba(201,146,42,0.08)' : '#080d14', overflow:'hidden', transition:'all var(--tr-fast)' }}>
+ // v2.671 — flexShrink:0 because the list below is a column flex with a max
+ // height; without it the cards squash their full-length text into each other.
+ <div style={{ borderRadius:'var(--r-md)', border: selected ? '2px solid var(--c-gold)' : '1px solid var(--c-border)', background: selected ? 'rgba(201,146,42,0.08)' : '#080d14', overflow:'hidden', transition:'all var(--tr-fast)', flexShrink:0 }}>
  <div style={{ display:'flex', alignItems:'center', gap:'var(--sp-3)', padding:'var(--sp-3) var(--sp-4)', cursor:'pointer' }} onClick={onSelect}>
  <div style={{ width:18, height:18, borderRadius:'50%', flexShrink:0, border: selected ? '5px solid var(--c-gold)' : '2px solid var(--c-border-m)', background: selected ? 'var(--c-gold)' : 'transparent' }} />
  <div style={{ flex:1, minWidth:0 }}>
@@ -39,13 +43,12 @@ function FeatCard({ feat, selected, onSelect }: { feat: FeatData; selected: bool
  {feat.prerequisite && <span style={{ fontSize:9, fontFamily:'var(--ff-body)', color:'var(--t-2)', background:'var(--c-raised)', border:'1px solid var(--c-border)', borderRadius:4, padding:'1px 5px' }}>{feat.prerequisite}</span>}
  <span style={{ fontSize:9, fontFamily:'var(--ff-body)', color:catColor[feat.category], background:'rgba(0,0,0,0.2)', border:`1px solid ${catColor[feat.category]}40`, borderRadius:4, padding:'1px 5px', marginLeft:'auto' }}>{feat.category}</span>
  </div>
- <div style={{ fontSize:'var(--fs-xs)', color:'var(--t-2)', marginTop:2, lineHeight:1.4 }}>
- {feat.description.length > 100 && !expanded ? feat.description.slice(0,100)+'…' : feat.description}
+ <div style={{ fontSize:'var(--fs-xs)', color:'var(--t-2)', marginTop:2, lineHeight:1.5 }}>
+ {feat.description}
  </div>
  </div>
- <button onClick={e=>{ e.stopPropagation(); setExpanded(v=>!v); }} style={{ background:'none', border:'none', color:'var(--t-2)', cursor:'pointer', fontSize:'var(--fs-xs)', flexShrink:0 }}>{expanded?'▲':'▼'}</button>
  </div>
- {expanded && (
+ {feat.benefits.length > 0 && (
  <div style={{ padding:'0 var(--sp-4) var(--sp-3)', borderTop:'1px solid var(--c-border)', background:'#080d14' }}>
  <ul style={{ margin:'var(--sp-2) 0 0', paddingLeft:'var(--sp-4)', display:'flex', flexDirection:'column', gap:'var(--sp-1)' }}>
  {feat.benefits.map((b,i) => <li key={i} style={{ fontSize:'var(--fs-xs)', color:'var(--t-2)', lineHeight:1.5 }}>{b}</li>)}
@@ -216,7 +219,9 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  {newLevel >= 19 && <option value="epic-boon">Epic Boon</option>}
  </select>
  </div>
- <div style={{ display:'flex', flexDirection:'column', gap:'var(--sp-2)', maxHeight:320, overflowY:'auto', paddingRight:4 }}>
+ {/* v2.671 — full feat text makes each card much taller, so the list grew
+ (viewport-relative, capped) rather than the text being cut back down. */}
+ <div style={{ display:'flex', flexDirection:'column', gap:'var(--sp-2)', maxHeight:'min(60vh, 520px)', overflowY:'auto', paddingRight:4 }}>
  {eligibleFeats.length === 0 && <p style={{ color:'var(--t-2)', fontSize:'var(--fs-sm)', fontFamily:'var(--ff-body)', textAlign:'center', padding:'var(--sp-4)' }}>No feats match.</p>}
  {eligibleFeats.map(feat => <FeatCard key={feat.name} feat={feat} selected={selectedFeat===feat.name} onSelect={()=>setSelectedFeat(feat.name)} />)}
  </div>
