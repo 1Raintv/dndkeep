@@ -4,7 +4,7 @@ import { SPELL_MAP } from './spells';
 export const CLASSES: ClassData[] = [
   {
     name: 'Barbarian', hit_die: 12,
-    primary_abilities: ['strength', 'constitution'],
+    primary_abilities: ['strength'],
     saving_throw_proficiencies: ['strength', 'constitution'],
     skill_choices: ['Animal Handling', 'Athletics', 'Intimidation', 'Nature', 'Perception', 'Survival'],
     skill_count: 2,
@@ -64,7 +64,7 @@ export const CLASSES: ClassData[] = [
     skill_choices: ['Acrobatics','Animal Handling','Arcana','Athletics','Deception','History','Insight','Intimidation','Investigation','Medicine','Nature','Perception','Performance','Persuasion','Religion','Sleight of Hand','Stealth','Survival'],
     skill_count: 3,
     armor_proficiencies: ['Light Armor'],
-    weapon_proficiencies: ['Simple Weapons', 'Hand Crossbows', 'Longswords', 'Rapiers', 'Shortswords'],
+    weapon_proficiencies: ['Simple Weapons'],
     tool_proficiencies: ['Three Musical Instruments of your choice'],
     is_spellcaster: true, spellcasting_ability: 'charisma', spellcaster_type: 'full',
     subclasses: [
@@ -180,7 +180,7 @@ export const CLASSES: ClassData[] = [
     saving_throw_proficiencies: ['intelligence', 'wisdom'],
     skill_choices: ['Arcana', 'Animal Handling', 'Insight', 'Medicine', 'Nature', 'Perception', 'Religion', 'Survival'],
     skill_count: 2,
-    armor_proficiencies: ['Light Armor', 'Medium Armor', 'Shields (non-metal)'],
+    armor_proficiencies: ['Light Armor', 'Shields'],
     weapon_proficiencies: ['Simple Weapons'],
     tool_proficiencies: ['Herbalism Kit'],
     is_spellcaster: true, spellcasting_ability: 'wisdom', spellcaster_type: 'full',
@@ -234,7 +234,7 @@ export const CLASSES: ClassData[] = [
     name: 'Fighter', hit_die: 10,
     primary_abilities: ['strength', 'dexterity'],
     saving_throw_proficiencies: ['strength', 'constitution'],
-    skill_choices: ['Acrobatics', 'Animal Handling', 'Athletics', 'History', 'Insight', 'Intimidation', 'Perception', 'Survival'],
+    skill_choices: ['Acrobatics', 'Animal Handling', 'Athletics', 'History', 'Insight', 'Intimidation', 'Perception', 'Persuasion', 'Survival'],
     skill_count: 2,
     armor_proficiencies: ['All Armor', 'Shields'],
     weapon_proficiencies: ['Simple Weapons', 'Martial Weapons'],
@@ -470,7 +470,7 @@ export const CLASSES: ClassData[] = [
     skill_choices: ['Acrobatics', 'Athletics', 'Deception', 'Insight', 'Intimidation', 'Investigation', 'Perception', 'Persuasion', 'Sleight of Hand', 'Stealth'],
     skill_count: 4,
     armor_proficiencies: ['Light Armor'],
-    weapon_proficiencies: ['Simple Weapons', 'Hand Crossbows', 'Longswords', 'Rapiers', 'Shortswords'],
+    weapon_proficiencies: ['Simple Weapons', 'Martial Weapons with the Finesse or Light property'],
     tool_proficiencies: ["Thieves' Tools"],
     is_spellcaster: false, spellcasting_ability: null, spellcaster_type: 'none',
     subclasses: [
@@ -527,7 +527,7 @@ export const CLASSES: ClassData[] = [
     skill_choices: ['Arcana', 'Deception', 'Insight', 'Intimidation', 'Persuasion', 'Religion'],
     skill_count: 2,
     armor_proficiencies: [],
-    weapon_proficiencies: ['Daggers', 'Darts', 'Slings', 'Quarterstaffs', 'Light Crossbows'],
+    weapon_proficiencies: ['Simple Weapons'],
     tool_proficiencies: [],
     is_spellcaster: true, spellcasting_ability: 'charisma', spellcaster_type: 'full',
     subclasses: [
@@ -639,10 +639,10 @@ export const CLASSES: ClassData[] = [
     name: 'Wizard', hit_die: 6,
     primary_abilities: ['intelligence'],
     saving_throw_proficiencies: ['intelligence', 'wisdom'],
-    skill_choices: ['Arcana', 'History', 'Insight', 'Investigation', 'Medicine', 'Religion'],
+    skill_choices: ['Arcana', 'History', 'Insight', 'Investigation', 'Medicine', 'Nature', 'Religion'],
     skill_count: 2,
     armor_proficiencies: [],
-    weapon_proficiencies: ['Daggers', 'Darts', 'Slings', 'Quarterstaffs', 'Light Crossbows'],
+    weapon_proficiencies: ['Simple Weapons'],
     tool_proficiencies: [],
     is_spellcaster: true, spellcasting_ability: 'intelligence', spellcaster_type: 'full',
     subclasses: [

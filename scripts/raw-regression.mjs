@@ -310,5 +310,70 @@ console.log('— Class resources: v2.623 Font of Inspiration gate —');
   check('Bardic Inspiration L5+ recovers on Short Rest (Font of Inspiration)', bardic(5)?.recovery === 'short');
 }
 
+console.log('— Class core traits: 2024 stat block (v2.677) —');
+{
+  // The "Core <Class> Traits" table each class opens with. Verified against
+  // SRD 5.2 (CC-BY, the 2024 rules) on 2026-08-19, when eight of these were
+  // still carrying 2014 values — nothing in this suite had ever looked at
+  // the class stat block, so the drift was silent. Assert only the fields
+  // that table fixes; subclass features are a separate problem.
+  //
+  // Deliberately spelled out per class rather than looped over a fixture:
+  // a fixture would just be the same data twice, and would agree with
+  // classes.ts even when both are wrong.
+  const trait = (name) => {
+    const c = CLASS_MAP[name];
+    check(`${name} exists in CLASS_MAP`, !!c);
+    return c ?? {};
+  };
+  const eq = (label, actual, expected) =>
+    check(label, JSON.stringify(actual) === JSON.stringify(expected));
+
+  // Hit die and saving throws — every class, since they drive real maths.
+  const HIT_DIE = { Barbarian: 12, Bard: 8, Cleric: 8, Druid: 8, Fighter: 10, Monk: 8,
+                    Paladin: 10, Ranger: 10, Rogue: 8, Sorcerer: 6, Warlock: 8, Wizard: 6 };
+  const SAVES = {
+    Barbarian: ['strength', 'constitution'], Bard: ['dexterity', 'charisma'],
+    Cleric: ['wisdom', 'charisma'],          Druid: ['intelligence', 'wisdom'],
+    Fighter: ['strength', 'constitution'],   Monk: ['strength', 'dexterity'],
+    Paladin: ['wisdom', 'charisma'],         Ranger: ['strength', 'dexterity'],
+    Rogue: ['dexterity', 'intelligence'],    Sorcerer: ['constitution', 'charisma'],
+    Warlock: ['wisdom', 'charisma'],         Wizard: ['intelligence', 'wisdom'],
+  };
+  const SKILL_COUNT = { Barbarian: 2, Bard: 3, Cleric: 2, Druid: 2, Fighter: 2, Monk: 2,
+                        Paladin: 2, Ranger: 3, Rogue: 4, Sorcerer: 2, Warlock: 2, Wizard: 2 };
+  for (const [name, die] of Object.entries(HIT_DIE)) {
+    check(`${name} hit die is d${die}`, trait(name).hit_die === die);
+    eq(`${name} saving throws`, trait(name).saving_throw_proficiencies, SAVES[name]);
+    check(`${name} chooses ${SKILL_COUNT[name]} skills`, trait(name).skill_count === SKILL_COUNT[name]);
+  }
+
+  // The eight the 2026-08-19 audit corrected. Each of these was wrong once,
+  // so each gets its own named assertion rather than a table row.
+  check('Barbarian Primary Ability is Strength alone (not Str + Con)',
+    JSON.stringify(trait('Barbarian').primary_abilities) === JSON.stringify(['strength']));
+  eq('Bard weapons are Simple only (2024 dropped rapier/longsword/etc.)',
+    trait('Bard').weapon_proficiencies, ['Simple Weapons']);
+  eq('Sorcerer weapons are Simple only', trait('Sorcerer').weapon_proficiencies, ['Simple Weapons']);
+  eq('Wizard weapons are Simple only', trait('Wizard').weapon_proficiencies, ['Simple Weapons']);
+  eq('Rogue weapons are Simple + Martial with Finesse or Light',
+    trait('Rogue').weapon_proficiencies,
+    ['Simple Weapons', 'Martial Weapons with the Finesse or Light property']);
+  // Medium armour reaches the Druid through the Warden Primal Order choice
+  // at level 1, NOT the class table — listing it here granted it twice. The
+  // 2014 "no metal" restriction is gone from the 2024 rules entirely.
+  eq('Druid armour is Light + Shields (Warden grants Medium separately)',
+    trait('Druid').armor_proficiencies, ['Light Armor', 'Shields']);
+  check('Fighter skill list includes Persuasion',
+    trait('Fighter').skill_choices.includes('Persuasion'));
+  check('Wizard skill list includes Nature',
+    trait('Wizard').skill_choices.includes('Nature'));
+
+  // Guard the shape of the two lists that changed, so a future edit can't
+  // quietly re-add a 2014 entry alongside the corrected one.
+  check('Fighter offers exactly 9 skill options', trait('Fighter').skill_choices.length === 9);
+  check('Wizard offers exactly 7 skill options', trait('Wizard').skill_choices.length === 7);
+}
+
 console.log(failures === 0 ? `\nRAW regression: ALL CHECKS PASSED` : `\nRAW regression: ${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);
