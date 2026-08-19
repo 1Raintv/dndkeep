@@ -313,10 +313,16 @@ console.log('— Class resources: v2.623 Font of Inspiration gate —');
 console.log('— Class core traits: 2024 stat block (v2.677) —');
 {
   // The "Core <Class> Traits" table each class opens with. Verified against
-  // SRD 5.2 (CC-BY, the 2024 rules) on 2026-08-19, when eight of these were
-  // still carrying 2014 values — nothing in this suite had ever looked at
-  // the class stat block, so the drift was silent. Assert only the fields
-  // that table fixes; subclass features are a separate problem.
+  // the SRD 5.2.1 PDF on 2026-08-19, when eight of these were still carrying
+  // 2014 values — nothing in this suite had ever looked at the class stat
+  // block, so the drift was silent. Assert only the fields that table fixes;
+  // subclass features are a separate problem.
+  //
+  // The ROADMAP content-scope rule requires audits to verify against the SRD
+  // PDF, not third-party wikis. v2.677 was first checked against an SRD
+  // mirror site, which is exactly what that rule rules out; the values below
+  // were re-confirmed line by line against the official PDF and none of them
+  // moved. Recorded here so the next audit starts from the right source.
   //
   // Deliberately spelled out per class rather than looped over a fixture:
   // a fixture would just be the same data twice, and would agree with
