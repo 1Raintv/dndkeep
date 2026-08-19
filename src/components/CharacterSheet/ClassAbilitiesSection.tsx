@@ -4,7 +4,7 @@ import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
 
 import type { Character, Campaign } from '../../types';
 import { CLASS_COMBAT_ABILITIES, type ClassAbility, type SaveSpec } from '../../data/classAbilities';
-import { PSION_DISCIPLINES } from '../../data/psionDisciplines';
+import { findDiscipline } from '../../data/psionDisciplines';
 import { SPECIES } from '../../data/species';
 import { formatRange } from '../../lib/formatRange';
 import { logAction } from '../shared/ActionLog';
@@ -369,7 +369,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  ? (character.class_resources as any)['psion-disciplines'] as string[]
  : [];
  for (const id of chosen) {
- const disc = PSION_DISCIPLINES.find(d => d.id === id);
+ const disc = findDiscipline(id);
  if (!disc || disc.type === 'passive') continue;
  disciplineAbilities.push({
  name: disc.name,
@@ -384,6 +384,12 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }
  }
  const allAbilities = [...abilities, ...disciplineAbilities];
+ // v2.674.0 — disciplines get their own sub-header INSIDE the row list,
+ // the same way species traits do. It used to render above the whole
+ // list, so it labelled Psionic Energy Dice and Telekinetic Propel
+ // instead of the disciplines six rows below — invisible until the
+ // id/name fix let a discipline row exist at all.
+ const disciplineNameSet = new Set(disciplineAbilities.map(d => d.name));
 
  // v2.376.0 — Surface species traits with an explicit actionType as
  // clickable rows in the Actions tab. Pre-v2.376 Cat's Claws, Healing
@@ -453,13 +459,6 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
  )}
 
- {/* Split disciplines into their own sub-section */}
- {disciplineAbilities.length > 0 && filtered.some(a => disciplineAbilities.includes(a)) && (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
- textTransform: 'uppercase' as const, color: '#c084fc', marginBottom: 6, marginTop: 4 }}>
- Psychic Disciplines
- </div>
- )}
  {/* v2.501.0 — Column-header strip. Switched from the 11-column
      SpellsTab template to the 8-column Actions-tab spell template
      (`70px 3px 1fr 46px 70px 74px 16px 170px`) so Psion abilities
@@ -505,9 +504,17 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // the cleanest way to guarantee one header).
  const isFirstSpecies = speciesAbilitySet.has(ability.name) &&
  !filtered.slice(0, idx).some(a => speciesAbilitySet.has(a.name));
+ const isFirstDiscipline = disciplineNameSet.has(ability.name) &&
+ !filtered.slice(0, idx).some(a => disciplineNameSet.has(a.name));
 
  return (
  <Fragment key={ability.name}>
+ {isFirstDiscipline && (
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+ textTransform: 'uppercase' as const, color: '#c084fc', marginBottom: 2, marginTop: 6 }}>
+ Psychic Disciplines
+ </div>
+ )}
  {isFirstSpecies && (
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
  textTransform: 'uppercase' as const, color: '#fb923c', marginBottom: 2, marginTop: 6 }}>

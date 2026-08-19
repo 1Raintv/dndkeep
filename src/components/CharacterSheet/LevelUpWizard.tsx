@@ -5,7 +5,8 @@ import { FEATS } from '../../data/feats';
 import { SKILLS } from '../../data/skills';
 import { computeFeatRiders } from '../../lib/featRiders';
 import { FREE_LEVEL_CAP } from '../../lib/entitlements';
-import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
+import { PSION_DISCIPLINES, getDisciplineCount, hasDiscipline, withoutDiscipline, findDiscipline } from '../../data/psionDisciplines';
+import type { PsionDiscipline } from '../../data/psionDisciplines';
 import FeatPicker from '../shared/FeatPicker';
 import { abilityModifier } from '../../lib/gameUtils';
 import { CLASS_LEVEL_PROGRESSION } from '../../data/levelProgression';
@@ -422,11 +423,15 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  expectedTotal={expectedDisciplinesAtLevel}
  search={disciplineSearch}
  onSearch={setDisciplineSearch}
- onToggle={(name: string) => {
- if (selectedDisciplines.includes(name)) {
- setSelectedDisciplines(prev => prev.filter(d => d !== name));
+ // v2.674.0 — persist the id, not the display name: the sheet's Actions
+ // tab resolves these by id, and names never matched, so picks made here
+ // rendered nowhere. Comparisons go through the resolver so disciplines
+ // chosen before this fix still read as selected.
+ onToggle={(disc: PsionDiscipline) => {
+ if (hasDiscipline(selectedDisciplines, disc)) {
+ setSelectedDisciplines(prev => withoutDiscipline(prev, disc));
  } else if (selectedDisciplines.length < expectedDisciplinesAtLevel) {
- setSelectedDisciplines(prev => [...prev, name]);
+ setSelectedDisciplines(prev => [...prev, disc.id]);
  }
  }}
  />
@@ -615,13 +620,15 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  {/* Current selections */}
  {currentDisciplines.length > 0 && (
  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
- {currentDisciplines.map((name: string) => (
- <span key={name} style={{
+ {/* v2.674.0 — the array holds ids now, so resolve each one back to its
+ display name; a legacy name-keyed entry resolves to itself. */}
+ {currentDisciplines.map((key: string) => (
+ <span key={key} style={{
  padding: '3px 10px', borderRadius: 999,
  background: 'rgba(212,160,23,0.15)', border: '1px solid var(--c-gold-bdr)',
  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: 'var(--c-gold-l)',
  }}>
- {name}
+ {findDiscipline(key)?.name ?? key}
  </span>
  ))}
  </div>
@@ -642,7 +649,7 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  being cut back down. */}
  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 'min(60vh, 520px)', overflowY: 'auto' }}>
  {filtered.map(disc => {
- const isSelected = currentDisciplines.includes(disc.name);
+ const isSelected = hasDiscipline(currentDisciplines, disc);
  const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
  return (
  <div key={disc.id} style={{
@@ -658,7 +665,7 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
  <button
  onClick={() => {
- if (isSelected || canAdd) onToggle(disc.name);
+ if (isSelected || canAdd) onToggle(disc);
  }}
  disabled={!isSelected && !canAdd}
  style={{

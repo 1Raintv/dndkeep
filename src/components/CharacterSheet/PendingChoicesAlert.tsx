@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character } from '../../types';
-import { PSION_DISCIPLINES, getDisciplineCount } from '../../data/psionDisciplines';
+import { PSION_DISCIPLINES, getDisciplineCount, hasDiscipline, withoutDiscipline, findDiscipline } from '../../data/psionDisciplines';
+import type { PsionDiscipline } from '../../data/psionDisciplines';
 
 interface Props {
  character: Character;
@@ -45,8 +46,12 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  d.description.toLowerCase().includes(discSearch.toLowerCase())
  );
 
- function selectDiscipline(name: string) {
- const next = [...currentDisciplines, name];
+ // v2.674.0 — store the discipline's id, not its display name. The Actions
+ // tab resolves this array to render each discipline as a usable ability and
+ // looks entries up by id, so writing the name meant nothing ever resolved
+ // and no chosen discipline appeared on the sheet at all.
+ function selectDiscipline(disc: PsionDiscipline) {
+ const next = [...currentDisciplines, disc.id];
  onUpdate({
  class_resources: {
  ...((character.class_resources as Record<string, unknown>) ?? {}),
@@ -55,8 +60,9 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  });
  }
 
- function removeDiscipline(name: string) {
- const next = currentDisciplines.filter(d => d !== name);
+ function removeDiscipline(disc: PsionDiscipline) {
+ // Matches id OR legacy name, so a pick saved before v2.674 stays removable.
+ const next = withoutDiscipline(currentDisciplines, disc);
  onUpdate({
  class_resources: {
  ...((character.class_resources as Record<string, unknown>) ?? {}),
@@ -118,13 +124,15 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  {/* Current selections */}
  {currentDisciplines.length > 0 && (
  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
- {currentDisciplines.map(name => (
- <span key={name} style={{
+ {/* v2.674.0 — the array holds ids now, so resolve each back to its
+ display name; a legacy name-keyed entry resolves to itself. */}
+ {currentDisciplines.map(key => (
+ <span key={key} style={{
  padding: '2px 9px', borderRadius: 999,
  background: 'rgba(232,121,249,0.12)', border: '1px solid rgba(232,121,249,0.35)',
  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700, color: '#e879f9',
  }}>
- {name}
+ {findDiscipline(key)?.name ?? key}
  </span>
  ))}
  </div>
@@ -154,7 +162,7 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  the text being cut back down. */}
  <div style={{ maxHeight: 'min(60vh, 520px)', overflowY: 'auto' }}>
  {filteredDiscs.map(disc => {
- const isSelected = currentDisciplines.includes(disc.name);
+ const isSelected = hasDiscipline(currentDisciplines, disc);
  const typeColor = disc.type === 'passive' ? '#34d399' : disc.type === 'active' ? '#fbbf24' : '#60a5fa';
  return (
  <div key={disc.id} style={{
@@ -198,7 +206,7 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
  {isSelected ? (
  <button
- onClick={() => removeDiscipline(disc.name)}
+ onClick={() => removeDiscipline(disc)}
  style={{
  padding: '3px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)',
@@ -209,7 +217,7 @@ export default function PendingChoicesAlert({ character, onUpdate }: Props) {
  </button>
  ) : (
  <button
- onClick={() => selectDiscipline(disc.name)}
+ onClick={() => selectDiscipline(disc)}
  style={{
  padding: '3px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
  background: 'rgba(232,121,249,0.15)', border: '1px solid rgba(232,121,249,0.4)',

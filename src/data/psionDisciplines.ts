@@ -135,3 +135,28 @@ export function getDisciplineCount(psionLevel: number): number {
   if (psionLevel >= 2) return 2;
   return 0;
 }
+
+// ─── Stored-key resolution ───────────────────────────────────────────────────
+// v2.674.0 — Disciplines are persisted in `class_resources['psion-disciplines']`.
+// Both pickers used to write `disc.name` ("Biofeedback") while the Actions tab
+// looked the entry up by `disc.id` ("biofeedback"), so the lookup ALWAYS missed
+// and a Psion's chosen disciplines rendered nowhere on the sheet — the single
+// read of that array in the app. Writes now store the id; these helpers still
+// accept the legacy name so every Psion saved before this fix keeps its picks
+// without a data migration (and mixed id/name arrays resolve fine).
+
+/** Resolve a stored key — id or legacy display name — to its discipline. */
+export function findDiscipline(key: string): PsionDiscipline | undefined {
+  const k = key.trim().toLowerCase();
+  return PSION_DISCIPLINES.find(d => d.id === k || d.name.toLowerCase() === k);
+}
+
+/** True when `chosen` (ids and/or legacy names) already holds this discipline. */
+export function hasDiscipline(chosen: readonly string[], disc: PsionDiscipline): boolean {
+  return chosen.some(k => findDiscipline(k)?.id === disc.id);
+}
+
+/** `chosen` with this discipline removed, matching by id or legacy name. */
+export function withoutDiscipline(chosen: readonly string[], disc: PsionDiscipline): string[] {
+  return chosen.filter(k => findDiscipline(k)?.id !== disc.id);
+}
