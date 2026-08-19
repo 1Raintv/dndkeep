@@ -11,6 +11,7 @@
 // sitting in production on every Psion created before the fix. If the sheet
 // can render those, it can render the ids the pickers write now.
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
@@ -21,24 +22,26 @@ const SEED_DM = '11111111-1111-1111-1111-111111111111';
 
 test.describe('psion disciplines (local stack)', () => {
   gateDbSuite();
-  // Desktop only, and NOT because the fix is desktop-only. The Actions-tab
-  // ability grid is a fixed 8-column template (v2.501) that needs ~505px;
-  // at 375px the 1fr NAME column collapses to width 0, so EVERY ability
-  // row on every class renders nameless on a phone. That is a pre-existing
-  // responsive bug in the shared grid, unrelated to discipline resolution —
-  // asserting on it here would just encode it. Filed separately.
-  test.beforeEach(({}, testInfo) => {
-    test.skip(testInfo.project.name === 'mobile',
-      'ability-row grid collapses the name column below ~505px (pre-existing)');
-  });
+  // v2.675.0 — this suite used to skip the mobile project: the Actions-tab
+  // ability grid was a fixed 8-column template (v2.501) needing ~505px, so
+  // at 375px the 1fr NAME column collapsed to width 0 and EVERY ability row
+  // on every class rendered nameless. The template now lives in `.arow-grid`
+  // (globals.css) and stacks under 640px, so mobile asserts the same names
+  // as desktop and the skip is gone.
 
-  // Per-project id: desktop + mobile run in parallel against one database,
-  // and a shared character row would have them racing each other's cleanup.
+  // Per-project AND per-test id. The projects run in parallel against one
+  // database, and `fullyParallel` also hands the two tests in this file to
+  // different workers, so a row shared on EITHER axis has them racing each
+  // other's fixture writes and cleanup. Observed 2026-08-18 on a row keyed
+  // by project alone: the picker test's deliberately-incomplete 2-of-3
+  // fixture landed under the render test's assertions, which then failed
+  // looking for the third discipline. Hashing the worker's own identity
+  // into the id keeps each run on its own row without a shared counter.
   let charId = '';
 
   test.beforeEach(({}, testInfo) => {
-    const d = testInfo.project.name === 'mobile' ? '2' : '1';
-    charId = `44444444-4444-4444-4444-44444444000${d}`;
+    const key = `${testInfo.project.name}|${testInfo.title}`;
+    charId = `44444444-4444-4444-4444-${createHash('sha1').update(key).digest('hex').slice(0, 12)}`;
     // Psion is UA content — hidden from accounts without the flag.
     sql(`update profiles set show_ua_content = true where id = '${SEED_DM}'`);
     sql(
@@ -54,8 +57,12 @@ test.describe('psion disciplines (local stack)', () => {
 
   test.afterEach(() => {
     try {
+      // Only the row this test owns. show_ua_content is deliberately NOT
+      // reset here: the flag is on one shared seed profile, and clearing it
+      // between tests yanked UA content out from under the three siblings
+      // still running in other workers. Every test that needs it turns it
+      // on in beforeEach, so leaving it on is inert.
       sql(`delete from characters where id = '${charId}'`);
-      sql(`update profiles set show_ua_content = false where id = '${SEED_DM}'`);
     } catch { /* best effort */ }
   });
 

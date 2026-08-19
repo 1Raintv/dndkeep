@@ -304,7 +304,7 @@ export default function WeaponsTracker({
      level/school/casting-time analogs, so LEAD/BAR/TIME render
      empty here. */}
  {weapons.length > 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ <div className="srow-grid srow-head" style={{ padding: '0 10px 4px', marginBottom: 2 }}>
  {/* v2.546.0: Headers mirror SpellsTab so weapons + spells line up visually across both tabs. */}
  {['', '', 'NAME', 'TIME', 'RANGE', '', 'HIT', 'DAMAGE', '', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
@@ -355,15 +355,19 @@ export default function WeaponsTracker({
  if (t.closest('button') || t.closest('input')) return;
  if (hasNotesPanel) setExpandedWeaponId(isExpanded ? null : w.id);
  }}
- style={{
- display: isSaveSpell ? 'flex' : 'grid',
  // v2.371.0 — Unified template, matches SpellsTab +
  // ClassAbilitiesSection. Empty cells in LEAD/BAR/TIME for
  // weapons (no level/school/casting-time analog) so columns
- // visually line up across all three tabs.
- gridTemplateColumns: isSaveSpell ? undefined : '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
- alignItems: 'center',
- gap: isSaveSpell ? 10 : '0 8px',
+ // visually line up across all three tabs. v2.675.0 — that
+ // template is `.srow-grid` in globals.css now (one copy for all
+ // four surfaces, wrapping to a flex stack under 640px). The
+ // save-spell branch was never on the template — it is its own
+ // flex row and stays one.
+ className={isSaveSpell ? undefined : 'srow-grid'}
+ style={{
+ display: isSaveSpell ? 'flex' : undefined,
+ alignItems: isSaveSpell ? 'center' : undefined,
+ gap: isSaveSpell ? 10 : undefined,
  padding: '8px 12px',
  cursor: hasNotesPanel ? 'pointer' : 'default',
  }}>
@@ -390,13 +394,13 @@ export default function WeaponsTracker({
  /* Normal weapon — unified 9-col grid row (v2.371.0). */
  <>
  {/* Col 0: LEAD — empty for weapons (no level/prepare badge analog). */}
- <div />
+ <div className="srow-lead" />
 
  {/* Col 1: BAR — gold stripe matches inventory color. */}
- <div style={{ width: 3, height: 30, borderRadius: 2, background: 'rgba(200,146,42,0.6)' }} />
+ <div className="srow-bar" style={{ background: 'rgba(200,146,42,0.6)' }} />
 
  {/* Col 2: NAME — weapon name + source/properties subline. */}
- <div style={{ minWidth: 0 }}>
+ <div className="srow-name" style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{w.name}</span>
  {isInv && <span style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--c-gold-l)', background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', padding: '1px 5px', borderRadius: 999 }}>Inventory</span>}
@@ -412,16 +416,16 @@ export default function WeaponsTracker({
 
  {/* Col 3: TIME — v2.546.0: was empty; weapons are always 1 Action,
      so render "1A" matching spell row's casting-time abbreviation. */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>1A</div>
+ <div className="srow-time" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>1A</div>
 
  {/* Col 4: RANGE */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+ <div className="srow-range" style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)', alignSelf: 'center', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {w.range || 'Melee'}
  </div>
 
  {/* Col 5: TAGS — empty for weapons (no C/AoE concept). Reserved
      so row aligns with spell rows that DO have tag chips. */}
- <div />
+ <div className="srow-tags" />
 
  {/* v2.87.0: Unarmed Strike — single STRIKE button that opens the mode
      picker (Damage / Grapple / Shove). v2.371.0: spans HIT-DC + EFFECT
@@ -430,6 +434,7 @@ export default function WeaponsTracker({
      modal that opens on click, not crammed into the button label. */}
  {w.unarmedModes ? (
  <button
+ className="srow-hit"
  onClick={() => setUnarmedModal(w)}
  title="Unarmed Strike — pick Damage, Grapple, or Shove"
  style={{
@@ -453,6 +458,7 @@ export default function WeaponsTracker({
      HIT / DC pill. Stays a button so a tap rolls the attack;
      the column header above labels it. */}
  <button
+ className="srow-hit"
  onClick={() => handleHit(w)}
  title={`Roll to hit (d20${w.attackBonus >= 0 ? '+' : ''}${w.attackBonus})`}
  style={{
@@ -472,6 +478,7 @@ export default function WeaponsTracker({
      subtitle so the chip shows just "1d6+1" matching SpellsTab's
      EFFECT chip. Column header above labels it. */}
  <button
+ className="srow-effect"
  onClick={() => handleDamage(w)}
  title={`Roll damage (${w.damageDice === 'flat' ? modStr(w.damageBonus) : w.damageDice}${w.damageDice !== 'flat' && w.damageBonus !== 0 ? modStr(w.damageBonus) : ''})`}
  style={{
@@ -492,7 +499,7 @@ export default function WeaponsTracker({
  {/* Col 7: BUTTONS — in-combat PlayerAttackButton + edit/delete.
      v2.100.0 PlayerAttackButton renders only when in an active
      encounter; out-of-combat rolls use the Hit/Damage buttons above. */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
+ <div className="srow-act" style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
  {historyCharacterId && (
  <PlayerAttackButton
  characterId={historyCharacterId}
@@ -516,10 +523,10 @@ export default function WeaponsTracker({
 
  {/* Col 9: CHARGES — empty for weapons. Reserved for column
      alignment with class-ability rows that have tracker chiclets. */}
- <div />
+ <div className="srow-charges" />
 
  {/* Col 10: CHEVRON */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ <div className="srow-chev" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
  {hasNotesPanel && (
  <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
  )}

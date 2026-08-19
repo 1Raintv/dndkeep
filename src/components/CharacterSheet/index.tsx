@@ -3427,18 +3427,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                  }}>
                    {/* Row — same grid template as regular spell rows
                        so the columns align visually if you scroll
-                       between the SPECIES section and SPELLS. */}
+                       between the SPECIES section and SPELLS. v2.675.0:
+                       the template lives in `.arow-grid` (globals.css)
+                       rather than being copy-pasted here, and stacks
+                       under 640px where the 1fr NAME column used to
+                       collapse to width 0. */}
                    <div
+                     className="arow-grid"
                      onClick={() => setExpandedActionsSpell(isExpanded ? null : rowKey)}
                      style={{
-                       display: 'grid',
-                       gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
-                       alignItems: 'center', gap: '0 8px',
                        padding: '7px 10px', cursor: 'pointer', minHeight: 44,
                      }}
                    >
                      {/* Col 0: spell-level badge */}
-                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                     <div className="arow-lead" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                        {eff === 0 ? (
                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
                        ) : (
@@ -3456,10 +3458,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                      </div>
 
                      {/* Col 1: school color bar */}
-                     <div style={{ width: 3, height: 30, borderRadius: 2, background: sc, opacity: 0.75 }} />
+                     <div className="arow-bar" style={{ background: sc, opacity: 0.75 }} />
 
                      {/* Col 2: name + school + effect-type tag */}
-                     <div style={{ minWidth: 0 }}>
+                     <div className="arow-name" style={{ minWidth: 0 }}>
                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
                          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                            {spell.name}
@@ -3496,15 +3498,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                      </div>
 
                      {/* Col 3: time abbreviation */}
-                     <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
+                     <div className="arow-time" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
 
                      {/* Col 4: range */}
-                     <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
+                     <div className="arow-range" style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
                      </div>
 
                      {/* Col 5: hit/DC */}
-                     <div style={{ textAlign: 'center' }}>
+                     <div className="arow-hit" style={{ textAlign: 'center' }}>
                        {hitDC !== '—' ? (
                          <span style={{
                            fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
@@ -3519,13 +3521,13 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                      </div>
 
                      {/* Col 6: chevron */}
-                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                     <div className="arow-chev" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                        <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
                      </div>
 
                      {/* Col 7: cast actions. L3+ rows get a small "Free"
                          secondary button before the canonical Cast. */}
-                     <div onClick={e => {
+                     <div className="arow-act" onClick={e => {
                        const target = e.target as HTMLElement;
                        if (target.closest('button')) e.stopPropagation();
                      }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
@@ -3858,7 +3860,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <div style={{ display: 'flex', flexDirection: 'column' as 'column', gap: 4 }}>
  {/* v2.35.1: Dropped EFFECT column per feedback — effect info lives in the expanded panel.
  Fixed 170px action column so Attack+Damage rows align with Utility "Cast" rows. */}
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px', gap: '0 8px', padding: '0 10px 2px', marginBottom: 2 }}>
+ {/* v2.675.0 — `.arow-head` hides this strip under 640px: once the
+     rows stack, its NAME/TIME/RANGE labels no longer sit above the
+     things they name. */}
+ <div className="arow-grid arow-head" style={{ padding: '0 10px 2px', marginBottom: 2 }}>
  {['', '', 'NAME', 'TIME', 'RANGE', 'HIT / DC', '', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
@@ -3997,18 +4002,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  boxShadow: isActivelyConcentrating ? '0 0 0 2px rgba(167,139,250,0.18)' : 'none',
  }}>
  {/* Row — 8-col grid (EFFECT column removed per v2.35.1). Fixed 170px action col
- so rows with Attack+Damage buttons align with rows that only have a Cast button. */}
+ so rows with Attack+Damage buttons align with rows that only have a Cast button.
+ v2.675.0 — template moved to `.arow-grid` in globals.css, shared verbatim with
+ the class-ability rows below (ClassAbilitiesSection) so the two surfaces stay
+ aligned, and re-flowed into three stacked lines under 640px, where the fixed
+ columns (449px + 56px of gaps) left the 1fr NAME column at width 0. */}
  <div
+ className="arow-grid"
  onClick={() => setExpandedActionsSpell(isExpanded ? null : rowKey)}
  style={{
- display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
- alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}
  >
  {/* Col 0: Level badge or AT WILL */}
- <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+ <div className="arow-lead" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
  {eff === 0 ? (
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, lineHeight: 1.2, textAlign: 'center' }}>AT<br/>WILL</div>
  ) : (
@@ -4034,10 +4041,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
 
  {/* Col 1: School color bar */}
- <div style={{ width: 3, height: 30, borderRadius: 2, background: sc, opacity: slotsExhausted ? 0.3 : 0.75 }} />
+ <div className="arow-bar" style={{ background: sc, opacity: slotsExhausted ? 0.3 : 0.75 }} />
 
  {/* Col 2: Name + concentration line */}
- <div style={{ minWidth: 0 }}>
+ <div className="arow-name" style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
  <span style={{ fontWeight: 700, fontSize: 13, color: slotsExhausted ? 'var(--t-3)' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
@@ -4065,7 +4072,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      concentration marker. The chip turns solid purple "● C" when this
      is the spell currently being concentrated on, matching the prior
      active-concentration styling but compressed into the column. */}
- <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, whiteSpace: 'nowrap' as const }}>
+ <div className="arow-time" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, whiteSpace: 'nowrap' as const }}>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)' }}>{timeAbbr}</span>
  {spell.concentration && (
  <span style={{
@@ -4081,7 +4088,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
 
  {/* Col 4: RANGE + TARGET (v2.63.0 stacked) */}
- <div style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
+ <div className="arow-range" style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
  {(() => {
  // Derive target description: AoE first, else parse description, else "1 target" for ranged spells
@@ -4110,7 +4117,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
 
  {/* Col 5: HIT / DC */}
- <div style={{ textAlign: 'center' }}>
+ <div className="arow-hit" style={{ textAlign: 'center' }}>
  {hitDC !== '—' ? (
  <span style={{
  fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
@@ -4125,7 +4132,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
 
  {/* Col 6: Expand chevron (left of action column) */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ <div className="arow-chev" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
  <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
  </div>
 
@@ -4139,7 +4146,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      propagation only stops when the click lands on an actual
      <button> (via closest('button')). Whitespace clicks bubble up
      and expand the row as expected. */}
- <div onClick={e => {
+ <div className="arow-act" onClick={e => {
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>

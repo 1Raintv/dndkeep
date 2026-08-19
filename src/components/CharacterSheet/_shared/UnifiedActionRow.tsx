@@ -102,29 +102,32 @@ export default function UnifiedActionRow(props: UnifiedActionRowProps) {
         <div style={{ height: 2, background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.15), transparent)' }}/>
       )}
 
+      {/* v2.381.0 — 11-column template matching SpellsTab /
+          ClassAbilitiesSection / WeaponsTracker (v2.373). v2.675.0 —
+          the template itself is `.srow-grid` in globals.css, shared
+          verbatim by all four surfaces so they can't drift, and it
+          wraps to a flex stack under 640px where the fixed columns
+          used to crush the 1fr NAME column to width 0. Each cell
+          below wears the `.srow-*` class that positions it. */}
       <div
+        className="srow-grid"
         onClick={expandable ? onExpand : undefined}
         style={{
-          display: 'grid',
-          // v2.381.0 — 11-column template matching SpellsTab / Class
-          // AbilitiesSection / WeaponsTracker (v2.373).
-          gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
-          alignItems: 'center', gap: '0 8px',
           padding: '7px 10px',
           cursor: expandable ? 'pointer' : 'default',
           minHeight: 44,
         }}
       >
         {/* Col 0: LEAD (Prepare / action badge / AT WILL / Lvl badge) */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+        <div className="srow-lead" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
           {lead}
         </div>
 
         {/* Col 1: BAR — vertical color stripe */}
-        <div style={{ width: 3, height: 30, borderRadius: 2, background: accentColor, opacity: 0.75 }} />
+        <div className="srow-bar" style={{ background: accentColor, opacity: 0.75 }} />
 
         {/* Col 2: NAME + chips + subtitle line */}
-        <div style={{ minWidth: 0 }}>
+        <div className="srow-name" style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
             <span style={{
               fontWeight: 700, fontSize: 13,
@@ -143,45 +146,45 @@ export default function UnifiedActionRow(props: UnifiedActionRowProps) {
         </div>
 
         {/* Col 3: TIME */}
-        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
+        <div className="srow-time" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
           {time ?? ''}
         </div>
 
         {/* Col 4: RANGE */}
-        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div className="srow-range" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {range ?? ''}
         </div>
 
         {/* Col 5: TAGS — small chips (C/AoE/P) v2.381.0 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
+        <div className="srow-tags" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
           {tags}
         </div>
 
         {/* Col 6: HIT / DC chip */}
-        <div style={{ textAlign: 'center' }}>
+        <div className="srow-hit" style={{ textAlign: 'center' }}>
           {hitDC}
         </div>
 
         {/* Col 7: EFFECT — damage / scale / resource cost v2.381.0 */}
-        <div style={{ textAlign: 'center' }}>
+        <div className="srow-effect" style={{ textAlign: 'center' }}>
           {effect}
         </div>
 
         {/* Col 8: BUTTONS — Cast / Use / Strike / Trigger.
             stopPropagation so clicking the button doesn't toggle
             row expand. */}
-        <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+        <div className="srow-act" onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
           {button}
         </div>
 
         {/* Col 9: CHARGES — tracker chiclets v2.381.0 */}
-        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden' }}>
+        <div className="srow-charges" onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden' }}>
           {charges}
         </div>
 
         {/* Col 10: CHEVRON — only when expandable. v2.381.0 moved
             from col 6 → col 10 to match unified template. */}
-        <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--t-3)', fontSize: 10 }}>
+        <div className="srow-chev" style={{ display: 'flex', justifyContent: 'center', color: 'var(--t-3)', fontSize: 10 }}>
           {expandable ? (isExpanded ? '▾' : '▸') : ''}
         </div>
       </div>

@@ -455,9 +455,12 @@ export default function SpellsTab({
  )}
  </div>
 
- {/* Column headers — show once for cantrips, once for leveled */}
+ {/* Column headers — show once for cantrips, once for leveled.
+     v2.675.0 — `.srow-head` hides the strip under 640px, where the
+     rows wrap and these labels stop sitting above the columns they
+     name. */}
  {lvl === 0 && (
- <div style={{ display: 'grid', gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px', gap: '0 8px', padding: '0 10px 4px', marginBottom: 2 }}>
+ <div className="srow-grid srow-head" style={{ padding: '0 10px 4px', marginBottom: 2 }}>
  {['', '', 'NAME', 'TIME', 'RANGE', 'TAGS', 'HIT / DC', 'EFFECT', '', 'CHARGES', ''].map((h, i) => (
  <span key={i} style={{ fontFamily: 'var(--ff-body)', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>{h}</span>
  ))}
@@ -589,16 +592,14 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  )}
  {/* ── DDB-style compact table row ── */}
  <div
+ className="srow-grid"
  style={{
- display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px',
- alignItems: 'center', gap: '0 8px',
  padding: '7px 10px', cursor: 'pointer', minHeight: 44,
  }}
  onClick={onExpand}
  >
  {/* Col 0: AT WILL / prepare dot / level badge */}
- <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+ <div className="srow-lead" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
  {spell.level === 0 ? (
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.04em', textTransform: 'uppercase' as const, textAlign: 'center', lineHeight: 1.2 }}>AT<br/>WILL</div>
  ) : isPreparer && !grantedReason ? (
@@ -661,10 +662,10 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {/* Col 1: School color bar */}
- <div style={{ width: 3, height: 30, borderRadius: 2, background: schoolColor, opacity: 0.75 }} />
+ <div className="srow-bar" style={{ background: schoolColor, opacity: 0.75 }} />
 
  {/* Col 2: NAME + source */}
- <div style={{ minWidth: 0 }}>
+ <div className="srow-name" style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
  <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
@@ -726,17 +727,17 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {/* Col 3: TIME */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
+ <div className="srow-time" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
 
  {/* Col 4: RANGE */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+ <div className="srow-range" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
 
  {/* Col 5: TAGS — concentration / AoE indicator chips. v2.373.0
      replaces the inline ● CONC text in the NAME cell. Compact chip
      column so the user can scan whether a spell needs concentration
      and whether it's an AoE without reading words. Empty when spell
      has neither flag. */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
+ <div className="srow-tags" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' as const }}>
  {spell.concentration && (
  <span
  title="Concentration spell — only one at a time"
@@ -767,7 +768,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {/* Col 6: HIT / DC */}
- <div style={{ textAlign: 'center' }}>
+ <div className="srow-hit" style={{ textAlign: 'center' }}>
  {hitDC !== '—' ? (
  <span style={{
  fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 12,
@@ -782,7 +783,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {/* Col 6: EFFECT */}
- <div style={{ textAlign: 'center' }}>
+ <div className="srow-effect" style={{ textAlign: 'center' }}>
  <span style={{
  fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 700, letterSpacing: '0.04em',
  color: effect.color, background: effect.color + '12',
@@ -791,17 +792,17 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {/* Col 8: Cast button(s) */}
- <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+ <div className="srow-act" onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
  {castButton}
  </div>
 
  {/* Col 9: CHARGES — empty for spells (slots tracked in LEAD).
      Reserved column so spells visually align with class abilities
      where this column shows the use tracker. */}
- <div />
+ <div className="srow-charges" />
 
  {/* Col 10: Quick remove + expand chevron */}
- <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+ <div className="srow-chev" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
  {!grantedReason && onRemove && (
  <button
  onClick={onRemove}

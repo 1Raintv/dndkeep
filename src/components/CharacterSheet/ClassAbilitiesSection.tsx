@@ -468,10 +468,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      Actions-tab spell rows. Headers match the Actions-tab spell
      header at index.tsx:3665 exactly. */}
  {filtered.length > 0 && (
- <div style={{
- display: 'grid',
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
- gap: '0 8px',
+ <div className="arow-grid arow-head" style={{
  padding: '0 10px 4px',
  marginBottom: 2,
  }}>
@@ -590,11 +587,6 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // long-rest features that use TEAL.
  const trackerPalette = (ability as any).psionicDie ? PALETTE_PSI : PALETTE_TEAL;
 
- return (
- <div
- onClick={() => { if (canExpand) setExpandedAbility(isExpanded ? null : ability.name); }}
- style={{
- display: 'grid',
  // v2.501.0 — Switched from the 11-col SpellsTab template to the
  // 8-col Actions-tab template to match the spell rows this section
  // sits alongside in the Actions tab:
@@ -608,15 +600,24 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  //   - dedicated CHARGES (110px): merged into the HIT/DC column
  //     (col 5) per DM feedback — "charges go before the cast
  //     button in the space where the hit DC would be."
- gridTemplateColumns: '70px 3px 1fr 46px 70px 74px 16px 170px',
- alignItems: 'center', gap: '0 8px',
+ // v2.675.0 — the template itself moved to `.arow-grid` in
+ // globals.css (shared verbatim with the Actions-tab spell rows, so
+ // the two can't drift) and gained a stacked fallback under 640px,
+ // where the 1fr NAME column used to collapse to width 0 and left
+ // every ability row nameless on a phone. Each cell below wears the
+ // `.arow-*` class that places it in both layouts.
+ return (
+ <div
+ className="arow-grid"
+ onClick={() => { if (canExpand) setExpandedAbility(isExpanded ? null : ability.name); }}
+ style={{
  padding: '7px 10px',
  cursor: canExpand ? 'pointer' : 'default',
  minHeight: 44,
  }}
  >
  {/* Col 0: action-type badge (visual analog to "Lvl N" on spell rows) */}
- <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+ <div className="arow-lead" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
  <span style={{
  fontFamily: 'var(--ff-stat)', fontSize: 11, fontWeight: 800,
  color: acColor,
@@ -631,7 +632,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  </div>
 
  {/* Col 1: 3px color stripe — same visual function as spell row's school bar */}
- <div style={{ width: 3, height: 30, borderRadius: 2, background: acColor, opacity: 0.75 }} />
+ <div className="arow-bar" style={{ background: acColor, opacity: 0.75 }} />
 
  {/* Col 2: name only — v2.501.0 — Subtitle removed to match the
      cleaned-up spell rows. Pre-v2.501 this cell carried a second
@@ -642,7 +643,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      column (col 4). Class abilities don't carry spell-style
      concentration, so unlike spell rows there's no concentration
      line to keep here — the cell is just the name. */}
- <div style={{ minWidth: 0 }}>
+ <div className="arow-name" style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {ability.name}
@@ -666,7 +667,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
                     column visually populated for grid alignment.
      The short_abbr map mirrors SpellsTab.tsx:558's casting_time
      replacement chain so the abbreviations match exactly. */}
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
+ <div className="arow-time" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>
  {(() => {
  const TIME_ABBR: Record<string, string> = {
  action:   '1A',
@@ -683,7 +684,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      "60 ft"). Empty when the ability has no spatial component
      (e.g. self-targeting Action Surge). Aligns with SpellsTab's
      RANGE column for visual consistency across both tabs. */}
- <div style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+ <div className="arow-range" style={{ fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {formatRange((ability as any).range)}
  </div>
 
@@ -702,7 +703,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      chip) columns are gone — TAGS was noise, and the PED cost is now
      conveyed by the button label ("Cast (N PED)"). The last-rolled
      PED value is still reachable in the expanded panel. */}
- <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+ <div className="arow-hit" onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
  {ability.save ? (() => {
  const dc = resolveSaveDC(ability.save, character);
  if (dc == null) return null;
@@ -767,7 +768,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      chevron sits between HIT/DC and the button column. Only renders
      content when there's an expanded panel; the cell is always
      present so columns line up regardless. */}
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ <div className="arow-chev" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
  {canExpand && (
  <span style={{ fontSize: 9, color: 'var(--t-3)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▼</span>
  )}
@@ -781,7 +782,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      feedback; charges now render before the cast button. Click
      handlers stop propagation so they don't trigger the row-level
      expand toggle. */}
- <div onClick={e => {
+ <div className="arow-act" onClick={e => {
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>

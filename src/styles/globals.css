@@ -1341,3 +1341,99 @@ input[type=number] { -moz-appearance: textfield; }
   50%      { background: rgba(220,38,38,0.30); border-color: #dc2626; color: #fca5a5; }
 }
 .crumb-btn-combat { animation: battlePulse 1.4s ease-in-out infinite; }
+
+/* ================================================================
+   CHARACTER-SHEET ACTION ROWS (v2.675.0)
+   The two fixed-column row templates every "thing a character can
+   do" is rendered with, and their narrow-viewport fallback.
+   ================================================================
+
+   Two templates, each previously copy-pasted as a literal
+   `gridTemplateColumns` string into every surface that used it:
+
+     .arow-grid — 8 columns, Actions tab. Shared by the Actions-tab
+       spell rows and the class-ability / species-trait / Psion-
+       discipline rows that sit directly above and below them
+       (v2.501 aligned those two on purpose).
+     .srow-grid — 11 columns, the wider "unified" template. Shared by
+       the Spells tab, the weapons table and UnifiedActionRow
+       (v2.371-v2.381 aligned those three on purpose).
+
+   Those alignments only hold while every copy agrees, so the
+   templates now live here once instead of in 10 inline styles.
+
+   WHY THE FALLBACK: both templates are almost entirely FIXED
+   columns with a single `1fr` NAME column soaking up the rest.
+   .arow-grid needs 505px before NAME gets a pixel (449px of columns
+   + 56px of gaps); .srow-grid needs 765px. Under that the name
+   collapses to width 0 and the row renders NAMELESS — measured at a
+   375px viewport on 2026-08-18, where the name span reported w=0
+   with every ancestor visible. Worse, .srow-grid can't actually
+   shrink below its fixed columns, so on a phone it pushed the whole
+   document to 807px of scrollWidth; the resulting horizontal scroll
+   made unrelated taps land on whatever the page had slid under
+   them.
+
+   THE FALLBACK: below 640px both templates drop out of grid
+   entirely and become a wrapping flex row. Column geometry is what
+   breaks at this width, so nothing tries to preserve it — every
+   cell keeps its own content and simply flows onto as many lines as
+   it needs, in DOM order, with the name claiming the first line and
+   the buttons a line of their own. Nothing is hidden except the
+   column-header strip, whose labels stop sitting above the things
+   they name. Flex-wrap rather than a hand-placed narrow grid on
+   purpose: it cannot overflow, and it needs no per-surface column
+   arithmetic to keep working when a cell's content changes. */
+
+.arow-grid {
+  display: grid;
+  grid-template-columns: 70px 3px 1fr 46px 70px 74px 16px 170px;
+  gap: 0 8px;
+  align-items: center;
+}
+.srow-grid {
+  display: grid;
+  grid-template-columns: 70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px;
+  gap: 0 8px;
+  align-items: center;
+}
+/* The header strips never centred their cells — an empty header span has
+   to stretch to keep the strip's height. Kept explicit so the shared
+   `align-items: center` above (which every ROW had inline before v2.675.0)
+   doesn't quietly change them. */
+.arow-head, .srow-head { align-items: normal; }
+/* Colour stripe — sizing lives here so the narrow layout can stretch
+   it down the wrapped lines; call sites keep only the dynamic
+   background/opacity. */
+.arow-bar, .srow-bar { width: 3px; height: 30px; border-radius: 2px; }
+
+@media (max-width: 640px) {
+  .arow-head, .srow-head { display: none; }
+
+  .arow-grid, .srow-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  /* Cells are sized by their content here, and none of them may push
+     the row past the viewport. */
+  .arow-grid > *, .srow-grid > * { min-width: 0; }
+  /* A cell with nothing in it (no range, no charges, no tags) would
+     still spend a gap. Grid needed the placeholder to keep columns
+     aligned; wrapped flex doesn't. `!important` because several of
+     these cells set `display: flex` inline to centre their content,
+     and an inline declaration outranks this rule without it. */
+  .arow-grid > :empty, .srow-grid > :empty { display: none !important; }
+
+  /* Claim the rest of the first line, so the metadata cells wrap
+     below the name instead of squeezing it. */
+  .arow-name, .srow-name { flex: 1 1 55%; }
+  /* Cast / Strike / Use buttons get a line to themselves — they are
+     the row's primary affordance and shouldn't be split by a wrap.
+     `order` sends them past the trailing cells (charges, chevron) so
+     those wrap up with the rest of the metadata instead of being
+     stranded on a line below the buttons. */
+  .arow-act, .srow-act { flex: 1 0 100%; order: 1; }
+  .arow-bar, .srow-bar { align-self: stretch; height: auto; }
+}
