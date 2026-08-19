@@ -1407,33 +1407,109 @@ input[type=number] { -moz-appearance: textfield; }
    background/opacity. */
 .arow-bar, .srow-bar { width: 3px; height: 30px; border-radius: 2px; }
 
-@media (max-width: 640px) {
-  .arow-head, .srow-head { display: none; }
+/* v2.676.0 — the trigger is CONTAINER width, not viewport width.
+   v2.675.0 shipped the fallback on a `@media (max-width: 640px)` query,
+   which fixed phones and nothing else. But the sheet's content column is
+   capped (`.cs-content-col`, 900px) and shares the row with a 280px
+   vitals sidebar and the app nav, so the row's own box is far narrower
+   than the window. Measured 2026-08-18, rows on the Actions/Spells/
+   Features tabs:
 
-  .arow-grid, .srow-grid {
+     viewport   2560  1920  1600  1440  1280  1100  1000
+     row box     898   898   898   858   698   518   418
+
+   The 8-column template needs 525px of row box and the 11-column one
+   785px, so at a 1280px laptop EVERY 11-column row — the whole Spells
+   tab, the weapons table, every Features row — rendered nameless and
+   overflowed its column, and at 1100px the 8-column rows joined them.
+   No viewport query can see that: 1280px is not a narrow window, it is
+   a narrow column inside a wide window.
+
+   So each row's own parent becomes a query container and the rows ask it
+   how much room they actually have. The two templates get their own
+   thresholds because they need different amounts of room; each is set
+   where its NAME column stops being wide enough to read rather than
+   where it hits zero (~113px for the 8-column, ~83px for the 11-column,
+   which is most of what that template can ever give it — 898 - 785 =
+   113px is the widest NAME it reaches at any window size).
+
+   `:has()` rather than a marker class on each parent: the parent differs
+   at every call site (a row card here, a section wrapper there), and the
+   header strip's parent is a different element from the rows' parents
+   yet has to answer the same question. Matching "whatever directly
+   parents one of these" gets both, and keeps new call sites working
+   without remembering to tag them. */
+:has(> .arow-grid), :has(> .srow-grid) { container-type: inline-size; }
+
+@container (max-width: 640px) {
+  .arow-head { display: none; }
+  .arow-grid {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
   }
   /* Cells are sized by their content here, and none of them may push
-     the row past the viewport. */
-  .arow-grid > *, .srow-grid > * { min-width: 0; }
+     the row past its container. */
+  .arow-grid > * { min-width: 0; }
   /* A cell with nothing in it (no range, no charges, no tags) would
      still spend a gap. Grid needed the placeholder to keep columns
      aligned; wrapped flex doesn't. `!important` because several of
      these cells set `display: flex` inline to centre their content,
      and an inline declaration outranks this rule without it. */
-  .arow-grid > :empty, .srow-grid > :empty { display: none !important; }
-
+  .arow-grid > :empty { display: none !important; }
   /* Claim the rest of the first line, so the metadata cells wrap
      below the name instead of squeezing it. */
-  .arow-name, .srow-name { flex: 1 1 55%; }
+  .arow-name { flex: 1 1 55%; }
   /* Cast / Strike / Use buttons get a line to themselves — they are
      the row's primary affordance and shouldn't be split by a wrap.
      `order` sends them past the trailing cells (charges, chevron) so
      those wrap up with the rest of the metadata instead of being
      stranded on a line below the buttons. */
-  .arow-act, .srow-act { flex: 1 0 100%; order: 1; }
-  .arow-bar, .srow-bar { align-self: stretch; height: auto; }
+  .arow-act { flex: 1 0 100%; order: 1; }
+  .arow-bar { align-self: stretch; height: auto; }
+}
+
+/* Same layout, wider trigger — the 11-column template runs out of room
+   260px sooner. Deliberately a second copy rather than one block with a
+   shared threshold: a single trigger would either strand the 11-column
+   rows nameless between 640 and 870, or stack the 8-column rows at a
+   width where they still lay out perfectly well (a 698px row box gives
+   their NAME column 173px). */
+@container (max-width: 870px) {
+  .srow-head { display: none; }
+  .srow-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .srow-grid > * { min-width: 0; }
+  .srow-grid > :empty { display: none !important; }
+  .srow-name { flex: 1 1 55%; }
+  .srow-act { flex: 1 0 100%; order: 1; }
+  .srow-bar { align-self: stretch; height: auto; }
+}
+
+/* Legacy floor. Container queries need Chrome 105 / Safari 16 / Firefox
+   110 and `:has()` needs Firefox 121, so a browser older than those gets
+   nothing at all from the two blocks above — including the phone case
+   v2.675.0 was shipped to fix. This keeps that one working on the old
+   viewport trigger. Third copy of the same declarations, which is the
+   price of the guarantee; change the blocks above and change this too. */
+@supports not ((container-type: inline-size) and selector(:has(*))) {
+  @media (max-width: 640px) {
+    .arow-head, .srow-head { display: none; }
+    .arow-grid, .srow-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 8px;
+    }
+    .arow-grid > *, .srow-grid > * { min-width: 0; }
+    .arow-grid > :empty, .srow-grid > :empty { display: none !important; }
+    .arow-name, .srow-name { flex: 1 1 55%; }
+    .arow-act, .srow-act { flex: 1 0 100%; order: 1; }
+    .arow-bar, .srow-bar { align-self: stretch; height: auto; }
+  }
 }
