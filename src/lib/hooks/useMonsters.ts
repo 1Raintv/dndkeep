@@ -141,7 +141,15 @@ async function fetchMonstersFromDb(): Promise<MonsterData[]> {
   // canonical (owner_id IS NULL), own homebrew, and public homebrew.
   const { data, error } = await supabase
     .from('monsters')
-    .select('id, name, type, subtype, alignment, cr, xp, size, hp, hp_formula, ac, ac_note, speed, fly_speed, swim_speed, climb_speed, burrow_speed, str, dex, con, int, wis, cha, saving_throws, skills, damage_immunities, damage_resistances, damage_vulnerabilities, condition_immunities, senses, languages, proficiency_bonus, traits, actions, reactions, legendary_actions, legendary_resistance_count, attack_name, attack_bonus, attack_damage')
+    // v2.679.0 — the last seven columns were missing, which quietly killed the
+    // whole Phase B licence system (v2.94.0). DbMonsterRow declares them and
+    // rowToMonster spreads them in, but Postgres was never asked for them, so
+    // every one arrived `undefined` and every spread was skipped. Effects:
+    // StatBlock's attribution footer never rendered on ANY monster — so the
+    // bestiary displayed no credit at all, which is the thing CC-BY-4.0
+    // actually requires — and the SRD/homebrew and 2014/2024 filter chips
+    // silently matched everything.
+    .select('id, name, type, subtype, alignment, cr, xp, size, hp, hp_formula, ac, ac_note, speed, fly_speed, swim_speed, climb_speed, burrow_speed, str, dex, con, int, wis, cha, saving_throws, skills, damage_immunities, damage_resistances, damage_vulnerabilities, condition_immunities, senses, languages, proficiency_bonus, traits, actions, reactions, legendary_actions, legendary_resistance_count, attack_name, attack_bonus, attack_damage, source, owner_id, visibility, license_key, attribution_text, ruleset_version, is_editable')
     .order('name', { ascending: true });
 
   // v2.644 (audit 5.6): THROW on failure instead of returning [] — the
