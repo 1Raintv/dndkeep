@@ -64,16 +64,26 @@ Shipped in v2.680.0:
   purchase at every tier. A subscription buys the level cap coming off and one
   campaign to DM. That was a pricing claim on a page about to take money.
 
-**Still owner-side, and the beta is not gated until it is done:**
-1. Supabase Dashboard → Authentication → Providers → Email → **disable "Allow new
-   users to sign up"**. The app no longer offers a sign-up form, but the gotrue
-   `/signup` endpoint stays open to curl until this is flipped. *This is the
-   actual gate — everything above is the user-facing half.*
-2. Set `INVITE_CONTACT` in `src/components/pages/LandingPage.tsx`. It is
-   deliberately blank, so "Request an invite" currently renders but does nothing.
-   A dead `mailto:` on the only route into the beta is worse than no link.
+**Still owner-side:**
+1. **Disable sign-ups in the dashboard** (Authentication → Providers → Email →
+   "Allow new users to sign up"). **Owner decision 2026-08-25: deferred, accepted
+   risk.** Recorded plainly so it is a choice and not a surprise: the app no
+   longer shows a sign-up form, but gotrue's `/signup` endpoint still accepts
+   requests, so anyone who knows the API can still create an account. Low stakes
+   while the app is unadvertised and the store cannot charge; revisit before the
+   beta is publicised or Stripe goes live.
+2. `INVITE_CONTACT` in `LandingPage.tsx` — **blank pending the domain purchase**,
+   and blank is a supported state as of v2.681.0: the CTAs read "Invites opening
+   soon" and are genuinely disabled rather than dead links. Setting the constant
+   turns all five back into working `mailto:` buttons; no other edit needed.
 3. Confirm the Supabase email templates (Invite, Reset Password) point at the real
    production URL — see Phase 1 item 6, which is the same underlying setting.
+
+> **The domain purchase is now on the critical path.** It gates the invite
+> contact address (Phase 0), the auth redirect URLs (Phase 1 item 6), the sender
+> address on invite and reset emails, and the business details Stripe asks for at
+> activation (Phase 2 item 6). Worth buying early even though nothing is ready to
+> point at it yet — everything downstream waits on it.
 
 **Verify:** `curl` the gotrue signup endpoint directly → rejected. Invite an
 address from the dashboard, open the emailed link → lands on `/set-password`,
@@ -211,10 +221,22 @@ It is a **third undocumented deploy path**, beyond `deploy.bat` and
 - It is a March-2026 legacy "agent writes to the repo" mechanism, superseded by
   ordinary git. Nothing in the app calls it.
 
-**Fix:** delete the function, then rotate the `GITHUB_TOKEN` and the `DEPLOY_KEY`
-regardless — a token that has sat behind an anonymous endpoint should be treated
-as disclosed. **Verify:** the slug 404s, and the old token is rejected by the
-GitHub API.
+**Status 2026-08-25 — hole closed, cleanup outstanding.** Owner approved removal.
+The live function was overwritten with a permanently-refusing 410 stub and
+flipped to `verify_jwt: true`, so it is now double-locked; an anonymous POST in
+the original attack shape returns 401, verified against production. The original
+source is preserved at `supabase/functions/_retired/push-to-github/index.ts`.
+
+Still to do, both owner-side:
+- **Delete the function outright** (Dashboard → Edge Functions → push-to-github →
+  Delete). The stub is inert but the function and its stored secrets still exist.
+  Could not be done from here: the MCP server exposes no delete, and the Supabase
+  CLI on this machine is not logged in (`supabase login` is interactive).
+- **Rotate `GITHUB_TOKEN` and `DEPLOY_KEY`.** This is the part that actually
+  matters and only you can do it — a secret that sat behind an anonymous endpoint
+  must be treated as disclosed, whatever happens to the endpoint.
+
+**Verify:** the slug 404s, and the old token is rejected by the GitHub API.
 
 ---
 

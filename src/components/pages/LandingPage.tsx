@@ -15,11 +15,14 @@ const STEPS = [
   { n: '3', title: 'Run your campaign', desc: 'The DM creates a campaign and shares a code. Players join and the whole party syncs live. DMs manage initiative and apply damage from their screen.' },
 ];
 
-// v2.680.0 — Where invite requests go. Left blank deliberately rather than
-// filled with a plausible-looking address: a dead mailto: on the only route
-// into an invite-only beta is worse than no link at all. With this empty the
-// CTA still renders and explains itself, it just isn't clickable. Fill it in
-// before the beta opens.
+// v2.681.0 — Where invite requests go. Blank until the domain is bought, and
+// deliberately NOT filled with a plausible-looking placeholder: a dead mailto:
+// on the only route into an invite-only beta silently swallows every request.
+//
+// Blank is a supported state, not a broken one. With no address the CTAs say
+// "Invites opening soon" and are genuinely disabled, which is true and reads as
+// deliberate. Set this to a real address and every CTA becomes a working
+// mailto: — one line, no other edits.
 const INVITE_CONTACT = '';
 
 // v2.680.0 — These lists are pricing claims, so they have to match
@@ -33,11 +36,13 @@ const PRO_FEATURES = ['Everything in Free', 'Characters level 10-20', 'Create & 
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  // Every "get started" CTA used to open the sign-up tab. Sign-ups are
-  // closed for the invite-only beta, so they ask for an invite instead —
-  // or, with no contact address configured yet, simply say so.
+  // Every "get started" CTA used to open the sign-up tab. Sign-ups are closed
+  // for the invite-only beta, so they ask for an invite instead — or, until an
+  // address exists, say so plainly and stay un-clickable rather than pretending.
+  const inviteReady = INVITE_CONTACT.length > 0;
+  const inviteLabel = inviteReady ? 'Request an invite' : 'Invites opening soon';
   const requestInvite = () => {
-    if (INVITE_CONTACT) window.location.href = `mailto:${INVITE_CONTACT}?subject=DNDKeep%20beta%20invite%20request`;
+    if (inviteReady) window.location.href = `mailto:${INVITE_CONTACT}?subject=DNDKeep%20beta%20invite%20request`;
   };
   return (
     <div style={{ minHeight: '100vh', background: 'var(--c-void)', color: 'var(--t-1)', fontFamily: 'var(--ff-body)', position: 'relative', overflowX: 'hidden' }}>
@@ -57,7 +62,7 @@ export default function LandingPage() {
         <span className="landing-nav-brand" style={{ fontFamily: 'var(--ff-brand)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.12em' }}>DNDKEEP</span>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button className="landing-nav-signin" onClick={() => navigate('/auth')} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', minHeight: 0, borderRadius: 8 }}>Sign in</button>
-          <button className="btn-gold landing-nav-cta" onClick={requestInvite}>Request an invite</button>
+          <button className="btn-gold landing-nav-cta" onClick={requestInvite} disabled={!inviteReady}>{inviteLabel}</button>
         </div>
       </nav>
 
@@ -77,7 +82,7 @@ export default function LandingPage() {
             <strong style={{ color: 'var(--t-1)' }}>Everything calculates automatically</strong> so you can focus on playing.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' as const, marginBottom: 16 }}>
-            <button className="btn-gold btn-lg" onClick={requestInvite} style={{ fontSize: 16, paddingLeft: 32, paddingRight: 32 }}>Request an invite</button>
+            <button className="btn-gold btn-lg" onClick={requestInvite} disabled={!inviteReady} style={{ fontSize: 16, paddingLeft: 32, paddingRight: 32 }}>{inviteLabel}</button>
             <button className="btn-secondary btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16 }}>Sign in</button>
           </div>
           <p style={{ fontSize: 12, color: 'var(--t-3)' }}>DNDKeep is in invite-only beta. Already invited? Sign in above.</p>
@@ -151,7 +156,7 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <button className="btn-secondary" onClick={requestInvite} style={{ width: '100%', justifyContent: 'center' }}>Request an invite</button>
+              <button className="btn-secondary" onClick={requestInvite} disabled={!inviteReady} style={{ width: '100%', justifyContent: 'center' }}>{inviteLabel}</button>
             </div>
             <div className="pricing-card pro" style={{ position: 'relative' }}>
               <div style={{ position: 'absolute', top: 16, right: 16, background: 'var(--c-gold)', color: '#150C00', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '3px 10px', borderRadius: 999 }}>Most popular</div>
@@ -169,7 +174,7 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <button className="btn-gold" onClick={requestInvite} style={{ width: '100%', justifyContent: 'center' }}>Request an invite</button>
+              <button className="btn-gold" onClick={requestInvite} disabled={!inviteReady} style={{ width: '100%', justifyContent: 'center' }}>{inviteLabel}</button>
             </div>
           </div>
         </section>
@@ -178,7 +183,7 @@ export default function LandingPage() {
         <section style={{ textAlign: 'center', padding: '72px 24px', borderTop: '1px solid var(--c-border)', background: 'rgba(26,26,38,0.4)' }}>
           <h2 style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 16 }}>Ready to roll?</h2>
           <p style={{ fontSize: 16, color: 'var(--t-2)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' }}>DNDKeep is an invite-only beta while we polish it at real tables.</p>
-          <button className="btn-gold btn-lg" onClick={requestInvite} style={{ fontSize: 16, paddingLeft: 40, paddingRight: 40 }}>Request an invite</button>
+          <button className="btn-gold btn-lg" onClick={requestInvite} disabled={!inviteReady} style={{ fontSize: 16, paddingLeft: 40, paddingRight: 40 }}>{inviteLabel}</button>
           <p style={{ marginTop: 16, fontSize: 12, color: 'var(--t-3)' }}>Compatible with D&D 5e · 2024 PHB rules · Not affiliated with Wizards of the Coast</p>
         </section>
       </div>
