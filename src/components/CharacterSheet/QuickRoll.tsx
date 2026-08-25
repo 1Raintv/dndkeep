@@ -8,7 +8,20 @@ import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { useEffect, useRef } from 'react';
-import { DICE_SKINS } from '../../data/diceSkins';
+import { DICE_SKINS, type DiceSkin } from '../../data/diceSkins';
+
+// v2.682.0 — one swatch source. This colour map was duplicated verbatim in the
+// picker row and the preview modal, so the Obsidian/Gold/Ice/Blood → Crimson/
+// Emerald/Sapphire swap had to be made correctly in two places or the two
+// would disagree. Falls back to the skin's own d20 face colour, so a skin
+// added to diceSkins.ts without touching this map still renders sensibly
+// instead of as a grey square.
+const SKIN_SWATCH: Record<string,string> = {
+  classic:'#8b5cf6', crimson:'#9f0712', emerald:'#047857', sapphire:'#1d4ed8',
+};
+function skinSwatch(s: DiceSkin): string {
+  return SKIN_SWATCH[s.id] ?? `#${(s.faces[20]?.f ?? 0x334155).toString(16).padStart(6,'0')}`;
+}
 
 interface DiceInQueue { die: number; count: number; }
 interface RollResultDie { die: number; value: number; index: number; dropped?: boolean; }
@@ -102,7 +115,6 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  );
  const [previewSkin, setPreviewSkin] = useState<string|null>(null);
  const [unlockedSkins, setUnlockedSkins] = useState<string[]>(['classic']);
- const [buyLoading, setBuyLoading] = useState(false);
 
  // Check unlocked skins on mount
  useEffect(()=>{
@@ -111,32 +123,20 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  if(data) setUnlockedSkins(['classic',...data.map((r:any)=>r.skin_id)]);
  }
  loadUnlocked();
- // Handle return from Stripe
- const params=new URLSearchParams(window.location.search);
- const unlocked=params.get('skin_unlocked');
- if(unlocked){
- setUnlockedSkins(prev=>[...new Set([...prev,unlocked])]);
- setActiveSkin(unlocked);
- localStorage.setItem('dndkeep_dice_skin',unlocked);
- window.history.replaceState({},'',window.location.pathname);
- }
+ // v2.682.0 — the `?skin_unlocked=` handler is gone with the second store.
+ // It trusted a query parameter: adding ?skin_unlocked=crimson to any URL
+ // marked the skin owned and selected it, no payment involved. It also never
+ // wrote to dice_skin_unlocks, so a genuine buyer lost the skin on reload
+ // anyway. Ownership now comes only from loadUnlocked() reading the table,
+ // which the Stripe webhook is the one thing allowed to write.
  },[]);
 
- async function buySkin(skinId:string){
- setBuyLoading(true);
- try{
- const { data:{ session } }=await supabase.auth.getSession();
- const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buy-dice-skin`,{
- method:'POST',
- headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
- body:JSON.stringify({skinId,origin:window.location.origin}),
- });
- const json=await res.json();
- if(json.url) window.location.href=json.url;
- else alert(json.error||'Something went wrong');
- }catch(e){alert(String(e));}
- finally{setBuyLoading(false);}
- }
+ // v2.682.0 — dice are sold in ONE place now: the Store. This used to POST to
+ // a `buy-dice-skin` edge function selling a different catalogue (Obsidian /
+ // Dragon Gold / Glacial Ice / Blood Moon) at a different price than the Store
+ // page listed, with fulfilment that trusted the browser. Both are retired;
+ // the picker below still previews and selects, and buying hands off to /store.
+ function goToStore(){ window.location.href='/store'; }
 
  function chooseSkin(id:string){
  const skin=DICE_SKINS.find(s=>s.id===id);
@@ -361,14 +361,13 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  {DICE_SKINS.map(s=>{
  const locked=!s.free&&!unlockedSkins.includes(s.id);
  const active=activeSkin===s.id;
- const bg:Record<string,string>={classic:'#8b5cf6',obsidian:'#1a1a2e',gold:'#d97706',ice:'#0ea5e9',blood:'#991b1b'};
  return (
  <button key={s.id} onClick={()=>chooseSkin(s.id)}
  title={s.name+(locked?' — Premium (tap to preview)':'')}
  style={{
  flex:1, height:28, borderRadius:5, padding:0, cursor:'pointer',
  border:active?'2px solid var(--c-gold)':'2px solid var(--c-border)',
- background:bg[s.id]??'#333',
+ background:skinSwatch(s),
  position:'relative',
  boxShadow:active?'0 0 8px rgba(245,158,11,0.4)':'none',
  transition:'all .15s',
@@ -383,17 +382,19 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  {previewSkin && (()=>{
  const s=DICE_SKINS.find(sk=>sk.id===previewSkin);
  if(!s)return null;
- const bg:Record<string,string>={classic:'#8b5cf6',obsidian:'#1a1a2e',gold:'#d97706',ice:'#0ea5e9',blood:'#991b1b'};
  return (
  <div style={{ position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)' }}
  onClick={()=>setPreviewSkin(null)}>
  <div onClick={e=>e.stopPropagation()} style={{ background:'var(--c-surface)',border:'1px solid var(--c-border)',borderRadius:16,padding:24,maxWidth:300,width:'90%',textAlign:'center' }}>
- <div style={{ width:64,height:64,borderRadius:12,background:bg[s.id],margin:'0 auto 12px',boxShadow:'0 4px 20px rgba(0,0,0,0.5)' }} />
+ <div style={{ width:64,height:64,borderRadius:12,background:skinSwatch(s),margin:'0 auto 12px',boxShadow:'0 4px 20px rgba(0,0,0,0.5)' }} />
  <div style={{ fontFamily:'var(--ff-body)',fontWeight:900,fontSize:18,color:'var(--t-1)',marginBottom:4 }}>{s.name}</div>
- <div style={{ fontFamily:'var(--ff-body)',fontSize:12,color:'var(--t-3)',marginBottom:16 }}>Premium dice skin</div>
+ <div style={{ fontFamily:'var(--ff-body)',fontSize:12,color:'var(--t-3)',marginBottom:16 }}>Premium dice set</div>
+ {/* v2.682.0 — $2, matching the Store, which is now the single source of
+ truth for what dice cost. This button said $2.99 while the Store said $2
+ for dice that did not even share a name. */}
  <button className="btn-gold" style={{ width:'100%',justifyContent:'center',marginBottom:8 }}
- onClick={()=>buySkin(s.id)} disabled={buyLoading}>
- Unlock for $2.99
+ onClick={goToStore}>
+ Unlock for $2 in the Store
  </button>
  <button className="btn-ghost btn-sm" style={{ width:'100%',justifyContent:'center' }} onClick={()=>setPreviewSkin(null)}>
  Cancel

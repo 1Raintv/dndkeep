@@ -16,9 +16,17 @@ export const STRIPE_PRICES = {
   CHARACTER_SLOT: import.meta.env.VITE_STRIPE_CHARACTER_SLOT_PRICE_ID as string,
   CAMPAIGN_SLOT: import.meta.env.VITE_STRIPE_CAMPAIGN_SLOT_PRICE_ID as string,
   ULTIMATE_CAMPAIGN: import.meta.env.VITE_STRIPE_ULTIMATE_CAMPAIGN_PRICE_ID as string,
-  DICE_DYE_RED: import.meta.env.VITE_STRIPE_DICE_DYE_RED_PRICE_ID as string,
-  DICE_DYE_GREEN: import.meta.env.VITE_STRIPE_DICE_DYE_GREEN_PRICE_ID as string,
-  DICE_DYE_BLUE: import.meta.env.VITE_STRIPE_DICE_DYE_BLUE_PRICE_ID as string,
+  // v2.682.0 — named for the gem, not the colour, so ONE name runs the whole
+  // length of the purchase: this key, the Stripe env var, the `product_key`
+  // sent to checkout, the `skin_id` in dice_skin_unlocks, and the id in
+  // src/data/diceSkins.ts are all "crimson" / "emerald" / "sapphire". The old
+  // RED/GREEN/BLUE names would have needed a colour→gem translation at the
+  // webhook, which is exactly the sort of mapping that silently grants the
+  // wrong product. Free to rename: no Stripe prices existed under the old
+  // names (the env vars were never set, so these were all undefined).
+  DICE_CRIMSON: import.meta.env.VITE_STRIPE_DICE_CRIMSON_PRICE_ID as string,
+  DICE_EMERALD: import.meta.env.VITE_STRIPE_DICE_EMERALD_PRICE_ID as string,
+  DICE_SAPPHIRE: import.meta.env.VITE_STRIPE_DICE_SAPPHIRE_PRICE_ID as string,
 } as const;
 
 /** Is Stripe wired up at all? (publishable key present.) When false the

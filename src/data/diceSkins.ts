@@ -33,61 +33,72 @@ export const DICE_SKINS: DiceSkin[] = [
     clearcoat:1.0, clearcoatRoughness:0.04,
     numColor:'#ffffff', numOutline:'rgba(0,0,0,0.95)',
   },
+  // v2.682.0 — The paid set is Crimson / Emerald / Sapphire, replacing the
+  // previous Obsidian / Dragon Gold / Glacial Ice / Blood Moon.
+  //
+  // WHY THE SWAP WAS FREE. The old four were only ever purchasable through the
+  // `buy-dice-skin` edge function, which the Store page never used, and
+  // `dice_skin_unlocks` was empty in production — nobody had ever bought one.
+  // Retiring them therefore took nothing away from anyone. The app previously
+  // shipped two different paid-dice catalogues (this file's four, and the Store
+  // page's three); this is the consolidation onto one.
+  //
+  // Cut as gemstones — transmission plus a hard clearcoat, using the real index
+  // of refraction for each stone — because they are named after gems and the
+  // `ice` skin proved the transmission path reads well. Each set shifts shade
+  // per die size so a handful of mixed dice stays legible rather than becoming
+  // one red blob.
+  //
+  // DELIBERATELY NOT FINISHED. Owner's call: the paid dice need to be properly
+  // shiny and eye-catching, and that work is deferred until after the launch
+  // build-out — see "Deferred polish — paid dice cosmetics" in docs/ROADMAP.md.
+  // These are a solid, consistent baseline, not the final look. The lever when
+  // it is picked up is the material treatment here plus an environment map;
+  // right now there is nothing in the scene for them to reflect, which is most
+  // of why they still read flatter than they should.
   {
-    id: 'obsidian',
-    name: 'Obsidian',
+    id: 'crimson',
+    name: 'Crimson',
     free: false,
     faces: {
-      4:{f:0x0c0612,e:0xa78bfa}, 6:{f:0x080808,e:0xf87171},
-      8:{f:0x030e08,e:0x4ade80}, 10:{f:0x030a14,e:0x60a5fa},
-      12:{f:0x100224,e:0xe879f9}, 20:{f:0x0a0a0a,e:0xf1f5f9},
-      100:{f:0x080808,e:0xf87171},1001:{f:0x0a0a0a,e:0x94a3b8},1002:{f:0x120000,e:0xfca5a5},
+      4:{f:0x9f0712,e:0xfecaca}, 6:{f:0x7f0410,e:0xfda4af},
+      8:{f:0xb91c1c,e:0xfee2e2}, 10:{f:0x86091a,e:0xfecdd3},
+      12:{f:0x6d0312,e:0xfda4af}, 20:{f:0xdc2626,e:0xffe4e6},
+      100:{f:0x7f0410,e:0xfda4af},1001:{f:0x4c0519,e:0xfecdd3},1002:{f:0xa30d1a,e:0xffe4e6},
     },
-    metalness:0.0, roughness:0.9, emissiveMult:0.0,
-    clearcoat:0.0,
-    numColor:'#e0e0e0', numOutline:'rgba(0,0,0,0.98)',
-  },
-  {
-    id: 'gold',
-    name: 'Dragon Gold',
-    free: false,
-    faces: {
-      4:{f:0xe07b00,e:0xfef3c7}, 6:{f:0xc26a00,e:0xfde68a},
-      8:{f:0xe07b00,e:0xfef08a}, 10:{f:0xa85c00,e:0xfef9c3},
-      12:{f:0xe07b00,e:0xffedd5}, 20:{f:0xf59e0b,e:0xfed7aa},
-      100:{f:0xc26a00,e:0xfde68a},1001:{f:0x6b6460,e:0xfef3c7},1002:{f:0xcc2000,e:0xffedd5},
-    },
-    metalness:0.98, roughness:0.04, emissiveMult:0.0,
+    metalness:0.0, roughness:0.05, emissiveMult:0.06,
     clearcoat:1.0, clearcoatRoughness:0.02,
-    numColor:'#1a0800', numOutline:'rgba(60,20,0,0.6)',
+    transmission:0.5, ior:1.77,          // ruby
+    numColor:'#ffffff', numOutline:'rgba(60,0,10,0.92)',
   },
   {
-    id: 'ice',
-    name: 'Glacial Ice',
+    id: 'emerald',
+    name: 'Emerald',
     free: false,
     faces: {
-      4:{f:0x7dd3fc,e:0xe0f2fe}, 6:{f:0x38bdf8,e:0xf0f9ff},
-      8:{f:0x0ea5e9,e:0xbae6fd}, 10:{f:0x0284c7,e:0xe0f2fe},
-      12:{f:0x0369a1,e:0xcffafe}, 20:{f:0xbae6fd,e:0x0ea5e9},
-      100:{f:0x38bdf8,e:0xf0f9ff},1001:{f:0x0c4a6e,e:0xe0f2fe},1002:{f:0x0284c7,e:0xbae6fd},
+      4:{f:0x047857,e:0xd1fae5}, 6:{f:0x065f46,e:0xa7f3d0},
+      8:{f:0x059669,e:0xecfdf5}, 10:{f:0x036b4a,e:0xbbf7d0},
+      12:{f:0x044e3b,e:0xa7f3d0}, 20:{f:0x10b981,e:0xd1fae5},
+      100:{f:0x065f46,e:0xa7f3d0},1001:{f:0x022c22,e:0xbbf7d0},1002:{f:0x047857,e:0xecfdf5},
     },
-    metalness:0.0, roughness:0.02, emissiveMult:0.0,
-    clearcoat:1.0, clearcoatRoughness:0.0,
-    transmission:0.65, ior:1.45,
-    numColor:'#ffffff', numOutline:'rgba(0,60,120,0.85)',
+    metalness:0.0, roughness:0.05, emissiveMult:0.06,
+    clearcoat:1.0, clearcoatRoughness:0.02,
+    transmission:0.5, ior:1.58,          // emerald (beryl)
+    numColor:'#ffffff', numOutline:'rgba(0,45,30,0.92)',
   },
   {
-    id: 'blood',
-    name: 'Blood Moon',
+    id: 'sapphire',
+    name: 'Sapphire',
     free: false,
     faces: {
-      4:{f:0x6b0000,e:0xfca5a5}, 6:{f:0x3d0000,e:0xfecaca},
-      8:{f:0x850000,e:0xfee2e2}, 10:{f:0x6b0000,e:0xfca5a5},
-      12:{f:0x350000,e:0xef4444}, 20:{f:0xcc1a1a,e:0xffe4e4},
-      100:{f:0x3d0000,e:0xfecaca},1001:{f:0x1a1412,e:0xfca5a5},1002:{f:0x6b0000,e:0xef4444},
+      4:{f:0x1d4ed8,e:0xdbeafe}, 6:{f:0x1e3a8a,e:0xbfdbfe},
+      8:{f:0x2563eb,e:0xeff6ff}, 10:{f:0x1b3f9e,e:0xc7d7fe},
+      12:{f:0x172e6b,e:0xbfdbfe}, 20:{f:0x3b82f6,e:0xdbeafe},
+      100:{f:0x1e3a8a,e:0xbfdbfe},1001:{f:0x0f1f4d,e:0xc7d7fe},1002:{f:0x1d4ed8,e:0xeff6ff},
     },
-    metalness:0.45, roughness:0.28, emissiveMult:0.2,
-    clearcoat:0.7, clearcoatRoughness:0.25,
-    numColor:'#ffffff', numOutline:'rgba(0,0,0,0.95)',
+    metalness:0.0, roughness:0.05, emissiveMult:0.06,
+    clearcoat:1.0, clearcoatRoughness:0.02,
+    transmission:0.5, ior:1.77,          // sapphire (corundum)
+    numColor:'#ffffff', numOutline:'rgba(0,15,60,0.92)',
   },
 ];

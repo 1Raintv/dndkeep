@@ -189,13 +189,36 @@ alongside the subscription.
 > nothing, and visiting the URL without paying grants everything. This is the
 > other half of item 4 below, and explains why that client-side grant exists.
 >
-> **The catalogs disagree three ways.** Deployed `buy-character-slots` sells one
-> SKU — 5 slots for $5.00 — while `entitlements.ts` models single slots to a max
-> of 10. Deployed `buy-dice-skin` sells `obsidian`/`gold`/`ice`/`blood` at $2.99;
-> the repo's `STRIPE_PRICES` names `DICE_DYE_RED`/`GREEN`/`BLUE`. Different
-> products, different names, different prices. **Pick one catalog before writing
-> any Stripe Price objects** — this is the decision that blocks everything else in
-> this phase.
+> **The catalogues disagreed three ways — RESOLVED 2026-08-25 (v2.682.0).**
+> Deployed `buy-character-slots` sold one SKU (5 slots for $5.00) against
+> `entitlements.ts`'s single slots to a max of 10; deployed `buy-dice-skin` sold
+> `obsidian`/`gold`/`ice`/`blood` at $2.99 against the Store page's
+> `DICE_DYE_RED`/`GREEN`/`BLUE` at $2.
+>
+> **Owner decision: the repo is the catalogue of record, and the paid dice are
+> Crimson / Emerald / Sapphire.** Shipped in v2.682.0:
+> - The four old skins are retired and the three gems built in
+>   `src/data/diceSkins.ts`. Free to do: `dice_skin_unlocks` was **empty in
+>   production** — nobody had ever bought one — so nothing was taken from anyone.
+> - **The second store is gone.** The dice roller used to POST to `buy-dice-skin`
+>   with its own catalogue and its own price; its buy button now hands off to
+>   `/store`. Dice are sold in exactly one place.
+> - **One name end to end.** `DICE_CRIMSON` (env) → `product_key` → `skin_id` in
+>   `dice_skin_unlocks` → `id` in `diceSkins.ts` all read `crimson`. The old
+>   colour names would have needed a colour→gem mapping at the webhook, which is
+>   precisely the kind of translation that silently grants the wrong product.
+>   Renaming was free because no Stripe prices existed under the old names.
+> - The `?skin_unlocked=` client-side grant is deleted: it marked a skin owned
+>   from a query parameter with no payment, and never wrote to the table, so a
+>   real buyer lost the skin on reload anyway.
+>
+> **Character slots stay as `entitlements.ts` models them** — single slots, 1
+> base + up to 9 bought, max 10. The deployed 5-for-$5 SKU dies with
+> `buy-character-slots`.
+>
+> Still outstanding: **the seven Stripe Price objects do not exist.** Every
+> `VITE_STRIPE_*_PRICE_ID` is unset, which is why every Store product renders
+> "Coming soon". `.env.example` now lists all seven.
 >
 > **`discord-bot` is fine and handles no money.** The go-live checklist listed it
 > as money-handling; it is a session-availability scheduler. It verifies Ed25519
@@ -382,7 +405,8 @@ checklist. Charging money is what makes it mandatory — invite-only changes not
 | 0 | Disable sign-ups in the Supabase dashboard (owner) | 5 m | ⬜ |
 | 0 | Fill in `INVITE_CONTACT` on the landing page | 5 m | ⬜ |
 | 2 | ⚠️ Delete `push-to-github`, rotate `GITHUB_TOKEN` | 30 m | ⬜ |
-| 2 | Choose one product catalog (slots + dice) | — | ⬜ **blocks 2.1** |
+| 2 | Choose one product catalogue (slots + dice) | — | ✅ v2.682.0 |
+| 2 | Create the 7 Stripe Price objects (owner) | 30 m | ⬜ **blocks 2.1** |
 | 1 | Lock `profiles` UPDATE policy | 1 h | ⬜ |
 | 1 | JWT + CORS on edge functions **and** `stripe.ts` client | 3 h | ⬜ |
 | 1 | Enforce share token in RLS | 30 m | ⬜ |

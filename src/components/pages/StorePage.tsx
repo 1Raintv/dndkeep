@@ -123,10 +123,15 @@ export default function StorePage() {
     },
   ];
 
+  // v2.682.0 — `key` is the product_key sent to checkout AND the skin_id
+  // stored in dice_skin_unlocks AND the id in src/data/diceSkins.ts. Keep the
+  // three in lockstep; a mismatch means the user pays and the skin never
+  // unlocks. This is now the ONLY place paid dice are sold — the second
+  // catalogue that lived behind the dice roller has been retired.
   const diceDyes: StoreItem[] = [
-    { key: 'dice_dye_red',   title: 'Crimson Dice',  price: '$2', blurb: 'A deep red dice set.',   bullets: [], priceId: STRIPE_PRICES.DICE_DYE_RED,   accent: '#ef4444' },
-    { key: 'dice_dye_green', title: 'Emerald Dice',  price: '$2', blurb: 'A rich green dice set.',  bullets: [], priceId: STRIPE_PRICES.DICE_DYE_GREEN, accent: '#22c55e' },
-    { key: 'dice_dye_blue',  title: 'Sapphire Dice', price: '$2', blurb: 'A cool blue dice set.',   bullets: [], priceId: STRIPE_PRICES.DICE_DYE_BLUE,  accent: '#3b82f6' },
+    { key: 'crimson',  title: 'Crimson Dice',  price: '$2', blurb: 'A deep ruby dice set.',     bullets: [], priceId: STRIPE_PRICES.DICE_CRIMSON,  accent: '#dc2626' },
+    { key: 'emerald',  title: 'Emerald Dice',  price: '$2', blurb: 'A rich green dice set.',    bullets: [], priceId: STRIPE_PRICES.DICE_EMERALD,  accent: '#10b981' },
+    { key: 'sapphire', title: 'Sapphire Dice', price: '$2', blurb: 'A deep blue dice set.',     bullets: [], priceId: STRIPE_PRICES.DICE_SAPPHIRE, accent: '#3b82f6' },
   ];
 
   function buyButton(item: StoreItem, owned?: boolean, ownedLabel?: string) {
