@@ -4,6 +4,18 @@ dist-ssr
 *.local
 
 # Environment variables — never commit these
+#
+# v2.683.0 — `.env.production` was NOT covered by these rules and is currently
+# tracked. It holds only placeholders today (pk_test_placeholder /
+# price_placeholder), which is the only reason that has been survivable. Live
+# Stripe keys go in the Vercel dashboard and must never be written to a file in
+# this repo — see docs/MVP_LAUNCH.md Phase 2 item 6.
+#
+# Not ignored retroactively here: adding it while the file is still tracked
+# changes nothing (git keeps tracking it) and would give a false sense that it
+# is protected. Untrack it first — `git rm --cached .env.production` — then
+# uncomment the line below.
+# .env.production
 .env
 .env.local
 .env.*.local

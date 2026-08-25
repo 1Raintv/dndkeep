@@ -13,15 +13,27 @@ export default function SharePage() {
 
   useEffect(() => {
     if (!token) { setNotFound(true); setLoading(false); return; }
-    supabase
-      .from('characters')
-      .select('*')
-      .eq('share_token', token)
-      .eq('share_enabled', true)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) setNotFound(true);
-        else setCharacter(data as Character);
+    // v2.683.0 — was a direct table read filtered by share_token. That filter
+    // was doing the whole job of the access control: the RLS policy behind it
+    // read `using (share_enabled = true)` and never mentioned the token, so
+    // dropping the filter (or just calling the REST endpoint by hand) returned
+    // every shared sheet in the database to anyone holding the anon key.
+    //
+    // The token now has to reach the database as an ARGUMENT, because an RLS
+    // policy cannot see query parameters and so cannot require one. The
+    // SECURITY DEFINER function does the match server-side and the anon-read
+    // policy is gone.
+    // `as any` on the rpc call, matching scenes.ts exploreCells: the generated
+    // Database type has `Functions: { [_ in never]: never }`, so supabase-js
+    // narrows every RPC name to `never` and rejects it. Regenerating needs prod
+    // access (audit 3.5). The cast is at the boundary, per the rule in
+    // src/lib/supabase.ts.
+    (supabase as any)
+      .rpc('get_shared_character', { p_token: token })
+      .then(({ data, error }: { data: unknown; error: unknown }) => {
+        const row = Array.isArray(data) ? data[0] : data;
+        if (error || !row) setNotFound(true);
+        else setCharacter(row as Character);
         setLoading(false);
       });
   }, [token]);

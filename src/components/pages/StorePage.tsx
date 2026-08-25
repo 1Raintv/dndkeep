@@ -55,7 +55,7 @@ export default function StorePage() {
     if (!user) return;
     setError(null); setBusyKey('sub');
     try {
-      await redirectToCheckout(STRIPE_PRICES.PRO_MONTHLY, user.id);
+      await redirectToCheckout(STRIPE_PRICES.PRO_MONTHLY);
     } catch (e) {
       setError((e as Error).message); setBusyKey(null);
     }
@@ -65,7 +65,7 @@ export default function StorePage() {
     if (!user) return;
     setError(null); setBusyKey('manage');
     try {
-      await redirectToCustomerPortal(user.id);
+      await redirectToCustomerPortal();
     } catch (e) {
       setError((e as Error).message); setBusyKey(null);
     }
@@ -75,7 +75,7 @@ export default function StorePage() {
     if (!user || !item.priceId) return;
     setError(null); setBusyKey(item.key);
     try {
-      await redirectToOneTimeCheckout(item.priceId, user.id, item.key);
+      await redirectToOneTimeCheckout(item.priceId, item.key);
     } catch (e) {
       setError((e as Error).message); setBusyKey(null);
     }

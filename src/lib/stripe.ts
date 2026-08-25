@@ -1,4 +1,6 @@
 import { loadStripe } from '@stripe/stripe-js';
+// functions.invoke() needs the client — it is what attaches the caller's JWT.
+import { supabase } from './supabase';
 
 const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string;
 
@@ -42,133 +44,64 @@ export function isPriceConfigured(priceId: string | undefined): boolean {
 }
 
 // =============================================================
-// Checkout redirect
-// Call this to send the user to Stripe Checkout.
-// Your Supabase Edge Function (see supabase/functions/create-checkout)
-// receives the price ID, creates a Checkout Session, and returns
-// the session URL. The client then redirects to that URL.
+// Checkout + billing portal
 // =============================================================
-const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+// v2.683.0 — these three used raw fetch() with `user_id` in the body and NO
+// Authorization header, which is the client half of the edge-function
+// takeover: the server trusted a body field because the client never sent a
+// token. supabase.functions.invoke() attaches the caller's JWT automatically,
+// which is why the functions can now ignore the body's opinion about who you
+// are. `user_id` is gone from all three payloads — the JWT is the identity.
+//
+// Also removed here: an EDGE_FUNCTION_TEMPLATES export holding ~50 lines of
+// stale edge-function source as a string. Nothing imported it, it no longer
+// matched the deployed functions, and it shipped in the entry chunk.
 
-export async function redirectToCheckout(priceId: string, userId: string): Promise<void> {
-  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-checkout`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      price_id: priceId,
-      user_id: userId,
-      success_url: `${window.location.origin}/settings?upgraded=true`,
-      cancel_url: `${window.location.origin}/settings`,
-    }),
-  });
+/** Shared invoke + redirect. Errors from the function body come back on
+ *  `data.error` as well as `error`, so check both — a 400 with a useful
+ *  message would otherwise surface as a generic failure. */
+async function invokeAndRedirect(
+  fn: 'create-checkout' | 'create-portal-session',
+  body: Record<string, unknown>,
+  fallbackMessage: string,
+): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(fn, { body });
+  const payload = data as { url?: string; error?: string } | null;
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Failed to create checkout session');
+  if (error || payload?.error || !payload?.url) {
+    throw new Error(payload?.error ?? error?.message ?? fallbackMessage);
   }
-
-  const { url } = await response.json() as { url: string };
-  window.location.href = url;
+  window.location.href = payload.url;
 }
 
-// =============================================================
-// One-time purchase checkout (mode: 'payment')
-// For character slots, campaign slots, Ultimate Campaign, dice dyes.
-// Passes `mode: 'payment'` and the product key so the edge function
-// (and webhook) can credit the right entitlement on completion.
-// =============================================================
+/** Subscription checkout ($5/mo). */
+export async function redirectToCheckout(priceId: string): Promise<void> {
+  return invokeAndRedirect('create-checkout', {
+    price_id: priceId,
+    product_key: 'pro_monthly',
+    success_url: `${window.location.origin}/settings?upgraded=true`,
+    cancel_url: `${window.location.origin}/settings`,
+  }, 'Failed to create checkout session');
+}
+
+/** One-time purchase: character slots, campaign slots, Ultimate, dice.
+ *  `productKey` must match a key in supabase/functions/_shared/products.ts —
+ *  that table, not the client, decides the Stripe mode and what gets granted. */
 export async function redirectToOneTimeCheckout(
   priceId: string,
-  userId: string,
   productKey: string,
 ): Promise<void> {
-  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-checkout`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      price_id: priceId,
-      user_id: userId,
-      mode: 'payment',
-      product_key: productKey,
-      success_url: `${window.location.origin}/store?purchased=${encodeURIComponent(productKey)}`,
-      cancel_url: `${window.location.origin}/store`,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Failed to create checkout session');
-  }
-
-  const { url } = await response.json() as { url: string };
-  window.location.href = url;
-}
-export async function redirectToCustomerPortal(userId: string): Promise<void> {
-  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-portal-session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      user_id: userId,
-      return_url: `${window.location.origin}/settings`,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Failed to open billing portal');
-  }
-
-  const { url } = await response.json() as { url: string };
-  window.location.href = url;
+  return invokeAndRedirect('create-checkout', {
+    price_id: priceId,
+    product_key: productKey,
+    success_url: `${window.location.origin}/store?purchased=${encodeURIComponent(productKey)}`,
+    cancel_url: `${window.location.origin}/store`,
+  }, 'Failed to create checkout session');
 }
 
-// =============================================================
-// Supabase Edge Function stubs
-// Create these as /supabase/functions/create-checkout/index.ts
-// and /supabase/functions/create-portal-session/index.ts.
-// Both verify the Supabase JWT before talking to Stripe.
-// =============================================================
-export const EDGE_FUNCTION_TEMPLATES = {
-  createCheckout: `
-// supabase/functions/create-checkout/index.ts
-import Stripe from 'https://esm.sh/stripe@14?target=deno';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '2024-04-10' });
-
-Deno.serve(async (req) => {
-  const { price_id, user_id, success_url, cancel_url } = await req.json();
-
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  );
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('stripe_customer_id, email')
-    .eq('id', user_id)
-    .single();
-
-  let customerId = profile?.stripe_customer_id;
-  if (!customerId) {
-    const customer = await stripe.customers.create({ email: profile?.email, metadata: { supabase_user_id: user_id } });
-    customerId = customer.id;
-    await supabase.from('profiles').update({ stripe_customer_id: customerId }).eq('id', user_id);
-  }
-
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: 'subscription',
-    line_items: [{ price: price_id, quantity: 1 }],
-    success_url,
-    cancel_url,
-    subscription_data: { metadata: { supabase_user_id: user_id } },
-  });
-
-  return new Response(JSON.stringify({ url: session.url }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
-});
-`.trim(),
-} as const;
+/** Stripe-hosted billing portal for the signed-in user. */
+export async function redirectToCustomerPortal(): Promise<void> {
+  return invokeAndRedirect('create-portal-session', {
+    return_url: `${window.location.origin}/settings`,
+  }, 'Failed to open billing portal');
+}

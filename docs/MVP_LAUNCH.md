@@ -29,6 +29,34 @@ signup is open to anyone with the URL.
 
 ---
 
+## Where this stands (v2.683.0, 2026-08-25)
+
+Phases 0, 1 and 2 are **written and locally verified**. What remains on them is
+**deployment and Stripe setup, both owner-side** — see "The two things blocking
+launch" below.
+
+Every SQL change was applied to the local Docker database and then attacked:
+the exploit for each hole was run against the hardened schema and confirmed to
+fail, and the legitimate flow it protects was confirmed to still work. That
+process earned its keep — the first version of the `profiles` billing guard
+silently allowed everything, because a `SECURITY DEFINER` trigger sees
+`current_user` as its own owner (`postgres`) and so always took the bypass
+branch. The migration now carries a comment saying not to reintroduce it.
+
+**Not yet deployed.** The three rewritten edge functions exist only in the repo.
+The Supabase CLI on this machine is not logged in and `supabase login` is
+interactive, so they could not be pushed from here. Until they are deployed and
+`APP_ORIGIN` is set, the Store cannot complete a purchase — which is also true
+today, so this is not a regression.
+
+**Done directly against production:** the three legacy endpoints
+(`push-to-github`, `buy-character-slots`, `buy-dice-skin`) were each overwritten
+with a permanently-refusing 410 stub. The last two mattered because their
+client-side fulfilment had just been deleted, so leaving them live meant an
+endpoint that could take a payment and deliver nothing.
+
+---
+
 ## The critical path, in order
 
 ### Phase 0 — Invite gating — ✅ **app side DONE (v2.680.0)**, one owner step left
@@ -407,19 +435,19 @@ checklist. Charging money is what makes it mandatory — invite-only changes not
 | 2 | ⚠️ Delete `push-to-github`, rotate `GITHUB_TOKEN` | 30 m | ⬜ |
 | 2 | Choose one product catalogue (slots + dice) | — | ✅ v2.682.0 |
 | 2 | Create the 7 Stripe Price objects (owner) | 30 m | ⬜ **blocks 2.1** |
-| 1 | Lock `profiles` UPDATE policy | 1 h | ⬜ |
-| 1 | JWT + CORS on edge functions **and** `stripe.ts` client | 3 h | ⬜ |
-| 1 | Enforce share token in RLS | 30 m | ⬜ |
-| 1 | Storage bucket folder ownership | 30 m | ⬜ |
-| 1 | Revoke anon `get_campaign_by_code` | 15 m | ⬜ |
+| 1 | Lock `profiles` UPDATE policy | 1 h | ✅ v2.683.0 |
+| 1 | JWT + CORS on edge functions **and** `stripe.ts` client | 3 h | ✅ v2.683.0 (not deployed) |
+| 1 | Enforce share token in RLS | 30 m | ✅ v2.683.0 |
+| 1 | Storage bucket folder ownership | 30 m | ✅ v2.683.0 |
+| 1 | Revoke anon `get_campaign_by_code` | 15 m | ✅ v2.683.0 |
 | 1 | Real auth redirect URLs | 15 m | ⬜ |
-| 1 | CSP header (own verified change) | 2 h | ⬜ |
+| 1 | CSP header | 2 h | 🟡 v2.683.0 report-only |
 | 1 | Audit for existing self-upgrades | 15 m | ⬜ |
-| 2 | **One-time purchase fulfillment** | 1 d | ⬜ |
-| 2 | Adopt-or-delete the 2 orphaned money functions | 1 h | ⬜ |
-| 2 | Webhook idempotency | 2 h | ⬜ |
-| 2 | Remove client-side entitlement grants | 1 h | ⬜ |
-| 2 | Reconcile server character limit | 1 h | ⬜ |
+| 2 | **One-time purchase fulfillment** | 1 d | ✅ v2.683.0 (not deployed) |
+| 2 | Retire the 2 orphaned money functions | 1 h | ✅ v2.683.0 stubbed |
+| 2 | Webhook idempotency | 2 h | ✅ v2.683.0 |
+| 2 | Remove client-side entitlement grants | 1 h | ✅ v2.683.0 |
+| 2 | Reconcile server character limit | 1 h | ✅ v2.683.0 |
 | 2 | Live Stripe keys + fix `.gitignore` | 30 m | ⬜ |
 | 2 | Full subscription lifecycle test | 2 h | ⬜ |
 | 3 | ToS / Privacy / Refund pages | 1 d | ⬜ |
@@ -430,12 +458,70 @@ checklist. Charging money is what makes it mandatory — invite-only changes not
 | 4 | Paid Supabase + **tested** restore | 2 h + cost | ⬜ |
 | 4 | CI as a real gate | 2 h | ⬜ |
 | 4 | Delete watcher deploy path | 10 m | ⬜ |
-| 4 | Automate version bump | 30 m | ⬜ |
+| 4 | Automate version bump | 30 m | ✅ v2.683.0 |
 | 4 | Migration drift detection | 4–6 h | ⬜ |
 | 4 | Sweep remaining unchecked writes | 3 d | ⬜ |
 
 **Phases 0–3 are the launch: roughly 7–8 working days.** Phase 4 is about a week
 and can trail, with the exception of the tested restore path.
+
+## The two things blocking launch (both owner-side)
+
+Everything in Phases 0–2 that could be written has been written. These two
+cannot be done from a dev machine and nothing else in the payments path can be
+tested until they are.
+
+### 1. Deploy the four functions and set their secrets
+
+```bash
+supabase login
+supabase functions deploy create-checkout        --project-ref ufowdrspkprlpdnjjkaj
+supabase functions deploy create-portal-session  --project-ref ufowdrspkprlpdnjjkaj
+supabase functions deploy stripe-webhook --no-verify-jwt --project-ref ufowdrspkprlpdnjjkaj
+```
+
+`--no-verify-jwt` on the webhook only: Stripe cannot mint a Supabase JWT, and
+its authenticity comes from the signature check instead. Putting it on either of
+the other two would undo the fix this release exists for.
+
+Secrets:
+
+```bash
+supabase secrets set APP_ORIGIN=https://<your-domain>,https://dndkeep.vercel.app
+supabase secrets set STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=...
+```
+
+`APP_ORIGIN` replaces the `Access-Control-Allow-Origin: *` these functions used
+to carry. **Unset, it fails closed** — browsers will refuse the responses — so
+it is not optional.
+
+Then point the Stripe webhook endpoint at
+`https://ufowdrspkprlpdnjjkaj.supabase.co/functions/v1/stripe-webhook` and
+subscribe it to `checkout.session.completed`,
+`customer.subscription.created/updated/deleted`, `invoice.payment_failed`.
+
+### 2. Create the seven Stripe Price objects
+
+Nothing in the Store can be bought until these exist — every button reads
+"Coming soon" because the price IDs are unset. Names must match
+`.env.example`:
+
+| Product | Price | Env var |
+|---|---|---|
+| Pro subscription | $5/mo | `VITE_STRIPE_PRO_MONTHLY_PRICE_ID` |
+| Character slot | $5 | `VITE_STRIPE_CHARACTER_SLOT_PRICE_ID` |
+| Extra campaign slot | $5 | `VITE_STRIPE_CAMPAIGN_SLOT_PRICE_ID` |
+| Ultimate Campaign | $10 | `VITE_STRIPE_ULTIMATE_CAMPAIGN_PRICE_ID` |
+| Crimson Dice | $2 | `VITE_STRIPE_DICE_CRIMSON_PRICE_ID` |
+| Emerald Dice | $2 | `VITE_STRIPE_DICE_EMERALD_PRICE_ID` |
+| Sapphire Dice | $2 | `VITE_STRIPE_DICE_SAPPHIRE_PRICE_ID` |
+
+Do it in **test mode** first and walk the whole path with card
+`4242 4242 4242 4242`: buy each of the six one-time products, confirm exactly
+the right entitlement lands and no Pro tier is granted, then replay one event
+with `stripe listen` and confirm it credits once, not twice.
+
+---
 
 ## Suggested branch sequence
 

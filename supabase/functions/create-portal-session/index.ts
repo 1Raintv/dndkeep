@@ -1,42 +1,40 @@
 // supabase/functions/create-portal-session/index.ts
 // Deploy: supabase functions deploy create-portal-session
+//
+// v2.683.0 — rewritten. This was the worst of the three: a service-role client
+// plus `user_id` read from the request body plus `Access-Control-Allow-Origin:
+// '*'`, with the Authorization header never read. Passing any user's UUID
+// returned a live Stripe billing portal for THEIR account — cancel their
+// subscription, read their invoices with billing address and card last-four,
+// change their payment method. Identity now comes from the JWT and the body's
+// opinion is ignored entirely.
 
 import Stripe from 'https://esm.sh/stripe@14?target=deno';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders, json, serviceClient, userFromRequest } from '../_shared/http.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2024-04-10',
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const user = await userFromRequest(req);
+    if (!user) return json(req, { error: 'Unauthorized' }, 401);
 
-    const { user_id, return_url } = await req.json();
+    const { return_url } = await req.json();
 
+    const supabase = serviceClient();
     const { data: profile } = await supabase
       .from('profiles')
       .select('stripe_customer_id')
-      .eq('id', user_id)
+      .eq('id', user.id)
       .single();
 
     if (!profile?.stripe_customer_id) {
-      return new Response(JSON.stringify({ error: 'No billing account found' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json(req, { error: 'No billing account found' }, 404);
     }
 
     const portalSession = await stripe.billingPortal.sessions.create({
@@ -44,13 +42,9 @@ Deno.serve(async (req: Request) => {
       return_url,
     });
 
-    return new Response(JSON.stringify({ url: portalSession.url }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json(req, { url: portalSession.url });
   } catch (err) {
     console.error('create-portal-session error:', err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json(req, { error: (err as Error).message }, 500);
   }
 });

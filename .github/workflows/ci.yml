@@ -21,7 +21,7 @@ on:
 env:
   # Ratcheted down as debt is paid: 271 → 267 → 222 (2026-08-03 audit
   # dead-code removal + dice consolidation). Lower freely, never raise.
-  TS_BASELINE: 222
+  TS_BASELINE: 221
 
 jobs:
   gate:

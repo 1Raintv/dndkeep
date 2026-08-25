@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { signOut, getCharacters, deleteCharacter, supabase } from '../../lib/supabase';
-import { redirectToCheckout, redirectToCustomerPortal, STRIPE_PRICES } from '../../lib/stripe';
+import { signOut, getCharacters, deleteCharacter } from '../../lib/supabase';
+import { redirectToCheckout, redirectToCustomerPortal, redirectToOneTimeCheckout, STRIPE_PRICES } from '../../lib/stripe';
 import { usePushNotifications } from '../../lib/usePushNotifications';
 import { useHouseRules, type CritRule } from '../../lib/useHouseRules';
 
@@ -24,16 +24,15 @@ export default function SettingsPage() {
   refreshProfileRef.current = refreshProfile;
 
   useEffect(() => {
-    // Handle extra character slots purchase return
-    const slotsBought = parseInt(searchParams.get('slots_purchased') ?? '0');
-    if (slotsBought > 0) {
-      (async () => {
-        await supabase.from('profiles').update({ extra_character_slots: (profile?.extra_character_slots ?? 0) + slotsBought }).eq('id', user!.id);
-        await refreshProfileRef.current();
-        setSearchParams({}, { replace: true });
-      })();
-      return;
-    }
+    // v2.683.0 — the `?slots_purchased=N` handler is DELETED, not fixed.
+    // It read a number out of the query string and added that many character
+    // slots to the profile, with no reference to a payment: visiting
+    // /settings?slots_purchased=9 granted nine slots, repeatably. It only
+    // worked at all because the old buy-character-slots function put the
+    // entitlement in its success_url, making the browser the fulfilment
+    // mechanism. Slots are now credited by the Stripe webhook against a real
+    // payment, and the profiles trigger (v2.683 migration) rejects the write
+    // this used to make even if something tried it again.
     if (searchParams.get('upgraded') !== 'true') return;
     setUpgradeSuccess(true);
     setSearchParams({}, { replace: true });
@@ -55,32 +54,27 @@ export default function SettingsPage() {
     return <div style={{ display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-8)', alignItems: 'center' }}><div className="spinner" /><span className="loading-text">Loading...</span></div>;
   }
 
+  // v2.683.0 — was a raw POST to the buy-character-slots edge function, which
+  // sold a 5-slot pack the rest of the app knew nothing about (entitlements.ts
+  // models single slots) and fulfilled via its success_url. Both that function
+  // and its catalogue are retired; slots are sold in the Store like everything
+  // else, through the one checkout path with webhook fulfilment.
   async function buySlots() {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buy-character-slots`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ origin: window.location.origin }),
-      });
-      const json = await res.json();
-      if (json.url) window.location.href = json.url;
-      else setError(json.error || 'Something went wrong');
-    } catch (e) { setError(String(e)); }
-    finally { setLoading(false); }
+    if (!user || !STRIPE_PRICES.CHARACTER_SLOT) return;
+    setLoading(true); setError(null);
+    try { await redirectToOneTimeCheckout(STRIPE_PRICES.CHARACTER_SLOT, 'character_slot'); }
+    catch (e) { setError((e as Error).message); setLoading(false); }
   }
 
   async function handleUpgrade() {
     setLoading(true); setError(null);
-    try { await redirectToCheckout(STRIPE_PRICES.PRO_MONTHLY, user!.id); }
+    try { await redirectToCheckout(STRIPE_PRICES.PRO_MONTHLY); }
     catch (e) { setError((e as Error).message); setLoading(false); }
   }
 
   async function handleManageBilling() {
     setLoading(true); setError(null);
-    try { await redirectToCustomerPortal(user!.id); }
+    try { await redirectToCustomerPortal(); }
     catch (e) { setError((e as Error).message); setLoading(false); }
   }
 
