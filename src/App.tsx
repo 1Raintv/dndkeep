@@ -15,10 +15,12 @@ import ErrorBoundary from './components/ErrorBoundary';
 // screens after deploys. See src/lib/lazyWithRetry.ts for the full story.
 import { lazyWithRetry as lazy, clearLazyReloadGuard } from './lib/lazyWithRetry';
 import { unreachableMessage } from './lib/authErrors';
+import { peekAuthLanding } from './lib/authLanding';
 
 import './styles/globals.css';
 
 const LandingPage    = lazy(() => import('./components/pages/LandingPage'));
+const SetPasswordPage = lazy(() => import('./components/pages/SetPasswordPage'));
 const SrdPage        = lazy(() => import('./components/pages/SrdAttributionPage'));
 const LobbyPage      = lazy(() => import('./components/pages/LobbyPage'));
 const SharePage      = lazy(() => import('./components/pages/SharePage'));
@@ -433,6 +435,14 @@ function HomeRedirect() {
   if (initError) return <PageLoader unreachable onRetry={retryInit} />;
   if (loading) return <PageLoader />;
   if (user) {
+    // v2.680.0 — Supabase sends invite and recovery emails to the site
+    // root, and `detectSessionInUrl` has already turned that link into a
+    // session by the time we render. Without this check an invited user
+    // would sail past straight into the app, never be asked for a
+    // password, and be unable to sign in once the session expired.
+    // peekAuthLanding() captured the link type before the client wiped
+    // the fragment; SetPasswordPage consumes it on success.
+    if (peekAuthLanding()) return <Navigate to="/set-password" replace />;
     // v2.284.0 — opening DNDKeep in a new tab (or refreshing "/")
     // routes back to the last persisted location instead of
     // unconditionally /lobby. PERSISTABLE_ROUTE_RE in loadLastRoute
@@ -603,6 +613,9 @@ function AppRoutes() {
             <Route path="/share/:token"   element={<SharePage />} />
             <Route path="/"               element={<HomeRedirect />} />
             <Route path="/auth"           element={<AuthPage />} />
+            {/* v2.680.0 — public by design: the emailed invite/recovery
+                link mints the session, and this is where it is spent. */}
+            <Route path="/set-password"   element={<SetPasswordPage />} />
             <Route path="/srd"            element={<SrdPage />} />
             <Route path="/lobby"          element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
             <Route path="/creator"        element={<ProtectedRoute><CreatorPage /></ProtectedRoute>} />

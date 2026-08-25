@@ -1,5 +1,18 @@
 # DNDKeep — Go-Live Checklist
 
+> **2026-08-25 — superseded for ordering by [`docs/MVP_LAUNCH.md`](../../docs/MVP_LAUNCH.md).**
+> The launch shape is now decided: **full store live** + **invite-only beta**. That
+> promotes §2.1 (one-time fulfillment) from deferred to *the* blocker, adds a
+> Phase 0 for invite gating (which does not exist), and adds a legal/ops phase this
+> document never covered. Items below remain the source of truth for *what each fix
+> is and how to verify it*; the launch plan is the source of truth for *order*.
+>
+> Verified 2026-08-25: §1.7 and §1.9 are **done**; every other Phase 1 and Phase 2
+> item is still open. §1.2 is bigger than recorded — `src/lib/stripe.ts` uses raw
+> `fetch()` and attaches no JWT, so the client changes too. §1.8's
+> `buy-character-slots` / `buy-dice-skin` are not merely uncommitted, they are
+> **unreachable** — nothing in `src/` calls them.
+
 Everything here is **deliberately deferred**, not overlooked. These are items that are fine (or fine enough) while the app is a private build with Stripe in test mode, and that must be resolved before real users or real money.
 
 Companion to the architecture audit. Each item states what it is, why it's safe to defer, the fix, and — importantly — **how to verify it's actually done**. A gate you can't verify is a memory, not a gate.

@@ -1,31 +1,49 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signIn, signUp } from '../../lib/supabase';
+import { signIn, requestPasswordReset } from '../../lib/supabase';
 // v2.648 — raw gotrue/browser wordings ("Failed to fetch") are useless to
 // a user; friendlyAuthError turns the ones that matter into next steps.
 import { friendlyAuthError } from '../../lib/authErrors';
 
-type Mode = 'signin' | 'signup';
+// v2.680.0 — Sign-in only. DNDKeep is an invite-only beta: accounts are
+// created by inviting an email address, and public sign-ups are disabled
+// at the Supabase project level. The "Create Account" tab is gone rather
+// than hidden — a disabled control that still posts is a hole, and a
+// visible one that always fails reads as broken.
+//
+// The forgot-password arm is NEW here, not a port. Until now the app had
+// no recovery path of any kind, so a forgotten password was a permanent
+// lockout. That was survivable while anyone could sign up again with the
+// same address; under invite-only it would mean the account is simply
+// gone. The emailed link lands on /set-password.
+
+type Mode = 'signin' | 'forgot';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      if (mode === 'signup') {
-        const { error: err } = await signUp(email, password, displayName);
-        if (err) setError(friendlyAuthError(err));
-        else setConfirmed(true);
+      if (mode === 'forgot') {
+        const { error: err } = await requestPasswordReset(email);
+        // Deliberately reporting success even when gotrue objects: whether
+        // an address has an account is not something an unauthenticated
+        // form should confirm, and under invite-only that would leak who
+        // is in the beta. Real transport failures still surface.
+        if (err && /network|fetch|timeout/i.test(err.message ?? '')) {
+          setError(friendlyAuthError(err));
+        } else {
+          setResetSent(true);
+        }
       } else {
         const { error: err } = await signIn(email, password);
         if (err) setError(friendlyAuthError(err));
@@ -41,21 +59,25 @@ export default function AuthPage() {
     setLoading(false);
   }
 
-  if (confirmed) {
+  if (resetSent) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-16)' }}>
         <div className="card card-gold" style={{ maxWidth: 420, width: '100%', textAlign: 'center' }}>
           <h2 style={{ marginBottom: 'var(--sp-4)' }}>Check Your Email</h2>
           <p style={{ color: 'var(--t-2)' }}>
-            We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account, then sign in.
+            If <strong>{email}</strong> has an account, a password-reset link is on its way.
+            The link expires, so use it soon.
           </p>
-          <button className="btn-secondary" style={{ marginTop: 'var(--sp-6)' }} onClick={() => { setConfirmed(false); setMode('signin'); }}>
+          <button className="btn-secondary" style={{ marginTop: 'var(--sp-6)' }}
+            onClick={() => { setResetSent(false); setMode('signin'); setError(null); }}>
             Back to Sign In
           </button>
         </div>
       </div>
     );
   }
+
+  const forgot = mode === 'forgot';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-8) var(--sp-4)', background: 'var(--c-bg)' }}>
@@ -71,46 +93,44 @@ export default function AuthPage() {
             DNDKEEP
           </div>
           <p style={{ color: 'var(--t-2)', fontSize: 'var(--fs-sm)' }}>
-            {mode === 'signup' ? 'Create a free account to get started.' : 'Welcome back — sign in to your account.'}
+            {forgot ? 'We will email you a link to set a new password.' : 'Welcome back — sign in to your account.'}
           </p>
         </div>
         <div className="card card-gold">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: '#080d14', borderRadius: 'var(--r-md)', padding: '3px', marginBottom: 'var(--sp-6)' }}>
-            {(['signin', 'signup'] as Mode[]).map(m => (
-              <button key={m} onClick={() => { setMode(m); setError(null); }}
-                style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: 'var(--sp-2)', borderRadius: 'var(--r-sm)', border: 'none', background: mode === m ? 'var(--c-surface)' : 'transparent', color: mode === m ? 'var(--c-gold-l)' : 'var(--t-2)', cursor: 'pointer', transition: 'all var(--tr-fast)' }}>
-                {m === 'signin' ? 'Sign In' : 'Create Account'}
-              </button>
-            ))}
-          </div>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-            {mode === 'signup' && (
-              <div>
-                <label>Display Name</label>
-                <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="How shall you be known?" required autoFocus />
-              </div>
-            )}
             <div>
               <label>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required />
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required autoFocus />
             </div>
-            <div>
-              <label>Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'} required minLength={mode === 'signup' ? 8 : 1} />
-            </div>
+            {!forgot && (
+              <div>
+                <label>Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password" required autoComplete="current-password" />
+              </div>
+            )}
             {error && (
               <div style={{ background: 'rgba(155,28,28,0.15)', border: '1px solid rgba(107,20,20,1)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: '#fca5a5', fontFamily: 'var(--ff-body)' }}>{error}</div>
             )}
             <button type="submit" className="btn-primary btn-lg" disabled={loading} style={{ marginTop: 'var(--sp-2)' }}>
-              {loading ? 'Working...' : mode === 'signin' ? 'Enter the Keep' : 'Create Account'}
+              {loading ? 'Working...' : forgot ? 'Send Reset Link' : 'Enter the Keep'}
             </button>
           </form>
-          {mode === 'signin' && (
-            <p style={{ textAlign: 'center', marginTop: 'var(--sp-4)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
-              No account?{' '}
-              <span style={{ color: 'var(--c-gold-l)', cursor: 'pointer' }} onClick={() => setMode('signup')}>Create one free</span>
+
+          <p style={{ textAlign: 'center', marginTop: 'var(--sp-4)', fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
+            <span style={{ color: 'var(--c-gold-l)', cursor: 'pointer' }}
+              onClick={() => { setMode(forgot ? 'signin' : 'forgot'); setError(null); }}>
+              {forgot ? 'Back to sign in' : 'Forgot your password?'}
+            </span>
+          </p>
+
+          {/* Invite-only notice — the honest replacement for the old
+              "Create one free" link, which now has nothing to point at. */}
+          <div style={{ marginTop: 'var(--sp-5)', paddingTop: 'var(--sp-5)', borderTop: '1px solid var(--c-border)', textAlign: 'center' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-3)', fontFamily: 'var(--ff-body)', lineHeight: 1.6 }}>
+              DNDKeep is in <strong style={{ color: 'var(--t-2)' }}>invite-only beta</strong>.
+              Accounts are created by invitation — check your email for your link.
             </p>
-          )}
+          </div>
         </div>
       </div>
     </div>

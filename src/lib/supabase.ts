@@ -1,4 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
+// v2.680.0 — LOAD-BEARING IMPORT ORDER. authLanding captures the auth
+// fragment (#access_token=...&type=invite) at module-evaluation time.
+// createClient() below runs with `detectSessionInUrl: true`, which
+// consumes and clears that fragment. An imported module's body evaluates
+// before the body of the module importing it, so this must stay above
+// the createClient call — and must not be reduced to a `import type`.
+// Without it we cannot tell an invited user from a returning one, and
+// invited users never get asked to set a password.
+import './authLanding';
+// Acyclic despite appearances: checked.ts → log.ts → version.ts only.
+// The Supabase log sink imports this module dynamically, not statically.
+import { checkedWrite } from './api/checked';
 import type { Character, Profile, Campaign } from '../types';
 import type { Database } from '../types/supabase';
 
@@ -39,16 +51,56 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 // Auth helpers
 // =============================================================
 
-export async function signUp(email: string, password: string, displayName: string) {
-  return supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { display_name: displayName } },
-  });
-}
+// v2.680.0 — signUp() is deliberately gone. DNDKeep is an invite-only
+// beta: accounts are created by inviting an email address from the
+// Supabase dashboard, and public sign-ups are disabled at the project
+// level. The client-side helper was removed alongside the UI so a stray
+// caller cannot re-open the door the project setting closed.
 
 export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
+}
+
+/** Email the user a password-reset link.
+ *  v2.680.0 — new. Until now the app had no recovery path at all, so a
+ *  forgotten password was a permanent lockout. That was survivable while
+ *  anyone could create a fresh account; under invite-only it would mean
+ *  losing the account for good. `redirectTo` points at the dedicated
+ *  landing route so the link works even if the project's default redirect
+ *  is the bare site root. */
+export async function requestPasswordReset(email: string) {
+  return supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/set-password`,
+  });
+}
+
+/** Set the signed-in user's password, and optionally their display name.
+ *  v2.680.0 — serves both arms of the same flow: an invited user choosing
+ *  their first password, and an existing user resetting a forgotten one.
+ *  Both arrive holding a valid session minted from the emailed link, which
+ *  is what authorises the change. */
+export async function setPassword(password: string, displayName?: string) {
+  const attrs: { password: string; data?: { display_name: string } } = { password };
+  const trimmed = displayName?.trim();
+  if (trimmed) attrs.data = { display_name: trimmed };
+  const res = await supabase.auth.updateUser(attrs);
+
+  // The auth metadata only feeds `handle_new_user` at account creation,
+  // which has already run by now — the app itself reads
+  // `profiles.display_name`. An invited account was seeded with the
+  // email's local part (the trigger's coalesce fallback), so without this
+  // second write the name they just chose would never appear anywhere.
+  // Deliberately not fatal: the password is set either way, and failing
+  // the whole flow over a display name would lock them out of an account
+  // that is now perfectly usable.
+  if (!res.error && trimmed && res.data?.user?.id) {
+    await checkedWrite(
+      'profiles.update display_name',
+      { userId: res.data.user.id },
+      supabase.from('profiles').update({ display_name: trimmed }).eq('id', res.data.user.id),
+    );
+  }
+  return res;
 }
 
 export async function signOut() {

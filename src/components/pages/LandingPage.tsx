@@ -15,11 +15,30 @@ const STEPS = [
   { n: '3', title: 'Run your campaign', desc: 'The DM creates a campaign and shares a code. Players join and the whole party syncs live. DMs manage initiative and apply damage from their screen.' },
 ];
 
-const FREE_FEATURES = ['1 full character', 'Complete character sheet', 'Animated dice roller', '402 spells to browse', 'Condition tracking', 'Combat tools & weapons', 'Join campaigns'];
-const PRO_FEATURES = ['Everything in Free', 'Unlimited characters', 'Create & run campaigns', 'Real-time party sync', 'DM combat dashboard', 'Initiative tracker', 'Homebrew Workshop'];
+// v2.680.0 — Where invite requests go. Left blank deliberately rather than
+// filled with a plausible-looking address: a dead mailto: on the only route
+// into an invite-only beta is worse than no link at all. With this empty the
+// CTA still renders and explains itself, it just isn't clickable. Fill it in
+// before the beta opens.
+const INVITE_CONTACT = '';
+
+// v2.680.0 — These lists are pricing claims, so they have to match
+// src/lib/entitlements.ts rather than describe the app aspirationally.
+// Corrected here: Pro previously advertised "Unlimited characters", which
+// was never true — MAX_CHARACTER_SLOTS is 10 (1 base + 9 bought) and slots
+// are a separate one-time purchase at every tier. What a subscription
+// actually buys is the level cap coming off and a campaign to DM.
+const FREE_FEATURES = ['1 character, up to level 9', 'Complete character sheet', 'Animated dice roller', '402 spells to browse', 'Condition tracking', 'Combat tools & weapons', 'Join campaigns'];
+const PRO_FEATURES = ['Everything in Free', 'Characters level 10-20', 'Create & run a campaign', 'Real-time party sync', 'DM combat dashboard', 'Initiative tracker', 'Homebrew Workshop'];
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  // Every "get started" CTA used to open the sign-up tab. Sign-ups are
+  // closed for the invite-only beta, so they ask for an invite instead —
+  // or, with no contact address configured yet, simply say so.
+  const requestInvite = () => {
+    if (INVITE_CONTACT) window.location.href = `mailto:${INVITE_CONTACT}?subject=DNDKeep%20beta%20invite%20request`;
+  };
   return (
     <div style={{ minHeight: '100vh', background: 'var(--c-void)', color: 'var(--t-1)', fontFamily: 'var(--ff-body)', position: 'relative', overflowX: 'hidden' }}>
 
@@ -38,7 +57,7 @@ export default function LandingPage() {
         <span className="landing-nav-brand" style={{ fontFamily: 'var(--ff-brand)', fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.12em' }}>DNDKEEP</span>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button className="landing-nav-signin" onClick={() => navigate('/auth')} style={{ background: 'none', border: 'none', color: 'var(--t-2)', cursor: 'pointer', minHeight: 0, borderRadius: 8 }}>Sign in</button>
-          <button className="btn-gold landing-nav-cta" onClick={() => navigate('/auth')}>Get started free →</button>
+          <button className="btn-gold landing-nav-cta" onClick={requestInvite}>Request an invite</button>
         </div>
       </nav>
 
@@ -48,7 +67,7 @@ export default function LandingPage() {
         <section style={{ textAlign: 'center', padding: 'clamp(64px, 10vw, 120px) 24px 80px', maxWidth: 860, margin: '0 auto' }}>
           <div className="landing-hero-dice" style={{ marginBottom: 24 }}></div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c-gold-bg)', border: '1px solid var(--c-gold-bdr)', borderRadius: 999, padding: '5px 16px', fontSize: 12, fontWeight: 700, color: 'var(--c-gold-l)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 28 }}>
-            2024 PHB rules · Free to start
+            2024 PHB rules · Invite-only beta
           </div>
           <h1 className="landing-hero-title" style={{ marginBottom: 24 }}>
             Your D&D companion<br />that does the math
@@ -58,10 +77,10 @@ export default function LandingPage() {
             <strong style={{ color: 'var(--t-1)' }}>Everything calculates automatically</strong> so you can focus on playing.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' as const, marginBottom: 16 }}>
-            <button className="btn-gold btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16, paddingLeft: 32, paddingRight: 32 }}>Create a free character →</button>
+            <button className="btn-gold btn-lg" onClick={requestInvite} style={{ fontSize: 16, paddingLeft: 32, paddingRight: 32 }}>Request an invite</button>
             <button className="btn-secondary btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16 }}>Sign in</button>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--t-3)' }}>Free forever for 1 character. No credit card required.</p>
+          <p style={{ fontSize: 12, color: 'var(--t-3)' }}>DNDKeep is in invite-only beta. Already invited? Sign in above.</p>
         </section>
 
         {/* STATS BAR */}
@@ -132,7 +151,7 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <button className="btn-secondary" onClick={() => navigate('/auth')} style={{ width: '100%', justifyContent: 'center' }}>Get started free</button>
+              <button className="btn-secondary" onClick={requestInvite} style={{ width: '100%', justifyContent: 'center' }}>Request an invite</button>
             </div>
             <div className="pricing-card pro" style={{ position: 'relative' }}>
               <div style={{ position: 'absolute', top: 16, right: 16, background: 'var(--c-gold)', color: '#150C00', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '3px 10px', borderRadius: 999 }}>Most popular</div>
@@ -150,7 +169,7 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <button className="btn-gold" onClick={() => navigate('/auth')} style={{ width: '100%', justifyContent: 'center' }}>Start Pro free trial →</button>
+              <button className="btn-gold" onClick={requestInvite} style={{ width: '100%', justifyContent: 'center' }}>Request an invite</button>
             </div>
           </div>
         </section>
@@ -158,8 +177,8 @@ export default function LandingPage() {
         {/* FOOTER CTA */}
         <section style={{ textAlign: 'center', padding: '72px 24px', borderTop: '1px solid var(--c-border)', background: 'rgba(26,26,38,0.4)' }}>
           <h2 style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: 700, color: 'var(--t-1)', marginBottom: 16 }}>Ready to roll?</h2>
-          <p style={{ fontSize: 16, color: 'var(--t-2)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' }}>Build your first character in under 5 minutes. No credit card required.</p>
-          <button className="btn-gold btn-lg" onClick={() => navigate('/auth')} style={{ fontSize: 16, paddingLeft: 40, paddingRight: 40 }}>Create a free character →</button>
+          <p style={{ fontSize: 16, color: 'var(--t-2)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' }}>DNDKeep is an invite-only beta while we polish it at real tables.</p>
+          <button className="btn-gold btn-lg" onClick={requestInvite} style={{ fontSize: 16, paddingLeft: 40, paddingRight: 40 }}>Request an invite</button>
           <p style={{ marginTop: 16, fontSize: 12, color: 'var(--t-3)' }}>Compatible with D&D 5e · 2024 PHB rules · Not affiliated with Wizards of the Coast</p>
         </section>
       </div>
