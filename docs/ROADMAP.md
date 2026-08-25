@@ -478,6 +478,30 @@ extraction.
 
 ---
 
+## Deferred polish — paid dice cosmetics
+
+**Owner note, 2026-08-25 (Jared):** the paid dice need to be *visually* worth
+paying for — **shiny, eye-catching, obviously special** next to the free Classic
+set. Right now they are colour swaps with slightly different material settings,
+which is not a $2 experience.
+
+**Deliberately deferred until after the launch build-out is complete.** This is
+polish on a product that already sells; it is not a launch blocker, and doing it
+early would mean re-doing it once the surrounding store work settles. Recorded
+here so it survives the launch push rather than living in a chat log.
+
+When it is picked up: the material knobs already exist per skin in
+`src/data/diceSkins.ts` (`metalness`, `roughness`, `emissiveMult`, `clearcoat`,
+`clearcoatRoughness`, plus per-face `f`/`e` colours), so the lever is the
+three.js material treatment, not new plumbing. Worth considering an environment
+map for real reflections — the current sets have no environment to be shiny
+*against*, which is most of why they read flat.
+
+See `docs/MVP_LAUNCH.md` for the catalogue decision that has to land first: the
+store and the dice roller currently ship two different lists of paid dice.
+
+---
+
 ## Infrastructure (cross-cutting, supports all tracks)
 
 Deferred items that make the daily loop real:
