@@ -13,6 +13,16 @@ about it.
 
 ## The drift (snapshot taken 2026-04-22)
 
+> **Re-counted 2026-08-25:** DB still 378, static now 399. In-code-only is up
+> to 39 and in-DB-only down to 18. Three of those 18 are the same spell under
+> its pre-2024 ID — and **two of the three are live duplicates**: prod carries
+> `irresistible-dance` *and* `ottos-irresistible-dance`, and `telepathic-bond`
+> *and* `rarys-telepathic-bond`, so both appear twice in every picker that
+> lists them. (`instant-summons` is the harmless case: the static file's
+> `drawmijs-instant-summons` has no DB row, so there is only ever one.)
+> The lists below are the 2026-04-22 wording and are stale in the details;
+> the counts here are current.
+
 | Source | Count |
 |---|---|
 | DB (`public.spells`, RLS-filtered for SRD + own homebrew + public) | 378 |
@@ -52,6 +62,70 @@ tashas-caustic-brew
 Ranger/Paladin spells and a few others that got added to the DB but not mirrored
 back into the static file. Less urgent — `useSpells` merges them in so they show
 up everywhere now that SpellsPage is on the hook.
+
+## The `classes` drift — the one that actually bites (found 2026-08-25)
+
+The section above tracks spells that exist in one source and not the other.
+Those are mostly harmless: `mergeWithStatic` unions the two, so a static-only
+spell still shows up everywhere.
+
+**Rows present in BOTH sources are a different story.** `mergeWithStatic`
+resolves an ID collision by letting the DB row win outright — the static entry
+is discarded, field for field. So any correction made in `src/data/spells.ts`
+to a spell the DB also has **never reaches a user**. It is live in the repo, in
+the tests, in code review, and dead in the app.
+
+27 canonical rows currently disagree with the static file on `classes` alone
+(the class-availability list — what a class's spell picker offers). Columns are
+what the **DB row is missing** vs the static file, and what it **carries that
+the static file dropped**:
+
+| id | DB missing | DB carries, code dropped |
+|---|---|---|
+| `mage-hand` | +Artificer | — |
+| `spare-the-dying` | +Druid | — |
+| `true-strike` | +Artificer | — |
+| `floating-disk` | +Psion | — |
+| `hideous-laughter` | +Psion | — |
+| `sanctuary` | +Psion | — |
+| `shield-of-faith` | — | -Artificer |
+| `prayer-of-healing` | +Paladin | — |
+| `animate-dead` | — | -Psion |
+| `mass-healing-word` | +Bard | — |
+| `protection-from-energy` | +Artificer | — |
+| `death-ward` | — | -Artificer |
+| `greater-invisibility` | — | -Artificer |
+| `private-sanctum` | +Artificer | — |
+| `resilient-sphere` | +Artificer | — |
+| `secret-chest` | +Artificer | — |
+| `arcane-hand` | +Artificer | — |
+| `ectoplasmic-trail` | — | -Warlock |
+| `bleeding-darkness` | — | -Warlock, -Wizard |
+| `intellect-fortress` | — | -Artificer |
+| `summon-astral-entity` | — | -Sorcerer, -Warlock |
+| `telekinetic-crush` | — | -Sorcerer, -Warlock |
+| `life-inversion-field` | — | -Cleric, -Sorcerer |
+| `psionic-blast` | — | -Wizard |
+| `abi-dalzims-horrid-wilting` | +Psion | — |
+| `power-word-heal` | — | -Psion |
+| `circle-of-power` | +Artificer, +Cleric, +Wizard | — |
+
+**Four of those rows are the v2.659 Psion audit, undone.** That pass added the
+`Psion` tag to Sanctuary and Abi-Dalzim's Horrid Wilting (both named in UA v2's
+"new spells" note) and removed it from Animate Dead (dropped by v2's reprinted
+base list) — see `docs/PSION_UA_SOURCES.md`. All three landed in
+`src/data/spells.ts` and none landed in `public.spells`, so in production the
+Psion spell picker still offers Animate Dead and still hides Sanctuary and
+Abi-Dalzim's. `floating-disk`, `hideous-laughter` and `power-word-heal` are the
+same shape of disagreement but were never adjudicated against the PDFs at all.
+
+**Only the `classes` column has been diffed.** Every other shared column —
+`description`, `damage_dice`, `save_type`, `higher_levels` — can be silently
+stale the same way and has not been checked.
+
+Fixing this is rules-data work, which is human-gated (`docs/ROADMAP.md`
+Track 1): each row needs adjudicating against the SRD 5.2 / UA PDFs before a
+migration is written, not a bulk `UPDATE` from the static file.
 
 ## Why both sources exist
 

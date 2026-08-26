@@ -667,7 +667,11 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  {/* Col 2: NAME + source */}
  <div className="srow-name" style={{ minWidth: 0 }}>
  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' as const, overflow: 'hidden' }}>
- <span style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+ {/* v2.684.0 — title so the longest names stay readable on hover in
+     the rare case the NAME track still can't fit them. The track was
+     widened in the same version (`.srow-grid` in globals.css); this is
+     the belt to that braces. */}
+ <span title={spell.name} style={{ fontWeight: 700, fontSize: 13, color: isConcentrating ? '#c4b5fd' : 'var(--t-1)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
  {spell.name}
  </span>
  {/* v2.380.0 — Pin star. Click to add/remove from quick-cast

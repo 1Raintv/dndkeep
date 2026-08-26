@@ -1365,7 +1365,8 @@ input[type=number] { -moz-appearance: textfield; }
    WHY THE FALLBACK: both templates are almost entirely FIXED
    columns with a single `1fr` NAME column soaking up the rest.
    .arow-grid needs 505px before NAME gets a pixel (449px of columns
-   + 56px of gaps); .srow-grid needs 765px. Under that the name
+   + 56px of gaps); .srow-grid needed 765px until v2.684.0 re-cut its
+   tracks down to 681px (see the template above). Under that the name
    collapses to width 0 and the row renders NAMELESS — measured at a
    375px viewport on 2026-08-18, where the name span reported w=0
    with every ancestor visible. Worse, .srow-grid can't actually
@@ -1391,9 +1392,24 @@ input[type=number] { -moz-appearance: textfield; }
   gap: 0 8px;
   align-items: center;
 }
+/* v2.684.0 — the 11 tracks re-cut so NAME wins the argument.
+   Every fixed track above was set to whatever looked roomy rather than
+   to what its cell actually needs, and NAME paid for all of it. Measured
+   2026-08-25 on a Psion's Spells tab (widest natural content per cell,
+   in px): LEAD 92 (the Prepare pill), TIME 46, RANGE 70, TAGS 36,
+   HIT/DC 58, EFFECT 48, ACT 72 (one Cast button), CHEV 8. Against the
+   old tracks that is 108px reserved-and-unused on ACT alone, while the
+   70px LEAD was 22px too SMALL — the Prepare pill was overflowing into
+   the school stripe.
+
+   Re-cut to content + a little slack, the fixed side drops 765px -> 681px,
+   so at the sheet's own 898px row box NAME goes 133px -> 217px: enough
+   for "Dissonant Whispers" (127px) and "Expeditious Retreat" (126px),
+   which both ellipsised before. minmax(0,1fr) rather than 1fr so the
+   track can never be forced past its share by its own content. */
 .srow-grid {
   display: grid;
-  grid-template-columns: 70px 3px 1fr 46px 70px 36px 74px 80px 180px 110px 16px;
+  grid-template-columns: 92px 3px minmax(0, 1fr) 44px 62px 36px 62px 72px 120px 96px 14px;
   gap: 0 8px;
   align-items: center;
 }
@@ -1429,9 +1445,10 @@ input[type=number] { -moz-appearance: textfield; }
    how much room they actually have. The two templates get their own
    thresholds because they need different amounts of room; each is set
    where its NAME column stops being wide enough to read rather than
-   where it hits zero (~113px for the 8-column, ~83px for the 11-column,
-   which is most of what that template can ever give it — 898 - 785 =
-   113px is the widest NAME it reaches at any window size).
+   where it hits zero — ~113px for the 8-column, ~130px for the
+   11-column since v2.684.0 (before that re-cut its widest possible NAME
+   was 898 - 785 = 113px, so its threshold could only ever be set below
+   what a readable name costs).
 
    `:has()` rather than a marker class on each parent: the parent differs
    at every call site (a row card here, a section wrapper there), and the
@@ -1442,13 +1459,18 @@ input[type=number] { -moz-appearance: textfield; }
 :has(> .arow-grid), :has(> .srow-grid) { container-type: inline-size; }
 
 @container (max-width: 640px) {
-  .arow-head { display: none; }
   .arow-grid {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
   }
+  /* AFTER the .arow-grid rule, not before it. v2.675.0 wrote this pair
+     the other way round; both selectors are one class (0,1,0), so the
+     later `display: flex` won and the header strip never hid — it just
+     became a wrapping flex row of labels bunched at the left edge,
+     naming columns that no longer existed. */
+  .arow-head { display: none; }
   /* Cells are sized by their content here, and none of them may push
      the row past its container. */
   .arow-grid > * { min-width: 0; }
@@ -1458,36 +1480,51 @@ input[type=number] { -moz-appearance: textfield; }
      these cells set `display: flex` inline to centre their content,
      and an inline declaration outranks this rule without it. */
   .arow-grid > :empty { display: none !important; }
-  /* Claim the rest of the first line, so the metadata cells wrap
-     below the name instead of squeezing it. */
-  .arow-name { flex: 1 1 55%; }
-  /* Cast / Strike / Use buttons get a line to themselves — they are
-     the row's primary affordance and shouldn't be split by a wrap.
-     `order` sends them past the trailing cells (charges, chevron) so
-     those wrap up with the rest of the metadata instead of being
-     stranded on a line below the buttons. */
-  .arow-act { flex: 1 0 100%; order: 1; }
+  /* v2.684.0 — was `flex: 1 1 55%`, which made NAME grow to over half
+     the row whether or not it needed the room, shoving the metadata
+     cells hard right and leaving a lake of empty space between the two.
+     `auto` sizes it to the name and lets it grow only into space
+     nothing else claimed; the min-width is the floor that keeps a long
+     name legible instead of collapsing it to an ellipsis. */
+  .arow-name { flex: 1 1 auto; min-width: 132px; }
+  /* v2.684.0 — was `flex: 1 0 100%; order: 1`, a full-width line of its
+     own for one small button; a two-word cantrip row stood 90px tall.
+     Now it sits at the right end of whichever line it lands on, which
+     is the first one whenever the row's content fits (measured: it does
+     down to a ~570px row box). */
+  .arow-act { flex: 0 0 auto; margin-left: auto; }
   .arow-bar { align-self: stretch; height: auto; }
 }
 
 /* Same layout, wider trigger — the 11-column template runs out of room
-   260px sooner. Deliberately a second copy rather than one block with a
+   170px sooner. Deliberately a second copy rather than one block with a
    shared threshold: a single trigger would either strand the 11-column
-   rows nameless between 640 and 870, or stack the 8-column rows at a
+   rows nameless between 640 and 810, or stack the 8-column rows at a
    width where they still lay out perfectly well (a 698px row box gives
-   their NAME column 173px). */
-@container (max-width: 870px) {
-  .srow-head { display: none; }
+   their NAME column 173px).
+
+   v2.684.0 — the trigger was 870px, which was ABOVE the widest row box
+   this app ever hands these rows. The sheet's content column tops out at
+   a 898px box, but only past a ~1520px window; at 1440 it is 858px and at
+   1280 it is 698px. So on every laptop the Spells tab, the weapons table
+   and every UnifiedActionRow were permanently in the narrow fallback and
+   the 11-column table was effectively dead code. Re-cutting the tracks
+   above dropped the fixed side to 681px, so 810 is now "NAME would fall
+   under ~130px" rather than "NAME would hit zero", and the table is what
+   a 1440px laptop actually gets. */
+@container (max-width: 810px) {
   .srow-grid {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
   }
+  /* Must follow .srow-grid — see the .arow-head note above. */
+  .srow-head { display: none; }
   .srow-grid > * { min-width: 0; }
   .srow-grid > :empty { display: none !important; }
-  .srow-name { flex: 1 1 55%; }
-  .srow-act { flex: 1 0 100%; order: 1; }
+  .srow-name { flex: 1 1 auto; min-width: 132px; }
+  .srow-act { flex: 0 0 auto; margin-left: auto; }
   .srow-bar { align-self: stretch; height: auto; }
 }
 
@@ -1499,17 +1536,17 @@ input[type=number] { -moz-appearance: textfield; }
    price of the guarantee; change the blocks above and change this too. */
 @supports not ((container-type: inline-size) and selector(:has(*))) {
   @media (max-width: 640px) {
-    .arow-head, .srow-head { display: none; }
     .arow-grid, .srow-grid {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 4px 8px;
     }
+    .arow-head, .srow-head { display: none; }
     .arow-grid > *, .srow-grid > * { min-width: 0; }
     .arow-grid > :empty, .srow-grid > :empty { display: none !important; }
-    .arow-name, .srow-name { flex: 1 1 55%; }
-    .arow-act, .srow-act { flex: 1 0 100%; order: 1; }
+    .arow-name, .srow-name { flex: 1 1 auto; min-width: 132px; }
+    .arow-act, .srow-act { flex: 0 0 auto; margin-left: auto; }
     .arow-bar, .srow-bar { align-self: stretch; height: auto; }
   }
 }
