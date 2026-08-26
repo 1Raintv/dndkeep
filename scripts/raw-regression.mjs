@@ -72,7 +72,14 @@ console.log('— Spells: v2.547–v2.548 fixes —');
   check("Hunter's Mark deals Force", /force/i.test((hm?.description ?? '') + (hm?.damage_type ?? '')));
   check('Summon Dragon is Wizard-only', JSON.stringify(spell('summon-dragon')?.classes) === '["Wizard"]');
   const pwh = spell('power-word-heal');
-  check('Power Word Heal classes Bard+Cleric only', JSON.stringify((pwh?.classes ?? []).slice().sort()) === '["Bard","Cleric"]');
+  // v2.685.0 — was `=== '["Bard","Cleric"]'`. The point of this check is the
+  // 2024 PHB line (Bard + Cleric and nobody else); it predates the Psion and
+  // read the UA's Level 9 Psion-list entry as a regression. Assert the PHB
+  // classes exactly and allow only Psion alongside them, so the original
+  // intent still bites if a fourth class ever appears.
+  const pwhClasses = (pwh?.classes ?? []).slice().sort();
+  check('Power Word Heal classes Bard+Cleric (+Psion via UA)',
+    JSON.stringify(pwhClasses.filter((c) => c !== 'Psion')) === '["Bard","Cleric"]');
   check("Drawmij's Instant Summons named with prefix", !!SPELLS.find((s) => s.name === "Drawmij's Instant Summons"));
 }
 

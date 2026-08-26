@@ -110,6 +110,13 @@ the static file dropped**:
 | `power-word-heal` | — | -Psion |
 | `circle-of-power` | +Artificer, +Cleric, +Wizard | — |
 
+> **Update 2026-08-25 (v2.685):** the Psion rows in this table are resolved.
+> All of them were checked against the UA PDFs, `src/data/spells.ts` was
+> corrected, `20260825001000_v2_685_psion_spell_list_ua_v2.sql` reconciles
+> `public.spells`, and `src/data/psionSpellList.test.ts` locks the result.
+> **The other ~20 rows below are still open** — nothing here has adjudicated
+> Artificer, Paladin, Bard or Cleric availability against the SRD.
+
 **Four of those rows are the v2.659 Psion audit, undone.** That pass added the
 `Psion` tag to Sanctuary and Abi-Dalzim's Horrid Wilting (both named in UA v2's
 "new spells" note) and removed it from Animate Dead (dropped by v2's reprinted

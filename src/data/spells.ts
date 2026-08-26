@@ -1668,7 +1668,9 @@ export const SPELLS: SpellData[] = [
   duration: "Up to 1 minute",
   concentration: true,
   ritual: false,
-  classes: ["Cleric", "Druid", "Paladin", "Psion"],
+  // v2.685.0 — NOT on UA v2's base Psion list; it is the Metamorph's level-5
+  // grant.
+  classes: ["Cleric", "Druid", "Paladin"],
   description: "Healing energy radiates from you in an aura with a 30-foot radius. The aura moves with you, centered on you for the spell's duration.\n\nUntil the spell ends, on each of your turns you can use a Bonus Action to cause one creature of your choice in the aura (including you) to regain 2d6 Hit Points.\n\nThis spell requires your Concentration. As with other healing effects, it has no effect on Undead or Constructs.",
   heal_dice: "2d6",
   },
@@ -2063,7 +2065,9 @@ export const SPELLS: SpellData[] = [
   duration: "Up to 10 minutes",
   concentration: true,
   ritual: false,
-  classes: ["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Wizard"],
+  // v2.685.0 — on the Level 2 Psion list in UA2025-Psion-v2. Missing from BOTH
+  // this file and public.spells before now.
+  classes: ["Bard", "Cleric", "Druid", "Paladin", "Psion", "Ranger", "Wizard"],
   description: "Describe or name an object that is familiar to you. You sense the direction to the object's location, as long as that object is within 1,000 feet of you. If the object is in motion, you know the direction of its movement.\n\nThe spell can locate a specific object known to you, as long as you have seen it up close--within 30 feet--at least once. Alternatively, the spell can locate the nearest object of a particular kind, such as a certain kind of apparel, jewelry, furniture, tool, or weapon.\n\nThis spell can't locate an object if any thickness of lead, even a thin sheet, blocks a direct path between you and the object.",
   },
   {
@@ -3555,7 +3559,10 @@ export const SPELLS: SpellData[] = [
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Psion", "Ranger", "Wizard"],
+  // v2.685.0 — NOT on UA v2's base Psion list; it is the Psi Warper's level-9
+  // grant. The v2.659 audit kept the tag to stop the spell vanishing; the tag
+  // was never what made the grant work, so it goes.
+  classes: ["Ranger", "Wizard"],
   description: "You flourish the weapon used in the casting and then vanish to strike like the wind. Choose up to five creatures you can see within range. Make a melee spell attack against each target. On a hit, a target takes 6d10 force damage.\n\nYou can then teleport to an unoccupied space you can see within 5 feet of one of the targets you hit or missed.",
   attack_type: "melee",
   damage_type: "Force",
@@ -3680,7 +3687,10 @@ export const SPELLS: SpellData[] = [
   duration: "Up to 1 minute",
   concentration: true,
   ritual: false,
-  classes: ["Bard", "Psion", "Sorcerer", "Warlock", "Wizard"],
+  // v2.685.0 — NOT on UA v2's base Psion list; it is the Psykinetic's level-3
+  // grant (classes.ts spell_list). See the subclass-grant note in
+  // docs/PSION_UA_SOURCES.md.
+  classes: ["Bard", "Sorcerer", "Warlock", "Wizard"],
   description: "You fill the air with spinning daggers in a 5-foot cube centered on a point you choose within range. A creature takes 4d4 slashing damage when it enters the spell's area for the first time on a turn or starts its turn there.",
   higher_levels: "When you cast this spell using a spell slot of 3rd level or higher, the damage increases by 2d4 for each slot level above 2nd.",
   damage_type: "Slashing",
@@ -5027,7 +5037,9 @@ export const SPELLS: SpellData[] = [
   duration: "Up to 1 hour",
   concentration: true,
   ritual: false,
-  classes: ["Cleric", "Wizard"],
+  // v2.685.0 — on the Level 8 Psion list in UA2025-Psion-v2. Missing from BOTH
+  // this file and public.spells before now.
+  classes: ["Cleric", "Psion", "Wizard"],
   description: "A 10-foot-radius invisible sphere of antimagic surrounds you. This area is divorced from the magical energy that suffuses the multiverse. Within the sphere, spells can't be cast, summoned creatures disappear, and even magic items become mundane. Until the spell ends, the sphere moves with you, centered on you.\n\nSpells and other magical effects, except those created by an artifact or a deity, are suppressed in the sphere and can't protrude into it. A slot expended to cast a suppressed spell is consumed. While an effect is suppressed, it doesn't function, but the time it spends suppressed counts against its duration.\n\n***Targeted Effects.*** Spells and other magical effects, such as magic missile and charm person, that target a creature or an object in the sphere have no effect on that target.\n\n***Areas of Magic.*** The area of another spell or magical effect, such as fireball, can't extend into the sphere. If the sphere overlaps an area of magic, the part of the area that is covered by the sphere is suppressed. For example, the flames created by a wall of fire are suppressed within the sphere, creating a gap in the wall if the overlap is large enough.\n\n***Spells.*** Any active spell or other magical effect on a creature or an object in the sphere is suppressed while the creature or object is in it.\n\n***Magic Items.*** The properties and powers of magic items are suppressed in the sphere. For example, a +1 longsword in the sphere functions as a nonmagical longsword.\n\nA magic weapon's properties and powers are suppressed if it is used against a target in the sphere or wielded by an attacker in the sphere. If a magic weapon or a piece of magic ammunition fully leaves the sphere (for example, if you fire a magic arrow or throw a magic spear at a target outside the sphere), the magic of the item ceases to be suppressed as soon as it exits.\n\n***Magical Travel.*** Teleportation and planar travel fail to work in the sphere, whether the sphere is the destination or the departure point for such magical travel. A portal to another location, world, or plane of existence, as well as an opening to an extradimensional space such as that created by the rope trick spell, temporarily closes while in the sphere.\n\n***Creatures and Objects.*** A creature or object summoned or created by magic temporarily winks out of existence in the sphere. Such a creature instantly reappears once the space the creature occupied is no longer within the sphere.\n\n***Dispel Magic.*** Spells and magical effects such as dispel magic have no effect on the sphere. Likewise, the spheres created by different antimagic field spells don't nullify each other.",
   area_of_effect: { type: "sphere", size: 10 },
   },
@@ -5350,7 +5362,9 @@ export const SPELLS: SpellData[] = [
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Bard", "Sorcerer", "Warlock", "Wizard"],
+  // v2.685.0 — on the Level 9 Psion list in UA2025-Psion-v2. Missing from BOTH
+  // this file and public.spells before now.
+  classes: ["Bard", "Psion", "Sorcerer", "Warlock", "Wizard"],
   description: "You utter a word of power that can compel one creature you can see within range to die instantly. If the creature you choose has 100 hit points or fewer, it dies. Otherwise, the spell has no effect.",
   },
   {
@@ -6013,7 +6027,9 @@ export const SPELLS: SpellData[] = [
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Bard", "Cleric"],
+  // v2.685.0 — on the Level 9 Psion list in UA2025-Psion-v2. Verified against
+  // the PDF 2026-08-25; prod already had the tag, this file had lost it.
+  classes: ["Bard", "Cleric", "Psion"],
   description: "A wave of healing energy washes over one creature you can see within range. The target regains all its Hit Points. If the creature has the Charmed, Frightened, Paralyzed, Poisoned, or Stunned condition, the condition ends. If the creature has the Prone condition, it can use its Reaction to stand up.",
   },
   {

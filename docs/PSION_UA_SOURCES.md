@@ -51,12 +51,73 @@ this should argue the v1/v2 relationship above, not the character count.
 `classes.ts` already carries the marker: *"(Passed UA v1 playtest
 unchanged.)"*
 
-### Steel Wind Strike keeps its `Psion` tag
+### ~~Steel Wind Strike keeps its `Psion` tag~~ — superseded 2026-08-25 (v2.685)
+
+> **This decision was half right and has been reversed on the other half.**
+> The spell stays; the **tag** goes. See "A subclass grant is not a base-list
+> spell" below. Kept here because the reasoning it got right — that removing
+> the *spell* would have been wrong — still holds.
 
 `spells.ts` tags Steel Wind Strike `classes: ["Psion", "Ranger", "Wizard"]`,
 and Psi Warper's `spell_list` grants it at level 9. It is not on v2's *base*
 Psion spell list — but the base list and a subclass grant are different
 things, and the subclass granting it is live v1 content. The tag stays.
+
+### A subclass grant is not a base-list spell (decided 2026-08-25, v2.685)
+
+The section above stopped one step short. It is right that a subclass grant
+and the base list are different things — and that is exactly why the grant
+must not be expressed as a `classes: [... "Psion" ...]` tag.
+
+`classes` is what the **spell picker** filters on. Tagging a subclass-granted
+spell `Psion` offers it to *every* Psion, so a Metamorph could prepare Steel
+Wind Strike off the class list. RAW, only a Psi Warper ever gets it, and they
+get it automatically.
+
+Nothing was holding the grant up in the first place:
+`getSubclassSpellIds()` resolves `Class.subclasses[].spell_list` **by name**
+through `SPELL_NAME_TO_ID` and never reads the `classes` array. Dropping the
+tag removes the spell from the general picker and leaves the grant untouched.
+`src/data/psionSpellList.test.ts` asserts both halves — off the base list, and
+still granted by the subclass — so this can't be quietly undone in either
+direction.
+
+Untagged on those grounds: **Steel Wind Strike** (Psi Warper L9),
+**Aura of Vitality** (Metamorph L5), **Cloud of Daggers** (Psykinetic L3).
+
+### Minor Illusion is a Psion cantrip — checked, it always was
+
+Reported missing 2026-08-25. It is not. Both PDFs print the same 12-cantrip
+table and Minor Illusion is on it; v2 goes further and recommends it
+("Minor Illusion and Telekinetic Fling are recommended"). It was correctly
+tagged in `spells.ts`, in `public.spells`, and shown in the picker throughout.
+
+Worth recording the *reason* it was expected to be missing, because it is a
+reasonable-sounding mistake: the Psion does **not** draw from the wizard list.
+Neither PDF contains any such clause — the class has its own closed list. The
+`Illusion Cantrip (Bard, Sorcerer, Warlock, Wizard)` line on the spell is its
+**PHB** class line, and the PHB predates this UA, so it cannot name Psion.
+The UA adds the Psion through the Psion's own spell list instead.
+
+### Four base-list spells were missing (fixed 2026-08-25, v2.685)
+
+On v2's per-level tables, untagged here:
+
+| Spell | Table |
+|---|---|
+| Locate Object | Level 2 |
+| Antimagic Field | Level 8 |
+| Power Word Kill | Level 9 |
+| Power Word Heal | Level 9 |
+
+The first three were missing from **both** `spells.ts` and `public.spells` —
+Psions could not take them at all. Power Word Heal was correct in the DB and
+missing from the repo.
+
+With these in, the three subclass grants out, and the v2.659 corrections
+finally reaching production (migration
+`20260825001000_v2_685_psion_spell_list_ua_v2.sql`), both sources now hold
+exactly v2's 143-spell list.
 
 ### Psionic Restoration follows v2 (fixed in v2.660)
 
