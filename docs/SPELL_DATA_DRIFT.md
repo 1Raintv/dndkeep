@@ -121,12 +121,43 @@ the static file dropped**:
 > that closes the "seven UA-original spells" item below. See
 > `docs/PSION_UA_SOURCES.md` § "UA content is Psion-only".
 >
-> **Still open, and BLOCKED:** the ~20 non-Psion rows in the table below need
-> the official SRD 5.2.1 PDF to adjudicate, and there is no copy on this
-> machine (searched 2026-08-29). Do not settle them from memory or a web
-> mirror — that is exactly the failure mode the no-invented-rules rule exists
-> to prevent. Drop the PDF somewhere reachable and this becomes a mechanical
-> pass.
+> **Settled 2026-08-29 (v2.687), and it was far worse than this table showed.**
+> The owner supplied the official SRD 5.2.1 PDF, so the whole catalog could
+> finally be checked against a source instead of only code-against-DB. That
+> comparison found **63** spells whose class lists disagree with the SRD — not
+> the ~20 this table lists, because this table only ever compared our two
+> copies with each other, and **60 of the 63 were wrong in both at once**. Two
+> wrong copies agree perfectly.
+>
+> The damage was almost entirely spells players were denied: Bard missing 27,
+> Druid 27, Ranger 20, Sorcerer 20, Warlock 18, Wizard 8, Paladin 7, Cleric 6.
+> Only 8 spells granted a class the SRD does not, and no character held any of
+> those. All 63 are fixed in `src/data/spells.ts` and by migration
+> `20260829010000_v2_687_srd_class_lists.sql`, and `srdSpellClasses.test.ts`
+> now locks all 335 shared spells to the source.
+>
+> **The lesson for this file:** "code vs DB" is a consistency check, not a
+> correctness one. It cannot see an error both copies share, and most errors
+> here were exactly that. Check against the PDF.
+>
+> **Still open — needs the owner, not a source:** 10 spells where the repo and
+> production disagree about **Artificer**. The Artificer is not in the SRD at
+> all (zero mentions in the entire document), so nothing here can settle it:
+>
+> | Spell | repo | production |
+> |---|---|---|
+> | Arcane Hand, Mage Hand, Private Sanctum, Protection from Energy, Resilient Sphere, Secret Chest, True Strike | Artificer | not Artificer |
+> | Death Ward, Greater Invisibility, Shield of Faith | not Artificer | Artificer |
+>
+> The repo side came from a "v2.560 Artificer backfill" whose source was never
+> recorded. `raw-regression.mjs` asserts only a floor ("Artificer on >= 70
+> spell lists"), which is not a source either.
+>
+> **Also still open:** `circle-of-power` is not in the SRD either, so the same
+> problem applies to its whole row, not just its Artificer entry — the repo has
+> `[Artificer, Cleric, Paladin, Wizard]` and production has `[Paladin]`. It is
+> one of 64 spells we carry that the SRD does not include (UA content plus
+> PHB-only spells); none of those 64 can be checked against anything today.
 
 > **Update 2026-08-25 (v2.685):** the Psion rows in this table are resolved.
 > All of them were checked against the UA PDFs, `src/data/spells.ts` was
