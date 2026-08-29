@@ -110,6 +110,24 @@ the static file dropped**:
 | `power-word-heal` | — | -Psion |
 | `circle-of-power` | +Artificer, +Cleric, +Wizard | — |
 
+> **Update 2026-08-29 (v2.686):** the three duplicate spells noted above are
+> gone. `irresistible-dance` and `telepathic-bond` were deleted (the
+> wizard-named rows they duplicated survive); `instant-summons` was renamed in
+> place to `drawmijs-instant-summons` so it stays canonical instead of falling
+> back to the static file. Verified same-spell first, and no character held any
+> of the three. A user now sees 414 spells with zero duplicate groups.
+>
+> **Also 2026-08-29:** all 14 UA-only spells are `["Psion"]` in both sources —
+> that closes the "seven UA-original spells" item below. See
+> `docs/PSION_UA_SOURCES.md` § "UA content is Psion-only".
+>
+> **Still open, and BLOCKED:** the ~20 non-Psion rows in the table below need
+> the official SRD 5.2.1 PDF to adjudicate, and there is no copy on this
+> machine (searched 2026-08-29). Do not settle them from memory or a web
+> mirror — that is exactly the failure mode the no-invented-rules rule exists
+> to prevent. Drop the PDF somewhere reachable and this becomes a mechanical
+> pass.
+
 > **Update 2026-08-25 (v2.685):** the Psion rows in this table are resolved.
 > All of them were checked against the UA PDFs, `src/data/spells.ts` was
 > corrected, `20260825001000_v2_685_psion_spell_list_ua_v2.sql` reconciles

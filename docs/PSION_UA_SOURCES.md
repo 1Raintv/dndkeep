@@ -85,6 +85,33 @@ direction.
 Untagged on those grounds: **Steel Wind Strike** (Psi Warper L9),
 **Aura of Vitality** (Metamorph L5), **Cloud of Daggers** (Psykinetic L3).
 
+### UA content is Psion-only, all 14 of them (decided 2026-08-29, v2.686)
+
+Owner's rule, verbatim: *"Anything in the PDFs that I've given you are specific
+to the Psion because we need to keep that locked down. Anything in the SRD we
+can use and make sure every class has access to."*
+
+The line to draw is **where the spell comes from**, not where it appears:
+
+- **UA-only** — the spell is in this app *solely* because the Psion UA prints
+  it. These are the 14 rows with `source = 'ua'`. They get `classes: ["Psion"]`
+  and nothing else, whatever class line the PDF prints beside them. Psionic
+  Blast reads `(Psion, Wizard)` in the source; no Wizard gets it here.
+- **SRD spells the UA merely ADDS to the Psion list** — Sanctuary, Power Word
+  Kill, Abi-Dalzim's Horrid Wilting and the rest. These keep their own class
+  lists and simply *gain* Psion. Adding Psion leaks nothing.
+
+This is the v2.559 "Psion hygiene" rule, finally applied to all 14 instead of
+the six that happened to be wrong when it was written. The other eight had
+drifted onto published lists in the meantime — Psychic Scream was on
+Bard/Sorcerer/Warlock, Intellect Fortress on five classes. `raw-regression.mjs`
+now names all 14, so the rule is enforced where it is stated.
+
+Note this deliberately contradicts the printed source, and that is the point:
+the app implements the 2024 PHB, and a playtest document should not be able to
+put spells on a published class's list. If that call is ever revisited, revisit
+it here — don't "fix" the data to match the PDF and wonder why raw-check fails.
+
 ### Minor Illusion is a Psion cantrip — checked, it always was
 
 Reported missing 2026-08-25. It is not. Both PDFs print the same 12-cantrip

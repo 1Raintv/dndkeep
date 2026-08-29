@@ -6,16 +6,26 @@ name: Apply Migrations
 #   push to `main` → PROD database   (secret SUPABASE_DB_URL)
 #
 # Each tier is a no-op until its secret exists — the gate step skips
-# cleanly with a notice. For PROD that gate is a hard safety interlock:
+# cleanly with a notice. For PROD that gate was a hard safety interlock:
 #
 #   ADD `SUPABASE_DB_URL` ONLY AFTER THE ONE-TIME LEDGER BASELINE.
 #
-# Prod's schema predates most of the migration chain; until the baseline
-# marks historical files as applied in prod's schema_migrations ledger,
-# an unbaselined `db push` would try to replay all ~150 files. Sequence
-# and rationale: owner queue in .claude/audit/dndkeep-audit.md. The TEST
-# project has no such constraint — it was born empty, so its first push
-# replays the whole chain by design.
+# ── THAT BASELINE IS DONE. PROD IS LIVE. (confirmed 2026-08-29) ──
+# The secret is set and this workflow has been applying migrations to
+# PROD on every push to `main` since at least 2026-08-13 — checked
+# against `gh run list --workflow=migrate.yml` (all green) and prod's
+# `supabase_migrations.schema_migrations`, whose newest rows were written
+# by these runs. **A migration merged to `main` is shipped.** Do not read
+# the paragraph below as the current state and go apply SQL by hand; that
+# mistake was made on 2026-08-25, and it turns "already done" into a
+# question somebody has to answer.
+#
+# Kept for the history: prod's schema predates most of the migration
+# chain; until the baseline marked historical files as applied in prod's
+# schema_migrations ledger, an unbaselined `db push` would have tried to
+# replay all ~150 files. Sequence and rationale: owner queue in
+# .claude/audit/dndkeep-audit.md. The TEST project has no such constraint
+# — it was born empty, so its first push replays the whole chain by design.
 #
 # Once enabled: `db push` consults the target's schema_migrations ledger
 # and applies ONLY never-run files, in order — re-running is a no-op.

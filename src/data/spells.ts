@@ -5695,7 +5695,10 @@ export const SPELLS: SpellData[] = [
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Sorcerer", "Wizard", "Psion"],
+  // v2.686.0 — UA-only spell: Psion-only by the v2.559 hygiene rule (see
+  // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
+  // Psion UA reprints it; it is not SRD, so no published class gets it.
+  classes: ["Psion"],
   description: "You psychically lash out at one creature you can see within range. The target must make an Intelligence saving throw. On a failed save, the target takes 3d6 Psychic damage and can't make Opportunity Attacks until the end of its next turn. On its next turn, it must choose whether it gets a move, an action, or a Bonus Action; it gets only one of the three. On a successful save, the target takes half as much damage only.",
   higher_levels: "You can target one additional creature for each spell slot level above 2.",
   damage_type: "Psychic",
@@ -5747,7 +5750,10 @@ export const SPELLS: SpellData[] = [
   duration: "Concentration, up to 1 hour",
   concentration: true,
   ritual: false,
-  classes: ["Bard", "Psion", "Sorcerer", "Warlock", "Wizard"],
+  // v2.686.0 — UA-only spell: Psion-only by the v2.559 hygiene rule (see
+  // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
+  // Psion UA reprints it; it is not SRD, so no published class gets it.
+  classes: ["Psion"],
   description: "For the duration, you or one willing creature you can see within range has Resistance to Psychic damage as well as Advantage on Intelligence, Wisdom, and Charisma saving throws.",
   higher_levels: "When you cast this spell using a spell slot of 4th level or higher, you can target one additional creature for each slot level above 3rd. The creatures must be within 30 feet of each other when you target them.",
   },
@@ -5831,7 +5837,10 @@ export const SPELLS: SpellData[] = [
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Bard", "Psion", "Sorcerer", "Warlock", "Wizard"],
+  // v2.686.0 — UA-only spell: Psion-only by the v2.559 hygiene rule (see
+  // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
+  // Psion UA reprints it; it is not SRD, so no published class gets it.
+  classes: ["Psion"],
   description: "You unleash a shimmering lance of psychic power from your forehead at a creature that you can see within range. Alternatively, you can utter a creature's name (a pseudonym, title, or nickname doesn't work). If the named target is within range, it becomes the spell's target even if you can't see it. If the named target isn't within range or you use an invalid name, the lance dissipates without effect. The target must make an Intelligence saving throw. On a failed save, the target takes 7d6 Psychic damage and has the Incapacitated condition until the start of your next turn. On a successful save, the target takes half as much damage only.",
   higher_levels: "The damage increases by 1d6 for each spell slot level above 4.",
   damage_type: "Psychic",
@@ -6043,7 +6052,10 @@ export const SPELLS: SpellData[] = [
   duration: "Instantaneous",
   concentration: false,
   ritual: false,
-  classes: ["Bard", "Psion", "Sorcerer", "Warlock"],
+  // v2.686.0 — UA-only spell: Psion-only by the v2.559 hygiene rule (see
+  // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
+  // Psion UA reprints it; it is not SRD, so no published class gets it.
+  classes: ["Psion"],
   description: "You unleash the power of your mind to blast the intellect of up to ten creatures of your choice that you can see within range. Creatures that have an Intelligence score of 2 or lower are unaffected. Each target must make an Intelligence saving throw. On a failed save, the target takes 14d6 Psychic damage and has the Stunned condition. On a successful save, the target takes half as much damage only. If the target is reduced to 0 Hit Points by this damage, its head explodes if it has one. At the end of each of its turns, the Stunned target repeats the save, ending the condition on itself on a success.",
   damage_type: "Psychic",
   save_type: "INT",

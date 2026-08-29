@@ -93,7 +93,23 @@ for (const id of ['divine-smite','elementalism','sorcerous-burst','starry-wisp',
 }
 
 console.log('— Spells: Psion hygiene (v2.559) —');
-for (const id of ['bleeding-darkness','ectoplasmic-trail','life-inversion-field','psionic-blast','summon-astral-entity','telekinetic-crush']) {
+// v2.686.0 — was six ids. The rule ("UA content does not appear on published
+// class lists") always covered every UA-only spell; the list just happened to
+// name the six that were wrong at the time, so the other eight were free to
+// drift — and did. Four of them were sitting on Bard/Sorcerer/Warlock/Wizard
+// lists in this file and in prod. All 14 UA-only spells are named now, so the
+// rule is enforced where it is stated rather than by memory.
+//
+// UA-only means: the spell is in this app ONLY because the Psion Unearthed
+// Arcana prints it. Spells the UA merely ADDS to the Psion list (Sanctuary,
+// Power Word Kill, Abi-Dalzim's...) are SRD content and keep their own class
+// lists — they just gain Psion. Do not add those here.
+for (const id of [
+  'telekinetic-fling','life-siphon','ectoplasmic-trail','ego-whip',
+  'tashas-mind-whip','bleeding-darkness','intellect-fortress',
+  'summon-astral-entity','telekinetic-crush','life-inversion-field',
+  'raulothims-psychic-lance','psionic-blast','thought-form','psychic-scream',
+]) {
   const sp = SPELLS.find((s) => s.id === id) ?? SPELLS.find((s) => s.name?.toLowerCase().replace(/[^a-z]+/g, '-') === id);
   check(`UA spell Psion-only: ${id}`, !sp || JSON.stringify(sp.classes) === '["Psion"]', JSON.stringify(sp?.classes));
 }
