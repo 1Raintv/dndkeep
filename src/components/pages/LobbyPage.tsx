@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { isStoreEnabled } from '../../lib/betaMode';
 import type { Character, Campaign } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useCampaign } from '../../context/CampaignContext';
@@ -117,7 +118,10 @@ export default function LobbyPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {!canCreate && (
+            {/* v2.693.0 — no shop during the beta, so "Get more slots" would
+                bounce to the lobby. At the cap the message above already says
+                so; a button that goes nowhere is worse than no button. */}
+            {!canCreate && isStoreEnabled() && (
               <button className="btn-ghost btn-sm" onClick={() => navigate('/store')} style={{ color: 'var(--c-gold-l)' }}>
                 Get more slots
               </button>
@@ -167,7 +171,7 @@ export default function LobbyPage() {
             <button className="btn-gold btn-sm" onClick={() => setShowCreate(v => !v)}>
               + New Campaign
             </button>
-          ) : (
+          ) : isStoreEnabled() ? (
             <button
               className="btn-ghost btn-sm"
               onClick={() => navigate('/store')}
@@ -176,6 +180,13 @@ export default function LobbyPage() {
             >
               ⊘ {isSubscribed ? 'Add a campaign slot' : 'Subscribe to create campaigns'}
             </button>
+          ) : (
+            // v2.693.0 — beta: one campaign each and nothing to buy, so state
+            // the limit instead of offering an upgrade that does not exist.
+            <span className="btn-ghost btn-sm" style={{ color: 'var(--t-3)', cursor: 'default' }}
+                  title={campaignGate.reason ?? ''}>
+              ⊘ Beta limit reached
+            </span>
           )}
         </div>
 

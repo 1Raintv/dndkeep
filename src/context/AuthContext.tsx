@@ -4,6 +4,7 @@ import type { Profile } from '../types';
 import type { GateContext } from '../data/contentGates';
 import { supabase, getProfile } from '../lib/supabase';
 import { isSubscriptionActive } from '../lib/entitlements';
+import { BETA } from '../lib/betaMode';
 
 interface AuthContextValue {
   session: Session | null;
@@ -147,7 +148,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileLoading,
     initError,
     retryInit,
-    isPro: profile?.subscription_tier === 'pro',
+    // v2.693.0 — the beta grants Pro-gated features (campaigns page, homebrew,
+    // realtime sync) so the one campaign each tester gets is actually usable.
+    // Reads the switch rather than the profile, so no billing column is faked.
+    isPro: BETA.enabled || profile?.subscription_tier === 'pro',
     isSubscribed: isSubscriptionActive(profile),
     showUaContent: profile?.show_ua_content === true,
     contentGate: {

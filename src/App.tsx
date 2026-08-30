@@ -34,6 +34,7 @@ const ClassCompendiumPage = lazy(() => import('./components/pages/ClassCompendiu
 const DicePage       = lazy(() => import('./components/pages/DicePage'));
 const SettingsPage   = lazy(() => import('./components/pages/SettingsPage'));
 const StorePage      = lazy(() => import('./components/pages/StorePage'));
+import { isStoreEnabled } from './lib/betaMode';
 const AuthPage       = lazy(() => import('./components/pages/AuthPage'));
 const CreatorPage    = lazy(() => import('./components/CharacterCreator'));
 const CampaignsPage  = lazy(() => import('./components/pages/CampaignsPage'));
@@ -386,6 +387,11 @@ function Sidebar() {
 
       {/* Bottom: store + settings + version */}
       <div className="sidebar-footer">
+        {/* v2.693.0 — no shop during the invite-only beta. Stripe is off and no
+            Price objects exist, so every button in there reads "Coming soon";
+            linking to it just advertises a dead end. isStoreEnabled() also
+            removes the route (below), so the URL is not a way back in. */}
+        {isStoreEnabled() && (
         <NavLink
           to="/store"
           className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
@@ -394,6 +400,7 @@ function Sidebar() {
           <span className="sidebar-link-icon">✦</span>
           {!collapsed && <span className="sidebar-link-label">Store</span>}
         </NavLink>
+        )}
         <NavLink
           to="/settings"
           className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
@@ -631,7 +638,11 @@ function AppRoutes() {
             <Route path="/combat"         element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
             <Route path="/dice"           element={<ProtectedRoute><DicePage /></ProtectedRoute>} />
             <Route path="/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/store"          element={<ProtectedRoute><StorePage /></ProtectedRoute>} />
+            {/* v2.693.0 — the beta has no shop. Typing /store lands on the
+                lobby rather than a page of unbuyable products. */}
+            <Route path="/store"          element={isStoreEnabled()
+              ? <ProtectedRoute><StorePage /></ProtectedRoute>
+              : <Navigate to="/lobby" replace />} />
             <Route path="*"              element={<NotFound />} />
           </Routes>
           </ErrorBoundary>

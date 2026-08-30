@@ -1,3 +1,5 @@
+import { BETA, betaGrantsSubscription } from './betaMode';
+
 // v2.517.0 — Entitlements: the single source of truth for what a user
 // can do based on their subscription + one-time purchases.
 //
@@ -62,6 +64,11 @@ export const ULTIMATE_SCENE_LIMIT = 50;
  *  ('inactive','past_due','canceled','unpaid', etc.) is NOT active, so
  *  subscriber-gated things freeze. */
 export function isSubscriptionActive(profile: Pick<EntitlementProfile, 'subscription_status'> | null | undefined): boolean {
+  // v2.693.0 — during the invite-only beta every account counts as subscribed.
+  // Stripe is off and there is no shop, so the alternative is testers staring
+  // at upgrade prompts for a product they cannot buy. The profile itself is
+  // untouched: they are still 'free' with no subscription, because they are.
+  if (betaGrantsSubscription()) return true;
   if (!profile) return false;
   const s = (profile.subscription_status ?? '').toLowerCase();
   return s === 'active' || s === 'trialing';
@@ -69,6 +76,9 @@ export function isSubscriptionActive(profile: Pick<EntitlementProfile, 'subscrip
 
 /** Total character slots this account owns (base + purchased), capped. */
 export function totalCharacterSlots(profile: Pick<EntitlementProfile, 'extra_character_slots'> | null | undefined): number {
+  // v2.693.0 — flat beta allowance, not base+purchased: nothing can be
+  // purchased while the shop is off. Mirrored by the server-side trigger.
+  if (BETA.enabled) return BETA.characterSlots;
   const extra = Math.max(0, profile?.extra_character_slots ?? 0);
   return Math.min(MAX_CHARACTER_SLOTS, BASE_CHARACTER_SLOTS + extra);
 }
@@ -96,6 +106,8 @@ export function canCreateCharacter(
  *  Requires an active subscription (the sub grants 1; extra add-ons
  *  stack). Without an active sub this is 0 — all owned campaigns freeze. */
 export function activeCampaignSlots(profile: EntitlementProfile | null | undefined): number {
+  // v2.693.0 — see totalCharacterSlots. One campaign each, flat.
+  if (BETA.enabled) return BETA.campaignSlots;
   if (!isSubscriptionActive(profile ?? undefined)) return 0;
   return 1 + Math.max(0, profile?.extra_campaign_slots ?? 0);
 }

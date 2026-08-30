@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isStoreEnabled } from '../../lib/betaMode';
 import { createPortal } from 'react-dom';
 // Import from rules/dice (leaf module), NOT lib/gameUtils — QuickRoll is
 // eagerly loaded by App.tsx, and gameUtils drags the full spell/class/item
@@ -392,10 +393,19 @@ export default function QuickRoll({ characterId, characterName, campaignId, user
  {/* v2.682.0 — $2, matching the Store, which is now the single source of
  truth for what dice cost. This button said $2.99 while the Store said $2
  for dice that did not even share a name. */}
+ {/* v2.693.0 — beta: the Store is gone, so this button would bounce to the
+     lobby. Say the set is unavailable rather than quote a price for
+     something nobody can buy. */}
+ {isStoreEnabled() ? (
  <button className="btn-gold" style={{ width:'100%',justifyContent:'center',marginBottom:8 }}
  onClick={goToStore}>
  Unlock for $2 in the Store
  </button>
+ ) : (
+ <div style={{ fontFamily:'var(--ff-body)',fontSize:12,color:'var(--t-3)',textAlign:'center',marginBottom:8 }}>
+ Not available during the beta
+ </div>
+ )}
  <button className="btn-ghost btn-sm" style={{ width:'100%',justifyContent:'center' }} onClick={()=>setPreviewSkin(null)}>
  Cancel
  </button>

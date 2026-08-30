@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { BETA } from '../../lib/betaMode';
 import { useSearchParams } from 'react-router-dom';
 import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -211,8 +212,12 @@ export default function SettingsPage() {
       <div className={`card ${isPro ? 'card-gold' : ''}`} style={{ marginBottom: 'var(--sp-6)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
           <div className="section-header" style={{ marginBottom: 0, borderBottom: 'none' }}>Subscription</div>
+          {/* v2.693.0 — during the beta isPro is true for everyone, so this
+              would tell every tester they are a paying subscriber. They are
+              not: the switch grants the features, the billing columns are
+              untouched. Say "Beta" and mean it. */}
           <span className={isPro ? 'badge badge-gold' : 'badge badge-muted'}>
-            {isPro ? 'Pro' : 'Free'}
+            {BETA.enabled ? 'Beta' : isPro ? 'Pro' : 'Free'}
           </span>
         </div>
 
