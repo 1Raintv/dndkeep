@@ -21,6 +21,7 @@ let pendingFetch: Promise<SpellData[]> | null = null;
 
 interface DbSpellRow {
   id: string;
+  source: string | null;
   name: string;
   level: number;
   school: string;
@@ -47,6 +48,10 @@ interface DbSpellRow {
 function rowToSpell(r: DbSpellRow): SpellData {
   return {
     id: r.id,
+    // v2.692.0 — carried through so contentGates can hide gated-source spells.
+    // Without it the browser listed every UA spell, in full, to accounts with
+    // no UA access; only the class badges were being filtered.
+    ...(r.source && r.source !== 'srd' ? { source: r.source as SpellData['source'] } : {}),
     name: r.name,
     level: r.level as SpellData['level'],
     school: r.school as SpellData['school'],
@@ -76,7 +81,7 @@ async function fetchSpellsFromDb(): Promise<SpellData[]> {
   // canonical (owner_id IS NULL), own homebrew, and public homebrew.
   const { data, error } = await supabase
     .from('spells')
-    .select('id, name, level, school, casting_time, range, components, duration, concentration, ritual, classes, description, higher_levels, save_type, attack_type, damage_dice, damage_type, damage_at_slot_level, damage_at_char_level, heal_dice, heal_at_slot_level, area_of_effect')
+    .select('id, source, name, level, school, casting_time, range, components, duration, concentration, ritual, classes, description, higher_levels, save_type, attack_type, damage_dice, damage_type, damage_at_slot_level, damage_at_char_level, heal_dice, heal_at_slot_level, area_of_effect')
     .order('level', { ascending: true })
     .order('name', { ascending: true });
 

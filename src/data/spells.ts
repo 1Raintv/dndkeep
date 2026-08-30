@@ -5566,6 +5566,7 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "Choose one nonmagical object weighing 1 to 5 pounds within 10 feet of you that isn't being worn or carried. You wreathe it in psionic energy and fire it at a creature within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 Force damage. On a hit or miss, the object falls to the ground undamaged.",
   higher_levels: "The damage increases by 1d10 when you reach levels 5 (2d10), 11 (3d10), and 17 (4d10).",
   damage_type: "Force",
@@ -5602,6 +5603,7 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You fire an orb of psionic energy fueled by your life force at a creature you can see within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 Psychic damage and you can expend one Hit Point Die to increase the damage by 1d10.",
   higher_levels: "The damage increases by 1d10 and the number of Hit Dice you can expend increases by one for each spell slot level above 1.",
   damage_type: "Psychic",
@@ -5635,6 +5637,7 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You cloak yourself in spirits that leave ectoplasm in your wake until the end of your turn. While cloaked, you can move through occupied spaces as if they were Difficult Terrain, and moving doesn't provoke Opportunity Attacks. If you end your turn in such a space, you are returned to the last unoccupied space you were in. While cloaked, whenever you enter the space of a creature, the creature becomes covered in ectoplasm until the end of your next turn. A creature covered in ectoplasm has its Speed reduced by 10 feet and takes 2d8 Necrotic damage at the start of its turn. A creature can be covered in ectoplasm only once during a turn.",
   higher_levels: "While cloaked, your Speed increases by 10 feet for each spell slot level above 2.",
   damage_type: "Necrotic",
@@ -5652,6 +5655,7 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "The creature makes a Charisma saving throw. On a failed save, the target must subtract 1d8 from the ability check or saving throw.",
   save_type: "CHA",
   },
@@ -5704,6 +5708,7 @@ export const SPELLS: SpellData[] = [
   // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
   // Psion UA reprints it; it is not SRD, so no published class gets it.
   classes: ["Psion"],
+  source: "ua",
   description: "You psychically lash out at one creature you can see within range. The target must make an Intelligence saving throw. On a failed save, the target takes 3d6 Psychic damage and can't make Opportunity Attacks until the end of its next turn. On its next turn, it must choose whether it gets a move, an action, or a Bonus Action; it gets only one of the three. On a successful save, the target takes half as much damage only.",
   higher_levels: "You can target one additional creature for each spell slot level above 2.",
   damage_type: "Psychic",
@@ -5722,6 +5727,7 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You create an inky void in a 10-foot-radius Sphere at a point you can see above yourself within range. When you cast the spell, magical Darkness pours from the sphere, filling a 10-foot-radius, 40-foot-tall Cylinder originating from the Sphere until the start of your next turn. The Cylinder is Difficult Terrain, and no light—magical or otherwise—can illuminate the area. When the Darkness appears, each creature in the area must succeed on a Constitution saving throw or take 3d8 Cold damage and have the Blinded condition until the end of its next turn. A creature also makes this save when it enters the spell's area for the first time on a turn or ends its turn there. A creature makes this save only once per turn. Until the spell ends, you can take a Magic action to move the Sphere up to 20 feet horizontally and cause the Sphere to pour magical Darkness until the start of your next turn.",
   higher_levels: "The damage increases by 1d8 for each spell slot level above 3.",
   damage_type: "Cold",
@@ -5759,6 +5765,7 @@ export const SPELLS: SpellData[] = [
   // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
   // Psion UA reprints it; it is not SRD, so no published class gets it.
   classes: ["Psion"],
+  source: "ua",
   description: "For the duration, you or one willing creature you can see within range has Resistance to Psychic damage as well as Advantage on Intelligence, Wisdom, and Charisma saving throws.",
   higher_levels: "When you cast this spell using a spell slot of 4th level or higher, you can target one additional creature for each slot level above 3rd. The creatures must be within 30 feet of each other when you target them.",
   },
@@ -5774,6 +5781,7 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You call forth the spirit of a psionic entity. It manifests in an unoccupied space that you can see within range and uses the Psionic Spirit stat block. When you cast the spell, choose Crystal Entity, Ectoplasmic Entity, or Ghostly Entity. The creature resembles an astral entity of that kind, which determines certain details in its stat block. The creature disappears when it drops to 0 Hit Points or when the spell ends. The creature is an ally to you and your allies. In combat, the creature shares your Initiative count, but it takes its turn immediately after yours. It obeys your verbal commands (no action required by you). If you don't issue any, it takes the Dodge action and uses its movement to avoid danger.",
   higher_levels: "Use the spell slot's level for the spell's level in the stat block.",
   },
@@ -5789,6 +5797,7 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You create a field of crushing telekinetic force in a 30-foot Cube within range. Each creature in the area makes a Strength saving throw. On a failed save, the target takes 5d6 Force damage and has the Prone condition. On a successful save, the target takes half as much damage only.",
   higher_levels: "The damage increases by 1d6 for each spell slot level above 3.",
   damage_type: "Force",
@@ -5824,6 +5833,7 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "An aura radiates from you in a 30-foot Emanation for the duration. When you create the aura, you regain 4d8 Hit Points. Whenever you regain Hit Points, you can choose a creature you can see in the aura and force it to make a Constitution saving throw. On a failed save, the creature takes Necrotic damage equal to half the amount of Hit Points you regained (round up). A creature makes this save only once per turn.",
   higher_levels: "The healing increases by 1d8 for each spell slot level above 4.",
   damage_type: "Necrotic",
@@ -5846,6 +5856,7 @@ export const SPELLS: SpellData[] = [
   // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
   // Psion UA reprints it; it is not SRD, so no published class gets it.
   classes: ["Psion"],
+  source: "ua",
   description: "You unleash a shimmering lance of psychic power from your forehead at a creature that you can see within range. Alternatively, you can utter a creature's name (a pseudonym, title, or nickname doesn't work). If the named target is within range, it becomes the spell's target even if you can't see it. If the named target isn't within range or you use an invalid name, the lance dissipates without effect. The target must make an Intelligence saving throw. On a failed save, the target takes 7d6 Psychic damage and has the Incapacitated condition until the start of your next turn. On a successful save, the target takes half as much damage only.",
   higher_levels: "The damage increases by 1d6 for each spell slot level above 4.",
   damage_type: "Psychic",
@@ -5945,6 +5956,7 @@ export const SPELLS: SpellData[] = [
   concentration: false,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You unleash a concussive burst of psionic energy. Each creature in a 60-foot Cone originating from you makes an Intelligence saving throw. On a failed save, the creature takes 6d8 Psychic damage and has the Stunned condition until the start of your next turn. On a successful save, the creature takes half as much damage only.",
   higher_levels: "The damage increases by 1d8 for each spell slot level above 6.",
   damage_type: "Psychic",
@@ -5964,6 +5976,7 @@ export const SPELLS: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Psion"],
+  source: "ua",
   description: "You briefly transform into a psionic spirit. You gain the following benefits until the spell ends. Ghostly Form: You have Immunity to Poison and Psychic damage, and you have Immunity to the Exhaustion condition. Incorporeal Movement: You have a Fly Speed of 60 feet and can hover. You can move through occupied spaces as if they were Difficult Terrain. If you end your turn in such a space, you take 1d10 Force damage. If the spell ends in such a space, you are returned to the last unoccupied space you were in. Psionic Recharge: As a Magic action, you can touch a creature (which can be yourself) and roll 1d6. The creature regains one expended spell slot, the level of which equals half the number rolled (round up) or lower. Once a creature regains a spell slot from this spell, that creature can't do so again until it finishes a Long Rest.",
   },
   {
@@ -6061,6 +6074,7 @@ export const SPELLS: SpellData[] = [
   // docs/PSION_UA_SOURCES.md). It exists in this app solely because the
   // Psion UA reprints it; it is not SRD, so no published class gets it.
   classes: ["Psion"],
+  source: "ua",
   description: "You unleash the power of your mind to blast the intellect of up to ten creatures of your choice that you can see within range. Creatures that have an Intelligence score of 2 or lower are unaffected. Each target must make an Intelligence saving throw. On a failed save, the target takes 14d6 Psychic damage and has the Stunned condition. On a successful save, the target takes half as much damage only. If the target is reduced to 0 Hit Points by this damage, its head explodes if it has one. At the end of each of its turns, the Stunned target repeats the save, ending the condition on itself on a success.",
   damage_type: "Psychic",
   save_type: "INT",

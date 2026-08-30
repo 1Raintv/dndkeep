@@ -63,6 +63,35 @@ Ranger/Paladin spells and a few others that got added to the DB but not mirrored
 back into the static file. Less urgent — `useSpells` merges them in so they show
 up everywhere now that SpellsPage is on the hook.
 
+## Gated content leaked through the spell browser (found and fixed 2026-08-30, v2.692)
+
+Gating a CLASS is not the same as gating its CONTENT, and until v2.692 only the
+first was happening. The spell browser lists spells directly rather than through
+a class, so **all 14 of the Psion's Unearthed Arcana spells were fully readable
+by any account** — name, description, everything. v2.688 hid their class
+*badges*, which made it look handled and made the leak easy to miss. Confirmed
+in the running app before the fix: with UA off, searching "Ego Whip" found it.
+
+The fix gives spells the same treatment classes already had. `SpellData.source`
+is now carried through `useSpells` (it was never selected from the DB at all),
+and `isSpellVisible` in `src/data/contentGates.ts` filters the browser and the
+spell picker. Verified: a no-grant account sees 397 spells, a UA-granted one
+sees 411 — a difference of exactly the 14 UA spells.
+
+**This is also the mechanism the owner asked for on 2026-08-30** for the Eberron
+book: anything imported from *Forge of the Artificer* gets `source: 'non-srd'`
+and is then hidden by the very switch that hides the Artificer class. An
+Artificer spell has no business being readable by an account that cannot play an
+Artificer.
+
+**The gate fails CLOSED, and that changes three spells.** Production carried a
+third source value nobody had documented — `expansion`, on `find-greater-steed`,
+`holy-weapon` and `tashas-caustic-brew` (Xanathar's / Tasha's). An unknown source
+is non-SRD by definition, so those three are now gated too. No character holds
+any of them. If that is not wanted, the fix is to re-tag them, not to make
+unknown sources visible — defaulting to visible is how the UA spells stayed
+readable for so long.
+
 ## The `classes` drift — the one that actually bites (found 2026-08-25)
 
 The section above tracks spells that exist in one source and not the other.

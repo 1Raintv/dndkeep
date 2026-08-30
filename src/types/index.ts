@@ -583,6 +583,14 @@ export interface ClassData {
 export interface SpellData {
   id: string;
   name: string;
+  /** v2.692.0 — where the spell comes from, and therefore who may SEE it.
+   *  Absent means core SRD, visible to everyone. 'ua' is playtest material
+   *  (the Psion's 14 spells); 'non-srd' is published content we hold no
+   *  licence for (anything imported from Eberron: Forge of the Artificer).
+   *  Both are filtered at the discovery surfaces by data/contentGates.ts —
+   *  before this existed, the spell browser listed every UA spell in full to
+   *  accounts that had no UA access. Mirrors public.spells.source. */
+  source?: 'srd' | 'ua' | 'non-srd' | 'expansion';
   level: SpellLevel;
   school: SpellSchool;
   casting_time: string;

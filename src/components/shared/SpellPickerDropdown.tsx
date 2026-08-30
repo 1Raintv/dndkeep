@@ -2,6 +2,8 @@ import { shortCastingTime } from '../../lib/spellDisplay';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useSpells } from '../../lib/hooks/useSpells';
+import { useAuth } from '../../context/AuthContext';
+import { isSpellVisible } from '../../data/contentGates';
 import type { SpellData } from '../../types';
 
 interface SpellPickerDropdownProps {
@@ -35,6 +37,7 @@ export default function SpellPickerDropdown({
  // v2.22.0: spells now come from useSpells() — DB-backed with static fallback
  // for any IDs not yet seeded into public.spells.
  const { spells: allSpells } = useSpells();
+ const { contentGate } = useAuth();
 
  const [open, setOpen] = useState(false);
  const [activeLevel, setActiveLevel] = useState(0);
@@ -155,6 +158,12 @@ export default function SpellPickerDropdown({
  const allByLevel = useMemo(() => {
  const map: Record<number, SpellData[]> = {};
  allSpells.forEach(s => {
+ // v2.692.0 — source gate as well as the class filter. The class check alone
+ // already keeps UA spells out of a non-UA character's picker (you cannot be a
+ // Psion without the grant), but that is a side effect rather than a rule.
+ // Stating it means a gated-source spell can never surface here even if it
+ // picks up a published class's tag by mistake.
+ if (!isSpellVisible(s, contentGate)) return;
  if (!s.classes.includes(className)) return;
  if (isCantrip ? s.level !== 0 : s.level > maxLevel) return;
  // Show all matching spells — selected ones get a "− Remove" button automatically
@@ -163,7 +172,7 @@ export default function SpellPickerDropdown({
  map[s.level].push(s);
  });
  return map;
- }, [allSpells, className, isCantrip, maxLevel, selected, grantedSpellIds]);
+ }, [allSpells, contentGate, className, isCantrip, maxLevel, selected, grantedSpellIds]);
 
  const spellsAtLevel = useMemo(() => {
  const base = allByLevel[activeLevel] ?? [];

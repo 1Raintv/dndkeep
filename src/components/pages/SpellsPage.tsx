@@ -11,7 +11,7 @@ import type { SpellData, SpellLevel, Character } from '../../types';
 // SPELL_CLASSES and SPELL_SCHOOLS stay imported because they're static
 // label/sort metadata, not spell rows.
 import { SPELL_CLASSES, SPELL_SCHOOLS } from '../../data/spells';
-import { visibleClassNames } from '../../data/contentGates';
+import { visibleClassNames, visibleSpells } from '../../data/contentGates';
 import { useSpells } from '../../lib/hooks/useSpells';
 import { useAuth } from '../../context/AuthContext';
 import { getCharacters, updateCharacter } from '../../lib/supabase';
@@ -43,7 +43,12 @@ export default function SpellsPage() {
   }, [user]);
 
   const filtered = useMemo(() => {
-    return spells.filter(s => {
+    // v2.692.0 — source gate FIRST, before any user filter. This browser lists
+    // spells directly rather than through a class, so it was showing all 14 of
+    // the Psion's UA spells in full to accounts with no UA access; hiding their
+    // class badges (v2.688) hid the label, not the spell. Anything imported
+    // from the Eberron Artificer book is gated by the same call.
+    return visibleSpells(spells, contentGate).filter(s => {
       if (search && !s.name.toLowerCase().includes(search.toLowerCase()) &&
           !s.description.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterClass && !s.classes.includes(filterClass)) return false;
@@ -53,7 +58,10 @@ export default function SpellsPage() {
       if (filterRitual && !s.ritual) return false;
       return true;
     }).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  }, [spells, search, filterClass, filterLevel, filterSchool, filterConcentration, filterRitual]);
+    // contentGate is a dep: the profile arrives asynchronously, so the first
+    // render has no grants and a later one does. Omit it and the list stays
+    // frozen at whatever the gate was when `spells` last changed.
+  }, [spells, contentGate, search, filterClass, filterLevel, filterSchool, filterConcentration, filterRitual]);
 
   async function addSpellToCharacter(characterId: string, spellId: string) {
     const char = characters.find(c => c.id === characterId);

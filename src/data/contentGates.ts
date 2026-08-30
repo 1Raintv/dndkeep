@@ -113,3 +113,46 @@ export function isClassVisible(className: string, ctx: GateContext = {}): boolea
 export function visibleClassNames(names: readonly string[], ctx: GateContext = {}): string[] {
   return names.filter(n => isClassVisible(n, ctx));
 }
+
+/**
+ * v2.692.0 — Is this SPELL visible to this viewer?
+ *
+ * Gating classes was not enough. A spell carries its own source, and the spell
+ * browser lists spells directly rather than through a class — so until this
+ * existed, every one of the Psion's 14 UA spells (Ego Whip, Psionic Blast,
+ * Thought Form...) was fully readable by any account, description and all.
+ * Only their class BADGES were hidden, which made the leak easy to miss.
+ *
+ * The same hole would swallow anything imported from Eberron: Forge of the
+ * Artificer. Tag such a spell `source: 'non-srd'` and it is hidden by the same
+ * switch that hides the class — which is the point: an Artificer spell has no
+ * business being visible to an account that cannot play an Artificer.
+ *
+ * Spells with no source, or 'srd', are core content and always visible.
+ */
+export function isSpellVisible(
+  spell: { source?: string | null },
+  ctx: GateContext = {},
+): boolean {
+  if (!spell.source || spell.source === 'srd') return true;
+  if (spell.source === 'ua') return isSourceVisible('ua', ctx);
+  // FAIL CLOSED. Anything else is, by definition, content outside the SRD, so
+  // it answers to the non-SRD switch — including values this file has never
+  // heard of. Production turned out to carry a third one nobody had written
+  // down, `expansion`, on three Xanathar's/Tasha's spells (Find Greater Steed,
+  // Holy Weapon, Tasha's Caustic Brew) that were visible to everyone.
+  //
+  // Defaulting unknown sources to VISIBLE would have been the friendlier
+  // choice and the wrong one: it means the next source added to the database
+  // leaks silently until someone remembers to update this file, which is
+  // exactly how the UA spells stayed readable for so long.
+  return isSourceVisible('non-srd', ctx);
+}
+
+/** Filter a spell list down to what this viewer may see. */
+export function visibleSpells<T extends { source?: string | null }>(
+  spells: readonly T[],
+  ctx: GateContext = {},
+): T[] {
+  return spells.filter(s => isSpellVisible(s, ctx));
+}
