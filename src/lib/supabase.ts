@@ -428,3 +428,26 @@ export function subscribeToCharacter(
     )
     .subscribe();
 }
+
+// ── v2.694.0 — Account data rights ──────────────────────────────────────
+// Wrappers around two RPCs added in migration 20260830010000. They are not in
+// `src/types/supabase.ts` because that file is generated from schema
+// introspection and says "Do NOT hand-edit" — and adding a Functions block by
+// hand also shifted inference enough to surface another error elsewhere, which
+// would have pushed the repo over its TypeScript baseline. The cast is
+// contained to these two calls instead.
+//
+// Both RPCs take NO arguments by design: they read auth.uid() server-side, so
+// there is no parameter through which one account could reach another's data.
+
+/** Everything DNDKeep stores about the signed-in account, as one JSON document. */
+export async function exportMyData(): Promise<{ data: unknown; error: Error | null }> {
+  const { data, error } = await (supabase.rpc as unknown as (fn: string) => Promise<{ data: unknown; error: { message: string } | null }>)('export_my_data');
+  return { data, error: error ? new Error(error.message) : null };
+}
+
+/** Permanently deletes the signed-in account. Irreversible; confirm before calling. */
+export async function deleteMyAccount(): Promise<{ error: Error | null }> {
+  const { error } = await (supabase.rpc as unknown as (fn: string) => Promise<{ data: unknown; error: { message: string } | null }>)('delete_my_account');
+  return { error: error ? new Error(error.message) : null };
+}

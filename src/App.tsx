@@ -413,8 +413,16 @@ function Sidebar() {
             </span>
           )}
         </NavLink>
+        {/* v2.694.0 — SRD attribution, reachable from inside the app. The page
+            existed since v2.672 but nothing linked to it anywhere, so the
+            CC BY 4.0 attribution it carries was not actually being given.
+            Sits with the version rather than in the nav proper: it is a notice,
+            not a destination. */}
         {!collapsed && (
-          <div className="sidebar-version">v{APP_VERSION}</div>
+          <div className="sidebar-version">
+            <NavLink to="/srd" style={{ color: 'inherit', textDecoration: 'none' }}>SRD 5.2.1</NavLink>
+            {' · '}v{APP_VERSION}
+          </div>
         )}
       </div>
     </aside>

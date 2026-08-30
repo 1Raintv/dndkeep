@@ -3,7 +3,7 @@ import { BETA } from '../../lib/betaMode';
 import { useSearchParams } from 'react-router-dom';
 import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { signOut, getCharacters, deleteCharacter } from '../../lib/supabase';
+import { signOut, getCharacters, deleteCharacter, exportMyData, deleteMyAccount } from '../../lib/supabase';
 import { redirectToCheckout, redirectToCustomerPortal, redirectToOneTimeCheckout, STRIPE_PRICES } from '../../lib/stripe';
 import { usePushNotifications } from '../../lib/usePushNotifications';
 import { useHouseRules, type CritRule } from '../../lib/useHouseRules';
@@ -18,6 +18,13 @@ export default function SettingsPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // v2.694.0 — data export + account deletion
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // v2.419.0 — DM-side natural-20 / natural-1 house rules.
   const [houseRules, setHouseRules] = useHouseRules();
 
@@ -81,6 +88,50 @@ export default function SettingsPage() {
 
   async function handleSignOut() {
     await signOut();
+  }
+
+  // v2.694.0 — Data export. The RPC returns the whole document; the browser
+  // turns it into a file. No server-side file storage, so nothing to clean up
+  // later and no signed URL to leak.
+  async function handleExport() {
+    setExporting(true); setExportError(null);
+    try {
+      const { data, error } = await exportMyData();
+      if (error) throw error;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dndkeep-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError((e as Error).message || 'Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // v2.694.0 — Account deletion. Irreversible, so it is gated on typing DELETE
+  // in the UI above. Signs out afterwards because the session now points at a
+  // user that no longer exists.
+  async function handleDeleteAccount() {
+    setDeletingAccount(true); setDeleteError(null);
+    try {
+      const { error } = await deleteMyAccount();
+      if (error) throw error;
+      // The account is gone at this point. Signing out now talks to the auth
+      // API with a token for a user that no longer exists, which 403s — so a
+      // throw here must NOT be reported as "could not delete the account",
+      // which is the opposite of what happened. Best effort, then leave.
+      try { await signOut(); } catch { /* session is already void */ }
+      window.location.href = '/';
+    } catch (e) {
+      setDeleteError((e as Error).message || 'Could not delete the account. Please try again.');
+      setDeletingAccount(false);
+    }
   }
 
   async function handleDeleteCharacter(id: string) {
@@ -356,6 +407,75 @@ export default function SettingsPage() {
           </p>
         </div>
       )}
+
+      {/* v2.694.0 — Your data: export and deletion. A launch requirement
+          (docs/MVP_LAUNCH.md Phase 3) and true for a twelve-person beta as
+          much as for a public one — we hold their email, characters,
+          campaigns and chat. Both call SECURITY DEFINER functions that take
+          no arguments and read auth.uid(), so neither can be pointed at
+          somebody else's account. */}
+      <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
+        <div className="section-header">Your Data</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+          <div>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)' }}>
+              Download everything DNDKeep stores about your account as a single
+              JSON file — characters, campaigns you own, homebrew, roll history
+              and your own chat messages.
+            </p>
+            <button className="btn-secondary btn-sm" onClick={handleExport} disabled={exporting}>
+              {exporting ? 'Preparing…' : 'Download my data'}
+            </button>
+            {exportError && (
+              <div style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>{exportError}</div>
+            )}
+          </div>
+
+          <div style={{ paddingTop: 'var(--sp-4)', borderTop: '1px solid var(--c-border)' }}>
+            <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--c-red-l)', marginBottom: 'var(--sp-2)' }}>
+              Delete account
+            </div>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)' }}>
+              Permanently deletes your account, characters, campaigns you own and
+              homebrew. This cannot be undone — download your data first if you
+              want a copy. Campaigns you only joined are not deleted; your
+              messages there are detached from your name.
+            </p>
+            {!confirmingDelete ? (
+              <button className="btn-ghost btn-sm" style={{ color: 'var(--c-red-l)' }}
+                      onClick={() => setConfirmingDelete(true)}>
+                Delete my account
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', maxWidth: 360 }}>
+                {/* Typed confirmation rather than a second button: this is
+                    irreversible and takes other people's shared campaigns with
+                    it if the user owns them. */}
+                <label style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)' }}>
+                  Type <strong>DELETE</strong> to confirm
+                </label>
+                <input type="text" value={deleteConfirmText} autoFocus
+                       onChange={e => setDeleteConfirmText(e.target.value)} placeholder="DELETE" />
+                <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                  <button className="btn-secondary btn-sm"
+                          disabled={deleteConfirmText !== 'DELETE' || deletingAccount}
+                          style={{ background: 'var(--c-red-l)', color: '#fff', opacity: deleteConfirmText === 'DELETE' ? 1 : 0.5 }}
+                          onClick={handleDeleteAccount}>
+                    {deletingAccount ? 'Deleting…' : 'Permanently delete'}
+                  </button>
+                  <button className="btn-ghost btn-sm"
+                          onClick={() => { setConfirmingDelete(false); setDeleteConfirmText(''); setDeleteError(null); }}>
+                    Cancel
+                  </button>
+                </div>
+                {deleteError && (
+                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>{deleteError}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

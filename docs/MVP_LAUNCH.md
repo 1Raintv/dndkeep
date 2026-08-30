@@ -451,9 +451,9 @@ checklist. Charging money is what makes it mandatory — invite-only changes not
 | 2 | Live Stripe keys + fix `.gitignore` | 30 m | ⬜ |
 | 2 | Full subscription lifecycle test | 2 h | ⬜ |
 | 3 | ToS / Privacy / Refund pages | 1 d | ⬜ |
-| 3 | Account deletion + data export | 1 d | ⬜ |
+| 3 | Account deletion + data export | 1 d | ✅ v2.694.0 |
 | 3 | Support contact | 30 m | ⬜ |
-| 3 | SRD notice reachable from landing + footer | 30 m | ⬜ |
+| 3 | SRD notice reachable from landing + footer | 30 m | ✅ v2.694.0 |
 | 3 | Landing page: invite-only messaging + price | 4 h | ⬜ |
 | 4 | Paid Supabase + **tested** restore | 2 h + cost | ⬜ |
 | 4 | CI as a real gate | 2 h | ⬜ |

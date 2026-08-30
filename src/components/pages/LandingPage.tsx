@@ -185,6 +185,15 @@ export default function LandingPage() {
           <p style={{ fontSize: 16, color: 'var(--t-2)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' }}>DNDKeep is an invite-only beta while we polish it at real tables.</p>
           <button className="btn-gold btn-lg" onClick={requestInvite} disabled={!inviteReady} style={{ fontSize: 16, paddingLeft: 40, paddingRight: 40 }}>{inviteLabel}</button>
           <p style={{ marginTop: 16, fontSize: 12, color: 'var(--t-3)' }}>Compatible with D&D 5e · 2024 PHB rules · Not affiliated with Wizards of the Coast</p>
+          {/* v2.694.0 — the SRD attribution page existed but nothing linked to
+              it, from here or from inside the app. Creative Commons BY 4.0
+              requires the attribution to be reachable by anyone using the
+              work, so an unreachable page does not discharge it. */}
+          <p style={{ marginTop: 12, fontSize: 12 }}>
+            <a href="/srd" style={{ color: 'var(--t-3)', textDecoration: 'underline' }}>
+              SRD 5.2.1 attribution &amp; licence
+            </a>
+          </p>
         </section>
       </div>
     </div>
