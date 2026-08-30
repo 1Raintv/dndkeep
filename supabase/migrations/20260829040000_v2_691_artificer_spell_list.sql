@@ -75,10 +75,24 @@ update public.spells
    and 'Artificer' = any(classes);
 
 -- Skipped on any database without the full catalog (supabase/migrations/README).
+--
+-- The check is SET-BASED, not a count. A count of 79 is the wrong invariant:
+-- seven spells on the Artificer list have no canonical row in this table at all
+-- (arcane-vigor, dragons-breath, elemental-weapon, elementalism,
+-- summon-construct, thorn-whip, thunderclap). They are among the ~39 spells that
+-- live only in src/data/spells.ts and reach players through the static fallback
+-- in useSpells(), so the DB has nothing to tag. Players still get them with the
+-- Artificer tag; the tag simply lives in the file rather than the row.
+--
+-- Asserting 79 therefore fails forever on a correct database — which is exactly
+-- what happened on the first run of this migration. It aborted and rolled back,
+-- leaving production untouched, which is the guard working as intended even
+-- though the expectation behind it was wrong.
 do $$
 declare
-  total integer;
-  n     integer;
+  total   integer;
+  wrong   integer;
+  absent  integer;
 begin
   select count(*) into total from public.spells where owner_id is null;
   if total < 300 then
@@ -86,9 +100,19 @@ begin
     return;
   end if;
 
-  select count(*) into n
-    from public.spells where owner_id is null and 'Artificer' = any(classes);
-  if n <> 79 then
-    raise exception 'Artificer spell list is % rows, expected 79 (Forge of the Artificer).', n;
+  -- Every tagged row must be on the list, and every list entry that HAS a row
+  -- must be tagged. Rows that don't exist are reported, not failed on.
+  select count(*) into wrong
+    from public.spells s
+   where s.owner_id is null
+     and (('Artificer' = any(s.classes)) <> (s.id in (select id from _artificer_spells)));
+  if wrong <> 0 then
+    raise exception 'Artificer tag disagrees with the book on % row(s).', wrong;
   end if;
+
+  select count(*) into absent
+    from _artificer_spells a
+   where not exists (select 1 from public.spells s where s.id = a.id and s.owner_id is null);
+  raise notice 'Artificer list reconciled. % of 79 have canonical rows; % are static-fallback only.',
+    79 - absent, absent;
 end $$;
