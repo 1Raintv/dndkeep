@@ -169,11 +169,28 @@ the static file dropped**:
 > recorded. `raw-regression.mjs` asserts only a floor ("Artificer on >= 70
 > spell lists"), which is not a source either.
 >
-> **Also still open:** `circle-of-power` is not in the SRD either, so the same
-> problem applies to its whole row, not just its Artificer entry — the repo has
-> `[Artificer, Cleric, Paladin, Wizard]` and production has `[Paladin]`. It is
-> one of 64 spells we carry that the SRD does not include (UA content plus
-> PHB-only spells); none of those 64 can be checked against anything today.
+> **`circle-of-power` — settled 2026-08-29 (v2.690).** The owner supplied the
+> 2024 Player's Handbook and approved using it for what the SRD cannot reach.
+> The PHB puts Circle of Power on Cleric, Paladin and Wizard, stated four ways
+> in the same book (the spell's own class line plus all three class tables).
+> Production had only Paladin. Fixed by migration; the repo was already right,
+> which is exactly this file's point — a correct repo does nothing for players
+> while the DB row wins.
+>
+> **Coverage after the PHB pass:** 330 of our 399 spells are now checked
+> against an official book, up from 335-in-SRD alone to **371 checked by at
+> least one source**. Across the 330 the two books both describe, the SRD and
+> the PHB never disagreed with each other once, and only Circle of Power
+> disagreed with us. Locked by `srdSpellClasses.test.ts` (335) and
+> `phbSpellClasses.test.ts` (36 more).
+>
+> **The 28 still unchecked**, and why — none can be settled by a book we hold:
+>
+> | Spells | Why |
+> |---|---|
+> | 17 Psion/UA spells | Unearthed Arcana, gated behind the Psion switch |
+> | Branding Smite, Feeblemind | cut from the game in the 2024 revision |
+> | Frostbite, Chaos Bolt, Shadow Blade, Spirit Shroud, Life Transference, Summon Shadowspawn/Celestial/Fiend, Tasha's Bubbling Cauldron | from Xanathar's / Tasha's, neither of which we hold |
 
 > **Update 2026-08-25 (v2.685):** the Psion rows in this table are resolved.
 > All of them were checked against the UA PDFs, `src/data/spells.ts` was
