@@ -35,8 +35,17 @@
 // `show_ua_content` was self-serve and one API call unlocked the Psion for
 // anyone who thought to make it.
 //
-// For the Artificer specifically, verify its spell list against the book it
-// comes from before either switch goes on. The SRD cannot do it.
+// v2.691.0 — the Artificer's spell list HAS now been verified. The owner
+// supplied "Eberron: Forge of the Artificer" on 2026-08-29; all 79 spells are
+// checked against its per-level tables and locked by artificerSpellList.test.ts.
+// The original reason for this gate — "we cannot check any of it" — no longer
+// applies to the spells.
+//
+// It stays off anyway, because that is what the owner asked for: the Artificer
+// is "to be enabled and disabled", off for the original release. What remains
+// undecided is not correctness but LICENSING — the class's feature write-ups in
+// classes.ts came out of that paid book, and the SRD's terms do not cover them.
+// Settle that before turning this on.
 //
 // NOTHING HERE DELETES ANYTHING. Class data, features and the class tags on
 // spells all stay put; only the discovery surfaces filter. That is what makes

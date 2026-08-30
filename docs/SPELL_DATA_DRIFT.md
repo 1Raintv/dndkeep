@@ -169,6 +169,28 @@ the static file dropped**:
 > recorded. `raw-regression.mjs` asserts only a floor ("Artificer on >= 70
 > spell lists"), which is not a source either.
 >
+> **SETTLED 2026-08-29 (v2.691) — and the repo was right about all ten.** The
+> owner supplied *Eberron: Forge of the Artificer*, the book the 2024 Artificer
+> is printed in. Its spell list matches what the undocumented v2.560 backfill
+> had carried all along. **Production was the copy that had drifted**, on 14
+> rows: missing the tag on 9 (the seven above plus Faithful Hound and Circle of
+> Power) and carrying it wrongly on 5 (the three above plus Mending and Tasha's
+> Caustic Brew). Reconciled by migration `20260829040000_v2_691_artificer_
+> spell_list.sql`; locked by `src/data/artificerSpellList.test.ts`.
+>
+> Two corrections the book forced on us: **Mending is not an Artificer cantrip**
+> (both copies had it), and **Faithful Hound is** (neither did). One naming
+> note: "Arcane Hand" is the SRD's rename of the book's "Bigby's Hand" — one
+> spell, already tagged correctly.
+>
+> The book lists 80 spells; we carry 79. **Homunculus Servant** is new in that
+> book and we do not have it. Adding it means transcribing rules text out of a
+> paid book — a licensing decision, not a data fix.
+>
+> **The class is still switched off.** This made the data correct, not visible.
+> What now blocks turning it on is licensing, not correctness: the feature
+> write-ups in `classes.ts` came from that paid book too.
+>
 > **`circle-of-power` — settled 2026-08-29 (v2.690).** The owner supplied the
 > 2024 Player's Handbook and approved using it for what the SRD cannot reach.
 > The PHB puts Circle of Power on Cleric, Paladin and Wizard, stated four ways
