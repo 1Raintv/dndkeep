@@ -140,9 +140,19 @@ the static file dropped**:
 > correctness one. It cannot see an error both copies share, and most errors
 > here were exactly that. Check against the PDF.
 >
-> **Still open — needs the owner, not a source:** 10 spells where the repo and
-> production disagree about **Artificer**. The Artificer is not in the SRD at
-> all (zero mentions in the entire document), so nothing here can settle it:
+> **Resolved 2026-08-29 (v2.688) by switching the Artificer off, not by
+> settling the data.** The owner's call: tag the content, hide it site-wide for
+> the original release, keep the tag so it can be flipped on later. The switch
+> is `NON_SRD_CONTENT_ENABLED` in `src/data/contentGates.ts` — one constant,
+> currently `false`, guarded by a test that fails if someone flips it without
+> reading why.
+>
+> Nothing was deleted. The class data, its features and every Artificer entry
+> in a spell's `classes` array stay exactly where they are; only the discovery
+> surfaces filter (creator class picker, compendium list AND its direct URL,
+> the spell browser's class filter, and the class badges on a spell). So the 10
+> rows below are still unresolved — they are just no longer reachable. Settle
+> them against the book the Artificer actually comes from before turning it on:
 >
 > | Spell | repo | production |
 > |---|---|---|

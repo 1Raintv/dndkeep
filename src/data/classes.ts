@@ -694,6 +694,12 @@ export const CLASSES: ClassData[] = [
   },
   {
     name: 'Artificer', hit_die: 8,
+    // v2.688.0 — published, but outside the SRD, so nothing here traces to a
+    // source we hold: the Artificer appears zero times in SRD 5.2.1. Hidden
+    // site-wide until its spell list is checked against the book it comes
+    // from. The switch and the reasoning are in src/data/contentGates.ts;
+    // this tag only marks the content, it does not hide it by itself.
+    source: 'non-srd',
     primary_abilities: ['intelligence'],
     saving_throw_proficiencies: ['constitution', 'intelligence'],
     skill_choices: ['Arcana', 'History', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Sleight of Hand'],

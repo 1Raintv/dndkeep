@@ -1,3 +1,4 @@
+import { isSourceVisible } from '../../data/contentGates';
 import { CLASSES } from '../../data/classes';
 import { capitalize } from '../../lib/gameUtils';
 import { useAuth } from '../../context/AuthContext';
@@ -39,7 +40,10 @@ export default function StepClass({ selected, level, selectedSkills, onSelect, o
   // don't have the show_ua_content flag enabled. Filtering at the picker
   // is enough — already-created Psion characters still load fine because
   // the data still exists in CLASSES; we only hide it from the chooser.
-  const visibleClasses = CLASSES.filter(c => showUaContent || (c as any).source !== 'ua');
+  // v2.688.0 — that rule now lives in contentGates.ts, which also hides
+  // non-SRD classes (the Artificer) site-wide. Same reasoning: the data
+  // stays, only the chooser filters.
+  const visibleClasses = CLASSES.filter(c => isSourceVisible((c as any).source, { showUaContent }));
   const preview = visibleClasses.find(c => c.name === selected);
 
   return (

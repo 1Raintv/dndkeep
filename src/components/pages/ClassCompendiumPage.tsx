@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { isSourceVisible } from '../../data/contentGates';
 import { CLASSES, CLASS_MAP } from '../../data/classes';
 import { CLASS_FEATURES } from '../../data/classFeatures';
 import { getSpellSlotRow } from '../../data/spellSlots';
@@ -81,7 +82,16 @@ export default function ClassCompendiumPage() {
   const [expandedFeature, setExpandedFeature] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const classData = selectedClass ? CLASS_MAP[selectedClass] : null;
+  // v2.688.0 — the comment above claimed direct URL access was "also gated
+  // below". It wasn't: nothing between the list filter and the render ever
+  // re-checked the source, so /compendium/artificer (or /compendium/psion on a
+  // non-UA account) rendered the whole class page for anyone who typed it.
+  // Resolving through the gate is what actually closes it — a hidden class
+  // resolves to null and the page falls through to its empty state.
+  const rawClassData = selectedClass ? CLASS_MAP[selectedClass] : null;
+  const classData = rawClassData && isSourceVisible((rawClassData as any).source, { showUaContent })
+    ? rawClassData
+    : null;
   const subclassData = classData?.subclasses?.find(s => s.name === selectedSubclass) ?? null;
   const accentColor = selectedClass ? (CLASS_COLORS[selectedClass] ?? '#a78bfa') : '#a78bfa';
 
@@ -120,8 +130,10 @@ export default function ClassCompendiumPage() {
     return CLASS_FEATURES[classData.name] ?? [];
   }, [classData]);
 
+  // v2.688.0 — gate moved to contentGates.ts; it now also hides non-SRD
+  // classes (the Artificer) site-wide, not just UA ones per-account.
   const filteredClasses = CLASSES.filter(c =>
-    (showUaContent || (c as any).source !== 'ua') &&
+    isSourceVisible((c as any).source, { showUaContent }) &&
     (search === '' || c.name.toLowerCase().includes(search.toLowerCase()))
   );
 

@@ -557,7 +557,11 @@ export interface SubclassData {
 export interface ClassData {
   name: ClassName;
   description?: string;          // optional for official classes, required for homebrew
-  source?: 'official' | 'ua' | 'homebrew';
+  // v2.688.0 — 'non-srd' added: published content we have no licensed source
+  // for (the Artificer, absent from SRD 5.2.1). Distinct from 'ua', which is
+  // playtest material — the two are gated by different switches. Both are read
+  // by src/data/contentGates.ts, which is where the gating lives.
+  source?: 'official' | 'ua' | 'homebrew' | 'non-srd';
   hit_die: number;
   primary_abilities: AbilityKey[];
   saving_throw_proficiencies: AbilityKey[];

@@ -11,6 +11,7 @@ import type { SpellData, SpellLevel, Character } from '../../types';
 // SPELL_CLASSES and SPELL_SCHOOLS stay imported because they're static
 // label/sort metadata, not spell rows.
 import { SPELL_CLASSES, SPELL_SCHOOLS } from '../../data/spells';
+import { visibleClassNames } from '../../data/contentGates';
 import { useSpells } from '../../lib/hooks/useSpells';
 import { useAuth } from '../../context/AuthContext';
 import { getCharacters, updateCharacter } from '../../lib/supabase';
@@ -21,7 +22,7 @@ const LEVEL_LABELS: Record<number, string> = {
 };
 
 export default function SpellsPage() {
-  const { user } = useAuth();
+  const { user, showUaContent } = useAuth();
   const { spells } = useSpells();
   const [search, setSearch] = useState('');
   const [filterClass, setFilterClass] = useState('');
@@ -94,7 +95,11 @@ export default function SpellsPage() {
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or description..." />
             <select value={filterClass} onChange={e => setFilterClass(e.target.value)}>
               <option value="">All Classes</option>
-              {SPELL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+              {/* v2.688.0 — SPELL_CLASSES is derived from every spell's
+                  classes array, so it lists Artificer and Psion whether or not
+                  the viewer may see them. Gate it, or the filter advertises
+                  classes that aren't offered anywhere else. */}
+              {visibleClassNames(SPELL_CLASSES, { showUaContent }).map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)' }}>
               <select value={filterLevel} onChange={e => setFilterLevel(e.target.value === '' ? '' : Number(e.target.value) as SpellLevel)}>
@@ -197,6 +202,9 @@ function SpellDetail({
   onAddCancel: () => void;
   onAddConfirm: (characterId: string, spellId: string) => void;
 }) {
+  // v2.688.0 — read the gate here rather than threading it down as a prop;
+  // this is a component, and the class badges below are the only consumer.
+  const { showUaContent } = useAuth();
   return (
     <div className="card card-gold animate-fade-in" style={{ position: 'sticky', top: 72 }}>
       {/* Header */}
@@ -242,9 +250,11 @@ function SpellDetail({
         </div>
       )}
 
-      {/* Classes */}
+      {/* Classes — v2.688.0: gated. A spell's classes array still carries
+          Artificer/Psion so the tag survives for whenever they're switched
+          back on, but a badge is a public statement that the class exists. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
-        {spell.classes.map(c => <span key={c} className="badge badge-muted">{c}</span>)}
+        {visibleClassNames(spell.classes, { showUaContent }).map(c => <span key={c} className="badge badge-muted">{c}</span>)}
       </div>
 
       {/* v2.177.0 — Phase Q.0 pt 18: direct per-character add buttons
