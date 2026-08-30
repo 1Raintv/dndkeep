@@ -35,7 +35,7 @@ function ComplexityPips({ rating }: { rating: number }) {
 }
 
 export default function StepClass({ selected, level, selectedSkills, onSelect, onLevelChange, onSkillToggle }: StepClassProps) {
-  const { showUaContent } = useAuth();
+  const { contentGate } = useAuth();
   // v2.329.0 — T7: hide UA / playtest classes (Psion) from accounts that
   // don't have the show_ua_content flag enabled. Filtering at the picker
   // is enough — already-created Psion characters still load fine because
@@ -43,7 +43,7 @@ export default function StepClass({ selected, level, selectedSkills, onSelect, o
   // v2.688.0 — that rule now lives in contentGates.ts, which also hides
   // non-SRD classes (the Artificer) site-wide. Same reasoning: the data
   // stays, only the chooser filters.
-  const visibleClasses = CLASSES.filter(c => isSourceVisible((c as any).source, { showUaContent }));
+  const visibleClasses = CLASSES.filter(c => isSourceVisible((c as any).source, contentGate));
   const preview = visibleClasses.find(c => c.name === selected);
 
   return (

@@ -74,6 +74,10 @@ export interface Profile {
    *  Default false at the DB level, so existing accounts upgrade
    *  cleanly with UA hidden. */
   show_ua_content?: boolean;
+  /** v2.689.0 — per-account access to published-but-not-SRD content (the
+   *  Artificer). Admin-granted only; the profiles guard trigger rejects a
+   *  client write. Site-wide twin: SITE_WIDE_ENABLED in data/contentGates.ts. */
+  show_non_srd_content?: boolean;
   // v2.517.0 — entitlement fields (billing arc Build 1).
   /** One-time purchased character slots on top of the 1 base (max 9 → 10 total). */
   extra_character_slots?: number;

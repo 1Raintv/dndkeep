@@ -73,7 +73,7 @@ export default function ClassCompendiumPage() {
   // accounts without show_ua_content. Direct URL access (/compendium/psion)
   // is also gated below — the class data still resolves but the page
   // shows an "unknown class" state if UA isn't enabled.
-  const { showUaContent } = useAuth();
+  const { contentGate } = useAuth();
 
   const [selectedClass, setSelectedClass] = useState<string>(
     urlClass ? CLASSES.find(c => c.name.toLowerCase().replace(/\s+/g, '-') === urlClass)?.name ?? '' : ''
@@ -89,7 +89,7 @@ export default function ClassCompendiumPage() {
   // Resolving through the gate is what actually closes it — a hidden class
   // resolves to null and the page falls through to its empty state.
   const rawClassData = selectedClass ? CLASS_MAP[selectedClass] : null;
-  const classData = rawClassData && isSourceVisible((rawClassData as any).source, { showUaContent })
+  const classData = rawClassData && isSourceVisible((rawClassData as any).source, contentGate)
     ? rawClassData
     : null;
   const subclassData = classData?.subclasses?.find(s => s.name === selectedSubclass) ?? null;
@@ -133,7 +133,7 @@ export default function ClassCompendiumPage() {
   // v2.688.0 — gate moved to contentGates.ts; it now also hides non-SRD
   // classes (the Artificer) site-wide, not just UA ones per-account.
   const filteredClasses = CLASSES.filter(c =>
-    isSourceVisible((c as any).source, { showUaContent }) &&
+    isSourceVisible((c as any).source, contentGate) &&
     (search === '' || c.name.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -284,7 +284,7 @@ export default function ClassCompendiumPage() {
                   >
                     No Subclass
                   </button>
-                  {classData.subclasses.filter((sub: any) => showUaContent || sub.source !== 'ua').map((sub: any) => {
+                  {classData.subclasses.filter((sub: any) => isSourceVisible(sub.source, contentGate)).map((sub: any) => {
                     const isSelected = selectedSubclass === sub.name;
                     return (
                       <button

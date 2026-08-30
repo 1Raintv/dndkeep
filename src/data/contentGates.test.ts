@@ -1,26 +1,26 @@
 // src/data/contentGates.test.ts
 //
-// v2.688.0 — Keeps the gate honest in two directions.
+// v2.688.0 — keeps the gate honest. v2.689.0 — now covers both switches.
 //
-// 1. GATED_CLASSES duplicates the `source` tag that lives on the CLASSES
-//    entries. That duplication is deliberate (see contentGates.ts — callers
-//    holding only a class NAME must not have to import the 650 KB class data
-//    tables), but a duplicate that can drift is a bug waiting to happen. This
-//    asserts the two agree in both directions.
-//
-// 2. The Artificer is off, and off means off. If someone flips
-//    NON_SRD_CONTENT_ENABLED without reading why it exists, the assertion
-//    below fails and points them at the reason.
+// Each gated source has a site-wide constant and a per-account column, and is
+// visible when EITHER is on. The assertions that matter most here are the ones
+// about INDEPENDENCE: granting playtest content must never hand out
+// unverifiable content, in either direction or by either switch. "It was the
+// nearest available flag" is how these get wired together by accident.
 
 import { describe, it, expect } from 'vitest';
 import { CLASSES } from './classes';
 import {
   GATED_CLASSES,
-  NON_SRD_CONTENT_ENABLED,
+  SITE_WIDE_ENABLED,
   isClassVisible,
   isSourceVisible,
   visibleClassNames,
 } from './contentGates';
+
+const NOBODY = {};
+const UA_ONLY = { showUaContent: true };
+const NON_SRD_ONLY = { showNonSrdContent: true };
 
 describe('content gates', () => {
   it('GATED_CLASSES matches the source tags on CLASSES', () => {
@@ -34,41 +34,62 @@ describe('content gates', () => {
 
   it('leaves core SRD classes visible to everyone', () => {
     for (const name of ['Wizard', 'Cleric', 'Fighter', 'Bard']) {
-      expect(isClassVisible(name, { showUaContent: false })).toBe(true);
+      expect(isClassVisible(name, NOBODY)).toBe(true);
     }
   });
 
-  it('gates the Psion on the per-account UA flag', () => {
-    expect(isClassVisible('Psion', { showUaContent: false })).toBe(false);
-    expect(isClassVisible('Psion', { showUaContent: true })).toBe(true);
+  it('treats an absent source as core content', () => {
+    expect(isSourceVisible(undefined, NOBODY)).toBe(true);
   });
 
-  it('gates the Artificer site-wide, not per account', () => {
-    // Turning UA on must NOT reveal the Artificer — different switch,
-    // different reason. This is the assertion that catches someone wiring
-    // the Artificer to show_ua_content because it was the nearest flag.
-    expect(isClassVisible('Artificer', { showUaContent: true }))
-      .toBe(NON_SRD_CONTENT_ENABLED);
-    expect(isClassVisible('Artificer', { showUaContent: false }))
-      .toBe(NON_SRD_CONTENT_ENABLED);
+  describe('per-account switch', () => {
+    it('shows the Psion to an account granted UA', () => {
+      expect(isClassVisible('Psion', NOBODY)).toBe(false);
+      expect(isClassVisible('Psion', UA_ONLY)).toBe(true);
+    });
+
+    it('shows the Artificer to an account granted non-SRD', () => {
+      expect(isClassVisible('Artificer', NOBODY)).toBe(false);
+      expect(isClassVisible('Artificer', NON_SRD_ONLY)).toBe(true);
+    });
   });
 
-  it('is OFF for the original release', () => {
-    // Deliberate tripwire. If you are here because this failed, you turned the
-    // Artificer on: confirm its 79-spell list has actually been checked
-    // against the book it comes from first — the SRD cannot do it, the class
-    // is not in that document. Then update this expectation in the same
-    // commit. See docs/SPELL_DATA_DRIFT.md.
-    expect(NON_SRD_CONTENT_ENABLED).toBe(false);
+  describe('the two switches stay independent', () => {
+    it('a UA grant does not reveal the Artificer', () => {
+      expect(isClassVisible('Artificer', UA_ONLY)).toBe(false);
+    });
+
+    it('a non-SRD grant does not reveal the Psion', () => {
+      expect(isClassVisible('Psion', NON_SRD_ONLY)).toBe(false);
+    });
+  });
+
+  describe('site-wide switches', () => {
+    // Deliberate tripwire. If one of these failed, you turned content on for
+    // every visitor. For the Artificer specifically: confirm its 79-spell list
+    // has been checked against the book it comes from first — the SRD cannot
+    // do it, the class is not in that document. Then update the expectation in
+    // the same commit. See docs/SPELL_DATA_DRIFT.md.
+    it('are both OFF for the original release', () => {
+      expect(SITE_WIDE_ENABLED).toEqual({ ua: false, 'non-srd': false });
+    });
+
+    it('grant to everyone when on, without any account flag', () => {
+      // Proves the OR: exercised against a stub rather than the real constant
+      // so the tripwire above stays meaningful.
+      const visible = (siteWide: boolean, account: boolean) => siteWide || account;
+      expect(visible(true, false)).toBe(true);
+      expect(visible(false, true)).toBe(true);
+      expect(visible(false, false)).toBe(false);
+    });
   });
 
   it('filters a class-name list', () => {
     const all = ['Wizard', 'Artificer', 'Psion', 'Bard'];
-    expect(visibleClassNames(all, { showUaContent: false })).toEqual(['Wizard', 'Bard']);
-    expect(visibleClassNames(all, { showUaContent: true })).toEqual(['Wizard', 'Psion', 'Bard']);
-  });
-
-  it('treats an absent source as core content', () => {
-    expect(isSourceVisible(undefined, { showUaContent: false })).toBe(true);
+    expect(visibleClassNames(all, NOBODY)).toEqual(['Wizard', 'Bard']);
+    expect(visibleClassNames(all, UA_ONLY)).toEqual(['Wizard', 'Psion', 'Bard']);
+    expect(visibleClassNames(all, NON_SRD_ONLY)).toEqual(['Wizard', 'Artificer', 'Bard']);
+    expect(visibleClassNames(all, { showUaContent: true, showNonSrdContent: true }))
+      .toEqual(all);
   });
 });

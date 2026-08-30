@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
+import type { GateContext } from '../data/contentGates';
 import { supabase, getProfile } from '../lib/supabase';
 import { isSubscriptionActive } from '../lib/entitlements';
 
@@ -36,6 +37,11 @@ interface AuthContextValue {
    *  / subclass pickers / class compendium use this to filter out
    *  UA-source classes (Psion + its subclasses) from public view. */
   showUaContent: boolean;
+  /** v2.689.0 — the viewer's per-account content grants, ready to hand
+   *  straight to data/contentGates.ts. Passed as one object so a new gated
+   *  source needs no change at any call site. Prefer this over reading the
+   *  individual flags; `showUaContent` above stays for existing callers. */
+  contentGate: GateContext;
   refreshProfile: () => Promise<void>;
 }
 
@@ -50,6 +56,7 @@ const AuthContext = createContext<AuthContextValue>({
   isPro: false,
   isSubscribed: false,
   showUaContent: false,
+  contentGate: {},
   refreshProfile: async () => {},
 });
 
@@ -143,6 +150,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isPro: profile?.subscription_tier === 'pro',
     isSubscribed: isSubscriptionActive(profile),
     showUaContent: profile?.show_ua_content === true,
+    contentGate: {
+      showUaContent: profile?.show_ua_content === true,
+      showNonSrdContent: profile?.show_non_srd_content === true,
+    },
     refreshProfile,
   }), [session, profile, loading, profileLoading, initError, retryInit, refreshProfile]);
 

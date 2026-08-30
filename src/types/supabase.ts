@@ -1905,6 +1905,7 @@ export type Database = {
           ultimate_campaign: boolean;
           last_sign_in_at: string | null;
           show_ua_content: boolean;
+          show_non_srd_content: boolean;
         };
         Insert: {
           id: string;
@@ -1922,6 +1923,7 @@ export type Database = {
           ultimate_campaign?: boolean;
           last_sign_in_at?: string | null;
           show_ua_content?: boolean;
+          show_non_srd_content?: boolean;
         };
         Update: {
           id?: string;
@@ -1939,6 +1941,7 @@ export type Database = {
           ultimate_campaign?: boolean;
           last_sign_in_at?: string | null;
           show_ua_content?: boolean;
+          show_non_srd_content?: boolean;
         };
         Relationships: [];
       };

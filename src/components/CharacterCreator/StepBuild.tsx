@@ -1,3 +1,4 @@
+import { isSourceVisible } from '../../data/contentGates';
 import { useState, useMemo } from 'react';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_LEVEL_PROGRESSION, hpPerLevel } from '../../data/levelProgression';
@@ -819,9 +820,9 @@ function SubclassPicker({ label, cls, choices, onUpdate, abilityScores }: {
   // accounts without show_ua_content. Today only Psion has UA-flagged
   // subclasses, so this is a no-op for non-Psion classes; in the future
   // any new UA subclass on a base class will hide cleanly.
-  const { showUaContent } = useAuth();
+  const { contentGate } = useAuth();
   const subclasses: any[] = (cls?.subclasses ?? []).filter(
-    (s: any) => showUaContent || s.source !== 'ua',
+    (s: any) => isSourceVisible(s.source, contentGate),
   );
   const selected = choices.subclass;
 

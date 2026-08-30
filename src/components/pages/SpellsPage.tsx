@@ -22,7 +22,7 @@ const LEVEL_LABELS: Record<number, string> = {
 };
 
 export default function SpellsPage() {
-  const { user, showUaContent } = useAuth();
+  const { user, contentGate } = useAuth();
   const { spells } = useSpells();
   const [search, setSearch] = useState('');
   const [filterClass, setFilterClass] = useState('');
@@ -99,7 +99,7 @@ export default function SpellsPage() {
                   classes array, so it lists Artificer and Psion whether or not
                   the viewer may see them. Gate it, or the filter advertises
                   classes that aren't offered anywhere else. */}
-              {visibleClassNames(SPELL_CLASSES, { showUaContent }).map(c => <option key={c} value={c}>{c}</option>)}
+              {visibleClassNames(SPELL_CLASSES, contentGate).map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)' }}>
               <select value={filterLevel} onChange={e => setFilterLevel(e.target.value === '' ? '' : Number(e.target.value) as SpellLevel)}>
@@ -204,7 +204,7 @@ function SpellDetail({
 }) {
   // v2.688.0 — read the gate here rather than threading it down as a prop;
   // this is a component, and the class badges below are the only consumer.
-  const { showUaContent } = useAuth();
+  const { contentGate } = useAuth();
   return (
     <div className="card card-gold animate-fade-in" style={{ position: 'sticky', top: 72 }}>
       {/* Header */}
@@ -254,7 +254,7 @@ function SpellDetail({
           Artificer/Psion so the tag survives for whenever they're switched
           back on, but a badge is a public statement that the class exists. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
-        {visibleClassNames(spell.classes, { showUaContent }).map(c => <span key={c} className="badge badge-muted">{c}</span>)}
+        {visibleClassNames(spell.classes, contentGate).map(c => <span key={c} className="badge badge-muted">{c}</span>)}
       </div>
 
       {/* v2.177.0 — Phase Q.0 pt 18: direct per-character add buttons

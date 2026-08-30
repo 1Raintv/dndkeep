@@ -143,9 +143,15 @@ the static file dropped**:
 > **Resolved 2026-08-29 (v2.688) by switching the Artificer off, not by
 > settling the data.** The owner's call: tag the content, hide it site-wide for
 > the original release, keep the tag so it can be flipped on later. The switch
-> is `NON_SRD_CONTENT_ENABLED` in `src/data/contentGates.ts` — one constant,
-> currently `false`, guarded by a test that fails if someone flips it without
-> reading why.
+> is `SITE_WIDE_ENABLED['non-srd']` in `src/data/contentGates.ts` — one
+> constant, currently `false`, guarded by a test that fails if someone flips it
+> without reading why.
+>
+> **v2.689 gave both gated sources both switches** — site-wide (a constant) and
+> per-account (`profiles.show_non_srd_content`, matching the Psion's
+> `show_ua_content`), visible when either is on. It also closed a hole: those
+> account columns used to be self-serve, so one `PATCH /profiles` unlocked the
+> Psion for anybody who tried it. They are admin-granted now.
 >
 > Nothing was deleted. The class data, its features and every Artificer entry
 > in a spell's `classes` array stay exactly where they are; only the discovery

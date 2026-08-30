@@ -1,45 +1,61 @@
 // src/data/contentGates.ts
 //
 // v2.688.0 — One place that decides whether a piece of non-core content is
-// shown, and one place to flip it.
+// shown. v2.689.0 — and two ways to turn each one on.
 //
-// Two kinds of content are gated, for different reasons and by different
-// switches:
+// Every gated source answers to BOTH controls, and is visible when EITHER says
+// yes:
 //
-//   'ua'      Unearthed Arcana / playtest. Today: the Psion. Gated per ACCOUNT
-//             by profiles.show_ua_content (v2.329.0, T7), so the owner can use
-//             it while nobody else sees it.
-//   'non-srd' Published but outside the SRD, so we have no licensed source to
-//             check it against. Today: the Artificer. Gated SITE-WIDE by the
-//             constant below, off for launch.
+//   SITE-WIDE    the constants below. On for everybody, no database involved.
+//   PER-ACCOUNT  a boolean column on profiles. On for one person.
 //
-// WHY THE ARTIFICER IS HERE (decided 2026-08-29). Auditing the spell catalog
-// against the SRD 5.2.1 PDF turned up 10 spells where this repo and production
-// disagreed about Artificer availability — and the SRD could not settle any of
-// them, because the Artificer does not appear in that document even once. The
-// class is fully implemented here (subclasses, features, a 79-spell list) but
-// no part of it traces to a source we hold. Rather than ship rules we cannot
-// stand behind, it goes dark until someone checks it against the book it
-// actually comes from. Owner's call: "let's keep this off and remove what is
-// currently there from public view", with a tag so it can be flipped on later.
+// Owner's ask (2026-08-29): "they need to be able to be flipped on through the
+// whole site or by only a certain account." Before this the two gated classes
+// each had only one of the two — the Psion had the account column, the
+// Artificer had the constant.
 //
-// TO TURN THE ARTIFICER BACK ON: set NON_SRD_CONTENT_ENABLED to true. That is
-// the whole switch — every surface below asks this module. Do it once the
-// spell list has been verified against its source, not before.
+// ── THE TWO SOURCES, AND WHY THEY STAY SEPARATE ──────────────────────────
 //
-// NOTE none of this deletes anything. The Artificer's class data, features and
-// spell tags all stay exactly where they are, so an existing character still
-// loads and the flip is genuinely one line. Gating is at the DISCOVERY
-// surfaces — the pickers and browsers where someone would find it.
+//   'ua'       Unearthed Arcana / playtest. Today: the Psion. It is unfinished
+//              rules, not unlicensed ones — it may change under us.
+//   'non-srd'  Published, but outside the SRD, so we hold no licensed source
+//              to check it against. Today: the Artificer, which appears zero
+//              times in SRD 5.2.1 while being fully implemented here.
+//
+// Different reasons, so different switches: turning playtest content on must
+// never turn unverifiable content on as a side effect. contentGates.test.ts
+// asserts that independence, because "it was the nearest available flag" is
+// exactly how these get wired together by accident.
+//
+// ── TURNING SOMETHING ON ─────────────────────────────────────────────────
+// Site-wide: flip its entry in SITE_WIDE below.
+// One account: an admin sets the column — the client cannot. The v2.689
+// migration added both flags to the profiles guard trigger, so a PATCH from
+// the account itself is rejected with CONTENT_ACCESS_READONLY. Before that,
+// `show_ua_content` was self-serve and one API call unlocked the Psion for
+// anyone who thought to make it.
+//
+// For the Artificer specifically, verify its spell list against the book it
+// comes from before either switch goes on. The SRD cannot do it.
+//
+// NOTHING HERE DELETES ANYTHING. Class data, features and the class tags on
+// spells all stay put; only the discovery surfaces filter. That is what makes
+// a flip genuinely one line.
 
 /** Where a piece of content comes from. Absent means core SRD. */
 export type ContentSource = 'ua' | 'non-srd';
 
 /**
- * Site-wide switch for published-but-not-SRD content (the Artificer).
- * Off for the original release. See the header before flipping it.
+ * Site-wide switches — on for every visitor, signed in or not.
+ * Both off for the original release.
  */
-export const NON_SRD_CONTENT_ENABLED = false;
+export const SITE_WIDE_ENABLED: Record<ContentSource, boolean> = {
+  ua: false,
+  'non-srd': false,
+};
+
+/** Back-compat alias for the v2.688 name. Prefer SITE_WIDE_ENABLED. */
+export const NON_SRD_CONTENT_ENABLED = SITE_WIDE_ENABLED['non-srd'];
 
 /**
  * Classes whose visibility is gated, and by which rule.
@@ -58,24 +74,33 @@ export const GATED_CLASSES: Record<string, ContentSource> = {
   Artificer: 'non-srd',
 };
 
+/** The viewer's per-account grants. Both default false. */
 export interface GateContext {
-  /** profiles.show_ua_content for the signed-in user. */
-  showUaContent: boolean;
+  /** profiles.show_ua_content */
+  showUaContent?: boolean;
+  /** profiles.show_non_srd_content */
+  showNonSrdContent?: boolean;
 }
 
+/** The per-account column that grants each source. */
+const ACCOUNT_FLAG: Record<ContentSource, keyof GateContext> = {
+  ua: 'showUaContent',
+  'non-srd': 'showNonSrdContent',
+};
+
 /** Is content from this source visible to this viewer? */
-export function isSourceVisible(source: ContentSource | undefined, ctx: GateContext): boolean {
-  if (source === 'ua') return ctx.showUaContent;
-  if (source === 'non-srd') return NON_SRD_CONTENT_ENABLED;
-  return true;
+export function isSourceVisible(source: ContentSource | undefined, ctx: GateContext = {}): boolean {
+  if (!source) return true;                      // core SRD content
+  if (SITE_WIDE_ENABLED[source]) return true;    // on for everyone
+  return ctx[ACCOUNT_FLAG[source]] === true;     // or granted to this account
 }
 
 /** Is this class visible to this viewer? Takes the class name alone. */
-export function isClassVisible(className: string, ctx: GateContext): boolean {
+export function isClassVisible(className: string, ctx: GateContext = {}): boolean {
   return isSourceVisible(GATED_CLASSES[className], ctx);
 }
 
 /** Filter a list of class names down to the ones this viewer may see. */
-export function visibleClassNames(names: readonly string[], ctx: GateContext): string[] {
+export function visibleClassNames(names: readonly string[], ctx: GateContext = {}): string[] {
   return names.filter(n => isClassVisible(n, ctx));
 }
