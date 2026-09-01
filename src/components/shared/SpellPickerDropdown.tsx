@@ -20,6 +20,13 @@ interface SpellPickerDropdownProps {
  slotsPerLevel?: Record<number, number>; // how many slots at each spell level
  grantedSpellIds?: string[]; // auto-granted spells excluded from limit counts
  isKnownCaster?: boolean; // true for Bard/Sorcerer/Warlock/Ranger — show "X known" not "X prepared"
+ // v2.695 — let a caller open the picker programmatically (the
+ // SpellCompletionBanner's "Go to Spells" CTA). Set openRequest to
+ // { level } to open on that level tab; the picker calls
+ // onOpenRequestHandled so the caller can clear it — without that
+ // clear, remounting the tab would silently re-open the dropdown.
+ openRequest?: { level: number } | null;
+ onOpenRequestHandled?: () => void;
 }
 
 const SCHOOL_COLORS: Record<string, string> = {
@@ -33,6 +40,7 @@ const LEVEL_LABELS = ['Cantrips', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th
 export default function SpellPickerDropdown({
  label, isCantrip, className, maxLevel, selected, onToggle,
  cantripMax, prepareMax, prepareCount, slotsPerLevel, grantedSpellIds = [], isKnownCaster = false,
+ openRequest = null, onOpenRequestHandled,
 }: SpellPickerDropdownProps) {
  // v2.22.0: spells now come from useSpells() — DB-backed with static fallback
  // for any IDs not yet seeded into public.spells.
@@ -71,6 +79,24 @@ export default function SpellPickerDropdown({
  setDropPos(pos);
  setOpen(true);
  }
+
+ // v2.695 — external open request (SpellCompletionBanner → "Go to Spells").
+ // Runs after mount so the trigger button is laid out and computePos() can
+ // measure it; scrolls the trigger into view first since the banner may have
+ // just switched tabs. Clamped to maxLevel so a bad request can't land on a
+ // level tab that isn't rendered.
+ useEffect(() => {
+ if (!openRequest) return;
+ triggerRef.current?.scrollIntoView({ block: 'nearest' });
+ const pos = computePos();
+ if (pos) {
+ setActiveLevel(Math.max(0, Math.min(openRequest.level, maxLevel)));
+ setDropPos(pos);
+ setOpen(true);
+ }
+ onOpenRequestHandled?.();
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [openRequest]);
 
  // Reposition on scroll AND resize while open. Single handler, both events.
  useEffect(() => {

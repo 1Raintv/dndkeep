@@ -169,6 +169,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  window.addEventListener('dndkeep:gototab', handler);
  return () => window.removeEventListener('dndkeep:gototab', handler);
  }, []);
+ // v2.695 — SpellCompletionBanner's "Go to Spells" CTA. Switching tabs
+ // wasn't enough: the banner also shows ON the Spells tab, where the click
+ // did nothing visible. This request rides along to SpellsTab and pops the
+ // Spell Book picker open on the level that still needs choices. SpellsTab
+ // clears it once handled so a later tab switch doesn't re-open it.
+ const [spellBookRequest, setSpellBookRequest] = useState<{ level: number } | null>(null);
  const [saving, setSaving] = useState(false);
  const [saveError, setSaveError] = useState<string | null>(null);
  const [showSettings, setShowSettings] = useState(false);
@@ -2617,9 +2623,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {(CLASS_MAP[character.class_name]?.is_spellcaster || Object.values(character.spell_slots).some((s: any) => s.total > 0)) && (activeTab === 'spells' || activeTab === 'actions') && (
  <SpellCompletionBanner
  character={character}
- onGoToSpells={() => {
- const evt = new CustomEvent('dndkeep:gototab', { detail: 'spells' });
- window.dispatchEvent(evt);
+ onGoToSpells={level => {
+ setActiveTab('spells');
+ setSpellBookRequest({ level });
  }}
  />
  )}
@@ -2743,6 +2749,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  maxSpellLevel={maxSpellLevel}
  concentrationSpellId={concentrationSpellId}
  hasSpellSlots={hasSpellSlots}
+ openBookRequest={spellBookRequest}
+ onOpenBookHandled={() => setSpellBookRequest(null)}
  onUpdateSlots={handleUpdateSlots}
  onAddSpell={id => {
  const check = canAddKnownSpell(character, id);

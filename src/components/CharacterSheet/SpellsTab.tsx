@@ -29,6 +29,11 @@ interface SpellsTabProps {
  onTogglePinned: (id: string) => void;
  userId: string;
  campaignId: string | null;
+ // v2.695 — set by the parent when SpellCompletionBanner's "Go to Spells"
+ // is clicked, so landing on this tab also opens the Spell Book picker on
+ // the level that still needs choices. Cleared via onOpenBookHandled.
+ openBookRequest?: { level: number } | null;
+ onOpenBookHandled?: () => void;
 }
 
 const SAVE_COLORS: Record<string, string> = {
@@ -77,6 +82,7 @@ export default function SpellsTab({
  character, computed, knownSpellData, availableSpells, maxSpellLevel,
  concentrationSpellId, hasSpellSlots, onUpdateSlots, onAddSpell,
  onRemoveSpell, onTogglePrepared, onConcentrate, onTogglePinned, userId, campaignId,
+ openBookRequest = null, onOpenBookHandled,
 }: SpellsTabProps) {
  const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
  const [expandedSpell, setExpandedSpell] = useState<string | null>(null);
@@ -296,6 +302,8 @@ export default function SpellsTab({
  isKnownCaster={isKnown}
  slotsPerLevel={slotsPerLevel}
  grantedSpellIds={[...grantedCantrips, ...grantedPrepared]}
+ openRequest={openBookRequest}
+ onOpenRequestHandled={onOpenBookHandled}
  />
  </div>
  </div>

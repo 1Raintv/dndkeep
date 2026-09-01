@@ -6,7 +6,12 @@ import { getSpellCounts, getMaxPrepared, getMaxCantrips, getMaxAccessibleSpellLe
 
 interface Props {
  character: Character;
- onGoToSpells: () => void;
+ // v2.695 — receives the spell level the player should start on: 0 when
+ // cantrips are still missing, otherwise the highest newly-accessible level
+ // (or 1). The parent uses it to open the Spell Book on that tab; before
+ // this the CTA only switched tabs, which did nothing when the banner was
+ // already showing on the Spells tab.
+ onGoToSpells: (level: number) => void;
 }
 
 // Human-readable explanation of where the prepared cap comes from.
@@ -55,6 +60,11 @@ export default function SpellCompletionBanner({ character, onGoToSpells }: Props
 
  const hasAlerts = missingCantrips > 0 || missingSpells > 0 || newLevelAccess.length > 0;
  if (!hasAlerts) return null;
+
+ // Which level tab the Spell Book should land on. Cantrips first — they're
+ // listed first in the banner and cost nothing to fix; then a newly-unlocked
+ // level if that's the alert; otherwise 1st.
+ const startLevel = missingCantrips > 0 ? 0 : newLevelAccess[0] ?? 1;
 
  return (
  <div style={{
@@ -105,7 +115,7 @@ export default function SpellCompletionBanner({ character, onGoToSpells }: Props
  </div>
  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4, flexShrink: 0 }}>
  <button
- onClick={onGoToSpells}
+ onClick={() => onGoToSpells(startLevel)}
  style={{
  padding: '5px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  background: '#ef4444', border: 'none', color: '#fff',
