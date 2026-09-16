@@ -186,6 +186,6 @@ BEGIN
   NEW.combatant_id := NEW.id;
   RETURN NEW;
 END;
-$function$
+$function$;
 
 commit;
