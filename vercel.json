@@ -1,8 +1,8 @@
 {
   "framework": "vite",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run verify",
   "outputDirectory": "dist",
-  "installCommand": "npm install",
+  "installCommand": "npm ci",
   "rewrites": [
     {
       "source": "/((?!api/|assets/|icons/|sw\\.js|manifest\\.json|favicon).*)",

@@ -16,6 +16,7 @@ import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/h
 import { formatRange } from '../../lib/formatRange';
 import { updateCharacter, supabase } from '../../lib/supabase';
 import { useDebouncedCallback } from '../../lib/useDebounce';
+import { useCharacterSaves } from '../../lib/hooks/useCharacterSaves';
 import { useSpells } from '../../lib/hooks/useSpells';
 import { rechargeOnLongRest } from '../../lib/charges';
 import { CombatProvider, useCombat } from '../../context/CombatContext';
@@ -152,7 +153,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // to console.warn only, leaving the user thinking the toggle was
  // broken).
  const toast = useToast();
- const [character, setCharacter] = useState<Character>(initialCharacter);
+ const { queue: saveQueue, saving, error: saveError } = useCharacterSaves(userId, initialCharacter.id);
+ const [character, setCharacter] = useState<Character>(() => ({ ...initialCharacter, ...saveQueue.getPending() }));
  const [activeTab, setActiveTab] = useState<Tab>('actions');
 
  // v2.518.0 — Frozen state: a character at level 10+ belonging to a
@@ -175,8 +177,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Spell Book picker open on the level that still needs choices. SpellsTab
  // clears it once handled so a later tab switch doesn't re-open it.
  const [spellBookRequest, setSpellBookRequest] = useState<{ level: number } | null>(null);
- const [saving, setSaving] = useState(false);
- const [saveError, setSaveError] = useState<string | null>(null);
  const [showSettings, setShowSettings] = useState(false);
  const [lastDamageNotes, setLastDamageNotes] = useState('');
  const [showRest, setShowRest] = useState(false);
@@ -568,35 +568,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  const computed = useMemo(() => computeStats(character), [character]);
 
- // ------------------------------------------------------------------
- // Debounced Supabase persist — accumulate patches, flush after 800ms
- // ------------------------------------------------------------------
- const pendingRef = useRef<Partial<Character>>({});
- const isSavingRef = useRef(false);
-
- const flushToSupabase = useCallback(async () => {
- if (isSavingRef.current) return;
- const patch = { ...pendingRef.current };
- if (Object.keys(patch).length === 0) return;
- pendingRef.current = {};
- isSavingRef.current = true;
- setSaving(true);
- setSaveError(null);
- try {
- const { error } = await updateCharacter(character.id, patch);
- if (error) setSaveError(error.message);
- } catch {
- setSaveError('Save failed — check your connection.');
- } finally {
- isSavingRef.current = false;
- setSaving(false);
- }
- }, [character.id]);
-
+ // v2.695.0 — The queue survives navigation and drains edits made during
+ // a slow request. Failed patches wait for the visible Retry action.
+ const flushToSupabase = useCallback(() => {
+   if (!saveQueue.getSnapshot().error) void saveQueue.flush();
+ }, [saveQueue]);
  const debouncedFlush = useDebouncedCallback(flushToSupabase, 800);
-
- // Flush any pending writes on unmount
- useEffect(() => () => { flushToSupabase(); }, [flushToSupabase]);
 
  function applyUpdate(partial: Partial<Character>, immediate = false) {
   // v2.518.0 — Frozen characters are view-only: drop all persisted
@@ -617,7 +594,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     if (events.length) logHistoryEvents(events);
   } catch { /* logging must never break the update path */ }
   setCharacter(prev => ({ ...prev, ...partial }));
-  pendingRef.current = { ...pendingRef.current, ...partial };
+  saveQueue.enqueue(partial);
   if (immediate) flushToSupabase();
   else debouncedFlush();
 
@@ -2085,18 +2062,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </ModalPortal>
  )}
 
- {/* v2.39.0: Removed the "Saving..." spinner that caused layout shift on every
- keystroke / state change. Saves happen silently in the background. Errors still
- show here so the user knows if something didn't persist. */}
+ {/* v2.695.0 — Keep successful saves quiet (no per-keystroke layout
+ shift), but make failed changes explicitly recoverable. */}
  {saveError && !saving && (
- <div style={{ height: 20, display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--c-red-l)' }}>
- {saveError}
+ <div role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--sp-2)', padding: 'var(--sp-3)', border: '1px solid var(--c-red-l)', borderRadius: 'var(--r-md)' }}>
+ <span style={{ flex: 1, minWidth: 180, fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--c-red-l)' }}>
+ Changes haven't saved. Your edits are kept in this tab. {saveError}
  </span>
+ <button className="btn-secondary btn-sm" onClick={() => { void saveQueue.flush(); }}>Retry save</button>
  </div>
  )}
-
-
 
  {/* Concentration banner */}
  {/* v2.38.0: removed duplicate yellow "Concentrating: X / End" banner.

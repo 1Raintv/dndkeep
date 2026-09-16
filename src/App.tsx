@@ -10,6 +10,7 @@ import { CampaignProvider } from './context/CampaignContext';
 import { APP_VERSION } from './version';
 import QuickRoll from './components/CharacterSheet/QuickRoll';
 import FloatingRollLog from './components/CharacterSheet/FloatingRollLog';
+import CharacterSaveNotice from './components/shared/CharacterSaveNotice';
 import ErrorBoundary from './components/ErrorBoundary';
 // v2.330.0 — B1 fix: retry chunk imports + recover from stale-hash blank
 // screens after deploys. See src/lib/lazyWithRetry.ts for the full story.
@@ -573,12 +574,13 @@ function AppRoutes() {
       )}
       {showSidebar && <Sidebar />}
       <main className={showSidebar ? 'app-main' : 'app-main-full'}>
+        {user && <CharacterSaveNotice userId={user.id} />}
         {/* Mobile bottom nav — phones only */}
         <nav className="mobile-bottom-nav">
           <NavLink to="/lobby" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
             <span style={{display:'flex'}}>{Icons.home}</span>Home
           </NavLink>
-          <NavLink to="/lobby/new" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
+          <NavLink to="/creator" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>
             <span style={{fontSize:20}}>✚</span>New
           </NavLink>
           <NavLink to="/spells" style={({isActive})=>({display:'flex',flexDirection:'column',alignItems:'center',gap:2,color:isActive?'var(--c-gold)':'var(--t-3)',textDecoration:'none',fontSize:10,fontFamily:'var(--ff-body)',fontWeight:700,padding:'4px 8px'})}>

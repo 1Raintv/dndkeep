@@ -1,5 +1,11 @@
 # DNDKeep — MVP Launch Plan
 
+> September 16 status: the store-first launch ordering below was superseded by
+> the August 30 invite-only, billing-disabled beta decision (`betaMode.ts`).
+> Use [RELEASE_READINESS.md](RELEASE_READINESS.md) for current release blockers
+> and [USER_EXPERIENCE.md](USER_EXPERIENCE.md) for the current UX batch. Retain
+> the billing implementation details below for the later paid launch.
+
 **Established:** 2026-08-25
 **Shape of the launch (owner decision):** **full store live** + **invite-only beta**.
 **Status:** Living document. Tick items as they land; keep the summary table current.

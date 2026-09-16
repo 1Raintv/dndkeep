@@ -2,7 +2,36 @@
 
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
+
+### 2026-09-16 — Release readiness
+
+The next milestone is the invite-only, no-store beta defined in `betaMode.ts`.
+Ordered action items, solutions and acceptance criteria:
+[RELEASE_READINESS.md](RELEASE_READINESS.md). Start with a shared local/CI gate
+(`npm run verify`), then finish save/draft validation, auth recovery, database
+certification and a two-account playthrough before release.
+
+Account recovery implemented: profile reads stop loading after 12 seconds;
+late results cannot restore another account's profile or grants. Settings keeps
+sign-out reachable without a profile and offers retry after failure. Eight new
+mocked regressions plus desktop/mobile recovery-panel checks; live auth and
+multiplayer acceptance remain open in the release checklist.
 **Current version:** v2.665.0
+
+### 2026-09-10 — User-experience foundation, v2.695.0 (local; not deployed)
+
+First implementation batch from Jared's user-first product review:
+- Character-sheet saves now serialize/drain partial changes and retain failed
+  patches for explicit retry. The queue survives route changes; a cross-page
+  notice links back to failed saves. Pending changes trigger the browser's
+  supported before-unload warning. This is not durable offline combat storage.
+- Character creation saves an account-scoped, versioned draft on this device,
+  with Resume/Discard, storage-failure feedback and cleanup after creation.
+- Mobile New goes to the existing character creator route.
+- Landing page describes current beta allowances instead of an unavailable shop.
+- Unit test discovery is scoped to src/ to avoid collecting nested worktrees.
+
+Verification and next UX priorities: [USER_EXPERIENCE.md](USER_EXPERIENCE.md).
 
 This document is the durable map for DNDKeep's development. It exists so that
 progress can continue across sessions without re-deriving context, and so the

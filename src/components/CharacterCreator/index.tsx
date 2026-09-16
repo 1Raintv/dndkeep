@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { AbilityKey, Alignment, AbilityScoreMethod, Character } from '../../types';
+import type { Character } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { createCharacter } from '../../lib/supabase';
 import { CLASS_MAP } from '../../data/classes';
@@ -16,7 +16,8 @@ import StepSpecies from './StepSpecies';
 import StepClass from './StepClass';
 import StepBackground from './StepBackground';
 import StepAbilityScores from './StepAbilityScores';
-import StepBuild, { emptyBuildChoices, type BuildChoices } from './StepBuild';
+import StepBuild from './StepBuild';
+import { useCreatorDraft } from './useCreatorDraft';
 import StepReview from './StepReview';
 import { buildRecommendedSetup } from '../../data/recommendedLoadouts';
 
@@ -49,43 +50,40 @@ function SummaryRow({ icon, label, value, empty, done }: {
   );
 }
 
-const DEFAULT_SCORES: Record<AbilityKey, number> = {
-  strength: 10, dexterity: 10, constitution: 10,
-  intelligence: 10, wisdom: 10, charisma: 10,
-};
-
 const STEPS = ['Species', 'Class', 'Background', 'Ability Scores', 'Build', 'Review'];
 
 export default function CharacterCreator() {
   const { user } = useAuth();
+  return user ? <CreatorForm key={user.id} userId={user.id} /> : null;
+}
+
+function CreatorForm({ userId }: { userId: string }) {
+  const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState(0);
+  const recovery = useCreatorDraft(userId);
+  const { step, species, className, background, scores, method, subclass, name, alignment, setupMode, selectedSkills, buildChoices, level, currentBuildLevel, originFeat } = recovery.draft;
+  const setStep = recovery.field('step');
+  const setSpecies = recovery.field('species');
+  const setClassName = recovery.field('className');
+  const setBackground = recovery.field('background');
+  const setScores = recovery.field('scores');
+  const setMethod = recovery.field('method');
+  const setSubclass = recovery.field('subclass');
+  const setName = recovery.field('name');
+  const setAlignment = recovery.field('alignment');
+  const setSetupMode = recovery.field('setupMode');
+  const setSelectedSkills = recovery.field('selectedSkills');
+  const setBuildChoices = recovery.field('buildChoices');
+  const setLevel = recovery.field('level');
+  const setCurrentBuildLevel = recovery.field('currentBuildLevel');
+  const setOriginFeat = recovery.field('originFeat');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Wizard state
-  const [species, setSpecies] = useState('');
-  const [className, setClassName] = useState('');
-  const [background, setBackground] = useState('');
-  const [scores, setScores] = useState<Record<AbilityKey, number>>(DEFAULT_SCORES);
-  const [method, setMethod] = useState<AbilityScoreMethod>('standard_array');
-  const [subclass, setSubclass] = useState('');
-  const [name, setName] = useState('');
-  const [alignment, setAlignment] = useState<Alignment>('True Neutral');
-  // v2.575.0 — one-time setup mode; 'recommended' is the default so
-  // new players land on a sheet that's ready to play.
-  const [setupMode, setSetupMode] = useState<'recommended' | 'blank'>('recommended');
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [buildChoices, setBuildChoices] = useState<BuildChoices>(emptyBuildChoices());
-  const [level, setLevel] = useState(1);
-  const [currentBuildLevel, setCurrentBuildLevel] = useState(1);
-  // Reset to level 1 each time the user enters the Build step
   const goToStep = (n: number) => {
     if (n === 4) setCurrentBuildLevel(1);
     setStep(n);
   };
-  const [originFeat, setOriginFeat] = useState('');
 
   // v2.655.0 / v2.656.0 — the scores this build currently has: base +
   // background + every level ASI picked so far. Exactly what
@@ -108,6 +106,7 @@ export default function CharacterCreator() {
 
   function handleLevelChange(newLevel: number) {
     setLevel(newLevel);
+    setCurrentBuildLevel(Math.min(currentBuildLevel, newLevel));
     // If level drops below 3, clear subclass (not yet unlocked)
     if (newLevel < 3) setSubclass('');
   }
@@ -261,7 +260,15 @@ export default function CharacterCreator() {
       ability_score_method: method,
     };
 
-    const { data, error: err } = await createCharacter(insert);
+    let result: Awaited<ReturnType<typeof createCharacter>>;
+    try {
+      result = await createCharacter(insert);
+    } catch {
+      setSaving(false);
+      setError('Could not create your character. Check your connection and try again.');
+      return;
+    }
+    const { data, error: err } = result;
     setSaving(false);
 
     if (err) {
@@ -271,14 +278,31 @@ export default function CharacterCreator() {
         : err.message;
       setError(msg);
     } else if (data) {
+      recovery.complete();
       navigate(`/character/${data.id}`);
     }
   }
 
+  if (recovery.needsResume) return (
+    <section aria-labelledby="draft-heading" style={{ maxWidth: 560, margin: '0 auto', padding: 'var(--sp-6)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)' }}>
+      <h1 id="draft-heading" style={{ fontFamily: 'var(--ff-brand)', fontSize: '1.5rem', marginBottom: 16 }}>Continue your character?</h1>
+      <p style={{ color: 'var(--t-2)', lineHeight: 1.6 }}>Your draft for <strong>{recovery.saved?.name || 'an unnamed character'}</strong> is saved on this device. Pick up where you left off, or discard it to start fresh.</p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 24 }}>
+        <button className="btn-gold" onClick={recovery.resume}>Resume character</button>
+        <button className="btn-secondary" onClick={recovery.discard}>Discard draft</button>
+        <button className="btn-ghost" onClick={() => navigate('/lobby')}>Back to lobby</button>
+      </div>
+      {recovery.storageError && <p role="alert" style={{ color: 'var(--c-red-l)' }}>{recovery.storageError}</p>}
+    </section>
+  );
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      <p role={recovery.storageError ? 'alert' : 'status'} style={{ fontSize: 'var(--fs-sm)', color: recovery.storageError ? 'var(--c-red-l)' : 'var(--t-2)', marginBottom: 16 }}>
+        {recovery.storageError || 'Your progress is saved on this device as you make changes.'}
+      </p>
       {/* Step indicator */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 'var(--sp-8)', borderBottom: '1px solid var(--c-border)' }}>
+      <div style={{ display: 'flex', gap: 0, overflowX: 'auto', marginBottom: 'var(--sp-8)', borderBottom: '1px solid var(--c-border)' }}>
         {STEPS.map((label, i) => (
           <button
             key={label}
@@ -291,7 +315,7 @@ export default function CharacterCreator() {
               background: 'transparent',
               color: i === step ? 'var(--c-gold-l)' : i < step ? 'var(--t-2)' : 'var(--t-2)',
               cursor: i < step ? 'pointer' : 'default',
-              marginBottom: -1,
+              marginBottom: -1, flexShrink: 0,
               display: 'flex', alignItems: 'center', gap: 'var(--sp-2)',
             }}
           >
