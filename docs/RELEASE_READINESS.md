@@ -11,7 +11,7 @@ ROADMAP.md remains the plan of record; this is its release acceptance checklist.
 |---|---|---|---|
 | P0 | Make verification repeatable | `npm run verify` runs the same gate locally and in CI: type baseline, hooks, rules, coordinates, anchors, unit tests, build, bundle budget. Checker crashes fail the gate. | Implemented; see verification below |
 | P0 | Finish the existing save/draft batch | Review the current uncommitted UX work separately; exercise failed saves, retry, navigation, creator resume and account switching in the local app. Preserve pending edits. | Existing implementation; live validation pending |
-| P0 | Eliminate account-loading dead ends | Test missing profile, expired session, unavailable backend and sign-out without a profile. Add bounded profile requests, explicit recovery and stale-response protection where tests expose failures. | Inspection found unbounded profile fetches and no account-generation guard in AuthContext; fix and regressions pending |
+| P0 | Eliminate account-loading dead ends | Test missing profile, expired session, unavailable backend and sign-out without a profile. Add bounded profile requests, explicit recovery and stale-response protection where tests expose failures. | Implemented and mock-tested: 12-second profile deadline, stale-response protection, session-event precedence, Settings retry/sign-out without a profile. Hosted expired-session playthrough remains pending. |
 | P0 | Certify database reproducibility | Rebuild a disposable local DB; compare columns, CHECK/FK constraints, policies, grants, functions and triggers against hosted test. Record named differences, fix through new migrations and repeat. | Pending; earlier column-only comparison did not certify the schema |
 | P0 | Resolve historical combat constraint drift | Recheck the six creature/monster/npc constraints against current migrations and hosted schema. If still divergent, add a convergence migration with data checks and fresh-chain tests; do not infer current state from the August local patch. | Needs revalidation |
 | P0 | Prove invite-to-play end to end | Two separate accounts: invite, set password, sign in, create/join campaign, assign character, complete a turn, reconnect, sign out and reset password. Repeat core player actions on mobile. | Pending |
@@ -48,3 +48,10 @@ writes or deployment performed.
 A passing gate is necessary, not sufficient: the live acceptance rows above must
 have evidence before calling the beta ready. Update statuses when verified rather
 than copying earlier session claims.
+
+Account-recovery follow-up: eight new regressions pass (801 unit tests total).
+Full gate passes at 221 type errors, no hook violations, largest entry 252.4 KB.
+Desktop/393px recovery-panel screenshots checked with mocked auth/data, with no
+browser exceptions. These checks do not authenticate against a live database.
+Application/readiness batch committed as `fb00600`; auth recovery is a separate
+follow-up. Machine-local agent instructions/toolkit were left untracked.

@@ -10,6 +10,12 @@ Ordered action items, solutions and acceptance criteria:
 [RELEASE_READINESS.md](RELEASE_READINESS.md). Start with a shared local/CI gate
 (`npm run verify`), then finish save/draft validation, auth recovery, database
 certification and a two-account playthrough before release.
+
+Account recovery implemented: profile reads stop loading after 12 seconds;
+late results cannot restore another account's profile or grants. Settings keeps
+sign-out reachable without a profile and offers retry after failure. Eight new
+mocked regressions plus desktop/mobile recovery-panel checks; live auth and
+multiplayer acceptance remain open in the release checklist.
 **Current version:** v2.665.0
 
 ### 2026-09-10 — User-experience foundation, v2.695.0 (local; not deployed)

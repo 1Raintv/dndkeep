@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
 import type { GateContext } from '../data/contentGates';
@@ -70,80 +70,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // v2.563.0 — bump to re-run the init effect (Retry button).
   const [initNonce, setInitNonce] = useState(0);
 
-  // v2.644 (audit 5.6): callbacks + value memoized — the provider wraps
-  // the whole app, and a fresh value object per render re-rendered every
-  // consumer on every provider render.
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await getProfile(userId);
-    if (data) setProfile(data);
-  }, []);
-
-  const refreshProfile = useCallback(async () => {
-    if (session?.user) await fetchProfile(session.user.id);
-  }, [session, fetchProfile]);
-
+  const reloadProfile = useRef<() => Promise<void>>(async () => {});
+  const refreshProfile = useCallback(() => reloadProfile.current(), []);
   const retryInit = useCallback(() => {
     setInitError(false);
     setLoading(true);
-    setProfileLoading(true);
     setInitNonce(n => n + 1);
   }, []);
 
   useEffect(() => {
-    // v2.563.0 — Frontend resilience. `supabase.auth.getSession()` can
-    // hang indefinitely when Supabase is unreachable (network down, or
-    // the free-tier project auto-paused — this has caused real outages
-    // where the app sat on "Loading…" forever). Bound the init with a
-    // 12s timeout and surface a Retry state instead of a dead spinner.
+    // v2.695.0 — callbacks publish session state only; profile requests run
+    // in a separate effect, outside Supabase's auth notification lock.
     let cancelled = false;
-    const TIMEOUT_MS = 12000;
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('auth-init-timeout')), TIMEOUT_MS));
-
-    Promise.race([supabase.auth.getSession(), timeout])
-      .then(({ data: { session: s } }) => {
-        if (cancelled) return;
-        setSession(s);
-        // v2.637 perf (audit 6.5): loading clears the moment the session
-        // is known. Previously we serialized the profile fetch behind it,
-        // and nothing authenticated rendered until BOTH round-trips
-        // finished — which also delayed the route chunk download (a third
-        // serial round-trip). The profile only feeds the Pro badge,
-        // display name, and dice skin; consumers tolerate null, and the
-        // Pro gates wait on profileLoading instead.
-        setLoading(false);
-        if (s?.user) {
-          // Profile fetch failing shouldn't dead-end the app — proceed
-          // with a null profile (degraded but usable) either way.
-          fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false); });
-        } else {
-          setProfileLoading(false);
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setInitError(true);
-        // loading stays true: gates branch on initError before spinner.
-      });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      if (s?.user) {
-        setProfileLoading(true);
-        fetchProfile(s.user.id).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false); });
-      } else {
-        setProfile(null);
-        setProfileLoading(false);
-      }
+    let eventReceived = false;
+    const timeout = setTimeout(() => {
+      if (!cancelled && !eventReceived) setInitError(true);
+    }, 12000);
+    const accept = (next: Session | null) => {
+      if (cancelled) return;
+      setSession(next);
+      setLoading(false);
+      setInitError(false);
+      clearTimeout(timeout);
+    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      eventReceived = true;
+      accept(next);
     });
-
-    return () => { cancelled = true; subscription.unsubscribe(); };
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (cancelled || eventReceived) return;
+      if (error) throw error;
+      accept(data.session);
+    }).catch(() => {
+      if (!cancelled && !eventReceived) setInitError(true);
+    });
+    return () => { cancelled = true; clearTimeout(timeout); subscription.unsubscribe(); };
   }, [initNonce]);
 
+  const userId = session?.user.id;
+  useEffect(() => {
+    // Missing rows and hung requests must leave loading. Generations discard
+    // old-account and old-retry responses, including their loading updates.
+    let generation = 0;
+    let cancelled = false;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const load = async () => {
+      const request = ++generation;
+      setProfile(null);
+      setProfileLoading(!!userId);
+      if (!userId) return;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('profile-timeout')), 12000);
+        timers.add(timer);
+      });
+      try {
+        const { data, error } = await Promise.race([getProfile(userId), timeout]);
+        if (!cancelled && request === generation) {
+          setProfile(!error && data?.id === userId ? data : null);
+        }
+      } catch {
+        // Settings offers retry/sign-out without requiring a profile row.
+      } finally {
+        clearTimeout(timer);
+        if (timer !== undefined) timers.delete(timer);
+        if (!cancelled && request === generation) setProfileLoading(false);
+      }
+    };
+    reloadProfile.current = load;
+    void load();
+    return () => {
+      cancelled = true;
+      ++generation;
+      timers.forEach(clearTimeout);
+      reloadProfile.current = async () => {};
+    };
+  }, [userId, initNonce]);
+
+  // Never expose the previous account's grants during the effect transition.
+  const currentProfile = profile?.id === userId ? profile : null;
   const value = useMemo<AuthContextValue>(() => ({
     session,
     user: session?.user ?? null,
-    profile,
+    profile: currentProfile,
     loading,
     profileLoading,
     initError,
@@ -151,15 +160,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // v2.693.0 — the beta grants Pro-gated features (campaigns page, homebrew,
     // realtime sync) so the one campaign each tester gets is actually usable.
     // Reads the switch rather than the profile, so no billing column is faked.
-    isPro: BETA.enabled || profile?.subscription_tier === 'pro',
-    isSubscribed: isSubscriptionActive(profile),
-    showUaContent: profile?.show_ua_content === true,
+    isPro: BETA.enabled || currentProfile?.subscription_tier === 'pro',
+    isSubscribed: isSubscriptionActive(currentProfile),
+    showUaContent: currentProfile?.show_ua_content === true,
     contentGate: {
-      showUaContent: profile?.show_ua_content === true,
-      showNonSrdContent: profile?.show_non_srd_content === true,
+      showUaContent: currentProfile?.show_ua_content === true,
+      showNonSrdContent: currentProfile?.show_non_srd_content === true,
     },
     refreshProfile,
-  }), [session, profile, loading, profileLoading, initError, retryInit, refreshProfile]);
+  }), [session, currentProfile, loading, profileLoading, initError, retryInit, refreshProfile]);
 
   return (
     <AuthContext.Provider value={value}>

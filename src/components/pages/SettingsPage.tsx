@@ -9,7 +9,7 @@ import { usePushNotifications } from '../../lib/usePushNotifications';
 import { useHouseRules, type CritRule } from '../../lib/useHouseRules';
 
 export default function SettingsPage() {
-  const { user, profile, isPro, refreshProfile } = useAuth();
+  const { user, profile, profileLoading, isPro, refreshProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { permission, supported, enablePush } = usePushNotifications(user?.id);
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,13 @@ export default function SettingsPage() {
   }, [user]);
 
   if (!profile) {
-    return <div style={{ display: 'flex', gap: 'var(--sp-3)', padding: 'var(--sp-8)', alignItems: 'center' }}><div className="spinner" /><span className="loading-text">Loading...</span></div>;
+    return <div className="card" style={{ maxWidth: 600, margin: '0 auto' }}>
+      <h1>Account</h1>
+      <p role="status">{profileLoading ? 'Loading your account…' : 'We couldn’t load your account. Retry, or sign out and sign in again.'}</p>
+      {error && <p role="alert">{error}</p>}
+      <button className="btn btn-secondary" disabled={profileLoading} onClick={() => void refreshProfile()}>Retry account</button>
+      <button className="btn btn-secondary" onClick={() => void handleSignOut()}>Sign out</button>
+    </div>;
   }
 
   // v2.683.0 — was a raw POST to the buy-character-slots edge function, which
@@ -87,7 +93,13 @@ export default function SettingsPage() {
   }
 
   async function handleSignOut() {
-    await signOut();
+    setError(null);
+    try {
+      const result = await signOut();
+      if (result.error) throw result.error;
+    } catch {
+      setError('Could not sign out. Check your connection and try again.');
+    }
   }
 
   // v2.694.0 — Data export. The RPC returns the whole document; the browser
