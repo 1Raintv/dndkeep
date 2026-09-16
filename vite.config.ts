@@ -6,6 +6,9 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   test: {
+    // v2.695.0 — A checkout can contain other worktrees under .claude/.
+    // Unit tests belong to this checkout's src/, not those trees' E2E suites.
+    include: ['src/**/*.test.{ts,tsx}'],
     // e2e/ holds Playwright specs — a different runner. Without this,
     // vitest tries to collect them and explodes on @playwright/test.
     exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],

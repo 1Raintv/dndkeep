@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "verify": "node scripts/verify.mjs",
     "dev": "vite",
     "prebuild": "node scripts/sync-sw-version.mjs",
     "build": "vite build",

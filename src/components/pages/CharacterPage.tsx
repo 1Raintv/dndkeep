@@ -291,6 +291,7 @@ export default function CharacterPage() {
       <NotificationToast latest={toastItem} />
 
       <CharacterSheet
+        key={`${user?.id}:${character.id}`}
         initialCharacter={character}
         realtimeEnabled={isPro}
         isPro={isPro}

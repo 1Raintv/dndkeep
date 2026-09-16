@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { BETA } from '../../lib/betaMode';
 
 const FEATURES = [
   { icon: '', label: 'Instant dice rolls', desc: 'Click any skill, ability, or weapon to roll instantly. Nat 20s glow gold. Nat 1s flash red. Full modifier breakdown every time.' },
@@ -11,7 +12,7 @@ const FEATURES = [
 
 const STEPS = [
   { n: '1', title: 'Build your character', desc: 'A guided 6-step creator walks you through species, class, background, ability scores, and build choices — with the rules explained in context.' },
-  { n: '2', title: 'Play at the table', desc: 'Tap ability scores and skills to roll. Track HP, spell slots, and conditions. Everything calculates automatically. Nothing needs manual math.' },
+  { n: '2', title: 'Play at the table', desc: 'Tap ability scores and skills to roll. Track HP, spell slots, and conditions. Built-in automation handles the routine calculations, with the DM in control.' },
   { n: '3', title: 'Run your campaign', desc: 'The DM creates a campaign and shares a code. Players join and the whole party syncs live. DMs manage initiative and apply damage from their screen.' },
 ];
 
@@ -79,7 +80,7 @@ export default function LandingPage() {
           </h1>
           <p style={{ fontSize: 'clamp(1rem, 2vw, 1.2rem)', color: 'var(--t-2)', lineHeight: 1.7, maxWidth: 640, margin: '0 auto 40px' }}>
             Build characters. Roll dice. Track conditions, spells, and HP. Run campaigns with real-time party sync.{' '}
-            <strong style={{ color: 'var(--t-1)' }}>Everything calculates automatically</strong> so you can focus on playing.
+            <strong style={{ color: 'var(--t-1)' }}>Less bookkeeping at the table</strong> so you can focus on playing.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' as const, marginBottom: 16 }}>
             <button className="btn-gold btn-lg" onClick={requestInvite} disabled={!inviteReady} style={{ fontSize: 16, paddingLeft: 32, paddingRight: 32 }}>{inviteLabel}</button>
@@ -134,6 +135,22 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* v2.695.0 — Describe the active beta, not the disabled shop. */}
+        {BETA.enabled ? (
+          <section aria-labelledby="beta-heading" style={{ maxWidth: 800, margin: '0 auto', padding: '0 24px 80px' }}>
+            <div className="pricing-card" style={{ textAlign: 'center' }}>
+              <h2 id="beta-heading" style={{ fontFamily: 'var(--ff-brand)', fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', color: 'var(--t-1)', marginBottom: 16 }}>Play the beta with your table</h2>
+              <p style={{ color: 'var(--t-2)', lineHeight: 1.7 }}>Invite-only access. No subscription or purchases during the beta.</p>
+              <ul style={{ listStyle: 'none', padding: 0, color: 'var(--t-2)', lineHeight: 1.8, margin: '24px 0' }}>
+                <li>{BETA.characterSlots} characters per tester, up to level 9</li>
+                <li>{BETA.campaignSlots} campaign to create and run</li>
+                <li>Character sheets, battle maps, combat tools and party sync</li>
+              </ul>
+              <p style={{ color: 'var(--t-3)', fontSize: 14 }}>Beta allowances are temporary. Paid plans are planned for later.</p>
+            </div>
+          </section>
+        ) : (
+        <>
         {/* PRICING */}
         <section style={{ maxWidth: 800, margin: '0 auto', padding: '0 24px 100px' }}>
           <div style={{ textAlign: 'center', marginBottom: 56 }}>
@@ -178,6 +195,9 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+
+        </>
+        )}
 
         {/* FOOTER CTA */}
         <section style={{ textAlign: 'center', padding: '72px 24px', borderTop: '1px solid var(--c-border)', background: 'rgba(26,26,38,0.4)' }}>

@@ -9,7 +9,7 @@
 | 1.1–1.7 Security | **Deferred by design** | Go-live checklist (companion doc) — app not yet live; 1.4 share-token RLS queued as owner decision #7 below |
 | 1.6 Dice-overlay XSS | **Done** (CSP follow-up open) | `rollLabelNode()` textContent + jsdom regression test; checklist §1.4 |
 | 2.1 One-machine deploy paths | **Done** | deploy.bat/lint.bat use %~dp0 |
-| 2.2 CI as a gate | **Improved** | CI: tsc baseline (ratcheted 267→222) + hooks + build + 104 unit tests + bundle budget. deploy.bat still bypasses it — open |
+| 2.2 CI as a gate | **Improved** | 2026-09-16: shared `npm run verify` for local/CI, baseline 221, structured hooks/parser checks, regression/unit suites, build + bundle budget. Checker crashes fail closed; runner failure cases tested. Deployment-path enforcement remains open; see docs/RELEASE_READINESS.md. |
 | 2.3 Second deploy path / watcher | **Open** | |
 | 2.4 Staging environment | **Open** | Local DB (2.5) is the stepping stone |
 | 2.5 Local Docker database | **Done** | supabase start + db reset + seed; drift shims; docs/LOCAL_DEV.md |
