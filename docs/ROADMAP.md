@@ -19,7 +19,7 @@ preview is preserved. A two-account browser regression disconnects a player,
 moves two selected tokens, reconnects, then exercises group undo/redo and restores
 their positions. Removing reconnect refresh makes that regression fail.
 
-Verification: 816 unit tests (15 new), seven runner tests, TypeScript 221/221,
+Verification: 817 unit tests (16 new), seven runner tests, TypeScript 221/221,
 clean hooks and production build, 252.4 KB entry. Twelve real-local-DB browser
 checks passed across desktop/mobile, including the two-account reconnect test;
 screenshots inspected. Physical-device and player-combat acceptance remain open.

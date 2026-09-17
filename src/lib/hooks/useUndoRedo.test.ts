@@ -68,3 +68,22 @@ it('preserves a newer edit recorded while undo is saving', async () => {
   expect(result.current.lastActionLabel).toBe('new');
   await act(async()=>{expect(await result.current.redo()).toBe(false);});
 });
+
+it('preserves newer edits when history fills during a pending redo', async () => {
+  let finish!:()=>void;
+  const newestA=vi.fn(), newestB=vi.fn();
+  const {result}=renderHook(()=>useUndoRedo('a'));
+  act(()=>{
+    for(let i=0;i<50;i++) result.current.record({label:String(i),backward:vi.fn(),forward:()=>new Promise<void>(r=>{finish=r;})});
+  });
+  await act(async()=>{await result.current.undo();});
+  let pending!:Promise<boolean>;
+  act(()=>{pending=result.current.redo();});
+  act(()=>{
+    result.current.record({label:'new A',backward:newestA,forward:vi.fn()});
+    result.current.record({label:'new B',backward:newestB,forward:vi.fn()});
+  });
+  await act(async()=>{finish();await pending;await result.current.undo();await result.current.undo();});
+  expect(newestB).toHaveBeenCalledTimes(1);
+  expect(newestA).toHaveBeenCalledTimes(1);
+});

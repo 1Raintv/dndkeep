@@ -125,7 +125,11 @@ export function useUndoRedo(sceneId: string | null) {
       await action.forward();
       if (sceneEpoch.current !== scene) return false;
       const current = stateRef.current;
-      const newPast = [...past, action, ...current.past.slice(past.length)].slice(-MAX_HISTORY);
+      // History may have reached its cap while newer edits were recorded.
+      // Find their boundary by identity, not the old array length.
+      const firstNew = current.past.findIndex(entry => !past.includes(entry));
+      const insertion = firstNew < 0 ? current.past.length : firstNew;
+      const newPast = [...current.past.slice(0, insertion), action, ...current.past.slice(insertion)].slice(-MAX_HISTORY);
       stateRef.current = { past: newPast, future: current === snapshot ? future.slice(0, -1) : [] };
       setCanUndo(true);
       setLastActionLabel(newPast[newPast.length - 1]?.label ?? null);
