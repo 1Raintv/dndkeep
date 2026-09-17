@@ -30,15 +30,15 @@ export function gateDbSuite(): void {
  *  React hydration — the first controlled render blanks a too-early
  *  fill (failure shot: password populated, email empty, native
  *  "Please fill out this field" bubble). Fill-and-verify with retries. */
-export async function signInAsSeedDm(page: Page): Promise<void> {
+export async function signInAsSeedDm(page: Page, loginEmail = SEED_EMAIL): Promise<void> {
   await page.goto('/auth');
   const email = page.getByPlaceholder(/your@email.com/i);
   const password = page.getByPlaceholder(/your password/i);
   await email.waitFor({ timeout: 15_000 });
   for (let attempt = 0; attempt < 3; attempt++) {
-    await email.fill(SEED_EMAIL);
+    await email.fill(loginEmail);
     await password.fill(SEED_PASSWORD);
-    if ((await email.inputValue()) === SEED_EMAIL &&
+    if ((await email.inputValue()) === loginEmail &&
         (await password.inputValue()) === SEED_PASSWORD) break;
     await page.waitForTimeout(300);
   }
