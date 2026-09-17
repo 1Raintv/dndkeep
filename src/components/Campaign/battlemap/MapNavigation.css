@@ -36,6 +36,7 @@
 .map-help summary:focus-visible { outline:2px solid #e4bd69; outline-offset:1px; }
 .map-help-panel { position:absolute; bottom:calc(100% + 10px); right:0; width:330px; max-width:100%; box-sizing:border-box; padding:18px; background:#20212b; border:1px solid #55515f; border-radius:14px; box-shadow:0 12px 40px #0009; color:#d9d8e2; line-height:1.55; max-height: min(380px,50vh); overflow:auto; }
 .map-help-panel strong { font-size:15px; color:#f0d59c; }
+.map-help-panel { max-height:min(380px,50vh,var(--map-help-space,50vh)); overscroll-behavior:contain; }
 .map-help-panel p { margin:8px 0 14px; }
 .map-help-panel dl { display:grid; grid-template-columns:1fr 1.4fr; gap:10px 14px; margin:0; }
 .map-help-panel dt { color:#a9a9bc; }

@@ -4,9 +4,19 @@ import {useEffect,useRef} from 'react';
 export function MapHelp() {
   const ref=useRef<HTMLDetailsElement>(null);
   useEffect(()=>{
+    const details=ref.current!;
+    const nav=details.closest('.map-navigation')!;
+    // v2.704 — a landscape combat dock can sit high on the screen. Size
+    // help to the actual room above it, keeping all instructions scrollable.
+    const measure=()=>{if(details.open) details.style.setProperty('--map-help-space',`${Math.max(0,nav.getBoundingClientRect().top-18)}px`);};
+    const resize=new ResizeObserver(measure);resize.observe(nav);
+    if(nav.parentElement) resize.observe(nav.parentElement);
+    const position=new MutationObserver(measure);position.observe(nav,{attributes:true,attributeFilter:['style']});
+    details.addEventListener('toggle',measure);
+    window.addEventListener('resize',measure);window.addEventListener('scroll',measure,true);
     const close=(event:PointerEvent)=>{if(ref.current && !ref.current.contains(event.target as Node)) ref.current.open=false;};
     document.addEventListener('pointerdown',close);
-    return ()=>document.removeEventListener('pointerdown',close);
+    return ()=>{document.removeEventListener('pointerdown',close);details.removeEventListener('toggle',measure);resize.disconnect();position.disconnect();window.removeEventListener('resize',measure);window.removeEventListener('scroll',measure,true);};
   },[]);
   return <details ref={ref} className="map-help" onKeyDown={event=>{
     if(event.key==='Escape') {event.stopPropagation();ref.current!.open=false;ref.current!.querySelector('summary')?.focus();}

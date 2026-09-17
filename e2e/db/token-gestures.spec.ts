@@ -256,4 +256,57 @@ test.describe('token gestures (local stack)', () => {
     await page.screenshot({ path: info.outputPath('touch-pan.png') });
     await cdp.detach();
   });
+
+  test('interrupted pan releases the camera and a fresh gesture still works',async({page,context})=>{
+    test.setTimeout(60_000);
+    await page.addInitScript(()=>window.addEventListener('pointerdown',event=>{
+      if(event.target instanceof HTMLCanvasElement) (window as any).__panPointer=event.pointerId;
+    },true));
+    await openMap(page);
+    await page.getByRole('button',{name:'Pan',exact:true}).click();
+    const camera=()=>page.evaluate(()=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      return {x:vp.center.x,y:vp.center.y};
+    });
+    const box=(await page.locator('canvas').first().boundingBox())!;
+    const x=box.x+box.width/2,y=box.y+box.height/2;
+    const before=(await state(page)).tokens;
+    const cdp=await context.newCDPSession(page);
+    // Optional responsiveness stress; Chromium CPU slowdown is not a phone FPS claim.
+    if(process.env.E2E_SLOW_CPU==='1') await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
+    for(const kind of ['mouse','touch']) {
+      const start=async()=>{
+        if(kind==='mouse') {await page.mouse.move(x,y);await page.mouse.down();}
+        else await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:1,x,y}]});
+      };
+      const move=async(offset:number)=>{
+        if(kind==='mouse') await page.mouse.move(x+offset,y+offset);
+        else await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{id:1,x:x+offset,y:y+offset}]});
+      };
+      const end=async()=>{
+        if(kind==='mouse') await page.mouse.up();
+        else await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      };
+      for(const interruption of ['capture','escape','hidden']) {
+        await start();await move(20);
+        if(interruption==='capture') await page.locator('canvas').first().evaluate(canvas=>canvas.releasePointerCapture((window as any).__panPointer));
+        if(interruption==='escape') await page.keyboard.press('Escape');
+        if(interruption==='hidden') await page.evaluate(()=>{
+          Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+          document.dispatchEvent(new Event('visibilitychange'));
+          delete (document as any).visibilityState;
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await move(21); // flush pending lostpointercapture delivery
+        const stopped=await camera();
+        await move(70);await end();
+        expect(await camera(),`${kind}/${interruption}`).toEqual(stopped);
+        await start();await move(30);await end();
+        expect(await camera(),`${kind}/${interruption} recovery`).not.toEqual(stopped);
+      }
+    }
+    const after=(await state(page)).tokens;
+    for(const id of Object.keys(before)) expect([after[id].x,after[id].y]).toEqual([before[id].x,before[id].y]);
+    await cdp.detach();
+  });
 });

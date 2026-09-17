@@ -52,6 +52,33 @@ generated prod types against the local schema), and
 raw replays must do it explicitly). They are inert on production by
 construction — prod never replays this chain.
 
+## Map device acceptance (v2.704)
+
+The map suite covers mouse and Chromium touch input, capture loss, Escape,
+simulated hidden-tab cancellation, pinch-to-single-finger continuation, and
+851×393 landscape combat help. The interrupted-pan regression optionally uses
+Chromium's 4× CPU slowdown:
+
+```powershell
+$env:E2E_DB='1'
+$env:E2E_SLOW_CPU='1'
+npx playwright test e2e/db/token-gestures.spec.ts --grep 'interrupted pan' --workers=1 --retries=0
+Remove-Item Env:E2E_SLOW_CPU
+```
+
+This checks interaction recovery, not a real-device FPS target. Physical-device
+acceptance remains pending. On a disposable encounter on the intended device:
+
+- Pan and pinch repeatedly; lifting one finger should continue panning smoothly.
+- Move an owned token once; verify a second account sees the same position.
+- Cancel a drag, switch apps/tabs, and return; no token or camera should follow
+  old input, and a fresh gesture should work immediately.
+- Rotate portrait/landscape during combat; reach Fit map, Undo/Redo, and Help.
+- Run a normal session with the intended map image and token count; record
+  device/browser, scene size, visible tokens, and any stutter or overheating.
+
+Do not mark physical acceptance complete from desktop emulation alone.
+
 ## Why Playwright is pinned to 1.49
 
 Last version supporting Node 18, which the dev machines currently run.
