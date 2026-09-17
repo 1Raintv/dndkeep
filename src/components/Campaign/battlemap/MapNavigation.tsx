@@ -6,6 +6,8 @@ import './MapNavigation.css';
 import { MapHistoryControls } from './MapHistoryControls';
 import type { useUndoRedo } from '../../../lib/hooks/useUndoRedo';
 import { useMapControlClearance } from './useMapControlClearance';
+import { MapHelp } from './MapHelp';
+import { MapControlIcon } from './MapControlIcon';
 
 /** v2.697 — local camera controls never write shared token positions. */
 export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editingToolActive, onSelectMode, history }: {
@@ -158,16 +160,17 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
 
   return <div ref={navRef} className="map-navigation" role="toolbar" aria-label="Map navigation">
     <div className="map-navigation-modes">
-      <button type="button" aria-pressed={!pan && !editingToolActive} onClick={()=>{setPan(false); onSelectMode();}} title="Select and move tokens">Select</button>
-      <button type="button" aria-pressed={pan} onClick={()=>{setPan(true); onSelectMode();}} title="Drag the map · hold Space for temporary pan">Pan</button>
+      <button type="button" aria-pressed={!pan && !editingToolActive} onClick={()=>{setPan(false); onSelectMode();}} title="Select and move tokens"><MapControlIcon kind="select"/>Select</button>
+      <button type="button" aria-pressed={pan} onClick={()=>{setPan(true); onSelectMode();}} title="Drag the map · hold Space for temporary pan"><MapControlIcon kind="pan"/>Pan</button>
     </div>
     <div className="map-navigation-zoom">
       <button type="button" aria-label="Zoom out" onClick={()=>changeZoom(1/1.2)}>−</button>
       <output aria-label="Map zoom">{zoom}%</output>
       <button type="button" aria-label="Zoom in" onClick={()=>changeZoom(1.2)}>+</button>
     </div>
-    <button type="button" onClick={fit} title="Show the entire map">Fit map</button>
-    <button type="button" onClick={focus} disabled={!selectedIds.size} title="Center the view on selected tokens">Find selection</button>
+    <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
+    <button type="button" onClick={focus} disabled={!selectedIds.size} title="Center the view on selected tokens"><MapControlIcon kind="focus"/>Find selection</button>
+    <MapHelp />
     {history && <MapHistoryControls history={history} />}
   </div>;
 }

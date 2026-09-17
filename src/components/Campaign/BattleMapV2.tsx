@@ -4100,7 +4100,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             lines and grows down through anything placed below it. One
             element in the slot makes the collision impossible rather than
             merely unlikely. */}
-        {!(isDM && (wallActive || fogBrushActive)) && (
+        {!(isDM && (wallActive || fogBrushActive)) && (dmPreviewFog || eraserActive || wallActive || rulerActive) && (
         <div
           style={{
             // v2.270.0 — moved to top-right so the floating party

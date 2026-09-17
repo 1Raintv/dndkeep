@@ -532,7 +532,7 @@ export function TokenLayer(props: {
         container.eventMode = 'static';
         container.cursor = 'grab';
         const circle = new Graphics();
-        const initials = new Text({
+        const initials = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
           text: tokenInitials(token.name),
           style: new TextStyle({
             fontFamily: 'sans-serif',
@@ -1240,12 +1240,16 @@ export function TokenLayer(props: {
       if (showLabel) {
         let label = currentEntry.nameLabel;
         if (!label || label.destroyed) {
-          label = new Text({
+          label = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
             text: token.name,
             style: new TextStyle({
               fontFamily: 'sans-serif',
               fontWeight: '700',
-              fontSize: 12,
+              fontSize: 11,
+              wordWrap: true,
+              breakWords: false,
+              wordWrapWidth: Math.max(40,footPx-8),
+              lineHeight: 14,
               fill: 0xffffff,
               align: 'center',
               stroke: { color: 0x0a0c10, width: 4 },
@@ -1256,6 +1260,12 @@ export function TokenLayer(props: {
           currentEntry.nameLabel = label;
         }
         if (label.text !== token.name) label.text = token.name;
+        // v2.702 — adjacent tokens must not run their names into each other.
+        label.style.wordWrapWidth=Math.max(40,footPx-8);
+        // Keep long surnames intact; fit the label rather than leaving a
+        // lone final letter on a third line. Never change token hit geometry.
+        label.scale.set(1);
+        label.scale.set(Math.min(1,(footPx-4)/Math.max(1,label.width)));
         // Position below HP bar (if visible) or token rim. v2.244 —
         // showHpBar drives this rather than raw hpInfo so NPC names
         // sit closer to the token when the bar is hidden.
@@ -1430,7 +1440,7 @@ export function TokenLayer(props: {
           dot.stroke();
           dot.position.set(cursorX, stripY);
           layer.addChild(dot);
-          const glyph = new Text({
+          const glyph = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
             text: COND_ICON[cond],
             style: new TextStyle({
               fontFamily: 'sans-serif',
@@ -1585,7 +1595,7 @@ export function TokenLayer(props: {
         if (!currentEntry.actionEconomyLabels) {
           const labels: Text[] = [];
           for (const slot of slots) {
-            const t = new Text({
+            const t = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
               text: slot.letter,
               style: new TextStyle({
                 fontFamily: 'sans-serif',
@@ -1734,7 +1744,7 @@ export function TokenLayer(props: {
           currentEntry.movementBadgeBg = bg;
         }
         if (!currentEntry.movementBadge) {
-          const txt = new Text({
+          const txt = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
             text: badgeText,
             style: new TextStyle({
               fontFamily: 'sans-serif',
@@ -1819,7 +1829,7 @@ export function TokenLayer(props: {
       const showUnlockedGlyph = isDM && tokenIsUnlocked && !!activeTokenInfo;
       if (showUnlockedGlyph) {
         if (!currentEntry.lockGlyph) {
-          const glyph = new Text({
+          const glyph = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
             text: '✓',
             style: new TextStyle({
               fontFamily: 'sans-serif',
@@ -1851,7 +1861,7 @@ export function TokenLayer(props: {
       const isConcentrating = !!(charId && characterConcentrationMap?.has(charId));
       if (isConcentrating) {
         if (!currentEntry.concentrationGlyph) {
-          const glyph = new Text({
+          const glyph = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
             text: '◉',
             style: new TextStyle({
               fontFamily: 'sans-serif',
@@ -1901,7 +1911,7 @@ export function TokenLayer(props: {
           : cover.level === 'three_quarters' ? 0xa78bfa
           : 0x60a5fa;
         if (!currentEntry.coverGlyph) {
-          const glyph = new Text({
+          const glyph = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
             text: coverText,
             style: new TextStyle({
               fontFamily: 'sans-serif',
@@ -2050,7 +2060,7 @@ export function TokenLayer(props: {
     previewGfx.eventMode = 'none';
     previewGfx.visible = false;
     viewport.addChild(previewGfx);
-    const previewLabel = new Text({
+    const previewLabel = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
       text: '',
       style: new TextStyle({
         fontFamily: 'sans-serif',
