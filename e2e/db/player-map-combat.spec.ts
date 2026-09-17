@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
 const docker=process.platform==='win32' ? `${process.env.ProgramFiles}/Docker/Docker/resources/bin/docker.exe` : 'docker';
-const sql=(query:string)=>execFileSync(docker,['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-At','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8'}).trim();
+const sql=(query:string)=>execFileSync(docker,['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const dm='11111111-1111-1111-1111-111111111111', player='12121212-1212-1212-1212-121212121212';
 
 test.describe('player map combat (local stack)',()=>{
@@ -43,6 +43,32 @@ test.describe('player map combat (local stack)',()=>{
       ownToken=sql(`select p.id from scene_token_placements p join combatants c on c.id=p.combatant_id where p.scene_id='${scene}' and c.definition_id='${own}';`);
       otherToken=sql(`select p.id from scene_token_placements p join combatants c on c.id=p.combatant_id where p.scene_id='${scene}' and c.definition_id='${other}';`);
       expect(sql(`select count(*) from combat_participants where encounter_id='${enc}';`)).toBe('2');
+      // Real database roles: all probes roll back, leaving the browser fixture
+      // untouched. No admin client or ownership rewrite stands in for a player.
+      const asUser=(statement:string,user=player,before='',role='authenticated')=>sql(`begin; ${before}
+        set local role ${role}; set local request.jwt.claim.sub='${user}'; ${statement}; rollback;`);
+      const changed=(statement:string)=>`with changed as (${statement} returning id) select count(*) from changed`;
+      const move=`update scene_token_placements set x=x+1 where id='${ownToken}'`;
+      expect(asUser(changed(move))).toBe('1');
+      expect(asUser(changed(`update scene_token_placements set x=x+1 where id='${otherToken}'`))).toBe('0');
+      expect(asUser(changed(move),randomUUID())).toBe('0');
+      expect(()=>asUser(changed(move),'','','anon')).toThrow(/permission denied/);
+      for(const before of [
+        `delete from campaign_members where campaign_id='${camp}' and user_id='${player}';`,
+        `update scenes set is_published=false where id='${scene}';`,
+        `update scene_token_placements set visible_to_all=false where id='${ownToken}';`,
+        `update characters set campaign_id=null where id='${own}';`,
+        `update combatants set definition_type='custom' where campaign_id='${camp}' and definition_id='${own}';`,
+      ]) expect(asUser(changed(move),player,before)).toBe('0');
+      for(const patch of ["rotation=90","visible_to_all=false","light_radius_ft=60",
+        `id='${randomUUID()}'`,`scene_id='${randomUUID()}'`,
+        `combatant_id=(select combatant_id from scene_token_placements where id='${otherToken}')`]) {
+        expect(()=>asUser(`update scene_token_placements set ${patch} where id='${ownToken}'`)).toThrow(/Players may only move/);
+      }
+      expect(asUser(changed(`delete from scene_token_placements where id='${ownToken}'`))).toBe('0');
+      expect(asUser(changed(`update combatants set owner_id='${player}' where campaign_id='${camp}' and definition_id='${own}'`))).toBe('0');
+      expect(()=>asUser(`insert into scene_token_placements(scene_id,combatant_id) select scene_id,combatant_id from scene_token_placements where id='${ownToken}'`)).toThrow(/row-level security/);
+      expect(asUser(changed(`update scene_token_placements set rotation=90 where id='${ownToken}'`),dm)).toBe('1');
       const open=async(p:Page,email?:string)=>{
         await signInAsSeedDm(p,email);await p.goto('/campaigns');
         await p.getByText(name,{exact:true}).locator('visible=true').first().click();
@@ -83,14 +109,20 @@ test.describe('player map combat (local stack)',()=>{
       expect(position(otherToken)).toBe('455,245');expect(position(ownToken)).toBe('245,245');
       await page.getByRole('button',{name:'End Turn',exact:true}).click();
       await expect(peer.getByTitle('0 / 5 ft used this turn — 5 ft remaining',{exact:true})).toBeVisible();
+      // Retain the failed-save rollback regression with one simulated zero-row
+      // response. The subsequent successful drag goes to the real database.
+      await peer.route('**/rest/v1/scene_token_placements?**',async route=>{
+        if(route.request().method()==='PATCH') {
+          await route.fulfill({status:200,contentType:'application/json',body:'[]'});
+          await peer.unroute('**/rest/v1/scene_token_placements?**');
+        } else await route.continue();
+      });
       await drag(ownToken);
       await expect(peer.getByText('Move could not be saved. Your token was returned and no movement was spent.',{exact:true})).toBeVisible();
       await expect.poll(()=>peer.evaluate(async(id)=>{const p='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ p);const t=useBattleMapStore.getState().tokens[id];return t.y;},ownToken)).toBe(245);
       expect(position(ownToken)).toBe('245,245');
       expect(sql(`select movement_used_ft from combat_participants where encounter_id='${enc}' and entity_id='${own}';`)).toBe('0');
-      // Exercise the authorized ownership case separately. PC tokens made by a
-      // DM currently retain DM ownership; changing that policy is a follow-up.
-      sql(`update combatants set owner_id='${player}' where campaign_id='${camp}' and definition_id='${own}';`);
+      expect(sql(`select owner_id from combatants where campaign_id='${camp}' and definition_id='${own}';`)).toBe(dm);
       await drag(ownToken);
       await expect.poll(()=>position(ownToken)).toBe('245,315');
       await expect.poll(()=>sql(`select movement_used_ft from combat_participants where encounter_id='${enc}' and entity_id='${own}';`)).toBe('5');
