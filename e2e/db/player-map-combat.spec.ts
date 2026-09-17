@@ -134,6 +134,16 @@ test.describe('player map combat (local stack)',()=>{
       const dismiss=peer.getByRole('button',{name:'Dismiss',exact:true});
       while(await dismiss.count()) await dismiss.first().click();
       await peer.screenshot({path:info.outputPath('player-movement.png')});
+      await peer.setViewportSize({width:851,height:393});
+      await peer.getByLabel('Map controls',{exact:true}).click();
+      const help=await peer.getByRole('region',{name:'Map controls help'}).boundingBox();
+      expect(help!.y).toBeGreaterThanOrEqual(8);
+      expect(help!.y+help!.height).toBeLessThanOrEqual(393);
+      await peer.screenshot({path:info.outputPath('landscape-help.png')});
+      await peer.getByRole('region',{name:'Map controls help'}).locator('dd').last().scrollIntoViewIfNeeded();
+      const lastHint=await peer.getByRole('region',{name:'Map controls help'}).locator('dd').last().boundingBox();
+      expect(lastHint!.y).toBeGreaterThanOrEqual(help!.y);
+      expect(lastHint!.y+lastHint!.height).toBeLessThanOrEqual(help!.y+help!.height);
     } finally {
       await peerContext.close().catch(()=>{});
       sql(`delete from combat_participants where encounter_id='${enc}'; delete from combat_encounters where id='${enc}';

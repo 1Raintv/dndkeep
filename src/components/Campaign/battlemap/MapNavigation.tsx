@@ -125,17 +125,22 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       cursor();
     };
     const keyDown = (event: KeyboardEvent) => {
+      if(event.key==='Escape' && drag) {event.preventDefault();event.stopImmediatePropagation();blur();return;}
       if (!hovering || editable(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.code === 'Space') { event.preventDefault(); space=true; cursor(); }
     };
     const keyUp = (event: KeyboardEvent) => { if(event.code==='Space') { space=false; cursor(); } };
     const blur = () => {
       space=false;
-      for (const id of touches.keys()) if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
-      touches.clear();
-      if(drag && canvas.hasPointerCapture(drag.id)) canvas.releasePointerCapture(drag.id);
-      drag=null; cursor();
+      // v2.704 — clear ownership before releasing capture: cancellation can
+      // itself emit lostpointercapture, and must not leave a ghost pan alive.
+      const ids=new Set(touches.keys());if(drag) ids.add(drag.id);
+      touches.clear();drag=null;suppressClickUntil=Date.now()+150;
+      for(const id of ids) if(canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+      cursor();
     };
+    const lostCapture=(event:PointerEvent)=>{if(touches.has(event.pointerId) || drag?.id===event.pointerId) blur();};
+    const hidden=()=>{if(document.visibilityState==='hidden') blur();};
     // v2.700 — Window capture beats group selection and Pixi listeners. A pan
     // beginning over a token cannot select, move, ping, or paint it.
     const host=canvas.parentElement!;
@@ -145,16 +150,19 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     host.addEventListener('pointermove',move,true);
     host.addEventListener('pointerup',end,true);
     host.addEventListener('pointercancel',end,true);
+    canvas.addEventListener('lostpointercapture',lostCapture);
+    document.addEventListener('visibilitychange',hidden);
     host.addEventListener('click',swallowClick,true);
     canvas.addEventListener('pointerenter',enter); canvas.addEventListener('pointerleave',leave);
-    window.addEventListener('keydown',keyDown); window.addEventListener('keyup',keyUp); window.addEventListener('blur',blur);
+    window.addEventListener('keydown',keyDown,true); window.addEventListener('keyup',keyUp); window.addEventListener('blur',blur);
     cursor();
     return () => {
       blur(); canvas.style.cursor=originalCursor;
       window.removeEventListener('pointerdown',hostDown,true); host.removeEventListener('pointermove',move,true);
       host.removeEventListener('pointerup',end,true); host.removeEventListener('pointercancel',end,true); host.removeEventListener('click',swallowClick,true);
+      canvas.removeEventListener('lostpointercapture',lostCapture);document.removeEventListener('visibilitychange',hidden);
       canvas.removeEventListener('pointerenter',enter); canvas.removeEventListener('pointerleave',leave);
-      window.removeEventListener('keydown',keyDown); window.removeEventListener('keyup',keyUp); window.removeEventListener('blur',blur);
+      window.removeEventListener('keydown',keyDown,true); window.removeEventListener('keyup',keyUp); window.removeEventListener('blur',blur);
     };
   }, [canvas, viewport, pan]);
 

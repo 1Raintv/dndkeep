@@ -3,6 +3,31 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Interrupted gestures and landscape combat help, v2.704
+
+Pan now cancels on lost pointer capture and hidden-tab transitions. Escape
+cancels an active pan before the fullscreen handler can close the map. Capture
+ownership is cleared before release, preventing stale gestures and recursive
+cancellation. A fresh gesture works immediately afterward. Normal pinch-to-one-
+finger navigation is preserved; camera gestures do not change token positions.
+
+Combat help previously extended above the viewport at 851×393. It now measures
+the space above the dock and scrolls within that space. The bounds update when
+the dock moves/resizes, and scroll does not chain out of the help panel.
+
+Regression coverage exercises mouse and Chromium touch capture loss, Escape,
+simulated hidden-tab cancellation, recovery, and landscape help bounds/scrolling.
+The old capture behavior and old landscape layout both failed the new checks
+before their fixes. Optional 4× CPU slowdown coverage and a physical-device
+checklist are documented in e2e/README.md. Actual-device smoothness, Safari touch,
+thermal behavior and real-session acceptance remain pending; emulation cannot
+certify those. No database changes in this release.
+
+Validation: release gate passed (834 unit tests, 221 carried TypeScript errors,
+clean hooks/RAW/coordinate/anchor checks, production build and bundle budget).
+All 18 desktop/mobile map browser checks passed; both interrupted-pan checks
+also passed at 4× Chromium CPU slowdown. This verifies recovery, not frame rate.
+
 ### 2026-09-17 — Player movement for DM-created characters, v2.703
 
 Players can now save position changes for their character's DM-created placement
