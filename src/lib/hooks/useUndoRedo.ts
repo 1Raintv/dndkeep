@@ -10,16 +10,15 @@
 // enough that normal in-session work won't exhaust it, small enough
 // that the per-scene memory footprint stays trivial.
 //
-// We deliberately scope to drawings + texts (not tokens) because tokens
-// already have realtime mutator paths with their own optimistic flows;
-// adding undo there would conflict with concurrent player drags. The
-// drawings/texts surfaces are DM-only by RLS, so undo can't fight a
-// remote edit.
+// Drawings/texts and DM token moves use this history. Token actions check
+// current positions and drag locks before saving, so stale history cannot
+// knowingly overwrite a newer peer move (v2.699).
 //
 // History is *not* persisted across page reloads. Same contract as
 // most desktop apps' undo stacks — a refresh is a clean slate.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { log } from '../log';
 
 export interface UndoableAction {
   /** Human label for debugging / future toast surfacing. Not user-facing yet. */
@@ -50,6 +49,9 @@ export function useUndoRedo(sceneId: string | null) {
   // themselves (they touch the store, which subscribes its consumers).
   const stateRef = useRef<UndoState>({ past: [], future: [] });
   const sceneRef = useRef<string | null>(null);
+  const sceneEpoch = useRef(0);
+  const busyRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
   // v2.358.0 — Reactive flag + label so the parent can render a
   // visible "Undo last <action>" button. The ref above is still the
   // source of truth for forward/backward closures (they need the full
@@ -63,9 +65,11 @@ export function useUndoRedo(sceneId: string | null) {
   useEffect(() => {
     if (sceneRef.current !== sceneId) {
       sceneRef.current = sceneId;
+      sceneEpoch.current++;
       stateRef.current = { past: [], future: [] };
       setCanUndo(false);
       setLastActionLabel(null);
+      setError(null);
     }
   }, [sceneId]);
 
@@ -81,45 +85,60 @@ export function useUndoRedo(sceneId: string | null) {
     stateRef.current = { past, future: [] };
     setCanUndo(true);
     setLastActionLabel(action.label);
+    setError(null);
   }, []);
 
   const undo = useCallback(async () => {
-    const { past, future } = stateRef.current;
-    if (past.length === 0) return false;
+    const snapshot = stateRef.current;
+    const scene = sceneEpoch.current;
+    const { past } = snapshot;
+    if (busyRef.current || past.length === 0) return false;
     const action = past[past.length - 1];
-    const newPast = past.slice(0, -1);
-    stateRef.current = {
-      past: newPast,
-      future: [...future, action],
-    };
-    // v2.358.0 — sync reactive state.
-    setCanUndo(newPast.length > 0);
-    setLastActionLabel(newPast.length > 0 ? newPast[newPast.length - 1].label : null);
+    busyRef.current = true;
     try {
       await action.backward();
+      if (sceneEpoch.current !== scene) return false;
+      // v2.699 — only consume a successful action. Preserve any newer records
+      // created while the request was in flight; they invalidate redo.
+      const current = stateRef.current;
+      const newPast = current.past.filter(entry => entry !== action);
+      stateRef.current = { past: newPast, future: current === snapshot ? [...current.future, action] : [] };
+      setCanUndo(newPast.length > 0);
+      setLastActionLabel(newPast[newPast.length - 1]?.label ?? null);
+      setError(null);
     } catch (err) {
-      console.error('[undoRedo] backward failed', action.label, err);
-    }
+      log.error('Map undo failed', err, { action: action.label });
+      if (sceneEpoch.current === scene) setError('Undo could not be saved. Try again.');
+      return false;
+    } finally { busyRef.current = false; }
     return true;
   }, []);
 
   const redo = useCallback(async () => {
-    const { past, future } = stateRef.current;
-    if (future.length === 0) return false;
+    const snapshot = stateRef.current;
+    const scene = sceneEpoch.current;
+    const { past, future } = snapshot;
+    if (busyRef.current || future.length === 0) return false;
     const action = future[future.length - 1];
-    const newPast = [...past, action];
-    stateRef.current = {
-      past: newPast,
-      future: future.slice(0, -1),
-    };
-    // v2.358.0 — sync reactive state.
-    setCanUndo(true);
-    setLastActionLabel(action.label);
+    busyRef.current = true;
     try {
       await action.forward();
+      if (sceneEpoch.current !== scene) return false;
+      const current = stateRef.current;
+      // History may have reached its cap while newer edits were recorded.
+      // Find their boundary by identity, not the old array length.
+      const firstNew = current.past.findIndex(entry => !past.includes(entry));
+      const insertion = firstNew < 0 ? current.past.length : firstNew;
+      const newPast = [...current.past.slice(0, insertion), action, ...current.past.slice(insertion)].slice(-MAX_HISTORY);
+      stateRef.current = { past: newPast, future: current === snapshot ? future.slice(0, -1) : [] };
+      setCanUndo(true);
+      setLastActionLabel(newPast[newPast.length - 1]?.label ?? null);
+      setError(null);
     } catch (err) {
-      console.error('[undoRedo] forward failed', action.label, err);
-    }
+      log.error('Map redo failed', err, { action: action.label });
+      if (sceneEpoch.current === scene) setError('Redo could not be saved. Try again.');
+      return false;
+    } finally { busyRef.current = false; }
     return true;
   }, []);
 
@@ -151,5 +170,5 @@ export function useUndoRedo(sceneId: string | null) {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
 
-  return { record, undo, redo, canUndo, lastActionLabel };
+  return { record, undo, redo, canUndo, lastActionLabel, error };
 }

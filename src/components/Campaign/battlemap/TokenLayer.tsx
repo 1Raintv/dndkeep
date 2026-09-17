@@ -1,3 +1,4 @@
+import { tokenMoveHistory } from './tokenMoveHistory';
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 4).
 // See that file's header changelog for this code's full history.
 // This is the heart of the battle map: token sprites, drag/drop with
@@ -2706,17 +2707,9 @@ export function TokenLayer(props: {
               const fromY = drag.originY;
               const toX = clampedX;
               const toY = clampedY;
-              recordUndoableRef.current?.({
-                label: 'move token',
-                forward: async () => {
-                  useBattleMapStore.getState().updateTokenPosition(tokenId, toX, toY);
-                  await tokensApi.updateTokenPos(tokenId, toX, toY, { campaignId: props.campaignId });
-                },
-                backward: async () => {
-                  useBattleMapStore.getState().updateTokenPosition(tokenId, fromX, fromY);
-                  await tokensApi.updateTokenPos(tokenId, fromX, fromY, { campaignId: props.campaignId });
-                },
-              });
+              recordUndoableRef.current?.(tokenMoveHistory([{ id: tokenId,
+                from: { x: fromX, y: fromY }, to: { x: toX, y: toY },
+              }], props.campaignId));
             }
           };
           commit().catch(err => console.error('[BattleMapV2] drop commit threw', err));

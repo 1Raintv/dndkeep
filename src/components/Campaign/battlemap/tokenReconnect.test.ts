@@ -1,0 +1,31 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import { tokenReconnect } from './tokenReconnect';
+import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
+import * as api from '../../../lib/api/tokensApiRouter';
+import type { Token } from '../../../lib/map/mapTypes';
+vi.mock('../../../lib/api/tokensApiRouter',()=>({listTokens:vi.fn()}));
+vi.mock('../../../lib/log',()=>({log:{error:vi.fn()}}));
+beforeEach(()=>{vi.clearAllMocks();useBattleMapStore.setState({currentSceneId:'s',tokens:{},dragging:null});});
+it('refreshes after reconnect and retains a held local preview',async()=>{
+  const token={id:'a',x:5,y:6} as Token;
+  useBattleMapStore.setState({tokens:{a:token},dragging:'a'});
+  vi.mocked(api.listTokens).mockResolvedValue([{...token,x:100}, {id:'b',x:200,y:300} as Token]);
+  const handler=tokenReconnect('s','c',()=>false);
+  await handler('SUBSCRIBED');
+  expect(api.listTokens).not.toHaveBeenCalled();
+  await handler('CHANNEL_ERROR');
+  await handler('SUBSCRIBED');
+  expect(useBattleMapStore.getState().tokens.a.x).toBe(5);
+  expect(useBattleMapStore.getState().tokens.b.x).toBe(200);
+});
+it('ignores a reconnect response after switching scenes',async()=>{
+  let finish!:(tokens:Token[])=>void;
+  vi.mocked(api.listTokens).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  const handler=tokenReconnect('s','c',()=>false);
+  await handler('SUBSCRIBED');
+  const pending=handler('SUBSCRIBED');
+  useBattleMapStore.setState({currentSceneId:'other'});
+  finish([{id:'old'} as Token]);
+  await pending;
+  expect(useBattleMapStore.getState().tokens).toEqual({});
+});

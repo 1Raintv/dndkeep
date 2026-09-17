@@ -29,6 +29,52 @@ async function state(page: Page) {
 
 test.describe('token gestures (local stack)', () => {
   gateDbSuite();
+  test('group nudge undoes and redoes, and a reconnecting player catches up', async ({ page, browser }, info) => {
+    test.setTimeout(90_000);
+    const peerContext=await browser.newContext();
+    const peer=await peerContext.newPage();
+    try {
+      await openMap(page);
+      await openMap(peer,'test-player@dndkeep.local');
+      const tokens=Object.values((await state(page)).tokens).filter((t:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name)) as any[];
+      expect(tokens).toHaveLength(2);
+      const box=(await page.locator('canvas').first().boundingBox())!;
+      for (const token of tokens) {
+        const point=await page.evaluate(id=>{
+          const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+          const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+          const p=t.getGlobalPosition(); return {x:p.x,y:p.y};
+        },token.id);
+        await page.keyboard.down('Shift');
+        await page.mouse.click(box.x+point.x,box.y+point.y);
+        await page.keyboard.up('Shift');
+      }
+      await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+      const actions=await page.getByRole('toolbar',{name:'Selected tokens'}).boundingBox();
+      if (page.viewportSize()!.width < 600) {
+        expect(actions!.y).toBeGreaterThanOrEqual(132);
+        expect(actions!.x).toBeGreaterThanOrEqual(76);
+        expect(actions!.x+actions!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+      }
+      await expect.poll(async()=>Object.keys((await state(page)).locks).length).toBe(0);
+      await peer.evaluate(async()=>{const path='/src/lib/supabase.ts'; const {supabase}=await import(/* @vite-ignore */ path); supabase.realtime.disconnect();});
+      await peerContext.setOffline(true);
+      await page.keyboard.press('ArrowDown');
+      for(const token of tokens) await expect.poll(async()=>(await state(page)).tokens[token.id].y).toBe(token.y+70);
+      await expect(page.getByRole('button',{name:'↶ Undo move tokens',exact:true})).toBeVisible();
+      await peerContext.setOffline(false);
+      await peer.evaluate(async()=>{const path='/src/lib/supabase.ts'; const {supabase}=await import(/* @vite-ignore */ path); supabase.realtime.connect();});
+      for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y,{timeout:20_000}).toBe(token.y+70);
+      await page.keyboard.press('Control+z');
+      for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);
+      await page.keyboard.press('Control+Shift+z');
+      for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y+70);
+      await page.keyboard.press('Control+z');
+      for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);
+      await page.screenshot({path:info.outputPath('group-undo.png')});
+    } finally { await peerContext.setOffline(false); await peerContext.close(); }
+  });
+
   test('cancelled drag restores both accounts and ignores other pointers', async ({ page, browser }, info) => {
     test.setTimeout(60_000);
     const peerContext = await browser.newContext();

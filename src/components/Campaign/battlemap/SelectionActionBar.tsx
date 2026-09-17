@@ -18,6 +18,7 @@ import { useState } from 'react';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import { useModal } from '../../shared/Modal';
+import './SelectionActionBar.css';
 
 export function SelectionActionBar(props: {
   selectedIds: ReadonlySet<string>;
@@ -97,10 +98,12 @@ export function SelectionActionBar(props: {
 
   return (
     <div
+      className="map-selection-actions"
+      role="toolbar"
+      aria-label="Selected tokens"
       style={{
-        position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
         zIndex: 30, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-        padding: '6px 10px', borderRadius: 999,
+        padding: '6px 10px',
         background: 'rgba(15,16,18,0.94)',
         border: '1px solid var(--c-border)',
         boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
