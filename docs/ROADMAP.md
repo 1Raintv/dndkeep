@@ -3,6 +3,37 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Player movement for DM-created characters, v2.703
+
+Players can now save position changes for their character's DM-created placement
+without transferring combatant ownership. The new UPDATE policy requires the
+linked character owner, current campaign membership, matching character/combatant/
+scene campaigns, a published scene, and a visible token. A trigger limits this
+new permission to x/y and updated_at; identity, scene, appearance, rotation,
+lighting, and visibility cannot be changed through it. Existing DM and combatant
+owner permissions are preserved; INSERT/DELETE are not expanded.
+
+A non-exposed helper with pinned search_path avoids the combatant/placement RLS
+recursion found in v2.654. Anonymous execution is revoked. The real local combat
+test now succeeds with DM ownership unchanged, including turn order and movement
+exhaustion. It retains rejected-save rollback using one simulated zero-row reply.
+Direct database-role probes cover allowed movement and denied identity/metadata
+changes, deletion/insertion, other characters, nonmembers, removed members,
+unpublished/hidden scenes, detached characters, and non-character combatants.
+
+This resolves the v2.701 ownership blocker. Combat turn/budget UI checks and the
+existing movement logging are unchanged; this is not a new server-side combat
+budget enforcement system. Next: physical-device smoothness/touch acceptance,
+then further map appearance work. Fog/lighting remain last.
+
+Verification: required gate passed (834 unit tests, seven runner tests,
+TypeScript 221/221, hooks, RAW/coords/anchors, build, 252.4 KB entry). All 16
+desktop/mobile map browser checks passed. Removing the new policy fails the
+allowed-move probe; removing the trigger fails the metadata-denial probe.
+Reapplying the migration restores both, confirming idempotency. Local security
+advisors report only the existing keep_warm search-path and client_errors INSERT
+warnings; neither concerns the new private functions or policy.
+
 ### 2026-09-17 — Map presentation and high-density rendering, v2.702
 
 The map now renders at display density, capped at 2x and an eight-million-pixel
