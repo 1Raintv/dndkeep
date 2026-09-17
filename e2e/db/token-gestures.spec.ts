@@ -94,11 +94,13 @@ test.describe('token gestures (local stack)', () => {
       await peerContext.setOffline(false);
       await peer.evaluate(async()=>{const path='/src/lib/supabase.ts'; const {supabase}=await import(/* @vite-ignore */ path); supabase.realtime.connect();});
       for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y,{timeout:20_000}).toBe(token.y+70);
-      await page.keyboard.press('Control+z');
+      await page.getByRole('button',{name:'↶ Undo move tokens',exact:true}).click();
       for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);
-      await page.keyboard.press('Control+Shift+z');
+      await expect(page.getByRole('button',{name:'↷ Redo move tokens',exact:true})).toBeEnabled();
+      await page.screenshot({path:info.outputPath('redo-ready.png')});
+      await page.getByRole('button',{name:'↷ Redo move tokens',exact:true}).click();
       for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y+70);
-      await page.keyboard.press('Control+z');
+      await page.getByRole('button',{name:'↶ Undo move tokens',exact:true}).click();
       for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);
       await page.getByRole('button',{name:'Pan',exact:true}).click();
       await page.mouse.move(box.x+point.x,box.y+point.y);

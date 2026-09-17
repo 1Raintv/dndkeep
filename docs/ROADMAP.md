@@ -3,6 +3,37 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Visible history and player movement safeguards, v2.701
+
+Undo and Redo now share the map navigation bar, show their action labels, and
+disable while saving. Player fullscreen now fills the viewport; navigation
+clears the combat strip and raised dice buttons on desktop and mobile.
+
+Position saves now require a returned row. Previously an RLS-denied update could
+look successful, leaving a ghost move and spending movement. Failed player drags
+now restore the token, show an error, and preserve the movement allowance.
+
+**Next release blocker:** the newer engine gives DM-created player-character
+combatants DM ownership, while placement UPDATE requires combatant ownership.
+The player can select their character but cannot save its move. This release
+handles that denial honestly; it does not change database permissions. Fix the
+narrow movement permission without granting character owners unrelated combatant
+creation/deletion powers, and test a DM-created PC without changing fixture ownership.
+
+The new local two-account combat regression covers denied saves, turn order,
+other-character restrictions, and movement exhaustion. Its successful-save case
+explicitly assigns the fixture combatant to the player; that is not evidence
+that ordinary DM-created PC ownership is fixed. Physical-device touch remains
+open. Appearance/clearer controls follow movement; fog/lighting remain last.
+
+Verification: 830 unit tests, seven runner tests, TypeScript 221/221, clean hooks,
+RAW/coordinate/anchor checks, production build and 252.4 KB entry. All 14 local
+map browser checks passed; all eight affected movement/gesture checks passed
+again after the final dice-button clearance fix. Desktop/mobile screenshots
+inspected, with explicit fullscreen and control-separation assertions.
+Disabling Redo, denied-save detection, or control clearance individually makes
+the corresponding browser regression fail; all three fixes were restored.
+
 ### 2026-09-17 — Group dragging and move controls, v2.700
 
 DMs can drag a selected group outside combat, preserving its formation and

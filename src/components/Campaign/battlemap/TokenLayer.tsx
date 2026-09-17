@@ -8,6 +8,7 @@ import { tokenMoveHistory } from './tokenMoveHistory';
 import { Assets, ColorMatrixFilter, Container, FederatedPointerEvent, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useEffect, useRef } from 'react';
+import { useToast } from '../../shared/Toast';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import * as assetsApi from '../../../lib/api/battleMapAssets';
@@ -200,6 +201,7 @@ export function TokenLayer(props: {
     participantEntityId: string | null;
   };
 }) {
+  const {showToast}=useToast();
   const {
     viewport, canvasEl, onContextMenu, worldWidth, worldHeight, gridSizePx,
     currentUserId, onDragStart, onDragMove, onDragEnd, rulerActive, wallActive,
@@ -2609,6 +2611,15 @@ export function TokenLayer(props: {
           }
           onDragMove?.(drag.id, clampedX, clampedY);
 
+          const dropSceneId=useBattleMapStore.getState().currentSceneId;
+          const restoreFailedDrop=()=>{
+            if(useBattleMapStore.getState().currentSceneId!==dropSceneId) return;
+            // Cancel the pending snap animation too; otherwise it can redraw
+            // the rejected destination after this rollback (v2.701).
+            onSnapAnimate?.(drag.id,drag.originX,drag.originY,drag.originX,drag.originY);
+            updatePos(drag.id,drag.originX,drag.originY);
+            onDragMove?.(drag.id,drag.originX,drag.originY);
+          };
           const commit = async () => {
             if (enforceMove) {
               const check = await canMove(ati!.participantId!, distanceFt);
@@ -2635,12 +2646,11 @@ export function TokenLayer(props: {
             onCommitPos?.(drag.id, clampedX, clampedY);
             const result = await tokensApi.updateTokenPos(drag.id, clampedX, clampedY, { campaignId: props.campaignId });
             if (!result.ok) {
+              restoreFailedDrop();
               if (result.reason === 'wall_blocked') {
-                useBattleMapStore.getState().updateTokenPosition(drag.id, drag.originX, drag.originY);
-                onDragMove?.(drag.id, drag.originX, drag.originY);
                 onMovementBlocked?.('wall');
               } else {
-                console.error('[BattleMapV2] pos commit failed', result);
+                showToast('Move could not be saved. Your token was returned and no movement was spent.','error');
               }
               return;
             }
@@ -2712,7 +2722,7 @@ export function TokenLayer(props: {
               }], props.campaignId));
             }
           };
-          commit().catch(err => console.error('[BattleMapV2] drop commit threw', err));
+          commit().catch(()=>{restoreFailedDrop();showToast('Move could not be saved. Please try again.','error');});
         }
       }
       // v2.340.0 — always clear the preview overlay on pointerup.
@@ -2801,7 +2811,7 @@ export function TokenLayer(props: {
         // — safe to ignore on teardown.
       }
     };
-  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded]);
+  }, [viewport, canvasEl, updatePos, setDragging, worldWidth, worldHeight, gridSizePx, onDragMove, onDragEnd, onTokenClick, onMovementBlocked, onCommitPos, getEffectiveUsed, recordMoved, onSnapAnimate, onDragMotionEnded, showToast]);
 
   return null;
 }

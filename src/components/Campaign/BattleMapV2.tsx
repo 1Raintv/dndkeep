@@ -594,11 +594,9 @@ function BattleMapV2(props: BattleMapV2Props) {
   // (history resets on scene switch). Bound to Cmd-Z / Cmd-Shift-Z
   // by the hook's own keyboard listener; we just consume `record`
   // and pass it down to TextLayer + DrawingLayer.
-  // v2.358.0 — also consume `undo` + `canUndo` + `lastActionLabel`
-  // for the floating "Undo Last Move" button rendered in the bottom-
-  // right corner of the map. Per user request: undo affordance lives
-  // in the log corner, not just behind a keybind.
-  const { record: recordUndoable, undo: undoLast, canUndo, lastActionLabel, error: undoError } = useUndoRedo(currentScene?.id ?? null);
+  // v2.701 — MapNavigation presents both history actions and their pending state.
+  const mapHistory = useUndoRedo(currentScene?.id ?? null);
+  const {record:recordUndoable,error:undoError}=mapHistory;
 
   // Derive world dimensions from the current scene (fallback to
   // defaults so the empty-state screen still renders a reasonable
@@ -3127,6 +3125,7 @@ function BattleMapV2(props: BattleMapV2Props) {
 
       <div
         ref={wrapperRef}
+        className={mapFullscreen ? 'battle-map-fullscreen' : undefined}
         // v2.359.0 — Suppress the browser's native context menu on
         // the entire battle-map wrapper. Pre-v2.359 this was wired
         // via a useEffect with deps=[] that ran once at mount; if
@@ -3464,7 +3463,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             above the canvas (see block above the wrapperRef div). The
             in-canvas position was hard to read against busy maps. */}
 
-        <MapNavigation viewport={mapViewport} canvas={canvasEl} selectedIds={selectedTokenIds} gridSizePx={gridSizePx}
+        <MapNavigation history={isDM ? mapHistory : undefined} viewport={mapViewport} canvas={canvasEl} selectedIds={selectedTokenIds} gridSizePx={gridSizePx}
           editingToolActive={!!(rulerActive || wallActive || textActive || drawActive || fxActive || eraserActive || fogBrushActive)}
           onSelectMode={() => { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }} />
         <TokenGroupDrag canvas={canvasEl} viewport={mapViewport} selectedIds={selectedTokenIds}
@@ -4313,46 +4312,7 @@ function BattleMapV2(props: BattleMapV2Props) {
           onCharacterClick={panToCharacter}
         />
 
-        {/* v2.358.0 — Floating Undo button. User feedback: "There also
-            needs to be an undo button if the character moved into a
-            incorrect position for the dam it should be in their log
-            in the bottom right corner." Anchored bottom-right of the
-            map wrapper; visible only when there's something to undo;
-            shows the last action label so the DM knows what reverts.
-            DM-only (player tokens skip recording per the v2.358 carve-
-            out from useUndoRedo's "tokens excluded" rule). */}
-        {isDM && canUndo && (
-          <button
-            onClick={() => { undoLast(); }}
-            title="Undo the last action (Ctrl+Z / Cmd+Z)"
-            style={{
-              position: 'absolute',
-              bottom: 12,
-              right: 12,
-              padding: '8px 14px',
-              background: 'rgba(15,16,18,0.92)',
-              border: '1px solid rgba(234,179,8,0.55)',
-              borderRadius: 'var(--r-sm, 4px)',
-              color: '#fde68a',
-              fontFamily: 'var(--ff-body)',
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: '0.04em',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-              transition: 'background 0.12s, transform 0.12s',
-              zIndex: 50,
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,179,8,0.18)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.92)';
-            }}
-          >
-            ↶ Undo {lastActionLabel ? lastActionLabel : 'last action'}
-          </button>
-        )}
+
       </div>
     </div>
   );

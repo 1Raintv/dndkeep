@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Viewport } from 'pixi-viewport';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import { tokenFootprintCells } from './shared';
 import './MapNavigation.css';
+import { MapHistoryControls } from './MapHistoryControls';
+import type { useUndoRedo } from '../../../lib/hooks/useUndoRedo';
+import { useMapControlClearance } from './useMapControlClearance';
 
 /** v2.697 — local camera controls never write shared token positions. */
-export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editingToolActive, onSelectMode }: {
+export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editingToolActive, onSelectMode, history }: {
+  history?: ReturnType<typeof useUndoRedo>;
   viewport: Viewport | null;
   canvas: HTMLCanvasElement | null;
   selectedIds: ReadonlySet<string>;
@@ -14,6 +18,8 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
   onSelectMode: () => void;
 }) {
   const [pan, setPan] = useState(false);
+  const navRef=useRef<HTMLDivElement>(null);
+  useMapControlClearance(navRef);
   const [zoom, setZoom] = useState(100);
   useEffect(() => { if (editingToolActive) setPan(false); }, [editingToolActive]);
   useEffect(() => {
@@ -150,7 +156,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     };
   }, [canvas, viewport, pan]);
 
-  return <div className="map-navigation" role="toolbar" aria-label="Map navigation">
+  return <div ref={navRef} className="map-navigation" role="toolbar" aria-label="Map navigation">
     <div className="map-navigation-modes">
       <button type="button" aria-pressed={!pan && !editingToolActive} onClick={()=>{setPan(false); onSelectMode();}} title="Select and move tokens">Select</button>
       <button type="button" aria-pressed={pan} onClick={()=>{setPan(true); onSelectMode();}} title="Drag the map · hold Space for temporary pan">Pan</button>
@@ -162,5 +168,6 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     </div>
     <button type="button" onClick={fit} title="Show the entire map">Fit map</button>
     <button type="button" onClick={focus} disabled={!selectedIds.size} title="Center the view on selected tokens">Find selection</button>
+    {history && <MapHistoryControls history={history} />}
   </div>;
 }
