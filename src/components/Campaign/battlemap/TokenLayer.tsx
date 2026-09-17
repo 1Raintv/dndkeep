@@ -388,7 +388,7 @@ export function TokenLayer(props: {
   // movement against blocking walls (segment from origin → snapped
   // drop point shouldn't intersect any wall with blocksMovement=true).
   // Captured at drag start; never mutated during the drag.
-  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number; originX: number; originY: number } | null>(null);
+  const dragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number; originX: number; originY: number } | null>(null);
 
   // v2.256.0 — Lock-ring pulse animation. A single rAF walks every
   // active TokenGfx and breathes the lockRing's alpha+scale. Cheaper
@@ -580,6 +580,8 @@ export function TokenLayer(props: {
         (container as any).__tokenId = token.id;
         container.on('pointerdown', (event: FederatedPointerEvent) => {
           if (!viewport) return;
+          // v2.698 — a second finger must never replace the held token.
+          if (dragRef.current) return;
           // v2.218: when ruler is active, ignore all token pointer events
           // so the ruler gesture owns the canvas. Don't stopPropagation
           // here — the window-level pointerdown in RulerLayer needs to
@@ -751,6 +753,7 @@ export function TokenLayer(props: {
           const offsetY = worldPoint.y - t.y;
           dragRef.current = {
             id: tid,
+            pointerId: (event.nativeEvent as PointerEvent).pointerId,
             offsetX,
             offsetY,
             // v2.268 — remember where the token was when the drag began so
@@ -2273,6 +2276,7 @@ export function TokenLayer(props: {
     }
 
     function onPointerMove(e: PointerEvent) {
+      if (dragRef.current && e.pointerId !== dragRef.current.pointerId) return;
       // v2.226 — click probe: if pointer moves > CLICK_THRESHOLD_PX
       // in screen space, mark drag as "moved" (suppresses click).
       const probe = clickProbeRef.current;
@@ -2317,6 +2321,7 @@ export function TokenLayer(props: {
     }
 
     function onPointerUp(e: PointerEvent) {
+      if (dragRef.current && e.pointerId !== dragRef.current.pointerId) return;
       // Flush any rAF-pending drag position synchronously so the
       // commit/snap logic below reads a current store (the animator
       // path uses store state as its animation start point).
@@ -2743,9 +2748,41 @@ export function TokenLayer(props: {
       setDragging(null);
     }
 
+    // v2.698 — OS gestures, app switching, and Escape cancel a preview;
+    // never persist a phantom drop. Restore peers before releasing the lock.
+    function cancelDrag(event?: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag || (event && event.pointerId !== drag.pointerId)) return;
+      if (dragPosRaf) cancelAnimationFrame(dragPosRaf);
+      dragPosRaf = 0;
+      pendingDragPos = null;
+      stopPreviewLoop();
+      clearPreview();
+      updatePos(drag.id, drag.originX, drag.originY);
+      onDragMove?.(drag.id, drag.originX, drag.originY);
+      onDragEnd?.(drag.id);
+      onDragMotionEnded?.();
+      const entry = gfxMapRef.current.get(drag.id);
+      if (entry) { entry.container.cursor = 'grab'; entry.container.alpha = 1; }
+      dragRef.current = null;
+      clickProbeRef.current = null;
+      setDragging(null);
+    }
+    const onBlur = () => cancelDrag();
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !dragRef.current) return;
+      // Cancel the gesture before Escape closes fullscreen or other map UI.
+      event.preventDefault(); event.stopImmediatePropagation(); cancelDrag();
+    };
+    window.addEventListener('pointercancel', cancelDrag);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('keydown', onEscape, true);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     return () => {
+      window.removeEventListener('pointercancel', cancelDrag);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('keydown', onEscape, true);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       // v2.637 — drop any pending coalesced drag write; the store update

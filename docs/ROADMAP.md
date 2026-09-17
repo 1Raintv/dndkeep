@@ -3,6 +3,37 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Touch and shared token gestures, v2.698
+
+Pan mode now supports two-finger pinch anchored under the midpoint and returns
+smoothly to one-finger panning. Token drags belong to the pointer that started
+them: another pointer cannot move or drop the held token. Escape, pointer
+cancellation and window blur restore the origin and release the shared lock;
+Escape cancels the gesture before closing fullscreen. Cancelled previews do not
+write a position to the database.
+
+Two-account testing exposed stale drag locks in realtime-js 2.103.3: its presence
+adapter mutated Phoenix metadata, retaining old held-token entries after release.
+Pin realtime-js to 2.116.0 through an npm override, while keeping supabase-js at
+the previously locked 2.103.3. The wider SDK upgrade changed unrelated database
+typing; it is deferred. Remove the override when upgrading the parent SDK to a
+version containing the presence fix.
+The fixed realtime client requires Node 22+; CI and the package engine now
+declare that minimum (this machine runs Node 24).
+
+Local desktop/mobile regressions exercise DM-to-player live movement, snapped
+position saves and return moves, cancellation on both accounts, lock release,
+unrelated pointers, and native Chromium touch pinch/pan. Physical-device touch,
+player movement during combat, group movement/undo, and reconnect acceptance
+remain the next token-handling batch. Appearance/controls and fog follow that.
+
+Release gate: 801 unit tests, seven runner tests, TypeScript 221/221,
+clean hooks, RAW/coordinate/anchor checks, production build and 252.4 KB entry.
+Removing Escape cancellation or pinch zoom makes the new browser regressions
+fail; desktop and mobile screenshots were inspected.
+All ten local map browser checks passed together: navigation, manual fog,
+wall controls, two-account token movement and touch gestures, at both sizes.
+
 ### 2026-09-17 — Map experience, v2.697
 
 Jared's priority order: (1) navigation and token handling, (2) appearance and
