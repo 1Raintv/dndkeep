@@ -13,7 +13,7 @@
 | 2.3 Second deploy path / watcher | **Open** | |
 | 2.4 Staging environment | **Open** | Local DB (2.5) is the stepping stone |
 | 2.5 Local Docker database | **Done** | supabase start + db reset + seed; drift shims; docs/LOCAL_DEV.md |
-| 2.6 Migration drift | **Reconstructed locally** | 4 drift shims (censused vs generated types). Certified prod schema dump still open — needs prod DB password |
+| 2.6 Migration drift | **Hosted comparison; remediation tested** | 2026-09-16: catalog fingerprints found 36 prod/test differences beyond column presence. Creature relationships, policies, defaults, indexes, timestamps and combat linking reconciled on hosted test with rollback-only RLS/combat regressions. Remaining differences/fresh-replay scope: docs/SCHEMA_CERTIFICATION.md. |
 | 2.7 Test framework | **Done** | vitest (104 tests) + Playwright (14 incl. DB flows) + visual baselines |
 | 2.8 Error telemetry | **Done** | log facade + Supabase sink → client_errors, live on prod + test since 2026-08-07 (30-day pg_cron retention scheduled); checklist §1.9 |
 | 2.9 Manual version bump | **Open** | |
