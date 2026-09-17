@@ -3,6 +3,33 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Group nudge history and reconnect, v2.699
+
+DM arrow-key group moves outside combat now record one undo, preserve the
+formation at map edges using complete token footprints, and refuse held tokens.
+Position saves are checked; a partial failure records only successful moves.
+Token undo/redo checks for newer positions and held tokens before saving, retries
+only unfinished members after a partial failure, and leaves failed history
+available. Repeated undo shortcuts cannot overlap requests. Failures show a toast.
+These are client conflict checks, not an atomic multiplayer transaction.
+
+Rejoining the token subscription fetches current positions missed while offline.
+Responses from old scenes or superseded reconnects are ignored; a held local
+preview is preserved. A two-account browser regression disconnects a player,
+moves two selected tokens, reconnects, then exercises group undo/redo and restores
+their positions. Removing reconnect refresh makes that regression fail.
+
+Verification: 816 unit tests (15 new), seven runner tests, TypeScript 221/221,
+clean hooks and production build, 252.4 KB entry. Twelve real-local-DB browser
+checks passed across desktop/mobile, including the two-account reconnect test;
+screenshots inspected. Physical-device and player-combat acceptance remain open.
+The mobile selection toolbar now sits below the header, beside the tool rail;
+desktop/mobile rechecks pass and restoring its old top position fails the new
+layout assertion.
+
+Next: pointer-based group dragging, visible/mobile group-move and redo controls,
+player combat movement acceptance, then appearance/controls. Fog remains last.
+
 ### 2026-09-17 — Touch and shared token gestures, v2.698
 
 Pan mode now supports two-finger pinch anchored under the midpoint and returns

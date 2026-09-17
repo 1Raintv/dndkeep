@@ -223,6 +223,8 @@ import {
 import { buildTokenCoverMap } from './battlemap/coverState';
 import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
+import { tokenReconnect } from './battlemap/tokenReconnect';
+import { useTokenNudge } from './battlemap/useTokenNudge';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { WallTypePanel } from './battlemap/WallTypePanel';
 import { FogBrushLayer, type FogBrushShape } from './battlemap/FogBrushLayer';
@@ -594,7 +596,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   // for the floating "Undo Last Move" button rendered in the bottom-
   // right corner of the map. Per user request: undo affordance lives
   // in the log corner, not just behind a keybind.
-  const { record: recordUndoable, undo: undoLast, canUndo, lastActionLabel } = useUndoRedo(currentScene?.id ?? null);
+  const { record: recordUndoable, undo: undoLast, canUndo, lastActionLabel, error: undoError } = useUndoRedo(currentScene?.id ?? null);
 
   // Derive world dimensions from the current scene (fallback to
   // defaults so the empty-state screen still renders a reasonable
@@ -677,6 +679,8 @@ function BattleMapV2(props: BattleMapV2Props) {
     return () => { cancelled = true; };
   }, [currentScene]);
 
+  useEffect(() => { if (undoError) showToast(undoError, 'error'); }, [undoError, showToast]);
+
   // v2.214.0 — Phase Q.1 pt 7: Realtime sync for scene_tokens.
   // When any client commits a token change (add / move / edit / delete),
   // Supabase Postgres Changes fires an event here and we apply it to the
@@ -753,7 +757,7 @@ function BattleMapV2(props: BattleMapV2Props) {
           }
         }
       )
-      .subscribe();
+      .subscribe(tokenReconnect(sceneId, campaignId, () => cancelled));
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
@@ -2185,51 +2189,9 @@ function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
 
-  // v2.653.0 — Arrow-key nudge: shift the whole selection one cell.
-  //
-  // This is the "group move" half of multi-select, and it is keyboard
-  // rather than drag on purpose. Pointer drags run through TokenLayer's
-  // gate — movement budget, wall collision, remote drag locks, active
-  // turn — and there is no honest way to spend six separate movement
-  // budgets in one gesture. So the nudge is DM-only and refuses while
-  // combat has an active actor; out of combat the DM already has "free
-  // reign" in that same gate, which is exactly the case this mirrors.
-  // A true pointer group-drag is queued in docs/ROADMAP.md.
-  //
-  // Placed after activeTokenInfo rather than beside the other
-  // selection state because it reads it — hoisting it would be a
-  // temporal-dead-zone reference.
-  const nudgeBlocked = !isDM || !!activeTokenInfo.participantId;
-  useEffect(() => {
-    if (nudgeBlocked || selectedTokenIds.size === 0) return;
-    const DELTAS: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
-    };
-    const onKey = (e: KeyboardEvent) => {
-      const delta = DELTAS[e.key];
-      if (!delta) return;
-      const t = e.target;
-      if (t instanceof HTMLElement) {
-        const tag = t.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
-      }
-      e.preventDefault();
-      const [dc, dr] = delta;
-      const store = useBattleMapStore.getState();
-      for (const id of selectedTokenIds) {
-        const tok = store.tokens[id];
-        if (!tok) continue;
-        const x = Math.max(0, Math.min(WORLD_WIDTH, tok.x + dc * gridSizePx));
-        const y = Math.max(0, Math.min(WORLD_HEIGHT, tok.y + dr * gridSizePx));
-        store.updateTokenPosition(id, x, y);
-        tokensApi.updateTokenPos(id, x, y, { campaignId }).catch(err =>
-          console.error('[BattleMapV2] nudge commit failed', id, err));
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [nudgeBlocked, selectedTokenIds, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, campaignId]);
-
+  useTokenNudge({ blocked: !isDM || !!activeTokenInfo.participantId,
+    selectedIds: selectedTokenIds, gridSize: gridSizePx, width: WORLD_WIDTH,
+    height: WORLD_HEIGHT, campaignId, sceneId: currentScene?.id ?? null, record: recordUndoable });
   // v2.423.0 — Reset pending-move counter when:
   //   (a) the active actor changes (turn ended or someone else's
   //       turn now), OR

@@ -1,0 +1,20 @@
+.map-selection-actions {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  box-sizing: border-box;
+}
+
+/* v2.699 — keep selection actions below the header and beside the tool rail. */
+@media (max-width: 600px) {
+  .map-selection-actions {
+    top: 132px;
+    left: 76px;
+    right: 12px;
+    transform: none;
+    border-radius: 12px;
+  }
+  .map-selection-actions button { min-height: 40px; }
+}
