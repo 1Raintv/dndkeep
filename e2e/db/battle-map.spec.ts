@@ -73,6 +73,85 @@ test.describe('battle map (local stack)', () => {
     await page.waitForTimeout(1_500); // let ViewportHost + layers settle
     expect(errors, 'no page errors while mounting the map').toEqual([]);
 
+    // v2.697 — exercise the actual Pixi camera, not just button text.
+    await page.getByTitle('Fullscreen map', { exact: true }).click();
+    const navigation = page.getByRole('toolbar', { name: 'Map navigation' });
+    await expect(navigation).toBeVisible();
+    await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
+    const readCamera = () => page.evaluate(() => {
+      const vp = (window as any).__PIXI_APP__.stage.children.find((c: any) => c.plugins);
+      return { x: vp.center.x, y: vp.center.y, scale: vp.scale.x };
+    });
+    const initial = await readCamera();
+    await navigation.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    expect((await readCamera()).scale).toBeGreaterThan(initial.scale);
+    await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
+    expect((await readCamera()).scale).toBeCloseTo(initial.scale, 3);
+
+    const token = await page.evaluate(() => {
+      const vp = (window as any).__PIXI_APP__.stage.children.find((c: any) => c.plugins);
+      const token = vp.children.flatMap((c: any) => c.children ?? []).find((c: any) => c.__tokenId && c.visible);
+      if (!token) throw new Error('Map regression requires a seeded token');
+      const point = token.getGlobalPosition();
+      (window as any).__NAV_TEST_VP = vp;
+      return { id: token.__tokenId, x: token.x, y: token.y, screenX: point.x, screenY: point.y };
+    });
+    const bounds = (await canvas.boundingBox())!;
+    await navigation.getByRole('button', { name: 'Pan', exact: true }).click();
+    await page.mouse.move(bounds.x + token.screenX, bounds.y + token.screenY);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + token.screenX + 45, bounds.y + token.screenY + 25, { steps: 6 });
+    await page.mouse.up();
+    expect(Math.abs((await readCamera()).x - initial.x)).toBeGreaterThan(10);
+    const unchanged = await page.evaluate(id => {
+      const vp = (window as any).__NAV_TEST_VP;
+      const token = vp.children.flatMap((c: any) => c.children ?? []).find((c: any) => c.__tokenId === id);
+      return { x: token.x, y: token.y };
+    }, token.id);
+    expect(unchanged).toEqual({ x: token.x, y: token.y });
+    await expect(navigation.getByRole('button', { name: 'Find selection' })).toBeDisabled();
+
+    const beforeResize = await readCamera();
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: size.width - 20, height: size.height - 20 });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => (window as any).__PIXI_APP__.stage.children.includes((window as any).__NAV_TEST_VP))).toBe(true);
+    const afterResize = await readCamera();
+    expect(afterResize.x).toBeCloseTo(beforeResize.x, 2);
+    expect(afterResize.y).toBeCloseTo(beforeResize.y, 2);
+    expect(afterResize.scale).toBeCloseTo(beforeResize.scale, 3);
+    await page.setViewportSize(size);
+    await navigation.getByRole('button', { name: 'Select', exact: true }).click();
+    await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
+    const layout = await navigation.boundingBox();
+    expect(layout!.x).toBeGreaterThanOrEqual(0);
+    expect(layout!.x + layout!.width).toBeLessThanOrEqual(size.width);
+    expect(await navigation.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+    // Space temporarily pans over a token and releases back to selection.
+    const screenToken = await page.evaluate(id => {
+      const vp = (window as any).__NAV_TEST_VP;
+      const token = vp.children.flatMap((c: any) => c.children ?? []).find((c: any) => c.__tokenId === id);
+      const point = token.getGlobalPosition();
+      return { x: point.x, y: point.y };
+    }, token.id);
+    const currentBounds = (await canvas.boundingBox())!;
+    await page.mouse.move(currentBounds.x + screenToken.x, currentBounds.y + screenToken.y);
+    await page.keyboard.down('Space');
+    await page.mouse.down();
+    await page.mouse.move(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up('Space');
+    await expect(navigation.getByRole('button', { name: 'Find selection' })).toBeDisabled();
+    await page.waitForTimeout(180); // let suppression of the pan's synthetic click expire
+    await page.mouse.click(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10);
+    await expect(navigation.getByRole('button', { name: 'Find selection' })).toBeEnabled();
+    await navigation.getByRole('button', { name: 'Find selection' }).click();
+    expect((await readCamera()).x).toBeCloseTo(token.x, 0);
+    expect((await readCamera()).y).toBeCloseTo(token.y, 0);
+    await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
+    expect(errors, 'navigation creates no browser exceptions').toEqual([]);
+
     // Artifact for human eyes — the rendered map goes into the report.
     // testInfo.outputPath: parallel projects (desktop/mobile) must not
     // overwrite each other's artifact.

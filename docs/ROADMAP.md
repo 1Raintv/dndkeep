@@ -3,6 +3,37 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Map experience, v2.697
+
+Jared's priority order: (1) navigation and token handling, (2) appearance and
+clear controls, (3) fog and lighting. Roll20 is the interaction reference;
+parity is a multi-batch effort, not a claim about this release.
+
+Navigation foundation implemented: explicit Select/Pan modes, temporary
+Space-drag, live zoom percentage, Fit map and Find selection (including correct
+large-token centers). Panning starts over tokens without moving/selecting them.
+Canvas sizing now initializes after scenes load; resizing/fullscreen preserves
+the live viewport and camera. Small maps can be panned freely. Scene controls
+wrap on narrow screens and the tool rail scrolls rather than disappearing below
+the map. The local fixture now handles the beta character cap transactionally.
+
+Next acceptance batches, in order:
+- Token handling: test group selection/movement, snapping, undo, touch gestures,
+  ownership/locks and reconnect behavior with DM and player side by side.
+- Appearance/controls: consolidate the tool palette, readable token names and
+  state indicators, useful empty/upload flows, and unobstructed mobile controls.
+- Fog/lighting: verify DM preview matches player visibility, then improve wall
+  authoring and lighting feedback. Preserve existing visibility permissions.
+
+Verification: full gate passed (801 unit tests, seven runner tests, 221/221
+TypeScript baseline, clean hooks, build and 252.4 KB entry). Six real-local-DB
+browser tests passed across desktop/mobile viewports: camera/navigation, wall
+controls and manual fog. Restoring the old resize behavior makes the camera
+identity regression fail. Screenshots and navigation bounds were checked.
+Scene settings now scroll within the screen and render above mobile navigation
+and dice controls; the existing fog test exercises Save successfully on mobile.
+Actual touchscreen gestures and two-account movement remain in the next batch.
+
 ### 2026-09-16 — Release readiness
 
 The next milestone is the invite-only, no-store beta defined in `betaMode.ts`.

@@ -34,6 +34,11 @@
 
 begin;
 
+-- v2.697 — this local-only fixture deliberately includes more than two PCs.
+-- Suspend only the beta slot trigger inside this transaction; failures roll
+-- back its state too. Normal app writes still enforce the beta limit afterward.
+alter table public.characters disable trigger check_character_limit;
+
 -- -------------------------------------------------------------
 -- 1. Second local account: a PLAYER, so the map can be tested from
 --    the non-DM side (fog per player, published-scene gating, token
@@ -352,4 +357,5 @@ loop
 end loop;
 end $$;
 
+alter table public.characters enable trigger check_character_limit;
 commit;

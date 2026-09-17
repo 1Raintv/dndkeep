@@ -228,6 +228,7 @@ import { WallTypePanel } from './battlemap/WallTypePanel';
 import { FogBrushLayer, type FogBrushShape } from './battlemap/FogBrushLayer';
 import { FogBrushPanel } from './battlemap/FogBrushPanel';
 import { ViewportHost } from './battlemap/ViewportHost';
+import { MapNavigation } from './battlemap/MapNavigation';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
 import { GridOverlay } from './battlemap/GridOverlay';
 import { RulerLayer } from './battlemap/RulerLayer';
@@ -1308,7 +1309,7 @@ function BattleMapV2(props: BattleMapV2Props) {
         //     v2.358-v2.359). Cap raised 1400→1600 so tall monitors
         //     get the benefit too. Fullscreen mode remains the right
         //     answer when the DM wants the full canvas.
-        const targetH = Math.floor(viewportH * 0.95);
+        const targetH = Math.floor(viewportH - Math.max(0, el.getBoundingClientRect().top) - 24);
         h = Math.max(400, Math.min(targetH, 1600));
       }
       setDims({ width: w, height: h });
@@ -1330,7 +1331,7 @@ function BattleMapV2(props: BattleMapV2Props) {
       ro.disconnect();
       window.removeEventListener('resize', onWinResize);
     };
-  }, [mapFullscreen]);
+  }, [mapFullscreen, currentScene?.id, scenesLoading]);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -1349,20 +1350,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   }, [dims.width, dims.height, currentScene?.id]);
 
   const vpRef = useRef<Viewport | null>(null);
-  const zoomIn = useCallback(() => {
-    if (!vpRef.current) return;
-    vpRef.current.setZoom(Math.min(4, vpRef.current.scale.x * 1.2), true);
-  }, []);
-  const zoomOut = useCallback(() => {
-    if (!vpRef.current) return;
-    vpRef.current.setZoom(Math.max(0.25, vpRef.current.scale.x / 1.2), true);
-  }, []);
-  const zoomFit = useCallback(() => {
-    if (!vpRef.current) return;
-    const fitScale = Math.min(dims.width / WORLD_WIDTH, dims.height / WORLD_HEIGHT) * 0.9;
-    vpRef.current.setZoom(fitScale, true);
-    vpRef.current.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
-  }, [dims.width, dims.height, WORLD_WIDTH, WORLD_HEIGHT]);
+  const [mapViewport, setMapViewport] = useState<Viewport | null>(null);
 
   // v2.345.0 — Free-aim direction picker for cone/line spell targeting.
   //
@@ -2970,7 +2958,7 @@ function BattleMapV2(props: BattleMapV2Props) {
   return (
     <div>
       {/* v2.213 scene picker toolbar */}
-      <div style={{
+      <div className="map-scene-toolbar" style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 12px', marginBottom: 8,
         background: 'var(--c-raised)',
@@ -3338,6 +3326,7 @@ function BattleMapV2(props: BattleMapV2Props) {
           antialias={true}
         >
           <ViewportHost
+            onViewportChange={setMapViewport}
             screenWidth={dims.width}
             screenHeight={dims.height}
             worldWidth={WORLD_WIDTH}
@@ -3583,6 +3572,7 @@ function BattleMapV2(props: BattleMapV2Props) {
         <div
           style={{
             position: 'absolute', top: 8, left: 12,
+            maxWidth: 'calc(100% - 170px)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             padding: '4px 10px',
             background: 'rgba(15,16,18,0.75)',
             border: '1px solid rgba(167,139,250,0.3)',
@@ -3599,49 +3589,9 @@ function BattleMapV2(props: BattleMapV2Props) {
             above the canvas (see block above the wrapperRef div). The
             in-canvas position was hard to read against busy maps. */}
 
-        <div
-          style={{
-            position: 'absolute', bottom: 12, right: 12,
-            display: 'flex', gap: 4, flexDirection: 'column' as const,
-          }}
-        >
-          {[
-            { label: '+', onClick: zoomIn, title: 'Zoom in' },
-            { label: '−', onClick: zoomOut, title: 'Zoom out' },
-            { label: '⊡', onClick: zoomFit, title: 'Fit to screen' },
-          ].map(btn => (
-            <button
-              key={btn.label}
-              onClick={btn.onClick}
-              title={btn.title}
-              style={{
-                // v2.226 — strong contrast for readability over busy map
-                // images. Dark fill + bright text + box-shadow halo so
-                // buttons "pop" against any background.
-                width: 36, height: 36,
-                background: 'rgba(15,16,18,0.95)',
-                border: '1px solid rgba(167,139,250,0.65)',
-                borderRadius: 'var(--r-sm, 4px)',
-                color: '#ffffff',
-                fontFamily: 'var(--ff-body)', fontSize: 18, fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                lineHeight: 1,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.5)',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.35)';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.95)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,16,18,0.95)';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.65)';
-              }}
-            >
-              {btn.label}
-            </button>
-          ))}
-        </div>
+        <MapNavigation viewport={mapViewport} canvas={canvasEl} selectedIds={selectedTokenIds} gridSizePx={gridSizePx}
+          editingToolActive={!!(rulerActive || wallActive || textActive || drawActive || fxActive || eraserActive || fogBrushActive)}
+          onSelectMode={() => { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }} />
 
         {/* v2.233 — Vertical tool palette on the LEFT edge of the canvas
             (Roll20-inspired layout). Replaces the previous bottom-left
@@ -3657,6 +3607,7 @@ function BattleMapV2(props: BattleMapV2Props) {
         <div
           style={{
             position: 'absolute', top: 60, left: 12,
+            maxHeight: 'calc(100% - 230px)', overflowY: 'auto',
             display: 'flex', flexDirection: 'column' as const,
             alignItems: 'center', gap: 4,
             padding: '6px 5px',
@@ -4279,7 +4230,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             // Top-right is otherwise unused. Reads cleanly above the
             // viewport without competing for attention with the
             // canvas content.
-            position: 'absolute', top: 12, right: 12,
+            position: 'absolute', top: 52, right: 12,
             padding: '3px 8px',
             background: 'rgba(15,16,18,0.6)',
             border: '1px solid var(--c-border)',
