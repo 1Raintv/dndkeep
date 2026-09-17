@@ -300,10 +300,10 @@ export async function updatePlacementPos(
 ): Promise<UpdatePlacementPosResult> {
   // updated_at is bumped by the BEFORE UPDATE trigger (v2.312); we
   // don't need to set it client-side.
-  const { error } = await db
+  const { data, error } = await db
     .from('scene_token_placements')
     .update({ x, y })
-    .eq('id', id);
+    .eq('id', id).select('id').maybeSingle();
   if (error) {
     console.error('[scenePlacements] updatePlacementPos failed', error);
     if (error.code === '23514') {
@@ -311,6 +311,9 @@ export async function updatePlacementPos(
     }
     return { ok: false, reason: 'other', message: error.message };
   }
+  // v2.701 — RLS can silently match zero rows. Confirm a saved row before
+  // the caller spends movement or records history.
+  if (!data) return { ok: false, reason: 'other', message: 'Token is unavailable or you do not have permission to move it.' };
   return { ok: true };
 }
 

@@ -21,7 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '../log';
 
 export interface UndoableAction {
-  /** Human label for debugging / future toast surfacing. Not user-facing yet. */
+  /** Human label shown in the map's Undo and Redo controls. */
   label: string;
   /** Re-perform the action. Called on initial commit (no — see record() below)
    *  and on redo. Should be idempotent against the current state. */
@@ -44,20 +44,15 @@ const MAX_HISTORY = 50;
  * be confusing).
  */
 export function useUndoRedo(sceneId: string | null) {
-  // useRef rather than useState — undo/redo doesn't need to drive
-  // re-renders. The DOM update happens via the action closures
-  // themselves (they touch the store, which subscribes its consumers).
+  // The ref gives asynchronous actions the latest history without stale closures.
   const stateRef = useRef<UndoState>({ past: [], future: [] });
   const sceneRef = useRef<string | null>(null);
   const sceneEpoch = useRef(0);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  // v2.358.0 — Reactive flag + label so the parent can render a
-  // visible "Undo last <action>" button. The ref above is still the
-  // source of truth for forward/backward closures (they need the full
-  // stack); the state below is just for UI presence.
-  const [canUndo, setCanUndo] = useState(false);
-  const [lastActionLabel, setLastActionLabel] = useState<string | null>(null);
+  // v2.701 — Mirror history and pending state for visible Undo/Redo controls.
+  const [history, setHistory] = useState<UndoState>(stateRef.current);
+  const [busy, setBusy] = useState(false);
 
   // Reset history when the active scene changes. Comparing against a
   // ref so we don't reset on every re-render — only on actual scene
@@ -67,8 +62,7 @@ export function useUndoRedo(sceneId: string | null) {
       sceneRef.current = sceneId;
       sceneEpoch.current++;
       stateRef.current = { past: [], future: [] };
-      setCanUndo(false);
-      setLastActionLabel(null);
+      setHistory(stateRef.current);
       setError(null);
     }
   }, [sceneId]);
@@ -83,8 +77,7 @@ export function useUndoRedo(sceneId: string | null) {
     const past = [...stateRef.current.past, action];
     if (past.length > MAX_HISTORY) past.shift();
     stateRef.current = { past, future: [] };
-    setCanUndo(true);
-    setLastActionLabel(action.label);
+    setHistory(stateRef.current);
     setError(null);
   }, []);
 
@@ -94,7 +87,7 @@ export function useUndoRedo(sceneId: string | null) {
     const { past } = snapshot;
     if (busyRef.current || past.length === 0) return false;
     const action = past[past.length - 1];
-    busyRef.current = true;
+    busyRef.current = true; setBusy(true);
     try {
       await action.backward();
       if (sceneEpoch.current !== scene) return false;
@@ -103,14 +96,13 @@ export function useUndoRedo(sceneId: string | null) {
       const current = stateRef.current;
       const newPast = current.past.filter(entry => entry !== action);
       stateRef.current = { past: newPast, future: current === snapshot ? [...current.future, action] : [] };
-      setCanUndo(newPast.length > 0);
-      setLastActionLabel(newPast[newPast.length - 1]?.label ?? null);
+      setHistory(stateRef.current);
       setError(null);
     } catch (err) {
       log.error('Map undo failed', err, { action: action.label });
       if (sceneEpoch.current === scene) setError('Undo could not be saved. Try again.');
       return false;
-    } finally { busyRef.current = false; }
+    } finally { busyRef.current = false; setBusy(false); }
     return true;
   }, []);
 
@@ -120,7 +112,7 @@ export function useUndoRedo(sceneId: string | null) {
     const { past, future } = snapshot;
     if (busyRef.current || future.length === 0) return false;
     const action = future[future.length - 1];
-    busyRef.current = true;
+    busyRef.current = true; setBusy(true);
     try {
       await action.forward();
       if (sceneEpoch.current !== scene) return false;
@@ -131,14 +123,13 @@ export function useUndoRedo(sceneId: string | null) {
       const insertion = firstNew < 0 ? current.past.length : firstNew;
       const newPast = [...current.past.slice(0, insertion), action, ...current.past.slice(insertion)].slice(-MAX_HISTORY);
       stateRef.current = { past: newPast, future: current === snapshot ? future.slice(0, -1) : [] };
-      setCanUndo(true);
-      setLastActionLabel(newPast[newPast.length - 1]?.label ?? null);
+      setHistory(stateRef.current);
       setError(null);
     } catch (err) {
       log.error('Map redo failed', err, { action: action.label });
       if (sceneEpoch.current === scene) setError('Redo could not be saved. Try again.');
       return false;
-    } finally { busyRef.current = false; }
+    } finally { busyRef.current = false; setBusy(false); }
     return true;
   }, []);
 
@@ -170,5 +161,7 @@ export function useUndoRedo(sceneId: string | null) {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
 
-  return { record, undo, redo, canUndo, lastActionLabel, error };
+  return { record, undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
+    lastActionLabel: history.past[history.past.length-1]?.label ?? null,
+    nextActionLabel: history.future[history.future.length-1]?.label ?? null, busy, error };
 }

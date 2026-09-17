@@ -5,6 +5,21 @@ import { useUndoRedo } from './useUndoRedo';
 vi.mock('../log', () => ({ log: { error: vi.fn() } }));
 afterEach(cleanup);
 
+it('clears the visible redo action after a new edit or scene switch',async()=>{
+  const {result,rerender}=renderHook(({scene})=>useUndoRedo(scene),{initialProps:{scene:'a'}});
+  const action={label:'move',forward:vi.fn(),backward:vi.fn()};
+  act(()=>result.current.record(action));
+  await act(async()=>{await result.current.undo();});
+  expect(result.current.nextActionLabel).toBe('move');
+  act(()=>result.current.record({...action,label:'draw'}));
+  expect(result.current.canRedo).toBe(false);
+  expect(result.current.nextActionLabel).toBeNull();
+  await act(async()=>{await result.current.undo();});
+  rerender({scene:'b'});
+  expect(result.current.canRedo).toBe(false);
+  expect(result.current.nextActionLabel).toBeNull();
+});
+
 it('keeps failed undo available and only enables redo after success', async () => {
   const backward=vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
   const forward=vi.fn();
@@ -17,7 +32,10 @@ it('keeps failed undo available and only enables redo after success', async () =
   expect(forward).not.toHaveBeenCalled();
   await act(async()=>{ expect(await result.current.undo()).toBe(true); });
   expect(result.current.canUndo).toBe(false);
+  expect(result.current.canRedo).toBe(true);
+  expect(result.current.nextActionLabel).toBe('move');
   await act(async()=>{ expect(await result.current.redo()).toBe(true); });
+  expect(result.current.canRedo).toBe(false);
   expect(forward).toHaveBeenCalledTimes(1);
 });
 
@@ -28,9 +46,11 @@ it('ignores repeat shortcuts while a request is pending', async () => {
   act(()=>result.current.record({label:'move',backward,forward:vi.fn()}));
   let pending!:Promise<boolean>;
   act(()=>{pending=result.current.undo();});
+  expect(result.current.busy).toBe(true);
   await act(async()=>{expect(await result.current.undo()).toBe(false); expect(await result.current.redo()).toBe(false);});
   await act(async()=>{finish(); await pending;});
   expect(backward).toHaveBeenCalledTimes(1);
+  expect(result.current.busy).toBe(false);
 });
 
 it('does not carry an old request into a different scene', async () => {
@@ -43,6 +63,8 @@ it('does not carry an old request into a different scene', async () => {
   rerender({scene:'a'}); // Returning to the same id is still a new history.
   await act(async()=>{finish(); await pending;});
   expect(result.current.canUndo).toBe(false);
+  expect(result.current.canRedo).toBe(false);
+  expect(result.current.nextActionLabel).toBeNull();
   await act(async()=>{expect(await result.current.redo()).toBe(false);});
 });
 
@@ -53,6 +75,7 @@ it('keeps a failed redo available for retry', async () => {
   await act(async()=>{await result.current.undo();});
   await act(async()=>{expect(await result.current.redo()).toBe(false);});
   expect(result.current.canUndo).toBe(false);
+  expect(result.current.canRedo).toBe(true);
   await act(async()=>{expect(await result.current.redo()).toBe(true);});
   expect(result.current.canUndo).toBe(true);
 });
@@ -66,6 +89,7 @@ it('preserves a newer edit recorded while undo is saving', async () => {
   act(()=>result.current.record({label:'new',backward:vi.fn(),forward:vi.fn()}));
   await act(async()=>{finish(); await pending;});
   expect(result.current.lastActionLabel).toBe('new');
+  expect(result.current.canRedo).toBe(false);
   await act(async()=>{expect(await result.current.redo()).toBe(false);});
 });
 

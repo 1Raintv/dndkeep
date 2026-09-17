@@ -156,10 +156,10 @@ export type UpdateTokenPosResult =
   | { ok: false; reason: 'wall_blocked' | 'other'; message?: string };
 
 export async function updateTokenPos(id: string, x: number, y: number): Promise<UpdateTokenPosResult> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('scene_tokens')
     .update({ x, y, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id).select('id').maybeSingle();
   if (error) {
     console.error('[sceneTokens] updateTokenPos failed', error);
     if (error.code === '23514') {
@@ -167,6 +167,9 @@ export async function updateTokenPos(id: string, x: number, y: number): Promise<
     }
     return { ok: false, reason: 'other', message: error.message };
   }
+  // v2.701 — RLS can silently match zero rows. Confirm a saved row before
+  // the caller spends movement or records history.
+  if (!data) return { ok: false, reason: 'other', message: 'Token is unavailable or you do not have permission to move it.' };
   return { ok: true };
 }
 
