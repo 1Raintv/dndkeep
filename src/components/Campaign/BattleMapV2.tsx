@@ -224,6 +224,8 @@ import { buildTokenCoverMap } from './battlemap/coverState';
 import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
 import { tokenReconnect } from './battlemap/tokenReconnect';
+import { TokenGroupDrag } from './battlemap/TokenGroupDrag';
+import { useTokenDragSharing } from './battlemap/useTokenDragSharing';
 import { useTokenNudge } from './battlemap/useTokenNudge';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { WallTypePanel } from './battlemap/WallTypePanel';
@@ -999,21 +1001,6 @@ function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [campaignId]);
 
-  // v2.216.0 — Phase Q.1 pt 9: drag channel (Broadcast + Presence).
-  //
-  // One Realtime channel per scene, carrying two kinds of traffic:
-  //   (a) Broadcast `drag_move` events at ~20Hz with {tokenId, x, y,
-  //       senderId}. Peers apply to their Zustand store as preview;
-  //       senders ignore their own echo to avoid self-feedback loops.
-  //   (b) Presence state `{ userId, draggingTokenId }` tracking who's
-  //       currently mid-drag on which token. Receivers rebuild a
-  //       `remoteDragLocks` map (tokenId → userId) on 'sync' events.
-  //       Presence auto-cleans on disconnect (Phoenix Tracker CRDT).
-  //
-  // The channel is rebuilt on scene change; presence state from the
-  // previous scene doesn't carry over. userId is stable across
-  // scenes, so we track() fresh on each subscription.
-  const dragChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // v2.418.0 — Self-write echo suppression. After we commit a token
   // position via tokensApi.updateTokenPos, the postgres_changes
   // realtime channel echoes the UPDATE back to us — same row, same
@@ -1184,81 +1171,7 @@ function BattleMapV2(props: BattleMapV2Props) {
     recentSelfWritesRef.current.delete(row.id);
     return false;
   }
-  useEffect(() => {
-    if (!currentScene?.id || !userId) return;
-    const sceneId = currentScene.id;
-    const channel = supabase.channel(`battle_map:scene_drag:${sceneId}`, {
-      config: {
-        presence: { key: userId },
-      },
-    });
-
-    channel.on('broadcast', { event: 'drag_move' }, (msg: any) => {
-      const payload = msg?.payload;
-      if (!payload) return;
-      // Ignore our own echoes — we already updated the local store
-      // optimistically in the drag handler.
-      if (payload.senderId === userId) return;
-      if (typeof payload.tokenId !== 'string') return;
-      if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
-      useBattleMapStore.getState().updateTokenPosition(payload.tokenId, payload.x, payload.y);
-    });
-
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
-      const locks: Record<string, string> = {};
-      for (const presences of Object.values(state) as any[]) {
-        for (const p of presences) {
-          if (p?.draggingTokenId && typeof p.userId === 'string') {
-            locks[p.draggingTokenId] = p.userId;
-          }
-        }
-      }
-      useBattleMapStore.getState().setRemoteDragLocks(locks);
-    });
-
-    channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        // Initial presence entry — no drag yet.
-        await channel.track({ userId, draggingTokenId: null });
-      }
-    });
-
-    dragChannelRef.current = channel;
-    return () => {
-      supabase.removeChannel(channel);
-      dragChannelRef.current = null;
-    };
-  }, [currentScene?.id, userId]);
-
-  // Callbacks passed down to TokenLayer. Each one pokes the channel —
-  // no-op if the channel isn't yet subscribed.
-  const handleDragStart = useCallback((tokenId: string) => {
-    dragChannelRef.current?.track({ userId, draggingTokenId: tokenId });
-  }, [userId]);
-
-  const handleDragMove = useCallback((tokenId: string, x: number, y: number) => {
-    dragChannelRef.current?.send({
-      type: 'broadcast',
-      event: 'drag_move',
-      payload: { tokenId, x, y, senderId: userId },
-    });
-  }, [userId]);
-
-  const handleDragEnd = useCallback((tokenId: string) => {
-    // Clear the drag lock. We keep our presence entry itself so other
-    // users still see us as connected; just update draggingTokenId.
-    dragChannelRef.current?.track({ userId, draggingTokenId: null });
-    // Also clear locally in case the presence 'sync' event is slow —
-    // otherwise the indicator might persist until the next sync.
-    useBattleMapStore.setState((s) => {
-      if (s.remoteDragLocks[tokenId]) {
-        const { [tokenId]: _, ...rest } = s.remoteDragLocks;
-        return { remoteDragLocks: rest };
-      }
-      return s;
-    });
-  }, [userId]);
+  const {start:handleDragStart,move:handleDragMove,end:handleDragEnd}=useTokenDragSharing(currentScene?.id,userId);
 
   // v2.268.0 — fired when a drag is rejected because it crosses a
   // movement-blocking wall. Surface a toast so the player knows the
@@ -2189,7 +2102,7 @@ function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [currentActor, liveTokens, encounter, props.campaignId]);
 
-  useTokenNudge({ blocked: !isDM || !!activeTokenInfo.participantId,
+  const nudgeSelection = useTokenNudge({ blocked: !isDM || !!activeTokenInfo.participantId,
     selectedIds: selectedTokenIds, gridSize: gridSizePx, width: WORLD_WIDTH,
     height: WORLD_HEIGHT, campaignId, sceneId: currentScene?.id ?? null, record: recordUndoable });
   // v2.423.0 — Reset pending-move counter when:
@@ -3509,7 +3422,7 @@ function BattleMapV2(props: BattleMapV2Props) {
           <SelectionActionBar
             selectedIds={selectedTokenIds}
             campaignId={campaignId}
-            onClear={clearSelection}
+            onClear={clearSelection} onMove={nudgeSelection} movementDisabled={!!activeTokenInfo.participantId}
           />
         )}
 
@@ -3554,6 +3467,10 @@ function BattleMapV2(props: BattleMapV2Props) {
         <MapNavigation viewport={mapViewport} canvas={canvasEl} selectedIds={selectedTokenIds} gridSizePx={gridSizePx}
           editingToolActive={!!(rulerActive || wallActive || textActive || drawActive || fxActive || eraserActive || fogBrushActive)}
           onSelectMode={() => { setRulerActive(false); setWallActive(false); setTextActive(false); setDrawActive(null); setFxActive(null); setEraserActive(false); setFogBrushActive(false); }} />
+        <TokenGroupDrag canvas={canvasEl} viewport={mapViewport} selectedIds={selectedTokenIds}
+          enabled={isDM && !activeTokenInfo.participantId && !(rulerActive || wallActive || textActive || drawActive || fxActive || eraserActive || fogBrushActive)}
+          gridSize={gridSizePx} campaignId={campaignId} record={recordUndoable}
+          start={handleDragStart} move={handleDragMove} end={handleDragEnd} />
 
         {/* v2.233 — Vertical tool palette on the LEFT edge of the canvas
             (Roll20-inspired layout). Replaces the previous bottom-left

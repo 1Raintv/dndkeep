@@ -4,15 +4,8 @@
 // applies one edit to all of them. DM only; every action here is a
 // write RLS refuses for players.
 //
-// Scope note — this bar deliberately carries no MOVE action. Moving
-// tokens goes through the drag pipeline in TokenLayer, which enforces
-// per-creature movement budgets, wall collision, remote drag locks and
-// the active-turn gate. "Move six tokens at once" has no honest answer
-// during combat (six separate budgets), and bolting a bulk path onto
-// that pipeline is the kind of change that quietly breaks the
-// single-token drag everyone already relies on. Arrow-key nudge in
-// BattleMapV2 covers aligning a cluster out of combat; a real group
-// drag is queued in docs/ROADMAP.md.
+// v2.700 — group drag and arrow controls arrange tokens outside combat.
+// Combat keeps the single-creature movement-budget and active-turn path.
 
 import { useState } from 'react';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
@@ -24,6 +17,8 @@ export function SelectionActionBar(props: {
   selectedIds: ReadonlySet<string>;
   campaignId: string;
   onClear: () => void;
+  onMove: (dx:number,dy:number)=>Promise<void>;
+  movementDisabled: boolean;
 }) {
   const { selectedIds, campaignId, onClear } = props;
   const tokens = useBattleMapStore(s => s.tokens);
@@ -116,6 +111,12 @@ export function SelectionActionBar(props: {
     >
       <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800, color: '#60a5fa', padding: '0 4px' }}>
         {selected.length} selected
+      </span>
+      <span className="map-selection-move" role="group" aria-label="Move selected tokens">
+        {([['←',-1,0,'left'],['↑',0,-1,'up'],['↓',0,1,'down'],['→',1,0,'right']] as const).map(([icon,dx,dy,direction]) =>
+          <button key={direction} style={btn} disabled={busy || props.movementDisabled}
+            aria-label={`Move selection ${direction}`} title={props.movementDisabled ? 'Group movement is unavailable during combat' : `Move selection ${direction} one cell`}
+            onClick={()=>void props.onMove(dx,dy)}>{icon}</button>)}
       </span>
       <button style={btn} disabled={busy} onClick={() => patchAll({ isLocked: true })} title="Lock — refuse drags during combat">
         ⊘ Lock
