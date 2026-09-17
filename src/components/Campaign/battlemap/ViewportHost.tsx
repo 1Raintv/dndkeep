@@ -10,9 +10,10 @@ export function ViewportHost(props: {
   screenHeight: number;
   worldWidth: number;
   worldHeight: number;
+  onViewportChange?: (viewport: Viewport | null) => void;
   children: (viewport: Viewport | null) => ReactNode;
 }) {
-  const { screenWidth, screenHeight, worldWidth, worldHeight, children } = props;
+  const { screenWidth, screenHeight, worldWidth, worldHeight, children, onViewportChange } = props;
   const appState = useApplication();
   const [viewport, setViewport] = useState<Viewport | null>(null);
 
@@ -49,8 +50,7 @@ export function ViewportHost(props: {
       .pinch()
       .wheel({ smooth: 8 })
       .decelerate({ friction: 0.92 })
-      .clampZoom({ minScale: 0.25, maxScale: 4 })
-      .clamp({ direction: 'all', underflow: 'center' });
+      .clampZoom({ minScale: Math.min(0.25, screenWidth / worldWidth * 0.8, screenHeight / worldHeight * 0.8), maxScale: 4 });
     vp.moveCenter(worldWidth / 2, worldHeight / 2);
     // v2.336.0 — P1+P2 fix: default zoom shows the map with breathing
     // room on all sides instead of filling the canvas edge-to-edge.
@@ -89,7 +89,23 @@ export function ViewportHost(props: {
       setViewport(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screenWidth, screenHeight, worldWidth, worldHeight, pixiApp, isReady]);
+  }, [worldWidth, worldHeight, pixiApp, isReady]);
+
+  // v2.697 — resizing/fullscreen must not destroy tokens or reset the camera.
+  // Free tabletop panning also keeps small maps movable below fit zoom.
+  useEffect(() => {
+    if (!viewport || viewport.destroyed) return;
+    const center = { x: viewport.center.x, y: viewport.center.y };
+    pixiApp.renderer.resize(screenWidth, screenHeight);
+    viewport.resize(screenWidth, screenHeight, worldWidth, worldHeight);
+    viewport.clampZoom({ minScale: Math.min(0.25, screenWidth / worldWidth * 0.8, screenHeight / worldHeight * 0.8), maxScale: 4 });
+    viewport.moveCenter(center.x, center.y);
+  }, [viewport, screenWidth, screenHeight, worldWidth, worldHeight, pixiApp]);
+
+  useEffect(() => {
+    onViewportChange?.(viewport);
+    return () => onViewportChange?.(null);
+  }, [viewport, onViewportChange]);
 
   return <>{children(viewport)}</>;
 }

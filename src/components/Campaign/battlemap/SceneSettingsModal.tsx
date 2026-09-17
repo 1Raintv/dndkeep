@@ -7,6 +7,7 @@ import * as scenesApi from '../../../lib/api/scenes';
 import * as assetsApi from '../../../lib/api/battleMapAssets';
 import { useModal } from '../../shared/Modal';
 import { useToast } from '../../shared/Toast';
+import ModalPortal from '../../shared/ModalPortal';
 
 /**
  * v2.219 — Scene settings modal.
@@ -169,12 +170,16 @@ export function SceneSettingsModal(props: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 9998,
+    zIndex: 30000,
   };
 
   const modalStyle: React.CSSProperties = {
-    minWidth: 380,
+    width: 'calc(100vw - 24px)',
+    minWidth: 0,
     maxWidth: 480,
+    maxHeight: 'calc(100dvh - 24px)',
+    overflowY: 'auto',
+    boxSizing: 'border-box',
     background: 'var(--c-card)',
     border: '1px solid var(--c-border)',
     borderRadius: 'var(--r-lg, 12px)',
@@ -207,6 +212,7 @@ export function SceneSettingsModal(props: {
   };
 
   return (
+    <ModalPortal>
     <div style={backdropStyle} onMouseDown={onClose}>
       <div style={modalStyle} onMouseDown={stop}>
         <div style={{
@@ -421,5 +427,6 @@ export function SceneSettingsModal(props: {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
