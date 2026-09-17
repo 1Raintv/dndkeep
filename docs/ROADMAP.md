@@ -3,6 +3,30 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Selection camera framing, v2.705
+
+Find selection now frames the union of selected token footprints, zooming out
+only when needed. It uses the space to the right of the tool rail, below the
+selection actions and above navigation, with breathing room around the group.
+It centres the bounds rather than averaging token centres, so clustered groups
+and large creatures do not push outlying tokens offscreen. Existing comfortable
+zoom is preserved. This changes only the local camera, never token positions.
+
+The regression reproduced offscreen selection on desktop and mobile before the
+fix. Screenshot review then caught toolbar overlap; the final assertions require
+the full selection to clear the rail, selection actions and navigation dock.
+Pure geometry tests cover wide/tall groups, even/odd footprints, asymmetric
+controls, single-token zoom preservation and empty/unmeasured views.
+
+User hands-on testing is explicitly deferred. Continue automated map/navigation
+and appearance improvements without treating that deferred testing as a blocker.
+
+Validation: release gate passed (840 unit tests, seven runner tests, TypeScript
+221/221, hooks, RAW/coords/anchors, production build, 252.4 KB entry). Four focused
+desktop/mobile browser checks passed, including selection bounds, unchanged
+token data/no position writes, zoom readout, sharp rendering and control access.
+Final screenshots inspected. No database changes.
+
 ### 2026-09-17 — Interrupted gestures and landscape combat help, v2.704
 
 Pan now cancels on lost pointer capture and hidden-tab transitions. Escape

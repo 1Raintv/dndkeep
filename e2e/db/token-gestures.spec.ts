@@ -71,6 +71,47 @@ test.describe('token gestures (local stack)', () => {
     await page.screenshot({path:info.outputPath('map-detail.png')});
     expect(errors).toEqual([]);
   });
+  test('find selection frames distant full footprints without moving tokens',async({page},info)=>{
+    await openMap(page);
+    const ids=Object.values((await state(page)).tokens).filter((t:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name)).map((t:any)=>t.id);
+    expect(ids).toHaveLength(2);
+    const box=(await page.locator('canvas').first().boundingBox())!;
+    for(const id of ids) {
+      const p=await page.evaluate(id=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        return vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id).getGlobalPosition();
+      },id);
+      await page.keyboard.down('Shift');await page.mouse.click(box.x+p.x,box.y+p.y);await page.keyboard.up('Shift');
+    }
+    await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    // Local-only display fixture: spread the selection and include an even footprint.
+    // Navigation must never persist these positions or change shared tokens.
+    await page.evaluate(async ids=>{
+      const path='/src/lib/stores/battleMapStore.ts';
+      const {useBattleMapStore}=await import(/* @vite-ignore */ path);
+      useBattleMapStore.getState().updateTokenFields(ids[0],{x:140,y:140,size:'gargantuan'});
+      useBattleMapStore.getState().updateTokenFields(ids[1],{x:1750,y:1050,size:'medium'});
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);vp.setZoom(4,true);
+    },ids);
+    const before=(await state(page)).tokens;
+    const writes:string[]=[];page.on('request',r=>{if(r.method()==='PATCH' && /scene_tokens|scene_token_placements/.test(r.url())) writes.push(r.url());});
+    await page.getByRole('button',{name:'Find selection',exact:true}).click();
+    const framing=await page.evaluate(()=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const a=vp.toScreen(140,140),b=vp.toScreen(1785,1085);
+      return {left:a.x,top:a.y,right:b.x,bottom:b.y,zoom:vp.scale.x};
+    });
+    const rail=(await page.locator('.map-tool-palette').boundingBox())!;
+    const actions=(await page.getByRole('toolbar',{name:'Selected tokens'}).boundingBox())!;
+    const dock=(await page.getByRole('toolbar',{name:'Map navigation'}).boundingBox())!;
+    expect(framing.left+box.x).toBeGreaterThan(rail.x+rail.width);
+    expect(framing.top+box.y).toBeGreaterThan(actions.y+actions.height);
+    expect(framing.right).toBeLessThan(box.width-12);
+    expect(framing.bottom+box.y).toBeLessThan(dock.y);
+    await expect(page.getByLabel('Map zoom')).toHaveText(`${Math.round(framing.zoom*100)}%`);
+    expect((await state(page)).tokens).toEqual(before);expect(writes).toEqual([]);
+    await page.screenshot({path:info.outputPath('selection-framed.png')});
+  });
   test('group drag cancels and undoes, and move controls reach a reconnecting player', async ({ page, browser }, info) => {
     test.setTimeout(90_000);
     const peerContext=await browser.newContext();

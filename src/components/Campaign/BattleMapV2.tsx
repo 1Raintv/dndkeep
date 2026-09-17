@@ -3482,7 +3482,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             Position: top: 60 leaves room for the scene-name badge at
             top: 8, and far enough from the action toolbar bar above
             the canvas that it reads as a tool surface, not a header. */}
-        <div
+        <div className="map-tool-palette"
           style={{
             position: 'absolute', top: 60, left: 12,
             maxHeight: 'calc(100% - 230px)', overflowY: 'auto',

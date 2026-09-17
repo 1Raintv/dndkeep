@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Viewport } from 'pixi-viewport';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
-import { tokenFootprintCells } from './shared';
+import { selectionFrame } from './selectionFrame';
 import './MapNavigation.css';
 import { MapHistoryControls } from './MapHistoryControls';
 import type { useUndoRedo } from '../../../lib/hooks/useUndoRedo';
@@ -45,17 +45,24 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     setZoom(Math.round(viewport.scale.x * 100));
   };
   const focus = () => {
-    if (!viewport) return;
+    if (!viewport || !canvas) return;
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
-    if (!tokens.length) return;
-    viewport.plugins.get('decelerate')?.reset();
-    // Even-sized tokens anchor at the footprint corner; match their visual center.
-    const centers = tokens.map(t => {
-      const cells = tokenFootprintCells(t.size);
-      const offset = cells % 2 === 0 ? cells * gridSizePx / 2 : 0;
-      return { x: t.x + offset, y: t.y + offset };
+    const rect=canvas.getBoundingClientRect();
+    const host=canvas.parentElement;
+    const rail=host?.querySelector('.map-tool-palette')?.getBoundingClientRect();
+    const actions=host?.querySelector('.map-selection-actions')?.getBoundingClientRect();
+    const dock=navRef.current?.getBoundingClientRect();
+    const frame=selectionFrame(tokens,gridSizePx,viewport.screenWidth,viewport.screenHeight,viewport.scale.x,{
+      left:rail ? rail.right-rect.left+12 : 12,
+      top:Math.max(60,actions ? actions.bottom-rect.top+12 : 0),
+      right:viewport.screenWidth-12,
+      bottom:Math.min(viewport.screenHeight-12,dock ? dock.top-rect.top-12 : viewport.screenHeight-12),
     });
-    viewport.moveCenter(centers.reduce((sum,t) => sum+t.x,0)/centers.length, centers.reduce((sum,t) => sum+t.y,0)/centers.length);
+    if (!frame) return;
+    viewport.plugins.get('decelerate')?.reset();
+    viewport.setZoom(frame.zoom,true);
+    viewport.moveCenter(frame.x,frame.y);
+    setZoom(Math.round(frame.zoom*100));
   };
 
   useEffect(() => {
@@ -177,7 +184,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       <button type="button" aria-label="Zoom in" onClick={()=>changeZoom(1.2)}>+</button>
     </div>
     <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
-    <button type="button" onClick={focus} disabled={!selectedIds.size} title="Center the view on selected tokens"><MapControlIcon kind="focus"/>Find selection</button>
+    <button type="button" onClick={focus} disabled={!selectedIds.size} title="Bring all selected tokens into view"><MapControlIcon kind="focus"/>Find selection</button>
     <MapHelp />
     {history && <MapHistoryControls history={history} />}
   </div>;
