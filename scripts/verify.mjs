@@ -21,7 +21,7 @@ function requireSuccess(label, result) {
 }
 
 try {
-  requireSuccess('gate runner tests', run('gate runner tests', '--test', ['scripts/verify.test.mjs']));
+  requireSuccess('gate runner tests', run('gate runner tests', '--test', ['scripts/verify.test.mjs', 'scripts/compare-schema.test.mjs']));
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const baseline = workflow.match(/^\s*TS_BASELINE:\s*(\d+)\s*$/m);
   if (!baseline) throw new Error('Missing TS_BASELINE in CI workflow.');
