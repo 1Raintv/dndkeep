@@ -3,6 +3,31 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Map presentation and high-density rendering, v2.702
+
+The map now renders at display density, capped at 2x and an eight-million-pixel
+budget above native resolution. CSS dimensions and world/pointer coordinates
+remain unchanged. Token glyphs use 2x textures; names wrap within their token's
+width rather than running into adjacent names. Uploaded low-resolution artwork
+is not upscaled into new detail.
+
+Navigation now has consistent SVG icons, a clearer active mode, restrained
+surfaces, and a dedicated mobile layout. The permanent idle instruction overlay
+is replaced by compact, keyboard-accessible help; active-tool instructions remain.
+Help closes on Escape or an outside click. Reduced-motion preferences are honored.
+
+The v2.701 player-combat ownership blocker remains open. This is a presentation
+pass, not a change to database permissions. Physical-device performance and touch
+acceptance remain open; headless browser checks are not a real-device FPS claim.
+
+Verification: 834 unit tests, seven runner tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry passed. All 16 map browser checks
+passed; final desktop/mobile close-ups also passed token-width, density, and
+control hit-testing checks. Forcing density back to 1 makes the mobile regression
+fail. Screenshots inspected. The generic overflow probe reports sidebar text
+truncation and underlying campaign containers behind fullscreen; the fullscreen
+dock has separate viewport-bound and occlusion assertions, which pass.
+
 ### 2026-09-17 — Visible history and player movement safeguards, v2.701
 
 Undo and Redo now share the map navigation bar, show their action labels, and

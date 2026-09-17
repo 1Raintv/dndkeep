@@ -29,6 +29,48 @@ async function state(page: Page) {
 
 test.describe('token gestures (local stack)', () => {
   gateDbSuite();
+  test('sharp canvas and compact controls remain reachable',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',error=>errors.push(String(error)));
+    await openMap(page);
+    const density=await page.locator('canvas').first().evaluate(canvas=>{
+      const c=canvas as HTMLCanvasElement;return {ratio:c.width/c.getBoundingClientRect().width,dpr:devicePixelRatio};
+    });
+    expect(density.ratio).toBeCloseTo(Math.min(2,density.dpr),1);
+    await expect(page.getByText('Drag tokens · right-click for options · right/middle drag pans · wheel zooms',{exact:true})).toBeHidden();
+    await page.getByLabel('Map controls',{exact:true}).click();
+    await expect(page.getByRole('region',{name:'Map controls help'})).toBeVisible();
+    await page.screenshot({path:info.outputPath('map-help.png')});
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('region',{name:'Map controls help'})).toBeHidden();
+    const blocked=await page.locator('.map-navigation').evaluate(nav=>{
+      const width=visualViewport!.width;
+      return [...nav.querySelectorAll('button,summary')].filter(el=>{
+        const r=el.getBoundingClientRect();
+        return r.left<0 || r.right>width+1 || !el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
+      }).map(el=>el.textContent);
+    });
+    expect(blocked).toEqual([]);
+    // Zoom near a real token to inspect glyphs at playing scale, not only fit.
+    const point=await page.evaluate(()=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId);
+      const p=t.getGlobalPosition();return {x:p.x,y:p.y};
+    });
+    const box=(await page.locator('canvas').first().boundingBox())!;
+    await page.mouse.click(box.x+point.x,box.y+point.y);
+    await page.getByRole('button',{name:'Find selection',exact:true}).click();
+    while(parseInt(await page.getByLabel('Map zoom').innerText())<90) await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+    const names=await page.evaluate(()=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      return vp.children.flatMap((c:any)=>c.children??[]).filter((c:any)=>c.__tokenId)
+        .flatMap((c:any)=>c.children).filter((c:any)=>['Nyx Quickfingers','Ilyana Vell'].includes(c.text))
+        .map((c:any)=>({width:c.width,resolution:c.resolution}));
+    });
+    expect(names).toHaveLength(2);
+    for(const name of names) {expect(name.width).toBeLessThanOrEqual(70);expect(name.resolution).toBe(2);}
+    await page.screenshot({path:info.outputPath('map-detail.png')});
+    expect(errors).toEqual([]);
+  });
   test('group drag cancels and undoes, and move controls reach a reconnecting player', async ({ page, browser }, info) => {
     test.setTimeout(90_000);
     const peerContext=await browser.newContext();

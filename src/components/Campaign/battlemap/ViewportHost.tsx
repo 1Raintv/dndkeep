@@ -4,6 +4,7 @@
 import { useApplication } from '@pixi/react';
 import { Viewport } from 'pixi-viewport';
 import { useEffect, useState, type ReactNode } from 'react';
+import { mapResolution } from './mapResolution';
 
 export function ViewportHost(props: {
   screenWidth: number;
@@ -96,10 +97,18 @@ export function ViewportHost(props: {
   useEffect(() => {
     if (!viewport || viewport.destroyed) return;
     const center = { x: viewport.center.x, y: viewport.center.y };
-    pixiApp.renderer.resize(screenWidth, screenHeight);
+    // v2.702 — backing pixels follow display density; CSS size and pointer
+    // coordinates stay unchanged. Also refresh when moving between monitors.
+    const resizeRenderer=()=>{
+      pixiApp.renderer.view.autoDensity=true;
+      pixiApp.renderer.resize(screenWidth,screenHeight,mapResolution(screenWidth,screenHeight,window.devicePixelRatio));
+    };
+    resizeRenderer();
+    window.addEventListener('resize',resizeRenderer);
     viewport.resize(screenWidth, screenHeight, worldWidth, worldHeight);
     viewport.clampZoom({ minScale: Math.min(0.25, screenWidth / worldWidth * 0.8, screenHeight / worldHeight * 0.8), maxScale: 4 });
     viewport.moveCenter(center.x, center.y);
+    return ()=>window.removeEventListener('resize',resizeRenderer);
   }, [viewport, screenWidth, screenHeight, worldWidth, worldHeight, pixiApp]);
 
   useEffect(() => {
