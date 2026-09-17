@@ -3,6 +3,31 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Group dragging and move controls, v2.700
+
+DMs can drag a selected group outside combat, preserving its formation and
+complete footprints at map edges. Escape, pointer cancellation, and blur restore
+the group. Successful saves form one undo action; failed members roll back.
+The selection bar now has four one-cell movement buttons on desktop and mobile.
+Pan mode takes priority over selected tokens. Combat keeps the existing
+single-creature movement path. Group saves remain sequential, not atomic.
+
+Two-account testing exposed a pre-existing Presence limit: repeated start/end
+updates disconnect the drag channel. Connection membership now uses Presence;
+short-lived Broadcast leases carry held token IDs, renew while dragging, clear
+on release/disconnect, and expire after a lost release (within eight seconds).
+This also fixes rapid single-token selection breaking subsequent live movement.
+The map root shrank by 83 lines as sharing moved into its own hook.
+
+Verification: 825 unit tests, seven runner tests, TypeScript 221/221, clean hooks,
+RAW/coordinate/anchor checks, production build and 252.4 KB entry. Desktop/mobile
+local multiplayer checks cover group cancellation, locks, undo/redo, visible
+movement buttons, reconnect, and Pan priority. All 12 map browser checks passed.
+Screenshots inspected; disabling group dragging makes the new regression fail.
+
+Next: visible redo controls and player combat movement acceptance, followed by
+map appearance/clearer controls. Physical-device touch remains open. Fog last.
+
 ### 2026-09-17 — Group nudge history and reconnect, v2.699
 
 DM arrow-key group moves outside combat now record one undo, preserve the

@@ -128,12 +128,12 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       if(drag && canvas.hasPointerCapture(drag.id)) canvas.releasePointerCapture(drag.id);
       drag=null; cursor();
     };
-    // Capture on the canvas's parent beats Pixi and token/tool listeners. A pan
+    // v2.700 — Window capture beats group selection and Pixi listeners. A pan
     // beginning over a token cannot select, move, ping, or paint it.
     const host=canvas.parentElement!;
     const swallowClick = (event: MouseEvent) => { if((pan || space || Date.now() < suppressClickUntil) && event.target===canvas) { event.preventDefault(); event.stopImmediatePropagation(); } };
     const hostDown = (event: PointerEvent) => { if(event.target===canvas) down(event); };
-    host.addEventListener('pointerdown',hostDown,true);
+    window.addEventListener('pointerdown',hostDown,true);
     host.addEventListener('pointermove',move,true);
     host.addEventListener('pointerup',end,true);
     host.addEventListener('pointercancel',end,true);
@@ -143,7 +143,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     cursor();
     return () => {
       blur(); canvas.style.cursor=originalCursor;
-      host.removeEventListener('pointerdown',hostDown,true); host.removeEventListener('pointermove',move,true);
+      window.removeEventListener('pointerdown',hostDown,true); host.removeEventListener('pointermove',move,true);
       host.removeEventListener('pointerup',end,true); host.removeEventListener('pointercancel',end,true); host.removeEventListener('click',swallowClick,true);
       canvas.removeEventListener('pointerenter',enter); canvas.removeEventListener('pointerleave',leave);
       window.removeEventListener('keydown',keyDown); window.removeEventListener('keyup',keyUp); window.removeEventListener('blur',blur);

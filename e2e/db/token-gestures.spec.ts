@@ -29,10 +29,14 @@ async function state(page: Page) {
 
 test.describe('token gestures (local stack)', () => {
   gateDbSuite();
-  test('group nudge undoes and redoes, and a reconnecting player catches up', async ({ page, browser }, info) => {
+  test('group drag cancels and undoes, and move controls reach a reconnecting player', async ({ page, browser }, info) => {
     test.setTimeout(90_000);
     const peerContext=await browser.newContext();
     const peer=await peerContext.newPage();
+    const writes:string[]=[];
+    const errors:string[]=[];
+    page.on('request',r=>{if(r.method()==='PATCH' && /scene_tokens|scene_token_placements/.test(r.url())) writes.push(r.url());});
+    page.on('pageerror',e=>errors.push(String(e)));
     try {
       await openMap(page);
       await openMap(peer,'test-player@dndkeep.local');
@@ -57,9 +61,34 @@ test.describe('token gestures (local stack)', () => {
         expect(actions!.x+actions!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
       }
       await expect.poll(async()=>Object.keys((await state(page)).locks).length).toBe(0);
+      const point=await page.evaluate(id=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+        const p=t.getGlobalPosition();return {x:p.x,y:p.y,scale:vp.scale.x};
+      },tokens[0].id);
+      for(const cancel of [true,false]) {
+        await expect.poll(async()=>Object.keys((await state(page)).locks).length).toBe(0);
+        await page.mouse.move(box.x+point.x,box.y+point.y);
+        await page.mouse.down();
+        await page.mouse.move(box.x+point.x,box.y+point.y+70*point.scale,{steps:6});
+        for(const token of tokens) {
+          await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBeCloseTo(token.y+70,2);
+          await expect.poll(async()=>{const s=await state(peer);return s.locks;}).toHaveProperty(token.id);
+        }
+        if(cancel) await page.keyboard.press('Escape');
+        await page.mouse.up();
+        for(const token of tokens) await expect.poll(async()=>(await state(peer)).locks[token.id]).toBeFalsy();
+        if(!cancel) {
+          await expect(page.getByRole('button',{name:'↶ Undo move tokens',exact:true})).toBeVisible();
+          await page.keyboard.press('Control+z');
+        }
+        for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);
+        if(cancel) expect(writes,'group cancellation never saves a drop').toHaveLength(0);
+        await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+      }
       await peer.evaluate(async()=>{const path='/src/lib/supabase.ts'; const {supabase}=await import(/* @vite-ignore */ path); supabase.realtime.disconnect();});
       await peerContext.setOffline(true);
-      await page.keyboard.press('ArrowDown');
+      await page.getByRole('button',{name:'Move selection down',exact:true}).click();
       for(const token of tokens) await expect.poll(async()=>(await state(page)).tokens[token.id].y).toBe(token.y+70);
       await expect(page.getByRole('button',{name:'↶ Undo move tokens',exact:true})).toBeVisible();
       await peerContext.setOffline(false);
@@ -71,6 +100,15 @@ test.describe('token gestures (local stack)', () => {
       for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y+70);
       await page.keyboard.press('Control+z');
       for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);
+      await page.getByRole('button',{name:'Pan',exact:true}).click();
+      await page.mouse.move(box.x+point.x,box.y+point.y);
+      await page.mouse.down();
+      await page.mouse.move(box.x+point.x+40,box.y+point.y+40,{steps:4});
+      await page.mouse.up();
+      for(const token of tokens) expect((await state(page)).tokens[token.id].y).toBe(token.y);
+      await page.getByRole('button',{name:'Select',exact:true}).click();
+      await page.getByRole('button',{name:'Fit map',exact:true}).click();
+      expect(errors).toEqual([]);
       await page.screenshot({path:info.outputPath('group-undo.png')});
     } finally { await peerContext.setOffline(false); await peerContext.close(); }
   });

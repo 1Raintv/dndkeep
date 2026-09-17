@@ -6,6 +6,8 @@
   border-radius: 999px;
   box-sizing: border-box;
 }
+.map-selection-move { display: inline-flex; gap: 4px; }
+.map-selection-move button { min-width: 36px; min-height: 36px; }
 
 /* v2.699 — keep selection actions below the header and beside the tool rail. */
 @media (max-width: 600px) {
