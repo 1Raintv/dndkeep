@@ -3,6 +3,20 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Click-to-move save protection, v2.723
+
+Click movement now shares the per-token reservation used by dragging, nudging
+and undo/redo, from validation through animation, save and movement logging.
+Repeated clicks and drags explain why a move is busy. Failed position saves
+restore the origin, spend no movement and display a retry message. Rejected
+requests are handled immediately while animation finishes. No schema changes.
+
+Validation: release gate passed (907 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop and mobile local-database
+browser checks passed: held click save blocks a second click and drag with one
+write, failure restores position/budget, and subsequent real player movement
+persists and spends exactly 5 ft. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Shared pending movement protection, v2.722
 
 Single-token drag saves, group saves, arrow-key/button nudges and token move

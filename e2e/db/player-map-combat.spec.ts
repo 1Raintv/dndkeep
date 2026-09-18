@@ -109,6 +109,32 @@ test.describe('player map combat (local stack)',()=>{
       expect(position(otherToken)).toBe('455,245');expect(position(ownToken)).toBe('245,245');
       await page.getByRole('button',{name:'End Turn',exact:true}).click();
       await expect(peer.getByTitle('0 / 5 ft used this turn — 5 ft remaining',{exact:true})).toBeVisible();
+      // v2.723 — hold a real player's click-save pending; another click and a
+      // drag must share its reservation. Reject it without spending movement.
+      const clickCell=async(x:number,y:number)=>{
+        const p=await peer.evaluate(({x,y})=>{
+          const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+          const point=vp.toScreen(x,y),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:point.x+r.x,y:point.y+r.y};
+        },{x,y});await peer.mouse.click(p.x,p.y);
+      };
+      let release!:()=>void;const pending=new Promise<void>(r=>release=r);let clickWrites=0;
+      const pattern='**/rest/v1/scene_token_placements?**';
+      await peer.route(pattern,async route=>{
+        if(route.request().method()==='PATCH'){clickWrites++;await pending;await route.fulfill({status:200,contentType:'application/json',body:'[]'});}else await route.continue();
+      });
+      try {
+        await clickCell(245,315);await expect.poll(()=>clickWrites).toBe(1);
+        await clickCell(315,315);
+        await expect(peer.getByText('This token is moving or saving. Please wait.',{exact:true})).toBeVisible();
+        await drag(ownToken);await expect(peer.getByText('Saving this token’s move. Please wait.',{exact:true})).toBeVisible();
+        expect(clickWrites).toBe(1);release();
+        await expect(peer.getByText('Move could not be saved. Your token was returned and no movement was spent.',{exact:true})).toBeVisible();
+        await expect.poll(()=>peer.evaluate(async id=>{const p='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ p);return useBattleMapStore.getState().tokens[id].y;},ownToken)).toBe(245);
+        expect(position(ownToken)).toBe('245,245');
+        expect(sql(`select movement_used_ft from combat_participants where encounter_id='${enc}' and entity_id='${own}';`)).toBe('0');
+      }finally{release();await peer.unroute(pattern);}
+      const clickNotices=peer.getByRole('button',{name:'Dismiss',exact:true});
+      while(await clickNotices.count())await clickNotices.first().click();
       // Retain the failed-save rollback regression with one simulated zero-row
       // response. The subsequent successful drag goes to the real database.
       await peer.route('**/rest/v1/scene_token_placements?**',async route=>{

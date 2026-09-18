@@ -1,3 +1,4 @@
+import {runClickTokenMove} from './battlemap/runClickTokenMove';
 import { MapToolPalette } from './battlemap/MapToolPalette';
 import { MapToolButton } from './battlemap/MapToolButton';
 // v2.208.0 — Phase Q.1 pt 1: BattleMap V2 foundation shell.
@@ -2332,7 +2333,7 @@ function BattleMapV2(props: BattleMapV2Props) {
         return;
       }
 
-      (async () => {
+      void runClickTokenMove(ati.tokenId,async () => {
         // Authoritative server check as a backstop. The local pre-
         // check above passed, so this only fires when the local cache
         // was stale (rare). Failure path is the same as the local
@@ -2345,30 +2346,9 @@ function BattleMapV2(props: BattleMapV2Props) {
           );
           return;
         }
-        // v2.347.0 — Smooth-slide animation (BG3 feel).
-        // v2.348.0 — Now walks along the multi-cell path returned by
-        // A* instead of one straight-line segment, so the token
-        // visibly bends around walls and obstacles.
-        //
-        // Pre-v2.347 the click-to-move snapped instantly. Now we
-        // slide the token along the returned path at ~120 ft/s
-        // (250ms per 30ft step). Visual only — server commit + log
-        // fire upfront so peers see the move immediately and the
-        // movement_used_ft + OA triggers don't lag the animation.
-        //
-        // Cancellation: a generation counter gates each frame. If
-        // another click-to-move starts (or any code calls
-        // updateTokenPosition for this token), the token's stored
-        // position will diverge from our animated frame's target,
-        // so we abort. Belt-and-suspenders against double-clicks
-        // and rapid re-aiming.
-        //
-        // Min duration 60ms (a 5ft step) so even a single-cell
-        // step shows visible motion and reads as "deliberate" rather
-        // than "snap." Max ~500ms cap so a Dash-doubled 60ft move
-        // doesn't drag too long. Cap is total path duration (not per-
-        // segment) so a path that bends around walls still finishes
-        // in a single human-readable beat.
+        // v2.723 — the shared reservation covers validation, the 60–500ms
+        // path animation, persistence and movement logging. Other controls
+        // cannot start a second move before this one settles.
         const SPEED_PX_PER_MS = (120 * gridSizePx / 5) / 1000; // 120 ft/s in px/ms
         // Convert path cells to world-pixel waypoints. Path[0] is the
         // current cell; we start the slide from path[1].
@@ -2399,7 +2379,8 @@ function BattleMapV2(props: BattleMapV2Props) {
 
         // Fire server commit immediately (peers see the destination).
         // Animation is local-only.
-        const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY, { campaignId });
+        const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY, { campaignId })
+          .catch(()=>({ok:false,reason:'other'} as const)); // Handle rejection before animation awaits.
 
         // Local rAF animation along the path. Per-frame: compute
         // total elapsed-time-along-path in pixels, then walk the
@@ -2451,7 +2432,7 @@ function BattleMapV2(props: BattleMapV2Props) {
           if (result.reason === 'wall_blocked') {
             showToast('A wall blocks that path.', 'warn');
           } else {
-            console.error('[BattleMapV2] click-to-move commit failed', result);
+            showToast('Move could not be saved. Your token was returned and no movement was spent.','error');
           }
           return;
         }
@@ -2478,7 +2459,8 @@ function BattleMapV2(props: BattleMapV2Props) {
             console.error('[BattleMapV2] click-to-move logMovement threw', err);
           }
         }
-      })().catch(err => console.error('[BattleMapV2] click-to-move threw', err));
+      }).then(started=>{if(!started)showToast('This token is moving or saving. Please wait.','info');})
+        .catch(()=>showToast('Move could not be confirmed. Please try again.','error'));
     }
     canvasEl.addEventListener('click', onClick);
     return () => {
