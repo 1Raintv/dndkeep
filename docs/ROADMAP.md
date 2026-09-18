@@ -3,6 +3,22 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Map navigation keys, v2.714
+
+With the pointer over the unobstructed map, +/- (or =) zoom and 0 fits the
+scene. Shortcuts reuse the existing camera actions and leave token data alone.
+Typing, composition, browser modifier shortcuts, active pointer gestures and
+overlays retain ownership of input. Leaving the map, cancelling a gesture or
+losing window focus clears hover ownership; clicked toolbar buttons may retain
+focus without blocking the camera keys. Instructions appear in Map controls.
+
+Validation: release gate passed (875 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build, 252.4 KB entry). Six final desktop/mobile shortcut,
+preset and control-reachability checks passed. Removing the overlay hit-test
+fails the safety regression. Screenshots inspected; shared overflow probe found
+no sideways scroll or new help clipping (existing underlying sidebar/map
+findings remain). No database changes; user hands-on testing remains deferred.
+
 ### 2026-09-18 — Quick map zoom presets, v2.713
 
 The zoom percentage is now a keyboard-accessible picker for 25%, 50%, 100%,

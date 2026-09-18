@@ -31,6 +31,25 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('camera keyboard shortcuts stay on the map and out of controls',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const tokens=(await state(page)).tokens;
+    const zoom=page.getByRole('combobox',{name:'Map zoom',exact:true});
+    await zoom.selectOption('100');await zoom.blur();
+    const canvas=page.locator('canvas').first();const box=(await canvas.boundingBox())!;
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+    await page.keyboard.press('=');await expect(zoom).toHaveValue('120');
+    await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
+    await page.mouse.down();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await page.mouse.up();
+    await zoom.focus();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await zoom.blur();
+    await page.keyboard.press('0');expect(Number(await zoom.inputValue())).toBeLessThan(100);
+    await page.getByLabel('Map controls',{exact:true}).click();
+    await expect(page.getByRole('region',{name:'Map controls help'})).toContainText('Zoom keys');
+    await page.getByText('Zoom keys',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:info.outputPath('navigation-keys.png')});
+    expect((await state(page)).tokens).toEqual(tokens);expect(errors).toEqual([]);
+  });
   test('zoom presets preserve the camera center and token positions',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);

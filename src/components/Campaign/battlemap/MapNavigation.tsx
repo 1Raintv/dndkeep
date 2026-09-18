@@ -8,6 +8,7 @@ import type { useUndoRedo } from '../../../lib/hooks/useUndoRedo';
 import { useMapControlClearance } from './useMapControlClearance';
 import { MapHelp } from './MapHelp';
 import { MapControlIcon } from './MapControlIcon';
+import { useMapNavigationShortcuts } from './useMapNavigationShortcuts';
 
 /** v2.697 — local camera controls never write shared token positions. */
 export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editingToolActive, onSelectMode, history }: {
@@ -64,6 +65,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       bottom:Math.min(viewport!.screenHeight-12,dock ? dock.top-rect.top-12 : viewport!.screenHeight-12),
     };
   };
+  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport)chooseZoom(viewport.scale.x*factor);},fit});
   const focus = () => {
     if (!viewport || !canvas) return;
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
