@@ -43,10 +43,12 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     viewport.moveCenter(frame.x,frame.y);
     setZoom(Math.round(viewport.scale.x * 100));
   };
-  const changeZoom = (factor: number) => {
+  const chooseZoom = (scale: number) => {
     if (!viewport) return;
-    // v2.709 — setZoom applies the viewport's live clamp, including a fitted floor.
-    viewport.setZoom(viewport.scale.x * factor, true);
+    // v2.713 — stop residual pan momentum and retain the same world center.
+    // setZoom also respects the live clamp, including a fitted zoom floor.
+    viewport.plugins.get('decelerate')?.reset();
+    viewport.setZoom(scale, true);
     setZoom(Math.round(viewport.scale.x * 100));
   };
   const clearArea = () => {
@@ -187,9 +189,12 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       <button type="button" aria-pressed={pan} onClick={()=>{setPan(true); onSelectMode();}} title="Drag the map · hold Space for temporary pan"><MapControlIcon kind="pan"/>Pan</button>
     </div>
     <div className="map-navigation-zoom">
-      <button type="button" aria-label="Zoom out" onClick={()=>changeZoom(1/1.2)}>−</button>
-      <output aria-label="Map zoom">{zoom}%</output>
-      <button type="button" aria-label="Zoom in" onClick={()=>changeZoom(1.2)}>+</button>
+      <button type="button" aria-label="Zoom out" onClick={()=>viewport && chooseZoom(viewport.scale.x/1.2)}>−</button>
+      <select aria-label="Map zoom" title="Choose zoom level" value={zoom} onChange={event=>chooseZoom(Number(event.target.value)/100)}>
+        {/* Keep wheel/pinch/Fit values visible without rounding the actual camera. */}
+        {[...new Set([25,50,100,200,400,zoom])].sort((a,b)=>a-b).map(value=><option key={value} value={value}>{value}%</option>)}
+      </select>
+      <button type="button" aria-label="Zoom in" onClick={()=>viewport && chooseZoom(viewport.scale.x*1.2)}>+</button>
     </div>
     <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
     <button type="button" onClick={focus} disabled={!selectedIds.size} title="Bring all selected tokens into view"><MapControlIcon kind="focus"/>Find selection</button>
