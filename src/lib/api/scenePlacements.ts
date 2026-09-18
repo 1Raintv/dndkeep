@@ -370,16 +370,16 @@ export async function updatePlacement(
       .select('combatant_id')
       .eq('id', id)
       .maybeSingle();
-    if (lookupErr) {
+    if (lookupErr || !pl?.combatant_id) {
       console.error('[scenePlacements] updatePlacement: combatant_id lookup failed', lookupErr);
       return false;
     }
     if (pl?.combatant_id) {
-      const { error } = await db
+      const { data, error } = await db
         .from('combatants')
         .update({ name: patch.name })
-        .eq('id', pl.combatant_id);
-      if (error) {
+        .eq('id', pl.combatant_id).select('id').maybeSingle();
+      if (error || !data) {
         console.error('[scenePlacements] updatePlacement: combatant rename failed', error);
         return false;
       }

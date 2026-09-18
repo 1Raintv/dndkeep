@@ -9,6 +9,7 @@ import { useModal } from '../../shared/Modal';
 import { SIZE_OPTIONS, TOKEN_COLORS, type ContextMenuState } from './shared';
 import {useMapMenuPosition} from './useMapMenuPosition';
 import './TokenContextMenu.css';
+import {useTokenMenuSave} from './useTokenMenuSave';
 
 // v2.653.0 — the eight facings, 0° = up (matches Token.rotation's
 // docstring and the renderer's notch). Same 45° increments the AoE
@@ -71,6 +72,8 @@ export function TokenContextMenu(props: {
   const {ref:menuRef,left,top}=useMapMenuPosition(state.clientX,state.clientY,`${state.tokenId}:${submenu}:${!!token}`);
   // v2.241 — modal handle for the rename prompt.
   const { prompt: promptModal } = useModal();
+  const {busy,pending,error,setError,run}=useTokenMenuSave(state.tokenId,onClose);
+  useEffect(()=>{if(error && menuRef.current)menuRef.current.scrollTop=0;},[error,menuRef]);
 
   useEffect(()=>{
     // v2.717 — Tab starts within the current token menu; submenus start at Back.
@@ -79,10 +82,10 @@ export function TokenContextMenu(props: {
 
   useEffect(() => {
     function handler(event:PointerEvent) {
-      if(!menuRef.current?.contains(event.target as Node)) onClose();
+      if(!pending.current && !menuRef.current?.contains(event.target as Node)) onClose();
     }
     function keyHandler(e: KeyboardEvent) {
-      if (e.key === 'Escape') {e.preventDefault();e.stopImmediatePropagation();onClose();}
+      if (e.key === 'Escape') {e.preventDefault();e.stopImmediatePropagation();if(!pending.current)onClose();}
     }
     // v2.715 — the topmost menu owns Escape before map/fullscreen listeners.
     window.addEventListener('keydown', keyHandler, true);
@@ -93,23 +96,19 @@ export function TokenContextMenu(props: {
       window.removeEventListener('pointerdown', handler);
       window.removeEventListener('keydown', keyHandler, true);
     };
-  }, [onClose,menuRef]);
+  }, [onClose,menuRef,pending]);
 
   if (!token) return null;
 
-  // v2.213: commit discrete edits to DB after optimistic local update.
   function applyPatch(patch: Partial<Token>) {
-    updateTokenFields(state.tokenId, patch);
-    tokensApi.updateToken(state.tokenId, patch, { campaignId }).catch(err =>
-      console.error('[BattleMapV2] token update commit failed', err)
-    );
+    if(token.combatantId && ('isLocked' in patch || 'playerId' in patch)) {
+      setError('Locking and player-control changes are not available for this token type yet.');return;
+    }
+    void run('Save token',()=>tokensApi.updateToken(state.tokenId,patch,{campaignId}),()=>updateTokenFields(state.tokenId,patch));
   }
 
   function applyDelete() {
-    removeToken(state.tokenId);
-    tokensApi.deleteToken(state.tokenId, { campaignId }).catch(err =>
-      console.error('[BattleMapV2] token delete commit failed', err)
-    );
+    void run('Delete token',()=>tokensApi.deleteToken(state.tokenId,{campaignId}),()=>removeToken(state.tokenId));
   }
 
   /**
@@ -142,11 +141,7 @@ export function TokenContextMenu(props: {
       // to whoever could drive the original.
       playerId: null,
     };
-    addToken(copy);
-    tokensApi.createToken(copy, { campaignId }).catch(err => {
-      console.error('[BattleMapV2] token duplicate commit failed', err);
-      removeToken(copy.id);
-    });
+    void run('Duplicate token',()=>tokensApi.createToken(copy,{campaignId}),()=>addToken(useBattleMapStore.getState().tokens[copy.id]??copy));
   }
 
 
@@ -184,8 +179,9 @@ export function TokenContextMenu(props: {
   function stop(e: React.MouseEvent) {
     e.stopPropagation();
   }
+  const feedback=busy?<p role="status">Saving token…</p>:error?<p role="alert">{error}</p>:null;
 
-  const backButton=<button type="button" data-menu-back aria-label="Back to token options"
+  const backButton=<button type="button" disabled={busy} data-menu-back aria-label="Back to token options"
     onClick={()=>setSubmenu('none')}
     style={{display:'block',position:'sticky',top:0,zIndex:1,width:'100%',minHeight:44,padding:'8px 10px',textAlign:'left',font:'inherit',fontWeight:600,color:'var(--t-1)',background:'var(--c-card)',border:'1px solid var(--c-border)',borderRadius:4,cursor:'pointer'}}>
     ← Back to token options
@@ -226,13 +222,14 @@ export function TokenContextMenu(props: {
     const current = (token as any).lightRadiusFt ?? 0;
     const currentColour = (token as any).lightColor ?? null;
     return createPortal(
-      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop} aria-busy={busy}>
+      {feedback}
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Carried light
         </div>
         {LIGHTS.map(l => (
-          <button type="button"
+          <button type="button" disabled={busy}
             key={l.ft}
             style={{
               ...itemStyle,
@@ -240,7 +237,7 @@ export function TokenContextMenu(props: {
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = current === l.ft ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
-            onClick={() => { applyPatch({ lightRadiusFt: l.ft } as any); onClose(); }}
+            onClick={() => { applyPatch({ lightRadiusFt: l.ft } as any); }}
           >
             <span>
               {l.label}
@@ -267,10 +264,10 @@ export function TokenContextMenu(props: {
                 return (
                   <button
                     key={c.label}
-                    type="button"
+                    type="button" disabled={busy}
                     title={`${c.label} — ${c.hint}`}
                     aria-pressed={selected}
-                    onClick={() => { applyPatch({ lightColor: c.value } as any); onClose(); }}
+                    onClick={() => { applyPatch({ lightColor: c.value } as any); }}
                     style={{
                       width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
                       background: c.value === null
@@ -295,13 +292,14 @@ export function TokenContextMenu(props: {
 
   if (submenu === 'size') {
     return createPortal(
-      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop} aria-busy={busy}>
+      {feedback}
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Size
         </div>
         {SIZE_OPTIONS.map(sz => (
-          <button type="button"
+          <button type="button" disabled={busy}
             key={sz}
             style={{
               ...itemStyle,
@@ -309,7 +307,7 @@ export function TokenContextMenu(props: {
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = token.size === sz ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
-            onClick={() => { applyPatch({ size: sz }); onClose(); }}
+            onClick={() => { applyPatch({ size: sz }); }}
           >
             <span style={{ textTransform: 'capitalize' as const }}>{sz}</span>
             {token.size === sz && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
@@ -328,7 +326,8 @@ export function TokenContextMenu(props: {
   if (submenu === 'facing') {
     const current = ((token.rotation ?? 0) % 360 + 360) % 360;
     return createPortal(
-      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop} aria-busy={busy}>
+      {feedback}
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Facing
@@ -336,12 +335,12 @@ export function TokenContextMenu(props: {
         {FACINGS.map(({ deg, label, arrow }) => {
           const active = current === deg;
           return (
-            <button type="button"
+            <button type="button" disabled={busy}
               key={deg}
               style={{ ...itemStyle, background: active ? 'rgba(167,139,250,0.12)' : undefined }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
-              onClick={() => { applyPatch({ rotation: deg }); onClose(); }}
+              onClick={() => { applyPatch({ rotation: deg }); }}
             >
               <span><span style={{ display: 'inline-block', width: 16 }}>{arrow}</span> {label}</span>
               {active && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
@@ -359,19 +358,20 @@ export function TokenContextMenu(props: {
   if (submenu === 'grant') {
     const currentGrant = (token as any).playerId as string | null;
     return createPortal(
-      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop} aria-busy={busy}>
+      {feedback}
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Player Control
         </div>
-        <button type="button"
+        <button type="button" disabled={busy}
           style={{
             ...itemStyle,
             background: !currentGrant ? 'rgba(167,139,250,0.12)' : undefined,
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = !currentGrant ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
-          onClick={() => { applyPatch({ playerId: null } as any); onClose(); }}
+          onClick={() => { applyPatch({ playerId: null } as any); }}
         >
           <span style={{ color: 'var(--t-2)' }}>(no one)</span>
           {!currentGrant && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
@@ -380,7 +380,7 @@ export function TokenContextMenu(props: {
           if (!pc.user_id) return null;
           const active = currentGrant === pc.user_id;
           return (
-            <button type="button"
+            <button type="button" disabled={busy}
               key={pc.id}
               style={{
                 ...itemStyle,
@@ -388,7 +388,7 @@ export function TokenContextMenu(props: {
               }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
-              onClick={() => { applyPatch({ playerId: pc.user_id! } as any); onClose(); }}
+              onClick={() => { applyPatch({ playerId: pc.user_id! } as any); }}
             >
               <span>{pc.name}</span>
               {active && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
@@ -402,16 +402,17 @@ export function TokenContextMenu(props: {
 
   if (submenu === 'color') {
     return createPortal(
-      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop} aria-busy={busy}>
+      {feedback}
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Color
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: 6 }}>
           {TOKEN_COLORS.map(c => (
-            <button type="button"
+            <button type="button" disabled={busy}
               key={c}
-              onClick={() => { applyPatch({ color: c }); onClose(); }}
+              onClick={() => { applyPatch({ color: c }); }}
               style={{
                 width: 44, height: 32,
                 background: `#${c.toString(16).padStart(6, '0')}`,
@@ -432,7 +433,8 @@ export function TokenContextMenu(props: {
   }
 
   return createPortal(
-    <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+    <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop} aria-busy={busy}>
+      {feedback}
       <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
         {token.name || 'Token'}
       </div>
@@ -442,7 +444,7 @@ export function TokenContextMenu(props: {
           palette to distinguish from the purple "View Character
           Sheet" navigate-away action below. */}
       {onOpenQuickPanel && (token.characterId || token.npcId) && (
-        <button type="button"
+        <button type="button" disabled={busy}
           style={{
             ...itemStyle,
             color: '#67e8f9',
@@ -463,7 +465,7 @@ export function TokenContextMenu(props: {
           Visually offset (purple, separator) so it reads as a
           navigation action vs the edit ops below. */}
       {token.characterId && onOpenCharacter && (
-        <button type="button"
+        <button type="button" disabled={busy}
           style={{
             ...itemStyle,
             color: '#a78bfa',
@@ -493,7 +495,7 @@ export function TokenContextMenu(props: {
           label: (token as any).isLocked ? '✓ Unlock Token' : '⊘ Lock Token',
           onClick: () => {
             applyPatch({ isLocked: !(token as any).isLocked } as any);
-            onClose();
+
           },
         }] : []),
         // v2.413.0: Grant Player Control. DM-only, non-PC tokens
@@ -523,7 +525,7 @@ export function TokenContextMenu(props: {
           label: token.visibleToAll ? '◉ Hide from Players' : '◉ Reveal to Players',
           onClick: () => {
             applyPatch({ visibleToAll: !token.visibleToAll });
-            onClose();
+
           },
         }] : []),
         { label: 'Rename…', onClick: async () => {
@@ -536,8 +538,8 @@ export function TokenContextMenu(props: {
           });
           if (next !== null) {
             applyPatch({ name: next.trim() || token.name });
-          }
-          onClose();
+          } else onClose();
+
         }},
         { label: 'Resize ▸', onClick: () => setSubmenu('size') },
         { label: 'Recolor ▸', onClick: () => setSubmenu('color') },
@@ -549,7 +551,7 @@ export function TokenContextMenu(props: {
           // v2.663.0 — DM-only: light changes what the whole party can
           // see, so it is a scene-authoring decision, not a player one.
           { label: '☀ Light ▸', onClick: () => setSubmenu('light') },
-          { label: '⧉ Duplicate', onClick: () => { applyDuplicate(); onClose(); } },
+          { label: '⧉ Duplicate', onClick: () => { applyDuplicate(); } },
         ] : []),
         // v2.215: portrait upload. Closes the menu and lets the parent
         // trigger the hidden file input for tokenId.
@@ -559,10 +561,10 @@ export function TokenContextMenu(props: {
         }},
         ...(token.imageStoragePath ? [{ label: 'Remove portrait', onClick: () => {
           applyPatch({ imageStoragePath: null });
-          onClose();
+
         }}] : []),
       ].map(opt => (
-        <button type="button"
+        <button type="button" disabled={busy}
           key={opt.label}
           style={itemStyle}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
@@ -572,13 +574,13 @@ export function TokenContextMenu(props: {
           {opt.label}
         </button>
       ))}
-      <button type="button"
+      <button type="button" disabled={busy}
         style={{ ...itemStyle, color: '#f87171', borderTop: '1px solid var(--c-border)', marginTop: 4, paddingTop: 8 }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.12)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
         onClick={() => {
           applyDelete();
-          onClose();
+
         }}
       >
         Delete

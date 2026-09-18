@@ -1,3 +1,5 @@
 /* v2.717 — native buttons preserve Enter/Space activation and visible focus. */
 .map-token-options button { border:0; background:transparent; color:inherit; font:inherit; text-align:left; }
 .map-token-options button:focus-visible { outline:2px solid #e4bd69; outline-offset:-2px; }
+.map-token-options button:disabled { opacity:.5; cursor:wait; }
+.map-token-options [role=alert],.map-token-options [role=status] { margin:0 0 6px; padding:10px; background:#28222d; color:#ffe3d7; border:1px solid #9b685f; border-radius:6px; line-height:1.45; }
