@@ -3,6 +3,21 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Find selection keyboard shortcut, v2.724
+
+Press F over the unobstructed map to frame selected tokens using the same
+control-aware camera framing as Find selection. The key remains untouched when
+nothing is selected, during typing/dialogs, modified browser shortcuts or active
+pointer gestures. Help and the button tooltip now explain the shortcut.
+
+Validation: full gate passed (909 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile browser checks
+compare the actual camera against button framing after panning away. Two new
+regressions fail when F handling is removed. Help screenshots inspected after
+scrolling to the shortcut; shared overflow checks show no sideways scrolling or
+new control clipping (existing underlying map/sidebar findings remain).
+No database changes. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Click-to-move save protection, v2.723
 
 Click movement now shares the per-token reservation used by dragging, nudging

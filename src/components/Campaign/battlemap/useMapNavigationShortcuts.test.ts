@@ -7,7 +7,7 @@ afterEach(()=>{cleanup();document.body.innerHTML='';vi.restoreAllMocks();});
 function setup() {
   const canvas=document.createElement('canvas');document.body.append(canvas);
   const hit=vi.spyOn(document,'elementFromPoint').mockReturnValue(canvas);
-  const actions={zoom:vi.fn(),fit:vi.fn()};
+  const actions={zoom:vi.fn(),fit:vi.fn(),focus:vi.fn() as (()=>void)|undefined};
   const hook=renderHook(({handlers})=>useMapNavigationShortcuts(canvas,handlers),{initialProps:{handlers:actions}});
   const hover=()=>canvas.dispatchEvent(new PointerEvent('pointermove',{clientX:40,clientY:40}));
   const key=(value:string,extra:KeyboardEventInit={},target:EventTarget=window)=>{
@@ -22,9 +22,33 @@ it('uses live callbacks for hovered-map zoom and fit and cleans up on unmount',(
   // A clicked toolbar button can retain focus after the pointer returns to the map.
   const button=document.createElement('button');document.body.append(button);key('0',{},button);
   expect(actions.fit).toHaveBeenCalledOnce();actions.fit.mockClear();
-  const next={zoom:vi.fn(),fit:vi.fn()};hook.rerender({handlers:next});key('0');
+  const next={zoom:vi.fn(),fit:vi.fn(),focus:vi.fn()};hook.rerender({handlers:next});key('0');
   expect(next.fit).toHaveBeenCalledOnce();expect(actions.fit).not.toHaveBeenCalled();
   hook.unmount();key('0');expect(next.fit).toHaveBeenCalledOnce();
+});
+it('frames the current selection with F and leaves the key alone without a selection',()=>{
+  const {hover,key,actions,hook}=setup();hover();
+  expect(key('f').defaultPrevented).toBe(true);key('F',{shiftKey:true});
+  expect(actions.focus).toHaveBeenCalledTimes(2);
+  const next={...actions,focus:vi.fn()};hook.rerender({handlers:next});key('f');
+  expect(next.focus).toHaveBeenCalledOnce();
+  hook.rerender({handlers:{...actions,focus:undefined}});
+  expect(key('f').defaultPrevented).toBe(false);
+  expect(actions.focus).toHaveBeenCalledTimes(2);
+});
+it('does not steal F from typing, dialogs, overlays, browser shortcuts or a drag',()=>{
+  const {canvas,hit,hover,key,actions}=setup();hover();
+  for(const tag of ['input','textarea','select']) {
+    const element=document.createElement(tag);document.body.append(element);
+    expect(key('f',{},element).defaultPrevented).toBe(false);
+  }
+  const dialog=document.createElement('div');dialog.setAttribute('role','dialog');document.body.append(dialog);
+  expect(key('f',{},dialog).defaultPrevented).toBe(false);
+  for(const extra of [{ctrlKey:true},{metaKey:true},{altKey:true},{isComposing:true}]) expect(key('f',extra).defaultPrevented).toBe(false);
+  hit.mockReturnValue(dialog);expect(key('f').defaultPrevented).toBe(false);hit.mockReturnValue(canvas);
+  window.dispatchEvent(new PointerEvent('pointerdown',{buttons:1}));expect(key('f').defaultPrevented).toBe(false);
+  window.dispatchEvent(new PointerEvent('pointercancel'));expect(key('f').defaultPrevented).toBe(false);
+  expect(actions.focus).not.toHaveBeenCalled();hover();key('f');expect(actions.focus).toHaveBeenCalledOnce();
 });
 it('ignores typing, composition and browser shortcuts without consuming the key',()=>{
   const {hover,key,actions}=setup();hover();
