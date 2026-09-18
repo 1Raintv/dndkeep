@@ -3,6 +3,26 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Confirmed token-menu saves, v2.718
+
+Token edits, deletion and duplication now wait for the API's boolean success
+before changing local state. The menu stays open with disabled actions while
+saving, blocks overlapping requests and reports failure with a retryable menu.
+False results and exceptions both fail; unsuccessful duplication no longer leaves
+a phantom token. Late results cannot inject tokens into a different scene, and
+existing realtime duplicate metadata is preserved. Errors after unmount use a toast.
+
+Placement-backed locking/control reassignment now explains that those fields are
+unsupported rather than pretending they persisted. Placement renames require a
+real placement lookup and a returned identity row; zero-row renames fail.
+
+Validation: full release gate passed (882 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Four desktop/mobile browser checks
+passed, including a rejected edit, a real local-DB retry and fixture restoration,
+plus existing keyboard/menu navigation. Unit coverage includes pending/double
+clicks, false/throw failures, retry, deletion, duplicate failure, scene changes,
+unsupported fields and zero-row renames. No migrations or permission changes.
+
 ### 2026-09-18 — Keyboard-accessible token actions, v2.717
 
 Clickable token-menu rows and color swatches are native buttons with visible

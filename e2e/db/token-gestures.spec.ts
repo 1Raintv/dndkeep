@@ -31,6 +31,39 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('failed token edits stay visible and can be retried',async({page},info)=>{
+    await openMap(page);
+    const token=Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell') as any;
+    const old=token.rotation??0,next=old===90?270:90,label=next===90?'East':'West';
+    const p=await page.evaluate(id=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
+    },token.id);
+    const menu=page.getByRole('region',{name:'Token options',exact:true});
+    await page.mouse.click(p.x,p.y,{button:'right'});
+    await menu.getByRole('button',{name:'Facing ▸',exact:true}).click();
+    const pattern='**/rest/v1/scene*';let writes=0;
+    await page.route(pattern,async route=>{
+      if(route.request().method()==='PATCH'){writes++;await route.fulfill({status:200,contentType:'application/json',body:'[]'});}else await route.continue();
+    });
+    await menu.getByRole('button',{name:new RegExp(`^[←→] ${label}`)}).click();
+    await expect(menu.getByRole('alert')).toContainText('Save token failed');
+    expect(writes).toBe(1);expect((await state(page)).tokens[token.id].rotation??0).toBe(old);
+    await page.screenshot({path:info.outputPath('token-save-failed.png')});
+    await page.unroute(pattern);
+    try {
+      await menu.getByRole('button',{name:new RegExp(`^[←→] ${label}`)}).click();
+      await expect(menu).toBeHidden();await expect.poll(async()=>(await state(page)).tokens[token.id].rotation).toBe(next);
+    }finally {
+      const restored=await page.evaluate(async({id,rotation})=>{
+        const apiPath='/src/lib/api/tokensApiRouter.ts',storePath='/src/lib/stores/battleMapStore.ts';
+        const api=await import(/* @vite-ignore */ apiPath),{useBattleMapStore}=await import(/* @vite-ignore */ storePath);
+        const ok=await api.updateToken(id,{rotation},{campaignId:'22222222-2222-2222-2222-222222222222'});
+        if(ok)useBattleMapStore.getState().updateTokenFields(id,{rotation});return ok;
+      },{id:token.id,rotation:old});expect(restored).toBe(true);
+    }
+  });
   test('token options and submenus stay inside the screen',async({page},info)=>{
     test.setTimeout(60_000); // Four submenu loops plus a viewport resize exercise the real WebGL map.
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
