@@ -31,6 +31,34 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('inline rename keeps typing and cancel inside the map menu',async({page},info)=>{
+    await openMap(page);
+    const before=(await state(page)).tokens;
+    const token=Object.values(before).find((t:any)=>t.name==='Ilyana Vell') as any;
+    const point=await page.evaluate(id=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
+    },token.id);
+    await page.mouse.click(point.x,point.y,{button:'right'});
+    const menu=page.getByRole('region',{name:'Token options',exact:true});
+    await menu.getByRole('button',{name:'Rename…',exact:true}).click();
+    const input=menu.getByLabel('Token name');await expect(input).toBeFocused();await expect(input).toHaveValue(token.name);
+    await input.fill('   ');await expect(menu.getByRole('button',{name:'Save name'})).toBeDisabled();
+    await input.fill('New map marker + 0');
+    await page.route('**/rest/v1/**',async route=>{
+      if(route.request().method()==='PATCH')await route.fulfill({status:200,contentType:'application/json',body:'[]'});
+      else await route.continue();
+    });
+    await input.press('Enter');await expect(menu.getByRole('alert')).toContainText('Save token failed');
+    await expect(input).toHaveValue('New map marker + 0');
+    await expect.poll(()=>menu.evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=7&&r.top>=7&&r.right<=innerWidth-7&&r.bottom<=innerHeight-7;})).toBe(true);
+    await page.screenshot({path:info.outputPath('token-rename.png')});
+    await menu.getByRole('button',{name:'Cancel',exact:true}).click();
+    await menu.getByRole('button',{name:'Rename…',exact:true}).click();await expect(input).toHaveValue(token.name);
+    await input.press('Escape');await expect(menu).toBeHidden();await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
+    expect((await state(page)).tokens).toEqual(before);
+  });
   test('failed token edits stay visible and can be retried',async({page},info)=>{
     await openMap(page);
     const token=Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell') as any;

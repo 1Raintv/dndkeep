@@ -3,6 +3,20 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Rename directly in token options, v2.719
+
+Token renaming now uses a focused, prefilled input inside the token menu instead
+of a competing modal. Enter saves; Cancel/Back return to options; Escape closes
+the menu without exiting the fullscreen map. Blank names cannot submit, whitespace
+is trimmed, and failed saves retain the draft for retry. Existing confirmed-save
+handling still prevents overlapping writes and premature local changes.
+
+Validation: release gate passed (884 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile browser checks cover
+prefill, focus, blank names, rejected Enter saves, retained drafts, cancel and
+Escape, with unchanged fixture tokens. Screenshots inspected; no new rename-menu
+clipping or sideways scroll. No schema changes. Personal encounter mode stays queued.
+
 ### 2026-09-18 — Confirmed token-menu saves, v2.718
 
 Token edits, deletion and duplication now wait for the API's boolean success
