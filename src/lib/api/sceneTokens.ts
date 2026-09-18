@@ -202,20 +202,20 @@ export async function updateToken(
   // so this checks `!== undefined` rather than truthiness.
   if (patch.lightColor !== undefined) (dbPatch as any).light_color = patch.lightColor;
   dbPatch.updated_at = new Date().toISOString();
-  const { error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id);
+  const { data, error } = await supabase.from('scene_tokens').update(dbPatch).eq('id', id).select('id').maybeSingle();
   if (error) {
     console.error('[sceneTokens] updateToken failed', error);
     return false;
   }
-  return true;
+  return !!data;
 }
 
 /** Delete a token. RLS ensures only DMs can delete. */
 export async function deleteToken(id: string): Promise<boolean> {
-  const { error } = await supabase.from('scene_tokens').delete().eq('id', id);
+  const { data, error } = await supabase.from('scene_tokens').delete().eq('id', id).select('id').maybeSingle();
   if (error) {
     console.error('[sceneTokens] deleteToken failed', error);
     return false;
   }
-  return true;
+  return !!data;
 }

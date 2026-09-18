@@ -353,11 +353,11 @@ export async function updatePlacement(
   if (patch.lightColor !== undefined) placementPatch.light_color = patch.lightColor;
 
   if (Object.keys(placementPatch).length > 0) {
-    const { error } = await db
+    const { data, error } = await db
       .from('scene_token_placements')
       .update(placementPatch)
-      .eq('id', id);
-    if (error) {
+      .eq('id', id).select('id').maybeSingle();
+    if (error || !data) {
       console.error('[scenePlacements] updatePlacement: placement update failed', error);
       return false;
     }
@@ -393,12 +393,12 @@ export async function updatePlacement(
  *  persist beyond a single placement (they may be on other scenes or
  *  in combat encounters). RLS ensures only the scene owner can delete. */
 export async function deletePlacement(id: string): Promise<boolean> {
-  const { error } = await db.from('scene_token_placements').delete().eq('id', id);
+  const { data, error } = await db.from('scene_token_placements').delete().eq('id', id).select('id').maybeSingle();
   if (error) {
     console.error('[scenePlacements] deletePlacement failed', error);
     return false;
   }
-  return true;
+  return !!data;
 }
 
 /** Read the campaign's use_combatants_for_battlemap feature flag.

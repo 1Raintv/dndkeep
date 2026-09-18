@@ -106,7 +106,8 @@ export function ViewportHost(props: {
     resizeRenderer();
     window.addEventListener('resize',resizeRenderer);
     viewport.resize(screenWidth, screenHeight, worldWidth, worldHeight);
-    viewport.clampZoom({ minScale: Math.min(0.25, screenWidth / worldWidth * 0.8, screenHeight / worldHeight * 0.8), maxScale: 4 });
+    // v2.710 — resizing must preserve a clear-space fitted scale below the old floor.
+    viewport.clampZoom({ minScale: Math.min(viewport.scale.x,0.25, screenWidth / worldWidth * 0.8, screenHeight / worldHeight * 0.8), maxScale: 4 });
     viewport.moveCenter(center.x, center.y);
     return ()=>window.removeEventListener('resize',resizeRenderer);
   }, [viewport, screenWidth, screenHeight, worldWidth, worldHeight, pixiApp]);
