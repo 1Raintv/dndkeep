@@ -59,11 +59,23 @@ test.describe('token gestures (local stack)', () => {
       await expect(menu.getByText('Delete',{exact:true})).toBeInViewport();
       await page.screenshot({path:info.outputPath(`token-options-${size.width}.png`)});
       await menu.getByText('☀ Light ▸',{exact:true}).click();await assertBounds();
+      const back=menu.getByRole('button',{name:'Back to token options',exact:true});
+      await expect(back).toBeFocused();
       await menu.getByText(/^Daylight/).scrollIntoViewIfNeeded();
       await expect(menu.getByText(/^Daylight/)).toBeInViewport();
       await page.screenshot({path:info.outputPath(`token-light-${size.width}.png`)});
+      await back.press('Enter');await expect(menu.getByText('Rename…',{exact:true})).toBeVisible();
+      for(const label of ['Resize ▸','Recolor ▸','Facing ▸']) {
+        await menu.getByText(label,{exact:true}).click();await assertBounds();
+        await expect(back).toBeFocused();await back.click();
+        await expect(menu.getByText('Rename…',{exact:true})).toBeVisible();
+      }
       await page.keyboard.press('Escape');await expect(menu).toBeHidden();
       await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
+      await page.mouse.click(point.x,point.y,{button:'right'});await assertBounds();
+      // A touch pointer need not generate a compatibility mousedown.
+      await page.locator('.map-navigation').dispatchEvent('pointerdown',{pointerType:'touch',pointerId:91,bubbles:true});
+      await expect(menu).toBeHidden();
     }
     expect((await state(page)).tokens).toEqual(before);expect(errors).toEqual([]);
   });
