@@ -9,6 +9,7 @@ import { showTokenDetail, tokenNameScale } from './tokenDetail';
 import { Assets, ColorMatrixFilter, Container, FederatedPointerEvent, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useEffect, useRef } from 'react';
+import {dragPreviewStyle} from './dragPreviewStyle';
 import { useToast } from '../../shared/Toast';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
@@ -655,9 +656,10 @@ export function TokenLayer(props: {
           const tid = (container as any).__tokenId as string;
           // v2.216: refuse to start drag if a different user is
           // currently dragging this token (stale lock from their
-          // in-flight drag). Silently ignore the press — no toast yet.
+          // in-flight drag). Explain the temporary lock without moving it.
           const locks = useBattleMapStore.getState().remoteDragLocks;
           if (locks[tid] && locks[tid] !== currentUserId) {
+            showToast('Another player is moving this token. Wait for them to finish.','info');
             return;
           }
           const t = useBattleMapStore.getState().tokens[tid];
@@ -714,22 +716,22 @@ export function TokenLayer(props: {
                 const activeTok = ati!.tokenId != null ? tokens[ati!.tokenId] : undefined;
                 const ownerTokenActive = !!activeTok
                   && !!activeTok.characterId && activeTok.characterId === myCid;
-                if (!ownerTokenActive) return;
+                if (!ownerTokenActive) {showToast('Move this companion during your character’s turn.','info');return;}
               }
             } else {
               // ── PC / DM-granted path (pre-v2.617 behavior) ──────
-              // Outside combat: refuse silently.
-              if (!inCombat) return;
+              // Outside combat: explain the setup-only DM control.
+              if (!inCombat) {showToast('Only the DM can move this token outside combat.','info');return;}
 
               // Must own this token (PC characterId match OR DM grant).
               const ownsByCharacter = !!t.characterId && t.characterId === myCid;
               const grantedByDM = !!(t as any).playerId && (t as any).playerId === currentUserId;
-              if (!ownsByCharacter && !grantedByDM) return;
+              if (!ownsByCharacter && !grantedByDM) {showToast('You do not control this token. Ask the DM for control.','info');return;}
 
               // Must be this token's active turn with movement left.
               const isThisTokenActive = ati!.tokenId === tid;
               const movementRemaining = Math.max(0, ati!.max - ati!.used);
-              if (!isThisTokenActive || movementRemaining <= 0) return;
+              if (!isThisTokenActive || movementRemaining <= 0) {showToast(!isThisTokenActive?'Wait for this token’s turn to move.':'This token has no movement remaining.','info');return;}
             }
           } else {
             // ── DM PATH ───────────────────────────────────────────
@@ -741,7 +743,7 @@ export function TokenLayer(props: {
               // combat (or until re-locked).
               const isThisTokenActive = ati!.tokenId === tid;
               const movementRemaining = Math.max(0, ati!.max - ati!.used);
-              if (!isThisTokenActive || movementRemaining <= 0) return;
+              if (!isThisTokenActive || movementRemaining <= 0) {showToast(!isThisTokenActive?'This token is locked until its turn.':'This locked token has no movement remaining.','info');return;}
             }
             // else: in-combat unlocked, OR out-of-combat → allow.
           }
@@ -2096,6 +2098,7 @@ export function TokenLayer(props: {
     // show the path (for distance reference) but skip color-grading
     // since there's no budget to compare against — a soft white line.
     const previewGfx = new Graphics();
+    previewGfx.label='token-drag-preview';
     previewGfx.eventMode = 'none';
     previewGfx.visible = false;
     viewport.addChild(previewGfx);
@@ -2110,6 +2113,7 @@ export function TokenLayer(props: {
         align: 'center',
       }),
     });
+    previewLabel.label='token-drag-distance';
     previewLabel.anchor.set(0.5, 1);
     previewLabel.eventMode = 'none';
     previewLabel.visible = false;
@@ -2230,6 +2234,7 @@ export function TokenLayer(props: {
         costLabel = `${distanceFt} ft  ·  ${remaining - distanceFt >= 0 ? remaining - distanceFt : 0} left`;
       }
 
+      const previewStyle=dragPreviewStyle(viewport!.scale.x);
       // Draw: dashed line from origin → snapped cursor + small square
       // marker at the destination. PIXI v8 has no native dashed-line
       // helper, so we manually segment the line with `moveTo / lineTo`
@@ -2258,9 +2263,9 @@ export function TokenLayer(props: {
       if (len > 1) {
         const nx = dx / len;
         const ny = dy / len;
-        const dashOn = 8;
-        const dashOff = 6;
-        previewGfx.setStrokeStyle({ color: lineColor, width: 3, alpha: 0.85 });
+        const dashOn = previewStyle.dash;
+        const dashOff = previewStyle.gap;
+        previewGfx.setStrokeStyle({ color: lineColor, width: previewStyle.stroke, alpha: 0.85 });
         let traveled = 0;
         while (traveled < len) {
           const segStart = traveled;
@@ -2309,21 +2314,34 @@ export function TokenLayer(props: {
       const dragEvenSize = dragFootCells % 2 === 0 && !!draggedToken;
       const markX = dragEvenSize ? tx + 2 : tx - mark / 2;
       const markY = dragEvenSize ? ty + 2 : ty - mark / 2;
-      previewGfx.setStrokeStyle({ color: lineColor, width: 2, alpha: 0.9 });
-      previewGfx.roundRect(markX, markY, mark, mark, 4);
-      previewGfx.stroke();
+      // v2.720 — a faint origin and filled landing footprint distinguish
+      // where the move began from the exact snapped destination.
+      previewGfx.roundRect(markX+originX-tx,markY+originY-ty,mark,mark,4)
+        .stroke({color:0xffffff,width:previewStyle.stroke,alpha:0.3});
+      previewGfx.roundRect(markX,markY,mark,mark,4)
+        .fill({color:lineColor,alpha:0.12})
+        .stroke({color:0x0a0c10,width:previewStyle.stroke*2,alpha:0.9});
+      previewGfx.roundRect(markX,markY,mark,mark,4)
+        .stroke({color:lineColor,width:previewStyle.stroke,alpha:0.95});
 
       previewGfx.visible = true;
 
-      // Label sits just above the destination cell. Keeping it in
-      // world space (not screen space) means it rides the viewport
-      // zoom — readable at 1x, hugs the cell at 4x. Acceptable.
-      previewLabel.text = costLabel;
+      // v2.720 — follow the destination while counter-scaling the
+      // label, so zooming out never shrinks it into unreadable text.
+      previewLabel.text = `${costLabel}  ·  Grid snap`;
+      previewLabel.scale.set(previewStyle.labelScale);
       (previewLabel.style as TextStyle).fill = labelColor;
       // v2.435.0 — Label sits above the marker's TOP edge.
-      const labelY = dragEvenSize ? markY - 4 : ty - mark / 2 - 4;
+      const labelY = markY - previewStyle.padding;
       const labelX = dragEvenSize ? tx + (dragFootCells * gridSizePx) / 2 : tx;
-      previewLabel.position.set(labelX, labelY);
+      // Keep the distance readable at the canvas edges too.
+      const screen=viewport!.toScreen(labelX,labelY);
+      const halfWidth=previewLabel.width*viewport!.scale.x/2;
+      const height=previewLabel.height*viewport!.scale.y;
+      const clamped=viewport!.toWorld(
+        Math.max(halfWidth+8,Math.min(viewport!.screenWidth-halfWidth-8,screen.x)),
+        Math.max(height+8,Math.min(viewport!.screenHeight-8,screen.y)));
+      previewLabel.position.set(clamped.x,clamped.y);
       previewLabel.visible = true;
     }
 
