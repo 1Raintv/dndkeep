@@ -1,3 +1,4 @@
+import {beginTokenMove} from './pendingTokenMoves';
 import type { TokenMove } from '../../../lib/map/tokenMoveHistory';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
@@ -6,6 +7,9 @@ import * as tokensApi from '../../../lib/api/tokensApiRouter';
  * to their origins; successful members remain available as one undo action. */
 export async function commitTokenGroup(moves: TokenMove[], campaignId: string, current: () => boolean,
   broadcast?: (id: string,x: number,y: number) => void) {
+  const release=beginTokenMove(moves.map(m=>m.id));
+  if(!release)return {saved:[],failed:true};
+  try {
   const saved: TokenMove[]=[];
   for (const move of moves) {
     if (current()) useBattleMapStore.getState().updateTokenPosition(move.id,move.to.x,move.to.y);
@@ -31,4 +35,5 @@ export async function commitTokenGroup(moves: TokenMove[], campaignId: string, c
     }
   }
   return {saved,failed};
+  }finally{release();}
 }

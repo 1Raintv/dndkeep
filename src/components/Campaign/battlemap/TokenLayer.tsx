@@ -1,3 +1,4 @@
+import {beginTokenMove,isTokenMovePending} from './pendingTokenMoves';
 import { tokenMoveHistory } from './tokenMoveHistory';
 import { showTokenDetail, tokenNameScale } from './tokenDetail';
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 4).
@@ -397,7 +398,6 @@ export function TokenLayer(props: {
   // movement against blocking walls (segment from origin → snapped
   // drop point shouldn't intersect any wall with blocksMovement=true).
   // Captured at drag start; never mutated during the drag.
-  const pendingMoves=useRef(new Set<string>());
   const dragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number; originX: number; originY: number } | null>(null);
 
   // v2.256.0 — Lock-ring pulse animation. A single rAF walks every
@@ -672,7 +672,7 @@ export function TokenLayer(props: {
           if (event.button !== 0) return;
           event.stopPropagation();
           const tid = (container as any).__tokenId as string;
-          if(pendingMoves.current.has(tid)){showToast('Saving this token’s move. Please wait.','info');return;}
+          if(isTokenMovePending(tid)){showToast('Saving this token’s move. Please wait.','info');return;}
           // v2.216: refuse to start drag if a different user is
           // currently dragging this token (stale lock from their
           // in-flight drag). Explain the temporary lock without moving it.
@@ -2707,11 +2707,12 @@ export function TokenLayer(props: {
             onDragMove?.(drag.id,drag.originX,drag.originY);
           };
           // v2.721 — serialize local drags until validation and save settle.
-          pendingMoves.current.add(drag.id);
+          const releasePendingMove=beginTokenMove([drag.id]);
           const saving=new Text({text:'Saving move…',resolution:2,style:{fontFamily:'sans-serif',fontSize:13,fontWeight:'800',fill:0xe4bd69,stroke:{color:0x0a0c10,width:3}}});
           saving.label='token-move-saving';saving.eventMode='none';saving.anchor.set(.5,1);
           saving.scale.set(1/viewport!.scale.x);saving.position.set(clampedX,clampedY-gridSizePx);viewport!.addChild(saving);
           const commit = async () => {
+            if(!releasePendingMove){showToast('Saving this token’s move. Please wait.','info');return;}
             if (enforceMove) {
               const check = await canMove(ati!.participantId!, distanceFt);
               if (!check.allowed) {
@@ -2813,7 +2814,7 @@ export function TokenLayer(props: {
               }], props.campaignId));
             }
           };
-          commit().catch(()=>{restoreFailedDrop();showToast('Move could not be saved. Please try again.','error');}).finally(()=>{pendingMoves.current.delete(drag.id);if(!saving.destroyed)saving.destroy();});
+          commit().catch(()=>{restoreFailedDrop();showToast('Move could not be saved. Please try again.','error');}).finally(()=>{releasePendingMove?.();if(!saving.destroyed)saving.destroy();});
         }
       }
       // v2.340.0 — always clear the preview overlay on pointerup.

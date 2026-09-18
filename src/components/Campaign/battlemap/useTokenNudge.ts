@@ -1,3 +1,4 @@
+import {isTokenMovePending} from './pendingTokenMoves';
 import { useCallback, useEffect, useRef } from 'react';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import type { UndoableAction } from '../../../lib/hooks/useUndoRedo';
@@ -25,6 +26,8 @@ export function useTokenNudge({ blocked, selectedIds, gridSize, width, height, c
       const store = useBattleMapStore.getState();
       const tokens = [...selectedIds].map(id => store.tokens[id]);
       if (store.dragging || tokens.some(t => !t || store.remoteDragLocks[t.id])) return;
+
+      if(tokens.some(t=>isTokenMovePending(t.id))){showToast('A selected token is still saving. Please wait.','info');return;}
 
       // Stop the whole formation at an edge instead of squeezing its members.
       if (tokens.some(t => {
