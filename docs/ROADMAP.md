@@ -3,6 +3,33 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Group move feedback and crowded names, v2.721
+
+Group dragging outlines every original and snapped destination footprint, with
+a zoom-stable token count/distance/Grid snap label. Dropping shows Saving group
+move until the existing partial-success save path finishes. Cancel, scene teardown
+and completion clear the overlay. Group permissions, shared grid delta and undo
+semantics are preserved.
+
+Single-token drops show Saving move while validation/persistence settle and block
+another single-token drag of that token during the pending request. Existing
+rejection feedback and origin restoration remain; save badges clear on completion
+and viewport teardown.
+
+Crowded names yield to token bodies, HP bars, conditions and status indicators.
+Active/selected names take priority over other names; deterministic selection
+prevents order-dependent flicker. Layout runs at most ten times a second and names
+return when clear space opens. HP/status visibility and token hit areas are unchanged.
+
+Validation: release gate passed (896 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Six desktop/mobile browser checks passed;
+coverage
+checks pending/rejected saves, second-drag blocking, group previews and multiplayer
+cancel/undo/reconnect, plus colliding and separated names. Removing collision
+filtering fails two regression cases. Screenshots inspected; shared overflow checks
+found no sideways scrolling or new control clipping (existing underlying map/sidebar
+findings remain). No schema changes; personal play stays queued.
+
 ### 2026-09-18 — Readable token drag feedback, v2.720
 
 Single-token drag distance text, dashed paths and destination outlines now retain

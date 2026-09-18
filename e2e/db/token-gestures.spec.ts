@@ -31,6 +31,51 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('crowded token names yield and return when separated',async({page},info)=>{
+    await openMap(page);
+    const tokens=Object.values((await state(page)).tokens).filter((t:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name)) as any[];
+    await page.evaluate(async ids=>{
+      const path='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ path);
+      // Isolate the two names: the fixture's Gargantuan boss would otherwise
+      // correctly suppress a name that overlaps its footprint after separation.
+      const store=useBattleMapStore.getState();useBattleMapStore.setState({tokens:Object.fromEntries(ids.map(id=>[id,store.tokens[id]]))});
+      for(const id of ids)useBattleMapStore.getState().updateTokenPosition(id,1505,945);
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);vp.setZoom(1,true);vp.moveCenter(1505,945);
+    },tokens.map(t=>t.id));
+    const visible=()=>page.evaluate(ids=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const containers=vp.children.flatMap((c:any)=>c.children??[]).filter((c:any)=>ids.includes(c.__tokenId));
+      return containers.flatMap((c:any)=>c.children.filter((n:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(n.text)&&n.visible&&n.renderable)).length;
+    },tokens.map(t=>t.id));
+    await expect.poll(visible).toBe(1);await page.screenshot({path:info.outputPath('crowded-names.png')});
+    await page.evaluate(async id=>{const path='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ path);useBattleMapStore.getState().updateTokenPosition(id,1715,945);(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins).moveCenter(1610,945);},tokens[1].id);
+    await expect.poll(visible).toBe(2);await page.screenshot({path:info.outputPath('separated-names.png')});
+  });
+  test('pending token saves block another drag and rejected drops restore the origin',async({page},info)=>{
+    await openMap(page);
+    const token=Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell') as any;
+    const point=async()=>page.evaluate(id=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y,scale:vp.scale.x};
+    },token.id);
+    let release!:()=>void;const pending=new Promise<void>(r=>release=r);let writes=0;
+    await page.route('**/rest/v1/scene*',async route=>{
+      if(route.request().method()==='PATCH'){writes++;await pending;await route.fulfill({status:200,contentType:'application/json',body:'[]'});}else await route.continue();
+    });
+    try {
+      const p=await point();await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+70*p.scale,p.y+70*p.scale,{steps:5});await page.mouse.up();
+      await expect.poll(()=>writes).toBe(1);
+      const saving=()=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return vp.children.some((c:any)=>c.label==='token-move-saving' && c.visible);});
+      await expect.poll(saving).toBe(true);
+      await page.screenshot({path:info.outputPath('token-saving.png')});
+      const moved=await point();await page.mouse.move(moved.x,moved.y);await page.mouse.down();await page.mouse.move(moved.x+20,moved.y+20);await page.mouse.up();
+      await expect(page.getByText('Saving this token’s move. Please wait.')).toBeVisible();expect(writes).toBe(1);
+      release();await expect.poll(saving).toBe(false);
+      await expect.poll(async()=>{const t=(await state(page)).tokens[token.id];return {x:t.x,y:t.y};}).toEqual({x:token.x,y:token.y});
+      await expect(page.getByText('Move could not be saved. Your token was returned and no movement was spent.')).toBeVisible();
+    }finally{release();}
+  });
   test('drag destination and distance stay readable at different zooms',async({page},info)=>{
     await openMap(page);
     const before=(await state(page)).tokens;
@@ -570,6 +615,12 @@ test.describe('token gestures (local stack)', () => {
         await page.mouse.move(box.x+point.x,box.y+point.y);
         await page.mouse.down();
         await page.mouse.move(box.x+point.x,box.y+point.y+70*point.scale,{steps:6});
+        await expect.poll(()=>page.evaluate(()=>{
+          const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+          const label=vp.children.find((c:any)=>c.label==='group-drag-distance');
+          return label?.visible?label.text:'';
+        })).toBe('2 tokens · 5 ft · Grid snap');
+        await page.screenshot({path:info.outputPath(`group-preview-${cancel}.png`)});
         for(const token of tokens) {
           await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBeCloseTo(token.y+70,2);
           await expect.poll(async()=>{const s=await state(peer);return s.locks;}).toHaveProperty(token.id);
