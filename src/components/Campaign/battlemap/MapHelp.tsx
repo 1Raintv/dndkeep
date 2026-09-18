@@ -1,4 +1,5 @@
 import {useEffect,useRef} from 'react';
+import {GridAppearanceControls} from './GridAppearanceControls';
 
 /** v2.702 — instructions are available on demand instead of covering the map. */
 export function MapHelp() {
@@ -21,9 +22,10 @@ export function MapHelp() {
   return <details ref={ref} className="map-help" onKeyDown={event=>{
     if(event.key==='Escape') {event.stopPropagation();ref.current!.open=false;ref.current!.querySelector('summary')?.focus();}
   }}>
-    <summary aria-label="Map controls"><span aria-hidden="true">?</span></summary>
+    <summary aria-label="Map controls" title="Map controls and grid appearance"><span aria-hidden="true">?</span></summary>
     <div className="map-help-panel" role="region" aria-label="Map controls help">
       <strong>Map controls</strong>
+      <GridAppearanceControls/>
       <p>Use Select to move tokens. Switch to Pan to explore without moving them.</p>
       <dl>
         <dt>Pan temporarily</dt><dd>Hold <kbd>Space</kbd> and drag</dd>

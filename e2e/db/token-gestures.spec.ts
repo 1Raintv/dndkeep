@@ -31,6 +31,48 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('live grid controls restyle in place and survive reload',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const before=(await state(page)).tokens;
+    const writes:string[]=[];page.on('request',r=>{if(r.method()==='PATCH' && /rest\/v1\/(scenes|scene_tokens|scene_token_placements)/.test(r.url()))writes.push(r.url());});
+    const grid=()=>page.evaluate(()=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const g=vp.children.find((c:any)=>c.label==='map-grid');
+      return {id:g.uid,index:vp.getChildIndex(g),alpha:g.alpha,
+        colors:g.context.instructions.filter((i:any)=>i.action==='stroke').map((i:any)=>i.data.style.color)};
+    });
+    const original=await grid();expect(original.id).toBeDefined();
+    await page.getByLabel('Map controls',{exact:true}).click();
+    await page.getByLabel('Grid color',{exact:true}).selectOption('light');
+    await page.getByLabel('Grid opacity',{exact:true}).fill('30');
+    await expect.poll(async()=>(await grid()).alpha).toBe(.3);
+    expect((await grid()).colors).toContain(0xe2e8f0);
+    await page.getByLabel('Stronger lines every 5 cells').uncheck();
+    await expect.poll(async()=>(await grid()).colors.length).toBe(2);
+    expect((await grid()).id).toBe(original.id);expect((await grid()).index).toBe(original.index);
+    const panel=await page.getByRole('region',{name:'Map controls help'}).evaluate(el=>{
+      const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,width:visualViewport!.width,overflow:el.scrollWidth>el.clientWidth};
+    });
+    expect(panel.left).toBeGreaterThanOrEqual(0);expect(panel.right).toBeLessThanOrEqual(panel.width);
+    expect(panel.top).toBeGreaterThanOrEqual(8);expect(panel.overflow).toBe(false);
+    await page.screenshot({path:info.outputPath('grid-controls.png')});
+    await page.getByLabel('Grid opacity',{exact:true}).fill('0');await expect.poll(async()=>(await grid()).alpha).toBe(0);
+    await page.getByLabel('Grid opacity',{exact:true}).fill('30');
+    await page.keyboard.press('Escape');await page.screenshot({path:info.outputPath('grid-light.png')});
+    expect((await state(page)).tokens).toEqual(before);expect(writes).toEqual([]);
+    await page.reload();await page.getByText('Local Test Campaign',{exact:true}).locator('visible=true').first().click();
+    await page.locator('select').filter({has:page.locator('option',{hasText:'Ruined Keep (fixture)'})}).selectOption({label:'Ruined Keep (fixture)'});
+    // Fullscreen is itself saved, so reload restores it along with grid preferences.
+    await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
+    await page.getByLabel('Map controls',{exact:true}).click();
+    await expect(page.getByLabel('Grid color',{exact:true})).toHaveValue('light');await expect(page.getByLabel('Grid opacity',{exact:true})).toHaveValue('30');
+    await expect.poll(async()=>(await grid()).alpha).toBe(.3);expect((await grid()).colors).toHaveLength(2);
+    await page.getByLabel('Grid color',{exact:true}).selectOption('dark');await expect.poll(async()=>(await grid()).colors[1]).toBe(0x111827);
+    await page.getByRole('button',{name:'Reset grid appearance'}).click();
+    await expect.poll(async()=>(await grid()).alpha).toBe(1);expect((await grid()).colors).toHaveLength(3);
+    expect(errors).toEqual([]);
+  });
   test('token portraits keep their rim and overview labels follow selection',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
@@ -97,6 +139,7 @@ test.describe('token gestures (local stack)', () => {
       const width=visualViewport!.width;
       return [...nav.querySelectorAll('button,summary')].filter(el=>{
         const r=el.getBoundingClientRect();
+        if(!r.width || !r.height)return false;
         return r.left<0 || r.right>width+1 || !el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
       }).map(el=>el.textContent);
     });

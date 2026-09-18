@@ -1,0 +1,8 @@
+.grid-appearance {border:0;border-top:1px solid #55515f;padding:14px 0 0;margin:16px 0 0;min-width:0}
+.grid-appearance legend {font-size:15px;font-weight:700;color:#f0d59c;padding-top:12px}
+.grid-appearance label {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;color:#d9d8e2}
+.grid-appearance select {flex:1;min-width:0;width:auto;max-width:100%;min-height:40px;padding:6px;background:#292a36;color:#ece9df;border:1px solid #696477;border-radius:6px;font:inherit}
+.grid-appearance input[type=range] {width:100%;padding:0;height:24px;accent-color:#e4bd69}
+.grid-appearance input[type=checkbox] {width:18px;height:18px;flex:0 0 18px;padding:0;accent-color:#e4bd69}
+.grid-appearance output {margin-left:auto;font-variant-numeric:tabular-nums}
+.grid-appearance p {font-size:11px;color:#aaa7b7;margin-bottom:0}

@@ -31,6 +31,7 @@
 .map-history-controls { border-color:#44434f; }
 .map-help summary { width:38px; height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer; list-style:none; border-radius:8px; color:#d5c8aa; }
 .map-help summary::-webkit-details-marker { display:none; }
+.map-help:not([open]) .map-help-panel { display:none; }
 .map-help summary span { border:1px solid currentColor; width:19px; height:19px; border-radius:50%; text-align:center; line-height:18px; font-weight:700; }
 .map-help summary:hover,.map-help[open] summary { background:#3b3743; color:#f2d697; }
 .map-help summary:focus-visible { outline:2px solid #e4bd69; outline-offset:1px; }

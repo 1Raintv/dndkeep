@@ -3,6 +3,27 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Live grid appearance, v2.708
+
+The map controls menu now offers Classic, Light and Dark grid colors, opacity
+from 0–100%, stronger five-cell lines and a reset button. Preferences survive
+reload on this device and affect only that viewer. The existing classic style
+is the default; hiding lines does not disable snapping. No database changes.
+
+Restyling retains the existing Pixi grid object and layer order; opacity changes
+only its alpha, avoiding geometry rebuilds. Removed the obsolete duplicate color
+constants. Closed help panels explicitly hide their controls from layout.
+
+Validation covers preference parsing, actual rendered stroke colors/alpha,
+stable layer order, unchanged tokens and zero scene writes, reload persistence,
+reset, and desktop/mobile panel bounds. Disabling the alpha binding makes the
+new browser regression fail (expected 0.3, received 1). Screenshots inspected;
+the shared overflow probe reports no sideways page scroll or new panel clipping,
+with existing underlying sidebar/map clipping still reported. User testing deferred.
+Release gate passed: 859 unit tests, seven runner tests, TypeScript 221/221,
+hooks, RAW/coords/anchors, build and 252.4 KB entry. All 18 desktop/mobile map
+gesture and player-combat browser checks passed, including landscape help.
+
 ### 2026-09-18 — Artwork preview and proportional sizing, v2.707
 
 Upload Map now opens a local preview before any upload. Fit inside preserves the
@@ -15,7 +36,7 @@ The prepared image is saved as WebP (quality 94), bounded to a 4096px edge and
 approximately eight million pixels, within the existing 5 MB upload limit.
 Animated inputs become still frames. Padding/crop is baked into the saved image,
 so the existing renderer and older clients need no new schema or fit metadata;
-existing artwork is unaffected. Live-map grid opacity remains a separate task.
+existing artwork is unaffected. Live-map grid opacity followed in v2.708.
 
 The scene path changes only after an update returns a row. A failed scene save
 keeps the uploaded path for Retry; cancellation or changing the preparation
