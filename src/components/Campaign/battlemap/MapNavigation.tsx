@@ -65,7 +65,6 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       bottom:Math.min(viewport!.screenHeight-12,dock ? dock.top-rect.top-12 : viewport!.screenHeight-12),
     };
   };
-  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport)chooseZoom(viewport.scale.x*factor);},fit});
   const focus = () => {
     if (!viewport || !canvas) return;
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
@@ -77,6 +76,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     viewport.moveCenter(frame.x,frame.y);
     setZoom(Math.round(frame.zoom*100));
   };
+  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport)chooseZoom(viewport.scale.x*factor);},fit,focus:selectedIds.size ? focus : undefined});
 
   useEffect(() => {
     if (!canvas || !viewport) return;
@@ -199,7 +199,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       <button type="button" aria-label="Zoom in" onClick={()=>viewport && chooseZoom(viewport.scale.x*1.2)}>+</button>
     </div>
     <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
-    <button type="button" onClick={focus} disabled={!selectedIds.size} title="Bring all selected tokens into view"><MapControlIcon kind="focus"/>Find selection</button>
+    <button type="button" onClick={focus} disabled={!selectedIds.size} title="Bring all selected tokens into view (F over the map)"><MapControlIcon kind="focus"/>Find selection</button>
     <MapHelp />
     {history && <MapHistoryControls history={history} />}
   </div>;

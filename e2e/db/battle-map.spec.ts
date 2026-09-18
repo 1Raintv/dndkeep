@@ -147,6 +147,15 @@ test.describe('battle map (local stack)', () => {
     await page.mouse.click(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10);
     await expect(navigation.getByRole('button', { name: 'Find selection' })).toBeEnabled();
     await navigation.getByRole('button', { name: 'Find selection' }).click();
+    // v2.724 — keyboard framing matches the button after moving the camera away.
+    const selectionCamera=await readCamera();
+    await page.evaluate(()=>{const vp=(window as any).__NAV_TEST_VP;vp.moveCenter(vp.center.x+300,vp.center.y+200);});
+    await page.mouse.move(currentBounds.x+currentBounds.width/2,currentBounds.y+currentBounds.height/2);
+    await page.keyboard.press('f');
+    const focusedCamera=await readCamera();
+    expect(focusedCamera.x).toBeCloseTo(selectionCamera.x,2);
+    expect(focusedCamera.y).toBeCloseTo(selectionCamera.y,2);
+    expect(focusedCamera.scale).toBeCloseTo(selectionCamera.scale,3);
     // v2.705 frames in unobstructed space, deliberately offset from canvas centre.
     const found=await page.evaluate(id=>{
       const vp=(window as any).__NAV_TEST_VP;
@@ -166,5 +175,9 @@ test.describe('battle map (local stack)', () => {
     // testInfo.outputPath: parallel projects (desktop/mobile) must not
     // overwrite each other's artifact.
     await page.screenshot({ path: testInfo.outputPath('battle-map-rendered.png') });
+    await page.getByLabel('Map controls',{exact:true}).click();
+    await expect(page.getByRole('region',{name:'Map controls help'}).getByText('Find selection',{exact:true})).toBeVisible();
+    await page.getByRole('region',{name:'Map controls help'}).getByText('Find selection',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:testInfo.outputPath('map-focus-help.png')});
   });
 });
