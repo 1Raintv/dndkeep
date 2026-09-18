@@ -7,6 +7,7 @@ import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStor
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import { useModal } from '../../shared/Modal';
 import { SIZE_OPTIONS, TOKEN_COLORS, type ContextMenuState } from './shared';
+import {useMapMenuPosition} from './useMapMenuPosition';
 
 // v2.653.0 — the eight facings, 0° = up (matches Token.rotation's
 // docstring and the renderer's notch). Same 45° increments the AoE
@@ -66,6 +67,7 @@ export function TokenContextMenu(props: {
   const addToken = useBattleMapStore(s => s.addToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
   const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant' | 'facing' | 'light'>('none');
+  const {ref:menuRef,left,top}=useMapMenuPosition(state.clientX,state.clientY,`${state.tokenId}:${submenu}:${!!token}`);
   // v2.241 — modal handle for the rename prompt.
   const { prompt: promptModal } = useModal();
 
@@ -74,16 +76,17 @@ export function TokenContextMenu(props: {
       onClose();
     }
     function keyHandler(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {e.preventDefault();e.stopImmediatePropagation();onClose();}
     }
+    // v2.715 — the topmost menu owns Escape before map/fullscreen listeners.
+    window.addEventListener('keydown', keyHandler, true);
     const id = setTimeout(() => {
       window.addEventListener('mousedown', handler);
-      window.addEventListener('keydown', keyHandler);
     }, 0);
     return () => {
       clearTimeout(id);
       window.removeEventListener('mousedown', handler);
-      window.removeEventListener('keydown', keyHandler);
+      window.removeEventListener('keydown', keyHandler, true);
     };
   }, [onClose]);
 
@@ -141,18 +144,15 @@ export function TokenContextMenu(props: {
     });
   }
 
-  const menuWidth = 180;
-  const menuHeight = 240;
-  const leftRaw = state.clientX;
-  const topRaw = state.clientY;
-  const left = Math.min(leftRaw, (typeof window !== 'undefined' ? window.innerWidth : 1200) - menuWidth - 8);
-  const top = Math.min(topRaw, (typeof window !== 'undefined' ? window.innerHeight : 800) - menuHeight - 8);
 
   const menuBaseStyle: React.CSSProperties = {
     position: 'fixed',
     left,
     top,
-    minWidth: menuWidth,
+    width: 280,
+    boxSizing: 'border-box',
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
     background: 'var(--c-card)',
     border: '1px solid var(--c-border)',
     borderRadius: 'var(--r-md, 8px)',
@@ -169,6 +169,8 @@ export function TokenContextMenu(props: {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '6px 10px',
+    minHeight: 40,
+    boxSizing: 'border-box',
     cursor: 'pointer',
     borderRadius: 'var(--r-sm, 4px)',
   };
@@ -212,7 +214,7 @@ export function TokenContextMenu(props: {
     const current = (token as any).lightRadiusFt ?? 0;
     const currentColour = (token as any).lightColor ?? null;
     return createPortal(
-      <div style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Carried light
         </div>
@@ -280,7 +282,7 @@ export function TokenContextMenu(props: {
 
   if (submenu === 'size') {
     return createPortal(
-      <div style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Size
         </div>
@@ -312,7 +314,7 @@ export function TokenContextMenu(props: {
   if (submenu === 'facing') {
     const current = ((token.rotation ?? 0) % 360 + 360) % 360;
     return createPortal(
-      <div style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Facing
         </div>
@@ -342,7 +344,7 @@ export function TokenContextMenu(props: {
   if (submenu === 'grant') {
     const currentGrant = (token as any).playerId as string | null;
     return createPortal(
-      <div style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Player Control
         </div>
@@ -384,7 +386,7 @@ export function TokenContextMenu(props: {
 
   if (submenu === 'color') {
     return createPortal(
-      <div style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Color
         </div>
@@ -411,7 +413,7 @@ export function TokenContextMenu(props: {
   }
 
   return createPortal(
-    <div style={menuBaseStyle} onMouseDown={stop}>
+    <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
       <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
         {token.name || 'Token'}
       </div>
