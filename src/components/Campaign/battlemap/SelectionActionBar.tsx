@@ -7,7 +7,7 @@
 // v2.700 — group drag and arrow controls arrange tokens outside combat.
 // Combat keeps the single-creature movement-budget and active-turn path.
 
-import { useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import { useModal } from '../../shared/Modal';
@@ -30,6 +30,12 @@ export function SelectionActionBar(props: {
   const [busy, setBusy] = useState(false);
   const pending=useRef(false);
   const [error,setError]=useState('');
+  const [expanded,setExpanded]=useState(false);
+  const moreRef=useRef<HTMLButtonElement>(null);
+  const actionsId=useId();
+  const selectionKey=[...selectedIds].sort().join(',');
+  // v2.711 — new selections start compact; never carry an open action panel across them.
+  useEffect(()=>{setExpanded(false);setError('');},[selectionKey]);
 
   const selected = [...selectedIds].map(id => tokens[id]).filter(Boolean) as Token[];
   if (selected.length < 2) return null;
@@ -123,6 +129,7 @@ export function SelectionActionBar(props: {
       // without this a click on the bar would clear the very selection
       // the bar is acting on.
       onPointerDown={e => e.stopPropagation()}
+      onKeyDown={e=>{if(e.key==='Escape' && expanded){e.stopPropagation();setExpanded(false);moreRef.current?.focus();}}}
     >
       <span style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800, color: '#60a5fa', padding: '0 4px' }}>
         {selected.length} selected
@@ -133,6 +140,12 @@ export function SelectionActionBar(props: {
             aria-label={`Move selection ${direction}`} title={props.movementDisabled ? 'Group movement is unavailable during combat' : `Move selection ${direction} one cell`}
             onClick={()=>void props.onMove(dx,dy)}>{icon}</button>)}
       </span>
+      <button ref={moreRef} style={btn} type="button" aria-expanded={expanded} aria-controls={actionsId}
+        onClick={()=>setExpanded(v=>!v)} title="More selection actions">{expanded?'Less':'More'}</button>
+      <button style={{ ...btn, color: 'var(--t-3)' }} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
+        Clear
+      </button>
+      <div id={actionsId} className="map-selection-more" hidden={!expanded}>
       <button style={btn} disabled={busy} onClick={() => patchAll({ isLocked: true })} title="Lock — refuse drags during combat">
         ⊘ Lock
       </button>
@@ -164,9 +177,7 @@ export function SelectionActionBar(props: {
       >
         ✕ Delete
       </button>
-      <button style={{ ...btn, color: 'var(--t-3)' }} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
-        Clear
-      </button>
+      </div>
       {error && <span role="alert" style={{flexBasis:'100%',color:'#fca5a5',fontSize:12,whiteSpace:'normal'}}>{error}</span>}
     </div>
   );

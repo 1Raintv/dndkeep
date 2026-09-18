@@ -45,6 +45,16 @@ test.describe('token gestures (local stack)', () => {
       await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');
     }
     await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    const bar=page.getByRole('toolbar',{name:'Selected tokens'});
+    await expect(bar.getByRole('button',{name:'✕ Delete'})).toBeHidden();
+    const compact=await bar.boundingBox();expect(compact!.height).toBeLessThanOrEqual(page.viewportSize()!.width<600?110:60);
+    await page.screenshot({path:info.outputPath('selection-compact.png')});
+    await page.getByTitle('More selection actions').click();
+    await expect(bar.getByRole('button',{name:'✕ Delete'})).toBeVisible();
+    await bar.getByRole('button',{name:'✕ Delete'}).focus();await page.keyboard.press('Escape');
+    await expect(bar.getByRole('button',{name:'✕ Delete'})).toBeHidden();
+    await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    await page.getByTitle('More selection actions').click();
     const writes:string[]=[];
     const pattern='**/rest/v1/scene*';
     await page.route(pattern,async route=>{
