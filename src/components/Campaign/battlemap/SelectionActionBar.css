@@ -8,6 +8,9 @@
 }
 .map-selection-move { display: inline-flex; gap: 4px; }
 .map-selection-move button { min-width: 36px; min-height: 36px; }
+.map-selection-more { display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%;border-top:1px solid var(--c-border);padding-top:6px; }
+.map-selection-more[hidden] { display:none; }
+.map-selection-actions button:focus-visible { outline:2px solid #e4bd69;outline-offset:2px; }
 
 /* v2.699 — keep selection actions below the header and beside the tool rail. */
 @media (max-width: 600px) {
@@ -19,4 +22,8 @@
     border-radius: 12px;
   }
   .map-selection-actions button { min-height: 40px; }
+  .map-selection-move { order:2;width:100%; }
+  .map-selection-move button { flex:1; }
+  .map-selection-more { order:3; }
+  .map-selection-actions [role=alert] { order:4; }
 }

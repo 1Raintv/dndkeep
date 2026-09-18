@@ -13,7 +13,14 @@ beforeEach(()=>{
   vi.resetAllMocks();mocks.confirm.mockResolvedValue(true);
   useBattleMapStore.setState({tokens:{a:{id:'a',characterId:'pc',visibleToAll:true,isLocked:false} as Token,b:{id:'b',characterId:null,visibleToAll:true,isLocked:false} as Token}});
 });
-const setup=()=>{const clear=vi.fn();render(<SelectionActionBar selectedIds={new Set(['a','b'])} campaignId="c" onClear={clear} onMove={vi.fn()} movementDisabled={false}/>);return clear;};
+const setup=(open=true)=>{const clear=vi.fn();render(<SelectionActionBar selectedIds={new Set(['a','b'])} campaignId="c" onClear={clear} onMove={vi.fn()} movementDisabled={false}/>);if(open)fireEvent.click(screen.getByTitle('More selection actions'));return clear;};
+it('starts compact and Escape closes actions without clearing selection',()=>{
+  const clear=setup(false);expect(screen.queryByRole('button',{name:'✕ Delete'})).toBeNull();
+  fireEvent.click(screen.getByTitle('More selection actions'));expect(screen.getByRole('button',{name:'✕ Delete'})).toBeDefined();
+  fireEvent.keyDown(screen.getByRole('button',{name:'✕ Delete'}),{key:'Escape'});
+  expect(screen.queryByRole('button',{name:'✕ Delete'})).toBeNull();expect(clear).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(screen.getByTitle('More selection actions'));
+});
 it('hides only non-character tokens and waits for confirmed save',async()=>{
   let resolve!:(ok:boolean)=>void;vi.mocked(api.updateToken).mockReturnValue(new Promise(r=>{resolve=r;}));setup();
   fireEvent.click(screen.getByRole('button',{name:'◉ Hide'}));

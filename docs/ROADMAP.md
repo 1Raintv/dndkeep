@@ -3,6 +3,25 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Compact selection toolbar, v2.711
+
+The selection toolbar starts compact: selection count, movement arrows, More and
+Clear. Lock/Unlock, Hide/Reveal and Delete expand on demand in an inline panel.
+Mobile keeps movement on a dedicated row, reducing the normal mixed-selection
+toolbar from three rows to two. Expanded actions remain labelled buttons with
+the existing deletion confirmation and save-failure feedback.
+
+More exposes its expanded state and controlled panel to assistive technology.
+Escape closes the panel and returns focus to More without clearing the selection;
+changing the selected group closes it automatically. Hidden actions leave both
+layout and keyboard navigation. User testing remains deferred; no database changes.
+Validation: gate passed (871 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build, 252.4 KB entry). All four desktop/mobile visibility
+and group-drag checks passed; two final layout checks passed. Screenshots inspected.
+Forcing hidden actions visible fails the new compact-state test. Overflow probe
+reports no sideways page scroll or toolbar clipping; existing underlying
+sidebar/map findings remain.
+
 ### 2026-09-18 — Reliable group token edits, v2.710
 
 Group Hide/Reveal now targets only non-character tokens, matching its existing
