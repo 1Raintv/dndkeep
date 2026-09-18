@@ -25,7 +25,6 @@ export function MapHelp() {
     <summary aria-label="Map controls" title="Map controls and grid appearance"><span aria-hidden="true">?</span></summary>
     <div className="map-help-panel" role="region" aria-label="Map controls help">
       <strong>Map controls</strong>
-      <GridAppearanceControls/>
       <p>Use Select to move tokens. Switch to Pan to explore without moving them.</p>
       <dl>
         <dt>Pan temporarily</dt><dd>Hold <kbd>Space</kbd> and drag</dd>
@@ -38,6 +37,11 @@ export function MapHelp() {
         <dt>Undo / redo</dt><dd><kbd>Ctrl / ⌘ Z</kbd> · add <kbd>Shift</kbd> to redo</dd>
         <dt>Cancel</dt><dd><kbd>Esc</kbd></dd>
       </dl>
+      {/* v2.725 — shortcuts come first; personal styling stays available on demand. */}
+      <details className="map-appearance-section">
+        <summary>Grid appearance</summary>
+        <GridAppearanceControls/>
+      </details>
     </div>
   </details>;
 }

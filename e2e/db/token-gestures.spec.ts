@@ -415,6 +415,7 @@ test.describe('token gestures (local stack)', () => {
     });
     const original=await grid();expect(original.id).toBeDefined();
     await page.getByLabel('Map controls',{exact:true}).click();
+    await page.locator('.map-appearance-section > summary').click();
     await page.getByLabel('Grid color',{exact:true}).selectOption('light');
     await page.getByLabel('Grid opacity',{exact:true}).fill('30');
     await expect.poll(async()=>(await grid()).alpha).toBe(.3);
@@ -437,6 +438,7 @@ test.describe('token gestures (local stack)', () => {
     // Fullscreen is itself saved, so reload restores it along with grid preferences.
     await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
     await page.getByLabel('Map controls',{exact:true}).click();
+    await page.locator('.map-appearance-section > summary').click();
     await expect(page.getByLabel('Grid color',{exact:true})).toHaveValue('light');await expect(page.getByLabel('Grid opacity',{exact:true})).toHaveValue('30');
     await expect.poll(async()=>(await grid()).alpha).toBe(.3);expect((await grid()).colors).toHaveLength(2);
     await page.getByLabel('Grid color',{exact:true}).selectOption('dark');await expect.poll(async()=>(await grid()).colors[1]).toBe(0x111827);

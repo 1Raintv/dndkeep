@@ -136,12 +136,21 @@ test.describe('battle map (local stack)', () => {
       return { x: point.x, y: point.y };
     }, token.id);
     const currentBounds = (await canvas.boundingBox())!;
+    // v2.725 — Space activates a focused toolbar button. Release that focus
+    // before testing the separate hovered-canvas temporary-pan gesture.
+    await page.evaluate(()=>(document.activeElement as HTMLElement)?.blur());
+    const beforeSpace=await readCamera();
     await page.mouse.move(currentBounds.x + screenToken.x, currentBounds.y + screenToken.y);
     await page.keyboard.down('Space');
     await page.mouse.down();
     await page.mouse.move(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10, { steps: 4 });
     await page.mouse.up();
     await page.keyboard.up('Space');
+    expect(Math.abs((await readCamera()).x-beforeSpace.x)).toBeGreaterThan(10);
+    expect(await page.evaluate(id=>{
+      const t=(window as any).__NAV_TEST_VP.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      return {x:t.x,y:t.y};
+    },token.id)).toEqual({x:token.x,y:token.y});
     await expect(navigation.getByRole('button', { name: 'Find selection' })).toBeDisabled();
     await page.waitForTimeout(180); // let suppression of the pan's synthetic click expire
     await page.mouse.click(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10);
@@ -176,8 +185,23 @@ test.describe('battle map (local stack)', () => {
     // overwrite each other's artifact.
     await page.screenshot({ path: testInfo.outputPath('battle-map-rendered.png') });
     await page.getByLabel('Map controls',{exact:true}).click();
+    await expect(page.getByLabel('Grid color',{exact:true})).toBeHidden();
+    // Shortcuts appear immediately, before any scrolling through settings.
+    const help=page.getByRole('region',{name:'Map controls help'});
+    const firstShortcut=help.getByText('Pan temporarily',{exact:true});
+    const panelBox=(await help.boundingBox())!,shortcutBox=(await firstShortcut.boundingBox())!;
+    expect(shortcutBox.y).toBeGreaterThanOrEqual(panelBox.y);
+    expect(shortcutBox.y+shortcutBox.height).toBeLessThanOrEqual(panelBox.y+panelBox.height);
     await expect(page.getByRole('region',{name:'Map controls help'}).getByText('Find selection',{exact:true})).toBeVisible();
     await page.getByRole('region',{name:'Map controls help'}).getByText('Find selection',{exact:true}).scrollIntoViewIfNeeded();
     await page.screenshot({path:testInfo.outputPath('map-focus-help.png')});
+    const appearance=page.locator('.map-appearance-section > summary');
+    await appearance.focus();await page.keyboard.press('Enter');
+    await expect(page.getByLabel('Grid color',{exact:true})).toBeVisible();
+    await page.getByLabel('Grid color',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:testInfo.outputPath('map-appearance-expanded.png')});
+    await appearance.focus();await page.keyboard.press('Space');
+    await expect(page.getByLabel('Grid color',{exact:true})).toBeHidden();
+    await expect(help).toBeVisible();
   });
 });
