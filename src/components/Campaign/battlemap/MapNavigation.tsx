@@ -92,7 +92,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     const cursor = () => { canvas.style.cursor = drag ? 'grabbing' : pan || space ? 'grab' : originalCursor; };
     const enter = () => { hovering = true; cursor(); };
     const leave = () => { hovering = false; };
-    const editable = (target: EventTarget | null) => target instanceof HTMLElement && !!target.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]');
+    const editable = (target: EventTarget | null) => target instanceof HTMLElement && !!target.closest('input,textarea,select,button,summary,a,[contenteditable="true"],[role="textbox"]');
     const down = (event: PointerEvent) => {
       if (event.button !== 0 || (!pan && !space) || (drag && event.pointerType !== 'touch')) return;
       event.preventDefault(); event.stopImmediatePropagation();

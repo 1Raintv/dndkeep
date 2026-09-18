@@ -32,6 +32,7 @@ test.describe('token gestures (local stack)', () => {
   test.use({serviceWorkers:'block'});
   gateDbSuite();
   test('token options and submenus stay inside the screen',async({page},info)=>{
+    test.setTimeout(60_000); // Four submenu loops plus a viewport resize exercise the real WebGL map.
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
     const before=(await state(page)).tokens;
@@ -53,6 +54,16 @@ test.describe('token gestures (local stack)', () => {
         const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
       },token.id);
       await page.mouse.click(point.x,point.y,{button:'right'});await assertBounds();
+      const actions=menu.getByRole('button');
+      await expect(actions.first()).toBeFocused();
+      await page.keyboard.press('Tab');await expect(actions.nth(1)).toBeFocused();
+      for(const action of await actions.all()) await expect(action).toHaveAccessibleName(/.+/);
+      await menu.getByRole('button',{name:'Resize ▸',exact:true}).focus();await page.keyboard.press('Space');
+      await expect(menu.getByRole('button',{name:'Back to token options'})).toBeFocused();
+      await page.keyboard.press('Tab');await expect(menu.getByRole('button').nth(1)).toBeFocused();
+      await page.screenshot({path:info.outputPath(`token-keyboard-${size.width}.png`)});
+      await page.keyboard.press('Shift+Tab');await page.keyboard.press('Enter');
+      await expect(menu.getByRole('button',{name:'Resize ▸',exact:true})).toBeVisible();
       await page.setViewportSize({...size,height:size.height-40});await assertBounds();
       await page.setViewportSize(size);await assertBounds();
       await menu.getByText('Delete',{exact:true}).scrollIntoViewIfNeeded();
@@ -67,6 +78,7 @@ test.describe('token gestures (local stack)', () => {
       await back.press('Enter');await expect(menu.getByText('Rename…',{exact:true})).toBeVisible();
       for(const label of ['Resize ▸','Recolor ▸','Facing ▸']) {
         await menu.getByText(label,{exact:true}).click();await assertBounds();
+        for(const action of await menu.getByRole('button').all()) await expect(action).toHaveAccessibleName(/.+/);
         await expect(back).toBeFocused();await back.click();
         await expect(menu.getByText('Rename…',{exact:true})).toBeVisible();
       }
