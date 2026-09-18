@@ -3,6 +3,34 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Reliable group token edits, v2.710
+
+Group Hide/Reveal now targets only non-character tokens, matching its existing
+tooltip promise. Group edits and deletions wait for each API confirmation before
+changing local state, handle false results as well as exceptions, keep successful
+changes on partial failure and explain what failed. Deletion failures also use
+a toast so the message remains visible if fewer than two tokens remain selected.
+An in-flight guard prevents overlapping batches and confirmation dialogs.
+
+Both token backends now require a returned row for field updates and deletions;
+RLS-filtered or missing rows cannot silently count as saved. Placement-backed
+scenes still have no persisted lock field: group Lock/Unlock now explains that
+limitation without making a local-only change. Adding placement lock persistence
+remains a separate schema/gameplay task; this release has no migrations.
+
+Tests cover mixed selections, pending saves, partial failures, rejected promises,
+cancelled deletion, unsupported locks and zero-row API results. Removing the
+character filter fails the regression. Browser checks inject an empty-row save,
+verify unchanged tokens and then perform real local Hide/Reveal with cleanup.
+User hands-on testing remains deferred.
+
+The broader map regression also caught resize replacing v2.709's fitted zoom
+floor and zooming mobile views inward. Resize now preserves the current scale.
+Release gate passed: 870 unit tests, TypeScript 221/221, hooks, RAW/coords/anchors,
+build and 252.4 KB entry. Desktop/mobile visibility checks and the broader map
+resize/navigation checks pass. The shared overflow probe reports no sideways
+scrolling or new clipped controls; existing underlying sidebar/map findings remain.
+
 ### 2026-09-18 — Fit map clears controls, v2.709
 
 Fit map now frames the full scene inside the space between the tool rail,

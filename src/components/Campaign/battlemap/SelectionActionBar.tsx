@@ -7,10 +7,11 @@
 // v2.700 — group drag and arrow controls arrange tokens outside combat.
 // Combat keeps the single-creature movement-budget and active-turn path.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import { useModal } from '../../shared/Modal';
+import { useToast } from '../../shared/Toast';
 import './SelectionActionBar.css';
 
 export function SelectionActionBar(props: {
@@ -25,29 +26,41 @@ export function SelectionActionBar(props: {
   const removeToken = useBattleMapStore(s => s.removeToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
   const { confirm: confirmModal } = useModal();
+  const {showToast}=useToast();
   const [busy, setBusy] = useState(false);
+  const pending=useRef(false);
+  const [error,setError]=useState('');
 
   const selected = [...selectedIds].map(id => tokens[id]).filter(Boolean) as Token[];
   if (selected.length < 2) return null;
 
-  /** Apply one patch to every selected token, optimistically then to the DB. */
-  async function patchAll(patch: Partial<Token>) {
+  /** v2.710 — confirm each save before changing local state; false is a failure too. */
+  async function patchAll(patch: Partial<Token>, targets=selected) {
+    if(pending.current)return;
+    if(patch.isLocked!==undefined && targets.some(t=>t.combatantId)) {
+      setError('Locking is not available for this scene yet.');return;
+    }
+    pending.current=true;setError('');
     setBusy(true);
     try {
-      await Promise.all(selected.map(async t => {
-        updateTokenFields(t.id, patch);
+      const results=await Promise.all(targets.map(async t => {
         try {
-          await tokensApi.updateToken(t.id, patch, { campaignId });
-        } catch (err) {
-          console.error('[SelectionActionBar] bulk update failed', t.id, err);
-        }
+          const saved=await tokensApi.updateToken(t.id, patch, { campaignId });
+          if(saved)updateTokenFields(t.id, patch);
+          return saved;
+        } catch { return false; }
       }));
+      const failed=results.filter(ok=>!ok).length;
+      if(failed)setError(`${failed} of ${targets.length} token updates failed. ${failed<targets.length ? 'Successful changes were kept. ' : ''}Try again.`);
     } finally {
-      setBusy(false);
+      pending.current=false;setBusy(false);
     }
   }
 
   async function deleteAll() {
+    if(pending.current)return;
+    pending.current=true;setBusy(true);setError('');
+    try {
     const ok = await confirmModal({
       title: `Delete ${selected.length} tokens?`,
       message: 'They are removed from this scene for everyone. This cannot be undone.',
@@ -55,19 +68,21 @@ export function SelectionActionBar(props: {
       danger: true,
     });
     if (!ok) return;
-    setBusy(true);
-    try {
-      await Promise.all(selected.map(async t => {
-        removeToken(t.id);
+      const results=await Promise.all(selected.map(async t => {
         try {
-          await tokensApi.deleteToken(t.id, { campaignId });
-        } catch (err) {
-          console.error('[SelectionActionBar] bulk delete failed', t.id, err);
-        }
+          const saved=await tokensApi.deleteToken(t.id, { campaignId });
+          if(saved)removeToken(t.id);
+          return saved;
+        } catch { return false; }
       }));
-      onClear();
+      const failed=results.filter(ok=>!ok).length;
+      if(failed) {
+        const message=`${failed} token deletions failed. Those tokens were kept. Try again.`;
+        setError(message);showToast(message,'error');
+      }
+      else onClear();
     } finally {
-      setBusy(false);
+      pending.current=false;setBusy(false);
     }
   }
 
@@ -129,14 +144,14 @@ export function SelectionActionBar(props: {
           <button
             style={btn}
             disabled={busy}
-            onClick={() => patchAll({ visibleToAll: false })}
+            onClick={() => patchAll({ visibleToAll: false },hideable)}
             title={hideable.length === selected.length
               ? 'Hide from players'
               : `Hide from players (${hideable.length} of ${selected.length} — PC tokens can't be hidden)`}
           >
             ◉ Hide
           </button>
-          <button style={btn} disabled={busy} onClick={() => patchAll({ visibleToAll: true })} title="Reveal to players">
+          <button style={btn} disabled={busy} onClick={() => patchAll({ visibleToAll: true },hideable)} title="Reveal to players">
             ◉ Reveal
           </button>
         </>
@@ -149,9 +164,10 @@ export function SelectionActionBar(props: {
       >
         ✕ Delete
       </button>
-      <button style={{ ...btn, color: 'var(--t-3)' }} onClick={onClear} title="Clear selection (Esc)">
+      <button style={{ ...btn, color: 'var(--t-3)' }} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
         Clear
       </button>
+      {error && <span role="alert" style={{flexBasis:'100%',color:'#fca5a5',fontSize:12,whiteSpace:'normal'}}>{error}</span>}
     </div>
   );
 }

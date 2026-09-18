@@ -31,6 +31,43 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('group visibility protects characters and reports unsaved changes',async({page},info)=>{
+    await openMap(page);
+    const all=Object.values((await state(page)).tokens) as any[];
+    const pc=all.find(t=>t.name==='Ilyana Vell');const npc=all.find(t=>!t.characterId && t.visibleToAll);
+    expect(npc).toBeDefined();
+    for(const id of [pc.id,npc.id]) {
+      const p=await page.evaluate(id=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+        const p=t.getGlobalPosition();const r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
+      },id);
+      await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');
+    }
+    await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    const writes:string[]=[];
+    const pattern='**/rest/v1/scene*';
+    await page.route(pattern,async route=>{
+      const r=route.request();if(r.method()==='PATCH' && r.postDataJSON()?.visible_to_all!==undefined) {
+        writes.push(r.url());await route.fulfill({status:200,contentType:'application/json',body:'[]'});
+      }else await route.continue();
+    });
+    await page.getByRole('button',{name:'◉ Hide',exact:true}).click();
+    await expect(page.getByRole('alert')).toContainText('1 of 1 token updates failed');
+    expect(writes).toHaveLength(1);expect(writes[0]).toContain(npc.id);expect(writes[0]).not.toContain(pc.id);
+    expect((await state(page)).tokens[npc.id].visibleToAll).toBe(true);
+    expect((await state(page)).tokens[pc.id].visibleToAll).toBe(true);
+    await page.screenshot({path:info.outputPath('bulk-failure.png')});
+    await page.unroute(pattern);
+    try {
+      await page.getByRole('button',{name:'◉ Hide',exact:true}).click();
+      await expect.poll(async()=>(await state(page)).tokens[npc.id].visibleToAll).toBe(false);
+      expect((await state(page)).tokens[pc.id].visibleToAll).toBe(true);
+    }finally {
+      await page.getByRole('button',{name:'◉ Reveal',exact:true}).click();
+      await expect.poll(async()=>(await state(page)).tokens[npc.id].visibleToAll).toBe(true);
+    }
+  });
   test('fit map keeps the whole scene clear of controls',async({page},info)=>{
     await openMap(page);
     const before=(await state(page)).tokens;
