@@ -40,7 +40,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     if (!viewport || !canvas) return;
     const frame=boundsFrame(0,0,viewport.worldWidth,viewport.worldHeight,viewport.screenWidth,viewport.screenHeight,4,clearArea());
     if(!frame)return;
-    previousView.remember();
+    previousView.remember(frame);
     viewport.plugins.get('decelerate')?.reset();
     // v2.709 — the viewport's full-canvas zoom floor would undo a tighter fit.
     viewport.clampZoom({minScale:Math.min(.25,frame.zoom),maxScale:4});
@@ -74,7 +74,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
     const frame=selectionFrame(tokens,gridSizePx,viewport.screenWidth,viewport.screenHeight,viewport.scale.x,clearArea());
     if (!frame) return;
-    previousView.remember();
+    previousView.remember(frame);
     viewport.plugins.get('decelerate')?.reset();
     viewport.clampZoom({minScale:Math.min(.25,frame.zoom),maxScale:4});
     viewport.setZoom(frame.zoom,true);
