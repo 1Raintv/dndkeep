@@ -1,4 +1,5 @@
 import { tokenMoveHistory } from './tokenMoveHistory';
+import { showTokenDetail, tokenNameScale } from './tokenDetail';
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 4).
 // See that file's header changelog for this code's full history.
 // This is the heart of the battle map: token sprites, drag/drop with
@@ -263,6 +264,7 @@ export function TokenLayer(props: {
   interface TokenGfx {
     container: Container;
     circle: Graphics;
+    rim: Graphics;
     initials: Text;
     // v2.215: sprite + mask. Added lazily when a portrait loads.
     sprite: Sprite | null;
@@ -282,6 +284,8 @@ export function TokenLayer(props: {
     // read which token is which without relying on initials. Lazy
     // create on first draw; updated on token.name change.
     nameLabel: Text | null;
+    nameBaseScale: number;
+    nameBaseHeight: number;
     // v2.244 — dead-state visuals. When current_hp <= 0, we apply a
     // grayscale ColorMatrixFilter to the container (washes out the
     // sprite/initials/HP bar uniformly) and overlay a red ✖. Filter is
@@ -439,6 +443,22 @@ export function TokenLayer(props: {
       const turnRotation = (elapsed / 1000) * 0.4;     // CW
       const haloRotation = -(elapsed / 1000) * 0.25;   // CCW, slower
       for (const entry of gfxMapRef.current.values()) {
+        // v2.706 — visibility follows camera zoom without React/store updates.
+        // renderable preserves each indicator's existing permission/state visibility.
+        const zoom=viewport?.scale.x ?? 1;
+        const focused=!!entry.selectionRing?.visible || !!entry.turnRing?.visible;
+        const detail=showTokenDetail(zoom,!!entry.selectionRing?.visible,!!entry.turnRing?.visible);
+        if(entry.nameLabel) {
+          entry.nameLabel.renderable=detail;
+          const scale=tokenNameScale(entry.nameBaseScale,zoom,focused);
+          entry.nameLabel.scale.set(scale);
+          if(entry.nameStrike) {
+            entry.nameStrike.renderable=detail;
+            entry.nameStrike.scale.x=scale/entry.nameBaseScale;
+            entry.nameStrike.y=(entry.nameLabel.height-entry.nameBaseHeight)/2;
+          }
+        }
+        for(const glyph of entry.actionEconomyLabels ?? []) glyph.renderable=detail;
         const lock = entry.lockRing;
         if (lock && !lock.destroyed) {
           lock.alpha = lockAlpha;
@@ -463,7 +483,7 @@ export function TokenLayer(props: {
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [viewport]);
   // v2.226 — track pointerdown screen pos + timestamp to distinguish
   // "click" (no drag) from "drag commit" on pointerup.
   const clickProbeRef = useRef<{
@@ -532,6 +552,8 @@ export function TokenLayer(props: {
         container.eventMode = 'static';
         container.cursor = 'grab';
         const circle = new Graphics();
+        const rim = new Graphics();
+        rim.label='token-rim';rim.eventMode='none';
         const initials = new Text({ resolution: 2, // v2.702 — sharp glyphs when zooming or on Retina screens.
           text: tokenInitials(token.name),
           style: new TextStyle({
@@ -546,13 +568,15 @@ export function TokenLayer(props: {
         initials.anchor.set(0.5, 0.5);
         container.addChild(circle);
         container.addChild(initials);
+        container.addChild(rim);
         layer.addChild(container);
         entry = {
-          container, circle, initials,
+          container, circle, rim, initials,
           sprite: null, mask: null, currentPath: null, loadGen: 0,
           lockRing: null,
           hpBar: null,
           nameLabel: null,
+          nameBaseScale: 1, nameBaseHeight: 0,
           deadFilter: null,
           deadX: null,
           nameStrike: null,
@@ -829,6 +853,9 @@ export function TokenLayer(props: {
 
       const r = tokenRadiusForSize(token.size, gridSizePx);
       circle.clear();
+      // v2.706 — cheap layered shadow, no per-token blur filter/render texture.
+      circle.ellipse(0,3,r+2,r+1).fill({color:0x000000,alpha:.16});
+      circle.ellipse(0,2,r+1,r).fill({color:0x000000,alpha:.25});
       circle.setFillStyle({ color: token.color, alpha: 0.92 });
       circle.circle(0, 0, r);
       circle.fill();
@@ -838,6 +865,14 @@ export function TokenLayer(props: {
       circle.setStrokeStyle({ color: 0xffffff, width: 1, alpha: 0.35 });
       circle.circle(0, 0, r - 2);
       circle.stroke();
+
+      // Separate rim sits ABOVE asynchronously loaded portraits. The old rim
+      // shared the fallback fill and was partly covered by the portrait sprite.
+      entry!.rim.clear();
+      entry!.rim.circle(0,0,r-1).stroke({color:0x11151e,width:3,alpha:.95});
+      entry!.rim.circle(0,0,r-2).stroke({color:selectedTokenIds?.has(token.id) ? 0x67e8f9 : token.color,width:1.5,alpha:.9});
+      entry!.rim.moveTo(Math.cos(Math.PI*1.12)*(r-3),Math.sin(Math.PI*1.12)*(r-3));
+      entry!.rim.arc(0,0,r-3,Math.PI*1.12,Math.PI*1.85).stroke({color:0xffffff,width:1,alpha:.35});
 
       // v2.397.0 — Click/drag area covers the FULL footprint, not just
       // the visible circle. Pre-v2.397 the container's interactive
@@ -1266,6 +1301,8 @@ export function TokenLayer(props: {
         // lone final letter on a third line. Never change token hit geometry.
         label.scale.set(1);
         label.scale.set(Math.min(1,(footPx-4)/Math.max(1,label.width)));
+        currentEntry.nameBaseScale=label.scale.x;
+        currentEntry.nameBaseHeight=label.height;
         // Position below HP bar (if visible) or token rim. v2.244 —
         // showHpBar drives this rather than raw hpInfo so NPC names
         // sit closer to the token when the bar is hidden.
@@ -1504,6 +1541,8 @@ export function TokenLayer(props: {
           remaining <= activeTokenInfo!.max / 2  ? 0xf59e0b :
                                                    0xd4a017;
         ring.clear();
+        // v2.706 — dark under-stroke separates the turn ring from bright art.
+        ring.circle(0,0,r+4).stroke({color:0x10131a,width:6,alpha:.9});
         ring.setStrokeStyle({ color: ringColor, width: 3, alpha: 1.0 });
         ring.circle(0, 0, r + 4);
         ring.stroke();

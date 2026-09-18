@@ -28,7 +28,58 @@ async function state(page: Page) {
 }
 
 test.describe('token gestures (local stack)', () => {
+  // Synthetic portrait responses must not be intercepted by the app's SW.
+  test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('token portraits keep their rim and overview labels follow selection',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const id=Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell')!.id;
+    // Use Pixi's supported main-thread loader for deterministic fixture routing;
+    // this synthetic-image test does not certify production worker fetching.
+    await page.evaluate(async()=>{
+      const url=performance.getEntriesByType('resource').find(r=>r.name.includes('/pixi__js.js'))!.name;
+      const {Assets}=await import(/* @vite-ignore */ url);Assets.setPreferences({preferWorkers:false});
+    });
+    const png=await page.evaluate(()=>{
+      const c=document.createElement('canvas');c.width=160;c.height=80;
+      const ctx=c.getContext('2d')!;ctx.fillStyle='#bcd4e6';ctx.fillRect(0,0,160,80);
+      ctx.fillStyle='#304760';ctx.fillRect(60,0,40,80);return c.toDataURL().split(',')[1];
+    });
+    // Pixi fetches images in a worker; intercept at context scope, including CORS.
+    await page.context().route('**/polish-fixture.png',route=>route.fulfill({contentType:'image/png',headers:{'access-control-allow-origin':'*'},body:Buffer.from(png,'base64')}));
+    await page.evaluate(async id=>{
+      const path='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ path);
+      useBattleMapStore.getState().updateTokenFields(id,{imageStoragePath:'polish-fixture.png'});
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      vp.setZoom(.4,true);vp.moveCenter(t.x,t.y);
+    },id);
+    const detail=()=>page.evaluate(id=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const tokens=vp.children.flatMap((c:any)=>c.children??[]).filter((c:any)=>c.__tokenId);
+      const t=tokens.find((c:any)=>c.__tokenId===id);
+      const sprite=t.children.find((c:any)=>c.texture && c.mask);
+      return {shown:t.children.find((c:any)=>c.text==='Ilyana Vell')?.renderable,
+        nameScale:t.children.find((c:any)=>c.text==='Ilyana Vell')?.scale.x,
+        others:tokens.filter((c:any)=>c!==t).flatMap((c:any)=>c.children).filter((c:any)=>c.text==='Nyx Quickfingers').map((c:any)=>c.renderable),
+        rimAbove:!!sprite && t.getChildIndex(t.children.find((c:any)=>c.label==='token-rim'))>t.getChildIndex(sprite),
+        aspect:sprite ? sprite.width/sprite.height : 0};
+    },id);
+    await expect.poll(async()=>(await detail()).rimAbove).toBe(true);
+    expect((await detail()).aspect).toBeCloseTo(2);
+    await expect.poll(async()=>(await detail()).shown).toBe(false);
+    const box=(await page.locator('canvas').first().boundingBox())!;
+    await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
+    await expect.poll(async()=>(await detail()).shown).toBe(true);
+    expect((await detail()).nameScale).toBe(2);
+    expect((await detail()).others).toEqual([false]);
+    await page.screenshot({path:info.outputPath('token-overview.png')});
+    await page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);vp.setZoom(1,true);});
+    await expect.poll(async()=>(await detail()).others).toEqual([true]);
+    await page.screenshot({path:info.outputPath('token-portrait.png')});
+    expect(errors).toEqual([]);
+  });
   test('sharp canvas and compact controls remain reachable',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',error=>errors.push(String(error)));
     await openMap(page);

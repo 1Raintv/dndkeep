@@ -3,6 +3,33 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-17 — Token borders and overview labels, v2.706
+
+Tokens now have a layered shadow and a separate highlighted rim above portraits;
+the old shared fill/stroke could be covered by the portrait sprite. Selection
+adds a cyan rim, and active-turn rings have a dark backing stroke for contrast
+over bright artwork. Portrait aspect ratio, circle crop and footprint hit areas
+are preserved. Shadows use simple geometry, without per-token blur filters.
+
+Below 65% zoom, unselected/inactive names are hidden. Selected and active names
+remain available with a capped size boost; death-name strikethrough tracks that
+scale. HP, condition, lock, cover and movement indicators retain their existing
+visibility/permission rules. Camera-driven detail changes reuse the existing
+animation loop instead of writing React or shared state on zoom.
+
+The synthetic wide-portrait browser fixture verifies border draw order, aspect
+ratio, overview hiding, selected-name restoration/enlargement and zoom-in
+restoration. It blocks service workers and uses Pixi's main-thread image loader
+for deterministic interception; it does not certify production worker fetching.
+User hands-on testing remains deferred. No database changes.
+
+Validation: release gate passed (846 unit tests, seven runner tests, TypeScript
+221/221, hooks, RAW/coords/anchors, production build, 252.4 KB entry). All 16
+desktop/mobile gesture and player-combat checks passed; four focused visual
+checks passed again after correcting a connecting stroke caught in screenshot
+review. Final screenshots inspected. Disabling overview hiding makes the new
+browser regression fail; restored behavior passes. No physical-device FPS claim.
+
 ### 2026-09-17 — Selection camera framing, v2.705
 
 Find selection now frames the union of selected token footprints, zooming out
