@@ -64,10 +64,16 @@ test.describe('token gestures (local stack)', () => {
       if(route.request().method()==='PATCH'){writes++;await pending;await route.fulfill({status:200,contentType:'application/json',body:'[]'});}else await route.continue();
     });
     try {
-      const p=await point();await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+70*p.scale,p.y+70*p.scale,{steps:5});await page.mouse.up();
+      const p=await point();await page.mouse.click(p.x,p.y);
+      await expect(page.getByRole('button',{name:'Find selection',exact:true})).toBeEnabled();
+      await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+70*p.scale,p.y+70*p.scale,{steps:5});await page.mouse.up();
       await expect.poll(()=>writes).toBe(1);
       const saving=()=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return vp.children.some((c:any)=>c.label==='token-move-saving' && c.visible);});
       await expect.poll(saving).toBe(true);
+      const held=(await state(page)).tokens[token.id];
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByText('A selected token is still saving. Please wait.')).toBeVisible();
+      expect(writes).toBe(1);expect((await state(page)).tokens[token.id].x).toBe(held.x);
       await page.screenshot({path:info.outputPath('token-saving.png')});
       const moved=await point();await page.mouse.move(moved.x,moved.y);await page.mouse.down();await page.mouse.move(moved.x+20,moved.y+20);await page.mouse.up();
       await expect(page.getByText('Saving this token’s move. Please wait.')).toBeVisible();expect(writes).toBe(1);

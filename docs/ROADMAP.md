@@ -3,6 +3,23 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Shared pending movement protection, v2.722
+
+Single-token drag saves, group saves, arrow-key/button nudges and token move
+undo/redo now share per-token save reservations in this browser. A pending member
+blocks the entire formation before optimistic nudge/save changes; unrelated tokens
+remain usable. Group reservations last until every member settles, and failures
+release them. Old/repeated cleanup cannot release a newer operation's reservation.
+Single-token drag no longer keeps a separate private pending set. Existing server
+permissions and peer drag locks remain authoritative; this is local coordination.
+
+Validation: release gate passed (903 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Unit coverage includes atomic group
+reservation, cleanup ownership, failed saves, blocked nudges and undo retry.
+Browser coverage extends delayed drag saves with a selected-token ArrowRight
+attempt, unchanged position and one request, plus normal multiplayer group
+cancel/undo/reconnect. No schema changes. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Group move feedback and crowded names, v2.721
 
 Group dragging outlines every original and snapped destination footprint, with

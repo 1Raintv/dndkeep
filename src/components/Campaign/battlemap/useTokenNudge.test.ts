@@ -5,6 +5,7 @@ import { useTokenNudge } from './useTokenNudge';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 import * as api from '../../../lib/api/tokensApiRouter';
 import type { Token } from '../../../lib/map/mapTypes';
+import {beginTokenMove} from './pendingTokenMoves';
 vi.mock('../../../lib/api/tokensApiRouter',()=>({updateTokenPos:vi.fn()}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:vi.fn()})}));
 afterEach(cleanup);
@@ -13,6 +14,12 @@ beforeEach(()=>{vi.clearAllMocks();useBattleMapStore.setState({currentSceneId:'s
   b:{id:'b',size:'large',x:70,y:70} as Token,
 }});});
 const setup=(record=vi.fn())=>renderHook(()=>useTokenNudge({blocked:false,selectedIds:new Set(['a','b']),gridSize:70,width:350,height:350,campaignId:'c',sceneId:'s',record}));
+it('does not nudge a token reserved by a different movement control',async()=>{
+  setup();const release=beginTokenMove(['a'])!;
+  try{await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}));});
+    expect(api.updateTokenPos).not.toHaveBeenCalled();expect(useBattleMapStore.getState().tokens.a.x).toBe(35);
+  }finally{release();}
+});
 it('stops the full formation when any footprint would cross the edge',async()=>{
   setup();
   await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft'}));});

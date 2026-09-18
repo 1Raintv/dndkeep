@@ -1,3 +1,4 @@
+import {isTokenMovePending} from './pendingTokenMoves';
 import {groupDragPreview} from './groupDragPreview';
 import { useEffect, useRef } from 'react';
 import type { Viewport } from 'pixi-viewport';
@@ -43,6 +44,7 @@ export function TokenGroupDrag(props: {
       if(store.dragging || tokens.some(t=>!t || store.remoteDragLocks[t.id])) return;
       const p=point(event);
       if(!tokens.some(t=>{const b=bounds(t);return p.x>=b.left && p.x<=b.left+b.size && p.y>=b.top && p.y<=b.top+b.size;})) return;
+      if(tokens.some(t=>isTokenMovePending(t.id))){swallow(event);showToast('A selected token is still saving. Please wait.','info');return;}
       swallow(event);
       viewport.plugins.get('decelerate')?.reset();
       drag={pointer:event.pointerId,x:p.x,y:p.y,tokens,dx:0,dy:0};
