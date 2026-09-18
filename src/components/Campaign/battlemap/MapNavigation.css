@@ -5,6 +5,8 @@
 .map-navigation button[aria-pressed=true] { color:#f3d595; background:#55452d; border-color:#947744; }
 .map-navigation button:disabled { opacity:.4; cursor:default; }
 .map-navigation-modes,.map-navigation-zoom { display:flex; align-items:center; }
+.map-navigation-framing { display:flex; align-items:center; }
+.map-navigation-framing button[aria-label="Previous view"] { padding:0 8px; min-width:36px; }
 .map-history-controls { display:flex; gap:4px; max-width:100%; border-left:1px solid #50485f; padding-left:4px; }
 /* v2.701 — a finished tab animation still traps fixed descendants in its
    transformed box. Fullscreen must belong to the viewport, including players. */
@@ -54,6 +56,8 @@
   .map-help { order:3; }
   .map-help > summary { height:44px; }
   .map-navigation > button { order:4; }
+  .map-navigation-framing { order:4; }
+  .map-navigation-framing > button:first-child { flex:1; padding:0 4px; gap:4px; }
   .map-navigation > button:last-of-type { grid-column:2 / 4; }
   .map-history-controls { order:5; grid-column:1 / -1; justify-content:center; border-left:0; border-top:1px solid #44434f; padding:4px 0 0; }
 }
