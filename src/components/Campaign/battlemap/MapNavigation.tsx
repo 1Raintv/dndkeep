@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Viewport } from 'pixi-viewport';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
-import { selectionFrame } from './selectionFrame';
+import { boundsFrame, selectionFrame } from './selectionFrame';
 import './MapNavigation.css';
 import { MapHistoryControls } from './MapHistoryControls';
 import type { useUndoRedo } from '../../../lib/hooks/useUndoRedo';
@@ -33,33 +33,42 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
   }, [viewport]);
 
   const fit = () => {
-    if (!viewport) return;
+    if (!viewport || !canvas) return;
+    const frame=boundsFrame(0,0,viewport.worldWidth,viewport.worldHeight,viewport.screenWidth,viewport.screenHeight,4,clearArea());
+    if(!frame)return;
     viewport.plugins.get('decelerate')?.reset();
-    viewport.setZoom(Math.min(viewport.screenWidth / viewport.worldWidth, viewport.screenHeight / viewport.worldHeight) * 0.8, true);
-    viewport.moveCenter(viewport.worldWidth / 2, viewport.worldHeight / 2);
+    // v2.709 — the viewport's full-canvas zoom floor would undo a tighter fit.
+    viewport.clampZoom({minScale:Math.min(.25,frame.zoom),maxScale:4});
+    viewport.setZoom(frame.zoom, true);
+    viewport.moveCenter(frame.x,frame.y);
     setZoom(Math.round(viewport.scale.x * 100));
   };
   const changeZoom = (factor: number) => {
     if (!viewport) return;
-    viewport.setZoom(Math.min(4, Math.max(Math.min(0.25, viewport.screenWidth / viewport.worldWidth * 0.8, viewport.screenHeight / viewport.worldHeight * 0.8), viewport.scale.x * factor)), true);
+    // v2.709 — setZoom applies the viewport's live clamp, including a fitted floor.
+    viewport.setZoom(viewport.scale.x * factor, true);
     setZoom(Math.round(viewport.scale.x * 100));
+  };
+  const clearArea = () => {
+    const rect=canvas!.getBoundingClientRect();
+    const host=canvas!.parentElement;
+    const rail=host?.querySelector('.map-tool-palette')?.getBoundingClientRect();
+    const actions=host?.querySelector('.map-selection-actions')?.getBoundingClientRect();
+    const dock=navRef.current?.getBoundingClientRect();
+    return {
+      left:rail ? rail.right-rect.left+12 : 12,
+      top:Math.max(60,actions ? actions.bottom-rect.top+12 : 0),
+      right:viewport!.screenWidth-12,
+      bottom:Math.min(viewport!.screenHeight-12,dock ? dock.top-rect.top-12 : viewport!.screenHeight-12),
+    };
   };
   const focus = () => {
     if (!viewport || !canvas) return;
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
-    const rect=canvas.getBoundingClientRect();
-    const host=canvas.parentElement;
-    const rail=host?.querySelector('.map-tool-palette')?.getBoundingClientRect();
-    const actions=host?.querySelector('.map-selection-actions')?.getBoundingClientRect();
-    const dock=navRef.current?.getBoundingClientRect();
-    const frame=selectionFrame(tokens,gridSizePx,viewport.screenWidth,viewport.screenHeight,viewport.scale.x,{
-      left:rail ? rail.right-rect.left+12 : 12,
-      top:Math.max(60,actions ? actions.bottom-rect.top+12 : 0),
-      right:viewport.screenWidth-12,
-      bottom:Math.min(viewport.screenHeight-12,dock ? dock.top-rect.top-12 : viewport.screenHeight-12),
-    });
+    const frame=selectionFrame(tokens,gridSizePx,viewport.screenWidth,viewport.screenHeight,viewport.scale.x,clearArea());
     if (!frame) return;
     viewport.plugins.get('decelerate')?.reset();
+    viewport.clampZoom({minScale:Math.min(.25,frame.zoom),maxScale:4});
     viewport.setZoom(frame.zoom,true);
     viewport.moveCenter(frame.x,frame.y);
     setZoom(Math.round(frame.zoom*100));
@@ -100,8 +109,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
           const rect = canvas.getBoundingClientRect();
           const anchor = viewport.toWorld(before.x-rect.left, before.y-rect.top);
           if (before.distance > 0) {
-            const min = Math.min(0.25, viewport.screenWidth/viewport.worldWidth*0.8, viewport.screenHeight/viewport.worldHeight*0.8);
-            viewport.setZoom(Math.max(min, Math.min(4, viewport.scale.x*after.distance/before.distance)), true);
+            viewport.setZoom(viewport.scale.x*after.distance/before.distance, true);
           }
           const shifted = viewport.toWorld(after.x-rect.left, after.y-rect.top);
           viewport.moveCenter(viewport.center.x+anchor.x-shifted.x, viewport.center.y+anchor.y-shifted.y);

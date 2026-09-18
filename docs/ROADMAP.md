@@ -3,6 +3,26 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Fit map clears controls, v2.709
+
+Fit map now frames the full scene inside the space between the tool rail,
+top controls and navigation dock. It shares bounds framing with Find selection.
+Both lower the viewport zoom floor when needed, so the clamp no longer undoes
+a fit on short landscape screens. Minus and pinch-out do not jump inward from
+these smaller fitted views. Token coordinates and scene data are unchanged.
+
+Pure geometry coverage checks scene corners, zoom caps and unavailable space.
+Browser coverage checks all four scene edges against actual controls after
+portrait/landscape resizing, zoom-button direction and unchanged token positions.
+Removing clear-space framing fails the regression. Desktop and mobile screenshots
+inspected. User hands-on testing remains deferred; no database changes.
+Release gate passed (861 unit tests, TypeScript 221/221, hooks, RAW/coords/anchors,
+build and 252.4 KB entry). The broad browser run passed 19/20 cases; the mobile
+group-drag test now uses Find selection after its toolbar opens, and passes in
+both viewports. Final targeted framing, zoom round-trip, group-drag and pinch
+checks pass. Overflow probe finds no sideways scrolling or new clipped controls;
+existing underlying sidebar/map clipping remains.
+
 ### 2026-09-18 — Live grid appearance, v2.708
 
 The map controls menu now offers Classic, Light and Dark grid colors, opacity

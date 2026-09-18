@@ -31,6 +31,36 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('fit map keeps the whole scene clear of controls',async({page},info)=>{
+    await openMap(page);
+    const before=(await state(page)).tokens;
+    for(const size of [page.viewportSize()!,{width:851,height:393}]) {
+      await page.setViewportSize(size);
+      await expect.poll(()=>page.evaluate(()=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        return Math.abs(vp.screenHeight-document.querySelector('canvas')!.getBoundingClientRect().height)<1;
+      })).toBe(true);
+      await page.getByRole('button',{name:'Fit map',exact:true}).click();
+      await expect.poll(()=>page.evaluate(()=>{
+        const canvas=document.querySelector('canvas')!;const rect=canvas.getBoundingClientRect();
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        const rail=document.querySelector('.map-tool-palette')!.getBoundingClientRect();
+        const dock=document.querySelector('.map-navigation')!.getBoundingClientRect();
+        const a=vp.toScreen(0,0),b=vp.toScreen(vp.worldWidth,vp.worldHeight);
+        return a.x+rect.left>=rail.right+12 && a.y+rect.top>=60 && b.x+rect.left<=rect.right-12 && b.y+rect.top<=dock.top-12;
+      })).toBe(true);
+      await page.screenshot({path:info.outputPath(`fit-${size.width}.png`)});
+      const zoom=()=>page.evaluate(()=>(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins).scale.x);
+      const fitted=await zoom();
+      await page.getByRole('button',{name:'Zoom out',exact:true}).click();
+      const zoomedOut=await zoom();expect(zoomedOut).toBeLessThanOrEqual(fitted);
+      await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+      expect(await zoom()).toBeGreaterThan(fitted);
+      await page.getByRole('button',{name:'Zoom out',exact:true}).click();
+      expect(await zoom()).toBeCloseTo(zoomedOut,5);
+    }
+    expect((await state(page)).tokens).toEqual(before);
+  });
   test('live grid controls restyle in place and survive reload',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
@@ -231,6 +261,8 @@ test.describe('token gestures (local stack)', () => {
         await page.keyboard.up('Shift');
       }
       await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+      // Selection opens another toolbar after Fit; bring the group clear of it.
+      await page.getByRole('button',{name:'Find selection',exact:true}).click();
       const actions=await page.getByRole('toolbar',{name:'Selected tokens'}).boundingBox();
       if (page.viewportSize()!.width < 600) {
         expect(actions!.y).toBeGreaterThanOrEqual(132);
