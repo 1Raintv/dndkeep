@@ -4,6 +4,19 @@ import {afterEach,expect,it,vi} from 'vitest';
 import type {Viewport} from 'pixi-viewport';
 import {usePreviousMapView} from './usePreviousMapView';
 afterEach(cleanup);
+it('preserves the original return point across repeated framing and camera rounding noise',()=>{
+  const vp=camera();const {result}=renderHook(()=>usePreviousMapView(vp as unknown as Viewport,'a'));
+  const target={x:900,y:500,zoom:2};
+  act(()=>result.current.remember(target));vp.center={x:target.x+1e-8,y:target.y};vp.scale.x=target.zoom;
+  act(()=>result.current.remember(target));act(()=>result.current.restore());
+  expect(vp.center).toEqual({x:120,y:80});expect(vp.scale.x).toBe(.12);
+});
+it('does not create history for unchanged framing but remembers a real zoom-only jump',()=>{
+  const vp=camera();const {result}=renderHook(()=>usePreviousMapView(vp as unknown as Viewport,'a'));
+  act(()=>result.current.remember({x:120,y:80,zoom:.12}));expect(result.current.canReturn).toBe(false);
+  act(()=>result.current.remember({x:120,y:80,zoom:1}));vp.scale.x=1;
+  act(()=>result.current.restore());expect(vp.scale.x).toBe(.12);
+});
 function camera(){
   const vp={center:{x:120,y:80},scale:{x:.12},plugins:{get:vi.fn(()=>({reset:vi.fn()}))},clampZoom:vi.fn(),
     setZoom:vi.fn((zoom:number)=>{vp.scale.x=zoom;}),moveCenter:vi.fn((x:number,y:number)=>{vp.center={x,y};})};

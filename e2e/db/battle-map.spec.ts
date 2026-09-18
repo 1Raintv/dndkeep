@@ -86,6 +86,7 @@ test.describe('battle map (local stack)', () => {
     await navigation.getByRole('button',{name:'Zoom in',exact:true}).click();
     const beforeFit=await readCamera();
     await navigation.getByRole('button',{name:'Fit map',exact:true}).click();
+    await navigation.getByRole('button',{name:'Fit map',exact:true}).click();
     await navigation.getByRole('button',{name:'Previous view',exact:true}).click();
     expect(await readCamera()).toEqual(beforeFit);
     await expect(navigation.getByRole('button',{name:'Previous view',exact:true})).toBeDisabled();
@@ -172,6 +173,8 @@ test.describe('battle map (local stack)', () => {
     expect(focusedCamera.x).toBeCloseTo(selectionCamera.x,2);
     expect(focusedCamera.y).toBeCloseTo(selectionCamera.y,2);
     expect(focusedCamera.scale).toBeCloseTo(selectionCamera.scale,3);
+    await page.keyboard.press('f');
+    await navigation.getByRole('button',{name:'Find selection',exact:true}).click();
     await navigation.getByRole('button',{name:'Previous view',exact:true}).click();
     const returnedCamera=await readCamera();
     expect(returnedCamera.x).toBeCloseTo(selectionCamera.x+300,2);

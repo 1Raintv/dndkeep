@@ -36,6 +36,15 @@ it('frames the current selection with F and leaves the key alone without a selec
   expect(key('f').defaultPrevented).toBe(false);
   expect(actions.focus).toHaveBeenCalledTimes(2);
 });
+it('ignores held Fit/Find keys while allowing held zoom keys',()=>{
+  const {hover,key,actions}=setup();hover();key('0');key('f');
+  for(let i=0;i<3;i++) {
+    expect(key('0',{repeat:true}).defaultPrevented).toBe(true);
+    expect(key('f',{repeat:true}).defaultPrevented).toBe(true);
+    key('+',{repeat:true});
+  }
+  expect(actions.fit).toHaveBeenCalledOnce();expect(actions.focus).toHaveBeenCalledOnce();expect(actions.zoom).toHaveBeenCalledTimes(3);
+});
 it('does not steal F from typing, dialogs, overlays, browser shortcuts or a drag',()=>{
   const {canvas,hit,hover,key,actions}=setup();hover();
   for(const tag of ['input','textarea','select']) {

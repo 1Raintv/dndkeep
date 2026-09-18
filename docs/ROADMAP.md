@@ -3,6 +3,20 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Repeated framing preserves Previous view, v2.727
+
+Repeated Fit map or Find selection no longer replaces the saved return point
+when the destination matches the current camera (within floating-point noise).
+A genuine position or zoom change still remembers the latest view. Held F/0
+shortcuts run once per press; held zoom keys continue to repeat normally.
+
+Validation: full gate passed (915 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile browser checks
+repeat Fit, F and Find selection, then verify restoration of the original camera.
+Unit coverage includes unchanged views, rounding noise, zoom-only changes and
+held-key behavior. Removing the unchanged-view guard fails two regressions.
+No schema/layout changes. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Return to the previous camera view, v2.726
 
 The arrow beside Fit map restores the position and zoom from before the latest

@@ -19,9 +19,9 @@ export function useMapNavigationShortcuts(canvas:HTMLCanvasElement|null, actions
       if(document.elementFromPoint(pointer.x,pointer.y)!==canvas)return;
       if(event.key==='+' || event.key==='=') {event.preventDefault();latest.current.zoom(1.2);}
       else if(event.key==='-') {event.preventDefault();latest.current.zoom(1/1.2);}
-      else if(event.key==='0') {event.preventDefault();latest.current.fit();}
+      else if(event.key==='0') {event.preventDefault();if(!event.repeat)latest.current.fit();}
       // v2.724 — reuse the same selection framing as the visible button.
-      else if(event.key.toLowerCase()==='f' && latest.current.focus) {event.preventDefault();latest.current.focus();}
+      else if(event.key.toLowerCase()==='f' && latest.current.focus) {event.preventDefault();if(!event.repeat)latest.current.focus();}
     };
     canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',leave);
     window.addEventListener('pointerdown',down,true);window.addEventListener('pointerup',up,true);
