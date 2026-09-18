@@ -3,6 +3,24 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Clearer map tool rail, v2.712
+
+Tool buttons now share sharp SVG icons, accessible names, pressed-state semantics,
+keyboard focus rings and an inset active marker. Eraser, clear drawings and clear
+walls have distinct symbols. Existing descriptions, DM/player visibility,
+tool handlers and destructive-action confirmations are preserved. Coarse-pointer
+targets grow to 40px. No icon font or heavy dependency was added.
+
+The scrolling rail measures the actual navigation dock above combat/dice controls,
+so its lower tools no longer hide behind the mobile dock. Button rendering and
+rail measurement moved into battlemap components, shrinking the map root by
+over 270 lines. User hands-on testing remains deferred; no database changes.
+Validation: release gate passed (871 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, production build, 252.4 KB entry). Four final desktop/mobile
+tool and player-combat checks passed. Forcing pressed-state reporting off fails
+the regression. Screenshots inspected; overflow probe found no sideways page
+scroll or new tool clipping, with existing underlying sidebar/map findings.
+
 ### 2026-09-18 — Compact selection toolbar, v2.711
 
 The selection toolbar starts compact: selection count, movement arrows, More and
