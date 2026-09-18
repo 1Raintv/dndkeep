@@ -3,6 +3,25 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Readable token drag feedback, v2.720
+
+Single-token drag distance text, dashed paths and destination outlines now retain
+their screen size when zooming. The destination has a tinted footprint and a
+contrasting border; a faint origin outline distinguishes start from landing.
+The distance label explicitly says Grid snap and stays within the canvas edges.
+Existing size-aware snap, distance calculation and drop rules are preserved.
+Blocked starts now explain remote drag locks, missing control, out-of-combat DM
+control, wrong turns, locked tokens and exhausted movement instead of silently
+ignoring the press. No authorization or movement-budget changes.
+
+Validation: release gate passed (893 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Six desktop/mobile browser checks
+passed for zoom-stable feedback, remote-lock explanations and multiplayer drag
+cancellation, including zero persisted writes on cancellation. Screenshots
+inspected; shared overflow probe reports no sideways scroll or new UI clipping
+(existing underlying sidebar/map findings remain). Removing label counter-scaling
+fails the regression. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Rename directly in token options, v2.719
 
 Token renaming now uses a focused, prefilled input inside the token menu instead

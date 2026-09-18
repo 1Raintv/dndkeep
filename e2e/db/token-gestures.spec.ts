@@ -31,6 +31,52 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('drag destination and distance stay readable at different zooms',async({page},info)=>{
+    await openMap(page);
+    const before=(await state(page)).tokens;
+    const token=Object.values(before).find((t:any)=>t.name==='Ilyana Vell') as any;
+    const errors:string[]=[];const writes:string[]=[];
+    page.on('pageerror',e=>errors.push(String(e)));
+    page.on('request',r=>{if(r.method()==='PATCH' && /scene_tokens|scene_token_placements/.test(r.url()))writes.push(r.url());});
+    for(const zoom of [0.28,1]) {
+      const point=await page.evaluate(({id,zoom})=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+        vp.setZoom(zoom,true);vp.moveCenter(t.x,t.y);
+        const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
+      },{id:token.id,zoom});
+      await page.mouse.move(point.x,point.y);await page.mouse.down();
+      await page.mouse.move(point.x+70*zoom,point.y+70*zoom,{steps:5});
+      const read=()=>page.evaluate(()=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        const label=vp.children.find((c:any)=>c.label==='token-drag-distance');
+        const marker=vp.children.find((c:any)=>c.label==='token-drag-preview');
+        return {text:label.text,visible:label.visible,scale:label.scale.x*vp.scale.x,marker:marker.visible};
+      });
+      await expect.poll(read).toMatchObject({text:'5 ft  ·  Grid snap',visible:true,scale:1,marker:true});
+      await page.screenshot({path:info.outputPath(`drag-preview-${zoom}.png`)});
+      await page.keyboard.press('Escape');await page.mouse.up();
+      await expect.poll(read).toMatchObject({visible:false,marker:false});
+      await expect.poll(async()=>(await state(page)).tokens[token.id].x).toBe(token.x);
+    }
+    expect(writes).toEqual([]);expect(errors).toEqual([]);
+    expect((await state(page)).tokens).toEqual(before);
+  });
+  test('a remote drag lock explains why movement is unavailable',async({page})=>{
+    await openMap(page);
+    const before=(await state(page)).tokens;
+    const token=Object.values(before).find((t:any)=>t.name==='Ilyana Vell') as any;
+    const point=await page.evaluate(async id=>{
+      const path='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ path);
+      useBattleMapStore.setState({remoteDragLocks:{[id]:'another-user'}});
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
+    },token.id);
+    await page.mouse.click(point.x,point.y);
+    await expect(page.getByText('Another player is moving this token. Wait for them to finish.')).toBeVisible();
+    expect((await state(page)).dragging).toBeNull();expect((await state(page)).tokens).toEqual(before);
+  });
   test('inline rename keeps typing and cancel inside the map menu',async({page},info)=>{
     await openMap(page);
     const before=(await state(page)).tokens;
