@@ -71,24 +71,28 @@ export function TokenContextMenu(props: {
   // v2.241 — modal handle for the rename prompt.
   const { prompt: promptModal } = useModal();
 
+  useEffect(()=>{
+    // v2.716 — a keyboard user can immediately return from any submenu.
+    if(submenu!=='none') menuRef.current?.querySelector<HTMLButtonElement>('[data-menu-back]')?.focus({preventScroll:true});
+  },[submenu,menuRef]);
+
   useEffect(() => {
-    function handler() {
-      onClose();
+    function handler(event:PointerEvent) {
+      if(!menuRef.current?.contains(event.target as Node)) onClose();
     }
     function keyHandler(e: KeyboardEvent) {
       if (e.key === 'Escape') {e.preventDefault();e.stopImmediatePropagation();onClose();}
     }
     // v2.715 — the topmost menu owns Escape before map/fullscreen listeners.
     window.addEventListener('keydown', keyHandler, true);
-    const id = setTimeout(() => {
-      window.addEventListener('mousedown', handler);
-    }, 0);
+    // Pixi opens this menu during pointerdown; do not dismiss it with that same event.
+    const id=setTimeout(()=>window.addEventListener('pointerdown', handler),0);
     return () => {
       clearTimeout(id);
-      window.removeEventListener('mousedown', handler);
+      window.removeEventListener('pointerdown', handler);
       window.removeEventListener('keydown', keyHandler, true);
     };
-  }, [onClose]);
+  }, [onClose,menuRef]);
 
   if (!token) return null;
 
@@ -179,6 +183,12 @@ export function TokenContextMenu(props: {
     e.stopPropagation();
   }
 
+  const backButton=<button type="button" data-menu-back aria-label="Back to token options"
+    onClick={()=>setSubmenu('none')}
+    style={{display:'block',position:'sticky',top:0,zIndex:1,width:'100%',minHeight:44,padding:'8px 10px',textAlign:'left',font:'inherit',fontWeight:600,color:'var(--t-1)',background:'var(--c-card)',border:'1px solid var(--c-border)',borderRadius:4,cursor:'pointer'}}>
+    ← Back to token options
+  </button>;
+
   // v2.663.0 — carried light. Only bites in a Dark scene, where sight
   // range became darkvision-driven: a creature with neither darkvision
   // nor a light genuinely sees nothing, and this is how the DM hands
@@ -215,6 +225,7 @@ export function TokenContextMenu(props: {
     const currentColour = (token as any).lightColor ?? null;
     return createPortal(
       <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+        {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Carried light
         </div>
@@ -283,6 +294,7 @@ export function TokenContextMenu(props: {
   if (submenu === 'size') {
     return createPortal(
       <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+        {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Size
         </div>
@@ -315,6 +327,7 @@ export function TokenContextMenu(props: {
     const current = ((token.rotation ?? 0) % 360 + 360) % 360;
     return createPortal(
       <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+        {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Facing
         </div>
@@ -345,6 +358,7 @@ export function TokenContextMenu(props: {
     const currentGrant = (token as any).playerId as string | null;
     return createPortal(
       <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+        {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Player Control
         </div>
@@ -387,6 +401,7 @@ export function TokenContextMenu(props: {
   if (submenu === 'color') {
     return createPortal(
       <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+        {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Color
         </div>

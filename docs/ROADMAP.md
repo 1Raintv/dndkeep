@@ -3,6 +3,23 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Return from token submenus, v2.716
+
+Size, color, facing, light and player-control submenus now have a sticky
+Back to token options button. Opening a submenu focuses Back for immediate
+keyboard return. Outside dismissal uses pointer events so touch taps work
+without relying on compatibility mouse events; the opening pointer event is
+excluded. Internal taps and Back preserve the menu. Escape still closes the
+menu without leaving fullscreen. Existing actions and permissions are unchanged.
+
+Desktop/mobile browser coverage checks repeated submenu returns, Enter activation,
+outside touch dismissal, landscape/resizing and unchanged token data. Disabling
+Back fails the regression. No database changes; personal encounter mode stays queued.
+Release gate passed (875 unit tests, TypeScript 221/221, hooks, RAW/coords/anchors,
+build and 252.4 KB entry). Four final desktop/mobile menu and camera checks passed;
+screenshots inspected and shared overflow probe found no new clipping or sideways
+scrolling, with existing underlying sidebar/map findings unchanged.
+
 ### 2026-09-18 — Reachable token menus, v2.715
 
 Token options and every submenu now measure their actual rendered size rather
