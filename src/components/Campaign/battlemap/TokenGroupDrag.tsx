@@ -1,3 +1,4 @@
+import {groupDragPreview} from './groupDragPreview';
 import { useEffect, useRef } from 'react';
 import type { Viewport } from 'pixi-viewport';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
@@ -21,6 +22,7 @@ export function TokenGroupDrag(props: {
   const {showToast}=useToast();
   useEffect(()=>{
     if(!enabled || !canvas || !viewport || selectedIds.size<2) return;
+    const feedback=groupDragPreview(viewport,gridSize);
     const sceneId=useBattleMapStore.getState().currentSceneId;
     let drag: {pointer:number; x:number; y:number; tokens:Token[]; dx:number; dy:number}|null=null;
     let suppressUntil=0, lastBroadcast=0;
@@ -65,11 +67,12 @@ export function TokenGroupDrag(props: {
         useBattleMapStore.getState().updateTokenPosition(t.id,t.x+drag.dx,t.y+drag.dy);
         if(broadcast) move(t.id,t.x+drag.dx,t.y+drag.dy);
       }
+      feedback.draw(drag.tokens,drag.dx,drag.dy);
       if(broadcast) lastBroadcast=performance.now();
     };
     const release=()=>{
       if(!drag) return;
-      const held=drag; drag=null;
+      const held=drag; drag=null;feedback.clear();
       if(canvas.hasPointerCapture(held.pointer)) canvas.releasePointerCapture(held.pointer);
       suppressUntil=Date.now()+200;
       return held;
@@ -85,7 +88,7 @@ export function TokenGroupDrag(props: {
       preview(event);
       const held=release()!;
       if(!held.dx && !held.dy) {useBattleMapStore.getState().setDragging(null);end(held.tokens.map(t=>t.id));return;}
-      busy.current=true;
+      busy.current=true;feedback.draw(held.tokens,held.dx,held.dy,true);
       try {
         const moves=held.tokens.map(t=>({id:t.id,from:{x:t.x,y:t.y},to:{x:t.x+held.dx,y:t.y+held.dy}}));
         const result=await commitTokenGroup(moves,campaignId,current,move);
@@ -93,7 +96,7 @@ export function TokenGroupDrag(props: {
         if(result.failed) showToast('Some tokens could not move. Saved moves can be undone.','error');
       } finally {
         if(current()) { useBattleMapStore.getState().setDragging(null);end(held.tokens.map(t=>t.id)); }
-        busy.current=false;
+        busy.current=false;feedback.clear();
       }
     };
     const pointerCancel=(event:PointerEvent)=>{if(drag?.pointer===event.pointerId){swallow(event);cancel();}};
@@ -107,7 +110,7 @@ export function TokenGroupDrag(props: {
     window.addEventListener('pointermove',preview,true);window.addEventListener('pointerup',up,true);
     window.addEventListener('pointercancel',pointerCancel,true);window.addEventListener('keydown',escape,true);window.addEventListener('blur',cancel);
     return ()=>{
-      cancel();
+      cancel();feedback.destroy();
       host.removeEventListener('pointerdown',down,true);canvas.removeEventListener('click',click,true);
       window.removeEventListener('pointermove',preview,true);window.removeEventListener('pointerup',up,true);
       window.removeEventListener('pointercancel',pointerCancel,true);window.removeEventListener('keydown',escape,true);window.removeEventListener('blur',cancel);
