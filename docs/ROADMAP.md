@@ -3,6 +3,23 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Quick map zoom presets, v2.713
+
+The zoom percentage is now a keyboard-accessible picker for 25%, 50%, 100%,
+200% and 400%. Intermediate wheel/pinch/Fit values remain visible. Choosing a
+preset or using +/- stops residual pan momentum, retains the world center and
+respects the live zoom limits. Camera changes do not save scene or token data.
+The compact native picker fits the desktop and mobile navigation dock.
+
+Validation: release gate passed (871 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build, 252.4 KB entry). Desktop/mobile preset and Fit checks
+passed, including camera center, token state, no scene writes and keyboard input.
+All eight final desktop/mobile preset, control reachability, Find selection and
+touch-pan checks passed.
+Forcing all presets to 100% fails the regression. Screenshots inspected; shared
+overflow probe found no sideways scrolling or dock clipping, with existing
+underlying sidebar/map findings. User hands-on testing remains deferred.
+
 ### 2026-09-18 — Clearer map tool rail, v2.712
 
 Tool buttons now share sharp SVG icons, accessible names, pressed-state semantics,

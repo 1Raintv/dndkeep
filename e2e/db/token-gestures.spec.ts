@@ -31,6 +31,40 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('zoom presets preserve the camera center and token positions',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const tokens=(await state(page)).tokens;
+    const writes:string[]=[];
+    page.on('request',r=>{if(r.url().includes('/rest/v1/scene') && ['POST','PATCH','DELETE'].includes(r.method())) writes.push(r.url());});
+    const camera=()=>page.evaluate(()=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      return {x:vp.center.x,y:vp.center.y,scale:vp.scale.x};
+    });
+    const original=await camera();const zoom=page.getByRole('combobox',{name:'Map zoom',exact:true});
+    for(const value of [100,200,400,50,25,100]) {
+      await zoom.selectOption(String(value));
+      const current=await camera();expect(current.scale).toBeCloseTo(value/100,5);
+      expect(current.x).toBeCloseTo(original.x,3);expect(current.y).toBeCloseTo(original.y,3);
+      await expect(zoom).toHaveValue(String(value));
+    }
+    await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+    await expect(zoom).toHaveValue('120');
+    await page.getByRole('button',{name:'Fit map',exact:true}).click();
+    await expect(zoom).toHaveValue(String(Math.round((await camera()).scale*100)));
+    await zoom.selectOption('100');
+    await zoom.focus();await page.keyboard.press('ArrowUp');
+    await expect(zoom).toHaveValue('50');expect((await camera()).scale).toBeCloseTo(.5,5);
+    await zoom.selectOption('100');await zoom.blur();
+    const layout=await zoom.evaluate(el=>{
+      const r=el.getBoundingClientRect(),dock=el.closest('.map-navigation')!.getBoundingClientRect();
+      const left=el.previousElementSibling!.getBoundingClientRect(),right=el.nextElementSibling!.getBoundingClientRect();
+      return {inside:r.left>=dock.left && r.right<=dock.right,overlap:r.left<left.right || r.right>right.left,height:r.height};
+    });
+    expect(layout.inside).toBe(true);expect(layout.overlap).toBe(false);expect(layout.height).toBeGreaterThanOrEqual(40);
+    await page.screenshot({path:info.outputPath('zoom-presets.png')});
+    expect((await state(page)).tokens).toEqual(tokens);expect(writes).toEqual([]);expect(errors).toEqual([]);
+  });
   test('tool rail uses distinct sharp icons and exposes active tools',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
@@ -253,7 +287,7 @@ test.describe('token gestures (local stack)', () => {
     const box=(await page.locator('canvas').first().boundingBox())!;
     await page.mouse.click(box.x+point.x,box.y+point.y);
     await page.getByRole('button',{name:'Find selection',exact:true}).click();
-    while(parseInt(await page.getByLabel('Map zoom').innerText())<90) await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+    while(parseInt(await page.getByLabel('Map zoom').inputValue())<90) await page.getByRole('button',{name:'Zoom in',exact:true}).click();
     const names=await page.evaluate(()=>{
       const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
       return vp.children.flatMap((c:any)=>c.children??[]).filter((c:any)=>c.__tokenId)
@@ -302,7 +336,7 @@ test.describe('token gestures (local stack)', () => {
     expect(framing.top+box.y).toBeGreaterThan(actions.y+actions.height);
     expect(framing.right).toBeLessThan(box.width-12);
     expect(framing.bottom+box.y).toBeLessThan(dock.y);
-    await expect(page.getByLabel('Map zoom')).toHaveText(`${Math.round(framing.zoom*100)}%`);
+    await expect(page.getByLabel('Map zoom')).toHaveValue(`${Math.round(framing.zoom*100)}`);
     expect((await state(page)).tokens).toEqual(before);expect(writes).toEqual([]);
     await page.screenshot({path:info.outputPath('selection-framed.png')});
   });
