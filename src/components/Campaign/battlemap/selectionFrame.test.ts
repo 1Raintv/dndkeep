@@ -1,6 +1,24 @@
 import {describe,it,expect} from 'vitest';
 import type {Token} from '../../../lib/map/mapTypes';
-import {selectionFrame} from './selectionFrame';
+import {boundsFrame,selectionFrame} from './selectionFrame';
+
+describe('boundsFrame',()=>{
+  it('fits every scene corner inside a narrow clear area',()=>{
+    const area={left:76,top:60,right:381,bottom:470};
+    const f=boundsFrame(0,0,2100,1400,393,851,4,area)!;
+    for(const x of [0,2100])expect((x-f.x)*f.zoom+393/2).toBeGreaterThanOrEqual(area.left);
+    for(const x of [0,2100])expect((x-f.x)*f.zoom+393/2).toBeLessThanOrEqual(area.right);
+    for(const y of [0,1400]) {
+      expect((y-f.y)*f.zoom+851/2).toBeGreaterThanOrEqual(area.top);
+      expect((y-f.y)*f.zoom+851/2).toBeLessThanOrEqual(area.bottom);
+    }
+  });
+  it('caps tiny-scene enlargement and ignores unavailable space',()=>{
+    expect(boundsFrame(0,0,1,1,1000,800,4)?.zoom).toBe(4);
+    expect(boundsFrame(0,0,0,1,1000,800,4)).toBeNull();
+    expect(boundsFrame(0,0,100,100,400,300,4,{left:70,top:60,right:380,bottom:40})).toBeNull();
+  });
+});
 
 const token=(x:number,y:number,size:Token['size']='medium')=>({x,y,size} as Token);
 describe('selectionFrame',()=>{
