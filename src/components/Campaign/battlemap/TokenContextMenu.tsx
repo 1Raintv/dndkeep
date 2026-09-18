@@ -8,6 +8,7 @@ import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import { useModal } from '../../shared/Modal';
 import { SIZE_OPTIONS, TOKEN_COLORS, type ContextMenuState } from './shared';
 import {useMapMenuPosition} from './useMapMenuPosition';
+import './TokenContextMenu.css';
 
 // v2.653.0 — the eight facings, 0° = up (matches Token.rotation's
 // docstring and the renderer's notch). Same 45° increments the AoE
@@ -72,9 +73,9 @@ export function TokenContextMenu(props: {
   const { prompt: promptModal } = useModal();
 
   useEffect(()=>{
-    // v2.716 — a keyboard user can immediately return from any submenu.
-    if(submenu!=='none') menuRef.current?.querySelector<HTMLButtonElement>('[data-menu-back]')?.focus({preventScroll:true});
-  },[submenu,menuRef]);
+    // v2.717 — Tab starts within the current token menu; submenus start at Back.
+    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});
+  },[submenu,state.tokenId,menuRef]);
 
   useEffect(() => {
     function handler(event:PointerEvent) {
@@ -170,6 +171,7 @@ export function TokenContextMenu(props: {
 
   const itemStyle: React.CSSProperties = {
     display: 'flex',
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '6px 10px',
@@ -224,20 +226,20 @@ export function TokenContextMenu(props: {
     const current = (token as any).lightRadiusFt ?? 0;
     const currentColour = (token as any).lightColor ?? null;
     return createPortal(
-      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Carried light
         </div>
         {LIGHTS.map(l => (
-          <div
+          <button type="button"
             key={l.ft}
             style={{
               ...itemStyle,
               background: current === l.ft ? 'rgba(167,139,250,0.12)' : undefined,
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = current === l.ft ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = current === l.ft ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
             onClick={() => { applyPatch({ lightRadiusFt: l.ft } as any); onClose(); }}
           >
             <span>
@@ -247,7 +249,7 @@ export function TokenContextMenu(props: {
               </span>
             </span>
             {current === l.ft && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
-          </div>
+          </button>
         ))}
         {/* v2.668.0 — light COLOUR. Only offered once the token actually
             carries a light: a colour picker on an unlit token would set
@@ -293,25 +295,25 @@ export function TokenContextMenu(props: {
 
   if (submenu === 'size') {
     return createPortal(
-      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Size
         </div>
         {SIZE_OPTIONS.map(sz => (
-          <div
+          <button type="button"
             key={sz}
             style={{
               ...itemStyle,
               background: token.size === sz ? 'rgba(167,139,250,0.12)' : undefined,
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = token.size === sz ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = token.size === sz ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
             onClick={() => { applyPatch({ size: sz }); onClose(); }}
           >
             <span style={{ textTransform: 'capitalize' as const }}>{sz}</span>
             {token.size === sz && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
-          </div>
+          </button>
         ))}
       </div>,
       document.body,
@@ -326,7 +328,7 @@ export function TokenContextMenu(props: {
   if (submenu === 'facing') {
     const current = ((token.rotation ?? 0) % 360 + 360) % 360;
     return createPortal(
-      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Facing
@@ -334,16 +336,16 @@ export function TokenContextMenu(props: {
         {FACINGS.map(({ deg, label, arrow }) => {
           const active = current === deg;
           return (
-            <div
+            <button type="button"
               key={deg}
               style={{ ...itemStyle, background: active ? 'rgba(167,139,250,0.12)' : undefined }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
               onClick={() => { applyPatch({ rotation: deg }); onClose(); }}
             >
               <span><span style={{ display: 'inline-block', width: 16 }}>{arrow}</span> {label}</span>
               {active && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
-            </div>
+            </button>
           );
         })}
       </div>,
@@ -357,40 +359,40 @@ export function TokenContextMenu(props: {
   if (submenu === 'grant') {
     const currentGrant = (token as any).playerId as string | null;
     return createPortal(
-      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Player Control
         </div>
-        <div
+        <button type="button"
           style={{
             ...itemStyle,
             background: !currentGrant ? 'rgba(167,139,250,0.12)' : undefined,
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = !currentGrant ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = !currentGrant ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
           onClick={() => { applyPatch({ playerId: null } as any); onClose(); }}
         >
           <span style={{ color: 'var(--t-2)' }}>(no one)</span>
           {!currentGrant && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
-        </div>
+        </button>
         {(playerCharacters ?? []).map(pc => {
           if (!pc.user_id) return null;
           const active = currentGrant === pc.user_id;
           return (
-            <div
+            <button type="button"
               key={pc.id}
               style={{
                 ...itemStyle,
                 background: active ? 'rgba(167,139,250,0.12)' : undefined,
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = active ? 'rgba(167,139,250,0.12)' : 'transparent'; }}
               onClick={() => { applyPatch({ playerId: pc.user_id! } as any); onClose(); }}
             >
               <span>{pc.name}</span>
               {active && <span style={{ color: '#a78bfa', fontSize: 10 }}>✓</span>}
-            </div>
+            </button>
           );
         })}
       </div>,
@@ -400,14 +402,14 @@ export function TokenContextMenu(props: {
 
   if (submenu === 'color') {
     return createPortal(
-      <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+      <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
         {backButton}
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Color
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: 6 }}>
           {TOKEN_COLORS.map(c => (
-            <div
+            <button type="button"
               key={c}
               onClick={() => { applyPatch({ color: c }); onClose(); }}
               style={{
@@ -419,6 +421,8 @@ export function TokenContextMenu(props: {
                 boxSizing: 'border-box' as const,
               }}
               title={`#${c.toString(16).padStart(6, '0')}`}
+              aria-label={`Token color #${c.toString(16).padStart(6, '0')}`}
+              aria-pressed={token.color===c}
             />
           ))}
         </div>
@@ -428,7 +432,7 @@ export function TokenContextMenu(props: {
   }
 
   return createPortal(
-    <div ref={menuRef} role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
+    <div ref={menuRef} className="map-token-options" role="region" aria-label="Token options" style={menuBaseStyle} onMouseDown={stop}>
       <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
         {token.name || 'Token'}
       </div>
@@ -438,20 +442,20 @@ export function TokenContextMenu(props: {
           palette to distinguish from the purple "View Character
           Sheet" navigate-away action below. */}
       {onOpenQuickPanel && (token.characterId || token.npcId) && (
-        <div
+        <button type="button"
           style={{
             ...itemStyle,
             color: '#67e8f9',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(103,232,249,0.18)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(103,232,249,0.18)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           onClick={() => {
             onOpenQuickPanel(state.tokenId);
             onClose();
           }}
         >
           Open Quick Panel
-        </div>
+        </button>
       )}
       {/* v2.222 — quick-jump to the linked character sheet. Only
           renders when the token is bound to a character via
@@ -459,7 +463,7 @@ export function TokenContextMenu(props: {
           Visually offset (purple, separator) so it reads as a
           navigation action vs the edit ops below. */}
       {token.characterId && onOpenCharacter && (
-        <div
+        <button type="button"
           style={{
             ...itemStyle,
             color: '#a78bfa',
@@ -467,15 +471,15 @@ export function TokenContextMenu(props: {
             marginBottom: 4,
             paddingBottom: 8,
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.18)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.18)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           onClick={() => {
             onOpenCharacter(token.characterId!);
             onClose();
           }}
         >
           View Character Sheet
-        </div>
+        </button>
       )}
       {[
         // v2.411.0: Lock/Unlock toggle. DM-only. Locked tokens refuse
@@ -558,27 +562,27 @@ export function TokenContextMenu(props: {
           onClose();
         }}] : []),
       ].map(opt => (
-        <div
+        <button type="button"
           key={opt.label}
           style={itemStyle}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(167,139,250,0.12)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           onClick={opt.onClick}
         >
           {opt.label}
-        </div>
+        </button>
       ))}
-      <div
+      <button type="button"
         style={{ ...itemStyle, color: '#f87171', borderTop: '1px solid var(--c-border)', marginTop: 4, paddingTop: 8 }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(248,113,113,0.12)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,113,113,0.12)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
         onClick={() => {
           applyDelete();
           onClose();
         }}
       >
         Delete
-      </div>
+      </button>
     </div>,
     document.body,
   );

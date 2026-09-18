@@ -3,6 +3,23 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Keyboard-accessible token actions, v2.717
+
+Clickable token-menu rows and color swatches are native buttons with visible
+focus outlines, Tab traversal and Enter/Space activation. Opening a menu focuses
+its first action; submenus start at Back. Color swatches have explicit names and
+pressed-state reporting. Space on a focused control no longer triggers temporary
+map pan. Existing token handlers, permissions and save behavior are unchanged.
+
+Validation: release gate passed (875 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Four desktop/mobile menu and camera
+checks passed, including keyboard-only submenu entry/return, action names,
+resize/landscape, touch dismissal and unchanged token data. Removing actions
+from Tab order fails the regression. No database changes; personal play remains queued.
+Two final desktop/mobile visual checks also passed. Focus screenshots inspected;
+shared overflow checks found no new clipping or sideways scrolling (existing
+underlying sidebar/map findings remain).
+
 ### 2026-09-18 — Return from token submenus, v2.716
 
 Size, color, facing, light and player-control submenus now have a sticky
