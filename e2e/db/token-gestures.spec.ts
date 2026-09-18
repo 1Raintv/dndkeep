@@ -31,6 +31,42 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('token options and submenus stay inside the screen',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const before=(await state(page)).tokens;
+    const token=Object.values(before).find((t:any)=>t.name==='Ilyana Vell') as any;
+    const menu=page.getByRole('region',{name:'Token options',exact:true});
+    const assertBounds=async()=>{
+      await expect(menu).toBeVisible();
+      await expect.poll(()=>menu.evaluate(el=>{
+        const r=el.getBoundingClientRect();return r.left>=7 && r.top>=7 && r.right<=window.innerWidth-7 && r.bottom<=window.innerHeight-7;
+      })).toBe(true);
+    };
+    for(const size of [page.viewportSize()!,{width:851,height:393}]) {
+      await page.setViewportSize(size);
+      await expect.poll(()=>page.evaluate(()=>Math.abs((window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins).screenHeight-document.querySelector('canvas')!.getBoundingClientRect().height)<1)).toBe(true);
+      await page.getByRole('button',{name:'Fit map',exact:true}).click();
+      const point=await page.evaluate(id=>{
+        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+        const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+        const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};
+      },token.id);
+      await page.mouse.click(point.x,point.y,{button:'right'});await assertBounds();
+      await page.setViewportSize({...size,height:size.height-40});await assertBounds();
+      await page.setViewportSize(size);await assertBounds();
+      await menu.getByText('Delete',{exact:true}).scrollIntoViewIfNeeded();
+      await expect(menu.getByText('Delete',{exact:true})).toBeInViewport();
+      await page.screenshot({path:info.outputPath(`token-options-${size.width}.png`)});
+      await menu.getByText('☀ Light ▸',{exact:true}).click();await assertBounds();
+      await menu.getByText(/^Daylight/).scrollIntoViewIfNeeded();
+      await expect(menu.getByText(/^Daylight/)).toBeInViewport();
+      await page.screenshot({path:info.outputPath(`token-light-${size.width}.png`)});
+      await page.keyboard.press('Escape');await expect(menu).toBeHidden();
+      await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
+    }
+    expect((await state(page)).tokens).toEqual(before);expect(errors).toEqual([]);
+  });
   test('camera keyboard shortcuts stay on the map and out of controls',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);

@@ -3,6 +3,71 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Reachable token menus, v2.715
+
+Token options and every submenu now measure their actual rendered size rather
+than assuming a 240px menu. Width/height are capped to the visible viewport;
+long menus scroll, with 40px rows for easier targeting. Opening a different
+submenu resets its scroll and recalculates placement. Window/visual-viewport
+resizes and content changes reposition it within an 8px margin.
+
+Escape now closes the topmost token menu before fullscreen listeners run.
+Existing token actions and permissions are unchanged. Desktop, mobile and
+landscape browser checks exercise resize while open, bottom-item reachability,
+light submenu placement, Escape and unchanged token data. Screenshots inspected;
+the shared overflow probe found no new menu clipping or sideways scroll.
+Removing the height cap fails the regression. Personal-play planning remains
+queued below; no database changes in this release.
+Release gate passed (875 unit tests, TypeScript 221/221, hooks, RAW/coords/anchors,
+build, 252.4 KB entry); four final desktop/mobile menu and camera-key checks passed.
+
+### Queued 2026-09-18 — Independent player / personal encounter mode
+
+**Requested by Jared; deferred implementation. Map improvements remain the
+active priority.** Make the character sheet useful at an external table or for
+solo play without requiring a DNDKeep campaign or granting campaign DM powers.
+
+Current evidence: `createCombatStore` returns an empty encounter without a
+campaign; the sheet mounts `InitiativeStrip` with `isDM={false}`, and its turn
+advance/end controls are DM-only. Several reaction/death-save listeners are
+campaign-gated. `resolveAutomation` already supports a null campaign and built-in
+defaults; character settings already expose automation overrides. Audit which
+sheet actions already work independently before adding duplicate controls.
+
+Recommended delivery order:
+
+1. **Track my turns (first useful release).** Owner starts a personal encounter
+   directly from the sheet, explicitly starts/ends their own turn and ends the
+   encounter. Between-turn state preserves reaction timing; a new turn restores
+   only resources whose rules specify that timing. Reuse existing start/end-turn
+   rules for conditions, durations and prompts. Short/long rests remain separate
+   explicit actions. Do not infer enemy turns or automatically advance a table's
+   initiative. Keep this small enough to use beside a physical game or other VTT.
+2. **Personal automation preferences.** Expose existing Off/Prompt/Auto choices
+   clearly for independent play, with Prompt as the proposed onboarding default
+   where supported. Explain unsupported target/map-dependent automations rather
+   than appearing to run them. Preserve existing users' saved preferences and
+   campaign policy when joining shared play.
+3. **Optional personal encounter tools.** Add simple private opponent records
+   (name, AC, HP, initiative) and manual target outcomes for users who want more
+   automation. Full monster/map/DM management is not required for the first slice.
+
+Implementation constraints: use explicit personal-versus-campaign encounter
+scope and owner-only access; never emulate this by making a player a campaign
+DM or creating a hidden campaign. Reuse pure domain rules and existing sheet
+resource updates, keeping encounter orchestration outside the large sheet root.
+Design durable resume and duplicate-click/multi-tab protection before enabling
+turn effects; a reload must not reapply saves, damage or resets. Joining shared
+combat requires an explicit handoff that prevents two encounter clocks from
+mutating the same character. Personal mode must not advance shared combat,
+expose hidden opponents or alter other players' sheets.
+
+Acceptance: a character with no campaign can start, take actions, end/start
+turns, receive appropriate prompts, rest and resume after reload. Verify resource
+timing, concentration, death-save prompts, effect expiry, failed saves/retries,
+duplicate actions, ownership isolation and shared-combat handoff. Show what
+changed and offer safe corrections without silently reversing later edits.
+
 ### 2026-09-18 — Map navigation keys, v2.714
 
 With the pointer over the unobstructed map, +/- (or =) zoom and 0 fits the
