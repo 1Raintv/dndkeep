@@ -30,6 +30,8 @@ export function MapHelp() {
       <dl>
         <dt>Pan temporarily</dt><dd>Hold <kbd>Space</kbd> and drag</dd>
         <dt>Zoom</dt><dd>Scroll, or pinch in Pan mode</dd>
+        <dt>Zoom keys</dt><dd><kbd>+</kbd> / <kbd>−</kbd> over the map</dd>
+        <dt>Fit map</dt><dd><kbd>0</kbd> over the map</dd>
         <dt>Select a group</dt><dd><kbd>Shift</kbd> + click tokens (DM)</dd>
         <dt>Token options</dt><dd>Right-click a token</dd>
         <dt>Undo / redo</dt><dd><kbd>Ctrl / ⌘ Z</kbd> · add <kbd>Shift</kbd> to redo</dd>
