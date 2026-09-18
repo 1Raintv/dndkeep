@@ -10,9 +10,6 @@ export const DEFAULT_WIDTH_CELLS = 30;
 export const DEFAULT_HEIGHT_CELLS = 20;
 
 export const BG_COLOR = 0x0f1012;
-export const GRID_MINOR_COLOR = 0x2a2d31;
-export const GRID_MAJOR_COLOR = 0x404449;
-export const GRID_EDGE_COLOR = 0x6b7280;
 
 export const TOKEN_COLORS = [
   0xa78bfa, // purple (the app's accent)
