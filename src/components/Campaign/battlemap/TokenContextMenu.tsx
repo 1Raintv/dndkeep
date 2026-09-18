@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
-import { useModal } from '../../shared/Modal';
 import { SIZE_OPTIONS, TOKEN_COLORS, type ContextMenuState } from './shared';
 import {useMapMenuPosition} from './useMapMenuPosition';
 import './TokenContextMenu.css';
@@ -68,16 +67,17 @@ export function TokenContextMenu(props: {
   const removeToken = useBattleMapStore(s => s.removeToken);
   const addToken = useBattleMapStore(s => s.addToken);
   const updateTokenFields = useBattleMapStore(s => s.updateTokenFields);
-  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant' | 'facing' | 'light'>('none');
+  const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant' | 'facing' | 'light' | 'rename'>('none');
   const {ref:menuRef,left,top}=useMapMenuPosition(state.clientX,state.clientY,`${state.tokenId}:${submenu}:${!!token}`);
-  // v2.241 — modal handle for the rename prompt.
-  const { prompt: promptModal } = useModal();
+  const [draftName,setDraftName]=useState('');
   const {busy,pending,error,setError,run}=useTokenMenuSave(state.tokenId,onClose);
   useEffect(()=>{if(error && menuRef.current)menuRef.current.scrollTop=0;},[error,menuRef]);
 
   useEffect(()=>{
     // v2.717 — Tab starts within the current token menu; submenus start at Back.
-    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});
+    const target=menuRef.current?.querySelector<HTMLInputElement | HTMLButtonElement>(submenu==='rename'?'input':'button');
+    target?.focus({preventScroll:true});
+    if(target instanceof HTMLInputElement)target.select();
   },[submenu,state.tokenId,menuRef]);
 
   useEffect(() => {
@@ -186,6 +186,22 @@ export function TokenContextMenu(props: {
     style={{display:'block',position:'sticky',top:0,zIndex:1,width:'100%',minHeight:44,padding:'8px 10px',textAlign:'left',font:'inherit',fontWeight:600,color:'var(--t-1)',background:'var(--c-card)',border:'1px solid var(--c-border)',borderRadius:4,cursor:'pointer'}}>
     ← Back to token options
   </button>;
+
+  // v2.719 — keep rename inside the menu: no competing modal/Escape handlers,
+  // and a rejected save retains the draft for a direct retry.
+  if(submenu==='rename')return createPortal(
+    <div ref={menuRef} role="region" aria-label="Token options" aria-busy={busy} className="map-token-options" style={menuBaseStyle} onClick={stop}>
+      {feedback}{backButton}
+      <form onSubmit={e=>{e.preventDefault();if(!busy && draftName.trim())applyPatch({name:draftName.trim()});}} style={{padding:10}}>
+        <label htmlFor="token-rename-input" style={{display:'block',marginBottom:8,fontWeight:600}}>Token name</label>
+        <input id="token-rename-input" value={draftName} disabled={busy} onChange={e=>setDraftName(e.target.value)}
+          style={{width:'100%',boxSizing:'border-box',minHeight:44,fontSize:16,padding:8,color:'var(--t-1)',background:'var(--c-card)',border:'1px solid var(--c-border)',borderRadius:4}}/>
+        <div style={{display:'flex',gap:8,marginTop:12}}>
+          <button type="button" disabled={busy} style={itemStyle} onClick={()=>{setError('');setSubmenu('none');}}>Cancel</button>
+          <button type="submit" disabled={busy || !draftName.trim()} style={itemStyle}>Save name</button>
+        </div>
+      </form>
+    </div>,document.body);
 
   // v2.663.0 — carried light. Only bites in a Dark scene, where sight
   // range became darkvision-driven: a creature with neither darkvision
@@ -528,19 +544,7 @@ export function TokenContextMenu(props: {
 
           },
         }] : []),
-        { label: 'Rename…', onClick: async () => {
-          // v2.241 — was window.prompt.
-          const next = await promptModal({
-            title: 'Rename token',
-            defaultValue: token.name,
-            placeholder: 'Token name',
-            confirmLabel: 'Save',
-          });
-          if (next !== null) {
-            applyPatch({ name: next.trim() || token.name });
-          } else onClose();
-
-        }},
+        { label: 'Rename…', onClick: () => {setDraftName(token.name);setError('');setSubmenu('rename');}},
         { label: 'Resize ▸', onClick: () => setSubmenu('size') },
         { label: 'Recolor ▸', onClick: () => setSubmenu('color') },
         // v2.653.0 — Facing (writes the long-dormant rotation column)

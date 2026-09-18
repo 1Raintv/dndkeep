@@ -10,6 +10,24 @@ vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:vi.fn()})}));
 vi.mock('./useMapMenuPosition',()=>({useMapMenuPosition:()=>({ref:{current:null},left:8,top:8})}));
 beforeEach(()=>{vi.resetAllMocks();useBattleMapStore.setState({currentSceneId:'scene',tokens:{a:{id:'a',sceneId:'scene',name:'Marker',size:'medium',x:35,y:35,characterId:null,npcId:null,creatureId:null,combatantId:null,visibleToAll:true} as Token}});});
 afterEach(cleanup);
+it('retains a rename draft after failure and retries the trimmed name',async()=>{
+  vi.mocked(api.updateToken).mockResolvedValueOnce(false).mockResolvedValueOnce(true);const close=setup();
+  fireEvent.click(screen.getByRole('button',{name:'Rename…'}));
+  const input=screen.getByLabelText('Token name');expect((input as HTMLInputElement).value).toBe('Marker');
+  fireEvent.change(input,{target:{value:'  New marker  '}});fireEvent.click(screen.getByRole('button',{name:'Save name'}));
+  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Save token failed'));
+  expect((input as HTMLInputElement).value).toBe('  New marker  ');expect(close).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Save name'}));await waitFor(()=>expect(close).toHaveBeenCalledOnce());
+  expect(api.updateToken).toHaveBeenLastCalledWith('a',{name:'New marker'},{campaignId:'c'});
+  expect(useBattleMapStore.getState().tokens.a.name).toBe('New marker');
+});
+it('rejects blank names and cancels without saving',()=>{
+  const close=setup();fireEvent.click(screen.getByRole('button',{name:'Rename…'}));
+  fireEvent.change(screen.getByLabelText('Token name'),{target:{value:'   '}});
+  expect((screen.getByRole('button',{name:'Save name'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.getByRole('button',{name:'Rename…'})).toBeDefined();
+  expect(api.updateToken).not.toHaveBeenCalled();expect(close).not.toHaveBeenCalled();
+});
 const setup=()=>{const close=vi.fn();render(<TokenContextMenu state={{tokenId:'a',clientX:20,clientY:20}} isDM campaignId="c" gridSizePx={70} onClose={close} onRequestUpload={vi.fn()}/>);return close;};
 it('keeps old fields while saving, prevents duplicate clicks, then applies a confirmed edit',async()=>{
   let finish!:(ok:boolean)=>void;vi.mocked(api.updateToken).mockReturnValue(new Promise(r=>{finish=r;}));const close=setup();
