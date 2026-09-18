@@ -3,6 +3,25 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Return to the previous camera view, v2.726
+
+The arrow beside Fit map restores the position and zoom from before the latest
+Fit map or Find selection jump (including F/0 shortcuts). It is a single return
+point, cleared after use or a scene/viewport change. Ordinary panning and zooming
+do not overwrite it. Restoring stops camera momentum and supports fitted zooms
+below 25%. Camera history stays local and separate from token undo.
+
+Validation: full gate passed (912 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile browser checks
+passed for actual camera restoration after Fit/Find, disabled state after return,
+and the existing navigation/help flow. Unit checks cover latest-jump replacement
+and scene/viewport invalidation; removing center restoration fails two cases.
+Screenshots inspected; shared overflow probe reports no new control clipping or
+sideways scrolling (existing underlying map/sidebar findings remain). No new
+mobile dock row. No schema changes; personal encounter mode remains queued.
+
+v2.725 deployment was confirmed successful and live before this batch.
+
 ### 2026-09-18 — Shortcuts-first map help, v2.725
 
 Map help opens with navigation shortcuts. Grid appearance now lives in a native,

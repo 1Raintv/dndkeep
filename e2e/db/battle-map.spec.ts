@@ -83,6 +83,13 @@ test.describe('battle map (local stack)', () => {
       return { x: vp.center.x, y: vp.center.y, scale: vp.scale.x };
     });
     const initial = await readCamera();
+    await navigation.getByRole('button',{name:'Zoom in',exact:true}).click();
+    const beforeFit=await readCamera();
+    await navigation.getByRole('button',{name:'Fit map',exact:true}).click();
+    await navigation.getByRole('button',{name:'Previous view',exact:true}).click();
+    expect(await readCamera()).toEqual(beforeFit);
+    await expect(navigation.getByRole('button',{name:'Previous view',exact:true})).toBeDisabled();
+    await navigation.getByRole('button',{name:'Fit map',exact:true}).click();
     await navigation.getByRole('button', { name: 'Zoom in', exact: true }).click();
     expect((await readCamera()).scale).toBeGreaterThan(initial.scale);
     await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
@@ -165,6 +172,12 @@ test.describe('battle map (local stack)', () => {
     expect(focusedCamera.x).toBeCloseTo(selectionCamera.x,2);
     expect(focusedCamera.y).toBeCloseTo(selectionCamera.y,2);
     expect(focusedCamera.scale).toBeCloseTo(selectionCamera.scale,3);
+    await navigation.getByRole('button',{name:'Previous view',exact:true}).click();
+    const returnedCamera=await readCamera();
+    expect(returnedCamera.x).toBeCloseTo(selectionCamera.x+300,2);
+    expect(returnedCamera.y).toBeCloseTo(selectionCamera.y+200,2);
+    expect(returnedCamera.scale).toBeCloseTo(selectionCamera.scale,3);
+    await navigation.getByRole('button',{name:'Find selection',exact:true}).click();
     // v2.705 frames in unobstructed space, deliberately offset from canvas centre.
     const found=await page.evaluate(id=>{
       const vp=(window as any).__NAV_TEST_VP;

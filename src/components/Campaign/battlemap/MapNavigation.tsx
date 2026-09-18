@@ -9,6 +9,7 @@ import { useMapControlClearance } from './useMapControlClearance';
 import { MapHelp } from './MapHelp';
 import { MapControlIcon } from './MapControlIcon';
 import { useMapNavigationShortcuts } from './useMapNavigationShortcuts';
+import { usePreviousMapView } from './usePreviousMapView';
 
 /** v2.697 — local camera controls never write shared token positions. */
 export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editingToolActive, onSelectMode, history }: {
@@ -24,6 +25,8 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
   const navRef=useRef<HTMLDivElement>(null);
   useMapControlClearance(navRef);
   const [zoom, setZoom] = useState(100);
+  const sceneId=useBattleMapStore(s=>s.currentSceneId);
+  const previousView=usePreviousMapView(viewport,sceneId);
   useEffect(() => { if (editingToolActive) setPan(false); }, [editingToolActive]);
   useEffect(() => {
     if (!viewport) return;
@@ -37,6 +40,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     if (!viewport || !canvas) return;
     const frame=boundsFrame(0,0,viewport.worldWidth,viewport.worldHeight,viewport.screenWidth,viewport.screenHeight,4,clearArea());
     if(!frame)return;
+    previousView.remember();
     viewport.plugins.get('decelerate')?.reset();
     // v2.709 — the viewport's full-canvas zoom floor would undo a tighter fit.
     viewport.clampZoom({minScale:Math.min(.25,frame.zoom),maxScale:4});
@@ -70,6 +74,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
     const frame=selectionFrame(tokens,gridSizePx,viewport.screenWidth,viewport.screenHeight,viewport.scale.x,clearArea());
     if (!frame) return;
+    previousView.remember();
     viewport.plugins.get('decelerate')?.reset();
     viewport.clampZoom({minScale:Math.min(.25,frame.zoom),maxScale:4});
     viewport.setZoom(frame.zoom,true);
@@ -198,7 +203,11 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       </select>
       <button type="button" aria-label="Zoom in" onClick={()=>viewport && chooseZoom(viewport.scale.x*1.2)}>+</button>
     </div>
-    <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
+    <div className="map-navigation-framing">
+      <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
+      <button type="button" aria-label="Previous view" title="Return to your view before Fit map or Find selection" disabled={!previousView.canReturn}
+        onClick={()=>{const scale=previousView.restore();if(scale!==null)setZoom(Math.round(scale*100));}}><MapControlIcon kind="back"/></button>
+    </div>
     <button type="button" onClick={focus} disabled={!selectedIds.size} title="Bring all selected tokens into view (F over the map)"><MapControlIcon kind="focus"/>Find selection</button>
     <MapHelp />
     {history && <MapHistoryControls history={history} />}
