@@ -3,6 +3,25 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Shortcuts-first map help, v2.725
+
+Map help opens with navigation shortcuts. Grid appearance now lives in a native,
+keyboard-accessible disclosure below them, with a visible focus ring and a
+44 px target. Grid preferences, reset and persistence are unchanged. Scoped
+summary styles keep the help toggle separate from the nested settings control.
+
+Validation: full gate passed (909 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile browser checks
+passed for shortcut visibility, Enter/Space expansion and collapse, and live grid
+updates/reset/reload with no shared writes. Screenshots inspected; shared overflow
+probe reports no new control clipping or sideways scrolling (existing underlying
+map/sidebar findings remain). Forcing settings open fails the new regression.
+The pan test now releases toolbar focus before Space and explicitly verifies
+camera movement without token movement. No schema changes; personal play queued.
+
+Release note: v2.724 was merged with passing CI, but Vercel had not created a
+deployment and production still served v2.723 when this batch began.
+
 ### 2026-09-18 — Find selection keyboard shortcut, v2.724
 
 Press F over the unobstructed map to frame selected tokens using the same
