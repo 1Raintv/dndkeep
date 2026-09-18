@@ -177,6 +177,12 @@ export async function updateScene(
   return true;
 }
 
+/** v2.707 — uploads must confirm an affected row before replacing the map. */
+export async function setSceneBackground(sceneId:string,path:string):Promise<boolean> {
+  const {data,error}=await supabase.from('scenes').update({background_storage_path:path,updated_at:new Date().toISOString()}).eq('id',sceneId).select('id').maybeSingle();
+  return !error && !!data;
+}
+
 /**
  * v2.669.0 — add cells to a scene's remembered-terrain memory.
  *

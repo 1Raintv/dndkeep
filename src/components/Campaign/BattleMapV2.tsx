@@ -232,6 +232,7 @@ import { WallTypePanel } from './battlemap/WallTypePanel';
 import { FogBrushLayer, type FogBrushShape } from './battlemap/FogBrushLayer';
 import { FogBrushPanel } from './battlemap/FogBrushPanel';
 import { ViewportHost } from './battlemap/ViewportHost';
+import { MapArtworkUpload } from './battlemap/MapArtworkUpload';
 import { MapNavigation } from './battlemap/MapNavigation';
 import { BackgroundLayer } from './battlemap/BackgroundLayer';
 import { GridOverlay } from './battlemap/GridOverlay';
@@ -1634,8 +1635,6 @@ function BattleMapV2(props: BattleMapV2Props) {
 
   // v2.217 — scene background upload. Separate from portrait uploads:
   // own hidden <input>, own in-flight state, own commit path.
-  const mapInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadingMap, setUploadingMap] = useState(false);
 
   // v2.218 — ruler mode toggle. When active, clicking+dragging on the
   // canvas draws a measurement line instead of dragging tokens.
@@ -2635,47 +2634,6 @@ function BattleMapV2(props: BattleMapV2Props) {
     return map;
   }, [props.playerCharacters]);
 
-  const handleRequestMapUpload = useCallback(() => {
-    if (!currentScene) return;
-    mapInputRef.current?.click();
-  }, [currentScene]);
-
-  const handleMapFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // reset so re-picking the same file re-fires
-    if (!file || !currentScene) return;
-
-    if (!assetsApi.ACCEPTED_PORTRAIT_MIME.includes(file.type)) {
-      showToast(`Unsupported file type: ${file.type}. Use PNG, JPEG, WebP, or GIF.`, 'warn');
-      return;
-    }
-    if (file.size > assetsApi.MAX_PORTRAIT_BYTES) {
-      showToast(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`, 'warn');
-      return;
-    }
-
-    setUploadingMap(true);
-    try {
-      const path = await assetsApi.uploadSceneBackground(file, userId, currentScene.id);
-      if (!path) {
-        showToast('Map upload failed. Check the browser console for details.', 'error');
-        return;
-      }
-      // Optimistic local update — update both the scenes list + currentScene.
-      setScenes(prev => prev.map(s => s.id === currentScene.id
-        ? { ...s, backgroundStoragePath: path }
-        : s));
-      setCurrentScene(prev => prev && prev.id === currentScene.id
-        ? { ...prev, backgroundStoragePath: path }
-        : prev);
-      scenesApi.updateScene(currentScene.id, { backgroundStoragePath: path }).catch(err =>
-        console.error('[BattleMapV2] scene bg commit failed', err)
-      );
-    } finally {
-      setUploadingMap(false);
-    }
-  }, [userId, currentScene]);
-
   const handleRemoveMap = useCallback(async () => {
     if (!currentScene?.backgroundStoragePath) return;
     // v2.241 — was window.confirm.
@@ -2962,26 +2920,10 @@ function BattleMapV2(props: BattleMapV2Props) {
           }}>
             Map
           </span>
-          <button
-            onClick={handleRequestMapUpload}
-            title={currentScene.backgroundStoragePath
-              ? 'Replace the current map image'
-              : 'Upload a map image as the scene background'}
-            style={{
-              padding: '6px 14px',
-              background: 'rgba(96,165,250,0.18)',
-              border: '1px solid rgba(96,165,250,0.6)',
-              borderRadius: 'var(--r-sm, 4px)',
-              color: '#60a5fa',
-              fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 700,
-              letterSpacing: '0.04em',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.32)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.18)'; }}
-          >
-            {currentScene.backgroundStoragePath ? 'Change Map' : 'Upload Map'}
-          </button>
+          <MapArtworkUpload key={currentScene.id} scene={currentScene} userId={userId} onSaved={(id,path)=>{
+            setScenes(prev=>prev.map(s=>s.id===id?{...s,backgroundStoragePath:path}:s));
+            setCurrentScene(prev=>prev?.id===id?{...prev,backgroundStoragePath:path}:prev);
+          }}/>
           {currentScene.backgroundStoragePath && (
             <button
               onClick={handleRemoveMap}
@@ -4255,14 +4197,6 @@ function BattleMapV2(props: BattleMapV2Props) {
           onChange={handleFileSelected}
         />
 
-        {/* v2.217 hidden file input for scene background uploads. */}
-        <input
-          ref={mapInputRef}
-          type="file"
-          accept={assetsApi.ACCEPTED_PORTRAIT_MIME.join(',')}
-          style={{ display: 'none' }}
-          onChange={handleMapFileSelected}
-        />
 
         {/* v2.215 upload status banner — appears while uploading. */}
         {uploadingTokenId && (
@@ -4282,23 +4216,6 @@ function BattleMapV2(props: BattleMapV2Props) {
           </div>
         )}
 
-        {/* v2.217 upload status banner for map. */}
-        {uploadingMap && (
-          <div
-            style={{
-              position: 'absolute', top: 44, left: 12,
-              padding: '4px 10px',
-              background: 'rgba(15,16,18,0.85)',
-              border: '1px solid rgba(96,165,250,0.5)',
-              borderRadius: 'var(--r-sm, 4px)',
-              fontFamily: 'var(--ff-body)', fontSize: 10,
-              fontWeight: 700, letterSpacing: '0.04em',
-              color: '#60a5fa', pointerEvents: 'none' as const,
-            }}
-          >
-            UPLOADING MAP IMAGE…
-          </div>
-        )}
 
         {/* v2.270.0 — Party Vitals strip is now a hovering overlay
             inside the canvas wrapper instead of a sibling below it.

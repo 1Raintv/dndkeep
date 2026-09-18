@@ -147,8 +147,18 @@ test.describe('battle map (local stack)', () => {
     await page.mouse.click(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10);
     await expect(navigation.getByRole('button', { name: 'Find selection' })).toBeEnabled();
     await navigation.getByRole('button', { name: 'Find selection' }).click();
-    expect((await readCamera()).x).toBeCloseTo(token.x, 0);
-    expect((await readCamera()).y).toBeCloseTo(token.y, 0);
+    // v2.705 frames in unobstructed space, deliberately offset from canvas centre.
+    const found=await page.evaluate(id=>{
+      const vp=(window as any).__NAV_TEST_VP;
+      const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      return t.getGlobalPosition();
+    },token.id);
+    const rail=(await page.locator('.map-tool-palette').boundingBox())!;
+    const dock=(await navigation.boundingBox())!;
+    expect(found.x+currentBounds.x).toBeGreaterThan(rail.x+rail.width);
+    expect(found.x).toBeLessThan(currentBounds.width-12);
+    expect(found.y).toBeGreaterThan(60);
+    expect(found.y+currentBounds.y).toBeLessThan(dock.y);
     await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
     expect(errors, 'navigation creates no browser exceptions').toEqual([]);
 

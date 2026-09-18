@@ -1,0 +1,12 @@
+.map-artwork-button {padding:6px 14px;background:#60a5fa24;border:1px solid #60a5fa99;border-radius:6px;color:#60a5fa;font:600 12px var(--ff-body);cursor:pointer}
+.map-artwork-dialog {box-sizing:border-box;margin:auto;width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;color:var(--t-1);background:var(--c-card,#181a22);border:1px solid var(--c-border);border-radius:14px;font:14px var(--ff-body)}
+.map-artwork-dialog::backdrop {background:#080a10bb}
+.map-artwork-dialog h2 {font-size:21px;margin:0 0 8px}.map-artwork-dialog p{line-height:1.5;color:var(--t-2)}
+.map-artwork-preview {position:relative;display:flex;width:fit-content;max-width:100%;margin:auto;justify-content:center;background:#0f1012;border:1px solid #555568;border-radius:8px;overflow:hidden}
+.map-artwork-grid {position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(to right,#fff 1px,transparent 1px),linear-gradient(to bottom,#fff 1px,transparent 1px)}
+.map-artwork-dialog input[type=radio] {width:18px;min-width:18px;height:18px;padding:0;flex:0 0 18px;accent-color:#e4bd69}
+.map-artwork-grid-control{gap:16px}.map-artwork-dialog input[type=range]{width:140px;max-width:50%;height:24px;padding:0;accent-color:#e4bd69}
+.map-artwork-preview canvas {display:block;max-width:100%;max-height:32dvh;object-fit:contain}
+.map-artwork-dialog fieldset {border:0;padding:0;margin:16px 0}.map-artwork-dialog legend{font-weight:700;margin-bottom:8px}.map-artwork-dialog label{display:flex;gap:8px;align-items:center;min-height:44px}
+.map-artwork-dialog .map-artwork-quality{color:#edca83}.map-artwork-dialog [role=alert]{color:#fca5a5}
+.map-artwork-dialog footer {display:flex;justify-content:flex-end;gap:10px;margin-top:16px}.map-artwork-dialog button{min-height:44px;padding:8px 16px;border:1px solid #777386;border-radius:7px;background:#292634;color:inherit;cursor:pointer}.map-artwork-dialog footer button:last-child{background:#e4bd69;color:#241e14;border-color:#e4bd69;font-weight:700}.map-artwork-dialog button:disabled{opacity:.5;cursor:wait}
