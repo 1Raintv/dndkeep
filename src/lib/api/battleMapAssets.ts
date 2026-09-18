@@ -143,3 +143,8 @@ export async function uploadSceneBackground(
   }
   return path;
 }
+
+/** v2.707 — discard an uploaded preview that was never attached to a scene. */
+export async function discardSceneBackground(path:string):Promise<void> {
+  await supabase.storage.from(BUCKET).remove([path]);
+}

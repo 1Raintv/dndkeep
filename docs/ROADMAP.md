@@ -3,6 +3,37 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Artwork preview and proportional sizing, v2.707
+
+Upload Map now opens a local preview before any upload. Fit inside preserves the
+whole image with transparent padding; Fill and crop covers the map with centred
+cropping. Both preserve proportions and existing scene/grid/token coordinates.
+A preview-only grid-opacity slider helps judge alignment and never changes
+exported pixels. Enlargement feedback flags artwork that may look soft.
+
+The prepared image is saved as WebP (quality 94), bounded to a 4096px edge and
+approximately eight million pixels, within the existing 5 MB upload limit.
+Animated inputs become still frames. Padding/crop is baked into the saved image,
+so the existing renderer and older clients need no new schema or fit metadata;
+existing artwork is unaffected. Live-map grid opacity remains a separate task.
+
+The scene path changes only after an update returns a row. A failed scene save
+keeps the uploaded path for Retry; cancellation or changing the preparation
+discards uncommitted uploads with best-effort storage cleanup. The map root lost
+upload handlers and hidden-input/status wiring to the dedicated component.
+
+Validation: release gate passed (855 unit tests, seven runner tests, TypeScript
+221/221, hooks, RAW/coords/anchors, build and 252.4 KB entry). New browser coverage
+checks preview pixels, fit/crop, grid opacity without baked lines, cancellation,
+zero-row save rejection, retry without duplicate upload and actual stored-image
+rendering. Swapping Fit to crop fails the pixel regression. The broader map test
+had an outdated canvas-centre assertion from before v2.705; it now checks the
+selected token clears controls. Overflow probe found no page-wide sideways
+scroll; it still reports underlying sidebar/map/closed-help content, while the
+new dialog has explicit viewport/radio sizing assertions. User testing deferred.
+All four final desktop/mobile artwork and map checks passed; preview and applied
+artwork screenshots inspected.
+
 ### 2026-09-17 — Token borders and overview labels, v2.706
 
 Tokens now have a layered shadow and a separate highlighted rim above portraits;
