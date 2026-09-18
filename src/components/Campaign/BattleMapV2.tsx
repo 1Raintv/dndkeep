@@ -1,3 +1,5 @@
+import { MapToolPalette } from './battlemap/MapToolPalette';
+import { MapToolButton } from './battlemap/MapToolButton';
 // v2.208.0 — Phase Q.1 pt 1: BattleMap V2 foundation shell.
 // v2.209.0 — Phase Q.1 pt 2: PixiJS Application mounted.
 // v2.210.0 — Phase Q.1 pt 3: pixi-viewport + square grid + snap helper.
@@ -3424,20 +3426,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             Position: top: 60 leaves room for the scene-name badge at
             top: 8, and far enough from the action toolbar bar above
             the canvas that it reads as a tool surface, not a header. */}
-        <div className="map-tool-palette"
-          style={{
-            position: 'absolute', top: 60, left: 12,
-            maxHeight: 'calc(100% - 230px)', overflowY: 'auto',
-            display: 'flex', flexDirection: 'column' as const,
-            alignItems: 'center', gap: 4,
-            padding: '6px 5px',
-            background: 'rgba(15,16,18,0.92)',
-            border: '1px solid var(--c-border)',
-            borderRadius: 'var(--r-md, 8px)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-            zIndex: 5,
-          }}
-        >
+        <MapToolPalette>
           <div style={{
             fontFamily: 'var(--ff-body)', fontSize: 8, fontWeight: 800,
             letterSpacing: '0.14em', textTransform: 'uppercase' as const,
@@ -3451,37 +3440,9 @@ function BattleMapV2(props: BattleMapV2Props) {
           </div>
 
           {/* Ruler — available to all users (player or DM). */}
-          <button
-            onClick={toggleRuler}
-            title={rulerActive
+          <MapToolButton  icon="ruler" label="Ruler" active={rulerActive} tone="251,191,36" onClick={toggleRuler} title={rulerActive
               ? 'Ruler active — left-click to add segments, right-click or Esc to finish.'
-              : 'Ruler — click to drop waypoints; the running total is shown at the cursor.'}
-            style={{
-              width: 36, height: 36,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: rulerActive ? 'rgba(251,191,36,0.28)' : 'transparent',
-              border: `1px solid ${rulerActive ? 'rgba(251,191,36,0.85)' : 'rgba(251,191,36,0.25)'}`,
-              borderRadius: 'var(--r-sm, 4px)',
-              color: rulerActive ? '#fbbf24' : 'var(--t-2)',
-              fontSize: 18,
-              cursor: 'pointer',
-              transition: 'background 0.12s, border-color 0.12s',
-            }}
-            onMouseEnter={(e) => {
-              if (!rulerActive) {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(251,191,36,0.14)';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(251,191,36,0.55)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!rulerActive) {
-                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(251,191,36,0.25)';
-              }
-            }}
-          >
-            ↔
-          </button>
+              : 'Ruler — click to drop waypoints; the running total is shown at the cursor.'}/>
 
           {/* v2.664.0 — Manual fog brush. DM only, and only in manual
               mode: in dynamic mode reveals come from line of sight, so
@@ -3493,60 +3454,16 @@ function BattleMapV2(props: BattleMapV2Props) {
               were told about this wing") rather than being overwritten
               by the next recompute. */}
           {isDM && ['manual', 'remembered'].includes(currentScene?.fogMode ?? 'dynamic') && (
-            <button
-              onClick={toggleFogBrushMode}
-              title={fogBrushActive
+            <MapToolButton  icon="fog" label="Fog brush" active={fogBrushActive} tone="103,232,249" onClick={toggleFogBrushMode} title={fogBrushActive
                 ? 'Fog brush active — drag to reveal, right-drag or shift+drag to hide again. Revealed cells stay revealed. Click this button to exit.'
-                : 'Fog brush — paint what the players can see. This scene is in manual fog mode, so nothing is revealed automatically. DM only.'}
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: fogBrushActive ? 'rgba(103,232,249,0.28)' : 'transparent',
-                border: `1px solid ${fogBrushActive ? 'rgba(103,232,249,0.85)' : 'rgba(103,232,249,0.25)'}`,
-                borderRadius: 'var(--r-sm, 4px)',
-                color: fogBrushActive ? '#67e8f9' : 'var(--t-2)',
-                fontSize: 16,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-            >
-              ☁
-            </button>
+                : 'Fog brush — paint what the players can see. This scene is in manual fog mode, so nothing is revealed automatically. DM only.'}/>
           )}
 
           {/* Walls — DM only. */}
           {isDM && (
-            <button
-              onClick={toggleWallMode}
-              title={wallActive
+            <MapToolButton  icon="walls" label="Walls" active={wallActive} tone="167,139,250" onClick={toggleWallMode} title={wallActive
                 ? 'Walls active — click to place vertices, shift+click on a wall cycles solid → closed door → open door, right-click a wall to delete, Esc to cancel current line. Click this button again to exit. Walls/closed doors block sight + movement; open doors block neither.'
-                : 'Walls — block line-of-sight + token movement on the map. Shift+click a wall to make it a door (cycles closed/open). Players can\'t see or move past solid walls or closed doors. Toggle ◉ to preview the player\'s view. DM only.'}
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: wallActive ? 'rgba(167,139,250,0.28)' : 'transparent',
-                border: `1px solid ${wallActive ? 'rgba(167,139,250,0.85)' : 'rgba(167,139,250,0.25)'}`,
-                borderRadius: 'var(--r-sm, 4px)',
-                color: wallActive ? '#a78bfa' : 'var(--t-2)',
-                fontSize: 18,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                if (!wallActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.14)';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.55)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!wallActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.25)';
-                }
-              }}
-            >
-              ▦
-            </button>
+                : 'Walls — block line-of-sight + token movement on the map. Shift+click a wall to make it a door (cycles closed/open). Players can\'t see or move past solid walls or closed doors. Toggle ◉ to preview the player\'s view. DM only.'}/>
           )}
 
           {/* v2.358.0 — Clear All Walls button. Companion to the
@@ -3556,31 +3473,7 @@ function BattleMapV2(props: BattleMapV2Props) {
               calls didn't reach the DB but the scene_walls table
               still has rows the server-side collision trigger reads. */}
           {isDM && (
-            <button
-              onClick={clearAllWalls}
-              title="Clear all walls on this scene (drawings, text, and tokens are not affected). Use this if walls you erased seem to still be blocking token movement."
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'transparent',
-                border: '1px solid rgba(167,139,250,0.25)',
-                borderRadius: 'var(--r-sm, 4px)',
-                color: 'var(--t-2)',
-                fontSize: 14,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.14)';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.55)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167,139,250,0.25)';
-              }}
-            >
-              ▦✕
-            </button>
+            <MapToolButton  icon="clearWalls" label="Clear all walls"  tone="167,139,250" onClick={clearAllWalls} title="Clear all walls on this scene (drawings, text, and tokens are not affected). Use this if walls you erased seem to still be blocking token movement."/>
           )}
 
           {/* v2.267.0 — Player View preview toggle. DM only. When on,
@@ -3592,74 +3485,18 @@ function BattleMapV2(props: BattleMapV2Props) {
               on the scene — otherwise there's no vision origin and
               the fog covers the world solid. */}
           {isDM && (
-            <button
-              onClick={() => setDmPreviewFog(v => !v)}
-              title={dmPreviewFog
+            <MapToolButton  icon="view" label="Preview player view" active={dmPreviewFog} tone="96,165,250" onClick={() => setDmPreviewFog(v => !v)} title={dmPreviewFog
                 ? 'Player View: ON — you are seeing fog as a player would. Click to return to full DM view.'
-                : 'Preview Player View — show the same fog of war players see, so you can verify wall placement and PC sight lines.'}
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: dmPreviewFog ? 'rgba(96,165,250,0.28)' : 'transparent',
-                border: `1px solid ${dmPreviewFog ? 'rgba(96,165,250,0.85)' : 'rgba(96,165,250,0.25)'}`,
-                borderRadius: 'var(--r-sm, 4px)',
-                color: dmPreviewFog ? '#60a5fa' : 'var(--t-2)',
-                fontSize: 16,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                if (!dmPreviewFog) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.14)';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.55)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!dmPreviewFog) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.25)';
-                }
-              }}
-            >
-              ◉
-            </button>
+                : 'Preview Player View — show the same fog of war players see, so you can verify wall placement and PC sight lines.'}/>
           )}
 
           {/* v2.234 — Text annotation tool. DM only. Click on map
               empty space to drop a label; click an existing label to
               edit; right-click an existing label to delete. */}
           {isDM && (
-            <button
-              onClick={toggleTextMode}
-              title={textActive
+            <MapToolButton  icon="text" label="Text" active={textActive} tone="96,165,250" onClick={toggleTextMode} title={textActive
                 ? 'Text active — left-click on the map to place a label, click existing text to edit, right-click to delete. Click this button again to exit.'
-                : 'Text — drop labels on the map. DM only.'}
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: textActive ? 'rgba(96,165,250,0.28)' : 'transparent',
-                border: `1px solid ${textActive ? 'rgba(96,165,250,0.85)' : 'rgba(96,165,250,0.25)'}`,
-                borderRadius: 'var(--r-sm, 4px)',
-                color: textActive ? '#60a5fa' : 'var(--t-2)',
-                fontFamily: 'var(--ff-stat)', fontSize: 18, fontWeight: 800,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                if (!textActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.14)';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.55)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!textActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(96,165,250,0.25)';
-                }
-              }}
-            >
-              T
-            </button>
+                : 'Text — drop labels on the map. DM only.'}/>
           )}
 
           {/* v2.234+ slot for Text annotation tool will go here. */}
@@ -3667,49 +3504,20 @@ function BattleMapV2(props: BattleMapV2Props) {
               pencil (freehand), line, rect, circle. Each button toggles
               its kind; clicking the active kind exits drawing mode. */}
           {isDM && (() => {
-            const drawKinds: Array<{ kind: DrawingKind; icon: string; label: string }> = [
-              { kind: 'pencil', icon: '✎', label: 'Pencil — freehand drawing' },
-              { kind: 'line',   icon: '╱',  label: 'Line — straight line segment' },
-              { kind: 'rect',   icon: '▭',  label: 'Rectangle' },
-              { kind: 'circle', icon: '○',  label: 'Circle' },
+            const drawKinds: Array<{ kind: DrawingKind; label: string }> = [
+              { kind: 'pencil', label: 'Pencil — freehand drawing' },
+              { kind: 'line',   label: 'Line — straight line segment' },
+              { kind: 'rect',   label: 'Rectangle' },
+              { kind: 'circle', label: 'Circle' },
             ];
             return (
               <>
-                {drawKinds.map(({ kind, icon, label }) => {
+                {drawKinds.map(({ kind, label }) => {
                   const active = drawActive === kind;
                   return (
-                    <button
-                      key={kind}
-                      onClick={() => toggleDrawMode(kind)}
-                      title={active
+                    <MapToolButton key={kind} icon={kind} label={label.split(' —')[0]} active={active} tone="244,114,182" onClick={() => toggleDrawMode(kind)} title={active
                         ? `${label} (active) — click-drag to draw, right-click to delete a drawing. Click this button again to exit.`
-                        : label}
-                      style={{
-                        width: 36, height: 36,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: active ? 'rgba(244,114,182,0.28)' : 'transparent',
-                        border: `1px solid ${active ? 'rgba(244,114,182,0.85)' : 'rgba(244,114,182,0.25)'}`,
-                        borderRadius: 'var(--r-sm, 4px)',
-                        color: active ? '#f472b6' : 'var(--t-2)',
-                        fontFamily: 'var(--ff-stat)', fontSize: 16, fontWeight: 800,
-                        cursor: 'pointer',
-                        transition: 'background 0.12s, border-color 0.12s',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!active) {
-                          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(244,114,182,0.14)';
-                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.55)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) {
-                          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
-                        }
-                      }}
-                    >
-                      {icon}
-                    </button>
+                        : label}/>
                   );
                 })}
               </>
@@ -3723,37 +3531,9 @@ function BattleMapV2(props: BattleMapV2Props) {
               other tools. Pink palette to match the drawing tools
               (the eraser is a sibling of the draw tools). */}
           {isDM && (
-            <button
-              onClick={toggleEraserMode}
-              title={eraserActive
+            <MapToolButton  icon="eraser" label="Eraser" active={eraserActive} tone="244,114,182" onClick={toggleEraserMode} title={eraserActive
                 ? 'Eraser active — click any drawing to delete it. Click this button again to exit.'
-                : 'Eraser — click drawings to remove them. Right-click outside this mode also deletes (with confirm).'}
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: eraserActive ? 'rgba(244,114,182,0.28)' : 'transparent',
-                border: `1px solid ${eraserActive ? 'rgba(244,114,182,0.85)' : 'rgba(244,114,182,0.25)'}`,
-                borderRadius: 'var(--r-sm, 4px)',
-                color: eraserActive ? '#f472b6' : 'var(--t-2)',
-                fontSize: 16,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                if (!eraserActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(244,114,182,0.14)';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.55)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!eraserActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
-                }
-              }}
-            >
-              ✕
-            </button>
+                : 'Eraser — click drawings to remove them. Right-click outside this mode also deletes (with confirm).'}/>
           )}
           {/* v2.356.0 — Clear All Drawings button. Bulk wipe of every
               pencil/line/rect/circle on the current scene. Confirm
@@ -3761,86 +3541,33 @@ function BattleMapV2(props: BattleMapV2Props) {
               icon distinguishes from the eraser (single-click delete);
               same pink palette since both are drawing-tool siblings. */}
           {isDM && (
-            <button
-              onClick={clearAllDrawings}
-              title="Clear all drawings on this scene (walls and text are not affected)"
-              style={{
-                width: 36, height: 36,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'transparent',
-                border: '1px solid rgba(244,114,182,0.25)',
-                borderRadius: 'var(--r-sm, 4px)',
-                color: 'var(--t-2)',
-                fontSize: 16,
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(244,114,182,0.14)';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.55)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(244,114,182,0.25)';
-              }}
-            >
-              ✕
-            </button>
+            <MapToolButton  icon="clearDrawings" label="Clear all drawings"  tone="244,114,182" onClick={clearAllDrawings} title="Clear all drawings on this scene (walls and text are not affected)"/>
           )}
           {/* v2.236 — FX particle effects. DM only. Four kinds:
               fire, lightning, sparkles, smoke. Each spawns a short
               animation at click point and broadcasts to all clients
               via the scene's FX channel. Effects don't persist. */}
           {isDM && (() => {
-            const fxKinds: Array<{ kind: FxKind; icon: string; label: string }> = [
-              { kind: 'fire',      icon: '✶', label: 'Fire — orange embers rising' },
-              { kind: 'lightning', icon: '↯', label: 'Lightning — bolt strike with flash' },
-              { kind: 'sparkles',  icon: '✧', label: 'Sparkles — gold twinkles fanning out' },
-              { kind: 'smoke',     icon: '≈', label: 'Smoke — gray puffs rising' },
+            const fxKinds: Array<{ kind: FxKind; label: string }> = [
+              { kind: 'fire',      label: 'Fire — orange embers rising' },
+              { kind: 'lightning', label: 'Lightning — bolt strike with flash' },
+              { kind: 'sparkles',  label: 'Sparkles — gold twinkles fanning out' },
+              { kind: 'smoke',     label: 'Smoke — gray puffs rising' },
             ];
             return (
               <>
-                {fxKinds.map(({ kind, icon, label }) => {
+                {fxKinds.map(({ kind, label }) => {
                   const active = fxActive === kind;
                   return (
-                    <button
-                      key={kind}
-                      onClick={() => toggleFxMode(kind)}
-                      title={active
+                    <MapToolButton key={kind} icon={kind} label={label.split(' —')[0]} active={active} tone="34,211,238" onClick={() => toggleFxMode(kind)} title={active
                         ? `${label} (active) — click on the map to spawn. Click this button again to exit.`
-                        : label}
-                      style={{
-                        width: 36, height: 36,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: active ? 'rgba(34,211,238,0.28)' : 'transparent',
-                        border: `1px solid ${active ? 'rgba(34,211,238,0.85)' : 'rgba(34,211,238,0.25)'}`,
-                        borderRadius: 'var(--r-sm, 4px)',
-                        color: active ? '#22d3ee' : 'var(--t-2)',
-                        fontSize: 18,
-                        cursor: 'pointer',
-                        transition: 'background 0.12s, border-color 0.12s',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!active) {
-                          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(34,211,238,0.14)';
-                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(34,211,238,0.55)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) {
-                          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(34,211,238,0.25)';
-                        }
-                      }}
-                    >
-                      {icon}
-                    </button>
+                        : label}/>
                   );
                 })}
               </>
             );
           })()}
-        </div>
+        </MapToolPalette>
 
         {/* v2.235 — Color + line-width picker. Floats next to the
             tool palette only when a drawing tool is active so it

@@ -31,6 +31,29 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('tool rail uses distinct sharp icons and exposes active tools',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const rail=page.locator('.map-tool-palette');
+    const buttons=rail.locator('button');expect(await buttons.count()).toBeGreaterThan(10);
+    for(const button of await buttons.all()) {
+      await expect(button).toHaveAttribute('aria-label',/.+/);await expect(button.locator('svg')).toHaveCount(1);
+    }
+    const eraser=rail.getByRole('button',{name:'Eraser',exact:true});
+    const clear=rail.getByRole('button',{name:'Clear all drawings',exact:true});
+    expect(await eraser.locator('path').getAttribute('d')).not.toBe(await clear.locator('path').getAttribute('d'));
+    for(const name of ['Ruler','Fog brush','Walls','Text','Pencil','Line','Rectangle','Circle','Eraser','Fire','Lightning','Sparkles','Smoke','Preview player view']) {
+      const button=rail.getByRole('button',{name,exact:true});await button.click();
+      await expect(button).toHaveAttribute('aria-pressed','true');
+      expect(await rail.locator('[aria-pressed=true]').count()).toBe(1);
+      await button.click();await expect(button).toHaveAttribute('aria-pressed','false');
+    }
+    await rail.getByRole('button',{name:'Ruler',exact:true}).scrollIntoViewIfNeeded();
+    const railBox=(await rail.boundingBox())!,dock=(await page.locator('.map-navigation').boundingBox())!;
+    expect(railBox.y+railBox.height).toBeLessThanOrEqual(dock.y-10);
+    await page.screenshot({path:info.outputPath('tool-rail.png')});
+    expect(errors).toEqual([]);
+  });
   test('group visibility protects characters and reports unsaved changes',async({page},info)=>{
     await openMap(page);
     const all=Object.values((await state(page)).tokens) as any[];
