@@ -3,6 +3,22 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Confirmation dialogs above map settings, v2.731
+
+Shared confirmations/prompts now render through the existing body portal at
+z-index 40000, above scene settings (30000). Previously the scene-delete
+confirmation existed in the DOM but settings covered it and intercepted pointer
+clicks. The regression now clicks Cancel, reopens and tests Escape, preserving
+settings drafts without deleting a scene.
+
+Validation: full gate passed (921 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.5 KB entry). Four desktop/mobile browser checks
+passed for scene settings/save/fog and fullscreen group confirmation/undo/reconnect.
+The pointer Cancel check failed before the fix. Screenshots inspected on both
+viewports; shared overflow probe found no dialog clipping or sideways scrolling
+(existing underlying map/sidebar/party-bar findings remain). No schema changes.
+Personal encounter mode remains queued.
+
 ### 2026-09-19 — Confirm scene settings before updating the map, v2.730
 
 Scene settings applies its local patch only after the database confirms an
