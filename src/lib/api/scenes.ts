@@ -169,12 +169,13 @@ export async function updateScene(
   if (patch.fogMode !== undefined) (dbPatch as any).fog_mode = patch.fogMode;
   if (patch.revealedCells !== undefined) (dbPatch as any).revealed_cells = patch.revealedCells;
   dbPatch.updated_at = new Date().toISOString();
-  const { error } = await supabase.from('scenes').update(dbPatch).eq('id', sceneId);
+  // v2.730 — permission-filtered or removed scenes can affect zero rows.
+  const { data, error } = await supabase.from('scenes').update(dbPatch).eq('id', sceneId).select('id').maybeSingle();
   if (error) {
     console.error('[scenes] updateScene failed', error);
     return false;
   }
-  return true;
+  return !!data;
 }
 
 /** v2.707 — uploads must confirm an affected row before replacing the map. */

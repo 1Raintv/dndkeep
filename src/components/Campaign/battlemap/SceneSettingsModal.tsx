@@ -27,8 +27,8 @@ import ModalPortal from '../../shared/ModalPortal';
  * smaller than the cell count, the DM can adjust gridSizePx first.
  *
  * Commit flow: form fields update local modal state on each change.
- * "Save" applies changes via scenesApi.updateScene + optimistic local
- * updates to both `scenes` array and `currentScene`. Realtime (v2.214)
+ * "Save" confirms scenesApi.updateScene before applying local updates
+ * to both `scenes` array and `currentScene`. Realtime (v2.214)
  * echoes the changes to other clients.
  *
  * "Delete" uses an inline confirm modal as of v2.241 (replaced
@@ -40,7 +40,9 @@ export function SceneSettingsModal(props: {
   onScenePatched: (patch: Partial<scenesApi.Scene>) => void;
   onSceneDeleted: (id: string) => void;
 }) {
-  const { scene, onClose, onScenePatched, onSceneDeleted } = props;
+  const { scene, onScenePatched, onSceneDeleted } = props;
+  const pendingSave=useRef(false);
+  const onClose=()=>{if(!pendingSave.current)props.onClose();};
   const { showToast } = useToast();
   const { confirm: confirmModal } = useModal();
   const [name, setName] = useState(scene.name);
@@ -115,6 +117,7 @@ export function SceneSettingsModal(props: {
   }, [scene.backgroundStoragePath, gridSizePx]);
 
   async function save() {
+    if(pendingSave.current)return;
     // Minimal validation — positive integers only. DB CHECK enforces
     // server-side but we give fast feedback here.
     if (!Number.isFinite(gridSizePx) || gridSizePx < 10 || gridSizePx > 500) {
@@ -129,7 +132,7 @@ export function SceneSettingsModal(props: {
       showToast('Height must be between 1 and 200 cells.', 'warn');
       return;
     }
-    setSaving(true);
+    pendingSave.current=true;setSaving(true);
     try {
       const patch: Partial<scenesApi.Scene> = {
         name: name.trim() || scene.name,
@@ -139,16 +142,18 @@ export function SceneSettingsModal(props: {
         isPublished,
         fogMode,
       };
-      // Optimistic update first.
-      onScenePatched(patch);
       const ok = await scenesApi.updateScene(scene.id, patch);
       if (!ok) {
-        showToast('Failed to save. Check console for details.', 'error');
+        showToast('Scene settings could not be saved. Your edits are still here. Try again.', 'error');
         return;
       }
-      onClose();
+      // v2.730 — change the displayed scene only after a confirmed write.
+      onScenePatched(patch);
+      props.onClose();
+    } catch {
+      showToast('Scene settings could not be saved. Your edits are still here. Try again.', 'error');
     } finally {
-      setSaving(false);
+      pendingSave.current=false;setSaving(false);
     }
   }
 
@@ -230,6 +235,7 @@ export function SceneSettingsModal(props: {
     <ModalPortal>
     <div style={backdropStyle} onMouseDown={onClose}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Scene settings" tabIndex={-1} style={modalStyle} onMouseDown={stop}>
+        <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <div style={{
           fontSize: 14, fontWeight: 700, letterSpacing: '0.04em',
           marginBottom: 16, color: 'var(--t-1)',
@@ -441,6 +447,7 @@ export function SceneSettingsModal(props: {
             </button>
           </div>
         </div>
+        </fieldset>
       </div>
     </div>
     </ModalPortal>
