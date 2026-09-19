@@ -214,11 +214,15 @@ test.describe('battle map (local stack)', () => {
     expect(focusedCamera.scale).toBeCloseTo(selectionCamera.scale,3);
     await page.keyboard.press('f');
     await navigation.getByRole('button',{name:'Find selection',exact:true}).click();
-    await navigation.getByRole('button',{name:'Previous view',exact:true}).click();
+    // v2.737 — keyboard return restores exactly the same saved camera as the arrow.
+    await page.mouse.move(currentBounds.x+currentBounds.width/2,currentBounds.y+currentBounds.height/2);
+    await page.keyboard.press('r');
     const returnedCamera=await readCamera();
     expect(returnedCamera.x).toBeCloseTo(selectionCamera.x+300,2);
     expect(returnedCamera.y).toBeCloseTo(selectionCamera.y+200,2);
     expect(returnedCamera.scale).toBeCloseTo(selectionCamera.scale,3);
+    await expect(navigation.getByRole('button',{name:'Previous view',exact:true})).toBeDisabled();
+    await page.keyboard.press('r');expect(await readCamera()).toEqual(returnedCamera);
     await navigation.getByRole('button',{name:'Find selection',exact:true}).click();
     // v2.705 frames in unobstructed space, deliberately offset from canvas centre.
     const found=await page.evaluate(id=>{

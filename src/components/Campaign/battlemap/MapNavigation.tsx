@@ -82,7 +82,8 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     viewport.moveCenter(frame.x,frame.y);
     setZoom(Math.round(frame.zoom*100));
   };
-  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport)chooseZoom(viewport.scale.x*factor);},fit,focus:selectedIds.size ? focus : undefined});
+  const restoreView=()=>{const scale=previousView.restore();if(scale!==null)setZoom(Math.round(scale*100));};
+  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport)chooseZoom(viewport.scale.x*factor);},fit,focus:selectedIds.size ? focus : undefined,previous:previousView.canReturn ? restoreView : undefined});
 
   useEffect(() => {
     if (!canvas || !viewport) return;
@@ -211,8 +212,8 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     </div>
     <div className="map-navigation-framing">
       <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>
-      <button type="button" aria-label="Previous view" title="Return to your view before Fit map or Find selection" disabled={!previousView.canReturn}
-        onClick={()=>{const scale=previousView.restore();if(scale!==null)setZoom(Math.round(scale*100));}}><MapControlIcon kind="back"/></button>
+      <button type="button" aria-label="Previous view" title="Return to your view before Fit map or Find selection (R over the map)" disabled={!previousView.canReturn}
+        onClick={restoreView}><MapControlIcon kind="back"/></button>
     </div>
     <button type="button" onClick={focus} disabled={!selectedIds.size} title="Bring all selected tokens into view (F over the map)"><MapControlIcon kind="focus"/>Find selection</button>
     <MapHelp />

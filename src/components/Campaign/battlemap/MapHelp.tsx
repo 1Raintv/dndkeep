@@ -32,7 +32,7 @@ export function MapHelp() {
         <dt>Zoom keys</dt><dd><kbd>+</kbd> / <kbd>−</kbd> over the map</dd>
         <dt>Fit map</dt><dd><kbd>0</kbd> over the map</dd>
         <dt>Find selection</dt><dd><kbd>F</kbd> over the map</dd>
-        <dt>Previous view</dt><dd>Arrow beside Fit map returns to your view before Fit or Find</dd>
+        <dt>Previous view</dt><dd><kbd>R</kbd> over the map, or the arrow beside Fit map</dd>
         <dt>Select a group</dt><dd><kbd>Shift</kbd> + click tokens (DM)</dd>
         <dt>Token options</dt><dd>Right-click a token</dd>
         <dt>Undo / redo</dt><dd><kbd>Ctrl / ⌘ Z</kbd> · add <kbd>Shift</kbd> to redo</dd>
