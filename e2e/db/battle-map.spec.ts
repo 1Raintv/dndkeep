@@ -173,7 +173,22 @@ test.describe('battle map (local stack)', () => {
     await page.evaluate(()=>(document.activeElement as HTMLElement)?.blur());
     const beforeSpace=await readCamera();
     await page.mouse.move(currentBounds.x + screenToken.x, currentBounds.y + screenToken.y);
+    // v2.736 — hover must not let Space steal rich-text input or overlay focus.
+    await page.evaluate(()=>{
+      const editor=document.createElement('div');editor.id='space-pan-editor';editor.setAttribute('contenteditable','');
+      editor.style.cssText='position:fixed;top:0;left:0;z-index:50000';document.body.append(editor);editor.focus();
+    });
+    await page.keyboard.down('Space');await expect(canvas).not.toHaveCSS('cursor','grab');await page.keyboard.up('Space');
+    await page.evaluate(()=>document.getElementById('space-pan-editor')!.remove());
+    await page.evaluate(()=>{
+      const dialog=document.createElement('div');dialog.id='space-pan-overlay';dialog.setAttribute('aria-modal','true');
+      dialog.style.cssText='position:fixed;top:0;left:0;width:40px;height:40px;z-index:50000';document.body.append(dialog);
+      (document.activeElement as HTMLElement)?.blur();
+    });
+    await page.keyboard.down('Space');await expect(canvas).not.toHaveCSS('cursor','grab');await page.keyboard.up('Space');
+    await page.evaluate(()=>document.getElementById('space-pan-overlay')!.remove());
     await page.keyboard.down('Space');
+    await expect(canvas).toHaveCSS('cursor','grab');
     await page.mouse.down();
     await page.mouse.move(currentBounds.x + screenToken.x + 30, currentBounds.y + screenToken.y + 10, { steps: 4 });
     await page.mouse.up();

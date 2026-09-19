@@ -3,6 +3,18 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Space-pan keyboard ownership, v2.736
+
+Temporary Space-pan now checks the current pointer hit, visible modals, editable
+ancestors (including empty/plaintext-only contenteditable), composition, handled
+keys and pressed mouse buttons. Focused controls keep their normal keyboard
+behavior; a token drag cannot turn into a camera pan mid-gesture. Pointer ownership
+clears on blur and updates on button release. Escape still cancels an active pan.
+
+Validation includes unit guards and desktop/mobile full-map regression coverage
+for rich-text focus, a visible overlay, then normal Space-pan and middle-pan.
+No database or layout changes. Personal encounter mode remains queued.
+
 ### 2026-09-19 — Cancellable middle-mouse panning, v2.735
 
 Middle-mouse dragging now shares Space/Pan capture handling, including over tokens.
