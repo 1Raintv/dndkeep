@@ -2,7 +2,7 @@
 // See that file's header changelog for this code's full history.
 
 import { Assets, Texture } from 'pixi.js';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as scenesApi from '../../../lib/api/scenes';
 import * as assetsApi from '../../../lib/api/battleMapAssets';
 import { useModal } from '../../shared/Modal';
@@ -53,6 +53,8 @@ export function SceneSettingsModal(props: {
   const [fogMode, setFogMode] = useState(scene.fogMode);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const dialogRef=useRef<HTMLDivElement>(null);
+  const closeRef=useRef(onClose);closeRef.current=onClose;
 
   // Re-sync local state when the scene prop changes (e.g. Realtime
   // update arrived from another client while modal was open). Happens
@@ -66,14 +68,26 @@ export function SceneSettingsModal(props: {
     setFogMode(scene.fogMode);
   }, [scene.id, scene.updatedAt]);
 
-  // Escape closes the modal.
+  // v2.729 — own keyboard focus, but let a nested confirmation handle its
+  // own Escape. Never close settings or operate the map behind that dialog.
   useEffect(() => {
+    const dialog=dialogRef.current!;
+    const opener=document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.querySelector<HTMLInputElement>('input')?.focus();
     function keyHandler(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if([...document.querySelectorAll('[aria-modal="true"],dialog[open]')].some(el=>el!==dialog && el.getClientRects().length>0))return;
+      if(e.key==='Escape') {e.preventDefault();e.stopImmediatePropagation();closeRef.current();return;}
+      if(e.key!=='Tab')return;
+      const controls=[...dialog.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter(el=>el.getClientRects().length>0);
+      const first=controls[0],last=controls[controls.length-1];
+      if(!first) {e.preventDefault();dialog.focus();return;}
+      if(!dialog.contains(document.activeElement) || (e.shiftKey && document.activeElement===first) || (!e.shiftKey && document.activeElement===last)) {
+        e.preventDefault();(e.shiftKey ? last : first).focus();
+      }
     }
-    window.addEventListener('keydown', keyHandler);
-    return () => window.removeEventListener('keydown', keyHandler);
-  }, [onClose]);
+    window.addEventListener('keydown', keyHandler,true);
+    return () => {window.removeEventListener('keydown', keyHandler,true);if(opener?.isConnected)opener.focus();};
+  }, []);
 
   // "Fit to map image" — inspects the cached texture for the scene's
   // background and sets widthCells/heightCells to match the image
@@ -140,13 +154,14 @@ export function SceneSettingsModal(props: {
 
   async function doDelete() {
     // v2.241 — was window.confirm.
+    const trigger=document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const ok = await confirmModal({
       title: `Delete scene "${scene.name}"?`,
       message: 'This removes the scene and all tokens in it. This cannot be undone.',
       confirmLabel: 'Delete scene',
       danger: true,
     });
-    if (!ok) return;
+    if (!ok) {if(trigger?.isConnected)trigger.focus();return;}
     setDeleting(true);
     try {
       const result = await scenesApi.deleteScene(scene.id);
@@ -214,7 +229,7 @@ export function SceneSettingsModal(props: {
   return (
     <ModalPortal>
     <div style={backdropStyle} onMouseDown={onClose}>
-      <div style={modalStyle} onMouseDown={stop}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Scene settings" tabIndex={-1} style={modalStyle} onMouseDown={stop}>
         <div style={{
           fontSize: 14, fontWeight: 700, letterSpacing: '0.04em',
           marginBottom: 16, color: 'var(--t-1)',
@@ -227,6 +242,7 @@ export function SceneSettingsModal(props: {
           <label style={labelStyle}>Name</label>
           <input
             type="text"
+            aria-label="Scene name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             style={inputStyle}

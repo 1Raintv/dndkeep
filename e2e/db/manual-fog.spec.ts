@@ -31,6 +31,26 @@ test.describe('manual fog (local stack)', () => {
     // Target the SCENE settings by title — a bare /settings/i matches
     // the campaign header button first and opens the wrong dialog.
     await page.locator('button[title^="Scene settings"]').first().click();
+    // v2.729 — settings owns focus; Escape dismisses only the top dialog.
+    const settings=page.getByRole('dialog',{name:'Scene settings',exact:true});
+    const name=settings.getByRole('textbox',{name:'Scene name'});
+    await expect(name).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(settings.getByRole('button',{name:'Save',exact:true})).toBeFocused();
+    await page.keyboard.press('Tab');await expect(name).toBeFocused();
+    const originalName=await name.inputValue();
+    await name.fill(originalName+' draft');
+    await settings.getByRole('button',{name:'Delete Scene',exact:true}).click();
+    const confirmation=page.getByRole('dialog').filter({hasText:'This removes the scene and all tokens'});
+    await expect(confirmation).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(confirmation).toBeHidden();await expect(settings).toBeVisible();
+    await expect(name).toHaveValue(originalName+' draft');
+    await expect(settings.getByRole('button',{name:'Delete Scene',exact:true})).toBeFocused();
+    await page.keyboard.press('Escape');await expect(settings).toBeHidden();
+    await expect(page.locator('button[title^="Scene settings"]').first()).toBeFocused();
+    await page.locator('button[title^="Scene settings"]').first().click();
+    await expect(name).toHaveValue(originalName);
     await page.locator('input[name="fog-mode"]').nth(1).check();
     await page.getByRole('button', { name: /^save$/i }).first().click();
     await page.waitForTimeout(1500);
