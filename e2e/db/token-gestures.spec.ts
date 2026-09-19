@@ -214,11 +214,17 @@ test.describe('token gestures (local stack)', () => {
       await page.mouse.click(point.x,point.y,{button:'right'});await assertBounds();
       const actions=menu.getByRole('button');
       await expect(actions.first()).toBeFocused();
+      await page.keyboard.press('ArrowDown');await expect(actions.nth(1)).toBeFocused();
+      await page.keyboard.press('End');await expect(actions.last()).toBeFocused();
+      await page.keyboard.press('ArrowDown');await expect(actions.first()).toBeFocused();
+      await page.keyboard.press('ArrowUp');await expect(actions.last()).toBeFocused();
+      await page.keyboard.press('Home');await expect(actions.first()).toBeFocused();
+      expect((await state(page)).tokens[token.id]).toMatchObject({x:token.x,y:token.y});
       await page.keyboard.press('Tab');await expect(actions.nth(1)).toBeFocused();
       for(const action of await actions.all()) await expect(action).toHaveAccessibleName(/.+/);
       await menu.getByRole('button',{name:'Resize ▸',exact:true}).focus();await page.keyboard.press('Space');
       await expect(menu.getByRole('button',{name:'Back to token options'})).toBeFocused();
-      await page.keyboard.press('Tab');await expect(menu.getByRole('button').nth(1)).toBeFocused();
+      await page.keyboard.press('ArrowDown');await expect(menu.getByRole('button').nth(1)).toBeFocused();
       await page.screenshot({path:info.outputPath(`token-keyboard-${size.width}.png`)});
       await page.keyboard.press('Shift+Tab');await page.keyboard.press('Enter');
       await expect(menu.getByRole('button',{name:'Resize ▸',exact:true})).toBeVisible();
