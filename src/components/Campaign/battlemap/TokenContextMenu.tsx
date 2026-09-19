@@ -24,6 +24,11 @@ const FACINGS: ReadonlyArray<{ deg: number; label: string; arrow: string }> = [
   { deg: 315, label: 'Northwest', arrow: '↖' },
 ];
 
+const COLOR_NAMES: Record<(typeof TOKEN_COLORS)[number],string> = {
+  0xa78bfa:'Purple',0x60a5fa:'Blue',0xf87171:'Red',
+  0x34d399:'Green',0xfbbf24:'Yellow',0xf472b6:'Pink',
+};
+
 export function TokenContextMenu(props: {
   state: ContextMenuState;
   // v2.282: gate Hide/Show on DM. Players who somehow trigger the
@@ -296,28 +301,23 @@ export function TokenContextMenu(props: {
             <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, paddingTop: 8 }}>
               Colour
             </div>
-            <div style={{ display: 'flex', gap: 6, padding: '2px 12px 8px', flexWrap: 'wrap' }}>
+            <div className="map-token-palette">
               {LIGHT_COLOURS.map(c => {
                 const selected = (currentColour ?? null) === c.value;
                 return (
                   <button
                     key={c.label}
                     type="button" disabled={busy}
+                    className="map-token-swatch"
                     title={`${c.label} — ${c.hint}`}
                     aria-pressed={selected}
                     onClick={() => { applyPatch({ lightColor: c.value } as any); }}
-                    style={{
-                      width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
-                      background: c.value === null
+                  >
+                    <span className="map-token-swatch-chip" aria-hidden="true" style={{background:c.value === null
                         ? 'linear-gradient(135deg,#fff8e7 50%,#cbd5e1 50%)'
-                        : `#${c.value.toString(16).padStart(6, '0')}`,
-                      border: selected
-                        ? '2px solid #a78bfa'
-                        : '1px solid rgba(255,255,255,0.25)',
-                      boxShadow: selected ? '0 0 0 2px rgba(167,139,250,0.35)' : undefined,
-                      padding: 0,
-                    }}
-                  />
+                        : `#${c.value.toString(16).padStart(6, '0')}`}}>{selected && <span className="map-token-swatch-check">✓</span>}</span>
+                    <span>{c.label}</span>
+                  </button>
                 );
               })}
             </div>
@@ -446,23 +446,19 @@ export function TokenContextMenu(props: {
         <div style={{ ...itemStyle, color: 'var(--t-3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
           Color
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: 6 }}>
+        <div className="map-token-palette">
           {TOKEN_COLORS.map(c => (
             <button type="button" disabled={busy}
               key={c}
+              className="map-token-swatch"
               onClick={() => { applyPatch({ color: c }); }}
-              style={{
-                width: 44, height: 32,
-                background: `#${c.toString(16).padStart(6, '0')}`,
-                borderRadius: 4,
-                cursor: 'pointer',
-                border: token.color === c ? '2px solid #fff' : '2px solid transparent',
-                boxSizing: 'border-box' as const,
-              }}
               title={`#${c.toString(16).padStart(6, '0')}`}
-              aria-label={`Token color #${c.toString(16).padStart(6, '0')}`}
+              aria-label={`Token color ${COLOR_NAMES[c]}`}
               aria-pressed={token.color===c}
-            />
+            >
+              <span className="map-token-swatch-chip" aria-hidden="true" style={{background:`#${c.toString(16).padStart(6, '0')}`}}>{token.color===c && <span className="map-token-swatch-check">✓</span>}</span>
+              <span>{COLOR_NAMES[c]}</span>
+            </button>
           ))}
         </div>
       </div>,
