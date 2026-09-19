@@ -7,7 +7,7 @@ afterEach(()=>{cleanup();document.body.innerHTML='';vi.restoreAllMocks();});
 function setup() {
   const canvas=document.createElement('canvas');document.body.append(canvas);
   const hit=vi.spyOn(document,'elementFromPoint').mockReturnValue(canvas);
-  const actions={zoom:vi.fn(),fit:vi.fn(),focus:vi.fn() as (()=>void)|undefined};
+  const actions={zoom:vi.fn(),fit:vi.fn(),focus:vi.fn() as (()=>void)|undefined,previous:undefined as (()=>void)|undefined};
   const hook=renderHook(({handlers})=>useMapNavigationShortcuts(canvas,handlers),{initialProps:{handlers:actions}});
   const hover=()=>canvas.dispatchEvent(new PointerEvent('pointermove',{clientX:40,clientY:40}));
   const key=(value:string,extra:KeyboardEventInit={},target:EventTarget=window)=>{
@@ -22,9 +22,22 @@ it('uses live callbacks for hovered-map zoom and fit and cleans up on unmount',(
   // A clicked toolbar button can retain focus after the pointer returns to the map.
   const button=document.createElement('button');document.body.append(button);key('0',{},button);
   expect(actions.fit).toHaveBeenCalledOnce();actions.fit.mockClear();
-  const next={zoom:vi.fn(),fit:vi.fn(),focus:vi.fn()};hook.rerender({handlers:next});key('0');
+  const next={...actions,zoom:vi.fn(),fit:vi.fn(),focus:vi.fn()};hook.rerender({handlers:next});key('0');
   expect(next.fit).toHaveBeenCalledOnce();expect(actions.fit).not.toHaveBeenCalled();
   hook.unmount();key('0');expect(next.fit).toHaveBeenCalledOnce();
+});
+it('returns with R only when history exists, without stealing typing or repeating',()=>{
+  const {canvas,hit,hover,key,actions,hook}=setup();hover();
+  expect(key('r').defaultPrevented).toBe(false);
+  const previous=vi.fn();hook.rerender({handlers:{...actions,previous}});
+  const input=document.createElement('input');document.body.append(input);
+  expect(key('r',{},input).defaultPrevented).toBe(false);
+  for(const init of [{ctrlKey:true},{metaKey:true},{altKey:true},{isComposing:true}])expect(key('r',init).defaultPrevented).toBe(false);
+  hit.mockReturnValue(input);expect(key('r').defaultPrevented).toBe(false);hit.mockReturnValue(canvas);
+  expect(key('r',{repeat:true}).defaultPrevented).toBe(true);expect(previous).not.toHaveBeenCalled();
+  expect(key('R',{shiftKey:true}).defaultPrevented).toBe(true);expect(previous).toHaveBeenCalledOnce();
+  const latest=vi.fn();hook.rerender({handlers:{...actions,previous:latest}});key('r');expect(latest).toHaveBeenCalledOnce();
+  hook.rerender({handlers:actions});expect(key('r').defaultPrevented).toBe(false);
 });
 it('frames the current selection with F and leaves the key alone without a selection',()=>{
   const {hover,key,actions,hook}=setup();hover();

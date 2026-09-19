@@ -3,6 +3,19 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Previous-view shortcut, v2.737
+
+Press R over the map to return to the camera position and zoom saved before the
+latest Fit/Find jump. It shares the arrow button's restore action and ignores
+held repeats, typing, overlays and modified keys. Without a saved view it leaves
+the key alone. Help and the arrow tooltip document the shortcut; token undo is
+unchanged.
+
+Validation covers shortcut ownership and history availability in unit tests, plus
+desktop/mobile browser camera-position and zoom assertions, one-use return and
+existing navigation/Space-pan/middle-pan behavior. No database changes.
+Personal encounter mode remains queued.
+
 ### 2026-09-19 — Space-pan keyboard ownership, v2.736
 
 Temporary Space-pan now checks the current pointer hit, visible modals, editable

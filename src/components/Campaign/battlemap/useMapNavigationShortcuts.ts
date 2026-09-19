@@ -2,7 +2,7 @@ import {useEffect,useRef} from 'react';
 
 /** v2.714 — camera shortcuts belong to the unobstructed map, never a form
  * or an in-progress pointer gesture. Buttons remain the keyboard-only path. */
-export function useMapNavigationShortcuts(canvas:HTMLCanvasElement|null, actions:{zoom:(factor:number)=>void;fit:()=>void;focus?:()=>void}) {
+export function useMapNavigationShortcuts(canvas:HTMLCanvasElement|null, actions:{zoom:(factor:number)=>void;fit:()=>void;focus?:()=>void;previous?:()=>void}) {
   const latest=useRef(actions);latest.current=actions;
   useEffect(()=>{
     if(!canvas)return;
@@ -22,6 +22,8 @@ export function useMapNavigationShortcuts(canvas:HTMLCanvasElement|null, actions
       else if(event.key==='0') {event.preventDefault();if(!event.repeat)latest.current.fit();}
       // v2.724 — reuse the same selection framing as the visible button.
       else if(event.key.toLowerCase()==='f' && latest.current.focus) {event.preventDefault();if(!event.repeat)latest.current.focus();}
+      // v2.737 — camera return is separate from shared token undo.
+      else if(event.key.toLowerCase()==='r' && latest.current.previous) {event.preventDefault();if(!event.repeat)latest.current.previous();}
     };
     canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',leave);
     window.addEventListener('pointerdown',down,true);window.addEventListener('pointerup',up,true);
