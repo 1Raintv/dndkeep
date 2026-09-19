@@ -12,11 +12,14 @@ focused alert inside settings. Numeric fields have accessible names; Fit to map
 image is disabled until grid size is valid.
 
 Validation: full gate passed (936 unit tests, TypeScript 221/221, build and entry
-budget). Fractional-value mutation fails three cases. Desktop/mobile checks were
-added for invalid drafts, zero writes, correction and existing save/delete/fog
-behavior, but cannot run past sign-in: Docker Desktop fails startup on an
-inaccessible sailor-ingest.sock file. Browser verification and deployment remain
-pending. No database changes. Personal encounter mode remains queued.
+budget). Fractional-value mutation fails three cases. Four isolated desktop/mobile
+browser checks pass using the real dialog with intercepted save/delete responses:
+invalid drafts never write, typed values survive, retries work, and short-screen
+controls remain reachable. Removing validation feedback fails the browser test.
+Database-backed save/delete/fog checks still cannot pass sign-in: Docker Desktop
+fails startup on an inaccessible sailor-ingest.sock file. Integration verification
+and deployment remain pending. No database changes. Personal encounter mode remains
+queued.
 
 ### 2026-09-19 — Scene settings layout, v2.733
 
