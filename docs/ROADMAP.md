@@ -3,6 +3,17 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Token submenu return, v2.739
+
+Back, rename Cancel and Escape restore focus to the originating token option and
+scroll it into view. Escape leaves a submenu first; a second press closes token
+options. Held or composing Escape does not dismiss another level, and pending
+saves remain protected. Leaving a failed edit clears its stale error.
+
+Regression coverage exercises focus restoration, rename cancellation, pending
+saves and composition, plus desktop/mobile submenu navigation in the real map.
+No database or layout changes. Personal encounter mode remains queued.
+
 ### 2026-09-19 — Token-menu arrow navigation, v2.738
 
 Focused token options now support Up/Down with wrapping and Home/End for the first
