@@ -99,7 +99,10 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     const leave = () => { hovering = false; };
     const editable = (target: EventTarget | null) => target instanceof HTMLElement && !!target.closest('input,textarea,select,button,summary,a,[contenteditable="true"],[role="textbox"]');
     const down = (event: PointerEvent) => {
-      if (event.button !== 0 || (!pan && !space) || (drag && event.pointerType !== 'touch')) return;
+      // v2.735 — middle pan uses the same capture/cancel path as Space pan,
+      // including over tokens. Never take over a primary-button token drag.
+      const middle=event.button===1 && event.buttons===4;
+      if ((!middle && (event.button !== 0 || (!pan && !space))) || (drag && event.pointerType !== 'touch')) return;
       event.preventDefault(); event.stopImmediatePropagation();
       viewport.plugins.get('decelerate')?.reset();
       if (event.pointerType === 'touch') touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -168,7 +171,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     // v2.700 — Window capture beats group selection and Pixi listeners. A pan
     // beginning over a token cannot select, move, ping, or paint it.
     const host=canvas.parentElement!;
-    const swallowClick = (event: MouseEvent) => { if((pan || space || Date.now() < suppressClickUntil) && event.target===canvas) { event.preventDefault(); event.stopImmediatePropagation(); } };
+    const swallowClick = (event: MouseEvent) => { if((event.button===1 || pan || space || Date.now() < suppressClickUntil) && event.target===canvas) { event.preventDefault(); event.stopImmediatePropagation(); } };
     const hostDown = (event: PointerEvent) => { if(event.target===canvas) down(event); };
     window.addEventListener('pointerdown',hostDown,true);
     host.addEventListener('pointermove',move,true);
@@ -177,6 +180,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     canvas.addEventListener('lostpointercapture',lostCapture);
     document.addEventListener('visibilitychange',hidden);
     host.addEventListener('click',swallowClick,true);
+    host.addEventListener('auxclick',swallowClick,true);
     canvas.addEventListener('pointerenter',enter); canvas.addEventListener('pointerleave',leave);
     window.addEventListener('keydown',keyDown,true); window.addEventListener('keyup',keyUp); window.addEventListener('blur',blur);
     cursor();
@@ -184,6 +188,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       blur(); canvas.style.cursor=originalCursor;
       window.removeEventListener('pointerdown',hostDown,true); host.removeEventListener('pointermove',move,true);
       host.removeEventListener('pointerup',end,true); host.removeEventListener('pointercancel',end,true); host.removeEventListener('click',swallowClick,true);
+      host.removeEventListener('auxclick',swallowClick,true);
       canvas.removeEventListener('lostpointercapture',lostCapture);document.removeEventListener('visibilitychange',hidden);
       canvas.removeEventListener('pointerenter',enter); canvas.removeEventListener('pointerleave',leave);
       window.removeEventListener('keydown',keyDown,true); window.removeEventListener('keyup',keyUp); window.removeEventListener('blur',blur);
