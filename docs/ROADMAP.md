@@ -3,6 +3,21 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Scene settings keyboard ownership, v2.729
+
+Scene settings is now a named modal dialog, so map shortcut guards recognize it.
+Opening focuses the scene name; Tab/Shift+Tab stay within enabled visible
+controls. Closing restores the opener. Escape dismisses settings without reaching
+the map, but yields to a nested confirmation. Canceling scene deletion preserves
+draft settings and restores focus to Delete Scene.
+
+Validation: full gate passed (920 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile local browser checks
+cover initial focus, both Tab boundaries, nested Escape, preserved draft text,
+return focus, discarded edits on Cancel, then saving settings and persisted fog
+strokes. Removing the nested-dialog guard fails the regression. No schema or
+layout changes. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Keep map undo out of dialogs and text editing, v2.728
 
 Map Undo/Redo shortcuts now leave editable ancestors, ARIA textboxes/dialogs,
