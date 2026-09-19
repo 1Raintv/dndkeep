@@ -10,6 +10,7 @@ import { MapHelp } from './MapHelp';
 import { MapControlIcon } from './MapControlIcon';
 import { useMapNavigationShortcuts } from './useMapNavigationShortcuts';
 import { usePreviousMapView } from './usePreviousMapView';
+import { canStartSpacePan } from './spacePanKey';
 
 /** v2.697 — local camera controls never write shared token positions. */
 export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editingToolActive, onSelectMode, history }: {
@@ -85,7 +86,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
 
   useEffect(() => {
     if (!canvas || !viewport) return;
-    let hovering = false, space = false;
+    let pointer:{x:number;y:number;buttons:number}|null=null, space = false;
     let suppressClickUntil = 0;
     let drag: { id: number; x: number; y: number } | null = null;
     const touches = new Map<number, { x: number; y: number }>();
@@ -95,9 +96,8 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     };
     const originalCursor = canvas.style.cursor;
     const cursor = () => { canvas.style.cursor = drag ? 'grabbing' : pan || space ? 'grab' : originalCursor; };
-    const enter = () => { hovering = true; cursor(); };
-    const leave = () => { hovering = false; };
-    const editable = (target: EventTarget | null) => target instanceof HTMLElement && !!target.closest('input,textarea,select,button,summary,a,[contenteditable="true"],[role="textbox"]');
+    const enter = (event:PointerEvent) => { pointer={x:event.clientX,y:event.clientY,buttons:event.buttons};cursor(); };
+    const leave = () => { pointer=null; };
     const down = (event: PointerEvent) => {
       // v2.735 — middle pan uses the same capture/cancel path as Space pan,
       // including over tokens. Never take over a primary-button token drag.
@@ -110,6 +110,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       canvas.setPointerCapture(event.pointerId); cursor();
     };
     const move = (event: PointerEvent) => {
+      if(event.target===canvas)pointer={x:event.clientX,y:event.clientY,buttons:event.buttons};
       // v2.698 — Pan owns all fingers, including a pinch over a token.
       // Keep the world point under the midpoint fixed while zooming.
       if (touches.has(event.pointerId)) {
@@ -135,6 +136,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       drag.x=event.clientX; drag.y=event.clientY;
     };
     const end = (event: PointerEvent) => {
+      if(event.target===canvas)pointer={x:event.clientX,y:event.clientY,buttons:event.buttons};
       if (touches.delete(event.pointerId)) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
@@ -153,12 +155,11 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     };
     const keyDown = (event: KeyboardEvent) => {
       if(event.key==='Escape' && drag) {event.preventDefault();event.stopImmediatePropagation();blur();return;}
-      if (!hovering || editable(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.code === 'Space') { event.preventDefault(); space=true; cursor(); }
+      if(canStartSpacePan(event,canvas,pointer)) {event.preventDefault();space=true;cursor();}
     };
     const keyUp = (event: KeyboardEvent) => { if(event.code==='Space') { space=false; cursor(); } };
     const blur = () => {
-      space=false;
+      space=false;pointer=null;
       // v2.704 — clear ownership before releasing capture: cancellation can
       // itself emit lostpointercapture, and must not leave a ghost pan alive.
       const ids=new Set(touches.keys());if(drag) ids.add(drag.id);
@@ -172,7 +173,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     // beginning over a token cannot select, move, ping, or paint it.
     const host=canvas.parentElement!;
     const swallowClick = (event: MouseEvent) => { if((event.button===1 || pan || space || Date.now() < suppressClickUntil) && event.target===canvas) { event.preventDefault(); event.stopImmediatePropagation(); } };
-    const hostDown = (event: PointerEvent) => { if(event.target===canvas) down(event); };
+    const hostDown = (event: PointerEvent) => { if(event.target===canvas) {pointer={x:event.clientX,y:event.clientY,buttons:event.buttons};down(event);} };
     window.addEventListener('pointerdown',hostDown,true);
     host.addEventListener('pointermove',move,true);
     host.addEventListener('pointerup',end,true);
