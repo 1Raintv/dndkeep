@@ -21,6 +21,17 @@ test.describe('scene deletion recovery',()=>{
       await page.locator('button[title^="Scene settings"]').first().click();
       const settings=page.getByRole('dialog',{name:'Scene settings',exact:true});
       const name=settings.getByRole('textbox',{name:'Scene name'});
+      // v2.733 — actions remain in view even when the settings body must scroll.
+      const viewport=page.viewportSize()!;
+      await page.setViewportSize({width:viewport.width,height:480});
+      for(const label of ['Delete Scene','Cancel','Save']) {
+        const button=settings.getByRole('button',{name:label,exact:true});
+        await expect(button).toBeInViewport({ratio:1});
+        expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      }
+      expect((await settings.getByRole('radio').first().boundingBox())!.width).toBeLessThanOrEqual(20);
+      await page.screenshot({path:info.outputPath('scene-settings-short.png')});
+      await page.setViewportSize(viewport);
       await name.fill(title+' draft');
       await page.route(route,async r=>{
         if(r.request().method()==='PATCH')patches++;
@@ -42,6 +53,8 @@ test.describe('scene deletion recovery',()=>{
       await expect(page.getByText('Scene could not be deleted. Your edits are still here. Try again.',{exact:true})).toBeVisible();
       await expect(settings.getByRole('alert')).toBeFocused();
       await expect(settings.getByRole('alert')).toBeInViewport();
+      await expect(settings.getByRole('button',{name:'Delete Scene',exact:true})).toBeInViewport({ratio:1});
+      await expect(settings.getByRole('button',{name:'Save',exact:true})).toBeInViewport({ratio:1});
       await expect(name).toBeEnabled();await expect(name).toHaveValue(title+' draft');
       expect(deletes).toBe(1);expect(patches).toBe(0);
       await expect(page.locator('option').filter({hasText:title})).toHaveCount(1);

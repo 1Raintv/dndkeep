@@ -3,6 +3,18 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Scene settings layout, v2.733
+
+Scene settings scrolls its fields independently of the title and action footer.
+Save, Cancel and Delete retain 44px targets and stay reachable on short screens,
+including after save/delete errors. Radio buttons and the published checkbox have
+explicit compact dimensions so global text-input styles no longer squeeze their
+labels. Fog descriptions use the more readable secondary text color.
+
+Validation covers the full gate and desktop/mobile settings, keyboard navigation,
+save/delete recovery and a 480px-high viewport. No database changes.
+Personal encounter mode remains queued.
+
 ### 2026-09-19 — Scene deletion recovery, v2.732
 
 Scene deletion now requires a returned deleted row before removing the scene
