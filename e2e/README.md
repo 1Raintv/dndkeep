@@ -10,9 +10,17 @@ touches this directory.
 |---|---|---|---|
 | Smokes + visual | `npm run test:e2e` | nothing extra | Yes — logged-out only, never writes |
 | Bundle budget | `npm run build && npm run budget-check` | nothing extra | Yes — reads `dist/` |
+| Isolated scene settings | `npx playwright test e2e/scene-settings.spec.ts` | Vite only, no Docker | All backend requests intercepted; real dialog with simulated responses |
 | DB-backed flows | `E2E_DB=1 npx playwright test` | local Supabase via `.env.local` | Refuses to run unless the Supabase URL is local |
 
 ## Visual baselines
+
+The scene-settings fixture in `e2e/fixtures/` imports the production component
+and styles. Playwright intercepts external requests before navigation and supplies
+save/delete responses. It covers validation, focus, small screens and recovery;
+it does not establish database permissions, persistence or multiplayer behavior.
+The fixture is not a production build entry point. Open it through the test runner,
+which installs the network isolation, rather than browsing it manually.
 
 Committed under `e2e/__screenshots__/<platform>/`. When a change is
 *supposed* to alter a page, regenerate and commit the new baseline —

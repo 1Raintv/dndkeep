@@ -64,6 +64,26 @@ test.describe('manual fog (local stack)', () => {
       if(r.request().method()==='PATCH'){writes++;await pending;await r.fulfill({status:200,contentType:'application/json',body:'[]'});}else await r.continue();
     });
     try {
+      // v2.734 — invalid drafts stay intact, report inside settings and never write.
+      for(const [label,value,message] of [
+        ['Grid size in pixels','5','Grid size must be a whole number between 10 and 500 pixels.'],
+        ['Width in cells','201','Width must be a whole number between 1 and 200 cells.'],
+        ['Height in cells','1.5','Height must be a whole number between 1 and 200 cells.'],
+        ['Width in cells','','Width must be a whole number between 1 and 200 cells.'],
+      ]) {
+        const field=settings.getByRole('spinbutton',{name:label});
+        const original=await field.inputValue();
+        await field.fill(value);
+        await expect(field).toHaveValue(value);
+        await settings.getByRole('button',{name:'Save',exact:true}).click();
+        await expect(settings.getByRole('alert')).toHaveText(message);
+        await expect(settings.getByRole('alert')).toBeFocused();
+        await expect(settings.getByRole('alert')).toBeInViewport({ratio:1});
+        await expect(settings.getByRole('button',{name:'Save',exact:true})).toBeInViewport({ratio:1});
+        expect(writes).toBe(0);
+        if(value==='1.5')await page.screenshot({path:info.outputPath('scene-invalid-dimension.png')});
+        await field.fill(original);
+      }
       await name.fill(originalName+' unsaved');
       await settings.getByRole('button',{name:'Save',exact:true}).click();
       await expect.poll(()=>writes).toBe(1);

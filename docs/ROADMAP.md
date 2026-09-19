@@ -3,6 +3,24 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Clear dimension validation, v2.734
+
+Scene settings preserves numeric drafts instead of truncating fractions as they
+are entered. Blank, fractional and out-of-range dimensions are rejected before
+any write, with the field name and allowed whole-number range shown in the
+focused alert inside settings. Numeric fields have accessible names; Fit to map
+image is disabled until grid size is valid.
+
+Validation: full gate passed (936 unit tests, TypeScript 221/221, build and entry
+budget). Fractional-value mutation fails three cases. Four isolated desktop/mobile
+browser checks pass using the real dialog with intercepted save/delete responses:
+invalid drafts never write, typed values survive, retries work, and short-screen
+controls remain reachable. Removing validation feedback fails the browser test.
+After Docker was restored, all four database-backed desktop/mobile checks passed:
+invalid drafts, zero writes, correction, confirmed save/delete recovery and fog.
+Screenshots inspected in the full app as well as the isolated fixture. No database
+changes. Personal encounter mode remains queued.
+
 ### 2026-09-19 — Scene settings layout, v2.733
 
 Scene settings scrolls its fields independently of the title and action footer.
