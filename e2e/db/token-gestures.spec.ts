@@ -153,7 +153,7 @@ test.describe('token gestures (local stack)', () => {
     await page.screenshot({path:info.outputPath('token-rename.png')});
     await menu.getByRole('button',{name:'Cancel',exact:true}).click();
     await menu.getByRole('button',{name:'Rename…',exact:true}).click();await expect(input).toHaveValue(token.name);
-    await input.press('Escape');await expect(menu).toBeHidden();await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
+    await input.press('Escape');await expect(menu.getByRole('button',{name:'Rename…',exact:true})).toBeFocused();await page.keyboard.press('Escape');await expect(menu).toBeHidden();await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
     expect((await state(page)).tokens).toEqual(before);
   });
   test('failed token edits stay visible and can be retried',async({page},info)=>{
@@ -227,7 +227,7 @@ test.describe('token gestures (local stack)', () => {
       await page.keyboard.press('ArrowDown');await expect(menu.getByRole('button').nth(1)).toBeFocused();
       await page.screenshot({path:info.outputPath(`token-keyboard-${size.width}.png`)});
       await page.keyboard.press('Shift+Tab');await page.keyboard.press('Enter');
-      await expect(menu.getByRole('button',{name:'Resize ▸',exact:true})).toBeVisible();
+      await expect(menu.getByRole('button',{name:'Resize ▸',exact:true})).toBeFocused();
       await page.setViewportSize({...size,height:size.height-40});await assertBounds();
       await page.setViewportSize(size);await assertBounds();
       await menu.getByText('Delete',{exact:true}).scrollIntoViewIfNeeded();
@@ -239,13 +239,18 @@ test.describe('token gestures (local stack)', () => {
       await menu.getByText(/^Daylight/).scrollIntoViewIfNeeded();
       await expect(menu.getByText(/^Daylight/)).toBeInViewport();
       await page.screenshot({path:info.outputPath(`token-light-${size.width}.png`)});
-      await back.press('Enter');await expect(menu.getByText('Rename…',{exact:true})).toBeVisible();
+      await back.press('Enter');await expect(menu.getByRole('button',{name:'☀ Light ▸',exact:true})).toBeFocused();
       for(const label of ['Resize ▸','Recolor ▸','Facing ▸']) {
         await menu.getByText(label,{exact:true}).click();await assertBounds();
         for(const action of await menu.getByRole('button').all()) await expect(action).toHaveAccessibleName(/.+/);
-        await expect(back).toBeFocused();await back.click();
-        await expect(menu.getByText('Rename…',{exact:true})).toBeVisible();
+        await expect(back).toBeFocused();await page.keyboard.press('Escape');
+        await expect(menu.getByRole('button',{name:label,exact:true})).toBeFocused();
+        await expect(menu.getByRole('button',{name:label,exact:true})).toBeInViewport();
       }
+      await menu.getByRole('button',{name:'Rename…',exact:true}).click();
+      await menu.getByLabel('Token name').fill('Unsaved name');await page.keyboard.press('Escape');
+      await expect(menu.getByRole('button',{name:'Rename…',exact:true})).toBeFocused();
+      await page.screenshot({path:info.outputPath(`token-return-${size.width}.png`)});
       await page.keyboard.press('Escape');await expect(menu).toBeHidden();
       await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
       await page.mouse.click(point.x,point.y,{button:'right'});await assertBounds();

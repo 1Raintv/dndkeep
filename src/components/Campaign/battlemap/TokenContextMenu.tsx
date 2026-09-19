@@ -1,7 +1,7 @@
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 3).
 // See that file's header changelog for this code's full history.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBattleMapStore, type Token } from '../../../lib/stores/battleMapStore';
 import * as tokensApi from '../../../lib/api/tokensApiRouter';
@@ -70,13 +70,17 @@ export function TokenContextMenu(props: {
   const [submenu, setSubmenu] = useState<'none' | 'size' | 'color' | 'grant' | 'facing' | 'light' | 'rename'>('none');
   const {ref:menuRef,left,top}=useMapMenuPosition(state.clientX,state.clientY,`${state.tokenId}:${submenu}:${!!token}`);
   const [draftName,setDraftName]=useState('');
+  const returnOption=useRef<{tokenId:string;label:string} | null>(null);
   const {busy,pending,error,setError,run}=useTokenMenuSave(state.tokenId,onClose);
   useEffect(()=>{if(error && menuRef.current)menuRef.current.scrollTop=0;},[error,menuRef]);
 
   useEffect(()=>{
     // v2.717 — Tab starts within the current token menu; submenus start at Back.
-    const target=menuRef.current?.querySelector<HTMLInputElement | HTMLButtonElement>(submenu==='rename'?'input':'button');
-    target?.focus({preventScroll:true});
+    // v2.739 — restore the originating action, scrolling it back into view.
+    const returning=submenu==='none' && returnOption.current?.tokenId===state.tokenId;
+    const origin=returning?[...menuRef.current?.querySelectorAll<HTMLButtonElement>('button[data-token-option]')??[]].find(button=>button.dataset.tokenOption===returnOption.current?.label):undefined;
+    const target=origin??menuRef.current?.querySelector<HTMLInputElement | HTMLButtonElement>(submenu==='rename'?'input':'button');
+    target?.focus({preventScroll:!origin});
     if(target instanceof HTMLInputElement)target.select();
   },[submenu,state.tokenId,menuRef]);
 
@@ -85,7 +89,14 @@ export function TokenContextMenu(props: {
       if(!pending.current && !menuRef.current?.contains(event.target as Node)) onClose();
     }
     function keyHandler(e: KeyboardEvent) {
-      if (e.key === 'Escape') {e.preventDefault();e.stopImmediatePropagation();if(!pending.current)onClose();}
+      if (e.key === 'Escape') {
+        e.preventDefault();e.stopImmediatePropagation();
+        // One press backs out one level; holding Escape must not close the map.
+        if(!pending.current && !e.repeat && !e.isComposing) {
+          if(submenu!=='none'){setError('');setSubmenu('none');}else onClose();
+        }
+        return;
+      }
       // v2.738 — menu navigation must not become an underlying token nudge.
       const menu=menuRef.current;
       if(!menu || !menu.contains(e.target as Node) || e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey)return;
@@ -107,7 +118,7 @@ export function TokenContextMenu(props: {
       window.removeEventListener('pointerdown', handler);
       window.removeEventListener('keydown', keyHandler, true);
     };
-  }, [onClose,menuRef,pending]);
+  }, [onClose,menuRef,pending,submenu,setError]);
 
   if (!token) return null;
 
@@ -193,7 +204,7 @@ export function TokenContextMenu(props: {
   const feedback=busy?<p role="status">Saving token…</p>:error?<p role="alert">{error}</p>:null;
 
   const backButton=<button type="button" disabled={busy} data-menu-back aria-label="Back to token options"
-    onClick={()=>setSubmenu('none')}
+    onClick={()=>{setError('');setSubmenu('none');}}
     style={{display:'block',position:'sticky',top:0,zIndex:1,width:'100%',minHeight:44,padding:'8px 10px',textAlign:'left',font:'inherit',fontWeight:600,color:'var(--t-1)',background:'var(--c-card)',border:'1px solid var(--c-border)',borderRadius:4,cursor:'pointer'}}>
     ← Back to token options
   </button>;
@@ -581,10 +592,11 @@ export function TokenContextMenu(props: {
       ].map(opt => (
         <button type="button" disabled={busy}
           key={opt.label}
+          data-token-option={opt.label}
           style={itemStyle}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-          onClick={opt.onClick}
+          onClick={()=>{returnOption.current={tokenId:state.tokenId,label:opt.label};opt.onClick();}}
         >
           {opt.label}
         </button>

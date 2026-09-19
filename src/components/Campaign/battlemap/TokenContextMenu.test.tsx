@@ -10,6 +10,32 @@ vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:vi.fn()})}));
 vi.mock('./useMapMenuPosition',()=>({useMapMenuPosition:()=>({ref:{current:null},left:8,top:8})}));
 beforeEach(()=>{vi.resetAllMocks();useBattleMapStore.setState({currentSceneId:'scene',tokens:{a:{id:'a',sceneId:'scene',name:'Marker',size:'medium',x:35,y:35,characterId:null,npcId:null,creatureId:null,combatantId:null,visibleToAll:true} as Token}});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it('returns focus to each originating option with Back or Escape, then closes at the root',()=>{
+  const close=setup();
+  for(const name of ['Resize ▸','Recolor ▸','Facing ▸','☀ Light ▸','Rename…']) {
+    fireEvent.click(screen.getByRole('button',{name}));
+    fireEvent.click(screen.getByRole('button',{name:'Back to token options'}));
+    expect(document.activeElement).toBe(screen.getByRole('button',{name}));
+    fireEvent.click(screen.getByRole('button',{name}));
+    fireEvent.keyDown(document.activeElement!,{key:'Escape'});
+    expect(document.activeElement).toBe(screen.getByRole('button',{name}));
+    fireEvent.keyDown(document.activeElement!,{key:'Escape',repeat:true});
+    expect(close).not.toHaveBeenCalled();
+  }
+  expect(api.updateToken).not.toHaveBeenCalled();
+  fireEvent.keyDown(document.activeElement!,{key:'Escape'});expect(close).toHaveBeenCalledOnce();
+});
+it('keeps rename open during composition or a pending save',async()=>{
+  let finish!:(ok:boolean)=>void;vi.mocked(api.updateToken).mockReturnValue(new Promise(r=>{finish=r;}));
+  const close=setup();fireEvent.click(screen.getByRole('button',{name:'Rename…'}));
+  const input=screen.getByLabelText('Token name');
+  fireEvent.keyDown(input,{key:'Escape',isComposing:true});expect(screen.getByLabelText('Token name')).toBe(input);
+  fireEvent.click(screen.getByRole('button',{name:'Save name'}));
+  fireEvent.keyDown(window,{key:'Escape'});expect(screen.getByLabelText('Token name')).toBe(input);expect(close).not.toHaveBeenCalled();
+  await act(async()=>finish(false));
+  fireEvent.keyDown(input,{key:'Escape'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'Rename…'}));
+  expect(screen.queryByRole('alert')).toBeNull();expect(close).not.toHaveBeenCalled();
+});
 it('cycles menu focus with arrows and Home/End without changing tokens',()=>{
   vi.spyOn(HTMLElement.prototype,'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
   setup();const buttons=screen.getAllByRole('button');buttons[0].focus();
@@ -43,7 +69,7 @@ it('rejects blank names and cancels without saving',()=>{
   const close=setup();fireEvent.click(screen.getByRole('button',{name:'Rename…'}));
   fireEvent.change(screen.getByLabelText('Token name'),{target:{value:'   '}});
   expect((screen.getByRole('button',{name:'Save name'}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.getByRole('button',{name:'Rename…'})).toBeDefined();
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(document.activeElement).toBe(screen.getByRole('button',{name:'Rename…'}));
   expect(api.updateToken).not.toHaveBeenCalled();expect(close).not.toHaveBeenCalled();
 });
 const setup=()=>{const close=vi.fn();render(<TokenContextMenu state={{tokenId:'a',clientX:20,clientY:20}} isDM campaignId="c" gridSizePx={70} onClose={close} onRequestUpload={vi.fn()}/>);return close;};
