@@ -638,6 +638,22 @@ test.describe('token gestures (local stack)', () => {
         for(const token of tokens) await expect.poll(async()=>(await state(peer)).locks[token.id]).toBeFalsy();
         if(!cancel) {
           await expect(page.getByRole('button',{name:'↶ Undo move tokens',exact:true})).toBeVisible();
+          // v2.728 — Ctrl+Z in a confirmation must not mutate the map behind it.
+          await page.getByTitle('More selection actions').click();
+          await page.getByTitle('Delete all selected tokens').click();
+          const dialog=page.getByRole('dialog',{name:'Delete 2 tokens?'});
+          await expect(dialog).toBeVisible();
+          const beforeModalUndo=writes.length;
+          await dialog.getByRole('button',{name:'Cancel',exact:true}).focus();
+          await page.keyboard.press('Control+z');
+          for(const token of tokens) {
+            expect((await state(page)).tokens[token.id].y).toBe(token.y+70);
+            expect((await state(peer)).tokens[token.id].y).toBe(token.y+70);
+          }
+          expect(writes).toHaveLength(beforeModalUndo);
+          await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+          await expect(dialog).toBeHidden();
+          await page.getByTitle('More selection actions').click();
           await page.keyboard.press('Control+z');
         }
         for(const token of tokens) await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(token.y);

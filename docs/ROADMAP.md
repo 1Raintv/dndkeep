@@ -3,6 +3,20 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-18 — Keep map undo out of dialogs and text editing, v2.728
+
+Map Undo/Redo shortcuts now leave editable ancestors, ARIA textboxes/dialogs,
+visible modal dialogs, composition, Alt-modified keys and already-handled events
+alone. Empty history does not consume the shortcut. Held keys cannot drain the
+history after each save finishes; a fresh press still works normally.
+
+Validation: full gate passed (920 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile multiplayer checks
+open the real group-delete confirmation, verify Ctrl+Z creates no movement writes
+or position changes on either client, cancel, then verify normal undo/redo and
+reconnect behavior. New unit tests fail against the previous implementation.
+No schema/layout changes. Personal encounter mode remains queued.
+
 ### 2026-09-18 — Repeated framing preserves Previous view, v2.727
 
 Repeated Fit map or Find selection no longer replaces the saved return point
