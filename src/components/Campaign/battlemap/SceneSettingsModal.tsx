@@ -206,7 +206,8 @@ export function SceneSettingsModal(props: {
     minWidth: 0,
     maxWidth: 480,
     maxHeight: 'calc(100dvh - 24px)',
-    overflowY: 'auto',
+    overflow: 'hidden',
+    display: 'flex',
     boxSizing: 'border-box',
     background: 'var(--c-card)',
     border: '1px solid var(--c-border)',
@@ -214,7 +215,7 @@ export function SceneSettingsModal(props: {
     boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
     fontFamily: 'var(--ff-body)',
     color: 'var(--t-1)',
-    padding: 20,
+    padding: 0,
   };
 
   const labelStyle: React.CSSProperties = {
@@ -243,15 +244,17 @@ export function SceneSettingsModal(props: {
     <ModalPortal>
     <div style={backdropStyle} onMouseDown={onClose}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Scene settings" tabIndex={-1} style={modalStyle} onMouseDown={stop}>
-        <fieldset disabled={saving || deleting} style={{border:0,padding:0,margin:0,minWidth:0}}>
+        <fieldset disabled={saving || deleting} style={{border:0,padding:0,margin:0,minWidth:0,minHeight:0,width:"100%",display:"flex",flexDirection:"column"}}>
         <div style={{
           fontSize: 14, fontWeight: 700, letterSpacing: '0.04em',
-          marginBottom: 16, color: 'var(--t-1)',
+          padding: '16px 20px', flexShrink: 0, color: 'var(--t-1)',
           textTransform: 'uppercase' as const,
         }}>
           Scene Settings
         </div>
 
+        {/* v2.733 — scroll fields independently so actions stay reachable. */}
+        <div className="scene-settings-fields" style={{overflowY: 'auto',minHeight:0,padding:'0 20px 16px'}}>
         <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Name</label>
           <input
@@ -366,7 +369,7 @@ export function SceneSettingsModal(props: {
                 name="fog-mode"
                 checked={fogMode === m.id}
                 onChange={() => setFogMode(m.id)}
-                style={{ marginTop: 2 }}
+                style={{ marginTop: 2, width:16, height:16, minHeight:16, padding:0, flex:'0 0 16px' }}
               />
               <span>
                 <span style={{
@@ -376,7 +379,7 @@ export function SceneSettingsModal(props: {
                 }}>
                   {m.label}
                 </span>
-                <span style={{ display: 'block', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.4 }}>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>
                   {m.hint}
                 </span>
               </span>
@@ -395,6 +398,7 @@ export function SceneSettingsModal(props: {
           }}>
             <input
               type="checkbox"
+              style={{width:16,height:16,minHeight:16,padding:0,flex:'0 0 16px'}}
               checked={isPublished}
               onChange={(e) => setIsPublished(e.target.checked)}
             />
@@ -402,17 +406,19 @@ export function SceneSettingsModal(props: {
           </label>
         </div>
 
+        </div>
+        <div className="scene-settings-actions" style={{flexShrink:0,padding:'12px 20px 16px',borderTop:'1px solid var(--c-border)'}}>
         {/* v2.732 — errors belong inside settings; a toast is obscured by its backdrop. */}
         {operationError && <div ref={errorRef} role="alert" tabIndex={-1} style={{marginBottom:12,padding:10,border:'1px solid #f87171',borderRadius:6,color:'#fca5a5',fontSize:12,lineHeight:1.5}}>{operationError}</div>}
         <div style={{
           display: 'flex', justifyContent: 'space-between',
-          paddingTop: 12, borderTop: '1px solid var(--c-border)',
+          gap: 8,
         }}>
           <button
             onClick={doDelete}
             disabled={deleting}
             style={{
-              padding: '6px 14px',
+              padding: '6px 12px', minHeight: 44,
               background: 'rgba(248,113,113,0.15)',
               border: '1px solid rgba(248,113,113,0.4)',
               borderRadius: 'var(--r-sm, 4px)',
@@ -428,7 +434,7 @@ export function SceneSettingsModal(props: {
             <button
               onClick={onClose}
               style={{
-                padding: '6px 14px',
+                padding: '6px 12px', minHeight: 44,
                 background: 'var(--c-raised)',
                 border: '1px solid var(--c-border)',
                 borderRadius: 'var(--r-sm, 4px)',
@@ -443,7 +449,7 @@ export function SceneSettingsModal(props: {
               onClick={save}
               disabled={saving}
               style={{
-                padding: '6px 14px',
+                padding: '6px 12px', minHeight: 44,
                 background: 'rgba(167,139,250,0.22)',
                 border: '1px solid rgba(167,139,250,0.5)',
                 borderRadius: 'var(--r-sm, 4px)',
@@ -456,6 +462,7 @@ export function SceneSettingsModal(props: {
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
+        </div>
         </div>
         </fieldset>
       </div>
