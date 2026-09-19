@@ -16,10 +16,10 @@ budget). Fractional-value mutation fails three cases. Four isolated desktop/mobi
 browser checks pass using the real dialog with intercepted save/delete responses:
 invalid drafts never write, typed values survive, retries work, and short-screen
 controls remain reachable. Removing validation feedback fails the browser test.
-Database-backed save/delete/fog checks still cannot pass sign-in: Docker Desktop
-fails startup on an inaccessible sailor-ingest.sock file. Integration verification
-and deployment remain pending. No database changes. Personal encounter mode remains
-queued.
+After Docker was restored, all four database-backed desktop/mobile checks passed:
+invalid drafts, zero writes, correction, confirmed save/delete recovery and fog.
+Screenshots inspected in the full app as well as the isolated fixture. No database
+changes. Personal encounter mode remains queued.
 
 ### 2026-09-19 — Scene settings layout, v2.733
 
