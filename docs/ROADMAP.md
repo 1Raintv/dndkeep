@@ -3,6 +3,17 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Named, touch-friendly color palettes, v2.740
+
+Token and carried-light colors now use a consistent two-column palette with
+44px targets, visible names, a selected checkmark and keyboard focus outlines.
+Token hex values and light descriptions remain available in tooltips. Selection
+continues to reflect confirmed saved state, including after a failed change.
+
+Coverage checks names, selected states and save payloads, plus desktop/mobile
+and short-screen target sizes and visibility. No database or lighting-engine
+changes. Personal encounter mode remains queued.
+
 ### 2026-09-19 — Token submenu return, v2.739
 
 Back, rename Cancel and Escape restore focus to the originating token option and

@@ -31,6 +31,35 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('named color palettes have touch targets and visible saved choices',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const token=Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell') as any;
+    // Local display fixture only: opening the palettes must not write to the DB.
+    await page.evaluate(async id=>{const path='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ path);useBattleMapStore.getState().updateTokenFields(id,{color:0xa78bfa,lightRadiusFt:40,lightColor:null});},token.id);
+    let writes=0;page.on('request',r=>{if(r.url().includes('/rest/v1/')&&r.method()==='PATCH')writes++;});
+    const menu=page.getByRole('region',{name:'Token options',exact:true});
+    for(const size of [page.viewportSize()!,{width:851,height:393}]) {
+      await page.setViewportSize(size);await page.getByRole('button',{name:'Fit map',exact:true}).click();
+      const point=await page.evaluate(id=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};},token.id);
+      await page.mouse.click(point.x,point.y,{button:'right'});
+      for(const [action,selected] of [['Recolor ▸','Token color Purple'],['☀ Light ▸','Neutral']]) {
+        await menu.getByRole('button',{name:action,exact:true}).click();
+        const palette=menu.locator('.map-token-palette');await expect(palette.getByRole('button')).toHaveCount(6);
+        for(const swatch of await palette.getByRole('button').all()) {
+          await swatch.scrollIntoViewIfNeeded();const bounds=(await swatch.boundingBox())!;
+          expect(bounds.width).toBeGreaterThanOrEqual(44);expect(bounds.height).toBeGreaterThanOrEqual(44);
+          await expect(swatch).toHaveAccessibleName(/.+/);await expect(swatch).toBeInViewport();
+        }
+        const choice=menu.getByRole('button',{name:selected,exact:true});await choice.focus();
+        await expect(choice).toHaveAttribute('aria-pressed','true');await expect(choice.locator('.map-token-swatch-check')).toHaveText('✓');
+        await page.screenshot({path:info.outputPath(`palette-${action==='Recolor ▸'?'token':'light'}-${size.width}.png`)});
+        await page.keyboard.press('Escape');
+      }
+      await page.keyboard.press('Escape');
+    }
+    expect(writes).toBe(0);expect(errors).toEqual([]);
+  });
   test('crowded token names yield and return when separated',async({page},info)=>{
     await openMap(page);
     const tokens=Object.values((await state(page)).tokens).filter((t:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name)) as any[];

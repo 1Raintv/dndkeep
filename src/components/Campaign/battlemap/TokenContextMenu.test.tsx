@@ -10,6 +10,26 @@ vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:vi.fn()})}));
 vi.mock('./useMapMenuPosition',()=>({useMapMenuPosition:()=>({ref:{current:null},left:8,top:8})}));
 beforeEach(()=>{vi.resetAllMocks();useBattleMapStore.setState({currentSceneId:'scene',tokens:{a:{id:'a',sceneId:'scene',name:'Marker',size:'medium',x:35,y:35,characterId:null,npcId:null,creatureId:null,combatantId:null,visibleToAll:true} as Token}});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it('names token colors, marks the saved choice and sends the chosen color',async()=>{
+  useBattleMapStore.getState().updateTokenFields('a',{color:0xa78bfa});
+  vi.mocked(api.updateToken).mockResolvedValue(true);const close=setup();
+  fireEvent.click(screen.getByRole('button',{name:'Recolor ▸'}));
+  expect(screen.getByRole('button',{name:'Token color Purple'}).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button',{name:'Token color Blue'}));
+  await waitFor(()=>expect(close).toHaveBeenCalledOnce());
+  expect(api.updateToken).toHaveBeenCalledWith('a',{color:0x60a5fa},{campaignId:'c'});
+});
+it('names light colors and preserves the saved selection when a change fails',async()=>{
+  useBattleMapStore.getState().updateTokenFields('a',{lightRadiusFt:40,lightColor:null} as Partial<Token>);
+  vi.mocked(api.updateToken).mockResolvedValue(false);const close=setup();
+  fireEvent.click(screen.getByRole('button',{name:'☀ Light ▸'}));
+  expect(screen.getByRole('button',{name:'Neutral'}).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button',{name:'Firelight'}));
+  await waitFor(()=>expect(screen.getByRole('alert')).toBeDefined());
+  expect(api.updateToken).toHaveBeenCalledWith('a',{lightColor:0xff8a3d},{campaignId:'c'});
+  expect(screen.getByRole('button',{name:'Neutral'}).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button',{name:'Firelight'}).getAttribute('aria-pressed')).toBe('false');expect(close).not.toHaveBeenCalled();
+});
 it('returns focus to each originating option with Back or Escape, then closes at the root',()=>{
   const close=setup();
   for(const name of ['Resize ▸','Recolor ▸','Facing ▸','☀ Light ▸','Rename…']) {
