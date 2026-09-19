@@ -15,6 +15,8 @@ export function useMapNavigationShortcuts(canvas:HTMLCanvasElement|null, actions
     const key=(event:KeyboardEvent)=>{
       if(!pointer || pressed || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey)return;
       if(event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="dialog"],[aria-modal="true"]'))return;
+      // v2.741 — a dialog owns keys even before focus settles or away from its bounds.
+      if([...document.querySelectorAll('[aria-modal="true"],dialog[open]')].some(el=>el.getClientRects().length>0))return;
       // Hit-test at key time: a newly opened overlay must not leave stale hover ownership.
       if(document.elementFromPoint(pointer.x,pointer.y)!==canvas)return;
       if(event.key==='+' || event.key==='=') {event.preventDefault();latest.current.zoom(1.2);}

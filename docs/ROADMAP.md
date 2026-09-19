@@ -3,6 +3,17 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Camera shortcut modal guard, v2.741
+
+Zoom, Fit, Find and Previous View keys pause while a visible modal is open,
+including when focus has not entered it and the pointer still hits the map.
+Hidden mounted dialogs do not block navigation, and shortcuts resume on close.
+This matches the existing temporary-pan safeguard.
+
+Unit coverage checks native and ARIA dialogs, every camera action and recovery;
+desktop/mobile browser coverage verifies unchanged camera coordinates and zoom
+during the focus gap. No database or visual changes.
+
 ### 2026-09-19 — Named, touch-friendly color palettes, v2.740
 
 Token and carried-light colors now use a consistent two-column palette with
