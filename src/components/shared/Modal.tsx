@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, createContext, useContext, type ReactNode } from 'react';
+import ModalPortal from './ModalPortal';
 
 /**
  * v2.241.0 — Inline modal system.
@@ -182,6 +183,7 @@ function ModalOverlay(props: {
   const isDanger = state.kind === 'confirm' && state.opts.danger;
 
   return (
+    <ModalPortal>
     <div
       onClick={(e) => {
         // Backdrop click cancels (only when the click started on the
@@ -191,7 +193,9 @@ function ModalOverlay(props: {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9000,
+        // v2.731 — confirmations must sit above scene settings (30000),
+        // and escape any app transform/stacking context through the portal.
+        zIndex: 40000,
         background: 'rgba(0,0,0,0.55)',
         backdropFilter: 'blur(4px)',
         WebkitBackdropFilter: 'blur(4px)',
@@ -340,6 +344,7 @@ function ModalOverlay(props: {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

@@ -15,7 +15,7 @@ import { gateDbSuite, signInAsSeedDm } from './helpers';
 test.describe('manual fog (local stack)', () => {
   gateDbSuite();
 
-  test('brush stays active and a stroke persists reveals', async ({ page }) => {
+  test('brush stays active and a stroke persists reveals', async ({ page },info) => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(String(e)));
 
@@ -42,6 +42,12 @@ test.describe('manual fog (local stack)', () => {
     await name.fill(originalName+' draft');
     await settings.getByRole('button',{name:'Delete Scene',exact:true}).click();
     const confirmation=page.getByRole('dialog').filter({hasText:'This removes the scene and all tokens'});
+    await expect(confirmation).toBeVisible();
+    // v2.731 — visible DOM isn't enough: settings must not cover the prompt.
+    await page.screenshot({path:info.outputPath('scene-delete-confirmation.png')});
+    await confirmation.getByRole('button',{name:'Cancel',exact:true}).click({timeout:5000});
+    await expect(confirmation).toBeHidden();await expect(name).toHaveValue(originalName+' draft');
+    await settings.getByRole('button',{name:'Delete Scene',exact:true}).click();
     await expect(confirmation).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(confirmation).toBeHidden();await expect(settings).toBeVisible();
