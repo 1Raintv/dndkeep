@@ -136,6 +136,30 @@ test.describe('battle map (local stack)', () => {
     expect(layout!.x + layout!.width).toBeLessThanOrEqual(size.width);
     expect(await navigation.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
 
+    // v2.735 — middle-button pan owns tokens too, and Escape releases capture.
+    const middleStart=await page.evaluate(id=>{
+      const t=(window as any).__NAV_TEST_VP.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      const p=t.getGlobalPosition();return {x:p.x,y:p.y};
+    },token.id);
+    const middleBounds=(await canvas.boundingBox())!;
+    const beforeMiddle=await readCamera();
+    await page.mouse.move(middleBounds.x+middleStart.x,middleBounds.y+middleStart.y);
+    await page.mouse.down({button:'middle'});
+    await page.mouse.move(middleBounds.x+middleStart.x+40,middleBounds.y+middleStart.y+20,{steps:4});
+    expect(Math.abs((await readCamera()).x-beforeMiddle.x)).toBeGreaterThan(10);
+    await expect(canvas).toHaveCSS('cursor','grabbing');
+    await page.keyboard.press('Escape');
+    const cancelledMiddle=await readCamera();
+    await page.mouse.move(middleBounds.x+middleStart.x+80,middleBounds.y+middleStart.y+40,{steps:4});
+    await page.mouse.up({button:'middle'});
+    expect(await readCamera()).toEqual(cancelledMiddle);
+    expect(await page.evaluate(id=>{
+      const t=(window as any).__NAV_TEST_VP.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+      return {x:t.x,y:t.y};
+    },token.id)).toEqual({x:token.x,y:token.y});
+    await expect(navigation.getByRole('button',{name:'Find selection'})).toBeDisabled();
+    await navigation.getByRole('button',{name:'Fit map',exact:true}).click();
+
     // Space temporarily pans over a token and releases back to selection.
     const screenToken = await page.evaluate(id => {
       const vp = (window as any).__NAV_TEST_VP;

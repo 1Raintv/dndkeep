@@ -27,7 +27,7 @@ export function MapHelp() {
       <strong>Map controls</strong>
       <p>Use Select to move tokens. Switch to Pan to explore without moving them.</p>
       <dl>
-        <dt>Pan temporarily</dt><dd>Hold <kbd>Space</kbd> and drag</dd>
+        <dt>Pan temporarily</dt><dd>Middle-mouse drag, or hold <kbd>Space</kbd> and drag</dd>
         <dt>Zoom</dt><dd>Scroll, or pinch in Pan mode</dd>
         <dt>Zoom keys</dt><dd><kbd>+</kbd> / <kbd>−</kbd> over the map</dd>
         <dt>Fit map</dt><dd><kbd>0</kbd> over the map</dd>

@@ -3,6 +3,19 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Cancellable middle-mouse panning, v2.735
+
+Middle-mouse dragging now shares Space/Pan capture handling, including over tokens.
+It shows the grabbing cursor, cancels on Escape/lost capture/blur, and suppresses
+the browser's auxiliary click. A middle press while the primary button is held
+does not take over a token drag. Map help documents the gesture. Camera movement
+remains local; no token writes or schema changes are introduced.
+
+Regression coverage checks actual camera movement, Escape cancellation, unchanged
+token positions and selection, then existing Space-pan and framing behavior.
+The new cursor assertion fails against the old implementation.
+Personal encounter mode remains queued.
+
 ### 2026-09-19 — Clear dimension validation, v2.734
 
 Scene settings preserves numeric drafts instead of truncating fractions as they
