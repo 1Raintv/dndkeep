@@ -55,6 +55,9 @@ export function SceneSettingsModal(props: {
   const [fogMode, setFogMode] = useState(scene.fogMode);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [operationError,setOperationError]=useState<string|null>(null);
+  const errorRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(operationError)errorRef.current?.focus();},[operationError]);
   const dialogRef=useRef<HTMLDivElement>(null);
   const closeRef=useRef(onClose);closeRef.current=onClose;
 
@@ -132,7 +135,7 @@ export function SceneSettingsModal(props: {
       showToast('Height must be between 1 and 200 cells.', 'warn');
       return;
     }
-    pendingSave.current=true;setSaving(true);
+    pendingSave.current=true;setSaving(true);setOperationError(null);
     try {
       const patch: Partial<scenesApi.Scene> = {
         name: name.trim() || scene.name,
@@ -144,40 +147,45 @@ export function SceneSettingsModal(props: {
       };
       const ok = await scenesApi.updateScene(scene.id, patch);
       if (!ok) {
-        showToast('Scene settings could not be saved. Your edits are still here. Try again.', 'error');
+        setOperationError('Scene settings could not be saved. Your edits are still here. Try again.');
         return;
       }
       // v2.730 — change the displayed scene only after a confirmed write.
       onScenePatched(patch);
       props.onClose();
     } catch {
-      showToast('Scene settings could not be saved. Your edits are still here. Try again.', 'error');
+      setOperationError('Scene settings could not be saved. Your edits are still here. Try again.');
     } finally {
       pendingSave.current=false;setSaving(false);
     }
   }
 
   async function doDelete() {
+    if(pendingSave.current)return;
+    // v2.732 — reserve through confirmation and deletion so saves cannot race it.
+    pendingSave.current=true;setOperationError(null);
     // v2.241 — was window.confirm.
     const trigger=document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const ok = await confirmModal({
-      title: `Delete scene "${scene.name}"?`,
-      message: 'This removes the scene and all tokens in it. This cannot be undone.',
-      confirmLabel: 'Delete scene',
-      danger: true,
-    });
-    if (!ok) {if(trigger?.isConnected)trigger.focus();return;}
-    setDeleting(true);
     try {
+      const ok = await confirmModal({
+        title: `Delete scene "${scene.name}"?`,
+        message: 'This removes the scene and all tokens in it. This cannot be undone.',
+        confirmLabel: 'Delete scene',
+        danger: true,
+      });
+      if (!ok) {if(trigger?.isConnected)trigger.focus();return;}
+      setDeleting(true);
       const result = await scenesApi.deleteScene(scene.id);
       if (!result) {
-        showToast('Failed to delete. Check console for details.', 'error');
+        setOperationError('Scene could not be deleted. Your edits are still here. Try again.');
         return;
       }
       onSceneDeleted(scene.id);
-      onClose();
+      props.onClose();
+    } catch {
+      setOperationError('Scene could not be deleted. Your edits are still here. Try again.');
     } finally {
-      setDeleting(false);
+      pendingSave.current=false;setDeleting(false);
     }
   }
 
@@ -235,7 +243,7 @@ export function SceneSettingsModal(props: {
     <ModalPortal>
     <div style={backdropStyle} onMouseDown={onClose}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Scene settings" tabIndex={-1} style={modalStyle} onMouseDown={stop}>
-        <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
+        <fieldset disabled={saving || deleting} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <div style={{
           fontSize: 14, fontWeight: 700, letterSpacing: '0.04em',
           marginBottom: 16, color: 'var(--t-1)',
@@ -394,6 +402,8 @@ export function SceneSettingsModal(props: {
           </label>
         </div>
 
+        {/* v2.732 — errors belong inside settings; a toast is obscured by its backdrop. */}
+        {operationError && <div ref={errorRef} role="alert" tabIndex={-1} style={{marginBottom:12,padding:10,border:'1px solid #f87171',borderRadius:6,color:'#fca5a5',fontSize:12,lineHeight:1.5}}>{operationError}</div>}
         <div style={{
           display: 'flex', justifyContent: 'space-between',
           paddingTop: 12, borderTop: '1px solid var(--c-border)',

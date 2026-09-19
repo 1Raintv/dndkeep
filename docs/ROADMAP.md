@@ -3,6 +3,21 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Scene deletion recovery, v2.732
+
+Scene deletion now requires a returned deleted row before removing the scene
+locally. A synchronous reservation spans confirmation and the request, blocking
+duplicate deletes, competing saves and dismissal while deleting. Failed requests
+preserve drafts and allow retry. Save/delete errors now appear as focused alerts
+inside settings, where the modal backdrop cannot obscure them.
+
+Validation: full gate (923 unit tests, TypeScript 221/221, hooks, RAW/coords/anchors,
+build and entry budget); local desktop/mobile browser coverage holds and rejects
+a deletion, verifies disabled controls and preserved drafts, then retries against
+the database using a disposable scene. Existing settings/save/fog coverage remains.
+API regression fails when returned-row verification is removed. No schema changes.
+Personal encounter mode remains queued.
+
 ### 2026-09-19 — Confirmation dialogs above map settings, v2.731
 
 Shared confirmations/prompts now render through the existing body portal at
