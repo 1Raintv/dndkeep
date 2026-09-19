@@ -3,7 +3,51 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useUndoRedo } from './useUndoRedo';
 vi.mock('../log', () => ({ log: { error: vi.fn() } }));
-afterEach(cleanup);
+afterEach(()=>{cleanup();document.body.innerHTML='';vi.restoreAllMocks();});
+
+async function pressUndo(target:EventTarget=window,extra:KeyboardEventInit={}) {
+  const event=new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true,...extra});
+  await act(async()=>{target.dispatchEvent(event);});return event;
+}
+it('leaves empty history alone and supports Ctrl undo and Cmd Shift redo',async()=>{
+  const {result}=renderHook(()=>useUndoRedo('a'));
+  expect((await pressUndo()).defaultPrevented).toBe(false);
+  const backward=vi.fn(),forward=vi.fn();act(()=>result.current.record({label:'move',backward,forward}));
+  expect((await pressUndo()).defaultPrevented).toBe(true);expect(backward).toHaveBeenCalledOnce();
+  await pressUndo(window,{ctrlKey:false,metaKey:true,shiftKey:true});expect(forward).toHaveBeenCalledOnce();
+});
+it('never changes history while typing or focused inside a dialog',async()=>{
+  const {result}=renderHook(()=>useUndoRedo('a'));const backward=vi.fn();
+  act(()=>result.current.record({label:'move',backward,forward:vi.fn()}));
+  for(const html of ['<input>','<textarea></textarea>','<select></select>','<div contenteditable=""><span></span></div>','<div role="textbox"><span></span></div>','<div role="dialog"><button></button></div>']) {
+    document.body.innerHTML=html;
+    const target=document.body.firstElementChild!.lastElementChild??document.body.firstElementChild!;
+    expect((await pressUndo(target)).defaultPrevented).toBe(false);
+  }
+  expect(backward).not.toHaveBeenCalled();expect(result.current.canUndo).toBe(true);
+});
+it('blocks background undo while a modal is visible, then resumes after it closes',async()=>{
+  const {result}=renderHook(()=>useUndoRedo('a'));const backward=vi.fn();
+  act(()=>result.current.record({label:'move',backward,forward:vi.fn()}));
+  const modal=document.createElement('div');modal.setAttribute('aria-modal','true');document.body.append(modal);
+  vi.spyOn(modal,'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+  expect((await pressUndo()).defaultPrevented).toBe(false);expect(backward).not.toHaveBeenCalled();
+  modal.remove();await pressUndo();expect(backward).toHaveBeenCalledOnce();
+});
+it('ignores composition, Alt modifiers and shortcuts already handled by another control',async()=>{
+  const {result}=renderHook(()=>useUndoRedo('a'));const backward=vi.fn();
+  act(()=>result.current.record({label:'move',backward,forward:vi.fn()}));
+  for(const extra of [{isComposing:true},{altKey:true}])expect((await pressUndo(window,extra)).defaultPrevented).toBe(false);
+  const button=document.createElement('button');document.body.append(button);button.addEventListener('keydown',e=>e.preventDefault());
+  await pressUndo(button);expect(backward).not.toHaveBeenCalled();
+});
+it('does not drain history when a held key repeats after an undo finishes',async()=>{
+  const {result}=renderHook(()=>useUndoRedo('a'));const first=vi.fn(),second=vi.fn();
+  act(()=>{result.current.record({label:'first',backward:first,forward:vi.fn()});result.current.record({label:'second',backward:second,forward:vi.fn()});});
+  await pressUndo();expect(second).toHaveBeenCalledOnce();
+  expect((await pressUndo(window,{repeat:true})).defaultPrevented).toBe(true);
+  expect(first).not.toHaveBeenCalled();await pressUndo();expect(first).toHaveBeenCalledOnce();
+});
 
 it('clears the visible redo action after a new edit or scene switch',async()=>{
   const {result,rerender}=renderHook(({scene})=>useUndoRedo(scene),{initialProps:{scene:'a'}});

@@ -140,17 +140,21 @@ export function useUndoRedo(sceneId: string | null) {
   useEffect(() => {
     function isEditableTarget(t: EventTarget | null): boolean {
       if (!(t instanceof HTMLElement)) return false;
-      const tag = t.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-      if (t.isContentEditable) return true;
-      return false;
+      return t.isContentEditable || !!t.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="dialog"],[aria-modal="true"]');
     }
     function onKey(e: KeyboardEvent) {
+      // v2.728 — leave form/dialog undo and already-handled shortcuts alone.
+      if(e.defaultPrevented || e.isComposing || e.altKey)return;
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key !== 'z' && e.key !== 'Z') return;
       if (isEditableTarget(e.target)) return;
+      // A modal can retain focus outside itself briefly while mounting.
+      if([...document.querySelectorAll('dialog[open],[aria-modal="true"]')].some(el=>el.getClientRects().length>0))return;
+      const stack=e.shiftKey ? stateRef.current.future : stateRef.current.past;
+      if(!stack.length)return;
       e.preventDefault();
+      if(e.repeat)return;
       if (e.shiftKey) {
         redo();
       } else {
