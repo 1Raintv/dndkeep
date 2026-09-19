@@ -140,12 +140,13 @@ export async function createScene(
 
 /** Delete a scene. Cascades to its scene_tokens via ON DELETE CASCADE. */
 export async function deleteScene(sceneId: string): Promise<boolean> {
-  const { error } = await supabase.from('scenes').delete().eq('id', sceneId);
+  const { data, error } = await supabase.from('scenes').delete().eq('id', sceneId).select('id').maybeSingle();
   if (error) {
     console.error('[scenes] deleteScene failed', error);
     return false;
   }
-  return true;
+  // v2.732 — an error-free response can still mean no row was removed.
+  return !!data;
 }
 
 /** Update mutable scene fields (name, grid settings, background, published state, ambient light). */
