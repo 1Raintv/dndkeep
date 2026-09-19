@@ -301,6 +301,15 @@ test.describe('token gestures (local stack)', () => {
     await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
     await page.mouse.down();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await page.mouse.up();
     await zoom.focus();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await zoom.blur();
+    // v2.741 — simulate the brief focus gap after a dialog opens away from the pointer.
+    const camera=()=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return {x:vp.center.x,y:vp.center.y,scale:vp.scale.x};});
+    await page.evaluate(()=>{const modal=document.createElement('div');modal.id='camera-modal-fixture';modal.setAttribute('aria-modal','true');modal.setAttribute('role','dialog');modal.style.cssText='position:fixed;right:8px;top:8px;width:100px;height:44px;z-index:50000';document.body.append(modal);});
+    const beforeModal=await camera();
+    for(const key of ['=','-','0','f','r']) {await page.keyboard.press(key);expect(await camera()).toEqual(beforeModal);}
+    await page.evaluate(()=>{document.getElementById('camera-modal-fixture')!.style.display='none';});
+    await page.keyboard.press('=');await expect(zoom).toHaveValue('120');
+    await page.evaluate(()=>document.getElementById('camera-modal-fixture')!.remove());
+    await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
     await page.keyboard.press('0');expect(Number(await zoom.inputValue())).toBeLessThan(100);
     await page.getByLabel('Map controls',{exact:true}).click();
     await expect(page.getByRole('region',{name:'Map controls help'})).toContainText('Zoom keys');

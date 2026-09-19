@@ -90,6 +90,19 @@ it('ignores stale hover behind overlays and after leaving or losing focus',()=>{
   hover();window.dispatchEvent(new Event('blur'));key('0');
   expect(actions.fit).not.toHaveBeenCalled();
 });
+it.each(['aria','native'])('blocks every camera shortcut while a visible %s dialog is away from the pointer',kind=>{
+  const {hover,key,actions,hook}=setup();const previous=vi.fn();hook.rerender({handlers:{...actions,previous}});hover();
+  const dialog=document.createElement(kind==='native'?'dialog':'div');
+  if(kind==='native')dialog.setAttribute('open','');else dialog.setAttribute('aria-modal','true');
+  document.body.append(dialog);
+  const rects=vi.spyOn(dialog,'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+  for(const value of ['+','=','-','0','f','r'])expect(key(value).defaultPrevented).toBe(false);
+  expect(actions.zoom).not.toHaveBeenCalled();expect(actions.fit).not.toHaveBeenCalled();expect(actions.focus).not.toHaveBeenCalled();expect(previous).not.toHaveBeenCalled();
+  // Hidden mounted dialogs must not disable the map indefinitely.
+  rects.mockReturnValue([] as unknown as DOMRectList);key('+');expect(actions.zoom).toHaveBeenCalledOnce();
+  dialog.remove();key('0');key('f');key('r');
+  expect(actions.fit).toHaveBeenCalledOnce();expect(actions.focus).toHaveBeenCalledOnce();expect(previous).toHaveBeenCalledOnce();
+});
 it('does not zoom during pointer gestures and recovers after release or cancellation',()=>{
   const {hover,key,actions}=setup();hover();
   window.dispatchEvent(new PointerEvent('pointerdown',{buttons:1}));key('+');
