@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as scenesApi from '../../../lib/api/scenes';
 import * as assetsApi from '../../../lib/api/battleMapAssets';
 import { useModal } from '../../shared/Modal';
-import { useToast } from '../../shared/Toast';
+import { validateSceneDimensions } from './sceneSettingsValidation';
 import ModalPortal from '../../shared/ModalPortal';
 
 /**
@@ -43,12 +43,12 @@ export function SceneSettingsModal(props: {
   const { scene, onScenePatched, onSceneDeleted } = props;
   const pendingSave=useRef(false);
   const onClose=()=>{if(!pendingSave.current)props.onClose();};
-  const { showToast } = useToast();
+
   const { confirm: confirmModal } = useModal();
   const [name, setName] = useState(scene.name);
-  const [gridSizePx, setGridSizePx] = useState(scene.gridSizePx);
-  const [widthCells, setWidthCells] = useState(scene.widthCells);
-  const [heightCells, setHeightCells] = useState(scene.heightCells);
+  const [gridSizePx, setGridSizePx] = useState(String(scene.gridSizePx));
+  const [widthCells, setWidthCells] = useState(String(scene.widthCells));
+  const [heightCells, setHeightCells] = useState(String(scene.heightCells));
   const [isPublished, setIsPublished] = useState(scene.isPublished);
   // v2.664.0 — fog mode. Lives here rather than the toolbar because
   // it is a property OF the scene, not a tool you toggle mid-turn.
@@ -66,9 +66,9 @@ export function SceneSettingsModal(props: {
   // rarely but prevents "save stomps remote update" silently.
   useEffect(() => {
     setName(scene.name);
-    setGridSizePx(scene.gridSizePx);
-    setWidthCells(scene.widthCells);
-    setHeightCells(scene.heightCells);
+    setGridSizePx(String(scene.gridSizePx));
+    setWidthCells(String(scene.widthCells));
+    setHeightCells(String(scene.heightCells));
     setIsPublished(scene.isPublished);
     setFogMode(scene.fogMode);
   }, [scene.id, scene.updatedAt]);
@@ -110,10 +110,10 @@ export function SceneSettingsModal(props: {
         texture = await Assets.load<Texture>(url);
       }
       if (!texture?.width || !texture?.height) return;
-      const nextW = Math.max(1, Math.round(texture.width / gridSizePx));
-      const nextH = Math.max(1, Math.round(texture.height / gridSizePx));
-      setWidthCells(nextW);
-      setHeightCells(nextH);
+      const nextW = Math.max(1, Math.round(texture.width / Number(gridSizePx)));
+      const nextH = Math.max(1, Math.round(texture.height / Number(gridSizePx)));
+      setWidthCells(String(nextW));
+      setHeightCells(String(nextH));
     } catch (err) {
       console.error('[SceneSettings] fit-to-image failed', err);
     }
@@ -121,27 +121,16 @@ export function SceneSettingsModal(props: {
 
   async function save() {
     if(pendingSave.current)return;
-    // Minimal validation — positive integers only. DB CHECK enforces
-    // server-side but we give fast feedback here.
-    if (!Number.isFinite(gridSizePx) || gridSizePx < 10 || gridSizePx > 500) {
-      showToast('Grid size must be between 10 and 500 pixels.', 'warn');
-      return;
-    }
-    if (!Number.isFinite(widthCells) || widthCells < 1 || widthCells > 200) {
-      showToast('Width must be between 1 and 200 cells.', 'warn');
-      return;
-    }
-    if (!Number.isFinite(heightCells) || heightCells < 1 || heightCells > 200) {
-      showToast('Height must be between 1 and 200 cells.', 'warn');
-      return;
-    }
+    // Keep the typed draft intact (including fractions) and explain invalid values.
+    const invalid=validateSceneDimensions(Number(gridSizePx),Number(widthCells),Number(heightCells));
+    if(invalid) {setOperationError(invalid);return;}
     pendingSave.current=true;setSaving(true);setOperationError(null);
     try {
       const patch: Partial<scenesApi.Scene> = {
         name: name.trim() || scene.name,
-        gridSizePx,
-        widthCells,
-        heightCells,
+        gridSizePx: Number(gridSizePx),
+        widthCells: Number(widthCells),
+        heightCells: Number(heightCells),
         isPublished,
         fogMode,
       };
@@ -272,8 +261,9 @@ export function SceneSettingsModal(props: {
             <label style={labelStyle}>Grid (px)</label>
             <input
               type="number"
+              aria-label="Grid size in pixels"
               value={gridSizePx}
-              onChange={(e) => setGridSizePx(parseInt(e.target.value) || 0)}
+              onChange={(e) => setGridSizePx(e.target.value)}
               style={inputStyle}
               min={10}
               max={500}
@@ -283,8 +273,9 @@ export function SceneSettingsModal(props: {
             <label style={labelStyle}>Width (cells)</label>
             <input
               type="number"
+              aria-label="Width in cells"
               value={widthCells}
-              onChange={(e) => setWidthCells(parseInt(e.target.value) || 0)}
+              onChange={(e) => setWidthCells(e.target.value)}
               style={inputStyle}
               min={1}
               max={200}
@@ -294,8 +285,9 @@ export function SceneSettingsModal(props: {
             <label style={labelStyle}>Height (cells)</label>
             <input
               type="number"
+              aria-label="Height in cells"
               value={heightCells}
-              onChange={(e) => setHeightCells(parseInt(e.target.value) || 0)}
+              onChange={(e) => setHeightCells(e.target.value)}
               style={inputStyle}
               min={1}
               max={200}
@@ -306,6 +298,7 @@ export function SceneSettingsModal(props: {
         {scene.backgroundStoragePath && (
           <button
             onClick={fitToImage}
+            disabled={validateSceneDimensions(Number(gridSizePx),1,1)!==null}
             title="Auto-size the grid to match the uploaded map image's aspect at the current grid size"
             style={{
               padding: '5px 10px',
