@@ -9,7 +9,25 @@ vi.mock('../../shared/Modal',()=>({useModal:()=>({prompt:vi.fn()})}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:vi.fn()})}));
 vi.mock('./useMapMenuPosition',()=>({useMapMenuPosition:()=>({ref:{current:null},left:8,top:8})}));
 beforeEach(()=>{vi.resetAllMocks();useBattleMapStore.setState({currentSceneId:'scene',tokens:{a:{id:'a',sceneId:'scene',name:'Marker',size:'medium',x:35,y:35,characterId:null,npcId:null,creatureId:null,combatantId:null,visibleToAll:true} as Token}});});
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it('cycles menu focus with arrows and Home/End without changing tokens',()=>{
+  vi.spyOn(HTMLElement.prototype,'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+  setup();const buttons=screen.getAllByRole('button');buttons[0].focus();
+  fireEvent.keyDown(buttons[0],{key:'ArrowDown'});expect(document.activeElement).toBe(buttons[1]);
+  fireEvent.keyDown(buttons[1],{key:'End'});expect(document.activeElement).toBe(buttons[buttons.length-1]);
+  fireEvent.keyDown(buttons[buttons.length-1]!,{key:'ArrowDown'});expect(document.activeElement).toBe(buttons[0]);
+  fireEvent.keyDown(buttons[0],{key:'ArrowUp'});expect(document.activeElement).toBe(buttons[buttons.length-1]);
+  fireEvent.keyDown(buttons[buttons.length-1]!,{key:'Home'});expect(document.activeElement).toBe(buttons[0]);
+  expect(api.updateToken).not.toHaveBeenCalled();expect(api.deleteToken).not.toHaveBeenCalled();
+});
+it('leaves rename caret navigation and modified keys alone',()=>{
+  vi.spyOn(HTMLElement.prototype,'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+  setup();fireEvent.click(screen.getByRole('button',{name:'Rename…'}));
+  const input=screen.getByLabelText('Token name');input.focus();
+  expect(fireEvent.keyDown(input,{key:'Home'})).toBe(true);expect(document.activeElement).toBe(input);
+  const cancel=screen.getByRole('button',{name:'Cancel'});cancel.focus();
+  expect(fireEvent.keyDown(cancel,{key:'End',ctrlKey:true})).toBe(true);expect(document.activeElement).toBe(cancel);
+});
 it('retains a rename draft after failure and retries the trimmed name',async()=>{
   vi.mocked(api.updateToken).mockResolvedValueOnce(false).mockResolvedValueOnce(true);const close=setup();
   fireEvent.click(screen.getByRole('button',{name:'Rename…'}));

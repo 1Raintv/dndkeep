@@ -3,6 +3,17 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Token-menu arrow navigation, v2.738
+
+Focused token options now support Up/Down with wrapping and Home/End for the first
+or last enabled visible action. These keys stay inside the menu instead of
+reaching token-nudge handlers. Rename fields keep normal caret navigation and
+modified/composing keys are ignored. Tab and Enter/Space behavior is unchanged.
+
+Validation covers main-menu cycling and typing in unit tests and desktop/mobile
+submenu navigation, focus, screen bounds and unchanged token positions in the
+real map. No database or layout changes. Personal encounter mode remains queued.
+
 ### 2026-09-19 — Previous-view shortcut, v2.737
 
 Press R over the map to return to the camera position and zoom saved before the

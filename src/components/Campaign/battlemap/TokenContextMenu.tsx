@@ -86,6 +86,17 @@ export function TokenContextMenu(props: {
     }
     function keyHandler(e: KeyboardEvent) {
       if (e.key === 'Escape') {e.preventDefault();e.stopImmediatePropagation();if(!pending.current)onClose();}
+      // v2.738 — menu navigation must not become an underlying token nudge.
+      const menu=menuRef.current;
+      if(!menu || !menu.contains(e.target as Node) || e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey)return;
+      if(e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))return;
+      if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
+      const buttons=[...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')].filter(button=>button.getClientRects().length>0);
+      e.preventDefault();e.stopImmediatePropagation();
+      if(!buttons.length)return;
+      const index=buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next=e.key==='Home'?0:e.key==='End'?buttons.length-1:e.key==='ArrowDown'?(index+1)%buttons.length:index<0?buttons.length-1:(index-1+buttons.length)%buttons.length;
+      buttons[next].focus();
     }
     // v2.715 — the topmost menu owns Escape before map/fullscreen listeners.
     window.addEventListener('keydown', keyHandler, true);
