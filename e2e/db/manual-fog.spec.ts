@@ -51,6 +51,25 @@ test.describe('manual fog (local stack)', () => {
     await expect(page.locator('button[title^="Scene settings"]').first()).toBeFocused();
     await page.locator('button[title^="Scene settings"]').first().click();
     await expect(name).toHaveValue(originalName);
+    // v2.730 — reject a delayed write: preserve the draft and the real map.
+    let release!:()=>void;const pending=new Promise<void>(r=>release=r);let writes=0;
+    const route='**/rest/v1/scenes?**';
+    await page.route(route,async r=>{
+      if(r.request().method()==='PATCH'){writes++;await pending;await r.fulfill({status:200,contentType:'application/json',body:'[]'});}else await r.continue();
+    });
+    try {
+      await name.fill(originalName+' unsaved');
+      await settings.getByRole('button',{name:'Save',exact:true}).click();
+      await expect.poll(()=>writes).toBe(1);
+      await expect(name).toBeDisabled();
+      await page.keyboard.press('Escape');await expect(settings).toBeVisible();
+      await expect(page.locator('option').filter({hasText:originalName+' unsaved'})).toHaveCount(0);
+      release();
+      await expect(page.getByText('Scene settings could not be saved. Your edits are still here. Try again.',{exact:true})).toBeVisible();
+      await expect(name).toBeEnabled();await expect(name).toHaveValue(originalName+' unsaved');
+      expect(writes).toBe(1);
+    } finally {release();await page.unroute(route);}
+    await name.fill(originalName);
     await page.locator('input[name="fog-mode"]').nth(1).check();
     await page.getByRole('button', { name: /^save$/i }).first().click();
     await page.waitForTimeout(1500);

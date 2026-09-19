@@ -3,6 +3,22 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Confirm scene settings before updating the map, v2.730
+
+Scene settings applies its local patch only after the database confirms an
+updated row. Failed/zero-row saves keep edits open with a retry message;
+exceptions use the same recovery. A synchronous reservation blocks duplicate
+saves, disables the form and prevents dismissal until the request settles.
+The shared updateScene API now verifies an affected row instead of accepting
+an error-free zero-row response. Permissions and schema are unchanged.
+
+Validation: full gate passed (921 unit tests, TypeScript 221/221, hooks,
+RAW/coords/anchors, build and 252.4 KB entry). Desktop/mobile local browser checks
+hold and reject a save, verify disabled controls, Escape blocking, unchanged
+scene options and preserved draft text, then retry successfully and persist fog
+strokes. Removing returned-row verification fails the API regression.
+Personal encounter mode remains queued.
+
 ### 2026-09-18 — Scene settings keyboard ownership, v2.729
 
 Scene settings is now a named modal dialog, so map shortcut guards recognize it.
