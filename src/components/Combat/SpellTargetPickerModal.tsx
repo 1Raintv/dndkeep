@@ -1,3 +1,6 @@
+import {useSpellTargetGeometry} from '../../lib/hooks/useSpellTargetGeometry';
+import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
+import {MovementPendingNotice} from './MovementPendingNotice';
 // v2.148.0 — Phase O pt 1 of Spell Wiring.
 //
 // Player-facing target picker for save-based damage spells. Opens when a
@@ -25,7 +28,7 @@
 //   - AoE auto-targeting from area_of_effect.size      → v2.151
 //   - Pre-cast counterspell window integration         → v2.148b / later
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { declareMultiTargetAttack } from '../../lib/pendingAttack';
@@ -33,10 +36,6 @@ import { declareMultiTargetAttack } from '../../lib/pendingAttack';
 // player can see exactly which area they're about to drop.
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
 import {
-  deriveCover,
-  participantSizeLabel,
-  loadActiveBattleMap,
-  buildParticipantPositions,
   findParticipantsInArea,
   // v2.458.0 — footprint-aware Chebyshev for picker distance display.
   // Replaces the inline anchor-to-anchor math at line ~750 which
@@ -48,13 +47,10 @@ import {
   // v2.481.0 — footprint-aware AOE inclusion. Replaces the
   // findParticipantsInArea call below for the auto-target button so
   // Large+ creatures with bodies inside a Fireball aren't missed.
-  buildParticipantFootprints,
   findParticipantsInAreaFootprint,
-  type ActiveBattleMap,
   type ParticipantForTokenLookup,
-  type AoeShape,
   type ParticipantPosition,
-  type ParticipantFootprint,
+  type AoeShape,
 } from '../../lib/battleMapGeometry';
 // v2.344.0 — single-target range visualization + out-of-range flagging.
 import { parseSpellRange, resolveRangeFt } from '../../lib/spellRange';
@@ -115,34 +111,14 @@ export default function SpellTargetPickerModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Per-target cover preview state — mirrors the v2.146 pattern from
-  // DeclareAttackModal so the player can see which targets are behind
-  // walls before confirming.
-  const [coverByTarget, setCoverByTarget] = useState<Record<string, 'half' | 'three_quarters' | 'total'>>({});
-
-  // v2.151.0 — Phase O pt 4: AoE auto-target helper. Persists the
-  // positions map (for Chebyshev radius queries) and tracks the current
-  // "center" participant (the creature at the AoE's point of origin).
-  // When the spell has `area_of_effect.size` AND a battle map exists,
-  // a new UI section lets the player pick a center + click to auto-
-  // select all tokens within radius.
-  const [positions, setPositions] = useState<Map<string, ParticipantPosition> | null>(null);
-  // v2.481.0 — Parallel footprints map. Used by the AOE auto-target
-  // call below for RAW "any part of the creature's space" inclusion.
-  // Built from the same tokens as `positions`. The render-time
-  // geometry (cone arc, radius circle, line preview) keeps using
-  // anchor-only positions because that's how the math is drawn —
-  // the visual is anchor-centered and the inclusion check is
-  // footprint-aware, which mirrors how a DM rules a Fireball
-  // visually drawn near a Large dragon.
-  const [footprints, setFootprints] = useState<Map<string, ParticipantFootprint> | null>(null);
-  // v2.458.0 — Stash full battleMap for footprint-aware distance lookups.
-  // Pre-v2.458 the picker computed distance via anchor-to-anchor Chebyshev
-  // on the positions map, which ignored token sizes. Switching to
-  // distanceBetweenParticipantsFtUsingMap matches the v2.401+ convention
-  // used by every other distance call in the codebase.
-  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
-  const [gridSize, setGridSize] = useState<number>(50);
+  const [casterCombatantId,setCasterCombatantId]=useState<string|null>(null);
+  const casterLookup=useMemo<ParticipantForTokenLookup|null>(()=>casterParticipantId?{
+    id:casterParticipantId,combatant_id:casterCombatantId,name:character.name,
+    participant_type:'character',entity_id:character.id,
+  }:null,[casterParticipantId,casterCombatantId,character.name,character.id]);
+  const {battleMap,positions,footprints,coverByTarget,gridSize,loading:mapLoading}=
+    useSpellTargetGeometry(open,campaignId,casterLookup,participants);
+  const movementBusy=useMapMovementBusy();
   const [centerId, setCenterId] = useState<string | null>(null);
   const autoTargetable = !!(spell.area_of_effect?.size && positions && positions.size > 0);
   const aoeSize = spell.area_of_effect?.size ?? 0;
@@ -297,10 +273,7 @@ export default function SpellTargetPickerModal({
       setLoading(true);
       setError(null);
       setPicked(new Set());
-      setPositions(null);
-      setBattleMap(null);
       setCenterId(null);
-      setCoverByTarget({});
       // Find the active encounter for this campaign.
       const { data: enc } = await supabase
         .from('combat_encounters')
@@ -319,7 +292,7 @@ export default function SpellTargetPickerModal({
       // Caster's own participant row — needed as attacker_participant_id.
       const { data: caster } = await supabase
         .from('combat_participants')
-        .select('id')
+        .select('id, combatant_id')
         .eq('encounter_id', enc.id)
         .eq('entity_id', character.id)
         .eq('participant_type', 'character')
@@ -331,6 +304,8 @@ export default function SpellTargetPickerModal({
         return;
       }
       setCasterParticipantId(caster.id as string);
+      setCasterCombatantId(caster.combatant_id ?? null);
+      setCenterId(caster.id as string);
 
       // All other participants — candidates for targeting.
       const { data: allRaw } = await (supabase as any)
@@ -344,66 +319,13 @@ export default function SpellTargetPickerModal({
         .filter(p => p.id !== caster.id && !p.is_dead);
       setParticipants(list);
 
-      // v2.151.0 — Phase O pt 4: load map for BOTH cover preview AND
-      // auto-target helper. Prior to v2.151 the positions map was
-      // only computed if walls existed — which hid the AoE helper on
-      // open-field maps. Now positions land regardless, and cover
-      // derivation only runs when walls are present.
-      try {
-        const map = await loadActiveBattleMap(campaignId);
-        if (!cancelled && map) {
-          const posInput = [
-            {
-              id: caster.id as string,
-              participant_type: 'character' as const,
-              entity_id: character.id,
-              name: character.name,
-            },
-            ...list.map(p => ({
-              id: p.id,
-              participant_type: p.participant_type,
-              entity_id: p.entity_id,
-              name: p.name,
-            })),
-          ];
-          const computed = buildParticipantPositions(posInput, map.tokens);
-          setPositions(computed);
-          // v2.481.0 — Build footprints from the same input.
-          setFootprints(buildParticipantFootprints(posInput, map.tokens));
-          setBattleMap(map);
-          setGridSize(map.grid_size);
-          // Default center = caster. Player can change via dropdown.
-          if (computed.has(caster.id as string)) {
-            setCenterId(caster.id as string);
-          }
-          // v2.652.0 — derivation no longer gated on walls existing:
-          // creatures on the line of effect grant half cover too.
-          {
-            const casterPos = computed.get(caster.id as string);
-            if (casterPos) {
-              const derived: Record<string, 'half' | 'three_quarters' | 'total'> = {};
-              for (const p of list) {
-                const tPos = computed.get(p.id);
-                if (!tPos) continue;
-                const lvl = deriveCover(
-                  casterPos, tPos,
-                  participantSizeLabel(p, map.tokens),
-                  map.walls, map.tokens, map.grid_size,
-                ).level;
-                if (lvl !== 'none') derived[p.id] = lvl;
-              }
-              setCoverByTarget(derived);
-            }
-          }
-        }
-      } catch { /* map optional */ }
-
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [open, campaignId, character.id, character.name]);
 
   async function onConfirm() {
+    if(submitting || loading || mapLoading || isMapMovementBusy())return;
     if (!encounterId || !casterParticipantId) return;
     if (picked.size === 0) { setError('Pick at least one target.'); return; }
     setSubmitting(true);
@@ -560,6 +482,7 @@ export default function SpellTargetPickerModal({
           </div>
         </div>
 
+        <MovementPendingNotice busy={movementBusy}/>
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
           {loading ? (
             <div style={{ fontSize: 12, color: 'var(--t-3)' }}>Loading encounter…</div>
@@ -594,7 +517,9 @@ export default function SpellTargetPickerModal({
                     </label>
                     <select
                       value={freeAimWorld ? '' : (centerId ?? '')}
+                      disabled={movementBusy || submitting}
                       onChange={e => {
+                        if(isMapMovementBusy() || submitting)return;
                         setCenterId(e.target.value || null);
                         // Selecting a participant overrides any prior
                         // free-aim point — they're mutually exclusive
@@ -674,7 +599,7 @@ export default function SpellTargetPickerModal({
                     )}
                     <button
                       onClick={() => {
-                        if (!positions) return;
+                        if (!positions || isMapMovementBusy()) return;
                         // v2.343.0 — shape-aware. For cone + line, the
                         // caster is the apex/origin and the chosen
                         // "center" is the direction target. Sphere/
@@ -726,7 +651,7 @@ export default function SpellTargetPickerModal({
                                 id: p.id,
                                 name: p.name,
                                 participant_type: p.participant_type,
-                                entity_id: p.entity_id,
+                                entity_id: p.entity_id, combatant_id:p.combatant_id,
                               })),
                               footprints,
                               aoeShape as AoeShape,
@@ -741,7 +666,7 @@ export default function SpellTargetPickerModal({
                                 id: p.id,
                                 name: p.name,
                                 participant_type: p.participant_type,
-                                entity_id: p.entity_id,
+                                entity_id: p.entity_id, combatant_id:p.combatant_id,
                               })),
                               positions,
                               aoeShape as AoeShape,
@@ -754,7 +679,7 @@ export default function SpellTargetPickerModal({
                         setPicked(new Set(matches.map(m => m.participant.id)));
                       }}
                       disabled={
-                        !positions ||
+                        movementBusy || mapLoading || !positions ||
                         ((aoeShape === 'cone' || aoeShape === 'line')
                           ? (!casterParticipantId || (!freeAimWorld && !centerId))
                           : !centerId
@@ -821,17 +746,11 @@ export default function SpellTargetPickerModal({
                 //      quiet inline "20ft" next to the participant type.
                 let outOfRange = false;
                 let distanceFt: number | null = null;
-                if (battleMap && casterParticipantId) {
-                  const casterLookup: ParticipantForTokenLookup = {
-                    id: casterParticipantId,
-                    name: character.name,
-                    participant_type: 'character',
-                    entity_id: character.id,
-                  };
+                if (battleMap && casterLookup) {
                   const targetLookup: ParticipantForTokenLookup = {
                     id: p.id, name: p.name,
                     participant_type: p.participant_type,
-                    entity_id: p.entity_id,
+                    entity_id: p.entity_id, combatant_id:p.combatant_id,
                   };
                   distanceFt = distanceBetweenParticipantsFtUsingMap(
                     casterLookup, targetLookup, battleMap,
@@ -845,20 +764,22 @@ export default function SpellTargetPickerModal({
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 8px', borderRadius: 5,
                     background: checked ? 'rgba(167,139,250,0.15)' : 'transparent',
-                    cursor: 'pointer', fontSize: 12,
+                    cursor: movementBusy || submitting ? 'default' : 'pointer', fontSize: 12, minHeight:44,
                     opacity: outOfRange ? 0.55 : 1,
                   }}>
                     <input
                       type="checkbox"
                       checked={checked}
+                      disabled={movementBusy || submitting}
                       onChange={e => {
+                        if(isMapMovementBusy() || submitting)return;
                         setPicked(prev => {
                           const next = new Set(prev);
                           if (e.target.checked) next.add(p.id); else next.delete(p.id);
                           return next;
                         });
                       }}
-                      style={{ margin: 0 }}
+                      style={{ margin:0,width:16,height:16,minWidth:16,minHeight:16,flex:'0 0 16px' }}
                     />
                     <span style={{ flex: 1 }}>
                       {p.name}
@@ -937,13 +858,13 @@ export default function SpellTargetPickerModal({
           </button>
           <button
             onClick={onConfirm}
-            disabled={submitting || loading || picked.size === 0}
+            disabled={submitting || loading || mapLoading || movementBusy || picked.size === 0}
             style={{
               fontSize: 13, fontWeight: 800, padding: '8px 18px',
               background: '#a78bfa', color: '#fff',
               border: '1px solid #a78bfa', borderRadius: 6,
               cursor: submitting ? 'wait' : 'pointer',
-              opacity: (submitting || loading || picked.size === 0) ? 0.5 : 1,
+              opacity: (submitting || loading || mapLoading || movementBusy || picked.size === 0) ? 0.5 : 1,
             }}
           >
             {submitting ? 'Declaring…' : `Declare vs ${picked.size}`}
