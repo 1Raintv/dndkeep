@@ -3,6 +3,19 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-20 — Wait for movement before choosing attacks, v2.744
+
+Player target selection, DM monster single-target selection and the Declare
+Attack form now wait while the open map has an active drag, remote drag lease
+or local movement save. A visible status explains the pause; completing a save
+refreshes controls without requiring another token update. Nothing auto-submits.
+Range uses the final live position, including rollback after a rejected move.
+
+Regression coverage includes overlapping saves, local/remote dragging, scene
+changes, success without a repaint, rejection rollback and desktop/mobile target
+selection. This is a local UI safeguard, not server-side attack/move ordering.
+Dedicated spell and multi-target save flows still need the same treatment.
+
 ### 2026-09-19 — Attack identity and movement refresh stability, v2.743
 
 Reproduced two defects: duplicate monster definitions could resolve range from

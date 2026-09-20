@@ -1,3 +1,5 @@
+import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
+import {MovementPendingNotice} from './MovementPendingNotice';
 // v2.97.0 — Phase E of the Combat Backbone
 //
 // DM form for declaring a new attack. Kept minimal and explicit in this first
@@ -49,6 +51,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   const activeBattleMap=useLiveBattleMap(mapSnapshot);
   const battleMapTokens=activeBattleMap?.tokens??null;
   const sceneId=useBattleMapStore(s=>s.currentSceneId);
+  const movementBusy=useMapMovementBusy();
   const [centerParticipantId, setCenterParticipantId] = useState<string>('');
   const [radiusFt, setRadiusFt] = useState<string>('20');
   const [attackName, setAttackName] = useState('');
@@ -258,6 +261,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   }
 
   async function handleDeclare() {
+    if(isMapMovementBusy(sceneId))return;
     if (!attacker) { setError('Pick an attacker'); return; }
     if (!attackName.trim()) { setError('Enter an attack name'); return; }
 
@@ -448,6 +452,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
           <button onClick={onClose} style={{ fontSize: 11, padding: '4px 10px', minHeight: 0 }}>✕</button>
         </div>
 
+        <MovementPendingNotice busy={movementBusy}/>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
@@ -889,7 +894,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
           <button
             className="btn-gold"
             onClick={handleDeclare}
-            disabled={saving || (friendlyFireTargets.length > 0 && !friendlyFireAck)}
+            disabled={movementBusy || saving || (friendlyFireTargets.length > 0 && !friendlyFireAck)}
             style={{
               fontFamily: 'var(--ff-body)', fontSize: 12, fontWeight: 800, padding: '6px 18px',
               opacity: (friendlyFireTargets.length > 0 && !friendlyFireAck) ? 0.5 : 1,

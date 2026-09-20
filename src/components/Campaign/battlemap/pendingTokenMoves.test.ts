@@ -1,5 +1,17 @@
-import {expect,it} from 'vitest';
-import {beginTokenMove,isTokenMovePending} from './pendingTokenMoves';
+import {expect,it,vi} from 'vitest';
+import {beginTokenMove,isTokenMovePending,subscribeTokenMoves,tokenMoveRevision} from './pendingTokenMoves';
+it('notifies subscribers only when a reservation changes',()=>{
+  const listener=vi.fn(),unsubscribe=subscribeTokenMoves(listener),before=tokenMoveRevision();
+  const release=beginTokenMove(['notify'])!;
+  try {
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(beginTokenMove(['notify'])).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+    release();release();
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(tokenMoveRevision()).toBe(before+2);
+  } finally {release();unsubscribe();}
+});
 it('reserves a formation atomically and permits unrelated moves',()=>{
   const release=beginTokenMove(['a'])!;
   try{expect(beginTokenMove(['b','a'])).toBeNull();expect(isTokenMovePending('b')).toBe(false);

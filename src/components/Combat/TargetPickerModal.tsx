@@ -20,6 +20,8 @@ import { createPortal } from 'react-dom';
 import type { CombatParticipant } from '../../types';
 import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
 import {useBattleMapStore} from '../../lib/stores/battleMapStore';
+import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
+import {MovementPendingNotice} from './MovementPendingNotice';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
@@ -73,6 +75,7 @@ export default function TargetPickerModal({
   const [snapshot, setBattleMap] = useState<ActiveBattleMap | null>(null);
   const battleMap=useLiveBattleMap(snapshot);
   const sceneId=useBattleMapStore(s=>s.currentSceneId);
+  const movementBusy=useMapMovementBusy();
   useEffect(() => {
     if (!campaignId || !fromParticipant) return;
     let cancelled = false;
@@ -124,6 +127,7 @@ export default function TargetPickerModal({
           <button onClick={onCancel} style={{ fontSize: 11, padding: '4px 10px', minHeight: 0 }}>✕</button>
         </div>
 
+        <MovementPendingNotice busy={movementBusy}/>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {selectable.length === 0 ? (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
@@ -179,25 +183,25 @@ export default function TargetPickerModal({
             return (
               <button
                 key={p.id}
-                onClick={outOfRange ? undefined : () => onPick(p)}
-                disabled={outOfRange}
+                onClick={()=>{if(!outOfRange && !isMapMovementBusy(sceneId))onPick(p);}}
+                disabled={outOfRange || movementBusy}
                 title={outOfRange ? `Out of range — ${distanceFt} ft (max ${maxRangeFt} ft)` : undefined}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '10px 12px', borderRadius: 8,
                   border: '1px solid var(--c-border)',
                   background: '#080d14',
-                  cursor: outOfRange ? 'default' : 'pointer',
+                  cursor: outOfRange || movementBusy ? 'default' : 'pointer',
                   textAlign: 'left', minHeight: 0,
                   fontFamily: 'var(--ff-body)',
                   transition: 'all 0.12s',
-                  opacity: outOfRange ? 0.45 : 1,
+                  opacity: outOfRange || movementBusy ? 0.45 : 1,
                 }}
-                onMouseEnter={outOfRange ? undefined : e => {
+                onMouseEnter={outOfRange || movementBusy ? undefined : e => {
                   e.currentTarget.style.background = 'rgba(201,146,42,0.08)';
                   e.currentTarget.style.borderColor = 'var(--c-gold-bdr)';
                 }}
-                onMouseLeave={outOfRange ? undefined : e => {
+                onMouseLeave={outOfRange || movementBusy ? undefined : e => {
                   e.currentTarget.style.background = '#080d14';
                   e.currentTarget.style.borderColor = 'var(--c-border)';
                 }}
