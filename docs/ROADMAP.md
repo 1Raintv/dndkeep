@@ -3,6 +3,23 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-20 — Spell and multi-target movement safeguards, v2.745
+
+Spell targeting and DM multi-target save selection now wait for local movement
+saves or active drag leases. Choices remain intact; nothing submits automatically.
+DM save confirmation rejects selected targets that moved out of range and lets
+the user deselect them. The picker was extracted from MonsterActionPanel.
+
+Spell positions, footprints, distance warnings and derived cover now use live
+token instances, including duplicate creatures. Scene changes reload geometry
+without resetting target choices, and late responses cannot restore an old map.
+Spell distance remains informational: area targets can lie beyond the casting
+point. This does not add authoritative multiplayer attack/movement ordering.
+
+Regression coverage exercises pending saves, rollback, retained selections,
+duplicate-instance distance, cover refresh, scene response races and desktop/
+mobile waiting and changed-range states.
+
 ### 2026-09-20 — Wait for movement before choosing attacks, v2.744
 
 Player target selection, DM monster single-target selection and the Declare
