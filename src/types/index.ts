@@ -823,6 +823,7 @@ export interface CombatEncounter {
 }
 
 export interface CombatParticipant {
+  combatant_id?: string | null;
   id: string;
   encounter_id: string;
   campaign_id: string;

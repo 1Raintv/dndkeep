@@ -227,6 +227,7 @@ import { buildTokenCoverMap } from './battlemap/coverState';
 import { PingLayer } from './battlemap/PingLayer';
 import { MarqueeLayer } from './battlemap/MarqueeLayer';
 import { tokenReconnect } from './battlemap/tokenReconnect';
+import {refreshSceneTokens} from './battlemap/refreshSceneTokens';
 import { TokenGroupDrag } from './battlemap/TokenGroupDrag';
 import { useTokenDragSharing } from './battlemap/useTokenDragSharing';
 import { useTokenNudge } from './battlemap/useTokenNudge';
@@ -659,9 +660,8 @@ function BattleMapV2(props: BattleMapV2Props) {
       // drives this component's own realtime subscription routing
       // (scene_tokens vs scene_token_placements channel).
       setUseNewPath(flag);
-      const list = await tokensApi.listTokens(currentScene.id, { campaignId });
+      await refreshSceneTokens(currentScene.id,campaignId,()=>cancelled);
       if (cancelled) return;
-      useBattleMapStore.getState().setTokensBulk(list);
       useBattleMapStore.getState().setLoading(false);
     })();
     // v2.223 — walls hydration runs in parallel with tokens. No
@@ -745,9 +745,7 @@ function BattleMapV2(props: BattleMapV2Props) {
               // combatants JOIN. Re-fetch via the router so the store
               // sees the merged Token shape. v2.314+ may do a
               // single-row JOINed fetch by id for tighter cost.
-              const list = await tokensApi.listTokens(sceneId, { campaignId });
-              if (cancelled) return;
-              useBattleMapStore.getState().setTokensBulk(list);
+              await refreshSceneTokens(sceneId,campaignId,()=>cancelled);
             } else {
               store.addToken(dbRowToToken(newRow));
             }
@@ -819,9 +817,7 @@ function BattleMapV2(props: BattleMapV2Props) {
             (t) => t.combatantId === newRow.id
           );
           if (!onScene) return;
-          const list = await tokensApi.listTokens(currentScene.id, { campaignId });
-          if (cancelled) return;
-          useBattleMapStore.getState().setTokensBulk(list);
+          await refreshSceneTokens(currentScene.id,campaignId,()=>cancelled);
         }
       )
       .subscribe();

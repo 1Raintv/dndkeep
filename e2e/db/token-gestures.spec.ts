@@ -31,6 +31,38 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('a delayed scene refresh cannot rewind a saved token drop',async({page})=>{
+    await openMap(page);
+    const token=Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell') as any;
+    let captured!:()=>void,release!:()=>void;const ready=new Promise<void>(r=>captured=r),held=new Promise<void>(r=>release=r);let first=true;
+    await page.route('**/rest/v1/scene_token*',async route=>{
+      if(first&&route.request().method()==='GET') {first=false;const response=await route.fetch();captured();await held;await route.fulfill({response});}
+      else await route.continue();
+    });
+    try {
+      await page.evaluate(async()=>{const path='/src/components/Campaign/battlemap/refreshSceneTokens.ts';const {refreshSceneTokens}=await import(/* @vite-ignore */ path);const storePath='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ storePath);const sceneId=useBattleMapStore.getState().currentSceneId;const apiPath='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ apiPath);const {data}=await supabase.from('scenes').select('campaign_id').eq('id',sceneId).single();(window as any).__lateRefresh=refreshSceneTokens(sceneId,data.campaign_id);(window as any).__moveCampaignId=data.campaign_id;});
+      await ready;
+      const point=await page.evaluate(id=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y,scale:vp.scale.x};},token.id);
+      await page.mouse.move(point.x,point.y);await page.mouse.down();await page.mouse.move(point.x+70*point.scale,point.y+70*point.scale,{steps:6});await page.mouse.up();
+      const destination={x:token.x+70,y:token.y+70};
+      await expect.poll(async()=>{const t=(await state(page)).tokens[token.id];return {x:t.x,y:t.y};}).toEqual(destination);
+      await expect.poll(()=>page.evaluate(async id=>{const p='/src/components/Campaign/battlemap/pendingTokenMoves.ts';return !(await import(/* @vite-ignore */ p)).isTokenMovePending(id);},token.id)).toBe(true);
+      release();await page.evaluate(()=> (window as any).__lateRefresh);
+      expect((await state(page)).tokens[token.id]).toMatchObject(destination);
+      const persisted=await page.evaluate(async id=>{const p='/src/lib/api/tokensApiRouter.ts';const api=await import(/* @vite-ignore */ p);const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);return (await api.listTokens(useBattleMapStore.getState().currentSceneId,{campaignId:(window as any).__moveCampaignId})).find((t:any)=>t.id===id);},token.id);
+      expect(persisted).toMatchObject(destination);
+      const lookup=await page.evaluate(async()=>{
+        const p='/src/lib/battleMapGeometry.ts';const {loadActiveBattleMap,findTokenForParticipant}=await import(/* @vite-ignore */ p);
+        const map=await loadActiveBattleMap((window as any).__moveCampaignId);
+        const repeated=map.tokens.filter((t:any)=>t.creature_id&&map.tokens.filter((other:any)=>other.creature_id===t.creature_id).length>1);
+        return {count:repeated.length,mismatches:repeated.filter((t:any)=>findTokenForParticipant({id:'participant-'+t.id,name:t.name,participant_type:'creature',entity_id:t.creature_id,combatant_id:t.combatant_id},[...map.tokens].reverse())?.id!==t.id).length};
+      });
+      expect(lookup.count).toBeGreaterThan(1);expect(lookup.mismatches).toBe(0);
+    } finally {
+      release();await page.unroute('**/rest/v1/scene_token*');
+      await page.evaluate(async original=>{const p='/src/lib/api/tokensApiRouter.ts';const api=await import(/* @vite-ignore */ p);if((window as any).__moveCampaignId)await api.updateTokenPos(original.id,original.x,original.y,{campaignId:(window as any).__moveCampaignId});},token);
+    }
+  });
   test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);

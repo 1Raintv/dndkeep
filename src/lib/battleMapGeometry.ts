@@ -81,6 +81,7 @@ export interface BattleMapToken {
   // findTokenForParticipant can ID-match instead of name-matching.
   creature_id?: string;
   participant_id?: string;
+  combatant_id?: string;
   /** Footprint span in CELLS (tiny/small/medium all collapse to 1). */
   size?: number;
   /** v2.652.0 — the size CATEGORY, which `size` cannot express: tiny,
@@ -94,6 +95,7 @@ export interface BattleMapToken {
 /** Minimal participant shape needed for token lookup. */
 export interface ParticipantForTokenLookup {
   id: string;
+  combatant_id?: string | null;
   name: string;
   // v2.356.0 — extended with 'creature' to match the v2.350 unified
   // participant_type. Legacy 'monster'/'npc' values still accepted for
@@ -243,13 +245,14 @@ export async function loadActiveBattleMap(
     // (players only receive placements they could SELECT).
     const { data: placementRows } = await (supabase as any)
       .from('scene_token_placements')
-      .select('id, x, y, size_override, combatants:combatant_id ( id, name, definition_type, definition_id )')
+      .select('id, combatant_id, x, y, size_override, combatants:combatant_id ( id, name, definition_type, definition_id )')
       .eq('scene_id', sceneId);
     tokens = ((placementRows ?? []) as any[]).map(r => {
       const c = (r.combatants ?? {}) as { name?: string; definition_type?: string; definition_id?: string };
       const sizeLabel = ((r.size_override as string) ?? 'medium').toLowerCase();
       return {
         id: (r.id as string) ?? undefined,
+        combatant_id: r.combatant_id ?? undefined,
         row: Math.floor(((r.y as number) ?? 0) / gridSizePx),
         col: Math.floor(((r.x as number) ?? 0) / gridSizePx),
         name: c.name ?? undefined,
@@ -335,19 +338,22 @@ export function findTokenForParticipant(
   participant: ParticipantForTokenLookup,
   tokens: BattleMapToken[],
 ): BattleMapToken | null {
-  for (const t of tokens) {
-    if (!t || typeof t.row !== 'number' || typeof t.col !== 'number') continue;
-    if (participant.participant_type === 'character') {
-      if (t.character_id && participant.entity_id && t.character_id === participant.entity_id) return t;
-    } else {
-      // Creature path. Prefer creature_id match (post-v2.350 unified ID).
-      const creatureIdOnToken = (t as BattleMapToken & { creature_id?: string }).creature_id;
-      if (creatureIdOnToken && participant.entity_id && creatureIdOnToken === participant.entity_id) return t;
-      // Fall back to name match for legacy rows.
-      if ((t.name ?? '').toLowerCase() === participant.name.toLowerCase()) return t;
-    }
+  // v2.743 — a monster definition identifies a species, not an individual copy.
+  const valid=tokens.filter(t=>t && Number.isFinite(t.row) && Number.isFinite(t.col));
+  const unique=(list:BattleMapToken[])=>list.length===1?list[0]:null;
+  const linked=valid.filter(t=>t.participant_id===participant.id);
+  if(linked.length)return unique(linked);
+  if(participant.combatant_id) {
+    const exact=valid.filter(t=>t.combatant_id===participant.combatant_id);
+    if(exact.length)return unique(exact);
   }
-  return null;
+  const eligible=valid.filter(t=>!t.participant_id && (!participant.combatant_id || !t.combatant_id));
+  const identity=participant.participant_type==='character'?'character_id':'creature_id';
+  const candidates=eligible.filter(t=>participant.entity_id && t[identity]===participant.entity_id);
+  if(candidates.length===1)return candidates[0];
+  const sameName=(t:BattleMapToken)=>(t.name??'').trim().toLowerCase()===participant.name.trim().toLowerCase();
+  if(candidates.length)return unique(candidates.filter(sameName));
+  return participant.participant_type==='character'?null:unique(eligible.filter(t=>!t[identity] && sameName(t)));
 }
 
 /**
