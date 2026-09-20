@@ -31,6 +31,31 @@ test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
   test.use({serviceWorkers:'block'});
   gateDbSuite();
+  test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await openMap(page);
+    const nav=page.locator('.map-navigation'),details=page.locator('.map-help');
+    const help=page.getByRole('region',{name:'Map controls help'});
+    for(const size of [page.viewportSize()!,{width:851,height:393}]) {
+      await page.setViewportSize(size);
+      await nav.evaluate(el=>{(el as HTMLElement).style.top='24px';(el as HTMLElement).style.bottom='auto';});
+      await page.getByLabel('Map controls',{exact:true}).click();
+      await expect(details).toHaveAttribute('data-placement','below');
+      const assertBounds=async()=>expect.poll(()=>help.evaluate(el=>{const r=el.getBoundingClientRect(),v=visualViewport!;return r.left>=0&&r.right<=v.width&&r.top>=8&&r.bottom<=v.height-8&&r.height>=120;})).toBe(true);
+      await assertBounds();
+      await help.getByText('Cancel',{exact:true}).scrollIntoViewIfNeeded();await expect(help.getByText('Cancel',{exact:true})).toBeInViewport();
+      await page.screenshot({path:info.outputPath(`help-below-${size.width}.png`)});
+      // Reposition an already-open panel, exercising dock-change observation.
+      await nav.evaluate(el=>{(el as HTMLElement).style.top='auto';(el as HTMLElement).style.bottom='20px';});
+      await expect(details).toHaveAttribute('data-placement','above');await assertBounds();
+      await help.getByText('Pan temporarily',{exact:true}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:info.outputPath(`help-above-${size.width}.png`)});
+      await page.keyboard.press('Escape');await expect(help).toBeHidden();
+      await expect(page.getByLabel('Map controls',{exact:true})).toBeFocused();
+      await expect(page.locator('.battle-map-fullscreen')).toBeVisible();
+    }
+    expect(errors).toEqual([]);
+  });
   test('named color palettes have touch targets and visible saved choices',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
