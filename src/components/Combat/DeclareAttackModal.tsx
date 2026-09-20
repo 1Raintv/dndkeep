@@ -22,6 +22,8 @@ import {
 } from '../../lib/battleMapGeometry';
 import type { CombatParticipant } from '../../types';
 import type { ActiveBattleMap } from '../../lib/battleMapGeometry';
+import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
+import {useBattleMapStore} from '../../lib/stores/battleMapStore';
 
 interface Props {
   campaignId: string;
@@ -43,7 +45,10 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // v2.106.0 — Phase F pt 3e: map-positioned auto-target helper. Loads the
   // active battle map's tokens so the DM can pick a center + radius and have
   // DNDKeep check the targets automatically based on grid distance.
-  const [battleMapTokens, setBattleMapTokens] = useState<any[] | null>(null);
+  const [mapSnapshot,setActiveBattleMap]=useState<ActiveBattleMap|null>(null);
+  const activeBattleMap=useLiveBattleMap(mapSnapshot);
+  const battleMapTokens=activeBattleMap?.tokens??null;
+  const sceneId=useBattleMapStore(s=>s.currentSceneId);
   const [centerParticipantId, setCenterParticipantId] = useState<string>('');
   const [radiusFt, setRadiusFt] = useState<string>('20');
   const [attackName, setAttackName] = useState('');
@@ -94,7 +99,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       })),
       battleMapTokens,
     );
@@ -113,7 +118,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       })),
       battleMapTokens,
     );
@@ -198,16 +203,14 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
   // for the cover-from-walls auto-derivation useEffect further down. The
   // old battleMapTokens state is kept as a derived view for backwards
   // compatibility with the AoE radius-picker render path.
-  const [activeBattleMap, setActiveBattleMap] = useState<ActiveBattleMap | null>(null);
   useEffect(() => {
     let canceled = false;
     loadActiveBattleMap(campaignId).then(bmap => {
       if (canceled) return;
       setActiveBattleMap(bmap);
-      setBattleMapTokens(bmap ? bmap.tokens : null);
     });
     return () => { canceled = true; };
-  }, [campaignId]);
+  }, [campaignId,sceneId]);
 
   // Map each participant to its grid position on the active battle map —
   // declared above (line ~79) so the cover auto-fill effect can use it.
@@ -244,7 +247,7 @@ export default function DeclareAttackModal({ campaignId, onClose, onDeclared }: 
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       })),
       participantFootprints,
       centerPos,

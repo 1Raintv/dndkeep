@@ -1,3 +1,4 @@
+import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
 // v2.363.0 / v2.364.0 — Phase Q.2: Monster action side rail.
 //
 // DM-only side panel (right edge of viewport) that appears when a
@@ -593,28 +594,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
   // the geometry-layer token list from it on every store change. Falls
   // back to the fetched snapshot when the DM has the map closed (store
   // empty) or a different scene loaded.
-  const storeTokens = useBattleMapStore(s => s.tokens);
-  const storeSceneId = useBattleMapStore(s => s.currentSceneId);
-  const liveBattleMap = useMemo<ActiveBattleMap | null>(() => {
-    if (!battleMap) return null;
-    if (!storeSceneId || storeSceneId !== battleMap.id) return battleMap;
-    const list = Object.values(storeTokens);
-    if (list.length === 0) return battleMap;
-    const SIZE_TO_CELLS: Record<string, number> = {
-      tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4,
-    };
-    return {
-      ...battleMap,
-      tokens: list.map(t => ({
-        row: Math.floor((t.y ?? 0) / battleMap.grid_size),
-        col: Math.floor((t.x ?? 0) / battleMap.grid_size),
-        name: t.name ?? undefined,
-        character_id: t.characterId ?? undefined,
-        creature_id: t.creatureId ?? undefined,
-        size: SIZE_TO_CELLS[(t.size ?? 'medium').toLowerCase()] ?? 1,
-      })),
-    };
-  }, [battleMap, storeTokens, storeSceneId]);
+  const storeSceneId=useBattleMapStore(s=>s.currentSceneId);
+  const liveBattleMap=useLiveBattleMap(battleMap);
 
   useEffect(() => {
     // v2.416.0 — Reset multiattack guided-mode state whenever the
@@ -756,7 +737,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       console.error('[MonsterActionPanel] map load failed', err);
     });
     return () => { cancelled = true; };
-  }, [encounter, currentActor]);
+  }, [encounter, currentActor,storeSceneId]);
 
   // v2.444.0 — Cone-pick lifecycle. Three phases:
   //   1. Setup (conePickingFor + liveBattleMap both present, directionPick
@@ -805,7 +786,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       id: currentActor.id,
       name: currentActor.name,
       participant_type: currentActor.participant_type,
-      entity_id: currentActor.entity_id,
+      entity_id: currentActor.entity_id, combatant_id: currentActor.combatant_id,
     };
     const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
     if (!token) return null;
@@ -862,7 +843,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       };
       const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
       if (!token) continue;
@@ -923,7 +904,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       id: currentActor.id,
       name: currentActor.name,
       participant_type: currentActor.participant_type,
-      entity_id: currentActor.entity_id,
+      entity_id: currentActor.entity_id, combatant_id: currentActor.combatant_id,
     };
     const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
     if (!token) return null;
@@ -977,7 +958,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       };
       const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
       if (!token) continue;
@@ -1047,7 +1028,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       .map(p => {
         const lookup: ParticipantForTokenLookup = {
           id: p.id, name: p.name,
-          participant_type: p.participant_type, entity_id: p.entity_id,
+          participant_type: p.participant_type, entity_id: p.entity_id, combatant_id: p.combatant_id,
         };
         const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
         if (!token) return null;
@@ -1578,7 +1559,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     const lookup: ParticipantForTokenLookup = {
       id: currentActor.id, name: currentActor.name,
       participant_type: currentActor.participant_type,
-      entity_id: currentActor.entity_id,
+      entity_id: currentActor.entity_id, combatant_id: currentActor.combatant_id,
     };
     const token = findTokenForParticipant(lookup, liveBattleMap.tokens);
     if (!token) return;
@@ -3158,7 +3139,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
       id: attackerParticipant.id,
       name: attackerParticipant.name,
       participant_type: attackerParticipant.participant_type,
-      entity_id: attackerParticipant.entity_id,
+      entity_id: attackerParticipant.entity_id, combatant_id: attackerParticipant.combatant_id,
     };
     const valid: Array<{ participant: CombatParticipant; distFt: number | null; inRange: boolean }> = [];
     const excl: Array<{ participant: CombatParticipant; reason: 'self' | 'dead' }> = [];
@@ -3176,7 +3157,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       };
       const dist = liveBattleMap
         ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, liveBattleMap)
@@ -3469,7 +3450,7 @@ function MultiTargetSavePicker(props: MultiPickerProps) {
       id: attackerParticipant.id,
       name: attackerParticipant.name,
       participant_type: attackerParticipant.participant_type,
-      entity_id: attackerParticipant.entity_id,
+      entity_id: attackerParticipant.entity_id, combatant_id: attackerParticipant.combatant_id,
     };
     const valid: Array<{ participant: CombatParticipant; distFt: number | null; inRange: boolean }> = [];
     const excl: Array<{ participant: CombatParticipant; reason: 'self' | 'dead' }> = [];
@@ -3487,7 +3468,7 @@ function MultiTargetSavePicker(props: MultiPickerProps) {
         id: p.id,
         name: p.name,
         participant_type: p.participant_type,
-        entity_id: p.entity_id,
+        entity_id: p.entity_id, combatant_id: p.combatant_id,
       };
       const dist = liveBattleMap
         ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, liveBattleMap)

@@ -18,6 +18,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CombatParticipant } from '../../types';
+import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
+import {useBattleMapStore} from '../../lib/stores/battleMapStore';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
@@ -68,7 +70,9 @@ export default function TargetPickerModal({
 }: Props) {
   // v2.480.0 — Battle map state. Loaded async on mount; null until the
   // load resolves (rows just render without distance during the gap).
-  const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
+  const [snapshot, setBattleMap] = useState<ActiveBattleMap | null>(null);
+  const battleMap=useLiveBattleMap(snapshot);
+  const sceneId=useBattleMapStore(s=>s.currentSceneId);
   useEffect(() => {
     if (!campaignId || !fromParticipant) return;
     let cancelled = false;
@@ -76,7 +80,7 @@ export default function TargetPickerModal({
       if (!cancelled) setBattleMap(map);
     });
     return () => { cancelled = true; };
-  }, [campaignId, fromParticipant]);
+  }, [campaignId, fromParticipant,sceneId]);
 
   const selectable = participants.filter(p => {
     if (p.is_dead) return false;
@@ -148,13 +152,13 @@ export default function TargetPickerModal({
                   id: fromParticipant.id,
                   name: fromParticipant.name,
                   participant_type: fromParticipant.participant_type,
-                  entity_id: fromParticipant.entity_id,
+                  entity_id: fromParticipant.entity_id, combatant_id: fromParticipant.combatant_id,
                 };
                 const toLookup: ParticipantForTokenLookup = {
                   id: p.id,
                   name: p.name,
                   participant_type: p.participant_type,
-                  entity_id: p.entity_id,
+                  entity_id: p.entity_id, combatant_id: p.combatant_id,
                 };
                 distanceFt = distanceBetweenParticipantsFtUsingMap(
                   fromLookup, toLookup, battleMap,

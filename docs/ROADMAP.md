@@ -3,6 +3,28 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Attack identity and movement refresh stability, v2.743
+
+Reproduced two defects: duplicate monster definitions could resolve range from
+the first copy, and an old refresh could overwrite a move completed during its
+fetch. Token lookup now prefers the combatant instance, disambiguates legacy
+copies by unique name, and declines ambiguous matches. Attack pickers and monster
+highlights share live map geometry, including instance and footprint identity.
+
+Initial, realtime and reconnect token refreshes share a guard against old or
+out-of-order snapshots overwriting active, pending or newly completed movement.
+Unrelated metadata still refreshes; missing rows still disappear. The reported
+session has not yet been identified, so these are reproduced code defects,
+not a claim that every possible range or post-drop issue is resolved.
+
+Validation: 962 unit tests; TypeScript debt reduced from 221 to 219 and CI
+ratcheted accordingly; full build, rules, coordinate and bundle checks passed.
+Desktop/mobile tests confirm delayed refreshes cannot rewind a saved drop,
+verify persisted positions and duplicate-instance lookup, and retain pending-save
+and rejection recovery. Disabling position preservation reproduces a 70px jump
+back on both axes. The picker regression verifies 40ft rejection then immediate
+5ft eligibility after movement.
+
 ### 2026-09-19 — Adaptive map help placement, v2.742
 
 Map help chooses the roomier side of the navigation dock, opening below when a

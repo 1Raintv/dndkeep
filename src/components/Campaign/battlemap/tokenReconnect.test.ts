@@ -6,6 +6,14 @@ import type { Token } from '../../../lib/map/mapTypes';
 vi.mock('../../../lib/api/tokensApiRouter',()=>({listTokens:vi.fn()}));
 vi.mock('../../../lib/log',()=>({log:{error:vi.fn()}}));
 beforeEach(()=>{vi.clearAllMocks();useBattleMapStore.setState({currentSceneId:'s',tokens:{},dragging:null});});
+it('does not overwrite a move completed while the refresh was in flight',async()=>{
+  const token={id:'a',x:35,y:35} as Token;useBattleMapStore.setState({tokens:{a:token}});
+  let finish!:(tokens:Token[])=>void;vi.mocked(api.listTokens).mockImplementation(()=>new Promise(r=>{finish=r;}));
+  const handler=tokenReconnect('s','c',()=>false);await handler('SUBSCRIBED');const pending=handler('SUBSCRIBED');
+  useBattleMapStore.getState().updateTokenPosition('a',175,105);
+  finish([{...token,name:'Updated name'}]);await pending;
+  expect(useBattleMapStore.getState().tokens.a).toMatchObject({x:175,y:105,name:'Updated name'});
+});
 it('refreshes after reconnect and retains a held local preview',async()=>{
   const token={id:'a',x:5,y:6} as Token;
   useBattleMapStore.setState({tokens:{a:token},dragging:'a'});
