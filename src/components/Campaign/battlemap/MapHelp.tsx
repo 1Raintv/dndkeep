@@ -1,5 +1,6 @@
 import {useEffect,useRef} from 'react';
 import {GridAppearanceControls} from './GridAppearanceControls';
+import {mapHelpPlacement} from './mapHelpPlacement';
 
 /** v2.702 — instructions are available on demand instead of covering the map. */
 export function MapHelp() {
@@ -7,9 +8,13 @@ export function MapHelp() {
   useEffect(()=>{
     const details=ref.current!;
     const nav=details.closest('.map-navigation')!;
-    // v2.704 — a landscape combat dock can sit high on the screen. Size
-    // help to the actual room above it, keeping all instructions scrollable.
-    const measure=()=>{if(details.open) details.style.setProperty('--map-help-space',`${Math.max(0,nav.getBoundingClientRect().top-18)}px`);};
+    // v2.742 — a raised dock can leave more usable room below than above.
+    const measure=()=>{if(details.open) {
+      const bounds=nav.getBoundingClientRect();
+      const placement=mapHelpPlacement(bounds.top,bounds.bottom,window.innerHeight);
+      details.dataset.placement=placement.side;
+      details.style.setProperty('--map-help-space',`${placement.height}px`);
+    }};
     const resize=new ResizeObserver(measure);resize.observe(nav);
     if(nav.parentElement) resize.observe(nav.parentElement);
     const position=new MutationObserver(measure);position.observe(nav,{attributes:true,attributeFilter:['style']});

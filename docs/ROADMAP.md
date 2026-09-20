@@ -3,6 +3,15 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-19 — Adaptive map help placement, v2.742
+
+Map help chooses the roomier side of the navigation dock, opening below when a
+raised dock leaves little space above. It keeps the existing screen margin,
+height cap and scrolling, and repositions when the dock moves or screen resizes.
+
+Coverage checks placement geometry and desktop/mobile/landscape panel bounds,
+scrolling and Escape behavior in the real map. No database changes.
+
 ### 2026-09-19 — Camera shortcut modal guard, v2.741
 
 Zoom, Fit, Find and Previous View keys pause while a visible modal is open,
