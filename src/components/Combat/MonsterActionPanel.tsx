@@ -1,3 +1,5 @@
+import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
+import {MovementPendingNotice} from './MovementPendingNotice';
 import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
 // v2.363.0 / v2.364.0 — Phase Q.2: Monster action side rail.
 //
@@ -3118,6 +3120,7 @@ interface PickerProps {
 }
 
 function RangeAwareTargetPicker(props: PickerProps) {
+  const movementBusy=useMapMovementBusy();
   const { attackerParticipant, participants, action, attackRangeFt, liveBattleMap, onPick, onCancel } = props;
 
   // v2.385.0 — Lock state for excluded (self / dead) targets.
@@ -3249,6 +3252,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
           </div>
         </div>
 
+        <MovementPendingNotice busy={movementBusy}/>
         <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {targets.length === 0 && excluded.length === 0 && (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
@@ -3273,8 +3277,8 @@ function RangeAwareTargetPicker(props: PickerProps) {
             return (
               <button
                 key={p.id}
-                onClick={() => inRange && onPick(p)}
-                disabled={!inRange}
+                onClick={() => inRange && !isMapMovementBusy() && onPick(p)}
+                disabled={!inRange || movementBusy}
                 title={inRange
                   ? `${p.name} · ${distLabel}${p.ac ? ` · AC ${p.ac}` : ''}`
                   : `${p.name} is out of range (${distLabel}; ${attackRangeFt} ft max)`}
@@ -3343,8 +3347,8 @@ function RangeAwareTargetPicker(props: PickerProps) {
                 return (
                   <button
                     key={p.id}
-                    onClick={() => clickable && onPick(p)}
-                    disabled={!clickable}
+                    onClick={() => clickable && !isMapMovementBusy() && onPick(p)}
+                    disabled={!clickable || movementBusy}
                     title={clickable
                       ? `${p.name} (${reasonLabel}) — click to target anyway`
                       : reason === 'self'
